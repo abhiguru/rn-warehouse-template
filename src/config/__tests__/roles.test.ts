@@ -51,14 +51,16 @@ describe('role by screen', () => {
     'masterData',
     'itemPriceHistory',
     'standardRate',
+    'sensorWrite',
   ];
   it.each([
-    ['admin', [true, true, true, true, true, true, true, true, true]],
-    ['supervisor', [true, true, true, true, true, false, true, true, true]],
+    ['admin', [true, true, true, true, true, true, true, true, true, true]],
+    ['supervisor', [true, true, true, true, true, false, true, true, true, false]],
     // Item pricing, its writing, the price history and the standard rate are for administrators and supervisors (owner, 2026-10-16; server migration 90).
-    ['staff', [false, false, false, true, false, false, false, false, false]],
-    ['customer', [false, false, false, false, false, false, false, false, false]],
-    [null, [false, false, false, false, false, false, false, false, false]],
+    // Editing a sensor (its name, place, threshold and temperature limits) is for administrators only.
+    ['staff', [false, false, false, true, false, false, false, false, false, false]],
+    ['customer', [false, false, false, false, false, false, false, false, false, false]],
+    [null, [false, false, false, false, false, false, false, false, false, false]],
   ])('%s', (role, expected) => {
     expect(SCREENS.map((screen) => canOpenScreen(role, screen))).toEqual(expected);
   });
@@ -91,6 +93,17 @@ describe('role and facility capabilities by screen', () => {
     expect(canOpenScreen(role, 'sensors', OFF)).toBe(off);
   });
 
+  it.each([
+    ['admin', true, false],
+    ['supervisor', false, false],
+    ['staff', false, false],
+    ['customer', false, false],
+    [null, false, false],
+  ])('editing a sensor for %s: capability on %s, off %s', (role, on, off) => {
+    expect(canOpenScreen(role, 'sensorWrite', ON)).toBe(on);
+    expect(canOpenScreen(role, 'sensorWrite', OFF)).toBe(off);
+  });
+
   it('a capability changes no other screen', () => {
     for (const role of ['admin', 'supervisor', 'staff', 'customer']) {
       expect(SCREENS_WITHOUT_SENSORS.map((screen) => canOpenScreen(role, screen, OFF))).toEqual(
@@ -120,8 +133,8 @@ describe('report routing', () => {
 
 describe('settings feature rows', () => {
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
-    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'standardRate', 'sensors']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'sensors']],
+    ['supervisor', ['customers', 'items', 'users', 'standardRate', 'sensors']],
     ['staff', ['sensors']],
     ['customer', []],
     [undefined, []],
@@ -130,8 +143,8 @@ describe('settings feature rows', () => {
   });
 
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'standardRate']],
-    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'standardRate']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate']],
+    ['supervisor', ['customers', 'items', 'users', 'standardRate']],
     ['staff', []],
     ['customer', []],
   ])('%s at a facility without sensors sees %j', (role, rows) => {
@@ -174,7 +187,15 @@ describe('user management actions', () => {
           { id: 'caller', role: callerRole },
           { id: self ? 'caller' : 'target', role: targetRole, active }
         );
-        expect(actions).toEqual({ canEdit, canChangeAssignments, assignableRoles: roles, needsAdministrator: false });
+        // Assignments belong to the Customer role only (migration 113).
+        expect(actions).toEqual({
+          canEdit,
+          canChangeAssignments: canChangeAssignments && targetRole === 'customer',
+          assignableRoles: roles,
+          needsAdministrator: false,
+          assignmentsApply: targetRole === 'customer',
+          assignmentsNeedActivation: false,
+        });
       }
     }
   );
@@ -187,26 +208,29 @@ describe('user management actions', () => {
 
     it.each(['customer', 'staff', 'supervisor'])('a supervisor is offered nothing on an inactive %s, and is told to ask an administrator', (targetRole) => {
       expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: targetRole, active: false }))
-        .toEqual({ ...NOTHING, needsAdministrator: true });
+        .toMatchObject({ ...NOTHING, needsAdministrator: true });
     });
 
     it('a supervisor is offered nothing on an active user whose access is not approved', () => {
-      for (const enrollmentStatus of ['pending', 'rejected', 'disabled']) {
+      // A pending or rejected request has its own page with no controls (userPageKind), so nothing is offered and nothing is asked of an administrator.
+      for (const enrollmentStatus of ['pending', 'rejected']) {
         expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'customer', active: true, enrollmentStatus }))
-          .toEqual({ ...NOTHING, needsAdministrator: true });
+          .toMatchObject({ ...NOTHING, needsAdministrator: false });
       }
+      expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'customer', active: true, enrollmentStatus: 'disabled' }))
+        .toMatchObject({ ...NOTHING, needsAdministrator: true });
       expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'customer', active: true, enrollmentStatus: 'approved' }).canEdit)
         .toBe(true);
     });
 
     it('an inactive administrator is still simply out of a supervisor\'s reach', () => {
       expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'admin', active: false }))
-        .toEqual({ ...NOTHING, needsAdministrator: false });
+        .toMatchObject({ ...NOTHING, needsAdministrator: false });
     });
 
     it.each(['customer', 'staff', 'supervisor', 'admin'])('an administrator can still activate an inactive %s', (targetRole) => {
       expect(userManagementActions({ id: 'caller', role: 'admin' }, { id: 'target', role: targetRole, active: false }))
-        .toEqual({ canEdit: true, canChangeAssignments: true, assignableRoles: ALL, needsAdministrator: false });
+        .toMatchObject({ canEdit: true, canChangeAssignments: false, assignmentsNeedActivation: targetRole === 'customer', assignableRoles: ALL, needsAdministrator: false });
     });
   });
 

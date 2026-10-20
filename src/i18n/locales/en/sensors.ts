@@ -12,7 +12,7 @@ export const sensors = {
   /** "Label value", read out for a statistic. */
   statValue: '{{label}} {{value}}',
   status: {
-    healthy: 'Healthy',
+    sensorOk: 'Sensor OK',
     warning: 'Warning',
     critical: 'Critical',
     online: 'Online',
@@ -20,6 +20,11 @@ export const sensors = {
     noRecentData: 'No recent data',
     batteryLow: 'Battery low',
     batteryCritical: 'Battery critical',
+    /** The latest temperature is above the sensor's highest limit, or below its lowest. */
+    tooWarm: 'Too warm',
+    tooCold: 'Too cold',
+    /** The sensor is heard from, but its latest values have stopped changing. */
+    valuesNotChanging: 'Values not changing',
   },
   battery: {
     good: 'Good',
@@ -34,6 +39,12 @@ export const sensors = {
     lowBatteryCount: { one: '{{count}} low battery', other: '{{count}} low battery' },
     criticalBatteryCount: { one: '{{count}} battery critical', other: '{{count}} battery critical' },
     offlineCount: { one: '{{count}} offline', other: '{{count}} offline' },
+    tooWarmCount: { one: '{{count}} too warm', other: '{{count}} too warm' },
+    tooColdCount: { one: '{{count}} too cold', other: '{{count}} too cold' },
+    /** The tile counting every sensor that is offline or has no recent data. */
+    offlineOrNoData: 'Offline or no recent data',
+    /** Why the list could not be updated, under "Couldn't update. These figures were loaded earlier." */
+    phoneOffline: 'This phone is offline.',
     /** Heading of the strip over the list that names the sensors with a problem. */
     alertsTitle: 'Needs attention',
     /** Spoken hint of a sensor named in that strip. */
@@ -68,6 +79,34 @@ export const sensors = {
     /** The sensor's temperature limits, drawn on the chart as dashed lines. */
     thresholdMax: 'Max {{value}}',
     thresholdMin: 'Min {{value}}',
+    /** Under the readings of a sensor that is offline, has no recent data or whose values are not changing. {{time}} is "5 min ago", "3 h ago" or "2 days ago". */
+    lastKnown: 'Last known, {{time}}',
+    daysAgo: { one: '{{count}} day ago', other: '{{count}} days ago' },
+    /** After "Couldn't update. These figures were loaded earlier." {{time}} is a date and time. */
+    lastUpdated: 'Last updated {{time}}.',
+  },
+  /** Edit sensor (administrators only), opened from a sensor's page. */
+  edit: {
+    title: 'Edit sensor',
+    name: 'Name',
+    location: 'Location',
+    minutes: 'Mark as no recent data after (minutes)',
+    minutesHint: '{{min}} to {{max}} minutes. A sensor not heard from for this long shows "No recent data".',
+    limitsTitle: 'Temperature limits',
+    limitsHint: 'Leave both empty for no limits. The sensor shows "Too warm" or "Too cold" when its latest temperature is outside them.',
+    lowest: 'Lowest temperature (°C)',
+    highest: 'Highest temperature (°C)',
+    savedToast: '{{name}} saved',
+    couldNotSaveTitle: "Couldn't save the sensor",
+    couldNotSave: "Couldn't save the sensor. Try again in a moment.",
+    nameRequired: 'Enter a name.',
+    tooLong: 'Use at most {{max}} characters.',
+    minutesInvalid: 'Enter a whole number from {{min}} to {{max}}.',
+    temperatureInvalid: 'Enter a temperature from {{min}} to {{max}} °C, for example -18.5.',
+    limitsOrder: 'The lowest temperature must be below the highest.',
+    /** Announced when Save finds fields to fix. */
+    fixFields: { one: 'Fix 1 field to continue.', other: 'Fix {{count}} fields to continue.' },
+    serverTooOld: "This facility's server is too old to set temperature limits.",
   },
   period: {
     days: '{{days}} days',

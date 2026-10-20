@@ -75,7 +75,7 @@ it('an auth refusal that forced a sign-out during the call: still REFUSED, not d
 
 it('no answer from the server: UNKNOWN, deletion not known', async () => {
   deletion.mockResolvedValue({ success: false, message: 'x', error: 'Network request failed', outcome: 'unknown' });
-  expect(await run(makeStore())).toEqual({ code: 'UNKNOWN', serverDeleted: null, message: 'Network request failed' });
+  expect(await run(makeStore())).toEqual({ code: 'UNKNOWN', serverDeleted: null, message: 'Check your connection and try again.' });
 });
 
 it('deleted, then the session generation moved: SESSION_CHANGED, deleted', async () => {

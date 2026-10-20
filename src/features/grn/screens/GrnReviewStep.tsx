@@ -83,6 +83,7 @@ import {
   type SheetEntry,
 } from '@/features/grn/rates/grnRateModel';
 import { rateRefusalText } from '@/features/grn/rates/rateErrors';
+import { markItemRatesStale } from '@/features/item-pricing/useItemRates';
 import { useStandardRate } from '@/features/item-pricing/useStandardRate';
 import { canOpenScreen } from '@/config/roles';
 import { StatusTag } from '@/components/ui';
@@ -496,6 +497,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
       if (result.success && result.data) {
         createdRef.current = true;
+        // The rates saved with the GRN change which items have a rate: the Items list reads them again.
+        markItemRatesStale();
         triggerSuccess();
         resetFormState();
         const grNo = result.data.gr_no;
@@ -510,7 +513,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       } else {
         triggerError();
         if (result.rateError) showRateRefusal(result.rateError, result.error);
-        else showAlert(saveFailedTitle(), serverText(result.error, connectionHint()));
+        else showAlert(saveFailedTitle(), serverText(result.error, connectionHint(), { write: true, form: true }));
       }
     } catch (error) {
       triggerError();
@@ -577,6 +580,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       }, { removedImages, adoptedLineIds: adopted });
 
       if (result.success) {
+        markItemRatesStale();
         // The server lists every dispatched line on every save; only a quantity that differs from the kept one was really refused.
         const skippedItems = result.data?.stats?.items_skipped_stock?.filter((entry) => {
           const sent = items.find((item) => item.grn_trl_id === entry.grn_trl_item_id);
@@ -623,7 +627,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         showAlert(saveFailedTitle(), tr('grn.review.saveUnanswered'));
       } else {
         triggerError();
-        const errorMessage = serverText(result.error, connectionHint());
+        const errorMessage = serverText(result.error, connectionHint(), { write: true, form: true });
         if (result.rateError) {
           showRateRefusal(result.rateError, result.error);
         } else if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {

@@ -97,7 +97,6 @@ describe('signed out', () => {
     ['reports/stock-summary', ['reports', 'stock-summary']],
     ['customers', ['customers']],
     ['users', ['users']],
-    ['item-pricing', ['item-pricing']],
     ['item-rates/[itemId]', ['item-rates', '[itemId]']],
     ['list-filters', ['list-filters']],
     ['settings', ['settings']],
@@ -202,14 +201,10 @@ describe('signed in', () => {
 
   it.each([
     ['customer', 'items', ['items']],
-    ['customer', 'item-pricing', ['item-pricing']],
     ['customer', 'item-rates/[itemId]', ['item-rates', '[itemId]']],
-    ['customer', 'item-rates/edit', ['item-rates', 'edit']],
     ['customer', 'sensors', ['sensors']],
     ['customer', 'item-price-history', ['item-price-history']],
-    ['staff', 'item-pricing', ['item-pricing']],
     ['staff', 'item-rates/[itemId]', ['item-rates', '[itemId]']],
-    ['staff', 'item-rates/edit', ['item-rates', 'edit']],
     ['staff', 'item-rates/[itemId]/customers', ['item-rates', '[itemId]', 'customers']],
     ['staff', 'item-rates/[itemId]/grns', ['item-rates', '[itemId]', 'grns']],
     ['customer', 'item-rates/[itemId]/customers', ['item-rates', '[itemId]', 'customers']],

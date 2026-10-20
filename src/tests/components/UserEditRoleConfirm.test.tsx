@@ -17,6 +17,7 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn() },
   Stack: { Screen: () => null },
   useIsFocused: () => true,
+  useFocusEffect: require('./focusHarness').useFocusEffect,
   useLocalSearchParams: () => ({ id: 'u2' }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -148,7 +149,8 @@ describe('the other changes of Edit user', () => {
   });
 
   it('assigning and removing a customer end in a toast', async () => {
-    await loadUser();
+    // Assignments are for the Customer role only.
+    await loadUser({ ...STAFF, role: 'customer' });
     await act(async () => { mockSearch!.onSelect({ id: 'c2', name: 'Shah Cold Store' }); });
     expect(showToast).toHaveBeenLastCalledWith('Shah Cold Store assigned.');
     await press('Remove Acme Foods');

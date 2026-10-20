@@ -9,7 +9,10 @@
  * customer's id, never in Redux (G-02).
  *
  * Leaving: useLeaveGuard asks once, and only when something changed, for the
- * header Back, the phone's Back key and the swipe. A save goes back to the
+ * header Back, the phone's Back key and the swipe; while a save runs, Back waits and
+ * nothing is asked. Edit sends only the fields that were changed (never an unchanged
+ * mobile number) with the `updated_at` it read, so a customer changed meanwhile is
+ * refused (STALE_CUSTOMER) instead of overwritten. A save goes back to the
  * customer page (edit) or replaces the form with the new customer's page
  * (add), so the Customers list is never on the stack twice (G-16).
  */
@@ -27,14 +30,14 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { customerService } from '@/services/customer-service';
-import type { CreateCustomerParams, CustomerValidationErrors } from '@/types/customer.types';
+import type { CreateCustomerParams, CustomerServiceResponse, CustomerValidationErrors, UpdateCustomerParams } from '@/types/customer.types';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { formatMobile as formatMobileDisplay, nationalMobileDigits } from '@/utils/formatters';
 import { groupMobileDigits } from '@/utils/mobileGrouping';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-import { serverText } from '@/utils/serverText';
+import { isStatementTimeout, isTimeoutError, serverText, transportText } from '@/utils/serverText';
 import {
   formatGST,
   formatMobile,
@@ -72,6 +75,8 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
   const { fields, setField, isCreate } = editor;
   const [errors, setErrors] = useState<CustomerValidationErrors>({});
   const [saving, setSaving] = useState(false);
+  // From the Save tap to the end of the save, validation and the duplicate search included: Back waits for it.
+  const [working, setWorking] = useState(false);
   const [keyboardShown, setKeyboardShown] = useState(false);
   const busy = useRef(false);
   const inputs = useRef<Partial<Record<keyof CustomerFormFields, TextInput | null>>>({});
@@ -80,6 +85,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
     hasChanges: editor.hasChanges,
     ...(isCreate ? { title: tr('customers.form.discardNewTitle') } : {}),
     message: tr('customers.form.discardMessage'),
+    blocked: working || saving,
   });
 
   useEffect(() => {
@@ -104,46 +110,130 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
     [setField]
   );
 
+  /** Put a refusal under its field and move the cursor there. */
+  const refuseField = useCallback((field: 'name' | 'mobile', message: string) => {
+    setErrors(previous => ({ ...previous, [field]: message }));
+    inputs.current[field]?.focus();
+    AccessibilityInfo.announceForAccessibility(message);
+  }, []);
+
+  /** A deactivated customer already has this name: open it (to activate it again) or use a different name. */
+  const showDeactivatedName = useCallback((id: string | undefined, name: string) => {
+    showAlert(tr('customers.form.deactivatedTitle', { name }), tr('customers.form.deactivatedNameMessage'), [
+      { text: tr('common.cancel'), style: 'cancel' },
+      ...(id ? [{ text: tr('customers.form.openExisting'), onPress: () => router.replace({ pathname: '/customer/[id]', params: { id } }) }] : []),
+      { text: tr('customers.form.useDifferentName'), onPress: () => inputs.current.name?.focus() },
+    ]);
+  }, []);
+
+  /** The last Edit save ended in a timeout (it may have been saved): a following STALE_CUSTOMER is then probably our own save. */
+  const lastSaveTimedOut = useRef(false);
+
+  /** Say why a save was refused: under the field when the server names one, else in a dialog. */
+  const showRefusal = useCallback(
+    (result: CustomerServiceResponse, afterTimeout = false) => {
+      if (result.code === 'DUPLICATE_MOBILE') {
+        const name = result.details?.name;
+        refuseField('mobile', name ? tr('customers.save.duplicateMobileNamed', { name }) : tr('customers.save.duplicateMobile'));
+        return;
+      }
+      if (result.code === 'DUPLICATE_NAME') {
+        if (result.details?.active === false && result.details.name) {
+          showDeactivatedName(result.details.customer_id, result.details.name);
+          return;
+        }
+        refuseField('name', tr('customers.save.duplicateName'));
+        return;
+      }
+      if (result.code === 'VALIDATION_FAILED' && (result.field === 'name' || result.field === 'mobile')) {
+        refuseField(result.field, serverText(result, tr('customers.save.saveFailed'), { code: result.code }));
+        return;
+      }
+      if (result.code === 'CUSTOMER_NOT_FOUND') {
+        showAlert(tr('customers.save.errorTitle'), tr('errors.customer.notFound'));
+        return;
+      }
+      if (result.code === 'STALE_CUSTOMER') {
+        // A save that timed out may have gone through: the retry then meets its own change, not someone else's.
+        showAlert(tr('customers.save.staleTitle'), tr(afterTimeout ? 'customers.save.staleAfterTimeout' : 'customers.save.staleMessage'), [
+          { text: tr('common.cancel'), style: 'cancel' },
+          {
+            text: tr('customers.save.reload'),
+            onPress: () => {
+              setErrors({});
+              editor.retry();
+            },
+          },
+        ]);
+        return;
+      }
+      showAlert(
+        tr('customers.save.errorTitle'),
+        serverText(result, tr('customers.save.saveFailed'), { write: true, form: true, code: result.code })
+      );
+    },
+    [editor.retry, refuseField, showDeactivatedName]
+  );
+
   const submit = useCallback(
     async () => {
       setSaving(true);
       try {
         const trimmed = Object.fromEntries(FIELD_ORDER.map(name => [name, fields[name].trim()])) as CustomerFormFields;
-        // Add leaves an empty optional field out. Edit sends '' for a field the user emptied:
-        // update_customer keeps the old value of anything left out (COALESCE), so only an
-        // empty text clears it (CR-08).
-        const optional = (value: string) => value || (customerId ? '' : undefined);
-        const params: CreateCustomerParams = {
-          p_name: trimmed.name,
-          p_mobile: formatMobile(trimmed.mobile),
-          p_email: optional(trimmed.email),
-          p_city: optional(trimmed.city),
-          p_state: optional(trimmed.state),
-          p_pincode: optional(trimmed.pincode),
-          p_address: optional(trimmed.address),
-          p_gst_number: optional(trimmed.gst),
-          p_pan_number: optional(trimmed.pan),
-          p_contact_person: optional(trimmed.contact_name),
-          p_contact_mobile: trimmed.contact_mobile ? formatMobile(trimmed.contact_mobile) : optional(''),
-          p_contact_email: optional(trimmed.contact_email),
-        };
-        const result = customerId
-          ? await customerService.updateCustomer({
-              ...params,
-              p_customer_id: customerId,
-              // Saved photos travel with the save unchanged, never emptied. Documents are not
-              // sent: update_customer has no such parameter.
-              p_image_urls: editor.customer?.image_urls ?? [],
-            })
-          : await customerService.createCustomer(params);
+        let result: CustomerServiceResponse;
+        if (customerId) {
+          // Edit sends only what was changed: update_customer keeps the old value of anything left
+          // out, and a mobile number that was not touched is never sent again (it is checked for a
+          // duplicate only when it is sent, so two customers that already share a number stay editable).
+          // An emptied optional field is sent as '' - only an empty text clears it (CR-08).
+          const base = editor.base;
+          const changed = (name: keyof CustomerFormFields) => trimmed[name] !== base[name].trim();
+          const update: UpdateCustomerParams = {
+            p_customer_id: customerId,
+            // Saved photos travel with the save unchanged, never emptied. Documents are not
+            // sent: update_customer has no such parameter.
+            p_image_urls: editor.customer?.image_urls ?? [],
+            // Exactly as it was read: the server refuses the save when the customer changed since.
+            ...(editor.customer?.updated_at ? { p_expected_updated_at: editor.customer.updated_at } : {}),
+          };
+          if (changed('name')) update.p_name = trimmed.name;
+          if (changed('mobile')) update.p_mobile = formatMobile(trimmed.mobile);
+          if (changed('email')) update.p_email = trimmed.email;
+          if (changed('city')) update.p_city = trimmed.city;
+          if (changed('state')) update.p_state = trimmed.state;
+          if (changed('pincode')) update.p_pincode = trimmed.pincode;
+          if (changed('address')) update.p_address = trimmed.address;
+          if (changed('gst')) update.p_gst_number = trimmed.gst;
+          if (changed('pan')) update.p_pan_number = trimmed.pan;
+          if (changed('contact_name')) update.p_contact_person = trimmed.contact_name;
+          if (changed('contact_mobile')) {
+            update.p_contact_mobile = trimmed.contact_mobile ? formatMobile(trimmed.contact_mobile) : '';
+          }
+          if (changed('contact_email')) update.p_contact_email = trimmed.contact_email;
+          result = await customerService.updateCustomer(update);
+        } else {
+          // Add leaves an empty optional field out.
+          const optional = (value: string) => value || undefined;
+          const params: CreateCustomerParams = {
+            p_name: trimmed.name,
+            p_mobile: formatMobile(trimmed.mobile),
+            p_email: optional(trimmed.email),
+            p_city: optional(trimmed.city),
+            p_state: optional(trimmed.state),
+            p_pincode: optional(trimmed.pincode),
+            p_address: optional(trimmed.address),
+            p_gst_number: optional(trimmed.gst),
+            p_pan_number: optional(trimmed.pan),
+            p_contact_person: optional(trimmed.contact_name),
+            p_contact_mobile: trimmed.contact_mobile ? formatMobile(trimmed.contact_mobile) : undefined,
+            p_contact_email: optional(trimmed.contact_email),
+          };
+          result = await customerService.createCustomer(params);
+        }
+        const afterTimeout = lastSaveTimedOut.current;
+        lastSaveTimedOut.current = !!customerId && !result.success && isTimeoutError(result) && !isStatementTimeout(result, result.code);
         if (!result.success) {
-          const known =
-            result.code === 'DUPLICATE_NAME'
-              ? tr('customers.save.duplicateName')
-              : result.code === 'DUPLICATE_MOBILE'
-                ? tr('customers.save.duplicateMobile')
-                : undefined;
-          showAlert(tr('customers.save.errorTitle'), known ?? serverText(result.message, tr('customers.save.saveFailed')));
+          showRefusal(result, afterTimeout);
           return;
         }
         if (customerId) {
@@ -157,52 +247,77 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
             else router.back();
           });
         }
-      } catch {
-        showAlert(tr('customers.save.errorTitle'), tr('customers.save.saveFailed'));
+      } catch (error) {
+        lastSaveTimedOut.current = !!customerId && isTimeoutError(error) && !isStatementTimeout(error);
+        // A lost connection or a timeout says so (a timed-out save may have gone through); anything else is the general text.
+        showAlert(tr('customers.save.errorTitle'), transportText(error, { write: true, form: true }) ?? tr('customers.save.saveFailed'));
       } finally {
         setSaving(false);
       }
     },
-    [fields, customerId, editor.customer, leaveWithoutAsking]
+    [fields, customerId, editor.base, editor.customer, leaveWithoutAsking, showRefusal]
   );
 
-  /** On Add: ask before creating a second customer with the same name or number. */
+  /**
+   * On Add, before saving: a customer that already has the number or the name. The server refuses both
+   * (an active customer's number; any customer's name, deactivated ones included), so they are refused here
+   * too, with the same words. A deactivated customer that only shares the number does not stop the Add.
+   */
   const checkDuplicate = useCallback(async () => {
     const name = fold(fields.name);
     const digits = nationalMobileDigits(fields.mobile);
     try {
       // By name, and by the mobile number as it is stored (search_customers matches a prefix).
+      // Deactivated customers are asked for too (administrators and supervisors get them).
       const [byName, byMobile] = await Promise.all([
-        customerService.searchCustomers(fields.name.trim(), 5),
-        digits.length === 10 ? customerService.searchCustomers(formatMobile(fields.mobile), 5) : Promise.resolve([]),
+        customerService.searchCustomers(fields.name.trim(), 5, { includeInactive: true }),
+        digits.length === 10
+          ? customerService.searchCustomers(formatMobile(fields.mobile), 5, { includeInactive: true })
+          : Promise.resolve([]),
       ]);
       const found = [...byName, ...byMobile.filter(other => !byName.some(known => known.id === other.id))];
-      const match = found.find(
-        customer => fold(customer.name) === name || (digits.length === 10 && nationalMobileDigits(customer.mobile) === digits)
-      );
+      const sameMobile = (customer: { mobile: string }) => digits.length === 10 && nationalMobileDigits(customer.mobile) === digits;
+
+      // An active customer with this number: refused, whatever the name.
+      const owner = found.find(customer => !customer.deleted && customer.active && sameMobile(customer));
+      if (owner) {
+        refuseField('mobile', tr('customers.save.duplicateMobileNamed', { name: owner.name }));
+        return true;
+      }
+
+      const sameName = found.find(customer => fold(customer.name) === name);
+      const deactivatedOwner = found.find(customer => !customer.deleted && !customer.active && sameMobile(customer));
+      const match = sameName ?? deactivatedOwner;
       if (!match) return false;
-      // customers.name is unique on the server: the same name can never be added again.
-      const sameName = match.name === fields.name.trim();
+      const open = {
+        text: tr('customers.form.openExisting'),
+        onPress: () => router.replace({ pathname: '/customer/[id]', params: { id: match.id } }),
+      };
+      if (!match.active) {
+        // The name constraint covers deactivated customers: a name match cannot be added again, a number match can.
+        const nameTaken = match === sameName;
+        if (nameTaken) {
+          showDeactivatedName(match.id, match.name);
+          return true;
+        }
+        showAlert(
+          tr('customers.form.deactivatedTitle', { name: match.name }),
+          tr('customers.form.deactivatedMessage'),
+          [{ text: tr('common.cancel'), style: 'cancel' }, open, { text: tr('customers.form.addNew'), onPress: () => void submit() }]
+        );
+        return true;
+      }
       showAlert(
         tr('customers.form.duplicateTitle', { name: match.name }),
-        tr(sameName ? 'customers.form.duplicateNameMessage' : 'customers.form.duplicateMessage', {
-          mobile: formatMobileDisplay(match.mobile),
-        }),
-        [
-          { text: tr('common.cancel'), style: 'cancel' },
-          {
-            text: tr('customers.form.openExisting'),
-            onPress: () => router.replace({ pathname: '/customer/[id]', params: { id: match.id } }),
-          },
-          ...(sameName ? [] : [{ text: tr('customers.form.addAnyway'), onPress: () => void submit() }]),
-        ]
+        tr('customers.form.duplicateNameMessage', { mobile: formatMobileDisplay(match.mobile) }),
+        [{ text: tr('common.cancel'), style: 'cancel' }, open]
       );
       return true;
     } catch {
       // A failed search never blocks the save.
       return false;
     }
-  }, [fields.name, fields.mobile, submit]);
+  }, [fields.name, fields.mobile, submit, refuseField, showDeactivatedName]);
 
   const runSave = useCallback(async () => {
     if (!isCreate && !editor.hasChanges) {
@@ -240,14 +355,20 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
     // Taken at the very start: validation and the duplicate search run before `saving` turns on.
     if (saving || busy.current) return;
     busy.current = true;
+    setWorking(true);
     try {
       await runSave();
     } finally {
       busy.current = false;
+      setWorking(false);
     }
   }, [saving, runSave]);
 
   const title = tr(isCreate ? 'customers.form.addTitle' : 'customers.form.editTitle');
+  // Always our own sentence ("Couldn't open this customer..."), never the database's.
+  // A lost connection or a timeout can be tried again; anything else (the customer is gone) cannot.
+  const loadIsTransient = !editor.failure || isTimeoutError(editor.failure) || transportText(editor.failure) !== undefined;
+  const loadFailedText = loadIsTransient ? tr('customers.page.loadFailed') : tr('errors.customer.notFound');
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -276,10 +397,16 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
       {editor.status === 'error' && (
         <View style={styles.state} accessibilityRole="alert">
           <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.stateText}>{serverText(editor.message, tr('customers.page.loadFailed'))}</Text>
-          <Button type="secondary" leftIcon="refresh" onPress={editor.retry}>
-            {tr('common.retry')}
-          </Button>
+          <Text style={styles.stateText}>{loadFailedText}</Text>
+          {loadIsTransient ? (
+            <Button type="secondary" leftIcon="refresh" onPress={editor.retry}>
+              {tr('common.retry')}
+            </Button>
+          ) : (
+            <Button type="secondary" leftIcon="arrow-left" onPress={() => (router.canGoBack() ? router.back() : router.replace('/customers'))}>
+              {tr('common.back')}
+            </Button>
+          )}
         </View>
       )}
 
@@ -492,7 +619,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
             testID="customer-save-bar"
             style={[styles.saveBar, { paddingBottom: keyboardShown ? space.md : insets.bottom + space.md }]}
           >
-            <Button size="fullWidth" onPress={() => void onSave()} loading={saving} disabled={saving}>
+            <Button size="fullWidth" onPress={() => void onSave()} loading={working || saving} disabled={working || saving}>
               {tr(isCreate ? 'customers.list.addCustomer' : 'customers.form.saveCustomer')}
             </Button>
           </View>

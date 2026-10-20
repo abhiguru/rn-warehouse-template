@@ -19,7 +19,7 @@ import { unitText } from '../rateText';
 import type { UseRateEditor } from '../useRateEditor';
 import { priceTypeLabel } from '../utils/priceLabels';
 import { BandsTable } from './BandsTable';
-import { CopyTiersSheet } from './CopyTiersSheet';
+import { CopyTiersSheet, confirmReplaceBands } from './CopyTiersSheet';
 import { EditorStrip } from './EditorStrip';
 import type { FieldRegistry } from './fieldLink';
 
@@ -74,6 +74,7 @@ export function RateBox({ editor, fields, caption, oneTime, tags, locked = false
       <Text style={styles.unit}>{unitText(priceType)}</Text>
       {caption ? <Text style={styles.note} testID={`${testID}-caption`}>{caption}</Text> : null}
       {stripText ? <EditorStrip variant="critical" message={stripText} testID="editor-error" /> : null}
+      {editor.rowsChanged ? <EditorStrip variant="warning" message={t('pricing.edit.rowsChanged')} testID="rows-changed" /> : null}
       {copiedFrom ? (
         <Text style={styles.note} testID="copied-from-item">{t('pricing.edit.copiedFromItem', { item: copiedFrom })}</Text>
       ) : adding && ctx.copied ? (
@@ -107,7 +108,9 @@ export function RateBox({ editor, fields, caption, oneTime, tags, locked = false
           today={ctx.today}
           onPick={(item, rows) => {
             setCopyOpen(false);
-            editor.copyFrom(item, rows);
+            // Typed figures are not replaced without asking.
+            if (!editor.dirty) editor.copyFrom(item, rows);
+            else void confirmReplaceBands(item.name).then(yes => { if (yes) editor.copyFrom(item, rows); });
           }}
         />
       ) : null}

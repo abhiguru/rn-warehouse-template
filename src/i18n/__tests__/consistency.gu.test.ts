@@ -93,6 +93,8 @@ describe('one word per idea', () => {
       'of {{total}}': 'a fragment that sits in a different sentence in each place',
       '{{name}} added.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       '{{name}} saved.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
+      '{{name}} activated.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
+      '{{name}} deactivated.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       'critical': 'a sensor status and a battery level',
     };
     const groups = new Map<string, Map<string, string[]>>();

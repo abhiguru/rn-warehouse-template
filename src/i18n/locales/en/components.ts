@@ -347,6 +347,7 @@ export const components = {
     searching: 'Searching…',
     noMatch: 'Nothing matches "{{search}}"',
     noMatchHint: 'Try fewer letters or a different word.',
+    searchFailed: "Couldn't search. Check your connection and try again.",
   },
   actions: {
     title: 'Actions',

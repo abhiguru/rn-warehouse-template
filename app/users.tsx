@@ -1,9 +1,9 @@
 /**
  * Users screen: admin user management as a list report (style guide §14.1).
  *
- * Object cells with an avatar, role and Inactive tags and contact details,
- * pull to refresh, infinite scroll, and loading, empty, error and no-access
- * states. Colours come from the semantic tokens.
+ * Object cells with an avatar, role and status tags (Deactivated, Access requested, Request
+ * rejected, Deleted, You) and contact details, pull to refresh, infinite scroll, and loading,
+ * empty, error and no-access states. Colours come from the semantic tokens.
  *
  * Access: Admin and Supervisor roles only
  */
@@ -25,6 +25,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { adminUserService } from '@/services/admin-user-service';
 import { UserListItem, UserFilters, UserRole } from '@/types/user.types';
+import { subscribeUserListChanges } from '@/utils/userListSync';
+import { LoadMoreErrorFooter } from '@/components/lists/ListLoadErrors';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
@@ -41,6 +43,7 @@ import {
 } from '@/theme/tokens';
 import { Avatar, SectionHeader, StatusTag } from '@/components/ui';
 import { formatCount, formatMobile, formatTime } from '@/utils/formatters';
+import { normalizeUserSearch } from '@/utils/userSearch';
 import { t as tr } from '@/i18n';
 import { roleLabel as roleName } from '@/utils/roleLabel';
 
@@ -55,8 +58,15 @@ interface ListState {
   loadingMore: boolean;
   filters: UserFilters;
   offset: number;
+  /** Live accounts (what the count line shows). */
   totalCount: number;
+  /** Rows on the server including deleted accounts: how far paging goes. */
+  totalWithDeleted: number;
   error: boolean;
+  /** The server refused the list: the caller can no longer manage users. */
+  noAccess: boolean;
+  /** The next page failed; the rows on screen stay. */
+  moreFailed: boolean;
   /** The search the rows on screen answer. */
   loadedSearch: string;
   /** When the rows on screen were loaded. */
@@ -66,7 +76,7 @@ interface ListState {
 }
 
 /** What the list draws: a person, a connection (FAS sync), or the heading above the connections. */
-type ListRow = { kind: 'user'; user: UserListItem } | { kind: 'connectionsHeader' };
+type ListRow = { kind: 'user'; user: UserListItem } | { kind: 'connectionsHeader' } | { kind: 'deletedHeader' };
 
 /**
  * Rows asked for per call. The server sends no count of connections, so the screen loads
@@ -101,7 +111,10 @@ export default function UsersScreen() {
     filters: DEFAULT_FILTERS,
     offset: 0,
     totalCount: 0,
+    totalWithDeleted: 0,
     error: false,
+    noAccess: false,
+    moreFailed: false,
     loadedSearch: '',
     loadedAt: null,
     refreshFailed: false,
@@ -121,24 +134,29 @@ export default function UsersScreen() {
       const request = offset === 0 ? ++requestRef.current : requestRef.current;
       const search = filters.search_query ?? '';
       if (offset === 0) {
-        setState((prev) => ({ ...prev, loading: true, error: false }));
+        setState((prev) => ({ ...prev, loading: true, error: false, moreFailed: false }));
       } else {
-        setState((prev) => ({ ...prev, loadingMore: true }));
+        setState((prev) => ({ ...prev, loadingMore: true, moreFailed: false }));
       }
 
-      const fail = () => {
+      const fail = (code?: string) => {
+        // The caller lost the right to manage users: say so, not "Couldn't load users".
+        if (code === 'PERMISSION_DENIED' || code === 'NO_ACCESS') {
+          setState((prev) => ({ ...prev, data: [], totalCount: 0, totalWithDeleted: 0, loading: false, loadingMore: false, noAccess: true }));
+          return;
+        }
         setState((prev) => {
           // Rows for the same search stay, marked as older; rows for another search would mislead.
           const keepRows = offset === 0 ? prev.data.length > 0 && prev.loadedSearch === search : true;
           if (keepRows && prev.data.length > 0) {
-            return { ...prev, loading: false, loadingMore: false, refreshFailed: offset === 0 };
+            return { ...prev, loading: false, loadingMore: false, refreshFailed: offset === 0 ? true : prev.refreshFailed, moreFailed: offset > 0 };
           }
-          return { ...prev, data: [], totalCount: 0, loading: false, loadingMore: false, error: true };
+          return { ...prev, data: [], totalCount: 0, totalWithDeleted: 0, loading: false, loadingMore: false, error: true };
         });
       };
 
       try {
-        const response = await adminUserService.getUsersList(filters, PAGE_SIZE, offset);
+        const response = await adminUserService.getUsersList({ ...filters, search_query: normalizeUserSearch(search) }, PAGE_SIZE, offset);
         if (request !== requestRef.current) return;
 
         if (response.success && response.data) {
@@ -149,6 +167,9 @@ export default function UsersScreen() {
                 ? response.data!.users
                 : appendNew(prev.data, response.data!.users),
             totalCount: response.data!.pagination.total_count,
+            totalWithDeleted: response.data!.pagination.total_with_deleted ?? response.data!.pagination.total_count,
+            noAccess: false,
+            moreFailed: false,
             offset,
             loading: false,
             loadingMore: false,
@@ -158,12 +179,14 @@ export default function UsersScreen() {
             refreshFailed: offset === 0 ? false : prev.refreshFailed,
           }));
           // More rows on the server: keep loading them (CR-26), for this search only.
+          // Paging runs to the end of the rows including deleted accounts, which come last.
           const loaded = offset + response.data.users.length;
-          if (response.data.users.length > 0 && loaded < response.data.pagination.total_count && loaded < MAX_ROWS) {
+          const end = response.data.pagination.total_with_deleted ?? response.data.pagination.total_count;
+          if (response.data.users.length > 0 && loaded < end && loaded < MAX_ROWS) {
             void fetchUsers(filters, loaded);
           }
         } else {
-          fail();
+          fail(response.code);
         }
       } catch {
         if (request !== requestRef.current) return;
@@ -177,11 +200,39 @@ export default function UsersScreen() {
   // EFFECTS
   // ===========================================================================
 
+  // The rows are loaded when the list first opens (and again after a failed load). Back from a
+  // user does not load them again: Edit user tells the list what it changed (userListSync).
   useEffect(() => {
-    if (isFocused && hasAccess) {
+    if (isFocused && hasAccess && (state.loadedAt === null || state.error)) {
       fetchUsers(state.filters, 0);
     }
   }, [isFocused, hasAccess]);
+
+  const filtersRef = useRef(state.filters);
+  filtersRef.current = state.filters;
+  useEffect(
+    () =>
+      subscribeUserListChanges((change) => {
+        if (change.kind === 'refresh') {
+          void fetchUsers(filtersRef.current, 0);
+          return;
+        }
+        setState((prev) => {
+          // The count line is of live accounts: a row that became deleted (or came back) moves it by one.
+          const was = prev.data.find((user) => user.id === change.id);
+          const delta =
+            was && change.patch.is_deleted !== undefined && !!was.is_deleted !== !!change.patch.is_deleted
+              ? change.patch.is_deleted ? -1 : 1
+              : 0;
+          return {
+            ...prev,
+            totalCount: Math.max(0, prev.totalCount + delta),
+            data: prev.data.map((user) => (user.id === change.id ? { ...user, ...change.patch } : user)),
+          };
+        });
+      }),
+    [fetchUsers]
+  );
 
   // ===========================================================================
   // HANDLERS
@@ -205,9 +256,10 @@ export default function UsersScreen() {
 
   const handleEndReached = useCallback(() => {
     const hasMore =
-      state.totalCount > state.data.length &&
+      state.totalWithDeleted > state.data.length &&
       !state.loadingMore &&
-      !state.loading;
+      !state.loading &&
+      !state.moreFailed;
     if (hasMore) {
       fetchUsers(state.filters, state.data.length);
     }
@@ -226,28 +278,37 @@ export default function UsersScreen() {
 
   // People first; connections (the FAS sync) after them under their own heading, and not counted.
   const rows = useMemo<ListRow[]>(() => {
-    const people = state.data.filter((user) => !user.is_service_account);
-    const connections = state.data.filter((user) => user.is_service_account);
+    const deleted = state.data.filter((user) => user.is_deleted);
+    const people = state.data.filter((user) => !user.is_deleted && !user.is_service_account);
+    const connections = state.data.filter((user) => !user.is_deleted && user.is_service_account);
     return [
       ...people.map((user): ListRow => ({ kind: 'user', user })),
       ...(connections.length > 0 ? [{ kind: 'connectionsHeader' } as ListRow] : []),
       ...connections.map((user): ListRow => ({ kind: 'user', user })),
+      ...(deleted.length > 0 ? [{ kind: 'deletedHeader' } as ListRow] : []),
+      ...deleted.map((user): ListRow => ({ kind: 'user', user })),
     ];
   }, [state.data]);
-  const connectionCount = state.data.filter((user) => user.is_service_account).length;
+  // total_count counts live accounts only: deleted accounts are listed apart and not counted.
+  const connectionCount = state.data.filter((user) => !user.is_deleted && user.is_service_account).length;
   const peopleCount = Math.max(0, state.totalCount - connectionCount);
 
   const renderItem = useCallback(
     ({ item }: { item: ListRow }) =>
       item.kind === 'connectionsHeader' ? (
         <SectionHeader title={tr('users.list.connections')} />
+      ) : item.kind === 'deletedHeader' ? (
+        <SectionHeader title={tr('users.list.deletedAccounts')} />
       ) : (
-        <FioriUserCard user={item.user} onPress={() => handleEditUser(item.user.id)} />
+        <FioriUserCard user={item.user} isSelf={!!userProfile?.id && item.user.id === userProfile.id} onPress={() => handleEditUser(item.user.id)} />
       ),
-    [handleEditUser]
+    [handleEditUser, userProfile?.id]
   );
 
-  const keyExtractor = useCallback((item: ListRow) => (item.kind === 'user' ? item.user.id : 'connections-header'), []);
+  const keyExtractor = useCallback(
+    (item: ListRow) => (item.kind === 'user' ? item.user.id : item.kind === 'deletedHeader' ? 'deleted-header' : 'connections-header'),
+    []
+  );
 
   const renderEmpty = useCallback(() => {
     if (state.loading) {
@@ -308,6 +369,16 @@ export default function UsersScreen() {
   }, [state.loading, state.error, state.filters.search_query, handleRefresh, handleSearch, styles, t]);
 
   const renderFooter = useCallback(() => {
+    if (state.moreFailed && !state.loadingMore) {
+      return (
+        <LoadMoreErrorFooter
+          message={tr('users.list.loadMoreFailed')}
+          retryLabel={tr('users.list.retryMore')}
+          onRetry={() => fetchUsers(state.filters, state.data.length)}
+          testID="users-load-more-error"
+        />
+      );
+    }
     if (!state.loadingMore) return null;
 
     return (
@@ -316,7 +387,7 @@ export default function UsersScreen() {
         <Text style={styles.footerText}>{tr('common.loadingMore')}</Text>
       </View>
     );
-  }, [state.loadingMore, styles, t]);
+  }, [state.loadingMore, state.moreFailed, state.filters, state.data.length, fetchUsers, styles, t]);
 
   const headerOptions = {
     headerShown: true,
@@ -330,7 +401,7 @@ export default function UsersScreen() {
   };
 
   // Access denied view
-  if (!hasAccess) {
+  if (!hasAccess || state.noAccess) {
     return (
       <>
         <Stack.Screen
@@ -436,24 +507,37 @@ const ROLE_TONE: Record<UserRole, 'informative' | 'neutral'> = {
 
 interface FioriUserCardProps {
   user: UserListItem;
+  /** The row is the signed-in person. */
+  isSelf?: boolean;
   onPress: () => void;
 }
 
-function FioriUserCard({ user, onPress }: FioriUserCardProps) {
+function FioriUserCard({ user, isSelf = false, onPress }: FioriUserCardProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const connection = !!user.is_service_account;
   // A connection has a kind, not a role, and no phone number to show.
   const roleLabel = connection ? tr('users.list.connectionTag') : roleName(user.role);
   const name = user.name || tr('users.unknownUser');
-  const mobile = user.mobile && !connection ? formatMobile(user.mobile) : null;
+  const deleted = !!user.is_deleted;
+  // A deleted account has no phone number to show; the server sends none.
+  const mobile = user.mobile && !connection && !deleted ? formatMobile(user.mobile) : null;
   const assigned =
-    user.assigned_customers_count > 0
+    user.assigned_customers_count > 0 && !deleted
       ? tr('users.list.customersAssigned', { count: user.assigned_customers_count })
       : null;
-  const rowLabel = [name, roleLabel, user.active ? null : tr('common.inactive'), mobile, assigned]
-    .filter(Boolean)
-    .join(', ');
+  // One status tag, by what is true of the account: deleted, a request nobody reviewed, a rejected one, or deactivated.
+  const statusTag = deleted
+    ? tr('users.tags.deleted')
+    : user.enrollment_status === 'pending'
+      ? tr('users.tags.accessRequested')
+      : user.enrollment_status === 'rejected'
+        ? tr('users.tags.requestRejected')
+        : user.active
+          ? null
+          : tr(connection ? 'users.tags.disconnected' : 'common.deactivated');
+  const youTag = isSelf ? tr('users.tags.you') : null;
+  const rowLabel = [name, youTag, roleLabel, statusTag, mobile, assigned].filter(Boolean).join(', ');
 
   return (
     <Pressable
@@ -468,12 +552,13 @@ function FioriUserCard({ user, onPress }: FioriUserCardProps) {
 
       {/* Fiori Object Cell: Main Content */}
       <View style={styles.cardContent}>
-        <Text style={[styles.headline, !user.active && styles.textInactive]} numberOfLines={2}>
+        <Text style={[styles.headline, (!user.active || deleted) && styles.textInactive]} numberOfLines={2}>
           {name}
         </Text>
         <View style={styles.tagRow}>
           <StatusTag status={connection ? 'neutral' : (ROLE_TONE[user.role] ?? 'neutral')} label={roleLabel} icon={null} />
-          {!user.active && <StatusTag status="neutral" label={tr('common.inactive')} />}
+          {youTag && <StatusTag status="neutral" label={youTag} icon={null} />}
+          {statusTag && <StatusTag status={!deleted && user.enrollment_status === 'pending' ? 'critical' : !deleted && user.enrollment_status === 'rejected' ? 'negative' : 'neutral'} label={statusTag} />}
         </View>
 
         {/* Subheadline - Contact Details */}

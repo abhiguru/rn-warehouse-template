@@ -106,9 +106,9 @@ const isInvoiceNumberRange = (text: unknown, code: unknown): boolean =>
 function invoiceSaveMessage(text: unknown, fallback: string, code?: unknown): string {
   if (isInvoiceNumberRange(text, code)) return t('invoice.validation.invoiceNumberRange');
   if (typeof text === 'string' && INVOICE_REFUSAL.test(text)) {
-    return serverReason(text) ?? serverText(text, fallback);
+    return serverReason(text) ?? serverText(text, fallback, { write: true, form: true, code: typeof code === 'string' ? code : undefined });
   }
-  return serverText(text, fallback);
+  return serverText(text, fallback, { write: true, form: true, code: typeof code === 'string' ? code : undefined });
 }
 /** PostgREST found no function that takes the parameters sent (PGRST202). */
 const isUnknownFunctionSignature = (error: { code?: string; message?: string }): boolean =>
@@ -613,7 +613,7 @@ export const createInvoice = async (
         invoice_id: '',
         invoice_no: 0,
       },
-      message: serverText(error.message, t('invoice.service.createFailed')),
+      message: serverText(error.message, t('invoice.service.createFailed'), { write: true, form: true }),
     };
   }
 };
@@ -924,7 +924,7 @@ export const updateInvoice = async (
     return {
       success: false,
       data: { invoice_id: '', invoice_no: 0 },
-      message: serverText(error.message, t('invoice.service.updateFailed')),
+      message: serverText(error.message, t('invoice.service.updateFailed'), { write: true, form: true }),
     };
   }
 };

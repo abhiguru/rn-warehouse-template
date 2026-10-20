@@ -1,8 +1,9 @@
 /**
- * The rates of one scope (the default rate, or one customer's own) of one item, as the item page and the customer's
- * Pricing tab show them: a rate box per price type that is in force, edited in place; under it the strips for a rate
- * that has not begun and one that stops, and the buttons Correct this rate and Stop this rate. Where there is no
- * rate yet, the strip that says so and the button that reveals an empty box.
+ * One customer's own rates for one item, as the customer-rate page (Customers -> a customer -> Pricing -> an item)
+ * shows them: a rate box per price type that is in force, edited in place; under it the strips for a rate that has
+ * not begun and one that stops, and the buttons Correct this rate and Stop this rate. Where the customer has no rate
+ * yet, the strip that says so and the button that opens the full-screen form. (The item's default rate is on the
+ * item page's Pricing tab, ItemPricingTab.)
  *
  * Writable only for a manager looking at today; any other day (or role) gets the read-only RateCard.
  *
@@ -18,16 +19,15 @@ import { Button } from '@/components/ui/Button';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
-import type { ItemStoragePrice, PriceType, StandardTier } from '@/types/item-pricing.types';
+import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { customerRateAddPath, type EditorMode } from '../contract';
 import { router } from 'expo-router';
-import { lotsRule, summaryLines } from '../editModel';
+import { lotsRule, seenRowIds, summaryLines } from '../editModel';
 import { laterDialogText } from '../laterRates';
 import { applicableRate, type ScopeView } from '../rateModel';
 import type { RateRights } from '../rateRights';
 import { bandText, dateText, money, rentRange, unitText } from '../rateText';
 import { planScope } from '../scopePlan';
-import { tierTags, type TierTag } from '../standardRate';
 import { useRateActions, type RateScope } from '../useRateActions';
 import { useRateEditor, type EditorView } from '../useRateEditor';
 import { RateCard, inForceText } from './RateCard';
@@ -40,10 +40,10 @@ export type { RateSaveBarState } from './ScopeSaveBar';
 
 export interface ScopeRatesProps {
   item: { id: string; name: string };
-  /** The customer whose own rate this is; null for the item's default rate. */
-  customerId: string | null;
+  /** The customer whose own rate this is. */
+  customerId: string;
   customerName?: string;
-  /** Every row of the item, whichever scope: the scope is picked here, and a new customer rate is seeded from the default. */
+  /** Every row of the item, whichever customer: the customer's are picked here, and the default rate is shown beside them. */
   rows: ItemStoragePrice[];
   /** The day the page looks at, and today. Boxes are drawn only when they are the same day. */
   day: string;
@@ -51,8 +51,6 @@ export interface ScopeRatesProps {
   rights: RateRights;
   offline: boolean;
   role: string | null | undefined;
-  /** The facility's standard tiers: the bands of the default monthly rate are tagged Standard or This item. */
-  standardTiers?: StandardTier[] | null;
   /** The page's cell registry (useEditorFields), for the Next key and for scrolling a cell above the keyboard. */
   fields?: FieldRegistry;
   /** The page's scroll view (useEditorFields gives `scrollToTop` and `scrollToError`). */
@@ -65,10 +63,6 @@ export interface ScopeRatesProps {
   onBar: (bar: RateSaveBarState | null) => void;
   /** Something in a box is changed and not saved. */
   onDirty: (dirty: boolean) => void;
-  /** Open the first box with one more empty band (`add_band` of the item page's link). */
-  addBand?: boolean;
-  /** Open the box for a new rate at once when the scope has no rate (the customer's "+ Add item"): no extra band. */
-  openAdd?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -85,7 +79,7 @@ interface BoxReport {
 
 interface Shared {
   item: { id: string; name: string };
-  customerId: string | null;
+  customerId: string;
   customerName?: string;
   rows: ItemStoragePrice[];
   role: string | null | undefined;
@@ -103,8 +97,6 @@ interface BoxProps {
   mode: EditorMode;
   priceType?: PriceType;
   startsOn?: string;
-  addBand?: boolean;
-  tags?: TierTag[] | null;
   /** Since when the rate in the box is in force. */
   caption?: string;
   locked: boolean;
@@ -127,10 +119,12 @@ const makeStyles = (th: ThemeTokens) => ({
   add: { alignSelf: 'flex-start' as const, marginHorizontal: layout.marginCompact },
 });
 
-function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locked, shared, report, onSaved, onClose, onDiscard }: BoxProps) {
+function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, report, onSaved, onClose, onDiscard }: BoxProps) {
   const styles = useThemedStyles(makeStyles);
   const adding = mode === 'add' || mode === 'addCustomer';
   const [saved, setSaved] = useState(false);
+  // "Discard this rate?" (house rule, style guide §14.4): typed figures are not thrown away by one tap.
+  const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null);
 
   const viewRef = useRef<EditorView | null>(null);
   viewRef.current = {
@@ -140,10 +134,10 @@ function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locke
 
   const editor = useRateEditor({
     item: shared.item,
-    customer: shared.customerId ? { id: shared.customerId, name: shared.customerName } : null,
+    customer: { id: shared.customerId, name: shared.customerName },
     priceType,
     mode,
-    params: { ...(startsOn ? { starts_on: startsOn } : {}), ...(addBand ? { add_band: '1' as const } : {}) },
+    params: startsOn ? { starts_on: startsOn } : {},
     rows: shared.rows,
     refreshRows: shared.refreshRows,
     role: shared.role,
@@ -162,13 +156,22 @@ function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locke
   const active = editor.ready && !saved && (dirty || adding);
 
   // Functions the Save bar keeps between reports: they read the latest editor.
-  const latest = useRef({ editor, onClose, onDiscard, special: adding || mode !== 'change' });
-  latest.current = { editor, onClose, onDiscard, special: adding || mode !== 'change' };
+  const latest = useRef({ editor, onClose, onDiscard, special: adding || mode !== 'change', saved });
+  latest.current = { editor, onClose, onDiscard, special: adding || mode !== 'change', saved };
   const stable = useRef({
     onChange: (choice: Parameters<typeof editor.setStartsOn>[0], day: string) => latest.current.editor.setStartsOn(choice, day),
     save: () => { void latest.current.editor.submit(); },
-    discard: () => (latest.current.special ? latest.current.onClose() : latest.current.onDiscard()),
+    discard: () => {
+      const go = () => (latest.current.special ? latest.current.onClose() : latest.current.onDiscard());
+      if (latest.current.editor.dirty && !latest.current.saved) setPendingDiscard(() => go);
+      else go();
+    },
   }).current;
+  /** The Discard buttons of the box: ask first when figures were typed. */
+  const askToDiscard = (go: () => void) => () => {
+    if (dirty) setPendingDiscard(() => go);
+    else go();
+  };
 
   let bar: RateSaveBarState | null = null;
   if (active && draft && ctx) {
@@ -230,7 +233,7 @@ function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locke
               <RateStrip
                 variant="critical"
                 message={t('pricing.edit.correctWarning', { date: dateText(draft.startsOn ?? '') })}
-                actions={[{ label: t('pricing.box.discard'), onPress: onClose, testID: 'correct-discard' }]}
+                actions={[{ label: t('pricing.box.discard'), onPress: askToDiscard(onClose), testID: 'correct-discard' }]}
                 testID="correct-warning"
               />
             </View>
@@ -240,7 +243,7 @@ function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locke
               <RateStrip
                 variant="info"
                 message={t('pricing.edit.title.upcoming')}
-                actions={[{ label: t('pricing.box.discard'), onPress: onClose, testID: 'upcoming-discard' }]}
+                actions={[{ label: t('pricing.box.discard'), onPress: askToDiscard(onClose), testID: 'upcoming-discard' }]}
                 testID="upcoming-mode"
               />
             </View>
@@ -250,17 +253,31 @@ function ScopeBox({ id, mode, priceType, startsOn, addBand, tags, caption, locke
             fields={scopeFields(shared.fields, id)}
             oneTime={priceType === 'one_time'}
             caption={caption}
-            tags={tags}
             locked={locked}
             testID={`rate-box-${id}`}
           />
           {adding ? (
-            <Button type="tertiary" style={styles.add} onPress={onClose} disabled={saving} testID="box-close">
+            <Button type="tertiary" style={styles.add} onPress={askToDiscard(onClose)} disabled={saving} testID="box-close">
               {t('pricing.box.discard')}
             </Button>
           ) : null}
         </>
       )}
+      <ConfirmDialog
+        visible={pendingDiscard !== null}
+        variant="danger"
+        title={adding ? t('pricing.rateForm.discardTitle') : t('common.discardChangesTitle')}
+        message={t('common.discardChangesMessage')}
+        confirmText={t('common.discard')}
+        cancelText={t('common.keepEditing')}
+        onConfirm={() => {
+          const go = pendingDiscard;
+          setPendingDiscard(null);
+          go?.();
+        }}
+        onCancel={() => setPendingDiscard(null)}
+        testID="discard-rate-dialog"
+      />
       <ConfirmDialog
         visible={!!first}
         variant="warning"
@@ -301,31 +318,23 @@ export function ScopeRates({
   rights,
   offline,
   role,
-  standardTiers,
   fields,
   view,
   onOrder,
   refreshRows,
   onBar,
   onDirty,
-  addBand,
-  openAdd,
 }: ScopeRatesProps) {
   const styles = useThemedStyles(makeStyles);
   const actions = useRateActions(item);
   const { rows, signature } = useStableRows(allRows);
   const scopeRows = useMemo(() => rows.filter(r => (r.customer_id ?? null) === customerId), [rows, customerId]);
   const plan = useMemo(() => planScope(scopeRows, day), [scopeRows, day]);
-  const defaultPlan = useMemo(
-    () => (customerId ? planScope(rows.filter(r => r.customer_id === null), day) : null),
-    [rows, day, customerId],
-  );
+  const defaultPlan = useMemo(() => planScope(rows.filter(r => r.customer_id === null), day), [rows, day]);
   const writable = rights.canWrite && day === today;
 
   const [modes, setModes] = useState<Partial<Record<PriceType, PlanMode>>>({});
-  const [adding, setAdding] = useState<{ priceType?: PriceType; nonce: number } | null>(
-    () => ((addBand || openAdd) && writable && plan.plans.length === 0 ? { nonce: 0 } : null),
-  );
+  const [adding, setAdding] = useState<{ priceType?: PriceType; nonce: number } | null>(null);
   const [reports, setReports] = useState<Record<string, BoxReport>>({});
   // A save is done; the rows that come back close the correction or the new rate that was saved.
   const [savedFlag, setSavedFlag] = useState(false);
@@ -395,22 +404,20 @@ export function ScopeRates({
     bands: view.inForce,
     upcoming: view.upcoming,
     stopsAfter: view.stopsAfter,
+    seenRows: seenRowIds(rows, customerId, priceType),
   });
 
   const hasMonthly = plan.plans.some(p => p.priceType === 'monthly');
   const hasOneTime = plan.plans.some(p => p.priceType === 'one_time');
-  const addMode: EditorMode = customerId ? 'addCustomer' : 'add';
-  // The deep link's empty band goes to the first box on the page.
-  const bandFor = (index: number) => Boolean(addBand) && index === 0;
+  const addMode: EditorMode = 'addCustomer';
   const startAdding = (priceType?: PriceType) => setAdding(current => ({ priceType, nonce: (current?.nonce ?? 0) + 1 }));
 
-  const addBox = adding ? (
+  const addBox = adding && writable ? (
     <ScopeBox
       key={`add:${adding.nonce}`}
       id="add"
       mode={addMode}
       priceType={adding.priceType}
-      addBand={bandFor(plan.plans.length)}
       locked={activeId !== undefined && activeId !== 'add'}
       shared={shared}
       report={report}
@@ -423,27 +430,17 @@ export function ScopeRates({
   // ---- nothing in force or coming ----
   const noRate = plan.plans.length === 0 ? (
     <View style={styles.strip}>
-      {customerId ? (
-        <RateStrip variant="warning" message={t('pricing.customerRate.noneNow', { customer: customerName || '—' })} testID="no-own-rate" />
-      ) : (
-        <RateStrip
-          variant="critical"
-          message={plan.endedOnly && plan.lastEnded
-            ? t('pricing.item.defaultEnded', { date: dateText(plan.lastEnded) })
-            : t('pricing.item.noDefault', { item: item.name })}
-          testID="no-default"
-        />
-      )}
+      <RateStrip variant="warning" message={t('pricing.customerRate.noneNow', { customer: customerName || '—' })} testID="no-own-rate" />
       {writable && !adding ? (
         <Button
           type="primary"
           size="fullWidth"
           disabled={offline}
-          // A customer's first rate for the item is added on the full-screen form (owner, 2026-10-17).
-          onPress={() => (customerId ? router.push(customerRateAddPath(item.id, customerId, customerName || undefined)) : startAdding(undefined))}
-          testID={customerId ? 'add-customer-rate' : 'add-default'}
+          // A customer's first rate for the item is added on the full-screen form (owner, 2026-10-17). The button shows on a writable page only, so the customer is not deactivated.
+          onPress={() => router.push(customerRateAddPath(item.id, customerId, customerName || undefined, false))}
+          testID="add-customer-rate"
         >
-          {customerId ? t('pricing.action.addCustomer') : t('pricing.action.addDefault')}
+          {t('pricing.action.addCustomer')}
         </Button>
       ) : null}
       {offline && writable ? <Text style={styles.note}>{t('pricing.item.offlineChange')}</Text> : null}
@@ -453,13 +450,12 @@ export function ScopeRates({
   return (
     <View style={styles.scope} testID="scope-rates">
       {noRate}
-      {plan.plans.map(({ priceType, view: scopeView }, index) => {
+      {plan.plans.map(({ priceType, view: scopeView }) => {
         const bands = scopeView.inForce;
         const hasRate = bands.length > 0;
         const upcoming = scopeView.upcoming;
         const stopsAfter = scopeView.stopsAfter;
-        const tags: TierTag[] | null = !customerId && priceType === 'monthly' ? tierTags(bands, standardTiers) : null;
-        const defaultBands = defaultPlan?.plans.find(p => p.priceType === priceType)?.view.inForce ?? [];
+        const defaultBands = defaultPlan.plans.find(p => p.priceType === priceType)?.view.inForce ?? [];
 
         if (!writable) {
           return (
@@ -483,7 +479,6 @@ export function ScopeRates({
                 upcoming={upcoming}
                 stopsAfter={stopsAfter}
                 overlap={Boolean(scopeView.overlap)}
-                tags={tags}
                 day={day}
               />
             </View>
@@ -492,7 +487,7 @@ export function ScopeRates({
 
         const current = mode(priceType);
         const showBox = hasRate || current.mode === 'upcoming';
-                const overlapRate = scopeView.overlap && hasRate
+        const overlapRate = scopeView.overlap && hasRate
           ? applicableRate(bands, { customer_id: bands[0].customer_id, weight: bands[0].weight_max, price_type: priceType, day })
           : undefined;
         const upcomingAmount = upcoming ? rentRange(Math.min(...upcoming.rows.map(r => r.unit_price)), Math.max(...upcoming.rows.map(r => r.unit_price))) : '';
@@ -527,8 +522,6 @@ export function ScopeRates({
                 mode={current.mode}
                 priceType={priceType}
                 startsOn={current.startsOn}
-                addBand={bandFor(index) && current.mode === 'change'}
-                tags={tags}
                 caption={hasRate && current.mode !== 'upcoming' ? inForceText(bands) : undefined}
                 locked={activeId !== undefined && activeId !== priceType}
                 shared={shared}
@@ -554,7 +547,9 @@ export function ScopeRates({
                     {
                       label: t('pricing.action.cancelUpcoming'),
                       onPress: () => actions.askCancel(scopeOf(priceType, scopeView)),
-                      disabled: offline || busy,
+                      // Not while figures are typed: the rows would be read again under them.
+                      disabled: offline || busy || anyDirty,
+                      a11yHint: anyDirty ? t('pricing.item.finishTypingFirst') : undefined,
                       negative: true,
                       testID: 'cancel-upcoming',
                     },
@@ -567,7 +562,7 @@ export function ScopeRates({
                 <RateStrip
                   variant="warning"
                   message={t('pricing.item.stops', { date: dateText(stopsAfter) })}
-                  actions={[{ label: t('pricing.action.undoStop'), onPress: () => { void actions.undoStop(scopeOf(priceType, scopeView)); }, disabled: offline || busy, testID: 'undo-stop' }]}
+                  actions={[{ label: t('pricing.action.undoStop'), onPress: () => { void actions.undoStop(scopeOf(priceType, scopeView)); }, disabled: offline || busy || anyDirty, a11yHint: anyDirty ? t('pricing.item.finishTypingFirst') : undefined, testID: 'undo-stop' }]}
                 />
               </View>
             ) : null}
@@ -587,7 +582,8 @@ export function ScopeRates({
                   type="tertiary"
                   variant="negative"
                   onPress={() => actions.stop(scopeOf(priceType, scopeView))}
-                  disabled={offline || busy}
+                  disabled={offline || busy || anyDirty}
+                  accessibilityHint={anyDirty ? t('pricing.item.finishTypingFirst') : undefined}
                   testID="rate-stop"
                 >
                   {t('pricing.action.stop')}
@@ -595,6 +591,9 @@ export function ScopeRates({
               </View>
             ) : null}
             {offline && hasRate ? <Text style={styles.note}>{t('pricing.item.offlineChange')}</Text> : null}
+            {anyDirty && hasRate && (upcoming || stopsAfter || current.mode === 'change') ? (
+              <Text style={styles.note} testID="finish-typing-first">{t('pricing.item.finishTypingFirst')}</Text>
+            ) : null}
           </View>
         );
       })}

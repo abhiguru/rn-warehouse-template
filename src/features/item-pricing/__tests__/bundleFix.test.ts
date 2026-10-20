@@ -22,7 +22,7 @@ import {
 } from '../editModel';
 import { laterDialogText, plannedOnDay } from '../laterRates';
 import { cancelMessage } from '../cancelText';
-import { scopeView, itemSummary } from '../rateModel';
+import { scopeView } from '../rateModel';
 import { percentRange, todayDay } from '../rateText';
 import { groupChanges } from '../utils/priceHistory';
 
@@ -98,32 +98,6 @@ describe('F11 / F12: the replace question names every planned rate, and a rate o
     ];
     expect(laterDialogText(bands, '2026-10-14', TODAY).message).toBe('A rate from 1 Nov 2026 (₹6.00–₹9.50) comes after this date. Saving removes it.');
     expect(laterDialogText(bands, '2026-11-01', TODAY).message).toBe('Saving removes the rate planned from 1 Nov 2026 (₹6.00–₹9.50).');
-  });
-});
-
-describe('F14: the invoice pencil with an own rate that does not hold the line weight', () => {
-  const rows = [row(null, 0, 100, 3.5, '2025-01-01', null), row(CUST, 0, 40, 3, '2026-01-01', null)];
-  const line = { customer_id: CUST, customer_name: 'Review Orchard A', grn_date: '2026-10-01', unit_price: '3.50', labour_rate: '1.75', tax_percent: '5', weight_max: '60' };
-
-  it('does not correct the 0-40 band: it keeps it and adds a band for 60 kg', () => {
-    const { draft, context } = open('invoice', line, rows);
-    expect(context.mode).toBe('addCustomer');
-    expect(draft.bands.map(b => [fromOf(draft, draft.bands.indexOf(b)), b.upTo, b.rent])).toEqual([[0, '40', '3.00'], [41, '60', '3.50']]);
-    expect(draft.labour).toBe('1.75');
-  });
-
-  it('an own band that holds the weight is still corrected', () => {
-    const { draft, context } = open('invoice', { ...line, weight_max: '30', unit_price: '3.25' }, rows);
-    expect(context.mode).toBe('correct');
-    expect(draft.bands[0].rent).toBe('3.25');
-  });
-
-  it('a weight below an own rate that starts higher gets the band before it', () => {
-    const heavy = [row(null, 0, 100, 3.5, '2025-01-01', null), row(CUST, 51, 100, 4, '2026-01-01', null)];
-    const { draft } = open('invoice', { ...line, weight_max: '30' }, heavy);
-    expect(draft.firstFrom).toBe(0);
-    expect(draft.bands.map(b => b.upTo)).toEqual(['50', '100']);
-    expect(draft.bands[0].rent).toBe('3.50');
   });
 });
 
@@ -266,10 +240,10 @@ describe('F26: Edit new rate for a planned rate that is gone', () => {
 
 describe('F27: bands that differ in tax', () => {
   const rows = [row(null, 0, 50, 3, '2025-01-01', null, 'monthly', 1.5, 0), row(null, 51, 100, 4, '2025-01-01', null, 'monthly', 1.5, 5)];
-  it('the list figures carry the range', () => {
-    const summary = itemSummary({ item: { id: ITEM, name: 'Review Onion', packaging: null }, rows }, TODAY);
-    expect([summary.tax, summary.taxMax]).toEqual([0, 5]);
-    expect(percentRange(summary.tax as number, summary.taxMax as number)).toBe('0–5');
+  it('the rate card carries the range of the bands in force', () => {
+    const taxes = scopeView(rows, TODAY).inForce.map(b => b.tax_percent);
+    expect([Math.min(...taxes), Math.max(...taxes)]).toEqual([0, 5]);
+    expect(percentRange(Math.min(...taxes), Math.max(...taxes))).toBe('0–5');
   });
   it('the rows in force still come from the scope view', () => {
     expect(scopeView(rows, TODAY).inForce).toHaveLength(2);

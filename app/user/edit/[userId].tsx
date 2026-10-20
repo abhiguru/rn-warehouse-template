@@ -48,13 +48,14 @@ import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
+import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatMobile } from '@/utils/formatters';
 import { roleLabel } from '@/utils/roleLabel';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { errorCodeOf, isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
 
 const log = createLogger('ownProfileEdit');
 
@@ -76,7 +77,8 @@ const UserEditScreen: React.FC = () => {
 
   // State management
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // One save at a time: a second tap before the next draw sends nothing.
+  const { run: runSave, busy: saving } = useSingleFlight();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameFocused, setNameFocused] = useState(false);
@@ -163,37 +165,44 @@ const UserEditScreen: React.FC = () => {
       return;
     }
 
-    try {
-      setSaving(true);
+    await runSave(async () => {
+      try {
+        // The comparison above is on trimmed names: save and keep the trimmed one too.
+        const name = cleanPersonName(formData.name);
+        const result = await UserService.updateUser(userId, { ...formData, name });
 
-      // The comparison above is on trimmed names: save and keep the trimmed one too.
-      const name = cleanPersonName(formData.name);
-      const result = await UserService.updateUser(userId, { ...formData, name });
+        if (result.success) {
+          // Update Redux state with new profile data
+          if (currentUserProfile) {
+            const updatedProfile = {
+              ...currentUserProfile,
+              name,
+              display_name: name,
+            };
+            dispatch(setUserProfile(updatedProfile));
+          }
 
-      if (result.success) {
-        // Update Redux state with new profile data
-        if (currentUserProfile) {
-          const updatedProfile = {
-            ...currentUserProfile,
-            name,
-            display_name: name,
-          };
-          dispatch(setUserProfile(updatedProfile));
+          // Go back at once; the toast stays on the screen this returns to.
+          leaveWithoutAsking(() => router.back());
+          showToast(tr('users.selfEdit.savedTitle'));
+        } else {
+          // No connection: say so in words about the name. A timeout keeps the shared "may have been saved" text.
+          const text = isNetworkError(result)
+            ? tr('users.selfEdit.saveOffline')
+            : isTimeoutError(result)
+              ? transportText(result, { write: true, form: true })
+              : serverText(result.message, tr('users.edit.tryAgainSoon'), { write: true, form: true, code: errorCodeOf(result) });
+          showAlert(tr('users.selfEdit.couldNotSaveTitle'), text);
         }
-
-        // Go back at once; the toast stays on the screen this returns to.
-        leaveWithoutAsking(() => router.back());
-        showToast(tr('users.selfEdit.savedTitle'));
-      } else {
-        showAlert(tr('users.selfEdit.couldNotSaveTitle'), serverText(result.message, tr('users.edit.tryAgainSoon')));
+      } catch (error) {
+        log.error('Save error', loggableError(error));
+        showAlert(
+          tr('users.selfEdit.couldNotSaveTitle'),
+          isNetworkError(error) ? tr('users.selfEdit.saveOffline') : tr('common.checkConnection')
+        );
       }
-    } catch (error) {
-      log.error('Save error', loggableError(error));
-      showAlert(tr('users.selfEdit.couldNotSaveTitle'), tr('common.checkConnection'));
-    } finally {
-      setSaving(false);
-    }
-  }, [userId, formData, nameChanged, leaveWithoutAsking, currentUserProfile, dispatch]);
+    });
+  }, [userId, formData, nameChanged, leaveWithoutAsking, currentUserProfile, dispatch, runSave]);
 
   // Load data on mount
   useEffect(() => {

@@ -46,7 +46,9 @@ const shownText = (screen: ReactTestRenderer) =>
 const byLabel = (screen: ReactTestRenderer, label: string) =>
   screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label)[0];
 const choosePerson = async (screen: ReactTestRenderer) => {
-  await act(async () => { byLabel(screen, 'Test Farmer, +91 90000 00011').props.onPress(); });
+  // The row's label is "Name, mobile, Asked on <date>".
+  const row = screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Test Farmer, +91 90000 00011'))[0];
+  await act(async () => { row.props.onPress(); });
 };
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
@@ -56,6 +58,8 @@ const lastAlert = () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Choosing a person looks for the customer with their own mobile (a suggestion); none here.
+  jest.mocked(customerService.searchCustomers).mockResolvedValue([]);
   jest.mocked(listPendingEnrollments).mockResolvedValue([person]);
   jest.mocked(hasEnrollmentCustomers).mockResolvedValue(true);
   jest.mocked(reviewEnrollment).mockResolvedValue(undefined);
@@ -80,5 +84,22 @@ describe('Bundle fix F36: a second tap while a confirmation is open', () => {
     await act(async () => { lastAlert().buttons[0].onPress?.(); });
     await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
     expect(showAlert).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Users list after a decision (review fix)', () => {
+  it('tells the Users list to load again once a decision is saved', async () => {
+    const { subscribeUserListChanges } = require('@/utils/userListSync');
+    const seen: unknown[] = [];
+    const stop = subscribeUserListChanges((change: unknown) => seen.push(change));
+    const screen = await mount();
+    await choosePerson(screen);
+    await act(async () => { buttonInBar(screen, 'Reject request').props.onPress(); });
+    const confirm = lastAlert().buttons.find(b => b.onPress && b.text !== 'Cancel');
+    expect(seen).toEqual([]);
+    await act(async () => { confirm?.onPress?.(); });
+    stop();
+    expect(reviewEnrollment).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([{ kind: 'refresh' }]);
   });
 });

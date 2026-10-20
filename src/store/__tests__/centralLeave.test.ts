@@ -131,14 +131,14 @@ describe('Switch facility', () => {
   });
 
   it('gives a waiting access request back to the facility', async () => {
-    jest.mocked(getPendingEnrollmentToken).mockResolvedValue('enrollment-secret');
+    jest.mocked(getPendingEnrollmentToken).mockResolvedValueOnce('enrollment-secret');
     await leaveFacility(dispatch);
     expect(signOutPendingEnrollment).toHaveBeenCalled();
     expect(clearPendingEnrollment).not.toHaveBeenCalled();
   });
 
   it('sends nothing to a facility that cannot be reached', async () => {
-    jest.mocked(getPendingEnrollmentToken).mockResolvedValue('enrollment-secret');
+    jest.mocked(getPendingEnrollmentToken).mockResolvedValueOnce('enrollment-secret');
     expect(await leaveFacility(dispatch, { localOnly: true })).toBe('left');
     expect(logout).toHaveBeenCalledWith({ localOnly: true });
     expect(signOutPendingEnrollment).not.toHaveBeenCalled();
@@ -396,7 +396,8 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
     try {
       const result = deleteFacilityAccount(dispatch);
       await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS + 200);
-      expect(await result).toBe('busy');
+      // Busy and the server did not answer: the fate of the account is not known (R1-03).
+      expect(await result).toBe('busy_unknown');
     } finally {
       jest.useRealTimers();
     }
@@ -411,7 +412,11 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
     mockLogoutFails = true;
     expect(await deleteFacilityAccount(dispatch)).toBe('reported');
     expect(getCentralState().outcome).toMatchObject({
-      outcome: { kind: 'failed', reason: 'account_deletion', message: 'An unexpected error occurred while deleting account' },
+      outcome: {
+        kind: 'failed',
+        reason: 'account_deletion_unknown',
+        message: "North Cold Store didn't answer, so we can't tell whether your account was deleted. Open North Cold Store from My facilities to check.",
+      },
     });
     expect((await loadMyFacilities('asha')).find(item => item.origin === facility.origin)?.status).toBe('unavailable');
   });
@@ -436,7 +441,11 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
     expect(mockActive).toBeNull();
     expect(logout).toHaveBeenCalledWith({ localOnly: true });
     expect(getCentralState().outcome).toMatchObject({
-      outcome: { kind: 'failed', reason: 'account_deletion', message: 'An unexpected error occurred while deleting account' },
+      outcome: {
+        kind: 'failed',
+        reason: 'account_deletion_unknown',
+        message: "North Cold Store didn't answer, so we can't tell whether your account was deleted. Open North Cold Store from My facilities to check.",
+      },
     });
   });
 
@@ -470,7 +479,8 @@ describe('Delete account inside a facility (Settings, central login on)', () => 
       jest.mocked(queryClient.isMutating).mockReturnValue(1);
       const result = deleteFacilityAccount(dispatch);
       await jest.advanceTimersByTimeAsync(LEAVE_RETRY_WAIT_MS + 200);
-      expect(await result).toBe('busy');
+      // Busy, but the server had deleted the account (R1-09).
+      expect(await result).toBe('busy_deleted');
       expect(mockEvents).not.toContain('begin switch');
     } finally {
       jest.useRealTimers();

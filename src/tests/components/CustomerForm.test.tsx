@@ -44,7 +44,7 @@ import CustomerFormRoute from '../../../app/customer-form';
 
 const c1 = {
   id: 'c1', name: '24 Seven Foods', mobile: '9999900302', city: 'Rajkot', gst: '', active: true,
-  document_urls: ['doc1.jpg'], image_urls: ['img1.jpg'], created_at: '2026-01-01',
+  document_urls: ['doc1.jpg'], image_urls: ['img1.jpg'], created_at: '2026-01-01', updated_at: '2026-02-02T10:00:00Z',
 };
 
 const input = (tree: ReactTestRenderer, label: string) =>
@@ -102,15 +102,13 @@ describe('Edit customer', () => {
     const screen = await mountEdit();
     await type(screen, 'City', 'Rajkot X');
     await act(async () => { await button(screen, 'Save customer').props.onPress(); });
-    expect(customerService.updateCustomer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        p_customer_id: 'c1',
-        p_city: 'Rajkot X',
-        p_name: '24 Seven Foods',
-        p_mobile: '919999900302',
-        p_image_urls: ['img1.jpg'],
-      })
-    );
+    // Only the changed field is sent (never the untouched name or mobile), with the updated_at that was read.
+    expect(customerService.updateCustomer).toHaveBeenCalledWith({
+      p_customer_id: 'c1',
+      p_city: 'Rajkot X',
+      p_image_urls: ['img1.jpg'],
+      p_expected_updated_at: '2026-02-02T10:00:00Z',
+    });
   });
 });
 

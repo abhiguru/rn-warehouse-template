@@ -417,6 +417,7 @@ export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
     { p_grn_id: grnId },
     {
       context: 'GRNDetailService.deleteGRN',
+      write: true,
       errorMessage: t('errors.grn.deleteFailed'),
       unwrapNested: false, // delete_grn_safe returns direct response object
       validateSuccess: false // We handle success: false case manually below

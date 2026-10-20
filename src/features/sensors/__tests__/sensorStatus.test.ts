@@ -9,10 +9,14 @@ import {
   chartThresholds,
   connectionStatus,
   isOffline,
+  isQuiet,
   isStale,
+  lastKnownText,
   rowStatus,
   sensorAlerts,
   sensorKpis,
+  temperatureState,
+  valuesNotChanging,
 } from '../sensorStatus';
 
 const NOW = Date.parse('2026-10-13T10:00:00Z');
@@ -84,7 +88,7 @@ describe('isOffline', () => {
 
 describe('statuses', () => {
   it('a row shows the most severe of health, connection and battery', () => {
-    expect(rowStatus(sensor(), NOW)).toEqual({ kind: 'positive', label: 'Healthy' });
+    expect(rowStatus(sensor(), NOW)).toEqual({ kind: 'positive', label: 'Sensor OK' });
     expect(rowStatus(sensor({ health_status: 'warning' }), NOW)).toEqual({ kind: 'critical', label: 'Warning' });
     expect(rowStatus(sensor({ measured_at: minutesAgo(45) }), NOW)).toEqual({ kind: 'critical', label: 'No recent data' });
     expect(rowStatus(sensor({ measured_at: minutesAgo(45), hub_online: false }), NOW)).toEqual({ kind: 'negative', label: 'Offline' });
@@ -149,5 +153,63 @@ describe('chart thresholds', () => {
     expect(chartThresholds(sensor())).toEqual([]);
     expect(chartThresholds(sensor({ alert_config: { alert_battery_low: true } }))).toEqual([]);
     expect(chartThresholds(sensor({ alert_config: { temperature_max: null, temperature_min: Number.NaN } }))).toEqual([]);
+  });
+});
+
+describe('offline, values not changing and temperature limits', () => {
+  // Heard from 2 minutes ago, but the values are 45 minutes old against a 30-minute threshold.
+  const frozen = (over: Partial<SensorDevice> = {}) =>
+    sensor({ last_seen_at: minutesAgo(2), measured_at: minutesAgo(45), health_status: 'warning', values_stale: true, ...over });
+
+  it('an offline sensor says Offline, not Unknown, although the server calls its health offline', () => {
+    const offline = sensor({ hub_online: false, connectivity_status: 'OFFLINE', health_status: 'offline', last_seen_at: minutesAgo(90), measured_at: minutesAgo(90) });
+    expect(rowStatus(offline, NOW)).toEqual({ kind: 'negative', label: 'Offline' });
+    const quiet = sensor({ is_stale: true, connectivity_status: 'STALE', health_status: 'offline', last_seen_at: minutesAgo(90), measured_at: minutesAgo(90) });
+    expect(rowStatus(quiet, NOW)).toEqual({ kind: 'critical', label: 'No recent data' });
+  });
+
+  it('values that stopped changing say so, from the server flag or from the time, and are not a quiet connection', () => {
+    expect(rowStatus(frozen(), NOW)).toEqual({ kind: 'critical', label: 'Values not changing' });
+    expect(valuesNotChanging(frozen({ values_stale: undefined }), NOW)).toBe(true);
+    expect(valuesNotChanging(sensor(), NOW)).toBe(false);
+    expect(valuesNotChanging(frozen({ hub_online: false }), NOW)).toBe(false);
+    expect(valuesNotChanging(frozen({ last_seen_at: minutesAgo(90) }), NOW)).toBe(false);
+  });
+
+  it('a low battery beside values not changing keeps the more specific tag first', () => {
+    expect(rowStatus(frozen({ battery_low: true }), NOW)).toEqual({ kind: 'critical', label: 'Values not changing' });
+    expect(rowStatus(sensor({ health_status: 'warning', battery_low: true }), NOW)).toEqual({ kind: 'critical', label: 'Battery low' });
+  });
+
+  it('too warm or too cold from the flag, and nothing from an older server or a quiet sensor', () => {
+    expect(rowStatus(sensor({ temperature_alert: 'HIGH' }), NOW)).toEqual({ kind: 'negative', label: 'Too warm' });
+    expect(rowStatus(sensor({ temperature_alert: 'LOW' }), NOW)).toEqual({ kind: 'negative', label: 'Too cold' });
+    expect(temperatureState(sensor(), NOW)).toBeNull();
+    expect(temperatureState(sensor({ temperature_alert: null }), NOW)).toBeNull();
+    expect(temperatureState(sensor({ temperature_alert: 'HIGH', hub_online: false }), NOW)).toBeNull();
+    expect(temperatureState(frozen({ temperature_alert: 'HIGH' }), NOW)).toBeNull();
+    expect(rowStatus(sensor({ temperature_alert: 'HIGH', battery_status: 'CRITICAL' }), NOW)).toEqual({ kind: 'negative', label: 'Too warm' });
+  });
+
+  it('Needs attention lists too warm and too cold after the connection lines, each sensor once per kind', () => {
+    const devices = [
+      sensor({ id: 'a', device_name: 'Alpha probe', temperature_alert: 'HIGH' }),
+      sensor({ id: 'b', device_name: 'Bravo probe', temperature_alert: 'LOW' }),
+      sensor({ id: 'c', device_name: 'Charlie probe', temperature_alert: 'HIGH', hub_online: false }),
+    ];
+    expect(sensorAlerts(devices, NOW).map(alert => [alert.kind, alert.label, alert.devices.map(d => d.id)])).toEqual([
+      ['offline', '1 offline', ['c']],
+      ['tooWarm', '1 too warm', ['a']],
+      ['tooCold', '1 too cold', ['b']],
+    ]);
+  });
+
+  it('a quiet sensor is last known, in days once a day has passed', () => {
+    expect(isQuiet(sensor(), NOW)).toBe(false);
+    expect(isQuiet(frozen(), NOW)).toBe(true);
+    expect(lastKnownText(sensor({ measured_at: minutesAgo(45) }), NOW)).toBe('Last known, 45 min ago');
+    expect(lastKnownText(sensor({ measured_at: minutesAgo(3 * 60) }), NOW)).toBe('Last known, 3 h ago');
+    expect(lastKnownText(sensor({ measured_at: minutesAgo(2 * 24 * 60 + 30) }), NOW)).toBe('Last known, 2 days ago');
+    expect(lastKnownText(sensor({ measured_at: null, latest_reading_timestamp: null }), NOW)).toBeNull();
   });
 });

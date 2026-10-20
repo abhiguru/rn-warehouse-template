@@ -618,7 +618,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
           total: result.data?.total ?? null,
         };
       }
-      report(t(failedTitleKey), serverText(result.message, t('common.checkConnection')));
+      report(t(failedTitleKey), serverText(result.message, t('common.checkConnection'), { write: true, form: true }));
       return { success: false, error: result.message };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

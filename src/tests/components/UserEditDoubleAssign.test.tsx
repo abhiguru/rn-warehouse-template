@@ -17,6 +17,7 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn() },
   Stack: { Screen: () => null },
   useIsFocused: () => true,
+  useFocusEffect: require('./focusHarness').useFocusEffect,
   useLocalSearchParams: () => ({ id: 'u2' }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -106,5 +107,18 @@ describe('Disconnecting a connection (F41)', () => {
     const buttons = jest.mocked(showAlert).mock.calls.at(-1)![2] as { text?: string; onPress?: () => void }[];
     await act(async () => { buttons[1].onPress?.(); });
     expect(adminUserService.updateUserStatus).toHaveBeenCalledWith('u2', false);
+  });
+});
+
+describe('A refused change on a lost connection (review fix)', () => {
+  it('shows the connection alert before the reload of the user has answered', async () => {
+    await loadUser();
+    // The reload after the failure never answers during this test.
+    jest.mocked(adminUserService.getUserDetails).mockReturnValue(new Promise(() => {}) as never);
+    jest.mocked(adminUserService.assignCustomerToUser).mockResolvedValue({ success: false, code: 'NETWORK', error: 'Network request failed' } as never);
+    await act(async () => { void mockSearch!.onSelect({ id: 'c9', name: 'Orchard Traders', mobile: '9000000009', city: 'Rajkot' }); });
+    expect(adminUserService.getUserDetails).toHaveBeenCalledTimes(2);
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(showAlert).mock.calls[0][1]).toMatch(/connection|internet/i);
   });
 });

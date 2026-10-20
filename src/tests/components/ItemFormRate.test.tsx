@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 import ItemFormScreen from '../../../app/item-form';
 import { itemService } from '@/services/item-service';
 import { showToast } from '@/utils/toast';
-import { useItemRates } from '@/features/item-pricing/useItemRates';
+import { markItemRatesStale, useItemRates } from '@/features/item-pricing/useItemRates';
 import { useStandardRate } from '@/features/item-pricing/useStandardRate';
 import { F1, ITEMS, row } from '@/tests/helpers/ratesFixtures';
 
@@ -41,7 +41,7 @@ jest.mock('@/features/items/packagingSuggestions', () => ({
 jest.mock('@/components/common/SearchableBottomSheet', () => ({
   SearchableBottomSheet: (props: Record<string, unknown>) => { sheetProps = props; return null; },
 }));
-jest.mock('@/features/item-pricing/useItemRates', () => ({ useItemRates: jest.fn() }));
+jest.mock('@/features/item-pricing/useItemRates', () => ({ useItemRates: jest.fn(), markItemRatesStale: jest.fn() }));
 jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: jest.fn() }));
 
 const tier = (min: number, max: number, rent: number) => ({ weight_min: min, weight_max: max, unit_price: rent, labour_rate: 1, tax_percent: 5 });
@@ -106,6 +106,8 @@ describe('Add item: Rate', () => {
     expect(sent.p_name).toBe('Fictional Gur Box');
     expect('p_rate_from_item' in sent).toBe(false);
     expect(showToast).toHaveBeenCalledWith('Fictional Gur Box added with the standard rate.');
+    // The Items list and Pricing tabs read the rates again: the new item got one.
+    expect(markItemRatesStale).toHaveBeenCalledTimes(1);
     expect(router.back).toHaveBeenCalled();
   });
 

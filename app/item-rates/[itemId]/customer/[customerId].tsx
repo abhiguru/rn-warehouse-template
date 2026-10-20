@@ -3,8 +3,7 @@
  * The figures are typed over in place, in the same box as the item's default rate (ScopeRates with a customer): a
  * Save bar with "Starts on" appears when something is changed, "Default rate: ..." sits beside the box, and Correct /
  * Stop sit under it; stopping this rate puts the customer back on the default rate. A customer with no own rate for
- * the item gets the strip that says so and "Add customer rate", which reveals a box seeded from the default rate
- * (the Pricing tab's "+ Add item" opens it at once with `add=1`). Old rates are folded at the bottom, and the day
+ * the item gets the strip that says so and "Add customer rate", which opens the full-screen form that adds it. Old rates are folded at the bottom, and the day
  * control is behind the link "See rates on another day" (a day other than today is read-only).
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
@@ -15,11 +14,12 @@ import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { historyPath } from '@/features/item-pricing/contract';
+import { historyPath, knownDeactivated } from '@/features/item-pricing/contract';
 import { rateRights } from '@/features/item-pricing/rateRights';
 import { dateText, todayDay } from '@/features/item-pricing/rateText';
 import { planScope } from '@/features/item-pricing/scopePlan';
 import { useEditorFields } from '@/features/item-pricing/useEditorFields';
+import { useCustomerDeactivatedState } from '@/features/item-pricing/useCustomerDeactivated';
 import { useItemRatesFor } from '@/features/item-pricing/useItemRates';
 import type { EditorView } from '@/features/item-pricing/useRateEditor';
 import { OldRatesSection } from '@/features/item-pricing/components/OldRatesSection';
@@ -63,7 +63,7 @@ const makeStyles = (th: ThemeTokens) => ({
 export default function CustomerRatePage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string; add?: string }>();
+  const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string; deactivated?: string }>();
   const itemId = String(params.itemId ?? '');
   const customerId = String(params.customerId ?? '');
   const today = todayDay();
@@ -71,7 +71,13 @@ export default function CustomerRatePage() {
   // The day control is behind a link; a link that carries a day opens it, so the page is never silently read-only.
   const [dayOpen, setDayOpen] = useState(day !== today);
   const role = useAppSelector(state => state.auth.userProfile?.role);
-  const rights = rateRights(role);
+  // A deactivated customer's rates are read only: no new rate, no change, no correction, no stop.
+  // Unknown (not yet read) counts as read only.
+  const { deactivated, failed: deactivatedCheckFailed, retry: retryDeactivated } = useCustomerDeactivatedState(customerId, knownDeactivated(params.deactivated));
+  const rights = useMemo(
+    () => (deactivated !== false ? { ...rateRights(role), canWrite: false, canCorrect: false, canStartInPast: false } : rateRights(role)),
+    [role, deactivated]
+  );
   const offline = useIsOffline();
   const { itemRates, status, notFound, refreshing, refreshError, lastUpdated, refresh } = useItemRatesFor(itemId);
   const [pulling, setPulling] = useState(false);
@@ -83,7 +89,8 @@ export default function CustomerRatePage() {
   const view = useRef<EditorView | null>(null);
   const { scrollRef, onScroll, fields, barHeight, setBarHeight, scrollToError, scrollToTop, keyboardUp } = useEditorFields(order, { trackKeyboard: true });
   view.current = { scrollToTop, scrollToError };
-  useLeaveGuard({ hasChanges: anyDirty });
+  // While the box saves, the ways out are held, not asked about.
+  useLeaveGuard({ hasChanges: anyDirty, blocked: Boolean(bar?.save.loading) });
 
   const item = itemRates?.item ?? { id: itemId, name: '' };
   const rows = useMemo(() => itemRates?.rows ?? [], [itemRates]);
@@ -120,7 +127,7 @@ export default function CustomerRatePage() {
             <Button
               type="tertiary"
               leftIcon="history"
-              onPress={() => router.push(historyPath({ item_id: itemId, customer_id: customerId, item_name: item.name }))}
+              onPress={() => router.push(historyPath({ item_id: itemId, customer_id: customerId, item_name: item.name, ...(customerName ? { customer_name: customerName } : {}) }))}
               testID="customer-changes"
             >
               {t('pricing.action.changes')}
@@ -157,6 +164,17 @@ export default function CustomerRatePage() {
               <Button type="tertiary" onPress={() => { void refresh(); }}>{t('pricing.list.tryAgain')}</Button>
             </View>
           ) : null}
+          {deactivated === true ? (
+            <View style={styles.strip}>
+              <InlineValidation variant="warning" message={t('pricing.customerTab.deactivated')} />
+            </View>
+          ) : null}
+          {deactivated === null && deactivatedCheckFailed ? (
+            <View style={styles.strip} testID="customer-check-failed">
+              <InlineValidation variant="error" message={t('pricing.customerTab.checkFailed')} />
+              <Button type="tertiary" onPress={retryDeactivated} testID="customer-check-retry">{t('pricing.list.tryAgain')}</Button>
+            </View>
+          ) : null}
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
@@ -183,11 +201,10 @@ export default function CustomerRatePage() {
                 refreshRows={() => { void refresh(); }}
                 onBar={setBar}
                 onDirty={setAnyDirty}
-                openAdd={params.add === '1'}
               />
             </View>
 
-            {rights.canSeeOldRates ? <OldRatesSection rows={ended} showCustomer={false} /> : null}
+            {rights.canSeeOldRates ? <OldRatesSection rows={ended} /> : null}
 
             {/* Another day: behind a link; read-only */}
             {dayOpen ? (

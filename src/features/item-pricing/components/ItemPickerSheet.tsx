@@ -16,6 +16,8 @@ export interface PickableItem {
   id: string;
   name: string;
   packaging?: string | null;
+  /** A second line under the name (the copy sheet shows the item's band count and rent range). */
+  detail?: string;
 }
 
 export interface ItemPickerSheetProps {
@@ -54,11 +56,12 @@ export function ItemPickerSheet({ visible, onClose, onSelect, items, title, empt
         onPress={() => select(item)}
         style={styles.row}
         accessibilityRole="button"
-        accessibilityLabel={[item.name, item.packaging].filter(Boolean).join(', ')}
+        accessibilityLabel={[item.name, item.packaging, item.detail].filter(Boolean).join(', ')}
         testID={`picker-item-${item.id}`}
       >
         <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
         {item.packaging ? <Text style={styles.detail}>{item.packaging}</Text> : null}
+        {item.detail ? <Text style={styles.detail} testID={`picker-item-${item.id}-detail`}>{item.detail}</Text> : null}
       </Pressable>
     ),
     [styles],

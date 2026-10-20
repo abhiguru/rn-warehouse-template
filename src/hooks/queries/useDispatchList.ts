@@ -255,7 +255,7 @@ export function useDeleteDispatch() {
     mutationFn: async ({ dispatchId, userId }: { dispatchId: string; userId: string }) => {
       const result = await deleteDispatch(dispatchId, userId);
       if (!result.success) {
-        throw new Error(serverText(result.message, t('errors.dispatch.deleteFailed')));
+        throw new Error(serverText(result.message, t('errors.dispatch.deleteFailed'), { write: true, delete: true }));
       }
       return result;
     },

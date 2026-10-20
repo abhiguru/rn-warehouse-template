@@ -16,25 +16,53 @@ export const items: Translation<typeof source> = {
     activateName: '{{name}} ને સક્રિય કરો',
     deactivateName: '{{name}} ને નિષ્ક્રિય કરો',
     deleteName: '{{name}} ડિલીટ કરો',
-    rowHintActivate: 'ફેરફાર માટે આઇટમ ખોલે છે.',
-    rowHintDeactivate: 'ફેરફાર માટે આઇટમ ખોલે છે.',
+    rowHintActivate: 'આઇટમ ખોલે છે.',
+    rowHintDeactivate: 'આઇટમ ખોલે છે.',
     deactivateConfirmTitle: '{{name}} ને નિષ્ક્રિય કરવી છે?',
     deactivateItem: 'આઇટમ નિષ્ક્રિય કરો',
     deactivateConfirmMessage: 'નવી આવક પાવતી કે ઑર્ડર માટે આઇટમ પસંદ કરતી વખતે તે દેખાશે નહીં. તેના રેકોર્ડ અને દર રહેશે, અને તમે તેને ફરી સક્રિય કરી શકશો.',
-    searchPlaceholder: 'આઇટમ શોધો',
+    // Draft for the owner's wording review (Items screens 2026-10-20).
+    searchPlaceholder: 'નામ, પેકિંગ કે વર્ણનથી શોધો',
     noMatch: '"{{search}}" સાથે મળતી કોઈ આઇટમ નથી. ઓછા અક્ષરો લખી જુઓ.',
     refreshFailed: 'આઇટમ રિફ્રેશ કરી શકાઈ નથી. {{time}} ની યાદી બતાવી છે.',
     couldNotActivateTitle: 'આઇટમ સક્રિય કરી શકાઈ નથી',
     couldNotDeactivateTitle: 'આઇટમ નિષ્ક્રિય કરી શકાઈ નથી',
     couldNotUpdateTitle: 'આઇટમમાં ફેરફાર કરી શકાયો નથી',
     tryAgainInAMoment: 'થોડી વાર પછી ફરી પ્રયાસ કરો.',
+    // Draft for the owner's wording review (Items screens 2026-10-20).
+    activatedToast: '{{name}} સક્રિય થઈ.',
+    activatedStandardToast: '{{name}} સક્રિય થઈ. હવે તેનો પ્રમાણભૂત દર છે.',
+    deactivatedToast: '{{name}} નિષ્ક્રિય થઈ.',
+    loadMoreFailed: 'વધુ આઇટમ લોડ કરી શકાઈ નથી.',
+    retryMore: 'વધુ આઇટમ ફરી લોડ કરવાનો પ્રયાસ કરો',
+    // Items with no default rate in force today (a role that may see pricing).
+    noRateTag: 'દર નથી',
+    noRateStrip: { one: '{{count}} આઇટમનો દર નથી.', other: '{{count}} આઇટમના દર નથી.' },
+    noRateShow: 'એ આઇટમ બતાવો',
+    noRateShowing: 'ફક્ત દર વગરની આઇટમ બતાવી છે.',
+    noRateShowAll: 'બધી આઇટમ બતાવો',
+    noRateNone: 'દરેક આઇટમનો દર છે.',
+    noRateNoMatch: '"{{search}}" સાથે મળતી દર વગરની કોઈ આઇટમ નથી.',
+  },
+  // Add, Save, Delete and Activate need a connection (nothing is sent while the phone is offline).
+  offline: {
+    // Draft for the owner's wording review (Items screens 2026-10-20).
+    connectToSave: 'તમે ઑફલાઇન છો. આ આઇટમ સાચવવા ઇન્ટરનેટ જોડો.',
+  },
+  // The item page (Items -> an item).
+  page: {
+    tabOverview: 'સારાંશ',
+    details: 'વિગતો',
+    activate: 'આઇટમ સક્રિય કરો',
+    loadFailed: 'આ આઇટમ ખોલી શકાઈ નથી. તમારું કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
   },
   delete: {
     confirmTitle: '{{name}} ડિલીટ કરવી છે?',
     confirmMessage: 'આ આઇટમ તમારી આઇટમની યાદીમાંથી નીકળી જશે.',
     deleteItem: 'આઇટમ ડિલીટ કરો',
     deletedMessage: '{{name}} ડિલીટ થઈ.',
-    cannotDeleteTitle: 'આ આઇટમ ડિલીટ કરી શકાતી નથી',
+    // Draft for the owner's wording review (Items screens 2026-10-20).
+    cannotDeleteTitle: '{{name}} ડિલીટ કરી શકાતી નથી',
     confirmMessageWithPrices: {
       one: 'તેના {{count}} દર પણ ડિલીટ થશે. આ પાછું લાવી શકાશે નહીં.',
       other: 'તેના {{count}} દર પણ ડિલીટ થશે. આ પાછું લાવી શકાશે નહીં.',
@@ -44,6 +72,8 @@ export const items: Translation<typeof source> = {
     usedInLine: '• {{count}}',
     usedInGrnLines: { one: '{{count}} આવક પાવતીની લાઇન', other: '{{count}} આવક પાવતીની લાઇન' },
     usedInOrderLines: { one: '{{count}} ઑર્ડરની લાઇન', other: '{{count}} ઑર્ડરની લાઇન' },
+    // Draft for the owner's wording review (Items screens 2026-10-20).
+    usedInGrnRates: { one: 'એક આવક પાવતી પર નક્કી કરેલો {{count}} દર', other: 'આવક પાવતીઓ પર નક્કી કરેલા {{count}} દર' },
     deactivateInstead: 'તેના બદલે આઇટમને નિષ્ક્રિય કરો, જેથી તે શોધમાં ન દેખાય.',
     couldNotDeleteTitle: 'આઇટમ ડિલીટ કરી શકાઈ નથી',
   },
@@ -83,14 +113,17 @@ export const items: Translation<typeof source> = {
     rateNoItems: 'આજે લાગુ દર ધરાવતી કોઈ આઇટમ નથી.',
     couldNotAddTitle: 'આઇટમ ઉમેરી શકાઈ નથી',
     savedToast: '{{name}} સચવાઈ.',
-    deactivatedToast: '{{name}} નિષ્ક્રિય કરાઈ.',
     couldNotSaveTitle: 'આઇટમ સાચવી શકાઈ નથી',
     discardNewTitle: 'આ આઇટમ છોડી દેવી છે?',
     discardNewMessage: 'તમે ભરેલી વિગતો જતી રહેશે.',
     discardMessage: 'આ આઇટમમાં સાચવ્યા વગરના ફેરફાર જતા રહેશે.',
-    notFoundTitle: 'આ આઇટમ મળી નથી',
-    notFoundMessage: 'કદાચ તે ડિલીટ થઈ ગઈ છે.',
-    couldNotLoadTitle: 'આઇટમ લોડ કરી શકાઈ નથી',
+    // Draft for the owner's wording review (Items screens 2026-10-20).
+    notFoundSentence: 'આ આઇટમ મળી નથી. કદાચ તે ડિલીટ થઈ ગઈ છે.',
+    // Draft for the owner's wording review (Items screens 2026-10-20).
+    someoneDeleted: 'આ આઇટમ કોઈએ ડિલીટ કરી દીધી છે.',
+    alreadyAdded: '{{name}} તમારી આઇટમમાં પહેલેથી છે. તમારા છેલ્લા પ્રયાસમાં તે ઉમેરાઈ હશે.',
+    goToItems: 'આઇટમની યાદી પર જાઓ',
+    fixFields: { one: '{{count}} વિગત સુધારો.', other: '{{count}} વિગતો સુધારો.' },
   },
   // The sheet that lists the items already added to a GRN or a dispatch.
   summary: {

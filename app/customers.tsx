@@ -4,6 +4,10 @@
  * Object cells with an avatar, contact details and an Inactive status tag,
  * an A–Z rail for quick navigation, pull to refresh, and loading, empty and
  * error states. Colours come from the semantic tokens.
+ *
+ * The count line reads "120 customers · 4 deactivated" (two head counts), and the
+ * "Deactivated" chip shows only the deactivated ones. The search is empty each time
+ * the screen is opened (it is this screen's own state); Back from a customer keeps it.
  */
 
 import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
@@ -29,6 +33,8 @@ import {
 } from '@/types/customer.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
+import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { MasterListHeader } from '@/components/common/MasterListHeader';
 import { useHaptics } from '@/hooks/useHaptics';
 import { railKey, railLetters, sortForRail } from '@/features/customer/railKey';
@@ -48,11 +54,16 @@ import {
 import { Avatar, StatusTag } from '@/components/ui';
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatMobile, formatTime, nationalMobileDigits } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { normalizeDigits, t as tr } from '@/i18n';
+import { serverText, transportText } from '@/utils/serverText';
+import { showToast } from '@/utils/toast';
 import { createLogger, loggableError } from '@/utils/logger';
 
 const log = createLogger('Customers');
+
+/** The list loads this many customers at once (so every row can be reached from the A–Z rail). */
+const LIST_LIMIT = 10000;
+const SKELETON_ROWS = [0, 1, 2, 3];
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -68,6 +79,16 @@ interface ListState {
   refreshFailed: boolean;
   /** When the rows on the screen were loaded. */
   loadedAt: Date | null;
+  /** Active and deactivated customers on the server (head counts); null until they were read. */
+  counts: { active: number; inactive: number } | null;
+  /** How many customers the server has in all; more than `data.length` when the list was capped. */
+  total: number;
+}
+
+/** A row's active flag as the last toggle left it, and when. A list answer older than that must not undo it. */
+interface Toggled {
+  active: boolean;
+  at: number;
 }
 
 // =============================================================================
@@ -99,8 +120,15 @@ export default function CustomersScreen() {
     error: false,
     refreshFailed: false,
     loadedAt: null,
+    counts: null,
+    total: 0,
   });
   const [search, setSearch] = useState('');
+  const [showOnlyDeactivated, setShowOnlyDeactivated] = useState(false);
+  // Rows whose Deactivate / Activate is running: a second tap on one of them is ignored.
+  const togglingRef = useRef(new Set<string>());
+  const [togglingIds, setTogglingIds] = useState<string[]>([]);
+  const toggled = useRef(new Map<string, Toggled>());
 
   // ===========================================================================
   // FETCH LOGIC
@@ -110,20 +138,36 @@ export default function CustomersScreen() {
   const fetchCustomers = useCallback(
     async (filters: CustomerFilters) => {
       setState((prev) => ({ ...prev, loading: true, error: false }));
+      const startedAt = Date.now();
 
       try {
-        // Load all customers (limit 10000 should cover any realistic customer count)
-        const response = await customerService.getCustomerList(filters, 10000, 0);
+        // Load all customers (the limit covers any realistic customer count; past it the list says so).
+        const [response, counts] = await Promise.all([
+          customerService.getCustomerList(filters, LIST_LIMIT, 0),
+          customerService.getCustomerCounts(),
+        ]);
 
         if (response.success) {
+          // An answer that was asked for before a Deactivate / Activate finished must not flip that row back.
+          let inactiveShift = 0;
+          const rows = response.data.map((customer) => {
+            const change = toggled.current.get(customer.id);
+            if (!change || change.at < startedAt || change.active === customer.active) return customer;
+            inactiveShift += change.active ? -1 : 1;
+            return { ...customer, active: change.active };
+          });
           setState((prev) => ({
             ...prev,
             // Sorted by rail group so every row can be reached from the A–Z rail.
-            data: sortForRail(response.data),
+            data: sortForRail(rows),
             loading: false,
             error: false,
             refreshFailed: false,
             loadedAt: new Date(),
+            counts: counts
+              ? { active: counts.active - inactiveShift, inactive: counts.inactive + inactiveShift }
+              : null,
+            total: response.pagination?.total_count ?? rows.length,
           }));
         } else {
           setState((prev) => failed(prev));
@@ -166,44 +210,76 @@ export default function CustomersScreen() {
   }, []);
 
   const handleInactivateCustomer = useCallback(
-    async (customerId: string, currentActive: boolean) => {
+    async (customer: CustomerListItem, currentActive: boolean) => {
+      const customerId = customer.id;
+      // One change per row at a time: a second tap while the first is running does nothing.
+      if (togglingRef.current.has(customerId)) return;
+      togglingRef.current.add(customerId);
+      setTogglingIds([...togglingRef.current]);
       try {
         const result = currentActive
           ? await customerService.inactivateCustomer(customerId)
           : await customerService.restoreCustomer(customerId);
 
         if (result.success) {
+          toggled.current.set(customerId, { active: !currentActive, at: Date.now() });
           // Update local state to reflect the change
           setState((prev) => ({
             ...prev,
-            data: prev.data.map((customer) =>
-              customer.id === customerId
-                ? { ...customer, active: !currentActive }
-                : customer
+            data: prev.data.map((row) =>
+              row.id === customerId
+                ? { ...row, active: !currentActive }
+                : row
             ),
           }));
+          // The head counts are read again, never shifted by hand (a refresh in between would count the row twice).
+          void customerService.getCustomerCounts().then((counts) => {
+            if (counts) setState((prev) => ({ ...prev, counts }));
+          });
+          showToast(tr(currentActive ? 'customers.list.deactivatedToast' : 'customers.list.activatedToast', { name: customer.name }));
+        } else if (!currentActive && result.code === 'DUPLICATE_MOBILE' && result.details?.name) {
+          // Another active customer uses the number: the row stays deactivated.
+          const other = result.details;
+          showAlert(
+            tr('customers.list.couldNotActivateNamed', { name: customer.name }),
+            tr('customers.list.mobileInUse', { other: other.name }),
+            [
+              { text: tr('common.ok') },
+              ...(other.customer_id
+                ? [{ text: tr('customers.list.openOther', { other: other.name }), onPress: () => handleOpenCustomer(other.customer_id as string) }]
+                : []),
+            ]
+          );
         } else {
           // Show error to user
           showAlert(
             currentActive ? tr('customers.list.couldNotDeactivateTitle') : tr('customers.list.couldNotActivateTitle'),
-            serverText(result.message, tr('customers.list.tryAgainInAMoment')),
+            serverText(result, tr('customers.list.tryAgainInAMoment'), { write: true, code: result.code }),
             [{ text: tr('common.ok') }]
           );
         }
       } catch (error) {
         log.error('Toggle active failed', loggableError(error));
-        showAlert(tr('customers.list.couldNotUpdateTitle'), tr('common.checkConnection'), [{ text: tr('common.ok') }]);
+        showAlert(
+          tr('customers.list.couldNotUpdateTitle'),
+          transportText(error, { write: true }) ?? tr('common.checkConnection'),
+          [{ text: tr('common.ok') }]
+        );
+      } finally {
+        togglingRef.current.delete(customerId);
+        setTogglingIds([...togglingRef.current]);
       }
     },
-    []
+    [handleOpenCustomer]
   );
 
   // Deactivating hides the customer from new orders, so it asks first;
   // activating again is harmless and happens straight away.
   const handleToggleActive = useCallback(
     (customer: CustomerListItem) => {
+      if (togglingRef.current.has(customer.id)) return;
       if (!customer.active) {
-        handleInactivateCustomer(customer.id, false);
+        handleInactivateCustomer(customer, false);
         return;
       }
       showAlert(tr('customers.list.deactivateConfirmTitle', { name: customer.name }), tr('customers.list.deactivateConfirmMessage'), [
@@ -211,11 +287,28 @@ export default function CustomersScreen() {
         {
           text: tr('customers.list.deactivateCustomer'),
           style: 'destructive',
-          onPress: () => handleInactivateCustomer(customer.id, true),
+          onPress: () => handleInactivateCustomer(customer, true),
         },
       ]);
     },
     [handleInactivateCustomer]
+  );
+
+  // The Deactivated filter. When the list was capped (more customers than rows loaded) the deactivated ones may
+  // not all be loaded, so the server is asked for only those; otherwise the loaded rows are filtered.
+  const serverFiltered = useRef(false);
+  const applyDeactivatedFilter = useCallback(
+    (on: boolean) => {
+      setShowOnlyDeactivated(on);
+      const capped = state.total > state.data.length;
+      if (on ? capped : serverFiltered.current) {
+        serverFiltered.current = on;
+        const filters = { ...DEFAULT_CUSTOMER_FILTERS, active: on ? false : DEFAULT_CUSTOMER_FILTERS.active };
+        setState((prev) => ({ ...prev, filters }));
+        void fetchCustomers(filters);
+      }
+    },
+    [state.total, state.data.length, fetchCustomers]
   );
 
   const handleAddCustomer = useCallback(() => {
@@ -227,17 +320,35 @@ export default function CustomersScreen() {
   // ===========================================================================
 
   // The rows shown: every typed word must be in the name, the mobile digits or the city (§14.6).
-  const terms = useMemo(() => searchTerms(search), [search]);
+  // Gujarati digits typed in the search are read as 0-9, the way the stored numbers are written.
+  const terms = useMemo(() => searchTerms(normalizeDigits(search)), [search]);
+  const pool = useMemo(
+    () => (showOnlyDeactivated ? state.data.filter((customer) => !customer.active) : state.data),
+    [state.data, showOnlyDeactivated]
+  );
   const visible = useMemo(
     () =>
       terms.length === 0
-        ? state.data
-        : state.data.filter((customer) =>
+        ? pool
+        : pool.filter((customer) =>
             matchesSearch(terms, [customer.name, nationalMobileDigits(customer.mobile), customer.mobile, customer.city])
           ),
-    [state.data, terms]
+    [pool, terms]
   );
   const searching = search.trim().length > 0;
+
+  // "120 customers · 4 deactivated": the head counts, or the rows when the counts could not be read.
+  const deactivatedTotal = state.counts ? state.counts.inactive : state.data.filter((customer) => !customer.active).length;
+  const customerTotal = state.counts ? state.counts.active + state.counts.inactive : state.data.length;
+  let countText: string | undefined;
+  if (state.data.length > 0) {
+    countText =
+      searching || showOnlyDeactivated || deactivatedTotal === 0
+        ? formatCount(visible.length, 'customer')
+        : `${formatCount(customerTotal, 'customer')} · ${tr('customers.list.deactivatedCount', { count: deactivatedTotal })}`;
+  }
+  // The pills are offered while there is a deactivated customer to show, and while the filter is on.
+  const showFilter = deactivatedTotal > 0 || showOnlyDeactivated;
 
   // Build a map of rail keys to their first customer index (the same key sorts the list)
   const letterIndexMap = useMemo(() => {
@@ -315,11 +426,12 @@ export default function CustomersScreen() {
     ({ item }: { item: CustomerListItem }) => (
       <FioriCustomerCard
         customer={item}
+        busy={togglingIds.includes(item.id)}
         onPress={() => handleOpenCustomer(item.id)}
         onToggleActive={() => handleToggleActive(item)}
       />
     ),
-    [handleOpenCustomer, handleToggleActive]
+    [handleOpenCustomer, handleToggleActive, togglingIds]
   );
 
   const keyExtractor = useCallback((item: CustomerListItem) => item.id, []);
@@ -327,9 +439,10 @@ export default function CustomersScreen() {
   const renderEmpty = useCallback(() => {
     if (state.loading) {
       return (
-        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel={tr('customers.list.loadingLabel')}>
-          <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.emptyText}>{tr('customers.list.loading')}</Text>
+        <View accessibilityRole="progressbar" accessibilityLabel={tr('customers.list.loadingLabel')} style={styles.skeletonList}>
+          {SKELETON_ROWS.map((row) => (
+            <ListSkeletonCard key={row} metricsCount={2} showFooter={false} />
+          ))}
         </View>
       );
     }
@@ -355,6 +468,26 @@ export default function CustomersScreen() {
       );
     }
 
+    // No deactivated customer is not an empty warehouse either (the search, if any, is handled below).
+    if (showOnlyDeactivated && !searching) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon name="account-check-outline" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyTitle} accessibilityRole="header">
+            {tr('customers.list.noDeactivatedTitle')}
+          </Text>
+          <Text style={styles.emptyText}>{tr('customers.list.noDeactivatedMessage')}</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={() => applyDeactivatedFilter(false)}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>{tr('customers.list.showAll')}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
     // A search that finds nothing is not an empty warehouse either.
     if (state.data.length > 0) {
       return (
@@ -363,10 +496,15 @@ export default function CustomersScreen() {
           <Text style={styles.emptyText}>{tr('customers.search.noMatchTryFewer', { search: search.trim() })}</Text>
           <Pressable
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => setSearch('')}
+            onPress={() => {
+              setSearch('');
+              if (showOnlyDeactivated) applyDeactivatedFilter(false);
+            }}
             accessibilityRole="button"
           >
-            <Text style={styles.secondaryButtonText}>{tr('common.clearSearch')}</Text>
+            <Text style={styles.secondaryButtonText}>
+              {tr(showOnlyDeactivated ? 'filters.empty.clearSearchAndFilters' : 'common.clearSearch')}
+            </Text>
           </Pressable>
         </View>
       );
@@ -389,7 +527,7 @@ export default function CustomersScreen() {
         </Pressable>
       </View>
     );
-  }, [state.loading, state.error, state.data.length, state.filters, search, fetchCustomers, handleAddCustomer, styles, t]);
+  }, [state.loading, state.error, state.data.length, state.filters, search, searching, showOnlyDeactivated, applyDeactivatedFilter, fetchCustomers, handleAddCustomer, styles, t]);
 
   return (
     <>
@@ -431,13 +569,26 @@ export default function CustomersScreen() {
           search={search}
           onSearch={setSearch}
           placeholder={tr('customers.search.placeholder')}
-          countText={state.data.length > 0 ? formatCount(visible.length, 'customer') : undefined}
+          countText={countText}
           refreshError={
             state.refreshFailed
               ? { message: tr('customers.list.refreshFailed', { time: formatTime(state.loadedAt) }), onRetry: handleRefresh }
               : undefined
           }
         />
+        {showFilter ? (
+          <View style={styles.filterRow}>
+            <ChoiceChips
+              accessibilityLabel={tr('customers.list.filterLabel')}
+              options={[
+                { value: 'all', label: tr('customers.list.filterAll') },
+                { value: 'deactivated', label: tr('customers.list.filterDeactivated') },
+              ]}
+              value={showOnlyDeactivated ? 'deactivated' : 'all'}
+              onChange={(value) => applyDeactivatedFilter(value === 'deactivated')}
+            />
+          </View>
+        ) : null}
         <View style={styles.listWithRail}>
           <FlatList
             ref={flatListRef}
@@ -458,7 +609,15 @@ export default function CustomersScreen() {
                 progressBackgroundColor={t.surface.card}
               />
             }
+            extraData={togglingIds}
             ListEmptyComponent={renderEmpty}
+            ListFooterComponent={
+              !state.loading && state.total > state.data.length && state.data.length > 0 ? (
+                <Text style={styles.cappedFooter}>
+                  {tr('customers.list.cappedFooter', { shown: state.data.length, total: state.total })}
+                </Text>
+              ) : null
+            }
             showsVerticalScrollIndicator={false}
             onScrollToIndexFailed={handleScrollToIndexFailed}
             style={styles.flatList}
@@ -485,11 +644,13 @@ export default function CustomersScreen() {
 
 interface FioriCustomerCardProps {
   customer: CustomerListItem;
+  /** Its Deactivate / Activate is running. */
+  busy: boolean;
   onPress: () => void;
   onToggleActive: () => void;
 }
 
-function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerCardProps) {
+function FioriCustomerCard({ customer, busy, onPress, onToggleActive }: FioriCustomerCardProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const swipeableRef = useRef<Swipeable | null>(null);
@@ -519,7 +680,9 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
           pressed && (customer.active ? styles.swipeDeactivatePressed : styles.swipeActivatePressed),
         ]}
         onPress={handleAction}
+        disabled={busy}
         accessibilityRole="button"
+        accessibilityState={{ disabled: busy }}
         accessibilityLabel={tr(customer.active ? 'customers.list.deactivateName' : 'customers.list.activateName', { name: customer.name })}
       >
         <Icon
@@ -551,6 +714,7 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
         accessibilityRole="button"
         accessibilityLabel={rowLabel}
         accessibilityHint={tr('customers.list.rowHint')}
+        accessibilityState={{ busy }}
         accessibilityActions={[{ name: 'toggleActive', label: actionLabel }]}
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === 'toggleActive') onToggleActive();
@@ -592,8 +756,12 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
           </View>
         </View>
 
-        {/* Fiori Object Cell: Chevron */}
-        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+        {/* Fiori Object Cell: Chevron, or a spinner while Deactivate / Activate runs on this row */}
+        {busy ? (
+          <ActivityIndicator size="small" color={t.brand.tint} accessibilityLabel={tr('customers.list.updating', { name: customer.name })} />
+        ) : (
+          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+        )}
       </Pressable>
     </Swipeable>
   );
@@ -614,6 +782,21 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   flatList: {
     flex: 1,
+  },
+  skeletonList: {
+    gap: space.md,
+    paddingRight: 0,
+  },
+  // MasterListHeader above draws the hairline; the chips bring their own touch targets.
+  filterRow: {
+    paddingHorizontal: layout.marginCompact,
+    backgroundColor: t.surface.header,
+  },
+  cappedFooter: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    padding: space.md,
   },
   listContent: {
     paddingTop: space.md,

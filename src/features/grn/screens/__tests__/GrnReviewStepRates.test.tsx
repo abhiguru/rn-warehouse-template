@@ -269,7 +269,7 @@ describe('saving the rates with the GRN', () => {
   it.each([
     ['RATE_MISSING', { lines: [{ item_id: 'rice', item_name: 'Fictional Rice', weight: 30 }] }, 'The server found no rate for 1 item. The rates are shown again; add the missing one and save.'],
     ['RATE_PLANNED', { starts_on: '2026-11-01' }, 'A rate for this weight band already starts on 1 Nov 2026. Choose a last day before it.'],
-    ['BANDS_OVERLAP', {}, "This weight band overlaps another band of the item's rate. Use the same band, or change the bands in Item pricing."],
+    ['BANDS_OVERLAP', {}, "This weight band overlaps another band of the item's rate. Use the same band, or change the bands on the item's Pricing tab."],
     ['GRN_INVOICED', {}, 'This GRN is invoiced, so its rates for this GRN only cannot change.'],
   ])('%s: reads the rates again and shows the reason', async (code, data, text) => {
     mockRates = [...mockRates, stored('rice', 0, 100, 2)];

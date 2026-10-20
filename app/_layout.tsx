@@ -91,6 +91,7 @@ import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
+import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { showAlert } from '@/utils/alert';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
@@ -492,8 +493,6 @@ function ThemedContent() {
                   <NavigationStack key={language} screenBackground={screenBackground} />
                 </BelowOfflineBanner>
               </BottomSheetModalProvider>
-              <AlertHost />
-              <ToastHost />
             </GestureHandlerRootView>
           </SafeAreaProvider>
         </PaperProvider>
@@ -664,8 +663,11 @@ function BootstrapApp() {
             ? // Central login: leave the facility that cannot be reached for My facilities.
               // Nothing is revoked through a server that does not answer.
               () => {
+                // Named before the call: the facility is no longer open when it ends.
+                const facility = currentFacilityLabel();
                 void leaveFacility(store.dispatch, { localOnly: true }).then(outcome => {
-                  if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.switch.busyMessage'));
+                  if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.leave.saveInFlight'));
+                  else if (outcome === 'failed') showFacilityCleanupFailed(translate('central.leave.leftTitle', { facility }), facility);
                 });
               }
             : () => setChangingServer(true)
@@ -696,6 +698,10 @@ function RootLayout() {
     <Provider store={store}>
       <PersistGate loading={<SplashScreen />} persistor={persistor}>
         <BootstrapApp />
+        {/* Here, not in ThemedContent: the bootstrap screens (config error, server choice) show dialogs too, and the queue must not lose its host. It needs only Redux (theme). */}
+        <AlertHost />
+        {/* Here too: signing out of a facility re-runs bootstrap and unmounts ThemedContent, and a toast shown just before must survive. Fills the screen without taking touches. */}
+        <ToastHost />
       </PersistGate>
     </Provider>
   );

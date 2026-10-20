@@ -5,8 +5,10 @@
  */
 import React, { useCallback, useMemo } from 'react';
 import { t } from '@/i18n';
+import { askAlert } from '@/utils/alert';
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import { rowsInForce } from '../editModel';
+import { rentRange } from '../rateText';
 import { useItemRates } from '../useItemRates';
 import { ItemPickerSheet, type PickableItem } from './ItemPickerSheet';
 
@@ -18,6 +20,22 @@ export interface CopyTiersSheetProps {
   today: string;
   /** The chosen item and its default rows in force today. */
   onPick: (item: PickableItem, rows: ItemStoragePrice[]) => void;
+}
+
+/**
+ * Typed bands are about to be replaced by another item's: ask first (resolves true to go on). Callers ask only when
+ * something was changed; an untouched copy of the default rate is replaced without a question.
+ */
+export function confirmReplaceBands(itemName: string): Promise<boolean> {
+  return askAlert(
+    t('pricing.edit.copyReplaceTitle'),
+    t('pricing.edit.copyReplaceMessage', { item: itemName }),
+    [
+      { text: t('common.cancel'), style: 'cancel', value: false },
+      { text: t('pricing.edit.copyReplaceConfirm'), style: 'destructive', value: true },
+    ],
+    false,
+  );
 }
 
 export function CopyTiersSheet({ visible, onClose, itemId, priceType, today, onPick }: CopyTiersSheetProps) {
@@ -37,7 +55,18 @@ export function CopyTiersSheet({ visible, onClose, itemId, priceType, today, onP
     }
     return result;
   }, [rates, priceType, today]);
-  const offered = useMemo(() => items.filter(i => i.id !== itemId && inForce.has(i.id)), [items, itemId, inForce]);
+  // Each item says how many weight bands it has and its rent range, not only its name.
+  const offered = useMemo(
+    () =>
+      items
+        .filter(i => i.id !== itemId && inForce.has(i.id))
+        .map(i => {
+          const bands = inForce.get(i.id) ?? [];
+          const rents = bands.map(b => b.unit_price);
+          return { ...i, detail: t('pricing.edit.copyDetail', { count: bands.length, range: rentRange(Math.min(...rents), Math.max(...rents)) }) };
+        }),
+    [items, itemId, inForce],
+  );
   const select = useCallback((item: PickableItem) => onPick(item, inForce.get(item.id) ?? []), [inForce, onPick]);
   return (
     <ItemPickerSheet

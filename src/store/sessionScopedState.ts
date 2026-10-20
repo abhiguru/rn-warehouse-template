@@ -18,11 +18,14 @@ import { clearImageCaches } from '@/utils/imageCache';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { forgetRecentSearches } from '@/features/filters/recentSearches';
 import { clearItemRatesCache } from '@/features/item-pricing/useItemRates';
+import { dropAlertsWithHandlers } from '@/utils/alert';
 import { clearStandardRateCache } from '@/features/item-pricing/useStandardRate';
 
 export async function clearSessionScopedState(
   dispatch: (action: UnknownAction) => unknown
 ): Promise<void> {
+  // A waiting dialog with a handler would act for the session that just ended; plain messages stay.
+  dropAlertsWithHandlers();
   await queryClient.cancelQueries();
   queryClient.clear();
   clearAutocompleteCache();

@@ -17,6 +17,11 @@ export const central: Translation<typeof source> = {
     emptyMessage: 'તમે જેની સાથે કામ કરો છો તે કોલ્ડ સ્ટોરેજ ઉમેરો. તમે શું જોઈ શકો તે દરેક કોલ્ડ સ્ટોરેજ પોતે નક્કી કરે છે.',
     loading: 'તમારાં કોલ્ડ સ્ટોરેજ લોડ થઈ રહ્યાં છે',
     opening: '{{facility}} ખોલી રહ્યા છીએ…',
+    // Draft for the owner's wording review (My facilities after sign-out, 2026-10-20).
+    signingOut: 'લૉગઆઉટ થઈ રહ્યું છે…',
+    signingOutTitle: 'હજુ લૉગઆઉટ થઈ રહ્યું છે',
+    signingOutMessage: 'આ ફોન હજુ લૉગઆઉટ પૂરું કરી રહ્યો છે. થોડી સેકન્ડ પછી ફરી પ્રયાસ કરો.',
+    stillOpening: '{{facility}} હજુ ખૂલી રહ્યું છે. પૂરું થવા દો.',
     cellLabel: '{{name}}, {{status}}',
     cellLabelCity: '{{name}}, {{city}}, {{status}}',
     cellHint: 'આ કોલ્ડ સ્ટોરેજ ખોલે છે',
@@ -68,7 +73,6 @@ export const central: Translation<typeof source> = {
     nameHelp: 'તમે મંજૂરી માગો ત્યારે કોલ્ડ સ્ટોરેજને આ નામ દેખાય છે.',
     nameInvalid: '૮૦ અક્ષર સુધીનું નામ નાખો.',
     saveName: 'નામ સાચવો',
-    savedTitle: 'નામ સચવાયું',
     saveFailedTitle: 'નામ સાચવી શકાયું નથી',
     signedInAs: '{{phone}}થી લૉગિન કરેલું છે',
     deleteAccount: 'મારું એકાઉન્ટ ડિલીટ કરો',
@@ -77,6 +81,8 @@ export const central: Translation<typeof source> = {
     deleteMessage:
       'ઍસોસિએશનનું તમારું લૉગિન અને તમારું નામ ડિલીટ થશે, અને તમે દરેક ફોનમાંથી લૉગઆઉટ થશો. આ પાછું લાવી શકાશે નહીં.\n\nકોલ્ડ સ્ટોરેજના રેકોર્ડ તે કોલ્ડ સ્ટોરેજ પાસે જ રહે છે. તે કઢાવવા માટે દરેક કોલ્ડ સ્ટોરેજને કહો.',
     deleteFailedTitle: 'એકાઉન્ટ ડિલીટ કરી શકાયું નથી',
+    // Draft for the owner's wording review (Settings, Profile and Account review, 2026-10-20).
+    deleteUnknownTitle: '{{facility}}એ જવાબ આપ્યો નહીં',
     // Draft for the owner's wording review (M06).
     signOutAll: 'બધા ફોનમાંથી લૉગઆઉટ કરો',
     signOutAllSubtitle: 'આ ફોન સહિત બધા ફોનમાંથી ઍસોસિએશનનું તમારું લૉગિન બંધ કરે છે',
@@ -100,6 +106,13 @@ export const central: Translation<typeof source> = {
     confirmMessage:
       'સાચવ્યા વગરના ફૉર્મ જતા રહેશે. ઍસોસિએશનમાં તમારું લૉગિન ચાલુ રહેશે અને તમે આ કોલ્ડ સ્ટોરેજ મારાં કોલ્ડ સ્ટોરેજમાંથી ફરી ખોલી શકો છો.',
     confirmAction: 'નીકળો',
+    // Draft for the owner's wording review (Settings, Profile and Account review, 2026-10-20).
+    saveInFlight: 'એક ફેરફાર હજુ સચવાઈ રહ્યો છે. થોડી સેકન્ડ રાહ જુઓ, પછી ફરી પ્રયાસ કરો.',
+    thisFacility: 'આ કોલ્ડ સ્ટોરેજ',
+    leftTitle: '{{facility}}માંથી નીકળી ગયા',
+    signedOutTitle: 'લૉગઆઉટ થયું',
+    accountDeletedTitle: 'તમારું ખાતું કાઢી નાખ્યું', // Draft for the owner's wording review
+    cleanupFailed: '{{facility}}નો કેટલોક ડેટા આ ફોનમાંથી કાઢી શકાયો નથી. બીજું કોઈ વાપરે તે પહેલાં ઍપ ફરી શરૂ કરો.',
   },
   phoneSignOut: {
     action: 'આ ફોનમાંથી લૉગઆઉટ કરો',

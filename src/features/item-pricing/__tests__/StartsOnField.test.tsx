@@ -1,5 +1,5 @@
 /**
- * "Starts on": the chips (an invoice line's received day, Today, the first of next month, the next 1 April, Other date),
+ * "Starts on": the chips (Today, the first of next month, the next 1 April, Other date),
  * the Android calendar that opens at once on Other date, and the earliest day it offers. Today is 14 Oct 2026.
  */
 import React from 'react';
@@ -67,19 +67,6 @@ it('shows the chosen chip as on', () => {
   const t = mount({ choice: 'april', day: '2027-04-01' });
   expect(chipState(t)[2]).toBe('1 Apr 2027:on');
   expect(textsOf(t)).not.toContain('Choose a start date.');
-});
-
-it('an invoice line received before today is offered first and reports its day', () => {
-  const t = mount({ choice: 'received', day: '2026-05-02', receivedDay: '2026-05-02' });
-  expect(chipState(t)[0]).toBe('Received 2 May 2026:on');
-  act(() => { chip(t, 'Today').props.onPress(); });
-  act(() => { chip(t, 'Received 2 May 2026').props.onPress(); });
-  expect(onChange).toHaveBeenLastCalledWith('received', '2026-05-02');
-});
-
-it('a received day of today or later is not a chip of its own', () => {
-  const t = mount({ receivedDay: TODAY });
-  expect(chipState(t)[0]).toBe('Today:off');
 });
 
 describe('Other date', () => {

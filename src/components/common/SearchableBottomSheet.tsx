@@ -110,6 +110,22 @@ export interface SearchableBottomSheetProps<T> {
   emptySubText?: string;
   /** Optional: a button under the empty-state text (for example Try again when the list could not be loaded) */
   emptyAction?: { label: string; onPress: () => void };
+  /** Optional: show `emptyAction` only after a search found nothing, not in the initial empty state. */
+  emptyActionAfterSearchOnly?: boolean;
+  /**
+   * Optional: what to say when the search itself failed (no connection ...), for
+   * example "Couldn't search customers. Check your connection and try again."
+   * The sheet then shows this text and a Try again button that repeats the search,
+   * instead of "Nothing matches". The `searchFn` must throw for a failure; a
+   * `searchFn` that returns [] on failure shows the empty result.
+   */
+  searchErrorText?: string;
+  /** Optional: stay open after an item is picked, so several can be picked one after another (default: closes). */
+  keepOpenOnSelect?: boolean;
+  /** Optional: the most results listed. Ask `searchFn` for one more: the sheet lists `resultLimit` and, with `limitText`, says so under them only when that extra one came back. */
+  resultLimit?: number;
+  /** Optional: the line shown under the results when there are more than `resultLimit`. */
+  limitText?: string;
 }
 
 // ============================================================================
@@ -190,6 +206,11 @@ export function SearchableBottomSheet<T extends { id: string }>({
   emptyInitialText: emptyInitialTextProp,
   emptySubText: emptySubTextProp,
   emptyAction,
+  emptyActionAfterSearchOnly,
+  searchErrorText,
+  keepOpenOnSelect = false,
+  resultLimit,
+  limitText,
 }: SearchableBottomSheetProps<T>): ReactElement {
   const placeholder = placeholderProp ?? tr('common.search');
   const emptyInitialText = emptyInitialTextProp ?? tr('components.searchSheet.emptyInitial');
@@ -214,6 +235,15 @@ export function SearchableBottomSheet<T extends { id: string }>({
     userId
   );
 
+  // Whether the last search failed (thrown by searchFn), as opposed to finding nothing
+  const [searchFailed, setSearchFailed] = React.useState(false);
+  const handleSearchStart = useCallback(() => setSearchFailed(false), []);
+  const failedText = searchErrorText ?? tr('components.searchSheet.searchFailed');
+  const handleSearchError = useCallback(() => {
+    // The failure text is a polite live region: it is announced once, there.
+    setSearchFailed(true);
+  }, []);
+
   // Search state via hook
   const {
     searchQuery,
@@ -227,12 +257,23 @@ export function SearchableBottomSheet<T extends { id: string }>({
     searchFn: searchNormalized,
     minQueryLength,
     debounceMs,
+    onSearchStart: handleSearchStart,
+    onSearchError: handleSearchError,
   });
 
   // Snap points
   const snapPoints = useMemo(
     () => customSnapPoints || ['60%', '95%'],
     [customSnapPoints]
+  );
+
+  // A new text is a new search: the failure of the last one no longer applies
+  const handleTextChange = useCallback(
+    (text: string) => {
+      setSearchFailed(false);
+      handleSearchChange(text);
+    },
+    [handleSearchChange]
   );
 
   // Handle sheet changes
@@ -245,6 +286,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
         }
         onClose();
         clearSearch();
+        setSearchFailed(false);
       }
     },
     [onClose, clearSearch, searchTimeoutRef]
@@ -272,9 +314,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
         saveToRecent(item);
       }
       onSelect(item);
-      sheet.dismiss();
+      if (!keepOpenOnSelect) sheet.dismiss();
     },
-    [onSelect, recentItemsKey, saveToRecent]
+    [onSelect, recentItemsKey, saveToRecent, keepOpenOnSelect]
   );
 
   // Render recent items section
@@ -331,6 +373,23 @@ export function SearchableBottomSheet<T extends { id: string }>({
       );
     }
 
+    if (searchFailed && searchQuery.length >= minQueryLength) {
+      return (
+        <View style={dynamicStyles.emptyContainer}>
+          <Icon
+            name="alert-circle-outline"
+            size={iconSize.hero}
+            color={t.status.negative.text}
+            style={styles.emptyIcon}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+          <Text style={dynamicStyles.emptyText} accessibilityLiveRegion="polite">{failedText}</Text>
+          <Button type="secondary" onPress={() => { void performSearchNow(searchQuery); }} testID="sheet-search-retry">{tr('common.retry')}</Button>
+        </View>
+      );
+    }
+
     if (searchQuery.length >= minQueryLength) {
       return (
         <View style={dynamicStyles.emptyContainer}>
@@ -362,7 +421,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
             />
             <Text style={dynamicStyles.emptyText}>{emptyInitialText}</Text>
             <Text style={dynamicStyles.emptySubText}>{emptySubText}</Text>
-            {emptyAction ? <Button type="secondary" onPress={emptyAction.onPress} testID="sheet-empty-action">{emptyAction.label}</Button> : null}
+            {emptyAction && !emptyActionAfterSearchOnly ? <Button type="secondary" onPress={emptyAction.onPress} testID="sheet-empty-action">{emptyAction.label}</Button> : null}
           </>
         )}
       </View>
@@ -375,6 +434,10 @@ export function SearchableBottomSheet<T extends { id: string }>({
     emptyInitialText,
     emptySubText,
     emptyAction,
+    emptyActionAfterSearchOnly,
+    searchFailed,
+    searchErrorText,
+    performSearchNow,
     recentItems,
     renderRecentSection,
     dynamicStyles,
@@ -478,7 +541,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
             placeholderTextColor={t.text.placeholder}
             accessibilityLabel={placeholder}
             value={searchQuery}
-            onChangeText={handleSearchChange}
+            onChangeText={handleTextChange}
             returnKeyType="search"
             autoCapitalize="words"
             autoCorrect={false}
@@ -491,7 +554,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
               style={styles.loader}
             />
           )}
-          {searchQuery.length > 0 && !isLoading && (
+          {searchQuery.length > 0 && (
             <Pressable
               style={styles.clearButton}
               onPress={() => {
@@ -510,13 +573,18 @@ export function SearchableBottomSheet<T extends { id: string }>({
 
         {/* Results List */}
         <BottomSheetFlatList
-          data={results}
+          data={resultLimit ? results.slice(0, resultLimit) : results}
           renderItem={wrappedRenderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={[styles.listContent, { paddingBottom: space.xl + insets.bottom }]}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={ListEmptyComponent}
+          ListFooterComponent={
+            resultLimit && limitText && results.length > resultLimit ? (
+              <Text style={[dynamicStyles.emptySubText, { paddingTop: space.md }]} accessibilityLiveRegion="polite">{limitText}</Text>
+            ) : null
+          }
           ItemSeparatorComponent={() => <View style={dynamicStyles.separator} />}
         />
       </View>

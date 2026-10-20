@@ -178,7 +178,9 @@ describe('a facility that approves', () => {
     // A second open while one is running is refused (and said so) without touching the first.
     expect(await openFacility('https://other.example.test', 'Other')).toMatchObject({ kind: 'failed', reason: 'busy' });
     expect(getCentralState().opening).toBe(ORIGIN);
-    expect(getCentralState().outcome).toMatchObject({ origin: 'https://other.example.test', outcome: { reason: 'busy' } });
+    // Said in a dialog at once, not published as an answer.
+    expect(getCentralState().outcome).toBeNull();
+    expect(showAlert).toHaveBeenCalledWith('Operation in progress', `Still opening ${NAME}. Wait for it to finish.`);
     await opening;
     const published = getCentralState().outcome;
     expect(getCentralState().opening).toBeNull();
@@ -202,14 +204,15 @@ describe('a facility that approves', () => {
     mockActive = server;
     mockAuth = auth;
     setCentralState(central);
-    const busy = { kind: 'failed', reason: 'busy', message: 'Finish the current operation before switching facilities.' };
+    const busy = { kind: 'failed', reason: 'busy', message: 'This phone is still finishing the sign-out. Try again in a few seconds.' };
     expect(await openFacility(ORIGIN, NAME)).toEqual(busy);
     expect(mockEvents).toEqual([]);
     expect(tokenMock).not.toHaveBeenCalled();
     expect(exchangeMock).not.toHaveBeenCalled();
     expect(getCentralState().opening).toBeNull();
-    // Not silent: the list shows the busy message like any other refusal.
-    expect(getCentralState().outcome).toMatchObject({ origin: ORIGIN, name: NAME, outcome: busy });
+    // Not silent: a dialog says so at once, and no answer is published.
+    expect(showAlert).toHaveBeenCalledWith('Still signing out', busy.message);
+    expect(getCentralState().outcome).toBeNull();
   });
 
   it('a busy refusal never overwrites an answer that is still waiting to be shown', async () => {

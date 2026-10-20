@@ -20,6 +20,11 @@ export const central = {
     emptyMessage: 'Add the cold storage you work with. Each one decides what you can see.',
     loading: 'Loading your facilities',
     opening: 'Opening {{facility}}…',
+    // Shown when a facility is tapped while the phone is still signing out, or another one is still opening
+    signingOut: 'Signing out…',
+    signingOutTitle: 'Still signing out',
+    signingOutMessage: 'This phone is still finishing the sign-out. Try again in a few seconds.',
+    stillOpening: 'Still opening {{facility}}. Wait for it to finish.',
     // {{status}} is one of the status words below, or of auth.enrollment.status.
     cellLabel: '{{name}}, {{status}}',
     cellLabelCity: '{{name}}, {{city}}, {{status}}',
@@ -80,7 +85,6 @@ export const central = {
     nameHelp: 'A facility sees this name when you ask it for access.',
     nameInvalid: 'Enter a name of up to 80 characters.',
     saveName: 'Save name',
-    savedTitle: 'Name saved',
     saveFailedTitle: "Couldn't save the name",
     signedInAs: 'Signed in with {{phone}}',
     deleteAccount: 'Delete my account',
@@ -89,6 +93,7 @@ export const central = {
     deleteMessage:
       'Your association sign-in and your name are deleted, and you are signed out on every phone. This cannot be undone.\n\nRecords at a cold storage are kept by that cold storage. Ask each one to remove them.',
     deleteFailedTitle: "Couldn't delete the account",
+    deleteUnknownTitle: 'No answer from {{facility}}',
     // "Sign out on all phones" (central service 0.4.0 and later); the dialog says that a cold
     // storage already open on another phone stays open there until the person signs out there.
     signOutAll: 'Sign out on all phones',
@@ -115,6 +120,12 @@ export const central = {
     confirmMessage:
       'Unsaved forms are discarded. You stay signed in to the association and can open this facility again from My facilities.',
     confirmAction: 'Leave',
+    saveInFlight: 'A save is still being sent. Wait a few seconds, then try again.',
+    thisFacility: 'this facility',
+    leftTitle: 'Left {{facility}}',
+    signedOutTitle: 'Signed out',
+    accountDeletedTitle: 'Your account was deleted',
+    cleanupFailed: "Some of {{facility}}'s data couldn't be removed from this phone. Restart the app before someone else uses it.",
   },
   // Inside a facility: end the association sign-in and the facility on this phone.
   // The dialog's message is signOut.confirmMessage.

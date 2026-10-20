@@ -39,40 +39,6 @@ export interface ItemRates {
   rows: ItemStoragePrice[];
 }
 
-export interface ItemSummaryFilters {
-  priceType?: 'all' | PriceType;
-}
-
-export interface ItemSummary {
-  itemId: string;
-  name: string;
-  /** Type of the rate the row shows: monthly if the item has one in force, else one-time, else null. */
-  priceType: PriceType | null;
-  /** The default rates shown in the row. */
-  bands: ItemStoragePrice[];
-  minRent: number | null;
-  maxRent: number | null;
-  /** Labour of the bands when they all agree, else the highest. */
-  labour: number | null;
-  /** The lowest labour of the bands (equal to `labour` when they agree). */
-  labourMin: number | null;
-  tax: number | null;
-  /** The highest tax of the bands (equal to `tax` when they agree). */
-  taxMax: number | null;
-  weightMin: number | null;
-  weightMax: number | null;
-  /** Customers who have their own rate in force or coming. */
-  customerRateCount: number;
-  /** Start of the default rate that comes next. */
-  upcomingFrom: string | null;
-  /** The day the rate in force stops, when it does. */
-  rateEnds: string | null;
-  /** No default rate in force on the day. */
-  noRateToday: boolean;
-  /** Rows in the shown scope that cover the same weights. */
-  overlap: boolean;
-}
-
 export const rateState = (row: Pick<ItemStoragePrice, 'effective_from' | 'effective_to'>, day: string): RateState => {
   if (row.effective_to && row.effective_to < day) return 'ended';
   if (row.effective_from > day) return 'upcoming';
@@ -83,16 +49,6 @@ export const scopeKey = (row: Pick<ItemStoragePrice, 'item_id' | 'customer_id' |
   `${row.item_id}|${row.customer_id ?? 'default'}|${row.price_type}`;
 
 const byWeight = (a: ItemStoragePrice, b: ItemStoragePrice) => a.weight_min - b.weight_min || a.weight_max - b.weight_max;
-
-export function groupByItem(rows: ItemStoragePrice[], items: ActiveItem[]): ItemRates[] {
-  const byItem = new Map<string, ItemStoragePrice[]>();
-  for (const r of rows) {
-    const list = byItem.get(r.item_id);
-    if (list) list.push(r);
-    else byItem.set(r.item_id, [r]);
-  }
-  return items.map(item => ({ item, rows: byItem.get(item.id) ?? [] }));
-}
 
 export function scopeView(rows: ItemStoragePrice[], day: string): ScopeView {
   const inForce: ItemStoragePrice[] = [];
@@ -144,63 +100,4 @@ export function applicableRate(
     if (own.length > 0) return pick(own);
   }
   return pick(rows.filter(r => r.customer_id === null && holds(r)));
-}
-
-const TYPES: PriceType[] = ['monthly', 'one_time'];
-
-/** The figures of one item row on the list, for the day. */
-export function itemSummary(itemRates: ItemRates, day: string, filters: ItemSummaryFilters = {}): ItemSummary {
-  const { item, rows } = itemRates;
-  const defaults = rows.filter(r => r.customer_id === null);
-  const typeFilter = filters.priceType && filters.priceType !== 'all' ? filters.priceType : null;
-
-  // Each scope's view is worked out once per call.
-  const views = new Map<string, ScopeView>();
-  const viewOf = (type: PriceType, customerId: string | null): ScopeView => {
-    const key = `${type}|${customerId ?? ''}`;
-    let view = views.get(key);
-    if (!view) {
-      view = scopeView(rows.filter(r => r.price_type === type && r.customer_id === customerId), day);
-      views.set(key, view);
-    }
-    return view;
-  };
-
-  const candidates = typeFilter ? [typeFilter] : TYPES;
-  const headline = candidates.find(type => viewOf(type, null).inForce.length > 0) ?? null;
-  const defaultView = headline ? viewOf(headline, null) : null;
-
-  const bands = defaultView?.inForce ?? [];
-  const shownType = headline;
-
-  // Customers with a rate of their own (in force or coming), not those whose rates all ended.
-  const customers = new Set<string>();
-  for (const r of rows) {
-    if (r.customer_id && rateState(r, day) !== 'ended') customers.add(r.customer_id);
-  }
-
-  const upcomingStarts = TYPES.map(type => viewOf(type, null).upcoming?.startsOn).filter((d): d is string => Boolean(d));
-  const anyDefaultInForce = defaults.some(r => rateState(r, day) === 'inForce');
-  const hasShown = bands.length > 0;
-  const labours = bands.map(b => b.labour_rate);
-
-  return {
-    itemId: item.id,
-    name: item.name,
-    priceType: hasShown ? shownType : null,
-    bands,
-    minRent: hasShown ? Math.min(...bands.map(b => b.unit_price)) : null,
-    maxRent: hasShown ? Math.max(...bands.map(b => b.unit_price)) : null,
-    labour: hasShown ? Math.max(...labours) : null,
-    labourMin: hasShown ? Math.min(...labours) : null,
-    tax: hasShown ? Math.min(...bands.map(b => b.tax_percent)) : null,
-    taxMax: hasShown ? Math.max(...bands.map(b => b.tax_percent)) : null,
-    weightMin: hasShown ? Math.min(...bands.map(b => b.weight_min)) : null,
-    weightMax: hasShown ? Math.max(...bands.map(b => b.weight_max)) : null,
-    customerRateCount: customers.size,
-    upcomingFrom: upcomingStarts.length > 0 ? upcomingStarts.sort()[0] : null,
-    rateEnds: defaultView?.stopsAfter ?? null,
-    noRateToday: !anyDefaultInForce,
-    overlap: Boolean(defaultView?.overlap),
-  };
 }

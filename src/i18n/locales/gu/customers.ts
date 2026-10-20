@@ -25,10 +25,26 @@ export const customers: Translation<typeof source> = {
     couldNotUpdateTitle: 'વેપારીની વિગતો બદલી શકાઈ નથી',
     tryAgainInAMoment: 'થોડી વાર પછી ફરી પ્રયાસ કરો.',
     refreshFailed: 'વેપારીઓ તાજા કરી શકાયા નથી. {{time}} ની યાદી બતાવી છે.',
+    // Draft for the owner's wording review (Customers review, 2026-10-20).
+    deactivatedToast: '{{name}} નિષ્ક્રિય કર્યા.',
+    activatedToast: '{{name}} સક્રિય કર્યા.',
+    filterAll: 'બધા',
+    filterDeactivated: 'નિષ્ક્રિય',
+    filterLabel: 'વેપારીઓ બતાવો',
+    deactivatedCount: '{{count}} નિષ્ક્રિય',
+    noDeactivatedTitle: 'કોઈ નિષ્ક્રિય વેપારી નથી',
+    noDeactivatedMessage: 'તમે નિષ્ક્રિય કરેલા વેપારીઓ અહીં દેખાશે.',
+    showAll: 'બધા વેપારીઓ બતાવો',
+    cappedFooter: '{{total}} માંથી પહેલા {{shown}} વેપારીઓ બતાવ્યા છે.',
+    updating: '{{name}} બદલાઈ રહ્યા છે',
+    couldNotActivateNamed: '{{name}} ને સક્રિય કરી શકાયા નથી',
+    mobileInUse: '{{other}} આ મોબાઇલ નંબર પહેલેથી વાપરે છે. પહેલા બેમાંથી એક નંબર બદલો.',
+    openOther: '{{other}} ખોલો',
   },
   search: {
     title: 'વેપારી પસંદ કરો',
     placeholder: 'વેપારી શોધો',
+    failed: 'વેપારીની શોધ થઈ શકી નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     close: 'વેપારીની શોધ બંધ કરો',
     searching: 'શોધી રહ્યા છીએ…',
     searchingLabel: 'શોધી રહ્યા છીએ',
@@ -80,17 +96,23 @@ export const customers: Translation<typeof source> = {
       other: 'આગળ વધવા {{count}} વિગતો સુધારો.',
     },
     duplicateTitle: '{{name}} પહેલેથી છે',
-    duplicateMessage: 'તેમનો મોબાઇલ નંબર {{mobile}} છે. તેમને ખોલવા છે, કે તો પણ નવા વેપારી ઉમેરવા છે?',
     duplicateNameMessage: 'તેમનો મોબાઇલ નંબર {{mobile}} છે. નામ અલગ હોવું જોઈએ. તેમને ખોલો, અથવા નામ બદલો.',
     saveCustomer: 'વેપારી સાચવો',
     openExisting: 'વેપારી ખોલો',
-    addAnyway: 'તો પણ ઉમેરો',
+    // Draft for the owner's wording review (Customers review, 2026-10-20).
+    deactivatedTitle: '{{name}} નિષ્ક્રિય છે',
+    deactivatedMessage: 'તેમને ફરી સક્રિય કરવા ખોલો, કે નવા વેપારી ઉમેરવા છે?',
+    deactivatedNameMessage: 'તેમને ફરી સક્રિય કરવા ખોલો, અથવા નવા વેપારી માટે અલગ નામ વાપરો.',
+    addNew: 'નવા વેપારી ઉમેરો',
+    useDifferentName: 'અલગ નામ વાપરો',
   },
   // The customer page (app/customer/[id].tsx)
   page: {
     loadFailed: 'આ વેપારી ખોલી શકાયા નથી. તમારું કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
     activate: 'વેપારી સક્રિય કરો',
     tabOverview: 'સારાંશ',
+    // Draft for the owner's wording review (Customers review, 2026-10-20).
+    refreshFailed: 'આ વેપારીની વિગતો તાજી કરી શકાઈ નથી. {{time}} ની વિગતો બતાવી છે.',
   },
   // Short field names on the customer page.
   fields: {
@@ -110,7 +132,13 @@ export const customers: Translation<typeof source> = {
     addedToast: '{{name}} ઉમેરાયા.',
     savedToast: '{{name}} સચવાયા.',
     duplicateName: 'આ નામનો વેપારી પહેલેથી છે. અલગ નામ વાપરો.',
-    duplicateMobile: 'આ મોબાઇલ નંબરનો વેપારી પહેલેથી છે.',
+    // Draft for the owner's wording review (Customers review, 2026-10-20).
+    duplicateMobile: 'બીજા વેપારી આ મોબાઇલ નંબર પહેલેથી વાપરે છે. અલગ નંબર વાપરો.',
+    duplicateMobileNamed: '{{name}} આ મોબાઇલ નંબર પહેલેથી વાપરે છે. અલગ નંબર વાપરો.',
+    staleTitle: 'વેપારીની વિગતો બદલાઈ છે',
+    staleMessage: 'બીજા કોઈએ આ વેપારીની વિગતો બદલી છે. તેમના ફેરફાર જોવા ફરી લોડ કરો.',
+    staleAfterTimeout: 'તમારો છેલ્લો સેવ કદાચ થઈ ગયો હશે. આ વેપારી હવે જેવા છે તેવા જોવા ફરી લોડ કરો.',
+    reload: 'ફરી લોડ કરો',
   },
   validation: {
     nameRequired: 'વેપારીનું નામ લખો.',

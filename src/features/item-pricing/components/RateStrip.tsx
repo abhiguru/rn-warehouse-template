@@ -13,8 +13,12 @@ import { iconSize, radius, space, typography, type ThemeTokens } from '@/theme/t
 
 export interface RateStripAction {
   label: string;
+  /** What a screen reader says when the label alone does not say which rate ("Cancel the rate from 1 Nov 2026"). */
+  a11yLabel?: string;
   onPress: () => void;
   disabled?: boolean;
+  /** Said by a screen reader after the label (why the action is off). */
+  a11yHint?: string;
   /** Draw the action in the destructive colour. */
   negative?: boolean;
   testID?: string;
@@ -64,6 +68,8 @@ export function RateStrip({ variant, message, actions, testID }: RateStripProps)
               variant={action.negative ? 'negative' : 'tint'}
               onPress={action.onPress}
               disabled={action.disabled}
+              accessibilityLabel={action.a11yLabel}
+              accessibilityHint={action.a11yHint}
               testID={action.testID}
             >
               {action.label}

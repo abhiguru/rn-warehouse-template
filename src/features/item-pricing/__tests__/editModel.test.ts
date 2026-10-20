@@ -239,7 +239,7 @@ describe('validate', () => {
   it('rejects a rent with three decimals or letters', () => {
     const { draft, context } = ctxFor(cuminRows, CUMIN);
     const bad = { ...startingOn(draft, '2027-01-01'), bands: [{ upTo: '100', rent: '12.345' }] };
-    expect(validate(bad, context).errors['band.0.rent']).toBe('Enter a rent of 0 or more.');
+    expect(validate(bad, context).errors['band.0.rent']).toBe('Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.');
   });
 
   it('with no rate to copy, tax is empty and required', () => {
@@ -442,61 +442,6 @@ describe('rowsInForce', () => {
     expect(rowsInForce(rows, scope, '2026-10-14')).toHaveLength(1);
     expect(rowsInForce(rows, scope, '2026-10-15')).toHaveLength(0);
     expect(rowsInForce(rows, scope, '2025-12-31')).toHaveLength(0);
-  });
-});
-
-describe('the invoice entry', () => {
-  const orchardB = [
-    ...onionRows,
-  ];
-  const line = {
-    item_id: ONION,
-    item_name: 'Review Onion Red',
-    customer_id: ORCH_B,
-    customer_name: 'Review Orchard B',
-    price_type: 'monthly',
-    unit_price: '3.2',
-    labour_rate: '1.75',
-    tax_percent: '5',
-    weight_min: '0',
-    weight_max: '60',
-    grn_date: '2026-05-02',
-  };
-
-  it('admin, customer has an own rate: corrects it, with the line values in the fields', () => {
-    const { draft, context } = open('invoice', line, orchardB, 'admin');
-    expect(context.mode).toBe('correct');
-    expect(context.customerId).toBe(ORCH_B);
-    expect(draft.startsOn).toBe('2026-01-01');
-    expect(draft.startsOnChoice).toBe('fixed');
-    expect(draft.bands).toEqual([{ upTo: '100', rent: '3.20' }]);
-    expect(draft.labour).toBe('1.75');
-    expect(context.invoice).toMatchObject({ grnDate: '2026-05-02', customerName: 'Review Orchard B' });
-  });
-
-  it('admin, no own rate: adds a customer rate from the received day, bands copied from the default', () => {
-    const { draft, context } = open('invoice', { ...line, customer_id: ORCH_A, customer_name: 'Review Orchard A' }, onionRows, 'admin');
-    expect(context.mode).toBe('addCustomer');
-    expect(draft.startsOn).toBe('2026-05-02');
-    expect(draft.startsOnChoice).toBe('received');
-    // 0-100 like the default, not 0-60 like the line; the line's figures go to the band that holds 60.
-    expect(draft.bands).toEqual([{ upTo: '100', rent: '3.20' }]);
-    expect(draft.labour).toBe('1.75');
-    expect(draft.tax).toBe('5');
-  });
-
-  it('no default rate either: one band up to the larger of 100 and the line weight', () => {
-    const { draft } = open('invoice', { ...line, customer_id: ORCH_A, item_id: 'item-new', weight_max: '150' }, [], 'admin');
-    expect(draft.bands).toEqual([{ upTo: '150', rent: '3.20' }]);
-    expect(draft.labour).toBe('1.75');
-    expect(draft.tax).toBe('5');
-    const small = open('invoice', { ...line, customer_id: ORCH_A, item_id: 'item-new' }, [], 'admin');
-    expect(small.draft.bands[0].upTo).toBe('100');
-  });
-
-  it('two bands in the default: the line values go to the band holding the line weight only', () => {
-    const { draft } = open('invoice', { ...line, item_id: GARLIC, customer_id: ORCH_A, weight_max: '60' }, garlicRows, 'admin');
-    expect(draft.bands.map(b => [b.upTo, b.rent])).toEqual([['40', '6.00'], ['100', '3.20']]);
   });
 });
 

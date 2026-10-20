@@ -1,10 +1,11 @@
 /**
  * The state and the save flow of one rate form: opening a draft from the item's rows, the edits, whether
  * anything changed, and the save with every answer of replace_item_rates mapped to what the person sees.
- * Ported from app/item-rates/edit.tsx, which now uses it; the item page's rate boxes use it too.
+ * Used by the rate boxes of the item page and the customer's rate pages.
  *
  * The hook does not load the rows: the caller reads them (listItemRates / the session cache) and passes them
- * in, `null` while they load. A new `rows` array opens a new draft. `refreshRows` is called when the server says
+ * in, `null` while they load. A new `rows` array opens a new draft, except while figures are being typed: the typing is kept
+ * and `rowsChanged` says so (see below); the context follows the new rows. `refreshRows` is called when the server says
  * the rates changed meanwhile (STALE_RATES): the caller reads them again and passes the new array.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -16,7 +17,6 @@ import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/it
 import { showToast } from '@/utils/toast';
 import { notifyRatesChanged, type EditorMode, type EditorParams } from './contract';
 import {
-  appendEmptyBand,
   copyTiersFrom,
   fieldOrder,
   hasChanges,
@@ -24,6 +24,8 @@ import {
   resyncToday,
   savedStop,
   setStartsOn as withStartsOn,
+  rentErrors,
+  scopeRowsKey,
   switchNewRateType,
   toReplaceInput,
   validate,
@@ -49,8 +51,8 @@ export interface UseRateEditorArgs {
   priceType?: PriceType;
   mode: EditorMode;
   /**
-   * The other editor params it needs: `starts_on` and `weight_max` (and the rest of the invoice line) for
-   * 'correct', 'upcoming' and 'invoice'; `add_band: '1'` for one more empty band. `item_id`, `item_name`,
+   * The other editor params it needs: `starts_on` for
+   * 'correct' and 'upcoming'. `item_id`, `item_name`,
    * `customer_id`, `customer_name`, `price_type` and `mode` come from the other args.
    */
   params?: Partial<EditorParams>;
@@ -73,7 +75,7 @@ export interface UseRateEditor {
   /** A draft is open for the current `rows`. */
   ready: boolean;
   draft: Draft | undefined;
-  /** The draft as it opened (before the empty band of `add_band`): `dirty` compares with it. */
+  /** The draft as it opened: `dirty` compares with it. */
   initial: Draft | undefined;
   ctx: EditorContext | undefined;
   /** Field errors by key (`startsOn`, `labour`, `tax`, `firstFrom`, `bands`, `band.N.upTo|from|rent|labour|tax`). */
@@ -85,6 +87,11 @@ export interface UseRateEditor {
   later: LaterRates | null;
   /** The name of the item whose bands were copied into the draft. */
   copiedFrom: string | null;
+  /**
+   * The rows changed (another phone, a background read) while the figures were being typed: the typing is kept as it is
+   * and the screen says so. Saving then sends the rows now held.
+   */
+  rowsChanged: boolean;
   /** The oldest day a rate may start (learned from the server when it refused a day). */
   earliest: string | null | undefined;
   /** Something was changed and the form is not manager-only: ask before leaving. */
@@ -124,14 +131,20 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const [later, setLater] = useState<LaterRates | null>(null);
   // The item whose tiers were copied into the draft (names the note under the start day).
   const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
+  const [rowsChanged, setRowsChanged] = useState(false);
+  // The rows that come after this phone's own save close the form as saved; they are not "changed on another phone".
+  const ownSave = useRef(false);
+  // This phone's own save got no answer (timed out): the rows that come back may be that save, not another phone.
+  const maybeSaved = useRef(false);
   const checked = useRef(false);
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
 
   // ---- open a draft whenever a set of rows arrives (also the same array again after the rows were null) ----
-  if (!rows && core) {
-    setCore(null);
-  } else if (rows && core?.rows !== rows) {
+  const openDraft = (fromRows: ItemStoragePrice[]) => {
+    ownSave.current = false;
+    maybeSaved.current = false;
+    setRowsChanged(false);
     const openParams = {
       ...params,
       mode,
@@ -141,16 +154,49 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       customer_name: customer?.name,
       price_type: priceType,
     } as EditorParams;
-    const opened = initialDraft({ mode, params: openParams, rows, role, today: todayNow(), earliest: getRateStartFloor() });
-    // The Add button of the list asks for one more empty band; `initial` stays without it, so leaving untouched asks first.
-    const draft = params?.add_band === '1' ? appendEmptyBand(opened.draft) : opened.draft;
-    setCore({ rows, draft, initial: opened.draft, ctx: opened.context });
+    const opened = initialDraft({ mode, params: openParams, rows: fromRows, role, today: todayNow(), earliest: getRateStartFloor() });
+    setCore({ rows: fromRows, draft: opened.draft, initial: opened.draft, ctx: opened.context });
     // The draft is rebuilt from the server: it no longer holds another item's copied bands, nor the errors of the last
     // one. The strip stays: a refused save (STALE_RATES) reads the rows again and the message is for the new draft.
     setCopiedFrom(null);
     setErrors({});
     setLater(null);
     checked.current = false;
+  };
+  if (!rows && core) {
+    setCore(null);
+  } else if (rows && core && core.rows !== rows) {
+    if (JSON.stringify(core.rows) === JSON.stringify(rows)) {
+      // The same content read again (a refresh that found nothing new): swap the array and keep the typing, silently.
+      setCore({ ...core, rows });
+    } else if (!ownSave.current && !maybeSaved.current && !core.ctx.managerOnly && hasChanges(core.draft, core.initial)) {
+      // Figures are being typed: new rows (a pull to refresh, a background read) must not replace them.
+      const { customerId } = core.ctx;
+      const type = core.draft.priceType;
+      if (scopeRowsKey(core.rows, customerId, type) === scopeRowsKey(rows, customerId, type)) {
+        // Only other rows of the item changed (another customer's rate, the other price type): this rate is as it was.
+        setCore({ ...core, rows, ctx: { ...core.ctx, rows } });
+      } else {
+        // The rows of this rate changed: Save must send the rows now held (p_seen_rows), with the typing kept.
+        const opened = initialDraft({
+          mode,
+          params: { ...params, mode, item_id: item.id, item_name: item.name, customer_id: customer?.id, customer_name: customer?.name, price_type: type } as EditorParams,
+          rows,
+          role,
+          today: todayNow(),
+          earliest: core.ctx.earliestStart ?? getRateStartFloor(),
+        });
+        setCore({ ...core, rows, ctx: { ...opened.context, copied: core.ctx.copied } });
+        setRowsChanged(true);
+      }
+    } else {
+      openDraft(rows);
+    }
+  } else if (rows && !core) {
+    openDraft(rows);
+  } else if (rows && core && rowsChanged && !hasChanges(core.draft, core.initial)) {
+    // The typing was undone after the rows changed: rebuild from the rows now held and drop the warning.
+    openDraft(core.rows);
   }
 
   const ready = !!rows && !!core && core.rows === rows;
@@ -159,6 +205,8 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const ctx = open?.ctx;
 
   const setDraft = useCallback((next: Draft) => {
+    ownSave.current = false;
+    maybeSaved.current = false;
     setCore(current => (current ? { ...current, draft: next } : current));
     setStrip(null);
     if (checked.current && ctx) setErrors(validate(next, ctx).errors);
@@ -190,6 +238,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   };
 
   const finish = (data: Draft, context: EditorContext, keptEndDay?: string | null) => {
+    ownSave.current = true;
     notifyRatesChanged(context.itemId);
     const message =
       context.mode === 'correct'
@@ -258,11 +307,13 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       if (result.errorCode === 'STALE_RATES') {
         // Someone changed the rates meanwhile: load them again and say so.
         setStrip(result.message ?? t('pricing.error.generic'));
+        // The typed figures stay: the rows the read brings replace the ones sent, and Save sends those.
         refreshRows();
         return;
       }
       if (result.outcomeUnknown) {
-        // The change may be saved: the pages behind read the item again.
+        // The change may be saved: the pages behind read the item again, and the rows that come back are not "another phone".
+        maybeSaved.current = true;
         notifyRatesChanged(context.itemId);
       }
       if (result.errorCode === 'BANDS_OVERLAP' || result.errorCode === 'BANDS_GAP') {
@@ -299,13 +350,15 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     draft,
     initial: open?.initial,
     ctx,
-    errors,
+    // The rent message shows as soon as a key is refused or a stored rent is too high, before Save.
+    errors: draft ? { ...rentErrors(draft), ...errors } : errors,
     strip,
     saving,
     later,
     copiedFrom,
     earliest: ctx?.earliestStart,
     dirty,
+    rowsChanged,
     order,
     setDraft,
     setStartsOn,

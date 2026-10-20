@@ -7,9 +7,9 @@
  * deletion); Help and about (Help, terms, privacy); Development (development
  * builds only); the app version.
  */
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -46,6 +46,7 @@ import {
 import { roleLabel as roleName } from '@/utils/roleLabel';
 import { settingsFeatureRows, type SettingsFeature } from '@/config/roles';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { countPendingEnrollments } from '@/services/enrollmentReviewService';
 import { useFacilityCapabilities } from '@/hooks/useCapability';
 
 const THEME_OPTIONS: {
@@ -83,6 +84,8 @@ const SettingsScreen: React.FC = () => {
   const { language, preference: languagePreference, setPreference: setLanguagePreference } = useAppLanguage();
   // A language change rebuilds this screen; the sheet that made it opens again.
   const [sheet, setSheet] = useState<PreferenceSheetId | null>(takeRememberedSheet);
+  // How many access requests wait, read each time Settings is shown (administrators only). Null: none, or not readable.
+  const [waitingRequests, setWaitingRequests] = useState<number | null>(null);
 
   const languageOptions: { value: LanguagePreference; label: string; accessibilityLabel: string; icon: string }[] = [
     { value: 'system', label: t('settings.language.system'), accessibilityLabel: t('settings.language.system'), icon: 'cellphone' },
@@ -109,27 +112,41 @@ const SettingsScreen: React.FC = () => {
 
   // Feature rows by role: the same table the server uses (src/config/roles.ts). A row of a
   // capability this facility does not have (Sensors) is not shown.
-  const FEATURE_ROWS: Record<SettingsFeature, { icon: string; label: string; subtitle: string; route: string }> = {
+  const FEATURE_ROWS: Record<SettingsFeature, { icon: string; label: string; subtitle: string; value?: string; route: string }> = {
     customers: { icon: 'account-outline', label: t('common.customers'), subtitle: t('settings.features.customersSubtitle'), route: '/customers' },
     enrollmentReview: {
       icon: 'account-plus-outline',
       label: t('auth.review.screenTitle'),
       subtitle: t('settings.features.enrollmentReviewSubtitle'),
+      value: waitingRequests ? t('settings.features.enrollmentReviewWaiting', { count: waitingRequests }) : undefined,
       route: '/enrollment-review',
     },
     items: { icon: 'cube-outline', label: t('common.items'), subtitle: t('settings.features.itemsSubtitle'), route: '/items' },
     users: { icon: 'account-circle-outline', label: t('users.list.title'), subtitle: t('settings.features.usersSubtitle'), route: '/users' },
-    itemPricing: { icon: 'tag-outline', label: t('settings.features.itemPricing'), subtitle: t('settings.features.itemPricingSubtitle'), route: '/item-pricing' },
     standardRate: { icon: 'tag-multiple-outline', label: t('settings.features.standardRate'), subtitle: t('settings.features.standardRateSubtitle'), route: '/standard-rate' },
     sensors: { icon: 'thermometer', label: t('settings.features.sensors'), subtitle: t('settings.features.sensorsSubtitle'), route: '/sensors' },
   };
   const featureRows = settingsFeatureRows(userProfile?.role, capabilities);
+  const showsRequests = featureRows.includes('enrollmentReview');
+  useFocusEffect(useCallback(() => {
+    if (!showsRequests) { setWaitingRequests(null); return undefined; }
+    let current = true;
+    countPendingEnrollments()
+      .then(count => { if (current) setWaitingRequests(count > 0 ? count : null); })
+      .catch(() => { if (current) setWaitingRequests(null); });
+    return () => { current = false; };
+  }, [showsRequests]));
 
   // The server in use, named under "Change warehouse server" (as Help names the facility).
   const activeServer = getActiveOperatorServer();
   const serverName = activeServer ? activeServer.companyName || activeServer.displayName : '';
 
+  // With central login the card also names the facility the person is in: "Admin · North Cold Store".
   const roleLabel = roleName(userProfile?.role);
+  const roleLine =
+    account.mode !== 'legacy' && account.facilityName
+      ? t('settings.profileRoleAtFacility', { role: roleLabel, facility: account.facilityName })
+      : roleLabel;
   const profileName = userProfile?.name || t('users.fallbackName');
   const themeLabel = t(THEME_OPTIONS.find(option => option.value === themePreference)?.label ?? 'settings.appearance.system');
   const languageLabel = languageOptions.find(option => option.value === languagePreference)?.label ?? t('settings.language.system');
@@ -157,13 +174,13 @@ const SettingsScreen: React.FC = () => {
           style={({ pressed }) => [styles.profileCard, pressed && styles.rowPressed]}
           onPress={() => router.push('/profile')}
           accessibilityRole="button"
-          accessibilityLabel={`${profileName}, ${roleLabel}`}
+          accessibilityLabel={`${profileName}, ${roleLabel}${account.mode !== 'legacy' && account.facilityName ? `, ${account.facilityName}` : ''}`}
           accessibilityHint={t('settings.profileHint')}
         >
           <Avatar name={profileName} id={userProfile?.id} size="lg" />
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{profileName}</Text>
-            <Text style={styles.profileRole}>{roleLabel}</Text>
+            <Text style={styles.profileRole}>{roleLine}</Text>
           </View>
           <Icon name="chevron-right" size={iconSize.md} color={tokens.icon.secondary} />
         </Pressable>
@@ -178,6 +195,7 @@ const SettingsScreen: React.FC = () => {
                 icon={FEATURE_ROWS[feature].icon}
                 label={FEATURE_ROWS[feature].label}
                 subtitle={FEATURE_ROWS[feature].subtitle}
+                value={FEATURE_ROWS[feature].value}
                 onPress={() => router.push(FEATURE_ROWS[feature].route as never)}
                 last={index === featureRows.length - 1}
               />
@@ -240,8 +258,9 @@ const SettingsScreen: React.FC = () => {
               testID="account-delete"
               icon="trash-can-outline"
               label={account.deletion.label}
-              subtitle={account.deletion.subtitle}
+              subtitle={account.deletion.checking ? t('common.checking') : account.deletion.subtitle}
               onPress={account.deletion.open}
+              busy={account.deletion.checking}
               showChevron={false}
               destructive
               last

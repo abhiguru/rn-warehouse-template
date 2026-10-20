@@ -20,10 +20,10 @@ import { Input } from '@/components/ui/Input';
 import { SegmentedControl } from '@/components/ui/RadioButton';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { wholeKg } from '@/features/item-pricing/editModel';
-import { TABLE_FALLBACK_SCALE } from '@/features/item-pricing/components/BandsTable';
+import { figuresStack } from '@/features/item-pricing/figureRow';
 import { addDays, bandText, dateText, money } from '@/features/item-pricing/rateText';
 import { RateChangeDialog, rateChangeSummary } from './RateChangeDialog';
-import { priceNumber } from '@/features/item-pricing/utils/priceNumbers';
+import { acceptRentText, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { showAlert } from '@/utils/alert';
 import { formatIdentifier, localizeDigits, t } from '@/i18n';
@@ -68,7 +68,7 @@ const text = (n: number | null): string => (n === null ? '' : String(Math.round(
 const rupees = (n: number | null): string => (n === null ? '' : n.toFixed(2));
 /** What a − or + press adds, and the most a figure may be (owner, 2026-10-17). */
 const STEP = { rent: 0.25, labour: 0.25, tax: 1, from: 1, upTo: 1 } as const;
-const MAX = { rent: 999999, labour: 999999, tax: 100, from: 100000, upTo: 100000 } as const;
+const MAX = { rent: RENT_MAX, labour: 999999, tax: 100, from: 100000, upTo: 100000 } as const;
 type StepKey = keyof typeof STEP;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -221,11 +221,13 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, width: windowWidth } = useWindowDimensions();
   const oneTime = input.ctx.priceType === 'one_time';
   const adding = row !== null && row.rate === null;
-  // Large text: the figures stack, one under another (as the rate tables fall back to cards).
-  const stackFigures = (fontScale || 1) >= TABLE_FALLBACK_SCALE;
+  // Large text, or a field too narrow for the widest rent (9999.99): the figures stack, one under another (as the rate tables fall back to cards).
+  const stackFigures = figuresStack({ width: windowWidth, fontScale, count: oneTime ? 2 : 3, edge: layout.marginCompact });
+  // From and Up to are two fields in a row, whatever the figures below hold.
+  const stackPair = figuresStack({ width: windowWidth, fontScale, count: 2, edge: layout.marginCompact });
 
   const preload = useMemo(
     () => (row ? (row.rate ? preloadChange(row, row.rate, input) : preloadAdd(row, input)) : null),
@@ -260,7 +262,8 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     setLabour(rupees(preload.figures.labour_rate));
     setTax(text(preload.figures.tax_percent));
     setTo(preload.to);
-    setErrors({});
+    // A loaded rent above the limit says so at once.
+    setErrors(preload.figures.unit_price !== null && preload.figures.unit_price > RENT_MAX ? { rent: t('pricing.edit.err.rent') } : {});
     setFacts(null);
     setExplainOpen(false);
     setReferenceOpen(false);
@@ -280,7 +283,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     const next: Record<string, string> = bandProblems(from, upTo);
     const min = wholeKg(from);
     const max = wholeKg(upTo);
-    const unit = priceNumber(rent, 2);
+    const unit = rentNumber(rent);
     if (unit === null) next.rent = t('pricing.edit.err.rent');
     const labourRate = oneTime ? 0 : priceNumber(labour, 2);
     if (labourRate === null) next.labour = t('pricing.edit.err.labour');
@@ -399,7 +402,8 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     const now = (kg ? wholeKg(value) : priceNumber(value, 2)) ?? 0;
     const next = Math.min(MAX[key], Math.max(0, round2(now + dir * STEP[key])));
     const stepText = kg ? `${localizeDigits(String(STEP[key]))} ${t('pricing.kg')}` : key === 'tax' ? `${localizeDigits(String(STEP.tax))}%` : money(STEP[key]);
-    const disabled = next === now;
+    const disabled = next === now || (dir > 0 && now >= MAX[key]);
+    const toMax = dir < 0 && now > MAX[key];
     // A weight stepped is checked at once, as when its field is left.
     const press = kg
       ? () => { set(String(next)); checkBand(key === 'from' ? String(next) : from, key === 'upTo' ? String(next) : upTo); }
@@ -411,7 +415,11 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
         onPress={press}
         disabled={disabled}
         accessibilityRole="button"
-        accessibilityLabel={t(dir < 0 ? 'grn.rates.sheet.stepDown' : 'grn.rates.sheet.stepUp', { field: name, step: stepText })}
+        accessibilityLabel={
+          toMax
+            ? t('grn.rates.sheet.stepDownToMax', { field: name, amount: money(MAX[key]) })
+            : t(dir < 0 ? 'grn.rates.sheet.stepDown' : 'grn.rates.sheet.stepUp', { field: name, step: stepText })
+        }
         accessibilityState={{ disabled }}
         testID={`rate-${key}-${dir < 0 ? 'down' : 'up'}`}
       >
@@ -444,7 +452,21 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
       numeric
       selectTextOnFocus
       value={value}
-      onChangeText={set}
+      onChangeText={
+        key === 'rent'
+          ? (typed: string) => {
+              const kept = acceptRentText(value, typed);
+              set(kept);
+              // A refused key says why at once; an accepted one takes the message away.
+              setErrors(e => {
+                // The message stays while a stored rent that is too high is still in the box.
+                if (kept !== typed || (priceNumber(kept, 2) ?? 0) > RENT_MAX) return { ...e, rent: t('pricing.edit.err.rent') };
+                const { rent: _gone, ...rest } = e;
+                return rest;
+              });
+            }
+          : set
+      }
       keyboardType="decimal-pad"
       {...keypadProps(key)}
       error={errors[key]}
@@ -541,12 +563,12 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
             ) : null}
           </View>
 
-          <View style={stackFigures ? styles.stack : styles.figures} onLayout={e => { sectionY.current.band = e.nativeEvent.layout.y; }} testID="rate-band">
-            <View style={stackFigures ? undefined : styles.figure}>
+          <View style={stackPair ? styles.stack : styles.figures} onLayout={e => { sectionY.current.band = e.nativeEvent.layout.y; }} testID="rate-band">
+            <View style={stackPair ? undefined : styles.figure}>
               <Input label={errors.from ? t('grn.rates.sheet.labelRule', { label: t('grn.rates.sheet.fromKg'), rule: errors.from }) : t('grn.rates.sheet.fromKg')} numeric selectTextOnFocus value={from} onChangeText={setFrom} onBlur={() => checkBand()} keyboardType="number-pad" {...keypadProps('from')} invalid={Boolean(errors.from)} accessibilityHint={errors.from} testID="rate-from" />
               {steppers('from', from, setFrom)}
             </View>
-            <View style={stackFigures ? undefined : styles.figure}>
+            <View style={stackPair ? undefined : styles.figure}>
               <Input label={errors.upTo ? t('grn.rates.sheet.labelRule', { label: t('grn.rates.sheet.upToKg'), rule: errors.upTo }) : t('grn.rates.sheet.upToKg')} numeric selectTextOnFocus value={upTo} onChangeText={setUpTo} onBlur={() => checkBand()} keyboardType="number-pad" {...keypadProps('upTo')} invalid={Boolean(errors.upTo)} accessibilityHint={errors.upTo} testID="rate-upto" />
               {steppers('upTo', upTo, setUpTo)}
             </View>

@@ -97,7 +97,7 @@ jest.mock('@/navigation/RouteGuard', () => ({
   GuardedScreen: ({ children }: { children: React.ReactNode }) => children,
   useRootRouteGuard: jest.fn(),
 }));
-jest.mock('@/config/operatorServer', () => ({ onOperatorServerChange: jest.fn(() => () => undefined) }));
+jest.mock('@/config/operatorServer', () => ({ onOperatorServerChange: jest.fn(() => () => undefined), getActiveOperatorServer: jest.fn(() => null) }));
 jest.mock('@/config/operatorBootstrap', () => ({ verifySelectedOperator: jest.fn(), verifyForegroundOperator: jest.fn() }));
 jest.mock('@/config/operatorResume', () => ({
   operatorResumeGate: { installVerifier: jest.fn(() => () => undefined), suspend: jest.fn() },

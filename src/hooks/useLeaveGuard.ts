@@ -9,6 +9,10 @@
  * "Discard" calls `onDiscard` and then carries out the way out that was held.
  * When nothing changed, nothing is asked.
  *
+ * `blocked` holds every one of those ways out without a question while a save is running: a person who
+ * leaves in the middle of a save would be asked "Discard?" for work that is being saved anyway. It ends
+ * with the save (or when `leaveWithoutAsking` is called): a screen is never left while its save finishes behind it.
+ *
  * Any other action that would take the screen off (a `router.replace`, a reset
  * or POP_TO_TOP by the route guard on sign-out or when the session ends) goes
  * through at once without a question.
@@ -45,6 +49,8 @@ export interface LeaveGuardOptions {
   message?: string;
   /** Runs when "Discard" is pressed, before the screen is left. */
   onDiscard?: () => void;
+  /** True while a save runs: the ways back out do nothing until it ends. */
+  blocked?: boolean;
 }
 
 export interface LeaveGuard {
@@ -55,19 +61,21 @@ export interface LeaveGuard {
 /** The ways back out that a person takes: header Back, Back key, back gesture, iOS swipe. */
 const ASKS_FIRST = new Set(['GO_BACK', 'POP']);
 
-export function useLeaveGuard({ hasChanges, title, message, onDiscard }: LeaveGuardOptions): LeaveGuard {
+export function useLeaveGuard({ hasChanges, title, message, onDiscard, blocked = false }: LeaveGuardOptions): LeaveGuard {
   const navigation = useNavigation();
   const [bypass, setBypass] = useState(false);
   // The way out asked for by leaveWithoutAsking, run once the guard is off.
   const pendingLeave = useRef<(() => void) | null>(null);
   const [leaveRequests, setLeaveRequests] = useState(0);
 
-  usePreventRemove(hasChanges && !bypass, ({ data }) => {
+  usePreventRemove((hasChanges || blocked) && !bypass, ({ data }) => {
     const { action } = data;
     if (!ASKS_FIRST.has(action.type)) {
       navigation.dispatch(action);
       return;
     }
+    // A save is running: Back waits for it.
+    if (blocked) return;
     showAlert(
       title ?? t('common.discardChangesTitle'),
       message ?? t('common.discardChangesMessage'),

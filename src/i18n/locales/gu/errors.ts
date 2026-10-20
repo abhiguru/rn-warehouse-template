@@ -132,7 +132,15 @@ export const errors: Translation<typeof source> = {
     otpIncorrectOrExpired: 'OTP ખોટો છે અથવા તેનો સમય પૂરો થઈ ગયો છે. ફરી પ્રયાસ કરો અથવા નવો OTP મગાવો.',
     tooManyAttempts: 'ઘણા બધા પ્રયાસ થયા. ફરી પ્રયાસ કરતાં પહેલાં થોડી મિનિટ રાહ જુઓ.',
     verificationRequired: 'ચકાસણી જરૂરી છે. ફરી પ્રયાસ કરો.',
-    network: 'નેટવર્ક કનેક્શનમાં તકલીફ છે. તમારું ઇન્ટરનેટ તપાસો અને ફરી પ્રયાસ કરો.',
+    network: 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+    timeoutNotSaved: 'સર્વરને બહુ સમય લાગ્યો અને કંઈ સેવ થયું નથી. ફરી પ્રયાસ કરો.',
+    timeoutWrite: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ સેવ થઈ ગયું હોય. નીચે ખેંચીને તપાસો.',
+    // Draft for the owner's wording review (timeout on a form screen, 2026-10-20). Save is સાચવો (glossary), so the text says સચવાઈ.
+    timeoutWriteForm: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ સચવાઈ ગયું હોય. ફરી પ્રયાસ કરતાં પહેલાં યાદીમાં પાછા જઈને તપાસો.',
+    // Draft for the owner's wording review (timeout on a photo upload or removal, 2026-10-20).
+    timeoutDelete: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ કાઢી નંખાયું હોય. નીચે ખેંચીને તપાસો.',
+    timeoutDeleteForm: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ કાઢી નંખાયું હોય. ફરી પ્રયાસ કરતાં પહેલાં યાદીમાં પાછા જઈને તપાસો.',
+    timeoutWritePhoto: 'સર્વરનો જવાબ મળ્યો નથી. ફોટામાં ફેરફાર થઈ ગયો હોય શકે. ફરી પ્રયાસ કરતાં પહેલાં આ સ્ક્રીન પરના ફોટા તપાસો.',
     rateLimitSeconds: 'ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં {{seconds}} સેકન્ડ રાહ જુઓ.',
     rateLimitMinutes: 'ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં {{minutes}} મિનિટ રાહ જુઓ.',
     rateLimit: 'ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં થોડી રાહ જુઓ.',
@@ -443,6 +451,8 @@ export const errors: Translation<typeof source> = {
     lastAdminRole: 'આ છેલ્લા સક્રિય એડમિન છે, તેમનો હોદ્દો બદલી શકાતો નથી. પહેલાં બીજા કોઈ યુઝરને એડમિન બનાવો.',
     enrollmentNotApproved: 'આ યુઝરને મંજૂરી નથી. ફક્ત એડમિન જ આ યુઝરમાં ફેરફાર કરી શકે છે અથવા ફરી મંજૂરી આપી શકે છે.',
     enrollmentPending: 'મંજૂરીની આ વિનંતી હજુ તપાસાઈ નથી. એડમિન તેને મંજૂર કરે પછી જ હોદ્દો બદલી શકાશે.',
+    // Draft for the owner's wording review (Users review 2026-10-20).
+    enrollmentRejected: 'મંજૂરીની આ અરજી નામંજૂર થઈ છે. હોદ્દો બદલતા પહેલાં એડમિને તેને ફરી તપાસવી પડશે.',
     deleteAccountUnexpected: 'એકાઉન્ટ ડિલીટ કરતી વખતે અણધારી ભૂલ આવી',
     retrieved: 'યુઝરની વિગતો લોડ થઈ',
     updated: 'યુઝરની વિગતો સાચવી',

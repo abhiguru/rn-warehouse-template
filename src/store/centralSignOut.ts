@@ -24,7 +24,7 @@ export { LEAVE_RETRY_WAIT_MS } from './operatorSwitch';
  * also in the moments between the store's request flags and the list changes.
  * A count, so one finishing does not release another still running.
  */
-async function whileLeaving<T>(work: () => Promise<T>): Promise<T> {
+export async function whileLeaving<T>(work: () => Promise<T>): Promise<T> {
   setCentralState({ leaving: getCentralState().leaving + 1 });
   try {
     return await work();
@@ -39,19 +39,20 @@ async function whileLeaving<T>(work: () => Promise<T>): Promise<T> {
  * Settings is unmounted and the person is on My facilities, so the message is
  * published there as an answer instead.
  */
-function reportDeletionFailure(server: OperatorServer, message: string): 'reported' {
+function reportDeletionFailure(server: OperatorServer, message: string, unknown = false): 'reported' {
   if (store.getState().auth.userProfile !== null) throw message;
+  const name = server.companyName || server.displayName;
   // An answer already waiting on the list is not overwritten: this one is shown directly.
   if (getCentralState().outcome !== null) {
-    showAlert(t('central.account.deleteFailedTitle'), message);
+    showAlert(unknown ? t('central.account.deleteUnknownTitle', { facility: name || server.origin }) : t('central.account.deleteFailedTitle'), message);
     return 'reported';
   }
   setCentralState({
     outcome: {
       id: nextOutcomeId(),
       origin: server.origin,
-      name: server.companyName || server.displayName,
-      outcome: { kind: 'failed', reason: 'account_deletion', message },
+      name,
+      outcome: { kind: 'failed', reason: unknown ? 'account_deletion_unknown' : 'account_deletion', message },
     },
   });
   return 'reported';
@@ -67,7 +68,7 @@ export type CentralEndOutcome =
   /** Signed out in memory, but the phone's secure storage kept the session; the next start removes it. */
   | { ok: false; reason: 'local_clear_failed' };
 
-/** Leave the selected facility, if there is one: 'busy' while a write is in flight, 'failed' when the cleanup threw. */
+/** Leave the selected facility, if there is one: 'busy' while a write is in flight, 'failed' when the cleanup threw or the phone kept the sign-in. */
 async function leaveSelectedFacility(dispatch: Dispatch): Promise<'left' | 'busy' | 'failed'> {
   if (!getActiveOperatorServer()) return 'left';
   // A failed cleanup must not keep the person signed in: only "busy" stops here.
@@ -121,11 +122,13 @@ export function signOutAllDevices(dispatch: Dispatch): Promise<CentralEndOutcome
  */
 export function deleteAccountEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
   return whileLeaving(async () => {
-    if ((await leaveSelectedFacility(dispatch)) === 'busy') return { ok: false, reason: 'busy' };
+    const left = await leaveSelectedFacility(dispatch);
+    if (left === 'busy') return { ok: false, reason: 'busy' };
     const deleted = await deleteCentralAccount();
     if (!deleted.ok) return { ok: false, reason: 'central', failure: deleted };
     if (deleted.userId) await deleteMyFacilities(deleted.userId).catch(() => {});
-    return { ok: true };
+    // Deleted, but the facility's cleanup did not all run: said, not hidden.
+    return left === 'failed' ? { ok: true, facilityCleanup: 'failed' } : { ok: true };
   });
 }
 
@@ -154,7 +157,13 @@ export function deleteAccountEverywhere(dispatch: Dispatch): Promise<CentralEndO
  * status restored. The returned outcome is that of the final cleanup.
  */
 /** The final cleanup's outcome, or `reported`: the deletion failed and the person has been told on My facilities. */
-export type DeleteFacilityOutcome = LeaveFacilityOutcome | 'reported';
+export type DeleteFacilityOutcome =
+  | LeaveFacilityOutcome
+  | 'reported'
+  /** The cleanup was refused as busy, but the server had deleted the account (R1-09). */
+  | 'busy_deleted'
+  /** The cleanup was refused as busy, and the server did not answer: the fate of the account is not known. */
+  | 'busy_unknown';
 
 export function deleteFacilityAccount(dispatch: Dispatch): Promise<DeleteFacilityOutcome> {
   return whileLeaving(async () => {
@@ -199,7 +208,10 @@ export function deleteFacilityAccount(dispatch: Dispatch): Promise<DeleteFacilit
     // is the message that matters. A cleanup that failed part-way has already
     // emptied the store (Settings is gone), so the deletion message is still
     // the one to show. The entry stays Unavailable either way.
-    if (serverDeleted === null && server && outcome !== 'busy') return reportDeletionFailure(server, message ?? t('settings.deleteAccount.failed'));
+    // The message is the app's own "didn't answer" sentence, never the raw failure text (R1-03).
+    if (outcome === 'busy') return serverDeleted === null ? 'busy_unknown' : 'busy_deleted';
+    if (serverDeleted === null && server)
+      return reportDeletionFailure(server, t('settings.deleteAccount.noAnswer', { facility: server.companyName || server.displayName || server.origin }), true);
     return outcome;
   });
 }

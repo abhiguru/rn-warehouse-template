@@ -329,7 +329,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         if (activeOrderId.current === orderId) await onRefresh();
         return true;
       }
-      showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), serverText(result.message, tr('common.checkConnection')));
+      showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), serverText(result.message, tr('common.checkConnection'), { write: true }));
       return false;
     } catch (error) {
       console.error('[OrderManagement] Update quantity error:', error);
@@ -359,7 +359,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               if (result.success) {
                 await onRefresh();
               } else {
-                showAlert(tr('orders.manage.couldNotRemoveTitle'), serverText(result.message, tr('common.checkConnection')));
+                showAlert(tr('orders.manage.couldNotRemoveTitle'), serverText(result.message, tr('common.checkConnection'), { write: true }));
               }
             } catch (error) {
               console.error('[OrderManagement] Remove item error:', error);

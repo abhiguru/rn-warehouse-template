@@ -10,19 +10,19 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { iconSize, radius, space, touchTarget, type ThemeTokens } from '@/theme/tokens';
 import { money } from '../rateText';
-import { priceNumber } from '../utils/priceNumbers';
+import { priceNumber, RENT_MAX } from '@/utils/priceNumbers';
 import { wholeKg } from '../editModel';
 
-export type StepKind = 'kg' | 'rupee' | 'percent';
+export type StepKind = 'kg' | 'rupee' | 'rent' | 'percent';
 
-const STEP: Record<StepKind, number> = { kg: 1, rupee: 0.25, percent: 1 };
-const MAX: Record<StepKind, number> = { kg: 100000, rupee: 999999, percent: 100 };
+const STEP: Record<StepKind, number> = { kg: 1, rupee: 0.25, rent: 0.25, percent: 1 };
+const MAX: Record<StepKind, number> = { kg: 100000, rupee: 999999, rent: RENT_MAX, percent: 100 };
 const HEIGHT = 36;
 const HIT_SLOP = { top: (touchTarget - HEIGHT) / 2, bottom: (touchTarget - HEIGHT) / 2 };
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 /** The text a stepped value is written back as: whole kg, two-decimal rupees, a plain percent. */
-export const stepText = (kind: StepKind, n: number): string => (kind === 'rupee' ? n.toFixed(2) : String(round2(n)));
+export const stepText = (kind: StepKind, n: number): string => (kind === 'rupee' || kind === 'rent' ? n.toFixed(2) : String(round2(n)));
 
 const makeStyles = (th: ThemeTokens) => ({
   row: { flexDirection: 'row' as const, gap: space.sm, marginTop: space.xs },
@@ -53,10 +53,12 @@ export function FigureStepper({ kind, value, onChange, fieldName, disabled = fal
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const now = (kind === 'kg' ? wholeKg(value) : priceNumber(value, 2)) ?? 0;
-  const amount = kind === 'kg' ? `${localizeDigits(String(STEP.kg))} ${t('pricing.kg')}` : kind === 'percent' ? `${localizeDigits(String(STEP.percent))}%` : money(STEP.rupee);
+  const amount = kind === 'kg' ? `${localizeDigits(String(STEP.kg))} ${t('pricing.kg')}` : kind === 'percent' ? `${localizeDigits(String(STEP.percent))}%` : money(STEP[kind]);
   const button = (dir: 1 | -1) => {
     const next = Math.min(MAX[kind], Math.max(0, round2(now + dir * STEP[kind])));
-    const off = disabled || next === now;
+    const off = disabled || next === now || (dir > 0 && now >= MAX[kind]);
+    // Above the limit (a stored rent) the − button takes it down to the limit.
+    const toMax = dir < 0 && now > MAX[kind];
     return (
       <Pressable
         key={dir}
@@ -65,7 +67,11 @@ export function FigureStepper({ kind, value, onChange, fieldName, disabled = fal
         onPress={() => onChange(stepText(kind, next))}
         disabled={off}
         accessibilityRole="button"
-        accessibilityLabel={t(dir > 0 ? 'pricing.addForm.stepUp' : 'pricing.addForm.stepDown', { field: fieldName, step: amount })}
+        accessibilityLabel={
+          toMax
+            ? t('pricing.addForm.stepDownToMax', { field: fieldName, amount: money(MAX[kind]) })
+            : t(dir > 0 ? 'pricing.addForm.stepUp' : 'pricing.addForm.stepDown', { field: fieldName, step: amount })
+        }
         accessibilityState={{ disabled: off }}
         testID={`${testID}-${dir > 0 ? 'up' : 'down'}`}
       >

@@ -7,7 +7,7 @@
  * start; a table inside the details is a small outlined card of its own.
  *
  * Number columns are as wide as their widest value (the totals included) at the current text
- * size, so a number never splits. From font scale 1.5 (the stacking point of ItemRateRow), or
+ * size, so a number never splits. From font scale 1.5 (the stacking point of the item rate cards), or
  * when the number columns would leave the first column less than 25 % of the row, the middle
  * columns move under the first one.
  *
@@ -25,7 +25,7 @@ import { getLanguage } from '@/i18n/language';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
-/** From this font scale the middle columns stack under the first (as ItemRateRow does). */
+/** From this font scale the middle columns stack under the first. */
 export const TABLE_STACK_SCALE = 1.5;
 /** From this window width (dp) a date gets its own column instead of a line under the number. */
 export const TABLE_WIDE_WIDTH = 600;

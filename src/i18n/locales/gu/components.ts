@@ -347,6 +347,7 @@ export const components: Translation<typeof source> = {
     searching: 'શોધી રહ્યા છીએ…',
     noMatch: '"{{search}}" સાથે કંઈ મળતું નથી',
     noMatchHint: 'ઓછા અક્ષર અથવા બીજો શબ્દ લખી જુઓ.',
+    searchFailed: 'શોધ થઈ શકી નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
   },
   actions: {
     title: 'વિકલ્પો',

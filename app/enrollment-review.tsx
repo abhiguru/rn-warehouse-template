@@ -7,8 +7,8 @@
  * called "Access requests". The decision bar sits below the scrolling list so
  * Approve and Reject never wait at the end of it.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -34,16 +34,21 @@ import {
   PendingEnrollment,
   hasEnrollmentCustomers,
   listPendingEnrollments,
+  newestOwnCustomer,
   reviewEnrollment,
 } from '@/services/enrollmentReviewService';
 import { customerService } from '@/services/customer-service';
 
 import { showAlert } from '@/utils/alert';
 import { getAppErrorCode } from '@/utils/appError';
-import { formatMobile } from '@/utils/formatters';
+import { formatDate, formatMobile, nationalMobileDigits } from '@/utils/formatters';
+import { transportText } from '@/utils/serverText';
+import { showToast } from '@/utils/toast';
+import { publishUserListChange } from '@/utils/userListSync';
 import { t as tr, type TranslationKey } from '@/i18n';
 
 type ChosenCustomer = { id: string; name: string };
+type Suggestion = { forUser: string; customer: ChosenCustomer };
 type CustomerHit = { id: string; name: string; mobile?: string; city?: string };
 
 const APPROVE_LABEL: Record<EnrollmentRole, TranslationKey> = {
@@ -70,13 +75,28 @@ export default function EnrollmentReviewScreen() {
   const [approveAs, setApproveAs] = useState<EnrollmentRole>('customer');
   const [chosen, setChosen] = useState<ChosenCustomer[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // True until the first read ends, so "No access requests" does not show before the list is known.
+  const [busy, setBusy] = useState(true);
+  // The customer whose mobile is the selected person's mobile, offered with one tap.
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  // Add customer round trip: the text searched before leaving, searched again when the picker re-opens.
+  const [reopenQuery, setReopenQuery] = useState<string | null>(null);
+  const lastQueryRef = useRef('');
+  const suggestionForRef = useRef<string | null>(null);
+  const addFlowRef = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const cardYRef = useRef(0);
+  const revealPendingRef = useRef(false);
+  const roleLabelRef = useRef<Text>(null);
+  const profileId = useAppSelector(state => state.auth.userProfile?.id);
+  // The administrator's newest customer as read before Add customer (undefined: could not be read).
+  const beforeAddRef = useRef<Promise<{ id: string; name: string } | null | undefined> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedUser;
 
-  const refresh = useCallback(async () => {
-    if (role !== 'admin') return;
+  const refresh = useCallback(async (): Promise<{ list: PendingEnrollment[]; any: boolean } | null> => {
+    if (role !== 'admin') return null;
     setBusy(true);
     setError(null);
     try {
@@ -93,24 +113,76 @@ export default function EnrollmentReviewScreen() {
         setChosen([]);
         setApproveAs('customer');
       }
-    } catch {
-      setError(tr('auth.review.couldNotLoad'));
+      return { list: enrollments, any };
+    } catch (failure) {
+      setError(transportText(failure) ?? tr('auth.review.couldNotLoad'));
+      return null;
     } finally { setBusy(false); }
   }, [role]);
 
   // On first showing and each time the screen comes back (after Add customer).
+  // Coming back from Add customer, the picker opens again on what was searched, so the new customer is one tap away.
   useEffect(() => {
-    if (role === 'admin' && isFocused) void refresh();
-  }, [role, isFocused, refresh]);
+    if (role !== 'admin' || !isFocused) return;
+    void (async () => {
+      const result = await refresh();
+      if (!addFlowRef.current) return;
+      addFlowRef.current = false;
+      const before = beforeAddRef.current;
+      beforeAddRef.current = null;
+      const selectedNow = selectedRef.current;
+      // Nobody selected any more (or the list did not load): nothing to come back to.
+      if (!result || !selectedNow || !result.list.some(item => item.id === selectedNow)) return;
+      // A customer was just made: choose it, no search needed.
+      if (profileId && before) {
+        const [beforeRow, afterRow] = await Promise.all([before, newestOwnCustomer(profileId).catch(() => undefined)]);
+        if (beforeRow !== undefined && afterRow && afterRow.id !== beforeRow?.id) {
+          setChosen(list => (list.some(item => item.id === afterRow.id) ? list : [...list, { id: afterRow.id, name: afterRow.name }]));
+          showToast(tr('auth.review.customerAdded', { name: afterRow.name }));
+          return;
+        }
+      }
+      // Nothing was created and the facility still has no customer: there is nothing to search.
+      if (!result.any) return;
+      setReopenQuery(lastQueryRef.current);
+      setSheetOpen(true);
+    })();
+  }, [role, isFocused, refresh, profileId]);
+
+  // The customer with the person's own mobile (a customer who asked for access is usually that customer).
+  useEffect(() => {
+    // Cleared at once only when another person is picked; a refresh keeps it until the answer comes.
+    if (suggestionForRef.current !== selectedUser) { suggestionForRef.current = selectedUser; setSuggestion(null); }
+    const profile = pending.find(item => item.id === selectedUser);
+    if (!profile) return undefined;
+    const digits = nationalMobileDigits(profile.mobile);
+    if (digits.length < 10) return undefined;
+    let current = true;
+    customerService.searchCustomers(digits, 5)
+      .then(results => {
+        const active = results.filter(customer => customer.active !== false);
+        if (current) setSuggestion(active.length === 1 ? { forUser: profile.id, customer: { id: active[0].id, name: active[0].name } } : null);
+      })
+      .catch(() => { /* A suggestion is a convenience: no suggestion when the search fails. */ });
+    return () => { current = false; };
+  }, [selectedUser, pending]);
+
+  // The options of the picked request open under it: scroll to it and move screen-reader focus to "Approve as".
+  const revealOptions = useCallback(() => {
+    revealPendingRef.current = false;
+    scrollRef.current?.scrollTo({ y: Math.max(0, cardYRef.current - space.sm), animated: true });
+    setTimeout(() => {
+      const node = roleLabelRef.current ? findNodeHandle(roleLabelRef.current) : null;
+      if (node) AccessibilityInfo.setAccessibilityFocus(node);
+    }, 400);
+  }, []);
 
   const searchCustomers = useCallback(async (query: string): Promise<CustomerHit[]> => {
+    lastQueryRef.current = query;
     if (query.length < 2) return [];
-    try {
-      const results = await customerService.searchCustomers(query, 20);
-      return results.map(customer => ({ id: customer.id, name: customer.name, mobile: customer.mobile, city: customer.city }));
-    } catch {
-      return [];
-    }
+    // A failed search throws: the sheet then says so and offers Try again, instead of "Nothing matches".
+    const results = await customerService.searchCustomers(query, 20);
+    return results.map(customer => ({ id: customer.id, name: customer.name, mobile: customer.mobile, city: customer.city }));
   }, []);
 
   const addChosen = useCallback((customer: CustomerHit) => {
@@ -118,6 +190,22 @@ export default function EnrollmentReviewScreen() {
     setChosen(list => (list.some(item => item.id === customer.id) ? list : [...list, { id: customer.id, name: customer.name }]));
     setSheetOpen(false);
   }, []);
+
+  const applySuggestion = useCallback((customer: ChosenCustomer) => {
+    setChosen(list => (list.some(item => item.id === customer.id) ? list : [...list, customer]));
+  }, []);
+
+  // No customer matches: add one, then come back to this request with the same person selected.
+  const startAddFlow = useCallback(() => {
+    addFlowRef.current = true;
+    beforeAddRef.current = profileId ? newestOwnCustomer(profileId).catch(() => undefined) : null;
+  }, [profileId]);
+  const addCustomerFromPicker = useCallback(() => {
+    startAddFlow();
+    setSheetOpen(false);
+    router.push('/customer-form');
+  }, [startAddFlow]);
+  const reopenValue = useMemo(() => (reopenQuery ? { id: '', name: reopenQuery } : null), [reopenQuery]);
 
   const renderHit = useCallback((item: CustomerHit, onSelect: (item: CustomerHit) => void) => {
     const meta = [item.mobile ? formatMobile(item.mobile) : '', item.city].filter(Boolean).join(' · ');
@@ -171,7 +259,9 @@ export default function EnrollmentReviewScreen() {
               // A refusal says why; anything else is the connection.
               showAlert(
                 tr('auth.review.couldNotSaveTitle'),
-                getAppErrorCode(failure) === 'REFUSED' && failure instanceof Error ? failure.message : tr('common.checkConnection')
+                getAppErrorCode(failure) === 'REFUSED' && failure instanceof Error
+                  ? failure.message
+                  : transportText(failure, { write: true, form: true }) ?? tr('common.checkConnection')
               );
               setBusy(false);
               // The decision may have been saved or handled by someone else: show what is left.
@@ -179,6 +269,12 @@ export default function EnrollmentReviewScreen() {
               return;
             }
             // The decision is saved. A failed reload is its own error and never says "Couldn't save".
+            const done = decision === 'approved'
+              ? tr(approveAs === 'customer' ? 'auth.review.approvedCustomer' : approveAs === 'staff' ? 'auth.review.approvedStaff' : 'auth.review.approvedSupervisor', { name })
+              : tr('auth.review.rejectedNotice', { name });
+            showToast(done);
+            // The Users list underneath keeps its rows: tell it this person's status changed.
+            publishUserListChange({ kind: 'refresh' });
             setPending(list => list.filter(item => item.id !== profile.id));
             setSelectedUser(null);
             setChosen([]);
@@ -187,8 +283,8 @@ export default function EnrollmentReviewScreen() {
               const [enrollments, any] = await Promise.all([listPendingEnrollments(), hasEnrollmentCustomers().catch(() => true)]);
               setPending(enrollments);
               setHasCustomers(any);
-            } catch {
-              setError(tr('auth.review.couldNotLoad'));
+            } catch (failure) {
+              setError(transportText(failure) ?? tr('auth.review.couldNotLoad'));
             } finally { setBusy(false); }
           })();
         } },
@@ -223,6 +319,7 @@ export default function EnrollmentReviewScreen() {
       />
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={[styles.container, { paddingBottom: space.xxl }]}
       >
@@ -246,70 +343,100 @@ export default function EnrollmentReviewScreen() {
           const selected = selectedUser === profile.id;
           const name = profile.display_name || profile.name;
           return (
-            <Pressable
+            // The request and, when it is picked, its options: one card that opens in place.
+            <View
               key={profile.id}
-              accessibilityRole="radio"
-              accessibilityState={{ selected, checked: selected }}
-              accessibilityLabel={`${name}, ${formatMobile(profile.mobile)}`}
-              onPress={() => { setSelectedUser(profile.id); setChosen([]); setApproveAs('customer'); }}
-              style={({ pressed }) => [styles.row, pressed && styles.rowPressed, selected && styles.rowSelected]}
+              style={[styles.card, selected && styles.cardSelected]}
+              onLayout={event => {
+                if (!selected) return;
+                cardYRef.current = event.nativeEvent.layout.y;
+                if (revealPendingRef.current) revealOptions();
+              }}
             >
-              <Icon name="account-outline" size={iconSize.lg} color={t.icon.secondary} />
-              <View style={styles.rowText}>
-                <Text style={styles.name} numberOfLines={2}>{name}</Text>
-                <Text style={styles.meta}>{formatMobile(profile.mobile)}</Text>
-              </View>
-              {selected && <Icon name="check" size={iconSize.md} color={t.brand.tint} />}
-            </Pressable>
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected, checked: selected }}
+                accessibilityLabel={`${name}, ${formatMobile(profile.mobile)}, ${tr('auth.review.askedOn', { date: formatDate(profile.created_at) })}`}
+                onPress={() => {
+                  if (selected) { revealOptions(); return; }
+                  revealPendingRef.current = true;
+                  setSelectedUser(profile.id);
+                  setChosen([]);
+                  setApproveAs('customer');
+                }}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed, selected && styles.rowSelected]}
+              >
+                <Icon name="account-outline" size={iconSize.lg} color={t.icon.secondary} />
+                <View style={styles.rowText}>
+                  <Text style={styles.name} numberOfLines={2}>{name}</Text>
+                  <Text style={styles.meta}>{formatMobile(profile.mobile)}</Text>
+                  <Text style={styles.asked}>{tr('auth.review.askedOn', { date: formatDate(profile.created_at) })}</Text>
+                </View>
+                {selected && <Icon name="check" size={iconSize.md} color={t.brand.tint} />}
+              </Pressable>
+              {selected && (
+                <View style={styles.section}>
+                  <RadioGroup
+                    label={tr('auth.review.roleLabel')}
+                    labelRef={roleLabelRef}
+                    selectedValue={approveAs}
+                    onValueChange={value => setApproveAs(value as EnrollmentRole)}
+                    options={[
+                      { value: 'customer', label: tr('auth.review.roleCustomer') },
+                      { value: 'staff', label: tr('auth.review.roleStaff') },
+                      { value: 'supervisor', label: tr('auth.review.roleSupervisor') },
+                    ]}
+                  />
+                  {approveAs === 'customer' && (
+                    <View style={styles.customers}>
+                      <SectionHeader title={tr('auth.review.assignHeader')} />
+                      {suggestion && suggestion.forUser === profile.id && !chosen.some(item => item.id === suggestion.customer.id) && (
+                        <View style={styles.suggestion}>
+                          <Text style={styles.suggestionText}>{tr('auth.review.suggested', { name: suggestion.customer.name })}</Text>
+                          <Button
+                            type="secondary"
+                            onPress={() => applySuggestion(suggestion.customer)}
+                            accessibilityLabel={tr('auth.review.useSuggestedLabel', { name: suggestion.customer.name })}
+                          >
+                            {tr('auth.review.useSuggested')}
+                          </Button>
+                        </View>
+                      )}
+                      {chosen.length > 0 && (
+                        <View style={styles.chips}>
+                          {chosen.map(customer => (
+                            <Pressable
+                              key={customer.id}
+                              style={({ pressed }) => [styles.chip, pressed && styles.rowPressed]}
+                              onPress={() => setChosen(list => list.filter(item => item.id !== customer.id))}
+                              accessibilityRole="button"
+                              accessibilityLabel={tr('auth.review.removeCustomer', { name: customer.name })}
+                            >
+                              <Text style={styles.chipText} numberOfLines={1}>{customer.name}</Text>
+                              <Icon name="close" size={iconSize.sm} color={t.icon.secondary} />
+                            </Pressable>
+                          ))}
+                        </View>
+                      )}
+                      {hasCustomers ? (
+                        <Button type="secondary" leftIcon="plus" onPress={() => { lastQueryRef.current = ''; setReopenQuery(null); setSheetOpen(true); }} disabled={busy}>
+                          {tr('auth.review.addCustomer')}
+                        </Button>
+                      ) : (
+                        <>
+                          <Text style={styles.subtitle}>{tr('auth.review.noCustomers')}</Text>
+                          <Button type="secondary" leftIcon="plus" onPress={() => { startAddFlow(); router.push('/customer-form'); }}>
+                            {tr('auth.review.addCustomer')}
+                          </Button>
+                        </>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
           );
         })}
-        {person && (
-          <View style={styles.section}>
-            <RadioGroup
-              label={tr('auth.review.roleLabel')}
-              selectedValue={approveAs}
-              onValueChange={value => setApproveAs(value as EnrollmentRole)}
-              options={[
-                { value: 'customer', label: tr('auth.review.roleCustomer') },
-                { value: 'staff', label: tr('auth.review.roleStaff') },
-                { value: 'supervisor', label: tr('auth.review.roleSupervisor') },
-              ]}
-            />
-            {approveAs === 'customer' && (
-              <View style={styles.customers}>
-                <SectionHeader title={tr('auth.review.assignHeader')} />
-                {chosen.length > 0 && (
-                  <View style={styles.chips}>
-                    {chosen.map(customer => (
-                      <Pressable
-                        key={customer.id}
-                        style={({ pressed }) => [styles.chip, pressed && styles.rowPressed]}
-                        onPress={() => setChosen(list => list.filter(item => item.id !== customer.id))}
-                        accessibilityRole="button"
-                        accessibilityLabel={tr('auth.review.removeCustomer', { name: customer.name })}
-                      >
-                        <Text style={styles.chipText} numberOfLines={1}>{customer.name}</Text>
-                        <Icon name="close" size={iconSize.sm} color={t.icon.secondary} />
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-                {hasCustomers ? (
-                  <Button type="secondary" leftIcon="plus" onPress={() => setSheetOpen(true)} disabled={busy}>
-                    {tr('auth.review.addCustomer')}
-                  </Button>
-                ) : (
-                  <>
-                    <Text style={styles.subtitle}>{tr('auth.review.noCustomers')}</Text>
-                    <Button type="secondary" leftIcon="plus" onPress={() => router.push('/customer-form')}>
-                      {tr('auth.review.addCustomer')}
-                    </Button>
-                  </>
-                )}
-              </View>
-            )}
-          </View>
-        )}
       </ScrollView>
 
       {person && (
@@ -321,11 +448,15 @@ export default function EnrollmentReviewScreen() {
 
       <SearchableBottomSheet<CustomerHit>
         isVisible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
+        onClose={() => { setSheetOpen(false); setReopenQuery(null); }}
+        currentValue={reopenValue}
         onSelect={addChosen}
         title={tr('auth.review.searchTitle')}
         placeholder={tr('customers.search.placeholder')}
         searchFn={searchCustomers}
+        searchErrorText={tr('customers.search.failed')}
+        emptyAction={{ label: tr('auth.review.newCustomer'), onPress: addCustomerFromPicker }}
+        emptyActionAfterSearchOnly
         renderItem={renderHit}
         keyExtractor={item => item.id}
         emptyInitialText={tr('users.edit.searchEmpty')}
@@ -350,7 +481,12 @@ const makeStyles = (t: ThemeTokens) => ({
   stateTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
   stateMessage: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
   subtitle: { ...typography.subhead, color: t.text.secondary },
-  section: { gap: space.md, marginTop: space.md },
+  card: { gap: space.md, borderRadius: radius.card },
+  cardSelected: { padding: space.sm, backgroundColor: t.surface.selected, borderColor: t.brand.tint, borderWidth: 2 },
+  section: { gap: space.md },
+  asked: { ...typography.footnote, color: t.text.secondary },
+  suggestion: { gap: space.sm },
+  suggestionText: { ...typography.subhead, color: t.text.primary },
   customers: { gap: space.md },
   chips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.sm },
   chip: {
@@ -389,7 +525,7 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   rowPressed: { backgroundColor: t.surface.cardPressed },
-  rowSelected: { backgroundColor: t.surface.selected, borderColor: t.brand.tint, borderWidth: 2 },
+  rowSelected: { backgroundColor: 'transparent', borderColor: 'transparent' },
   rowText: { flex: 1 },
   name: { ...typography.headline, color: t.text.primary },
   meta: { ...typography.subhead, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },

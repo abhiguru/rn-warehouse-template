@@ -1,9 +1,10 @@
 /**
- * The rates and active items the Item pricing screens show.
+ * The rates and active items the Items list and the item page's Pricing tab show.
  *
  * They are kept in a session cache (module level, for the facility and the person signed in):
  * a screen that opens with data in the cache shows it at once and refreshes in the background,
- * with no skeleton and no jump (P-16). A save elsewhere calls notifyRatesChanged(itemId) (contract.ts),
+ * with no skeleton and no jump (P-16). A screen that opens reads it again; the Items list on focus only when it is older than
+ * RATES_STALE_MS (or marked stale by markItemRatesStale), and by pull to refresh or reloadItemRatesCache. A save elsewhere calls notifyRatesChanged(itemId) (contract.ts),
  * which refetches that item's rows only and merges them in.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -51,6 +52,47 @@ export function clearItemRatesCache(): void {
   emit();
 }
 
+/** The cache is read again on screen focus only when it is older than this. */
+export const RATES_STALE_MS = 5 * 60 * 1000;
+
+/** One full load (items and every rate) for this facility and person; a load already running is joined. */
+function loadAllFor(key: string, fresh = false): Promise<void> {
+  if (fresh || !inFlightAll || inFlightKey !== key) {
+    const seq = ++loadSeq;
+    const promise: Promise<void> = (async () => {
+      const [items, rates] = await Promise.all([listActiveItems(), listAllRates()]);
+      if (seq !== loadSeq) return;
+      snapshot = { key, items, rates, loadedAt: Date.now() };
+      emit();
+    })().finally(() => {
+      if (inFlightAll === promise) {
+        inFlightAll = null;
+        inFlightKey = null;
+      }
+    });
+    inFlightAll = promise;
+    inFlightKey = key;
+  }
+  return inFlightAll;
+}
+
+/** Read the whole cache again when something changed the set of active items (a deactivate or delete elsewhere). */
+export function reloadItemRatesCache(): Promise<void> {
+  const key = snapshot?.key;
+  // Always a new load: one already running may have begun before the change that made this call.
+  return key ? loadAllFor(key, true).catch(() => { /* the screens keep the older data */ }) : Promise.resolve();
+}
+
+/** The next screen that opens reads everything again (a save elsewhere changed which items have a rate). */
+export function markItemRatesStale(): void {
+  if (snapshot) snapshot = { ...snapshot, loadedAt: 0 };
+}
+
+/** When the whole cache was last read (ms since the epoch); 0 when nothing is held. */
+export function itemRatesLoadedAt(): number {
+  return snapshot?.loadedAt ?? 0;
+}
+
 const currentKey = (userId: string | undefined): string =>
   `${getActiveOperatorServer()?.instanceId ?? 'none'}|${userId ?? 'none'}`;
 
@@ -88,7 +130,7 @@ function ensureChangeListener() {
         if (!snapshot || snapshot.key !== base.key) return;
         if ((appliedRead.get(itemId) ?? 0) > seq) return;
         appliedRead.set(itemId, seq);
-        snapshot = { ...snapshot, rates: mergeItemRows(snapshot.rates, itemId, rows), loadedAt: Date.now() };
+        snapshot = { ...snapshot, rates: mergeItemRows(snapshot.rates, itemId, rows) };
         emit();
       })
       .catch(() => { /* the screen keeps older rates; the next refresh shows the failure */ });
@@ -108,6 +150,8 @@ export interface UseItemRatesResult {
   refreshError: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
+  /** Refresh only when the data held is older than a few minutes (saves in the app already merge in). */
+  refreshIfStale: () => Promise<void>;
   /** One item's rows, from the data loaded. */
   itemRates: (itemId: string) => ItemRates | undefined;
 }
@@ -121,26 +165,7 @@ export function useItemRates(): UseItemRatesResult {
   const [refreshError, setRefreshError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const load = useCallback(async () => {
-    // A load for another facility or person is not reused.
-    if (!inFlightAll || inFlightKey !== key) {
-      const seq = ++loadSeq;
-      const promise: Promise<void> = (async () => {
-        const [items, rates] = await Promise.all([listActiveItems(), listAllRates()]);
-        if (seq !== loadSeq) return;
-        snapshot = { key, items, rates, loadedAt: Date.now() };
-        emit();
-      })().finally(() => {
-        if (inFlightAll === promise) {
-          inFlightAll = null;
-          inFlightKey = null;
-        }
-      });
-      inFlightAll = promise;
-      inFlightKey = key;
-    }
-    return inFlightAll;
-  }, [key]);
+  const load = useCallback(() => loadAllFor(key), [key]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -156,10 +181,17 @@ export function useItemRates(): UseItemRatesResult {
     }
   }, [load]);
 
+  const refreshIfStale = useCallback(async () => {
+    const held = snapshot && snapshot.key === key ? snapshot : null;
+    if (held && Date.now() - held.loadedAt < RATES_STALE_MS) return;
+    await refresh();
+  }, [key, refresh]);
+
   useEffect(() => {
     ensureChangeListener();
+    // A screen that opens reads the rates again (shown cache stays on screen meanwhile); only the Items focus effect waits for them to be old.
     void refresh();
-    // Load once per mount and facility.
+    // Once per mount and facility.
   }, [key]);
 
   const itemRates = useCallback(
@@ -180,6 +212,7 @@ export function useItemRates(): UseItemRatesResult {
     refreshError: refreshError && Boolean(data),
     error,
     refresh,
+    refreshIfStale,
     itemRates,
   };
 }
@@ -187,13 +220,15 @@ export function useItemRates(): UseItemRatesResult {
 const EMPTY_ITEMS: ActiveItem[] = [];
 const EMPTY_RATES: ItemStoragePrice[] = [];
 
-// ---- one item (item page, customer-rate page) -----------------------------
+// ---- one item (item page's Pricing tab, customer-rate page) -----------------------------
 export interface UseItemRatesForResult {
   /** undefined while nothing is known yet. */
   itemRates: ItemRates | undefined;
   status: RatesStatus;
   /** The item is not among the active items. */
   notFound: boolean;
+  /** The item's own rows as read, also when the item is not active (a deactivated item's rates are shown read only). */
+  ownRows?: ItemStoragePrice[];
   refreshing: boolean;
   refreshError: boolean;
   lastUpdated: number | null;
@@ -262,6 +297,7 @@ export function useItemRatesFor(itemId: string): UseItemRatesForResult {
     itemRates: result,
     status,
     notFound,
+    ownRows: own?.rows,
     refreshing: refreshing && status === 'ready',
     refreshError: refreshError && status === 'ready',
     lastUpdated: own?.at ?? cached?.loadedAt ?? null,

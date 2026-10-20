@@ -38,3 +38,5 @@ export type { UseInvoiceFormOptions, UseInvoiceFormReturn, InvoiceFormMode } fro
 // Ask before unsaved work is left (style guide §14.4)
 export { useLeaveGuard } from './useLeaveGuard';
 export type { LeaveGuardOptions, LeaveGuard } from './useLeaveGuard';
+export { useSingleFlight } from './useSingleFlight';
+export type { SingleFlight } from './useSingleFlight';

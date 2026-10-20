@@ -25,6 +25,8 @@ export interface RateScope {
   bands: ItemStoragePrice[];
   upcoming: UpcomingGroup | null;
   stopsAfter: string | null;
+  /** Every row id of this scope the screen loaded (item, customer, price type), ended and planned too: sent as p_seen_rows. */
+  seenRows: string[];
 }
 
 export function useRateActions(item: { id: string; name: string }) {
@@ -51,12 +53,13 @@ export function useRateActions(item: { id: string; name: string }) {
         customerId: scope.customerId,
         priceType: scope.priceType,
         startsOn: scope.upcoming.startsOn,
+        seenRows: scope.seenRows,
       });
       // Show what the server has now, whatever the answer was.
       notifyRatesChanged(item.id);
       setCancelling(null);
       if (result.success) showToast(t('pricing.cancel.done'));
-      else showAlert(t('pricing.cancel.failedTitle'), result.message ?? t('pricing.cancel.failed'));
+      else showAlert(t('pricing.cancel.failedTitle'), result.errorCode === 'STALE_RATES' ? t('pricing.error.staleRatesAction') : (result.message ?? t('pricing.cancel.failed')));
     } finally {
       setBusy(false);
     }
@@ -72,10 +75,11 @@ export function useRateActions(item: { id: string; name: string }) {
           customerId: scope.customerId,
           priceType: scope.priceType,
           startsOn: addDays(scope.stopsAfter, 1),
+          seenRows: scope.seenRows,
         });
         notifyRatesChanged(item.id);
         if (result.success) showToast(t('pricing.undo.done'));
-        else showAlert(t('pricing.undo.failedTitle'), result.message ?? t('pricing.error.generic'));
+        else showAlert(t('pricing.undo.failedTitle'), result.errorCode === 'STALE_RATES' ? t('pricing.error.staleRatesAction') : (result.message ?? t('pricing.error.generic')));
       } finally {
         setBusy(false);
       }

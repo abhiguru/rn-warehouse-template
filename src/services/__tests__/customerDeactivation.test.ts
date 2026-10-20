@@ -87,12 +87,12 @@ describe('migration 82: set_customer_active', () => {
   it.each([
     ['PGRST202', { code: 'PGRST202', message: 'Could not find the function public.set_customer_active in the schema cache' }],
     ['the message alone', { message: 'Could not find the function public.set_customer_active(p_active, p_customer_id) in the schema cache' }],
-  ])('falls back to the old calls on an older facility (%s)', async (_n, missing) => {
+  ])('reports an older facility and never falls back to the old calls (%s)', async (_n, missing) => {
     const rpc = jest.fn(async (name: string) => (name === 'set_customer_active' ? { data: null, error: missing } : { data: { success: true, message: 'ok' }, error: null }));
     (getAuthenticatedClient as jest.Mock).mockResolvedValue({ rpc, from: jest.fn() });
-    expect((await customerService.inactivateCustomer(CUSTOMER)).success).toBe(true);
-    expect((await customerService.restoreCustomer(CUSTOMER)).success).toBe(true);
-    expect(rpc.mock.calls.map(c => c[0])).toEqual(['set_customer_active', 'safe_delete_customer', 'set_customer_active', 'restore_customer']);
+    expect((await customerService.inactivateCustomer(CUSTOMER)).success).toBe(false);
+    expect((await customerService.restoreCustomer(CUSTOMER)).success).toBe(false);
+    expect(rpc.mock.calls.map(c => c[0])).toEqual(['set_customer_active', 'set_customer_active']);
   });
 
   it('does not fall back for any other failure', async () => {

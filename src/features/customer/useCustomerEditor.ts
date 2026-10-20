@@ -43,6 +43,8 @@ interface EditorState {
   customer: Customer | null;
   /** The message of a failed load. */
   message: string | null;
+  /** The failed load's whole answer, to tell a lost connection from a customer that is gone. */
+  failure: unknown;
 }
 
 const empty = (forId: string | undefined, status: CustomerEditorStatus): EditorState => ({
@@ -52,6 +54,7 @@ const empty = (forId: string | undefined, status: CustomerEditorStatus): EditorS
   base: EMPTY_CUSTOMER_FIELDS,
   customer: null,
   message: null,
+  failure: null,
 });
 
 function fieldsOf(customer: Customer): CustomerFormFields {
@@ -88,16 +91,16 @@ export function useCustomerEditor(id?: string) {
       let result;
       try {
         result = await customerService.getCustomerById(id);
-      } catch {
-        result = { success: false, message: '' } as const;
+      } catch (error) {
+        result = { success: false, message: '', error: error instanceof Error ? error.message : '' } as const;
       }
       // An answer for a customer that is no longer the one on the screen is dropped.
       if (ignore || currentId.current !== id) return;
       if (result.success && result.data && result.data.id === id) {
         const loaded = fieldsOf(result.data);
-        setState({ forId: id, status: 'ready', fields: loaded, base: loaded, customer: result.data, message: null });
+        setState({ forId: id, status: 'ready', fields: loaded, base: loaded, customer: result.data, message: null, failure: null });
       } else {
-        setState({ ...empty(id, 'error'), message: result.message || null });
+        setState({ ...empty(id, 'error'), message: result.message || null, failure: result });
       }
     })();
     return () => {
@@ -112,6 +115,7 @@ export function useCustomerEditor(id?: string) {
     setState(previous => (previous.forId === currentId.current ? { ...previous, fields: { ...previous.fields, [field]: value } } : previous));
   }, []);
 
+  /** Read the customer again: the form is replaced by what the server holds now. */
   const retry = useCallback(() => setAttempt(count => count + 1), []);
 
   const hasChanges = current.status === 'ready' && FIELD_NAMES.some(name => current.fields[name].trim() !== current.base[name].trim());
@@ -121,6 +125,9 @@ export function useCustomerEditor(id?: string) {
     fields: current.fields,
     customer: current.customer,
     message: current.message,
+    failure: current.failure,
+    /** What was loaded, to see which fields the user changed. */
+    base: current.base,
     isCreate: !id,
     hasChanges,
     setField,

@@ -252,7 +252,7 @@ describe('what a screen reader hears', () => {
   it('puts the error of a row in the cell hint and in a line under the row', async () => {
     await mount(garlicRows(), 'garlic', { showErrors: true });
     type('band-1-rent', '');
-    const message = 'Enter a rent of 0 or more.';
+    const message = 'Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.';
     expect(cell('band-1-rent').props.accessibilityHint).toBe(message);
     expect(cell('band-0-rent').props.accessibilityHint).toBeUndefined();
     const line = tree!.root.findAll(n => n.props.testID === 'band-1-error')[0];

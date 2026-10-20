@@ -136,8 +136,41 @@ export type StaleSessionRef = { generation: number };
  * server change, ending in no selected server: the facility session is ended
  * (and revoked at the facility unless `localOnly`), its caches, queries and
  * drafts are cleared, and the central session is left alone.
+ *
+ * `failed` also means the phone's secure storage kept the facility session (the sign-out's
+ * `localCleared: false`): the rest of the cleanup ran, but the person must be told.
  */
 export async function leaveFacility(dispatch: Dispatch, options: LeaveFacilityOptions = {}): Promise<LeaveFacilityOutcome> {
+  return (await leaveFacilityDetailed(dispatch, options)).outcome;
+}
+
+/**
+ * `leaveFacility`, also saying whether the cleanup ran through and only the phone's secure storage
+ * kept the facility session (`storageKept`, answered with outcome `failed`). A cleanup that threw
+ * part-way is `failed` with `storageKept: false`: it has to be run again.
+ */
+async function leaveFacilityDetailed(
+  dispatch: Dispatch,
+  options: LeaveFacilityOptions
+): Promise<{ outcome: LeaveFacilityOutcome; storageKept: boolean }> {
+  const { outcome, storageKept } = await leaveFacilityOnce(dispatch, options);
+  if (outcome === 'left' && storageKept) return { outcome: 'failed', storageKept: true };
+  return { outcome, storageKept: false };
+}
+
+async function leaveFacilityOnce(
+  dispatch: Dispatch,
+  options: LeaveFacilityOptions
+): Promise<{ outcome: LeaveFacilityOutcome; storageKept: boolean }> {
+  let storageKept = false;
+  try {
+    return { outcome: await leaveFacilityGated(dispatch, options, () => { storageKept = true; }), storageKept };
+  } catch {
+    return { outcome: 'failed', storageKept };
+  }
+}
+
+async function leaveFacilityGated(dispatch: Dispatch, options: LeaveFacilityOptions, onStorageKept: () => void): Promise<LeaveFacilityOutcome> {
   if (queryClient.isMutating() > 0) return 'busy';
   if (!beginOperatorSwitch()) return 'busy';
   try {
@@ -149,17 +182,19 @@ export async function leaveFacility(dispatch: Dispatch, options: LeaveFacilityOp
     const ending = dispatch(logout(options.localOnly ? { localOnly: true } : undefined));
     // The logout's signOut moved the generation before its first await.
     if (options.session) options.session.generation = getSessionGeneration();
-    await ending.unwrap();
+    const ended = await ending.unwrap();
+    // The phone could not remove the session from its secure storage: finish the cleanup, then say so.
+    if (ended?.localCleared === false) onStorageKept();
     if (await getPendingEnrollmentToken()) {
-      if (previous && !options.localOnly) await signOutPendingEnrollment();
+      // Offline the sign-out forgets the token and then throws: what counts is that it is gone.
+      if (previous && !options.localOnly) await signOutPendingEnrollment().catch(() => {});
       else await clearPendingEnrollment();
+      if (await getPendingEnrollmentToken()) throw new Error('pending enrollment not cleared');
     }
     await clearSessionScopedState(dispatch as (action: UnknownAction) => unknown);
     await ConfigService.clearCache();
     await clearOperatorServer();
     return 'left';
-  } catch {
-    return 'failed';
   } finally {
     endOperatorSwitch();
   }
@@ -179,10 +214,20 @@ async function waitForWritesToSettle(limitMs: number): Promise<void> {
 
 /** The final cleanup, with one more try after a write in flight has had time to settle. */
 export async function leaveWithRetry(dispatch: Dispatch, options: LeaveFacilityOptions = {}): Promise<LeaveFacilityOutcome> {
-  const first = await leaveFacility(dispatch, options);
-  if (first === 'left') return first;
-  if (first === 'busy') await waitForWritesToSettle(LEAVE_RETRY_WAIT_MS);
-  return leaveFacility(dispatch, options);
+  return (await leaveWithRetryDetailed(dispatch, options)).outcome;
+}
+
+/** `leaveWithRetry`, also saying whether the phone kept the sign-in (see `leaveFacilityDetailed`). */
+export async function leaveWithRetryDetailed(
+  dispatch: Dispatch,
+  options: LeaveFacilityOptions = {}
+): Promise<{ outcome: LeaveFacilityOutcome; storageKept: boolean }> {
+  const firstTry = await leaveFacilityDetailed(dispatch, options);
+  if (firstTry.outcome === 'left') return firstTry;
+  // The rest of the cleanup ran; a second try would find nothing selected and wrongly answer `left`.
+  if (firstTry.storageKept) return firstTry;
+  if (firstTry.outcome === 'busy') await waitForWritesToSettle(LEAVE_RETRY_WAIT_MS);
+  return leaveFacilityDetailed(dispatch, options);
 }
 
 /**
@@ -280,8 +325,11 @@ export async function retryStaleFacilityCleanup(dispatch: Dispatch): Promise<boo
       if (outcome !== 'left') {
         // A leave that failed part-way may have moved the generation itself: judge by the selection from now on.
         if (outcome === 'failed') forgetStaleGeneration(facility);
-        remaining += 1;
-        continue;
+        // Kept only while the facility is still selected; once it is not, nothing of it can be reached.
+        if (isSameFacility(getActiveOperatorServer(), facility)) {
+          remaining += 1;
+          continue;
+        }
       }
     }
     if (!(await clearStaleFacility(facility))) remaining += 1;

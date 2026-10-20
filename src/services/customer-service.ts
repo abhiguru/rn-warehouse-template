@@ -16,6 +16,7 @@ import {
   CustomerListItem,
   CustomerListResponse,
   CustomerServiceResponse,
+  CustomerRefusalDetails,
   CustomerFilters,
   CreateCustomerParams,
   UpdateCustomerParams,
@@ -43,10 +44,18 @@ class CustomerService {
   /**
    * Search customers by name or mobile
    * Uses search_customers RPC which respects RLS
+   *
+   * A search that could not be made (no connection, a refusal) throws, so the
+   * picker can say so instead of showing "Nothing matches". A search that was
+   * made and found nothing returns [].
+   *
+   * `includeInactive` adds deactivated customers (the server allows it for administrators
+   * and supervisors only; for anyone else it is ignored). Such rows have `active: false`.
    */
   async searchCustomers(
     query: string,
-    limit: number = 20
+    limit: number = 20,
+    options: { includeInactive?: boolean } = {}
   ): Promise<CustomerListItem[]> {
     try {
       if (!query || query.length < 1) {
@@ -58,12 +67,12 @@ class CustomerService {
       const { data, error } = await client.rpc('search_customers', {
         p_search_query: query,
         p_limit: limit,
+        ...(options.includeInactive ? { p_include_inactive: true } : {}),
       });
 
       if (error) {
         handleGlobalAuthError(error);
-        log.error('searchCustomers error', loggableError(error));
-        return [];
+        throw error; // logged once, by the catch below
       }
 
       // Handle standardized response format: { success: true, data: [...] }
@@ -92,6 +101,7 @@ class CustomerService {
         email?: string;
         address?: string;
         active?: boolean;
+        deleted?: boolean;
       }
       const results = customerArray.map((customer: unknown) => {
         const c = customer as RpcCustomer;
@@ -103,6 +113,7 @@ class CustomerService {
           email: c.email,
           address: c.address,
           active: c.active ?? true,
+          ...(c.deleted ? { deleted: true } : {}),
         };
       });
 
@@ -111,7 +122,7 @@ class CustomerService {
       return results;
     } catch (error) {
       log.error('Exception in searchCustomers', loggableError(error));
-      return [];
+      throw error;
     }
   }
 
@@ -174,9 +185,10 @@ class CustomerService {
         log.error('getCustomerList error', loggableError(error));
         return {
           success: false,
-          message: serverText(error.message, t('errors.customer.fetchListFailed')),
+          message: serverText(error, t('errors.customer.fetchListFailed')),
           data: [],
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -216,10 +228,34 @@ class CustomerService {
       log.error('Exception in getCustomerList', loggableError(error));
       return {
         success: false,
-        message: t('errors.customer.fetchListFailed'),
+        message: serverText(error, t('errors.customer.fetchListFailed')),
         data: [],
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
+    }
+  }
+
+  /**
+   * How many customers are active and how many are deactivated (two head counts of the
+   * customers table, the same table the list reads). null when either count could not be read:
+   * the list then counts its own rows.
+   */
+  async getCustomerCounts(): Promise<{ active: number; inactive: number } | null> {
+    try {
+      const client = await getAuthenticatedClient();
+      const head = (active: boolean) =>
+        client.from('customers').select('id', { count: 'exact', head: true }).eq('active', active);
+      const [active, inactive] = await Promise.all([head(true), head(false)]);
+      if (active.error || inactive.error) {
+        log.warn('getCustomerCounts: a count failed', {
+          code: active.error?.code ?? inactive.error?.code,
+        });
+        return null;
+      }
+      return { active: active.count ?? 0, inactive: inactive.count ?? 0 };
+    } catch (error) {
+      log.error('Exception in getCustomerCounts', loggableError(error));
+      return null;
     }
   }
 
@@ -254,8 +290,9 @@ class CustomerService {
         log.error('getCustomerById error', loggableError(error));
         return {
           success: false,
-          message: serverText(error.message, t('errors.customer.notFound')),
+          message: serverText(error, t('errors.customer.notFound')),
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -297,7 +334,7 @@ class CustomerService {
       log.error('Exception in getCustomerById', loggableError(error));
       return {
         success: false,
-        message: t('errors.customer.fetchFailed'),
+        message: serverText(error, t('errors.customer.fetchFailed')),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
@@ -338,8 +375,8 @@ class CustomerService {
     interface CreateCustomerRpcResponse {
       success: boolean;
       message?: string;
-      customer_id?: string;
-      error?: string;
+      data?: { customer_id?: string };
+      error?: unknown;
     }
 
     const result = await executeRPC<CreateCustomerRpcResponse>(
@@ -348,6 +385,7 @@ class CustomerService {
       params as unknown as Record<string, unknown>,
       {
         context: 'CustomerService.createCustomer',
+        write: true,
         errorMessage: t('errors.customer.createFailed'),
         unwrapNested: false,
         validateSuccess: false,
@@ -359,26 +397,22 @@ class CustomerService {
         success: false,
         message: result.message,
         error: result.error,
+        code: result.errorCode,
       };
     }
 
     const rpcData = result.data;
     if (!rpcData.success) {
-      log.error('createCustomer refused', loggableError(rpcData));
-      return {
-        success: false,
-        message: serverText(rpcData.message, t('errors.customer.createFailed')),
-        error: serverText(rpcData.error, t('errors.general.unknown')),
-        code: rpcData.error,
-      };
+      return refusedResponse(rpcData, 'createCustomer', t('errors.customer.createFailed'));
     }
 
-    log.debug('createCustomer done', { customerId: rpcData.customer_id });
+    const newId = rpcData.data?.customer_id;
+    log.debug('createCustomer done', { customerId: newId });
     return {
       success: true,
       message: serverText(rpcData.message, t('errors.customer.created')),
       data: {
-        id: rpcData.customer_id,
+        id: newId,
         name: params.p_name,
         mobile: params.p_mobile,
         email: params.p_email,
@@ -440,7 +474,7 @@ class CustomerService {
     interface UpdateCustomerRpcResponse {
       success: boolean;
       message?: string;
-      error?: string;
+      error?: unknown;
     }
 
     const result = await executeRPC<UpdateCustomerRpcResponse>(
@@ -461,9 +495,12 @@ class CustomerService {
         p_contact_mobile: params.p_contact_mobile,
         p_contact_email: params.p_contact_email,
         p_image_urls: params.p_image_urls,
+        // The exact string read with the customer: never passed through a Date.
+        p_expected_updated_at: params.p_expected_updated_at,
       },
       {
         context: 'CustomerService.updateCustomer',
+        write: true,
         errorMessage: t('errors.customer.updateFailed'),
         unwrapNested: false,
         validateSuccess: false,
@@ -475,18 +512,13 @@ class CustomerService {
         success: false,
         message: result.message,
         error: result.error,
+        code: result.errorCode,
       };
     }
 
     const rpcData = result.data;
     if (!rpcData.success) {
-      log.error('updateCustomer refused', loggableError(rpcData));
-      return {
-        success: false,
-        message: serverText(rpcData.message, t('errors.customer.updateFailed')),
-        error: serverText(rpcData.error, t('errors.general.unknown')),
-        code: rpcData.error,
-      };
+      return refusedResponse(rpcData, 'updateCustomer', t('errors.customer.updateFailed'));
     }
 
     return {
@@ -501,8 +533,7 @@ class CustomerService {
 
   /**
    * Deactivate a customer: only `active` goes off, nothing is deleted (backend migration 82,
-   * `set_customer_active`). A facility without that function (PGRST202) still has the
-   * old `safe_delete_customer`, which is used there.
+   * `set_customer_active`).
    */
   async inactivateCustomer(
     customerId: string
@@ -519,16 +550,10 @@ class CustomerService {
       }
 
       const client = await getAuthenticatedClient();
-      let { data, error } = await client.rpc('set_customer_active', {
+      const { data, error } = await client.rpc('set_customer_active', {
         p_customer_id: customerId,
         p_active: false,
       });
-      if (error && isMissingFunction(error)) {
-        ({ data, error } = await client.rpc('safe_delete_customer', {
-          p_customer_id: customerId,
-          p_permanent: false,
-        }));
-      }
 
       if (error) {
         handleGlobalAuthError(error);
@@ -539,8 +564,9 @@ class CustomerService {
         // by a direct write to the customers table.
         return {
           success: false,
-          message: serverText(error.message, t('errors.customer.inactivateFailed')),
+          message: serverText(error, t('errors.customer.inactivateFailed'), { write: true }),
           error: error.message,
+          code: error.code,
         };
       }
 
@@ -562,15 +588,14 @@ class CustomerService {
       log.error('Exception in inactivateCustomer', loggableError(error));
       return {
         success: false,
-        message: t('errors.customer.inactivateFailed'),
+        message: serverText(error, t('errors.customer.inactivateFailed'), { write: true }),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }
 
   /**
-   * Activate a customer again (`set_customer_active`, backend migration 82; an older facility
-   * has `restore_customer`, which is used there).
+   * Activate a customer again (`set_customer_active`, backend migration 82).
    */
   async restoreCustomer(customerId: string): Promise<CustomerServiceResponse> {
     try {
@@ -585,15 +610,10 @@ class CustomerService {
       }
 
       const client = await getAuthenticatedClient();
-      let { data, error } = await client.rpc('set_customer_active', {
+      const { data, error } = await client.rpc('set_customer_active', {
         p_customer_id: customerId,
         p_active: true,
       });
-      if (error && isMissingFunction(error)) {
-        ({ data, error } = await client.rpc('restore_customer', {
-          p_customer_id: customerId,
-        }));
-      }
 
       if (error) {
         handleGlobalAuthError(error);
@@ -603,18 +623,18 @@ class CustomerService {
         // direct write to the customers table.
         return {
           success: false,
-          message: serverText(error.message, t('errors.customer.restoreFailed')),
+          message: serverText(error, t('errors.customer.restoreFailed'), { write: true }),
           error: error.message,
+          code: error.code,
         };
       }
 
       // Check if RPC returned success: false in the response data
       if (data && data.success === false) {
-        return {
-          success: false,
-          message: serverText(data.message, t('errors.customer.restoreFailed')),
-          error: data.message,
-        };
+        // Since the activation check: another active customer already uses the number (DUPLICATE_MOBILE
+        // with that customer in `details`). Older answers carry the message only.
+        const refusal = refusedResponse(data, 'restoreCustomer', t('errors.customer.restoreFailed'));
+        return { ...refusal, error: data.message ?? refusal.error };
       }
 
       return {
@@ -626,16 +646,37 @@ class CustomerService {
       log.error('Exception in restoreCustomer', loggableError(error));
       return {
         success: false,
-        message: t('errors.customer.restoreFailed'),
+        message: serverText(error, t('errors.customer.restoreFailed'), { write: true }),
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }
 }
 
-/** PostgREST found no such function (PGRST202): an older facility. */
-function isMissingFunction(error: { code?: string; message?: string }): boolean {
-  return error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
+/**
+ * A refusal from create_customer / update_customer: `{ success: false, message, error: { code, field?, details? } }`.
+ * Its code, field and details are carried on the response so the form can put the text under the right field.
+ */
+function refusedResponse(
+  rpcData: { message?: string; error?: unknown },
+  action: string,
+  fallback: string
+): CustomerServiceResponse {
+  const refusal = rpcData.error && typeof rpcData.error === 'object' ? (rpcData.error as Record<string, unknown>) : {};
+  const code = typeof refusal.code === 'string' ? refusal.code : typeof rpcData.error === 'string' ? rpcData.error : undefined;
+  const field = typeof refusal.field === 'string' ? refusal.field : undefined;
+  const details =
+    refusal.details && typeof refusal.details === 'object' ? (refusal.details as CustomerRefusalDetails) : undefined;
+  log.error(`${action} refused`, { code, field });
+  const message = serverText(rpcData.message, fallback, { write: true, code });
+  return {
+    success: false,
+    message,
+    error: message,
+    code,
+    ...(field ? { field } : {}),
+    ...(details ? { details } : {}),
+  };
 }
 
 // =============================================================================

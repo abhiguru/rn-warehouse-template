@@ -76,9 +76,10 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   own login. `canOpenScreen`, `settingsFeatureRows`, `reportScopeFor` and `userManagementActions`
   are built on them and mirror the backend's role table (its `docs/STAFF_GRN_POLICY.md`, "Roles
   after migration 45"). Do not add a flag called `isStaff`: it used to mean two opposite things.
-  The screens it gates (`RoleGatedScreen`): Item pricing and sensors for warehouse users;
-  customers and items, user management, the operations dashboard and the price history
-  (`app/item-price-history.tsx`, opened from Item pricing) for managers; enrollment review for
+  The screens it gates (`RoleGatedScreen`): sensors for warehouse users;
+  customers and items (an item's rates are its Pricing tab, `app/item/[id].tsx`), user management,
+  the operations dashboard and the price history (`app/item-price-history.tsx`, opened from an
+  item's Pricing tab) for managers; enrollment review for
   administrators.
   `useRoleBasedAccess()` gives the same for the signed-in profile; `usePermissions()` gives
   create/update/delete and `isStaffRole` (the `staff` role only).

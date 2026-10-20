@@ -13,7 +13,7 @@ import { rateRights } from '@/features/item-pricing/rateRights';
 import { replaceItemRates, undoRateChange } from '@/services/item-pricing-service';
 import { showToast } from '@/utils/toast';
 import { F1, ORCHARD_B, ITEMS, row } from '@/tests/helpers/ratesFixtures';
-import type { ItemStoragePrice, StandardTier } from '@/types/item-pricing.types';
+import type { ItemStoragePrice } from '@/types/item-pricing.types';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -44,10 +44,15 @@ const refreshRows = jest.fn();
 const lastBar = (): RateSaveBarState | null => onBar.mock.calls[onBar.mock.calls.length - 1]?.[0] ?? null;
 const lastDirty = (): boolean => onDirty.mock.calls[onDirty.mock.calls.length - 1]?.[0] ?? false;
 
-const baseProps = (rows: ItemStoragePrice[], itemId = 'cumin'): ScopeRatesProps => ({
+// ScopeRates now shows one customer's own rates only (the item's default rate is on the item page's Pricing tab).
+// The fixtures are default rows, so by default they are made this customer's own; `own = false` keeps them as they are.
+const CUST = { customer_id: 'cust-x', customer_name: 'Review Customer X' };
+const asCustomer = (rows: ItemStoragePrice[]): ItemStoragePrice[] => rows.map(r => (r.customer_id === null ? { ...r, ...CUST } : r));
+const baseProps = (rows: ItemStoragePrice[], itemId = 'cumin', own = true): ScopeRatesProps => ({
   item: { id: itemId, name: ITEMS.find(i => i.id === itemId)!.name },
-  customerId: null,
-  rows,
+  customerId: CUST.customer_id,
+  customerName: CUST.customer_name,
+  rows: own ? asCustomer(rows) : rows,
   day: TODAY,
   today: TODAY,
   rights: rateRights('admin'),
@@ -84,7 +89,11 @@ const press = async (id: string) => { await act(async () => { pressable(id).prop
 const cell = (id: string, scope?: string) =>
   tree!.root.findAllByType(TextInput).filter(n => n.props.testID === id)[scope === 'last' ? 1 : 0];
 const type = async (id: string, text: string) => { await act(async () => { cell(id).props.onChangeText(text); }); };
-const tagLabels = () => tree!.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('band-tag-') && n.props.label).map(n => n.props.label);
+const dialog = () => {
+  const all = tree!.root.findAll(n => n.props.testID === 'discard-rate-dialog' && typeof n.props.onConfirm === 'function');
+  return all.find(n => n.props.visible) ?? all[0];
+};
+const monthlyIds = (rows: ItemStoragePrice[]) => rows.filter(r => r.price_type === 'monthly').map(r => r.id);
 
 describe('today, a manager', () => {
   it('draws a box with the rate in force, the unit, and the buttons Correct and Stop; no Change rate', async () => {
@@ -122,7 +131,16 @@ describe('today, a manager', () => {
     expect(bar.startsOn).toMatchObject({ choice: 'other', day: '2027-01-01', fixed: false });
     expect(bar.summaryLines.join(' ')).toContain('₹12.50');
     // The way back puts the rate in force into the box again and the bar goes.
+    // Figures were typed, so the way back asks first ("Keep editing" leaves everything as it is).
     await press('upcoming-discard');
+    expect(dialog().props.visible).toBe(true);
+    expect(dialog().props.title).toBe('Discard changes?');
+    await act(async () => { dialog().props.onCancel(); });
+    expect(dialog().props.visible).toBe(false);
+    expect(host('upcoming-mode').length).toBeGreaterThan(0);
+    expect(cell('band-0-rent').props.value).toBe('12.50');
+    await press('upcoming-discard');
+    await act(async () => { dialog().props.onConfirm(); });
     expect(host('upcoming-mode')).toHaveLength(0);
     expect(cell('band-0-rent').props.value).toBe('11.00');
     expect(lastBar()).toBeNull();
@@ -137,7 +155,7 @@ describe('today, a manager', () => {
     expect(dialog.props.visible).toBe(true);
     expect(dialog.props.title).toBe('Cancel the rate from 1 Jan 2027?');
     await act(async () => { dialog.props.onConfirm(); });
-    expect(undoRateChange).toHaveBeenCalledWith({ itemId: 'cumin', customerId: null, priceType: 'monthly', startsOn: '2027-01-01' });
+    expect(undoRateChange).toHaveBeenCalledWith({ itemId: 'cumin', customerId: CUST.customer_id, priceType: 'monthly', startsOn: '2027-01-01', seenRows: expect.arrayContaining(monthlyIds(CUMIN)) });
     expect(notifyRatesChanged).toHaveBeenCalledWith('cumin');
   });
 
@@ -154,12 +172,12 @@ describe('today, a manager', () => {
     expect(bar.discard.onPress).toEqual(expect.any(Function));
   });
 
-  it('Stop this rate opens the unchanged stop screen', async () => {
+  it('Stop this rate opens the stop screen for this customer', async () => {
     await mount(baseProps(CUMIN));
     await press('rate-stop');
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/stop',
-      params: { item_id: 'cumin', item_name: 'Review Cumin Bold', price_type: 'monthly' },
+      params: { item_id: 'cumin', item_name: 'Review Cumin Bold', price_type: 'monthly', customer_id: CUST.customer_id, customer_name: CUST.customer_name },
     });
   });
 
@@ -169,16 +187,13 @@ describe('today, a manager', () => {
     await mount(baseProps(stopping, 'onion'));
     expect(shown()).toContain('This rate stops after 31 Mar 2027.');
     await press('undo-stop');
-    expect(undoRateChange).toHaveBeenCalledWith({ itemId: 'onion', customerId: null, priceType: 'monthly', startsOn: '2027-04-01' });
+    expect(undoRateChange).toHaveBeenCalledWith({ itemId: 'onion', customerId: CUST.customer_id, priceType: 'monthly', startsOn: '2027-04-01', seenRows: expect.arrayContaining(monthlyIds(stopping)) });
     expect(showToast).toHaveBeenCalledWith('The rate continues.');
   });
 
-  it('tags the bands Standard or This item from the standard tiers while nothing is changed', async () => {
-    const tiers: StandardTier[] = [{ weight_min: 0, weight_max: 100, unit_price: 11, labour_rate: 3, tax_percent: 5 }];
-    await mount({ ...baseProps(CUMIN), standardTiers: tiers });
-    expect(tagLabels()).toEqual(['Standard']);
-    await type('band-0-rent', '11.5');
-    expect(tagLabels()).toEqual([]);
+  it('has no Standard / This item tags: the standard tiers belong to the item\'s default rate, not a customer\'s', async () => {
+    await mount(baseProps(CUMIN));
+    expect(tree!.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('band-tag-'))).toHaveLength(0);
   });
 
   it('with an overlap, a critical strip names the rate invoices use', async () => {
@@ -227,7 +242,11 @@ describe('the Save bar', () => {
     expect(next.rule).toBe('Lots received from 1 Nov 2026 are charged the new rate. Lots received before keep ₹11.00.');
     expect(next.summaryLines).toEqual(['Until 31 Oct 2026: ₹11.00 per bag, per month', 'From 1 Nov 2026: ₹12.00 per bag, per month']);
 
+    // Discard asks first when figures were typed.
     await act(async () => { next.discard.onPress(); });
+    expect(dialog().props.visible).toBe(true);
+    expect(lastBar()).not.toBeNull();
+    await act(async () => { dialog().props.onConfirm(); });
     expect(lastBar()).toBeNull();
     expect(lastDirty()).toBe(false);
     expect(cell('band-0-rent').props.value).toBe('11.00');
@@ -284,7 +303,7 @@ describe('saving', () => {
       mode: 'change',
       seen_rows: expect.arrayContaining(CUMIN.filter(r => r.price_type === 'monthly').map(r => r.id)),
       item_id: 'cumin',
-      customer_id: null,
+      customer_id: CUST.customer_id,
       price_type: 'monthly',
       starts_on: '2026-11-01',
       bands: [{ weight_min: 0, weight_max: 100, unit_price: 12.5, labour_rate: 3, tax_percent: 5 }],
@@ -349,6 +368,7 @@ describe('one box at a time', () => {
 
     // Discarded: both open again.
     await act(async () => { lastBar()!.discard.onPress(); });
+    await act(async () => { dialog().props.onConfirm(); });
     expect(host('rate-box-one_time-locked')).toHaveLength(0);
     expect(tree!.root.findAllByType(TextInput).filter(n => n.props.testID === 'band-0-rent')[1].props.editable).toBe(true);
   });
@@ -359,57 +379,29 @@ describe('one box at a time', () => {
     await mount({ ...baseProps(CUMIN_BOTH), fields });
     expect(registered).toEqual(expect.arrayContaining(['monthly:band.0.rent', 'one_time:band.0.rent', 'monthly:labour', 'one_time:tax']));
     expect(onOrder).toHaveBeenLastCalledWith([
-      'monthly:band.0.upTo', 'monthly:band.0.rent', 'monthly:labour', 'monthly:tax',
-      'one_time:band.0.upTo', 'one_time:band.0.rent', 'one_time:tax',
+      'monthly:firstFrom', 'monthly:band.0.upTo', 'monthly:band.0.rent', 'monthly:labour', 'monthly:tax',
+      'one_time:firstFrom', 'one_time:band.0.upTo', 'one_time:band.0.rent', 'one_time:tax',
     ]);
   });
 
-  it('a read of the same rows does not reopen the draft; changed rows do', async () => {
+  it('a read of the same rows does not reopen the draft; changed rows keep the typed figure and say so', async () => {
     await mount(baseProps(CUMIN));
     await type('band-0-rent', '12');
     await rerender(baseProps(CUMIN.map(r => ({ ...r }))));
     expect(cell('band-0-rent').props.value).toBe('12');
     expect(lastBar()).not.toBeNull();
     await rerender(baseProps(CUMIN.map(r => (r.unit_price === 11 ? { ...r, unit_price: 11.75 } : r))));
+    // Typed figures are kept when the rows change under them (the server refuses a stale save).
+    expect(cell('band-0-rent').props.value).toBe('12');
+    expect(lastBar()).not.toBeNull();
+    // Typing the saved figure back lets the new rows in.
+    await type('band-0-rent', '11.00');
     expect(cell('band-0-rent').props.value).toBe('11.75');
     expect(lastBar()).toBeNull();
   });
 });
 
 describe('adding', () => {
-  it('an item with no rate: the strip and Add default rate reveal an empty box; Discard hides it', async () => {
-    await mount(baseProps([], 'onion-small'));
-    expect(shown()).toContain("No default rate today. Invoices can't price Review Onion Red Small for lots received today.");
-    expect(host('rate-box-add')).toHaveLength(0);
-    expect(host('rate-box-monthly')).toHaveLength(0);
-    await press('add-default');
-    expect(host('rate-box-add').length).toBeGreaterThan(0);
-    expect(cell('band-0-rent').props.value).toBe('');
-    expect(host('add-default')).toHaveLength(0);
-    // The bar is there at once: a new rate can be saved as it is seeded.
-    const bar = lastBar()!;
-    expect(bar.saveLabel).toBe('Save new rate');
-    expect(bar.startsOn.choice).toBe('today');
-    // Saving the empty box is refused where the rent is.
-    await act(async () => { bar.save.onPress(); });
-    expect(replaceItemRates).not.toHaveBeenCalled();
-    await type('band-0-rent', '4');
-    expect(lastDirty()).toBe(true);
-    await press('box-close');
-    expect(host('rate-box-add')).toHaveLength(0);
-    expect(lastBar()).toBeNull();
-    expect(lastDirty()).toBe(false);
-    expect(pressable('add-default')).toBeDefined();
-  });
-
-  it('a default that ended offers Add default rate and seeds the box from the last one', async () => {
-    const ended = [row({ item_id: 'potato', weight_min: 0, weight_max: 100, unit_price: 8, effective_from: '2025-01-01', effective_to: '2026-06-30' })];
-    await mount(baseProps(ended, 'potato'));
-    expect(shown()).toContain('The default rate ended on 30 Jun 2026.');
-    await press('add-default');
-    expect(cell('band-0-rent').props.value).toBe('8.00');
-  });
-
   it('one price type present: Add one-time rate reveals a box of the other type, below the first', async () => {
     await mount(baseProps(CUMIN));
     expect(shown()).toContain('Add one-time rate');
@@ -423,39 +415,38 @@ describe('adding', () => {
     expect(host('add-other-type')).toHaveLength(0);
   });
 
+  it('closing a new box with typed figures asks "Discard this rate?" first', async () => {
+    await mount(baseProps(CUMIN));
+    await press('add-other-type');
+    await act(async () => { cell('band-0-rent', 'last').props.onChangeText('4'); });
+    await press('box-close');
+    expect(dialog().props.visible).toBe(true);
+    expect(dialog().props.title).toBe('Discard this rate?');
+    await act(async () => { dialog().props.onCancel(); });
+    expect(host('rate-box-add').length).toBeGreaterThan(0);
+    await press('box-close');
+    await act(async () => { dialog().props.onConfirm(); });
+    expect(host('rate-box-add')).toHaveLength(0);
+  });
+
   it('a customer with no own rate: the strip, and Add customer rate opens the full-screen Add customer rate form', async () => {
-    await mount({ ...baseProps(itemRows('onion'), 'onion'), customerId: 'orchard-c', customerName: 'Review Orchard C' });
+    await mount({ ...baseProps(itemRows('onion'), 'onion', false), customerId: 'orchard-c', customerName: 'Review Orchard C' });
     expect(shown()).toContain('Review Orchard C has no rate of their own for this item now. Invoices use the default rate.');
     await press('add-customer-rate');
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer-add/[customerId]',
-      params: { itemId: 'onion', customerId: 'orchard-c', customer_name: 'Review Orchard C' },
+      params: { itemId: 'onion', customerId: 'orchard-c', customer_name: 'Review Orchard C', deactivated: '0' },
     });
     // No box opens on this page; the form saves the rate (its own tests).
     expect(cell('band-0-rent')).toBeUndefined();
   });
 
   it('a customer who has an own rate gets its box, and the default for comparison', async () => {
-    await mount({ ...baseProps(itemRows('onion'), 'onion'), customerId: ORCHARD_B.customer_id, customerName: ORCHARD_B.customer_name });
+    await mount({ ...baseProps(itemRows('onion'), 'onion', false), customerId: ORCHARD_B.customer_id, customerName: ORCHARD_B.customer_name });
     expect(cell('band-0-rent').props.value).toBe('3.00');
     expect(cell('first-from').props.value).toBe('0');
     expect(texts()).toContain('Default rate: ₹3.50 per bag, per month');
     // Only the customer's own rows are in the box: the default rate has none.
     expect(host('rate-box-monthly')).toHaveLength(1);
-  });
-
-  it('the deep link of the list\'s "+" opens the first box with one more empty band', async () => {
-    await mount({ ...baseProps(itemRows('garlic'), 'garlic'), addBand: true });
-    expect(cell('band-2-upTo').props.value).toBe('');
-    expect(cell('band-2-rent')).toBeDefined();
-    // The empty band is a change from the saved bands: the bar is there and leaving asks first.
-    expect(lastDirty()).toBe(true);
-    expect(lastBar()!.saveLabel).toBe('Save new rate');
-  });
-
-  it('for an item with no rate the deep link opens the empty box at once', async () => {
-    await mount({ ...baseProps([], 'onion-small'), addBand: true });
-    expect(host('rate-box-add').length).toBeGreaterThan(0);
-    expect(cell('band-1-upTo')).toBeDefined();
   });
 });

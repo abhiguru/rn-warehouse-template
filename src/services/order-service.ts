@@ -216,6 +216,7 @@ export class OrderService {
       },
       {
         context: 'OrderService.addItemToOrder',
+        write: true,
         errorMessage: t('errors.order.addItemFailed'),
         unwrapNested: false, // Response is direct data
       }
@@ -267,6 +268,7 @@ export class OrderService {
       },
       {
         context: 'OrderService.updateOrderItemQuantity',
+        write: true,
         errorMessage: t('errors.order.updateQuantityFailed'),
         unwrapNested: false,
       }
@@ -300,6 +302,7 @@ export class OrderService {
       { p_order_item_id: itemId },
       {
         context: 'OrderService.removeItemFromOrder',
+        write: true,
         errorMessage: t('errors.order.removeItemFailed'),
         unwrapNested: false,
       }

@@ -58,6 +58,7 @@ export const common: Translation<typeof source> = {
   unknown: 'અજ્ઞાત',
   active: 'સક્રિય',
   inactive: 'નિષ્ક્રિય',
+  deactivated: 'નિષ્ક્રિય',
   pending: 'બાકી',
   on: 'ચાલુ',
   off: 'બંધ',
@@ -96,6 +97,8 @@ export const common: Translation<typeof source> = {
   // Messages
   couldNotLoad: 'આ લોડ કરી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
   checkConnection: 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+  // Draft for the owner's wording review (Settings, Profile and Account review, 2026-10-20).
+  checking: 'તપાસી રહ્યા છીએ…',
   somethingWentWrong: 'કંઈક ખોટું થયું. ફરી પ્રયાસ કરો.',
   noInternet: 'ઇન્ટરનેટ કનેક્શન નથી',
   discardChangesTitle: 'ફેરફાર છોડી દેવા છે?',

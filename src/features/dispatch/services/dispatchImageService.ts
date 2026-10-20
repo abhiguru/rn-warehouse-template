@@ -255,7 +255,7 @@ export const uploadDispatchImage = async (
       console.error('[DispatchImageService] Registration failed:', regError);
       return {
         success: false,
-        error: serverText(regError.message, t('dispatch.photos.registerFailed')),
+        error: serverText(regError, t('dispatch.photos.registerFailed'), { write: true, photo: true }),
       };
     }
 
@@ -266,7 +266,7 @@ export const uploadDispatchImage = async (
       );
       return {
         success: false,
-        error: serverText(regResult?.error, t('dispatch.photos.registrationFailedServer')),
+        error: serverText(regResult?.error, t('dispatch.photos.registrationFailedServer'), { write: true, photo: true }),
       };
     }
 
@@ -382,7 +382,7 @@ export const uploadDispatchImage = async (
           confirmResult?.error
         );
         throw new Error(
-          serverText(confirmResult?.error, t('dispatch.photos.confirmationFailedServer'))
+          serverText(confirmResult?.error, t('dispatch.photos.confirmationFailedServer'), { write: true, photo: true })
         );
       }
 
@@ -501,7 +501,7 @@ const uploadSingleDeferredImage = async (
     if (!regResult?.success) {
       return {
         success: false,
-        error: serverText(regResult?.error, t('dispatch.photos.registrationFailed')),
+        error: serverText(regResult?.error, t('dispatch.photos.registrationFailed'), { write: true, photo: true }),
       };
     }
 
@@ -540,7 +540,7 @@ const uploadSingleDeferredImage = async (
       }
 
       if (!confirmResult?.success) {
-        throw new Error(serverText(confirmResult?.error, t('dispatch.photos.confirmationFailed')));
+        throw new Error(serverText(confirmResult?.error, t('dispatch.photos.confirmationFailed'), { write: true, photo: true }));
       }
 
       return { success: true };

@@ -53,6 +53,8 @@ interface SectionHeaderAction {
   onPress: () => void;
   /** Accessibility label */
   accessibilityLabel?: string;
+  /** Text action only: dimmed, not pressable, and announced as disabled (for example while a save runs). */
+  disabled?: boolean;
 }
 
 export interface SectionHeaderProps {
@@ -140,11 +142,14 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         ) : action.label ? (
           <Pressable
             onPress={action.onPress}
+            disabled={action.disabled}
             style={({ pressed }) => [
               styles.textButton,
-              pressed && styles.buttonPressed,
+              pressed && !action.disabled && styles.buttonPressed,
+              action.disabled && { opacity: 0.5 },
             ]}
             accessibilityRole="button"
+            accessibilityState={{ disabled: !!action.disabled }}
             accessibilityLabel={action.accessibilityLabel || action.label}
             hitSlop={TEXT_BUTTON_HIT_SLOP}
           >

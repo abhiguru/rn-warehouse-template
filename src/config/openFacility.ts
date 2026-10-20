@@ -50,7 +50,7 @@ import {
   type CentralExchangeCode,
   type CentralExchangeResult,
 } from './supabaseConfig';
-import { forceLeaveFacility, leaveWithRetry, retryStaleFacilityCleanup, switchOperatorServer } from '@/store/operatorSwitch';
+import { forceLeaveFacility, leaveWithRetryDetailed, retryStaleFacilityCleanup, switchOperatorServer } from '@/store/operatorSwitch';
 import { store } from '@/store';
 import { setUserProfile } from '@/store/slices/authSlice';
 import { localizeDigits, t, type TranslationKey } from '@/i18n';
@@ -95,7 +95,7 @@ const ended = (): OpenOutcome => failed('not_signed_in', t('central.errors.sessi
  *      what follows does not restore the session (initializeAuth) and an open does not reach
  *      it until the cleanup has run.
  *   2. It is left like any other, and a write still in flight is first given time to settle
- *      (`leaveWithRetry`), so that write's outcome is not lost. When that works the entry is
+ *      (`leaveWithRetryDetailed`), so that write's outcome is not lost. When that works the entry is
  *      removed again.
  *   3. If it could not be left, the session is ended locally without waiting for the switch
  *      gate (`forceLeaveFacility`: late answers are dropped, and offline the local clear is enough).
@@ -111,9 +111,15 @@ async function leaveStaleSession(server: OperatorServer): Promise<OpenOutcome> {
   const facility = { origin: server.origin, instanceId: server.instanceId };
   const session = { generation: getSessionGeneration() };
   await markStaleFacility(facility, session.generation).catch(() => {});
-  if ((await leaveWithRetry(store.dispatch, { facility, session })) === 'left') {
+  const retry = await leaveWithRetryDetailed(store.dispatch, { facility, session });
+  if (retry.outcome === 'left') {
     await clearStaleFacility(facility);
     return ended();
+  }
+  if (retry.storageKept) {
+    // The cleanup ran through and the facility is no longer selected; only the phone's storage kept the sign-in.
+    forgetStaleGeneration(facility);
+    return failed('previous_session_not_cleared', t('central.open.previousNotCleared'));
   }
   const cleared = await forceLeaveFacility(store.dispatch, facility, session);
   // Not all of it ran: the next cleanup goes by the selection, not by the generation.
@@ -369,6 +375,9 @@ function signOutInProgress(): boolean {
   return getCentralState().leaving > 0 || Boolean(auth.logoutRequest || auth.forceLogoutRequest || auth.deleteRequest);
 }
 
+/** The facility being opened and the sign-in it was started for (for the refusal of a second open). */
+let openingFacility: { name: string; generation: number } | null = null;
+
 /**
  * Open a facility from "My facilities". `name` is what the list calls it, for
  * messages about a facility that could not even be reached. Never throws.
@@ -376,19 +385,28 @@ function signOutInProgress(): boolean {
  * While a facility session is being ended its profile is already gone from the
  * store and My facilities is shown, but the cleanup is still running: an open
  * now would race it (and, after an account deletion, file a new access request
- * for the deleted account). Such an open is refused as busy, and the refusal is
- * published like any other answer so the list says so; `opening` is left alone,
- * since another open may really be in flight.
+ * for the deleted account). Such an open is refused as busy and the refusal is
+ * said in a dialog at once (title "Still signing out" while a sign-out runs); `opening`
+ * is left alone, since another open may really be in flight.
  */
 export async function openFacility(origin: string, name: string): Promise<OpenOutcome> {
-  if (getCentralState().opening || signOutInProgress()) {
-    const outcome = failed('busy', t('central.switch.busyMessage'));
-    // Said on the list, unless an answer is already waiting there to be shown.
-    if (getCentralState().outcome === null) setCentralState({ outcome: { id: nextOutcomeId(), origin, name, outcome } });
-    return outcome;
+  const stillSigningOut = signOutInProgress();
+  if (getCentralState().opening || stillSigningOut) {
+    // Said in a dialog of its own, at once. Not published as an answer: one may already be
+    // waiting, and a refusal that is dropped leaves the tap with no reaction at all.
+    const title = stillSigningOut ? t('central.facilities.signingOutTitle') : t('auth.server.busyTitle');
+    // The name is used only while it belongs to this sign-in; otherwise the message names no facility.
+    const message = stillSigningOut
+      ? t('central.facilities.signingOutMessage')
+      : openingFacility && openingFacility.generation === getCentralIdentityGeneration()
+        ? t('central.facilities.stillOpening', { facility: openingFacility.name })
+        : t('central.switch.busyMessage');
+    showAlert(title, message);
+    return failed('busy', message);
   }
   const ticket = takeTicket();
   const seq = ++openSeq;
+  openingFacility = { name, generation: getCentralIdentityGeneration() };
   setCentralState({ opening: origin, outcome: null, autoOpenSpent: true });
   try {
     return publish(ticket, seq, origin, name, await open(ticket, origin, name));

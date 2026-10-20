@@ -25,6 +25,7 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'i2' }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('@/services/item-service', () => ({
   itemService: {
@@ -84,17 +85,11 @@ beforeEach(() => {
   jest.mocked(getItemStoragePrices).mockResolvedValue({ success: true, data: [], pagination: { total_count: 0, limit: 1, offset: 0, has_more: false } } as never);
 });
 
-describe('Delete item on Edit item', () => {
-  it('asks "Delete Review Item 03?" and, once deleted, goes back with a toast', async () => {
-    jest.mocked(itemService.deleteItem).mockResolvedValue({ success: true, message: 'ok' } as never);
+describe('Delete item', () => {
+  it('is not on Edit item any more: deleting is on the item page and in the Items list', async () => {
     await renderEdit();
-    await press('Delete item');
-    expect(deleteItemFlow).toHaveBeenCalledWith({ id: 'i2', name: 'Review Item 03' }, expect.any(Object));
-    expect(lastAlert().title).toBe('Delete Review Item 03?');
-    await act(async () => { lastAlert().buttons.find(b => b.text === 'Delete item')!.onPress!(); });
-    expect(itemService.deleteItem).toHaveBeenCalledWith('i2');
-    expect(router.back).toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith('Review Item 03 deleted.');
+    expect(byLabel('Delete item')).toBeUndefined();
+    expect(deleteItemFlow).not.toHaveBeenCalled();
   });
 
   it('is the same flow the Items swipe uses', async () => {

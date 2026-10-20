@@ -1,15 +1,15 @@
 /**
  * useRateEditor: opening a draft from the item's rows, what counts as a change, the payload of the save, the
- * LATER_RATES_EXIST question and every refusal of the server. It serves the rate boxes (every mode) and the edit
- * screen of the invoice pencil; the modes that only the boxes use (change, add, correct, upcoming, add_band, copy
- * bands, the start-day floor) are tested here, the screens have their own tests.
+ * LATER_RATES_EXIST question and every refusal of the server. It serves the rate boxes and the Add customer rate form; every mode (change,
+ * add, addCustomer, correct, upcoming, add_band, copy bands, the start-day floor) is tested here; the screens have
+ * their own tests.
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { replaceItemRates } from '@/services/item-pricing-service';
 import { clearRateStartFloor, rememberRateStartFloor } from '@/services/rateStartFloor';
 import { showToast } from '@/utils/toast';
-import { removeBand, setBandField } from '../editModel';
+import { appendEmptyBand, removeBand, setBandField } from '../editModel';
 import { laterDialogText } from '../laterRates';
 import { useRateEditor, type UseRateEditor, type UseRateEditorArgs } from '../useRateEditor';
 import { cuminRows, garlicRows, gingerRows, rate } from '@/tests/helpers/rateEditorFixtures';
@@ -112,7 +112,7 @@ it('sends nothing and shows the field error when the draft is not valid', async 
   act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '')));
   await act(async () => { await latest.submit(); });
   expect(replace).not.toHaveBeenCalled();
-  expect(latest.errors['band.0.rent']).toBe('Enter a rent of 0 or more.');
+  expect(latest.errors['band.0.rent']).toBe('Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.');
   expect(onSaved).not.toHaveBeenCalled();
 });
 
@@ -153,13 +153,84 @@ it('STALE_RATES shows the message and asks for the rows again; the new rows open
   expect(latest.strip).toBe('Rates changed.');
 });
 
-it('a draft opened from new rows has none of the field errors of the last one', async () => {
-  await mount();
+const RENT_ERR = 'Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.';
+async function submitWithEmptyRent() {
+  const rows = await mount();
   act(() => latest.setStartsOn('other', '2027-01-01'));
   act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '')));
   await act(async () => { await latest.submit(); });
-  expect(latest.errors['band.0.rent']).toBe('Enter a rent of 0 or more.');
-  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(cuminRows()) })));
+  expect(latest.errors['band.0.rent']).toBe(RENT_ERR);
+  return rows;
+}
+
+it('the same rows read again while figures are typed keep the typing and its errors, silently', async () => {
+  const rows = await submitWithEmptyRent();
+  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(JSON.parse(JSON.stringify(rows))) })));
+  expect(latest.errors['band.0.rent']).toBe(RENT_ERR);
+  expect(latest.rowsChanged).toBe(false);
+});
+
+it('different rows arriving while figures are typed keep the typing and say the rates changed', async () => {
+  const rows = await submitWithEmptyRent();
+  const changed = JSON.parse(JSON.stringify(rows));
+  changed[0] = { ...changed[0], unit_price: 99 };
+  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(changed) })));
+  expect(latest.rowsChanged).toBe(true);
+  expect(latest.draft!.bands[0].rent).toBe('');
+  expect(latest.errors['band.0.rent']).toBe(RENT_ERR);
+});
+
+it('after the rates of this scope changed while typing, Save sends the rows now held with the typing kept', async () => {
+  await mount();
+  act(() => latest.setStartsOn('other', '2027-01-01'));
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+  const changed = cuminRows();
+  changed[0] = { ...changed[0], unit_price: 99 };
+  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(changed) })));
+  expect(latest.rowsChanged).toBe(true);
+  expect(latest.draft!.bands[0].rent).toBe('12');
+  replace.mockResolvedValueOnce({ success: true });
+  await act(async () => { await latest.submit(); });
+  const sent = replace.mock.calls[0][0];
+  expect(sent.bands[0].unit_price).toBe(12);
+  expect(sent.seen_rows).toEqual(changed.filter(r => r.customer_id === null && r.price_type === 'monthly').map(r => r.id));
+  expect(onSaved).toHaveBeenCalledTimes(1);
+});
+
+it('rows of another customer changing while typing do not raise the warning and are not sent as seen', async () => {
+  const rows = await mount();
+  act(() => latest.setStartsOn('other', '2027-01-01'));
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+  const withOther = [...(rows ?? []), rate('cumin', { id: 'c-other', name: 'Other' }, 0, 100, 9, 1, 5, '2026-01-01', null)];
+  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(withOther) })));
+  expect(latest.rowsChanged).toBe(false);
+  expect(latest.draft!.bands[0].rent).toBe('12');
+  replace.mockResolvedValueOnce({ success: true });
+  await act(async () => { await latest.submit(); });
+  expect(replace.mock.calls[0][0].seen_rows).toEqual(
+    withOther.filter(r => r.customer_id === null && r.price_type === 'monthly').map(r => r.id),
+  );
+  expect(replace.mock.calls[0][0].seen_rows).not.toContain(withOther[withOther.length - 1].id);
+});
+
+it('STALE_RATES keeps the typed figures while the rows are read again', async () => {
+  await mount();
+  act(() => latest.setStartsOn('other', '2027-01-01'));
+  act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+  replace.mockResolvedValueOnce({ success: false, errorCode: 'STALE_RATES', message: 'Rates changed.' });
+  await act(async () => { await latest.submit(); });
+  expect(latest.ready).toBe(true);
+  expect(latest.draft!.bands[0].rent).toBe('12');
+});
+
+it('a draft opened from new rows (nothing being typed) has none of the field errors of the last one', async () => {
+  await submitWithEmptyRent();
+  // Back to the opening figures: nothing is being typed now.
+  act(() => latest.setDraft(latest.initial!));
+  expect(latest.dirty).toBe(false);
+  const changed = cuminRows();
+  changed[0] = { ...changed[0], unit_price: 99 };
+  act(() => tree!.update(React.createElement(Harness, { args: baseArgs(changed) })));
   expect(latest.errors).toEqual({});
   // And nothing is shown for a field the person has not touched yet: no error appears while typing.
   act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
@@ -187,24 +258,21 @@ async function mountWith(over: Partial<UseRateEditorArgs>) {
 }
 const GARLIC = garlicRows();
 
-describe('add_band (the "+" of the Item pricing list)', () => {
-  const garlic = { item: { id: 'garlic', name: 'Review Garlic Desi' }, rows: GARLIC, params: { add_band: '1' as const } };
+describe('adding a weight band to an item (the editor no longer opens with one)', () => {
+  const garlic = { item: { id: 'garlic', name: 'Review Garlic Desi' }, rows: GARLIC };
 
-  it("opens with the item's bands plus one empty band after the last, and counts as changed", async () => {
+  it('opens as stored and not changed', async () => {
     await mountWith(garlic);
-    expect(latest.draft!.bands.map(b => b.upTo)).toEqual(['40', '100', '']);
-    expect(latest.initial!.bands.map(b => b.upTo)).toEqual(['40', '100']);
-    expect(latest.dirty).toBe(true);
-  });
-
-  it('without the param the item opens as stored and is not changed', async () => {
-    await mountWith({ item: garlic.item, rows: GARLIC });
     expect(latest.draft!.bands.map(b => b.upTo)).toEqual(['40', '100']);
     expect(latest.dirty).toBe(false);
   });
 
-  it('removing the empty band that was added ends where it began', async () => {
+  it('an empty band added after the last counts as changed, and removing it ends where it began', async () => {
     await mountWith(garlic);
+    act(() => latest.setDraft(appendEmptyBand(latest.draft!)));
+    expect(latest.draft!.bands.map(b => b.upTo)).toEqual(['40', '100', '']);
+    expect(latest.initial!.bands.map(b => b.upTo)).toEqual(['40', '100']);
+    expect(latest.dirty).toBe(true);
     act(() => latest.setDraft(removeBand(latest.draft!, 2)));
     expect(latest.draft!.bands.map(b => b.upTo)).toEqual(['40', '100']);
     expect(latest.dirty).toBe(false);
@@ -247,6 +315,8 @@ describe('copying the bands of another item into a new rate', () => {
     replace.mockResolvedValueOnce({ success: false, errorCode: 'STALE_RATES', message: 'Rates changed.' });
     await act(async () => { await latest.submit(); });
     expect(replace).toHaveBeenCalledTimes(1);
+    // The rows are read again: null while they load, then the new array.
+    act(() => tree!.update(React.createElement(Harness, { args: { ...baseArgs(null), ...NEW_ITEM } })));
     act(() => tree!.update(React.createElement(Harness, { args: { ...baseArgs([]), ...NEW_ITEM } })));
     expect(latest.copiedFrom).toBeNull();
   });
@@ -329,18 +399,20 @@ describe('editing a planned rate', () => {
     expect(latest.ctx!.plannedGone).toBe(false);
   });
 
-  it('a moved day sends change with move_from; the same day sends correct', async () => {
+  it('a moved day sends change with move_from', async () => {
     await mountWith(upcoming);
     act(() => latest.setStartsOn('other', '2027-02-01'));
     replace.mockResolvedValueOnce({ success: true });
     await act(async () => { await latest.submit(); });
     expect(replace.mock.calls[0][0]).toMatchObject({ mode: 'change', move_from: '2027-01-01', starts_on: '2027-02-01' });
+  });
 
-    act(() => tree!.update(React.createElement(Harness, { args: { ...baseArgs(planned), ...upcoming, rows: [...planned] } })));
+  it('the same day sends correct', async () => {
+    await mountWith(upcoming);
     act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12.50')));
     replace.mockResolvedValueOnce({ success: true });
     await act(async () => { await latest.submit(); });
-    expect(replace.mock.calls[1][0]).toMatchObject({ mode: 'correct', starts_on: '2027-01-01' });
+    expect(replace.mock.calls[0][0]).toMatchObject({ mode: 'correct', starts_on: '2027-01-01' });
   });
 });
 

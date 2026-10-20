@@ -7,7 +7,8 @@
  * Based on SAP Fiori for iOS Design Guidelines
  */
 
-import React, { useState, useCallback } from 'react';
+import { markItemRatesStale } from '@/features/item-pricing/useItemRates';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,6 +19,7 @@ import {
   Pressable,
   Switch,
   TextInput,
+  AccessibilityInfo,
   type TextInputProps,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -46,7 +48,11 @@ import type { ItemFormData, ItemValidationErrors } from '@/types/item.types';
 
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { isNetworkError, isStatementTimeout, isTimeoutError, serverText } from '@/utils/serverText';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
+/** The order the fields are on the screen: the first wrong one gets focus. */
+const FIELD_ORDER: (keyof ItemValidationErrors)[] = ['name', 'packaging', 'description'];
+
 const ItemFormScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -61,6 +67,10 @@ const ItemFormScreen: React.FC = () => {
     active: true,
   });
   const [errors, setErrors] = useState<ItemValidationErrors>({});
+  const offline = useIsOffline();
+  const inputs = useRef<Partial<Record<keyof ItemValidationErrors, TextInput | null>>>({});
+  // The name (trimmed, lower case) of an Add that got no answer in time: it may have been saved.
+  const timedOutName = useRef<string | null>(null);
   // Which rate the new item gets: the standard rate, or the rates of another item (required when chosen).
   const [rateChoice, setRateChoice] = useState<RateChoice>('standard');
   const [rateSource, setRateSource] = useState<PickableItem | null>(null);
@@ -74,6 +84,8 @@ const ItemFormScreen: React.FC = () => {
     hasChanges,
     title: tr('items.form.discardNewTitle'),
     message: tr('items.form.discardNewMessage'),
+    // Back waits for a save that is running, instead of asking to discard what is being saved.
+    blocked: saving,
   });
 
   // Field change handlers
@@ -88,8 +100,8 @@ const ItemFormScreen: React.FC = () => {
     [errors]
   );
 
-  // Validation
-  const validateForm = useCallback((): boolean => {
+  // Validation: the number of fields to fix (0 when the form is right); the first wrong field gets focus.
+  const validateForm = useCallback((): number => {
     const newErrors: ItemValidationErrors = {};
 
     // Name validation
@@ -110,13 +122,25 @@ const ItemFormScreen: React.FC = () => {
     }
 
     setErrors(newErrors);
-    setRateSourceError(rateChoice === 'item' && !rateSource ? tr('items.form.rateItemRequired') : undefined);
-    return Object.keys(newErrors).length === 0 && !(rateChoice === 'item' && !rateSource);
+    const rateWrong = rateChoice === 'item' && !rateSource;
+    setRateSourceError(rateWrong ? tr('items.form.rateItemRequired') : undefined);
+    const wrong = FIELD_ORDER.filter((field) => newErrors[field]);
+    if (wrong.length > 0) inputs.current[wrong[0]]?.focus();
+    const count = wrong.length + (rateWrong ? 1 : 0);
+    if (count > 0) AccessibilityInfo.announceForAccessibility(tr('items.form.fixFields', { count }));
+    return count;
   }, [formData, rateChoice, rateSource]);
 
   // Handle save
   const handleSave = async () => {
-    if (!validateForm()) {
+    // Taken first: a second tap while the first is sending does nothing.
+    if (saving) return;
+    if (validateForm() > 0) {
+      return;
+    }
+    // Nothing is sent from a phone that is offline.
+    if (offline) {
+      showAlert(tr('items.form.couldNotAddTitle'), tr('items.offline.connectToSave'));
       return;
     }
 
@@ -131,6 +155,9 @@ const ItemFormScreen: React.FC = () => {
       });
 
       if (result.success) {
+        timedOutName.current = null;
+        // The new item may have got a rate: the Items list and the Pricing tabs read the rates again.
+        markItemRatesStale();
         leaveWithoutAsking(() => router.back());
         const name = formData.name.trim();
         const rateSourceDone = result.data?.rate_source;
@@ -143,19 +170,27 @@ const ItemFormScreen: React.FC = () => {
                 ? tr('items.form.addedNoRateToast', { name })
                 : tr('items.form.addedToast', { name }),
         );
-      } else {
-        // Check for duplicate name error
-        if (result.message?.toLowerCase().includes('duplicate') ||
-            result.message?.toLowerCase().includes('unique') ||
-            result.message?.toLowerCase().includes('already exists')) {
-          setErrors({ name: tr('items.form.duplicateName') });
+      } else if (result.code === 'DUPLICATE_NAME') {
+        const name = formData.name.trim();
+        if (timedOutName.current !== null && timedOutName.current === name.toLowerCase()) {
+          // The last try for this name got no answer (in time, or the connection dropped), and the name is taken now: it was probably saved.
+          showAlert(tr('items.form.couldNotAddTitle'), tr('items.form.alreadyAdded', { name }), [
+            { text: tr('common.keepEditing'), style: 'cancel' },
+            { text: tr('items.form.goToItems'), onPress: () => leaveWithoutAsking(() => router.dismissTo('/items')) },
+          ]);
         } else {
-          showAlert(tr('items.form.couldNotAddTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
+          setErrors({ name: tr('items.form.duplicateName') });
+          inputs.current.name?.focus();
         }
+      } else {
+        // No answer in time or a dropped connection: the item may have been saved. A server cancel (57014) rolled back.
+        if ((isTimeoutError(result) && !isStatementTimeout(result)) || isNetworkError(result)) timedOutName.current = formData.name.trim().toLowerCase();
+        showAlert(tr('items.form.couldNotAddTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }));
       }
     } catch (err) {
       console.error('[ItemForm] Save error:', err);
-      showAlert(tr('items.form.couldNotAddTitle'), tr('common.checkConnection'));
+      if ((isTimeoutError(err) && !isStatementTimeout(err)) || isNetworkError(err)) timedOutName.current = formData.name.trim().toLowerCase();
+      showAlert(tr('items.form.couldNotAddTitle'), serverText(err, tr('common.checkConnection'), { write: true, form: true }));
     } finally {
       setSaving(false);
     }
@@ -194,6 +229,7 @@ const ItemFormScreen: React.FC = () => {
               maxLength={80}
               error={errors.name}
               autoCapitalize="words"
+              inputRef={(node) => (inputs.current.name = node)}
             />
             <ItemTextField
               label={tr('common.packaging')}
@@ -202,6 +238,7 @@ const ItemFormScreen: React.FC = () => {
               placeholder={tr('items.form.packagingPlaceholder')}
               maxLength={40}
               error={errors.packaging}
+              inputRef={(node) => (inputs.current.packaging = node)}
             />
             {suggestions.length > 0 && (
               <ChoiceChips
@@ -218,6 +255,7 @@ const ItemFormScreen: React.FC = () => {
               placeholder={tr('items.form.descriptionPlaceholder')}
               maxLength={40}
               error={errors.description}
+              inputRef={(node) => (inputs.current.description = node)}
             />
           </View>
 
@@ -273,10 +311,11 @@ type ItemTextFieldProps = Omit<TextInputProps, 'style'> & {
   error?: string;
   maxLength: number;
   value: string;
+  inputRef?: (node: TextInput | null) => void;
 };
 
 /** Labelled text field with focus, error and character count (style guide §13.2). */
-function ItemTextField({ label, required, error, maxLength, value, onFocus, onBlur, ...inputProps }: ItemTextFieldProps) {
+function ItemTextField({ label, required, error, maxLength, value, inputRef, onFocus, onBlur, ...inputProps }: ItemTextFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const [focused, setFocused] = useState(false);
@@ -288,6 +327,7 @@ function ItemTextField({ label, required, error, maxLength, value, onFocus, onBl
       </Text>
       <TextInput
         {...inputProps}
+        ref={inputRef}
         value={value}
         maxLength={maxLength}
         placeholderTextColor={t.text.placeholder}

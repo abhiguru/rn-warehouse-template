@@ -35,6 +35,7 @@ const result = (over: Partial<UseItemRatesResult> = {}): UseItemRatesResult => (
   refreshError: false,
   error: null,
   refresh: jest.fn().mockResolvedValue(undefined),
+  refreshIfStale: jest.fn().mockResolvedValue(undefined),
   itemRates: jest.fn(),
   ...over,
 });
@@ -98,7 +99,7 @@ describe('a customer with one own rate', () => {
     expect(router.push).toHaveBeenCalledTimes(1);
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer/[customerId]',
-      params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' },
+      params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '0' },
     });
   });
 });
@@ -146,7 +147,7 @@ describe('+ Add item', () => {
     expect(sheetProps.isVisible).toBe(false);
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer-add/[customerId]',
-      params: { itemId: 'onion-small', customerId: 'orchard-b', customer_name: 'Review Orchard B' },
+      params: { itemId: 'onion-small', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '0' },
     });
   });
 
@@ -163,7 +164,7 @@ describe('+ Add item', () => {
     jest.mocked(useItemRates).mockReturnValue(result({ rates: ended }));
     await mount();
     expect(texts(tree)).toContain('Review Orchard B has no rates of their own yet.');
-    await act(async () => { byLabel(tree, '+ Add item').props.onPress(); });
+    await act(async () => { byLabel(tree, 'Add item').props.onPress(); });
     expect((await sheetProps.searchFn('')).map((i: { id: string }) => i.id)).toContain('onion');
   });
 });
@@ -205,7 +206,7 @@ describe('the `item` link', () => {
     expect(router.push).toHaveBeenCalledTimes(1);
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer/[customerId]',
-      params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B' },
+      params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '0' },
     });
     expect(onOpened).toHaveBeenCalledTimes(1);
     await act(async () => { tree.update(<CustomerPricingTab customerId="orchard-b" customerName="Review Orchard B" openItemId="onion" onOpened={onOpened} />); });
@@ -215,5 +216,26 @@ describe('the `item` link', () => {
   it('without the link nothing opens', async () => {
     await mount();
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe('a deactivated customer', () => {
+  it('shows the rows and the strip, but no + Add item, and the row link says deactivated', async () => {
+    await mount('orchard-b', 'Review Orchard B', { deactivated: true });
+    expect(host(tree, 'customer-pricing-deactivated').length).toBeGreaterThan(0);
+    expect(texts(tree)).toContain('This customer is deactivated. Activate them to change their rates.');
+    expect(texts(tree)).toContain('Review Onion Red');
+    expect(byLabel(tree, 'Add item')).toBeUndefined();
+    await act(async () => { pressable(tree, n => n.props.testID === 'customer-item-row-onion').props.onPress(); });
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/item-rates/[itemId]/customer/[customerId]',
+      params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '1' },
+    });
+  });
+
+  it('with no own rate it says so and offers no Add item', async () => {
+    await mount('orchard-z', 'Review Orchard Z', { deactivated: true });
+    expect(host(tree, 'customer-pricing-empty').length).toBeGreaterThan(0);
+    expect(byLabel(tree, 'Add item')).toBeUndefined();
   });
 });

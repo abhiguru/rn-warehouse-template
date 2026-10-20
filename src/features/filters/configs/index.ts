@@ -2,7 +2,6 @@ import type { FilterContext, FilterListDefinition, FilterValues, SortState } fro
 import { DISPATCH_FILTERS } from './dispatch';
 import { GRN_FILTERS } from './grn';
 import { INVOICE_FILTERS } from './invoice';
-import { ITEM_PRICING_FILTERS } from './itemPricing';
 import { ORDER_FILTERS, ORDER_QUEUE_FILTERS } from './order';
 
 /** A configuration with its request type hidden: the request is built and counted in one step. */
@@ -33,7 +32,6 @@ export const FILTER_CONFIGS: Record<string, CountableFilterList> = {
   [INVOICE_FILTERS.listKey]: countable(INVOICE_FILTERS),
   [ORDER_FILTERS.listKey]: countable(ORDER_FILTERS),
   [ORDER_QUEUE_FILTERS.listKey]: countable(ORDER_QUEUE_FILTERS),
-  [ITEM_PRICING_FILTERS.listKey]: countable(ITEM_PRICING_FILTERS),
 };
 
 /**
@@ -45,4 +43,4 @@ export function filterConfigFor(listKey: string | null | undefined): CountableFi
   return listKey && Object.prototype.hasOwnProperty.call(FILTER_CONFIGS, listKey) ? FILTER_CONFIGS[listKey] : undefined;
 }
 
-export { DISPATCH_FILTERS, GRN_FILTERS, INVOICE_FILTERS, ITEM_PRICING_FILTERS, ORDER_FILTERS, ORDER_QUEUE_FILTERS };
+export { DISPATCH_FILTERS, GRN_FILTERS, INVOICE_FILTERS, ORDER_FILTERS, ORDER_QUEUE_FILTERS };

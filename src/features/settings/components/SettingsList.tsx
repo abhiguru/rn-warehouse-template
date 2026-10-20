@@ -7,7 +7,7 @@
  * chevron, and is read as "label, value, subtitle".
  */
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { SectionHeader } from '@/components/ui/SectionHeader';
@@ -129,6 +129,7 @@ export function SettingsRow({
   showChevron = true,
   destructive = false,
   last = false,
+  busy = false,
   testID,
 }: {
   testID?: string;
@@ -143,6 +144,11 @@ export function SettingsRow({
   showChevron?: boolean;
   destructive?: boolean;
   last?: boolean;
+  /**
+   * Work started by this row is running (for example a check before a dialog): a spinner replaces the
+   * chevron, the row is announced as busy and taps are ignored until it ends. Pass the working text as `subtitle`.
+   */
+  busy?: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -150,9 +156,10 @@ export function SettingsRow({
   return (
     <Pressable
       testID={testID}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && !busy && styles.rowPressed]}
+      onPress={busy ? undefined : onPress}
       accessibilityRole="button"
+      accessibilityState={busy ? { busy: true } : undefined}
       accessibilityLabel={[label, value, subtitle].filter(Boolean).join(', ')}
     >
       {leading ? (
@@ -182,7 +189,8 @@ export function SettingsRow({
             {value}
           </Text>
         ) : null}
-        {showChevron && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
+        {busy ? <ActivityIndicator size="small" color={t.brand.tint} /> : null}
+        {showChevron && !busy && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
       </View>
     </Pressable>
   );

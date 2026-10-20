@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetBackdropProps, BottomSheetTextInput, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Button } from '@/components/ui/Button';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { searchService } from '@/services/search-service';
 import { RecentCustomersService, RecentCustomer } from '@/services/recent-customers-service';
@@ -92,6 +93,10 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         const [searchResults, setSearchResults] = useState<CustomerSearchResult[]>([]);
         const [recentCustomers, setRecentCustomers] = useState<RecentCustomer[]>([]);
         const [isSearching, setIsSearching] = useState(false);
+        const [searchFailed, setSearchFailed] = useState(false);
+        const [retryCount, setRetryCount] = useState(0);
+        // Only the newest search may set results or a failure.
+        const latestSearch = useRef(0);
         const [isOpen, setIsOpen] = useState(false);
 
         const t = useTokens();
@@ -105,6 +110,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
             open: () => {
                 setSearchQuery('');
                 setSearchResults([]);
+                setSearchFailed(false);
                 loadRecentCustomers();
                 bottomSheetRef.current?.expand();
                 // Auto-focus search input after sheet animation
@@ -132,23 +138,31 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         useEffect(() => {
             if (searchQuery.length >= 1) {
                 setIsSearching(true);
+                setSearchFailed(false);
                 const timeoutId = setTimeout(async () => {
+                    const search = ++latestSearch.current;
                     try {
-                        const results = await searchService.searchCustomers(normalizeDigits(searchQuery));
+                        const results = await searchService.searchCustomersOrThrow(normalizeDigits(searchQuery));
+                        if (search !== latestSearch.current) return;
                         setSearchResults(results || []);
                     } catch (error) {
+                        if (search !== latestSearch.current) return;
                         console.error('[CustomerSearchBottomSheet] Search error:', error);
                         setSearchResults([]);
+                        // The failure text below is a polite live region: it is announced once, there.
+                        setSearchFailed(true);
                     } finally {
-                        setIsSearching(false);
+                        if (search === latestSearch.current) setIsSearching(false);
                     }
                 }, 300);
                 return () => clearTimeout(timeoutId);
             } else {
+                latestSearch.current += 1;
                 setSearchResults([]);
+                setSearchFailed(false);
                 setIsSearching(false);
             }
-        }, [searchQuery]);
+        }, [searchQuery, retryCount]);
 
         // Handle customer selection (user-scoped)
         const handleSelect = useCallback(async (customer: CustomerSearchResult | { value: string; label: string; detail?: string; city?: string; mobile?: string }) => {
@@ -267,7 +281,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                     accessibilityLabel={tr('customers.search.searchingLabel')}
                                 />
                             )}
-                            {searchQuery.length > 0 && !isSearching && (
+                            {searchQuery.length > 0 && (
                                 <Pressable
                                     onPress={() => setSearchQuery('')}
                                     style={styles.clearButton}
@@ -327,6 +341,14 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                             <View style={styles.emptyContainer}>
                                 {isSearching ? (
                                     <ActivityIndicator color={t.brand.tint} accessibilityLabel={tr('customers.search.searchingLabel')} />
+                                ) : searchFailed ? (
+                                    <Icon
+                                        name="alert-circle-outline"
+                                        size={iconSize.hero}
+                                        color={t.status.negative.text}
+                                        accessibilityElementsHidden
+                                        importantForAccessibility="no"
+                                    />
                                 ) : (
                                     <Icon
                                         name={isSearchMode ? 'magnify' : 'history'}
@@ -334,8 +356,17 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                         color={t.icon.secondary}
                                     />
                                 )}
-                                <Text style={styles.emptyTitle}>{emptyTitle}</Text>
-                                {emptyMessage ? <Text style={styles.emptyText}>{emptyMessage}</Text> : null}
+                                {searchFailed && !isSearching ? (
+                                    <>
+                                        <Text style={styles.emptyTitle} accessibilityLiveRegion="polite">{tr('customers.search.failed')}</Text>
+                                        <Button type="secondary" onPress={() => setRetryCount(count => count + 1)} testID="customer-search-retry">{tr('common.retry')}</Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+                                        {emptyMessage ? <Text style={styles.emptyText}>{emptyMessage}</Text> : null}
+                                    </>
+                                )}
                             </View>
                         }
                         contentContainerStyle={[styles.customerList, { paddingBottom: insets.bottom + space.xxl }]}

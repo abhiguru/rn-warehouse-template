@@ -31,7 +31,6 @@ export function standardContext(today: string): EditorContext {
     editingIds: [],
     originalStart: null,
     copied: false,
-    invoice: null,
   };
 }
 
@@ -53,7 +52,7 @@ export function standardDraft(tiers: StandardTier[], today: string): Draft {
   };
 }
 
-/** The editor's checks without the start day: Up to at least From, whole kg, rent, labour and tax 0 or more with two decimals, tax at most 100. */
+/** The editor's checks without the start day: Up to at least From, whole kg, rent 0 to 9999.99, labour and tax 0 or more with two decimals, tax at most 100. */
 export function validateStandard(draft: Draft, ctx: EditorContext): { ok: boolean; errors: Record<string, string> } {
   const { startsOn: _startsOn, ...errors } = validate(draft, ctx).errors;
   return { ok: Object.keys(errors).length === 0, errors };

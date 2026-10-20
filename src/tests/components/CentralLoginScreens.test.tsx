@@ -30,6 +30,7 @@ import { addMyFacility, loadMyFacilities, type MyFacility } from '@/config/centr
 import { beginFacilitySmsSignIn, completeFacilityLink, openFacility, resendFacilityLinkCode } from '@/config/openFacility';
 import { deleteAccountEverywhere, signOutAllDevices, signOutEverywhere } from '@/store/centralSignOut';
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { setLanguage } from '@/i18n';
 
 type MockState = { theme: { preference: Mode; brand: Brand }; auth: Record<string, unknown> };
@@ -51,9 +52,13 @@ jest.mock('expo-router', () => {
       canDismiss: jest.fn(() => false), dismissAll: jest.fn(),
     },
     useNavigation: () => navigation,
+    useIsFocused: () => true,
+    useFocusEffect: require('./focusHarness').useFocusEffect,
   };
 });
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
+jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 jest.mock('@/config/envConfig', () => ({
   getCentralLoginConfig: () => ({ origin: 'https://identity.example.test', issuer: 'https://identity.example.test' }),
   isCentralLoginConfigured: () => true,
@@ -542,13 +547,30 @@ describe('My facilities', () => {
     });
   });
 
-  it('shows which facility is being opened and takes no second tap meanwhile', async () => {
+  it('shows which facility is being opened and answers a tap meanwhile with a dialog, not a second screen', async () => {
     jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'approved')]);
     await render(<FacilitiesScreen />);
     await act(async () => { setCentralState({ opening: 'https://north-cold-store.example.test' }); });
     expect(texts()).toContain('Opening North Cold Store…');
-    expect(byTestID('facility-https://south-cold-store.example.test').props.disabled).toBe(true);
-    expect(button('Add facility').props.disabled).toBe(true);
+    expect(alerts()).toHaveLength(0);
+    await press(button('Add facility'));
+    expect(router.push).not.toHaveBeenCalled();
+    expect(alerts()).toEqual([['Operation in progress', 'Still opening North Cold Store. Wait for it to finish.']]);
+  });
+
+  it('while one facility opens, the other rows are busy too; an opening facility outside the list gives the general busy text', async () => {
+    jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'approved')]);
+    await render(<FacilitiesScreen />);
+    const rows = () => tree!.root.findAll(node => typeof node.props.testID === 'string' && /^facility-https/.test(node.props.testID) && typeof node.props.onPress === 'function');
+    const busyOf = (id: string) => rows().find(node => node.props.testID === id)?.props.accessibilityState?.busy;
+    const north = rows()[0].props.testID as string;
+    const south = rows()[1].props.testID as string;
+    expect([busyOf(north), busyOf(south)]).toEqual([false, false]);
+    await act(async () => { setCentralState({ opening: north.replace('facility-', '') }); });
+    expect([busyOf(north), busyOf(south)]).toEqual([true, true]);
+    await act(async () => { setCentralState({ opening: 'https://not-in-the-list.example.test' }); });
+    await press(button('Add facility'));
+    expect(alerts()).toEqual([['Operation in progress', 'Finish the current operation before switching facilities.']]);
   });
 
   it('pull to refresh reads the list and asks the association, and contacts no facility', async () => {
@@ -576,7 +598,7 @@ describe('My facilities', () => {
   });
 
   it.each([
-    ['busy', 'Finish the current operation before switching facilities.'],
+    ['busy', 'A save is still being sent. Wait a few seconds, then try again.'],
     [
       'local_clear_failed',
       "This phone couldn't remove your association sign-in from its secure storage. Restart the app and check that you're signed out before anyone else uses this phone.",
@@ -906,7 +928,9 @@ describe('the account', () => {
     await typeName('Asha F. Fictional');
     await press(button('Save name'));
     expect(updateCentralName).toHaveBeenCalledWith('Asha F. Fictional');
-    expect(alerts()[0]).toEqual(['Name saved']);
+    // Saved is a toast now, not a dialog.
+    expect(showToast).toHaveBeenCalledWith('Name saved.');
+    expect(alerts()).toHaveLength(0);
   });
 
   it('refuses an empty name without calling the service', async () => {
@@ -1016,7 +1040,7 @@ describe('the account', () => {
       [
         'a write is in flight',
         { ok: false, reason: 'busy' },
-        ["Couldn't sign out on all phones", 'Finish the current operation before switching facilities.'],
+        ["Couldn't sign out on all phones", 'A save is still being sent. Wait a few seconds, then try again.'],
       ],
       [
         'this phone could not remove its copy',
@@ -1041,7 +1065,7 @@ describe('the account', () => {
       await render(<CentralAccountScreen />);
       await press(button('Sign out on all phones'));
       await act(async () => { lastAlertButton('Sign out on all phones').onPress?.(); });
-      expect(alerts()[1]).toEqual(["Couldn't switch facility", 'Check your connection and try again.']);
+      expect(alerts()[1]).toEqual(['Signed out', "Some of this facility's data couldn't be removed from this phone. Restart the app before someone else uses it."]);
     });
 
     it('is shown in Gujarati, with the dialog saying every phone and that an open facility stays open', async () => {

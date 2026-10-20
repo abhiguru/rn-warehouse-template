@@ -45,6 +45,8 @@ const button = (tree: ReactTestRenderer, label: string) =>
 const type = async (tree: ReactTestRenderer, label: string, text: string) => {
   await act(async () => { input(tree, label).props.onChangeText(text); });
 };
+const shownText = (tree: ReactTestRenderer) =>
+  tree.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
 let tree: ReactTestRenderer | undefined;
 const mountEdit = async () => {
   jest.mocked(useLocalSearchParams).mockImplementation(() => ({ id: 'c1' }) as never);
@@ -85,8 +87,11 @@ it('CR-08: clearing the email in Edit sends an empty email, not undefined', asyn
   await act(async () => { await button(screen, 'Save customer').props.onPress(); });
   const sent = jest.mocked(customerService.updateCustomer).mock.calls[0][0];
   expect(sent.p_email).toBe('');
-  expect(sent.p_city).toBe('Rajkot');
-  expect(sent.p_gst_number).toBe('');
+  // Edit sends only what was changed: the city, mobile and GST were not touched.
+  expect(sent.p_city).toBeUndefined();
+  expect(sent.p_mobile).toBeUndefined();
+  expect(sent.p_gst_number).toBeUndefined();
+  expect(sent.p_customer_id).toBe('c1');
 });
 
 it('CR-08: Add still leaves an empty optional field out', async () => {
@@ -121,14 +126,15 @@ it('CR-22: an exact name match offers Cancel and Open customer only', async () =
   expect(jest.mocked(showAlert).mock.calls[0][1]).toContain('name must be different');
 });
 
-it('CR-22: DUPLICATE_NAME from the server are shown in the app\'s own words', async () => {
+it('CR-22: DUPLICATE_NAME from the server is shown under the name field in the app\'s own words', async () => {
   jest.mocked(customerService.createCustomer).mockResolvedValue({
     success: false, message: 'A customer with this name already exists', error: 'DUPLICATE_NAME', code: 'DUPLICATE_NAME',
   } as never);
   const screen = await mountAdd();
   await fill(screen, 'Zeta Traders');
   await act(async () => { await button(screen, 'Add customer').props.onPress(); });
-  expect(jest.mocked(showAlert).mock.calls[0][1]).toBe('A customer with this name already exists. Use a different name.');
+  expect(showAlert).not.toHaveBeenCalled();
+  expect(shownText(screen)).toContain('A customer with this name already exists. Use a different name.');
 });
 
 it('CR-23: the length limits are the column sizes (name 80, city 25, address 300)', async () => {
@@ -145,8 +151,10 @@ it('CR-24: the duplicate search also looks for the mobile number and merges the 
   const screen = await mountAdd();
   await fill(screen, 'R. Patel & Sons');
   await act(async () => { await button(screen, 'Add customer').props.onPress(); });
-  expect(customerService.searchCustomers).toHaveBeenCalledWith('R. Patel & Sons', 5);
-  expect(customerService.searchCustomers).toHaveBeenCalledWith('919000000099', 5);
-  expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Patel Traders already exists');
+  expect(customerService.searchCustomers).toHaveBeenCalledWith('R. Patel & Sons', 5, { includeInactive: true });
+  expect(customerService.searchCustomers).toHaveBeenCalledWith('919000000099', 5, { includeInactive: true });
+  // The active customer with this number is named under the mobile field; no dialog.
+  expect(showAlert).not.toHaveBeenCalled();
+  expect(shownText(screen)).toContain('Patel Traders already uses this mobile number. Use a different number.');
   expect(customerService.createCustomer).not.toHaveBeenCalled();
 });

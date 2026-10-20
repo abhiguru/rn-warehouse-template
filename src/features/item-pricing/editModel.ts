@@ -3,24 +3,20 @@
  * offered, the weight-band maths, the checks and the call to the server. Pure: no React, no
  * network. Days are 'YYYY-MM-DD' strings and are compared as strings, never through UTC.
  *
- * The rows come from the editor's own fresh load of the item (the editor writes money, so it
- * never starts from the list's cache).
+ * The rows are passed in by the caller (useRateEditor's `rows`).
  */
 import { localizeDigits, normalizeDigits, t } from '@/i18n';
 import type { ItemStoragePrice, PriceType, ReplaceRatesInput } from '@/types/item-pricing.types';
 import type { EditorMode, EditorParams } from './contract';
 import { rateRights } from './rateRights';
 import { addDays, bandText, dateText, money, unitText } from './rateText';
-import { priceNumber } from './utils/priceNumbers';
+import { acceptRentText, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
 
 /** The server allows ten bands in one scope (INVALID_BANDS). */
 export const MAX_BANDS = 10;
 
-/** What the editor finally is. 'invoice' is resolved to one of these once the rows are known. */
-export type ResolvedMode = Exclude<EditorMode, 'invoice'>;
-
-/** 'fixed': the day cannot be chosen (a correction keeps the rate's own start). 'received': the goods-received day of an invoice line. */
-export type StartsOnChoice = 'today' | 'nextMonth' | 'april' | 'received' | 'other' | 'fixed';
+/** 'fixed': the day cannot be chosen (a correction keeps the rate's own start). */
+export type StartsOnChoice = 'today' | 'nextMonth' | 'april' | 'other' | 'fixed';
 
 export interface BandDraft {
   /** The heaviest bag this band holds, whole kg, as typed. */
@@ -34,6 +30,8 @@ export interface BandDraft {
    * the default rate). The editor keeps the gap; a band that starts right after the one before has none.
    */
   gapFrom?: number;
+  /** The last rent key was refused (it would pass 9999.99 or 2 decimals): the field says why until a key is accepted. Not a change. */
+  rentRefused?: true;
   /** A customer band's "From" as typed (not the first band, which has firstFromText). Set only when the person typed a start other than the end of the band before plus one. */
   fromText?: string;
 }
@@ -54,7 +52,7 @@ export interface Draft {
 }
 
 export interface EditorContext {
-  mode: ResolvedMode;
+  mode: EditorMode;
   itemId: string;
   itemName: string;
   customerId: string | null;
@@ -77,8 +75,6 @@ export interface EditorContext {
   copied: boolean;
   /** The earliest day a rate may start (the oldest GRN's day); absent: three years before today. */
   earliestStart?: string | null;
-  /** Set when the editor was opened from an invoice line. */
-  invoice: null | { customerName: string | null; grnDate: string; mixedDays: boolean };
 }
 
 export interface Scope {
@@ -262,7 +258,29 @@ export function setUpTo(draft: Draft, index: number, text: string): Draft {
 }
 
 export function setBandField(draft: Draft, index: number, field: 'rent' | 'labour' | 'tax', text: string): Draft {
-  return { ...draft, bands: draft.bands.map((b, i) => (i === index ? { ...b, [field]: text } : b)) };
+  // A rent that would pass 9999.99 or 2 decimals is not taken: the field keeps what it held.
+  const old = draft.bands[index]?.rent ?? '';
+  const value = field === 'rent' ? acceptRentText(old, text) : text;
+  const refused = field === 'rent' && value === old && text !== old;
+  return {
+    ...draft,
+    bands: draft.bands.map((b, i) => {
+      if (i !== index) return b;
+      if (field !== 'rent') return { ...b, [field]: value };
+      const { rentRefused: _was, ...rest } = b;
+      return { ...rest, rent: value, ...(refused ? { rentRefused: true as const } : {}) };
+    }),
+  };
+}
+
+/** The rent message of each band whose last key was refused, or whose rent (stored or copied) is above the limit. Shown before Save. */
+export function rentErrors(draft: Draft): Record<string, string> {
+  const errors: Record<string, string> = {};
+  draft.bands.forEach((band, i) => {
+    const n = priceNumber(band.rent, 2);
+    if (band.rentRefused || (n !== null && n > RENT_MAX)) errors[`band.${i}.rent`] = t('pricing.edit.err.rent');
+  });
+  return errors;
 }
 
 /** Why "Add weight band" cannot add one now: ten bands already, or the last "Up to" is not a whole number yet. */
@@ -274,7 +292,7 @@ export function appendBandBlock(draft: Draft): 'max' | 'upTo' | null {
 
 /**
  * Adds an empty band after the last one (it starts one kg above where the last ends). Labour and tax
- * are copied from the first band when each band keeps its own, as withBandFor does. Unchanged at ten
+ * are copied from the first band when each band keeps its own. Unchanged at ten
  * bands and while the last "Up to" is not a whole number.
  */
 export function appendEmptyBand(draft: Draft): Draft {
@@ -344,88 +362,19 @@ export function copyTiersFrom(draft: Draft, rows: ItemStoragePrice[]): Draft {
 }
 
 /** One band 0-100 and nothing else filled in. */
-function emptyDraft(priceType: PriceType, upTo = 100): Draft {
+function emptyDraft(priceType: PriceType): Draft {
   return {
     priceType,
     startsOn: null,
     startsOnChoice: null,
     firstFrom: 0,
-    bands: [{ upTo: String(upTo), rent: '' }],
+    bands: [{ upTo: '100', rent: '' }],
     labour: '',
     tax: '',
   };
 }
 
 const withStart = (draft: Draft, choice: StartsOnChoice, startsOn: string): Draft => setStartsOn(draft, choice, startsOn);
-
-/** The weight of an invoice line as a number (it may have a fraction), or null when it is not a number. */
-function lineKg(text: string | null | undefined): number | null {
-  const cleaned = normalizeDigits(text ?? '').trim();
-  if (!/^\d+(\.\d+)?$/.test(cleaned)) return null;
-  return Number(cleaned);
-}
-
-/**
- * Gives `weight` a band of its own: after the last band, or in the weights before the first band
- * that starts above it (the first band then starts at 0). The rent is filled in by applyLine.
- */
-function withBandFor(draft: Draft, weight: number): Draft {
-  const bands = draft.bands;
-  const starts = bands.map((_, i) => fromOf(draft, i));
-  const ends = bands.map(b => wholeKg(b.upTo));
-  if (starts.some(v => v === null) || ends.some(v => v === null)) return draft;
-  const fresh = (upTo: number): BandDraft => ({
-    upTo: String(upTo),
-    rent: '',
-    ...(bands.some(b => b.labour !== undefined) ? { labour: bands[0].labour ?? '', tax: bands[0].tax ?? '' } : {}),
-  });
-  const after = starts.findIndex(v => (v as number) > weight);
-  if (after < 0) {
-    if (bands.length >= MAX_BANDS) return draft;
-    return { ...draft, bands: [...bands, fresh(Math.ceil(weight))] };
-  }
-  if (bands.length >= MAX_BANDS) return draft;
-  const upTo = (starts[after] as number) - 1;
-  // A fraction between two whole-kg bands has no whole-kg band of its own.
-  if (after > 0 && upTo < (ends[after - 1] as number) + 1) return draft;
-  if (after === 0) {
-    return { ...draft, firstFrom: 0, firstFromText: undefined, bands: [fresh(upTo), { ...bands[0], gapFrom: undefined, fromText: undefined }, ...bands.slice(1)] };
-  }
-  return { ...draft, bands: [...bands.slice(0, after), fresh(upTo), { ...bands[after], gapFrom: undefined, fromText: undefined }, ...bands.slice(after + 1)] };
-}
-
-/** The invoice line's rent, labour and tax go into the band that holds the line's weight. */
-function applyLine(draft: Draft, params: EditorParams): Draft {
-  const rent = priceNumber(params.unit_price, 2);
-  const labour = priceNumber(params.labour_rate, 2);
-  const tax = priceNumber(params.tax_percent, 2);
-  const weight = lineKg(params.weight_max);
-  let index = draft.bands.length - 1;
-  if (weight !== null) {
-    const found = draft.bands.findIndex((_, i) => {
-      const from = fromOf(draft, i);
-      const to = wholeKg(draft.bands[i].upTo);
-      return from !== null && to !== null && from <= weight && weight <= to;
-    });
-    if (found >= 0) index = found;
-  }
-  const perBand = draft.bands.some(b => b.labour !== undefined);
-  const bands = draft.bands.map((b, i) => {
-    if (i !== index) return b;
-    return {
-      ...b,
-      ...(rent !== null ? { rent: two(rent) } : {}),
-      ...(perBand && labour !== null ? { labour: two(labour) } : {}),
-      ...(perBand && tax !== null ? { tax: taxText(tax) } : {}),
-    };
-  });
-  return {
-    ...draft,
-    bands,
-    labour: !perBand && labour !== null ? two(labour) : draft.labour,
-    tax: !perBand && tax !== null ? taxText(tax) : draft.tax,
-  };
-}
 
 /** The draft of a new rate of one type: the default's bands (same type, else the last ended one, else the other type's), else empty. */
 function seedNewRate(
@@ -485,7 +434,7 @@ interface OpenArgs {
   earliest?: string | null;
 }
 
-export function initialDraft({ mode: asked, params, rows, role, today, earliest }: OpenArgs): { draft: Draft; context: EditorContext } {
+export function initialDraft({ mode, params, rows, role, today, earliest }: OpenArgs): { draft: Draft; context: EditorContext } {
   const rights = rateRights(role);
   const customerId = params.customer_id || null;
   const itemName = params.item_name || rows[0]?.item_name || '';
@@ -497,11 +446,10 @@ export function initialDraft({ mode: asked, params, rows, role, today, earliest 
   const defaultInForce = (type: PriceType) => rowsInForce(rows, { customerId: null, priceType: type }, today).length > 0;
   // A customer's first rate follows the item's default type (monthly when it has both).
   const priceType: PriceType = typeFromParams
-    ?? (asked === 'addCustomer' && !hasInForce('monthly') && !hasInForce('one_time') && !defaultInForce('monthly') && defaultInForce('one_time')
+    ?? (mode === 'addCustomer' && !hasInForce('monthly') && !hasInForce('one_time') && !defaultInForce('monthly') && defaultInForce('one_time')
       ? 'one_time'
       : hasInForce('monthly') || !hasInForce('one_time') ? 'monthly' : 'one_time');
   const scope: Scope = { customerId, priceType };
-  const defaultScope: Scope = { customerId: null, priceType };
   const zeroStart = customerId === null;
 
   const base = {
@@ -518,46 +466,7 @@ export function initialDraft({ mode: asked, params, rows, role, today, earliest 
     editingIds: [] as string[],
     originalStart: null as string | null,
     copied: false,
-    invoice: null as EditorContext['invoice'],
   };
-
-  // ---- an invoice line: resolved from the rows (spec section 10) ----
-  if (asked === 'invoice') {
-    const grnDate = params.grn_date || today;
-    const ownAll = rowsInForce(rows, scope, grnDate);
-    // The customer's own rate decides the line only when one of its bands holds the line's weight;
-    // otherwise the line is priced by the default rate and the editor adds a band for this weight.
-    const lineWeight = lineKg(params.weight_max);
-    const holdsLine = lineWeight === null || ownAll.some(r => r.weight_min <= lineWeight && lineWeight <= r.weight_max);
-    const own = holdsLine ? ownAll : [];
-    const invoiceInfo = { customerName, grnDate, mixedDays: params.grn_dates_differ === '1' };
-    // Item pricing is for managers: the customer's own rate that priced the line is corrected from its own start.
-    if (own.length > 0) {
-      const lined = applyLine(draftFromRows(own, priceType, true, zeroStart), params);
-      const start = own.map(r => day(r.effective_from)).sort()[0];
-      return {
-        draft: withStart(lined, 'fixed', start),
-        context: { ...base, mode: 'correct', priceTypeChoosable: false, invoice: invoiceInfo },
-      };
-    }
-    const source = rowsInForce(rows, defaultScope, grnDate);
-    const weight = wholeKg(params.weight_max) ?? 100;
-    // The customer has own bands that do not hold this weight: they stay, and the weight gets a band.
-    const keepOwn = ownAll.length > 0 && !holdsLine;
-    const filled = keepOwn
-      ? withBandFor(draftFromRows(ownAll, priceType, true, zeroStart), lineWeight as number)
-      : source.length > 0
-        ? draftFromRows(source, priceType, true, zeroStart)
-        : emptyDraft(priceType, Math.max(100, weight));
-    const lined = applyLine(filled, params);
-    const received = grnDate < today;
-    return {
-      draft: received ? withStart(lined, 'received', grnDate) : withStart(lined, 'today', today),
-      context: { ...base, mode: 'addCustomer', priceTypeChoosable: false, copied: !keepOwn && source.length > 0, invoice: invoiceInfo },
-    };
-  }
-
-  const mode = asked;
 
   // ---- a new rate ----
   if (mode === 'add' || mode === 'addCustomer') {
@@ -671,7 +580,7 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
         });
       }
     }
-    if (priceNumber(band.rent, 2) === null) errors[`band.${i}.rent`] = t('pricing.edit.err.rent');
+    if (rentNumber(band.rent) === null) errors[`band.${i}.rent`] = t('pricing.edit.err.rent');
     if (band.labour !== undefined && !oneTime && priceNumber(band.labour, 2) === null) {
       errors[`band.${i}.labour`] = t('pricing.edit.err.labour');
     }
@@ -714,6 +623,11 @@ export function hasChanges(draft: Draft, initial: Draft): boolean {
 /** The ids of the rows of one scope that the screen loaded (sent as p_seen_rows). */
 export function seenRowIds(rows: ItemStoragePrice[], customerId: string | null, priceType: PriceType): string[] {
   return rows.filter(r => inScope(r, { customerId, priceType })).map(r => r.id);
+}
+
+/** The rows of one scope with their content, as text: two reads of the item with the same text hold the same rates for that scope. */
+export function scopeRowsKey(rows: ItemStoragePrice[], customerId: string | null, priceType: PriceType): string {
+  return JSON.stringify(rows.filter(r => inScope(r, { customerId, priceType })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
 }
 
 export function toReplaceInput(draft: Draft, ctx: EditorContext): ReplaceRatesInput {

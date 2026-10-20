@@ -17,6 +17,7 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn() },
   Stack: { Screen: () => null },
   useIsFocused: () => true,
+  useFocusEffect: require('./focusHarness').useFocusEffect,
   useLocalSearchParams: () => ({ id: 'u2' }),
 }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -87,12 +88,19 @@ beforeEach(() => {
 
 describe('Edit user sections', () => {
   it('draws Role, Status and Customer assignments through SectionHeader', async () => {
-    await loadUser();
+    // Assignments are for the Customer role only; for staff the section says so and has no Add button.
+    await loadUser({ ...STAFF, role: 'customer' });
     const headers = tree!.root.findAllByType(SectionHeader);
     expect(headers.map(header => header.props.title)).toEqual(['Role', 'Status', 'Customer assignments']);
     expect(shownText()).toContain('ROLE');
     // The Add button of Customer assignments keeps its spoken name.
     expect(byLabel('Assign customer')).toBeTruthy();
+  });
+
+  it('says assignments are for the Customer role only, with no Add button, for a staff user', async () => {
+    await loadUser();
+    expect(byLabel('Assign customer')).toBeUndefined();
+    expect(shownText()).toContain("Staff see every active customer. Customer assignments apply only to the Customer role.");
   });
 });
 

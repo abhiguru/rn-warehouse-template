@@ -6,11 +6,11 @@
  * primary action. Two buttons sit side by side; three or more stack.
  * Android back and tapping the scrim cancel, when the alert is cancelable.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { Modal, Pressable, ScrollView, Text, View, type AlertButton } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import { registerAlertHost, type AlertRequest } from '@/utils/alert';
+import { closeAlert, getAlertQueue, registerAlertHost, subscribeAlertQueue } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 
 type Role = 'primary' | 'secondary' | 'destructive';
@@ -88,14 +88,15 @@ const makeStyles = (t: ThemeTokens) => ({
 
 export function AlertHost() {
   const styles = useThemedStyles(makeStyles);
-  const [queue, setQueue] = useState<AlertRequest[]>([]);
+  // The queue is kept in src/utils/alert.ts: this host may be mounted again while dialogs wait.
+  const queue = useSyncExternalStore(subscribeAlertQueue, getAlertQueue);
 
-  useEffect(() => registerAlertHost(request => setQueue(q => [...q, request])), []);
+  useEffect(() => registerAlertHost(), []);
 
   const current = queue[0];
 
-  const close = useCallback((button?: AlertButton) => {
-    setQueue(q => q.slice(1));
+  const close = useCallback((id: number, button?: AlertButton) => {
+    closeAlert(id);
     // Let the dialog close before the handler runs (it may open another alert or navigate).
     if (button?.onPress) setTimeout(() => button.onPress?.(), 0);
   }, []);
@@ -106,7 +107,7 @@ export function AlertHost() {
     const cancelButton = current.buttons.find(b => b.style === 'cancel');
     // Mirror Alert.alert: a one-button alert closes with that button's handler.
     const fallback = current.buttons.length === 1 ? current.buttons[0] : undefined;
-    close(cancelButton ?? fallback);
+    close(current.id, cancelButton ?? fallback);
     current.options?.onDismiss?.();
   }, [current, close]);
 
@@ -141,7 +142,7 @@ export function AlertHost() {
               return (
                 <Pressable
                   key={`${label}-${index}`}
-                  onPress={() => close(button)}
+                  onPress={() => close(current.id, button)}
                   accessibilityRole="button"
                   accessibilityLabel={label}
                   style={({ pressed }) => [

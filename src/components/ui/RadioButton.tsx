@@ -44,6 +44,8 @@ export interface SegmentedControlOption {
 export interface SegmentedControlProps {
   /** Form cell label */
   label?: string;
+  /** What a screen reader says for the group when there is no visible label. */
+  accessibilityLabel?: string;
   /** Currently selected value */
   value: string;
   /** Callback when selection changes */
@@ -64,6 +66,7 @@ export interface SegmentedControlProps {
 
 export const SegmentedControl: React.FC<SegmentedControlProps> = ({
   label,
+  accessibilityLabel,
   value,
   onValueChange,
   options,
@@ -98,7 +101,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
         style,
       ]}
       accessibilityRole="radiogroup"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
     >
       {label && (
         <Text
@@ -393,6 +396,8 @@ export interface RadioGroupProps {
   disabled?: boolean;
   /** Container style override */
   style?: StyleProp<ViewStyle>;
+  /** Ref to the group's label text, so a screen can move screen-reader focus to it */
+  labelRef?: React.Ref<Text>;
 }
 
 export const RadioGroup: React.FC<RadioGroupProps> = ({
@@ -402,13 +407,14 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
   onValueChange,
   disabled = false,
   style,
+  labelRef,
 }) => {
   const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={[styles.radioGroupContainer, style]}>
       {label && (
-        <Text style={[styles.label, styles.labelStacked, disabled && styles.labelDisabled]}>
+        <Text ref={labelRef} accessible={labelRef ? true : undefined} style={[styles.label, styles.labelStacked, disabled && styles.labelDisabled]}>
           {label}
         </Text>
       )}

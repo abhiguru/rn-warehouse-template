@@ -64,25 +64,6 @@ export interface ItemPricingListResponse {
   error?: string;
 }
 
-/** A rate for one GRN only, as get_item_grn_rates (backend migration 86) returns it. */
-export interface ItemGrnRate {
-  id: string;
-  gr_id: string;
-  gr_no: string;
-  grn_date: string;
-  customer_id: string | null;
-  customer_name: string | null;
-  price_type: PriceType;
-  weight_min: number;
-  weight_max: number;
-  unit_price: number;
-  labour_rate: number;
-  tax_percent: number;
-  /** The GRN is invoiced: the invoice keeps its own figures, so the rate is no longer used. */
-  archived: boolean;
-  created_at: string;
-}
-
 export interface CreateItemPricingPayload {
   item_id: string;
   customer_id?: string | null;
@@ -181,7 +162,7 @@ export type RateErrorCode =
   | 'INVALID_PRICE_TYPE' | 'INVALID_DATE' | 'PAST_DATE_NOT_ALLOWED' | 'RATE_IN_FORCE_MANAGER_ONLY'
   | 'ITEM_NOT_FOUND' | 'CUSTOMER_NOT_FOUND' | 'INVALID_BANDS' | 'INVALID_BAND' | 'INVALID_AMOUNT'
   | 'BANDS_OVERLAP' | 'BANDS_GAP' | 'LATER_RATES_EXIST' | 'NOTHING_TO_STOP' | 'NOTHING_TO_UNDO' | 'PERMISSION_DENIED'
-  | 'INVALID_MODE' | 'NOT_A_RATE_START' | 'NOTHING_TO_MOVE' | 'STALE_RATES' | 'STANDARD_RATE_MANAGER_ONLY'
+  | 'INVALID_MODE' | 'NOT_A_RATE_START' | 'NOTHING_TO_MOVE' | 'STALE_RATES' | 'STALE_STANDARD_RATE' | 'STANDARD_RATE_MANAGER_ONLY'
   | 'SERVER_NEEDS_UPDATE' | 'UNKNOWN';
 
 export interface RateBandInput {
@@ -219,6 +200,8 @@ export interface UndoRateChangeInput {
   priceType: PriceType;
   /** The day the change to undo starts (a stop's last day plus one). */
   startsOn: string;
+  /** Every row id of the scope (item, customer, price type) the screen loaded, ended and planned too; the server answers STALE_RATES when another phone changed the scope. */
+  seenRows?: string[];
 }
 
 export interface UndoRateChangeResult {
@@ -263,6 +246,8 @@ export interface ActiveItem {
   id: string;
   name: string;
   packaging: string | null;
+  /** Shown in the Items list rows (the No rate filter lists these items from the rates cache). */
+  description?: string | null;
 }
 
 // The facility's standard rate (backend migration 85): monthly tiers by weight that a new item gets.
@@ -289,5 +274,9 @@ export interface SetStandardRateResult {
   outcomeUnknown?: boolean;
   /** Success: the tiers as saved, and how many items without a rate got them. */
   tiers?: StandardTier[];
+  /** Success: a dry run (nothing was written); itemsPriced is how many items a real save would price. */
+  dryRun?: boolean;
   itemsPriced?: number;
+  /** Success: the version of the standard rate, the exact string the server sent. */
+  updatedAt?: string | null;
 }

@@ -11,7 +11,9 @@
  * answer for a period left behind never shows under the one chosen. Every minute
  * while shown the sensor is marked out of date and asked again behind the screen
  * (useSensorLiveUpdates); the history of a period is not asked again for it.
- * The minute tick moves "No recent data" without a request.
+ * The minute tick moves "No recent data" without a request. While the phone is offline the
+ * statuses are kept as the last answer left them (useSensorNow) and the page says it could
+ * not update. An administrator has an Edit button in the header (app/sensor-edit/[id].tsx).
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -25,7 +27,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ReportHeader, ReportEmptyState } from '@/components/reports';
 import { SensorHistoryChart, formatHumidity, formatTemperature } from '@/components/sensors/SensorHistoryChart';
@@ -45,8 +47,11 @@ import type { SensorHistoryPeriod, SensorHistorySummary } from '@/types/sensor-h
 import { formatDateTime } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { StatusTag } from '@/components/ui';
-import { batteryFact, chartThresholds, connectionStatus, healthStatus, readingTime } from '@/features/sensors/sensorStatus';
-import { useMinuteTick } from '@/features/sensors/useMinuteTick';
+import { batteryFact, chartThresholds, connectionStatus, isQuiet, lastKnownText, readingTime, rowStatus } from '@/features/sensors/sensorStatus';
+import { useSensorNow } from '@/features/sensors/useMinuteTick';
+import { canOpenScreen } from '@/config/roles';
+import { useFacilityCapabilities } from '@/hooks/useCapability';
+import { useAppSelector } from '@/store/hooks';
 import { useSensorDevice, useSensorHistory } from '@/features/sensors/useSensorQueries';
 import { useSensorLiveUpdates } from '@/hooks/useSensorLiveUpdates';
 
@@ -162,6 +167,15 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.title2,
       color: t.text.primary,
       fontVariant: ['tabular-nums'],
+    },
+    // A quiet sensor's figures are the last it gave: shown in secondary text, never by opacity (style guide §3.5).
+    readingValueQuiet: {
+      color: t.text.secondary,
+    },
+    lastKnownText: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      textAlign: 'center',
     },
     periodSection: {
       paddingTop: space.xxl,
@@ -286,11 +300,18 @@ const makeStyles = (t: ThemeTokens) =>
       borderColor: t.status.negative.border,
       backgroundColor: t.status.negative.background,
     },
+    messageBody: {
+      flex: 1,
+      paddingVertical: space.sm,
+      gap: space.xxs,
+    },
     messageText: {
       ...typography.subhead,
       color: t.status.negative.text,
-      flex: 1,
-      paddingVertical: space.sm,
+    },
+    messageDetail: {
+      ...typography.footnote,
+      color: t.text.secondary,
     },
     stripAction: {
       minHeight: touchTarget,
@@ -329,7 +350,10 @@ const SensorDetailScreen: React.FC = () => {
   const historyQuery = useSensorHistory(id, selectedPeriod);
   // A sensor that cannot be read has nothing for a change to refresh; "Try again" asks.
   useSensorLiveUpdates(deviceQuery.phase !== 'error');
-  const now = useMinuteTick();
+  const { now, phoneOffline } = useSensorNow(deviceQuery.updatedAt, deviceQuery.error);
+  const role = useAppSelector(state => state.auth.userProfile?.role);
+  const capabilities = useFacilityCapabilities();
+  const canEdit = canOpenScreen(role, 'sensorWrite', capabilities);
 
   const device = deviceQuery.data?.device ?? null;
   const notFound = deviceQuery.data !== undefined && device === null;
@@ -449,6 +473,7 @@ const SensorDetailScreen: React.FC = () => {
       actionIcon={device ? 'refresh' : undefined}
       actionLabel={tr('sensors.refresh')}
       onAction={device ? () => void onRefresh() : undefined}
+      actions={device && canEdit ? [{ icon: 'pencil-outline', label: tr('sensors.edit.title'), onPress: () => router.push(`/sensor-edit/${device.id}`) }] : undefined}
     />
   );
 
@@ -482,15 +507,28 @@ const SensorDetailScreen: React.FC = () => {
     );
   }
 
-  const health = healthStatus(device.health_status);
+  const status = rowStatus(device, now);
+  const quiet = isQuiet(device, now);
+  const lastKnown = quiet ? lastKnownText(device, now) : null;
+  // A quiet sensor's figures are spoken with when they were last known, as they are shown.
+  const withLastKnown = (label: string) => (lastKnown ? `${label}. ${lastKnown}` : label);
   const connection = connectionStatus(device, now);
   const battery = batteryFact(device);
   const lastReading = readingTime(device);
-  // The sensor on screen is an earlier answer, or the history could not be read.
-  const failure = deviceQuery.error
-    ? { text: deviceQuery.error, retry: retryAll }
+  // The sensor on screen is an earlier answer (it could not be asked again, or the phone is
+  // offline), or the history could not be read. An earlier answer says when it was given.
+  const loadedEarlier = Boolean(deviceQuery.error) || phoneOffline;
+  const failure = loadedEarlier
+    ? {
+        text: tr('reports.scaffold.notUpdated'),
+        detail: [
+          deviceQuery.error ?? (phoneOffline ? tr('sensors.list.phoneOffline') : null),
+          deviceQuery.updatedAt !== undefined ? tr('sensors.detail.lastUpdated', { time: formatDateTime(new Date(deviceQuery.updatedAt)) }) : null,
+        ].filter(Boolean).join(' '),
+        retry: retryAll,
+      }
     : historyQuery.phase === 'error' || historyQuery.error
-      ? { text: historyQuery.error ?? tr('sensors.detail.historyError'), retry: retryHistory }
+      ? { text: historyQuery.error ?? tr('sensors.detail.historyError'), detail: null, retry: retryHistory }
       : null;
 
   return (
@@ -511,7 +549,7 @@ const SensorDetailScreen: React.FC = () => {
         {/* Hero card */}
         <View style={styles.card}>
           <View style={styles.tagRow}>
-            <StatusTag status={health.kind} label={health.label} />
+            <StatusTag status={status.kind} label={status.label} />
           </View>
 
           {/* Current Readings */}
@@ -519,22 +557,23 @@ const SensorDetailScreen: React.FC = () => {
             <View
               style={styles.readingBox}
               accessible
-              accessibilityLabel={tr('sensors.detail.temperatureValue', { value: formatTemperature(device.latest_temperature) })}
+              accessibilityLabel={withLastKnown(tr('sensors.detail.temperatureValue', { value: formatTemperature(device.latest_temperature) }))}
             >
               <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
               <Text style={styles.readingLabel}>{tr('sensors.temperature')}</Text>
-              <Text style={styles.readingValue}>{formatTemperature(device.latest_temperature)}</Text>
+              <Text style={[styles.readingValue, quiet && styles.readingValueQuiet]}>{formatTemperature(device.latest_temperature)}</Text>
             </View>
             <View
               style={styles.readingBox}
               accessible
-              accessibilityLabel={tr('sensors.detail.humidityValue', { value: formatHumidity(device.latest_humidity) })}
+              accessibilityLabel={withLastKnown(tr('sensors.detail.humidityValue', { value: formatHumidity(device.latest_humidity) }))}
             >
               <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
               <Text style={styles.readingLabel}>{tr('sensors.humidity')}</Text>
-              <Text style={styles.readingValue}>{formatHumidity(device.latest_humidity)}</Text>
+              <Text style={[styles.readingValue, quiet && styles.readingValueQuiet]}>{formatHumidity(device.latest_humidity)}</Text>
             </View>
           </View>
+          {lastKnown ? <Text style={styles.lastKnownText}>{lastKnown}</Text> : null}
 
           <View>
             <KeyValue
@@ -570,7 +609,10 @@ const SensorDetailScreen: React.FC = () => {
         {failure && (
           <View style={styles.messageStrip} accessibilityLiveRegion="polite">
             <Icon name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
-            <Text style={styles.messageText}>{failure.text}</Text>
+            <View style={styles.messageBody}>
+              <Text style={styles.messageText}>{failure.text}</Text>
+              {failure.detail ? <Text style={styles.messageDetail}>{failure.detail}</Text> : null}
+            </View>
             <Pressable
               style={styles.stripAction}
               onPress={failure.retry}

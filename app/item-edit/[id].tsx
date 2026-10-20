@@ -3,12 +3,16 @@
  *
  * Single-page form for editing existing items.
  * Loads item data by ID and allows updating.
- * Fields: name (required), packaging, description, active toggle
+ * Fields: name (required), packaging, description. Whether the item is active, and deleting it, are on the item
+ * page (app/item/[id].tsx); this form does not send p_active at all, so the server keeps the item's active state
+ * (update_item, backend Items screens 2026-10-20). It always sends the packaging and the description it shows,
+ * because update_item clears what is not sent. A failed read of the item keeps the screen with Try again; only
+ * a real "not found" says the item may have been deleted.
  *
  * Based on SAP Fiori for iOS Design Guidelines
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,10 +20,9 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ActivityIndicator,
-  Switch,
   TextInput,
+  AccessibilityInfo,
   type TextInputProps,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -30,7 +33,6 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
-import { deleteItemFlow } from '@/features/items/deleteItemFlow';
 import { matchingPackaging, normalizePackaging, usePackagingWords } from '@/features/items/packagingSuggestions';
 import { showToast } from '@/utils/toast';
 import {
@@ -45,9 +47,16 @@ import {
 import { itemService } from '@/services/item-service';
 import type { ItemFormData, ItemValidationErrors, Item } from '@/types/item.types';
 
+// The active state is not edited here (it is on the item page), so the form holds no `active`.
+type EditFormData = Omit<ItemFormData, 'active'>;
+
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
+/** The order the fields are on the screen: the first wrong one gets focus. */
+const FIELD_ORDER: (keyof ItemValidationErrors)[] = ['name', 'packaging', 'description'];
+
 const ItemEditScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -58,16 +67,21 @@ const ItemEditScreen: React.FC = () => {
   // Loading states
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // The read of the item failed (no connection, a timeout): the screen stays, with Try again.
+  const [loadFailed, setLoadFailed] = useState(false);
+  // The server answered and there is no such item (someone deleted it).
+  const [notFound, setNotFound] = useState(false);
+  const offline = useIsOffline();
+  const inputs = useRef<Partial<Record<keyof ItemValidationErrors, TextInput | null>>>({});
 
   // Original item data for comparison
   const [originalItem, setOriginalItem] = useState<Item | null>(null);
 
   // Form state
-  const [formData, setFormData] = useState<ItemFormData>({
+  const [formData, setFormData] = useState<EditFormData>({
     name: '',
     packaging: '',
     description: '',
-    active: true,
   });
   const [errors, setErrors] = useState<ItemValidationErrors>({});
   const { groups, suggestions } = usePackagingWords();
@@ -82,6 +96,8 @@ const ItemEditScreen: React.FC = () => {
   const loadItemData = async () => {
     try {
       setLoading(true);
+      setLoadFailed(false);
+      setNotFound(false);
       const result = await itemService.getItemById(id!);
 
       if (result.success && result.data) {
@@ -91,19 +107,17 @@ const ItemEditScreen: React.FC = () => {
           name: item.name || '',
           packaging: item.packaging || '',
           description: item.description || '',
-          active: item.active ?? true,
         });
+      } else if (result.code === 'NOT_FOUND') {
+        // The server answered: there is no such item. The page says so, with Go back.
+        setNotFound(true);
       } else {
         console.error('[ItemEdit] Failed to load item:', result.message);
-        showAlert(tr('items.form.notFoundTitle'), tr('items.form.notFoundMessage'), [
-          { text: tr('common.ok'), onPress: () => router.back() },
-        ]);
+        setLoadFailed(true);
       }
     } catch (err) {
       console.error('[ItemEdit] Load error:', err);
-      showAlert(tr('items.form.couldNotLoadTitle'), tr('common.checkConnection'), [
-        { text: tr('common.ok'), onPress: () => router.back() },
-      ]);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -111,7 +125,7 @@ const ItemEditScreen: React.FC = () => {
 
   // Field change handlers
   const handleFieldChange = useCallback(
-    (field: keyof ItemFormData, value: string | boolean) => {
+    (field: keyof EditFormData, value: string) => {
       setFormData((prev) => ({ ...prev, [field]: value }));
       // Clear error when user types
       if (errors[field as keyof ItemValidationErrors]) {
@@ -122,7 +136,7 @@ const ItemEditScreen: React.FC = () => {
   );
 
   // Validation
-  const validateForm = useCallback((): boolean => {
+  const validateForm = useCallback((): number => {
     const newErrors: ItemValidationErrors = {};
 
     // Name validation
@@ -143,7 +157,13 @@ const ItemEditScreen: React.FC = () => {
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    // The first wrong field gets focus, and the number to fix is announced.
+    const wrong = FIELD_ORDER.filter((field) => newErrors[field]);
+    if (wrong.length > 0) {
+      inputs.current[wrong[0]]?.focus();
+      AccessibilityInfo.announceForAccessibility(tr('items.form.fixFields', { count: wrong.length }));
+    }
+    return wrong.length;
   }, [formData]);
 
   // Check if form has changes
@@ -154,8 +174,7 @@ const ItemEditScreen: React.FC = () => {
       // Both sides trimmed: an item stored as "Garlic " is not changed by opening it (CR-27).
       formData.name.trim() !== (originalItem.name || '').trim() ||
       formData.packaging.trim() !== (originalItem.packaging || '').trim() ||
-      formData.description.trim() !== (originalItem.description || '').trim() ||
-      formData.active !== originalItem.active
+      formData.description.trim() !== (originalItem.description || '').trim()
     );
   }, [formData, originalItem]);
 
@@ -163,11 +182,15 @@ const ItemEditScreen: React.FC = () => {
   const { leaveWithoutAsking } = useLeaveGuard({
     hasChanges: hasChanges(),
     message: tr('items.form.discardMessage'),
+    // Back waits for a save that is running, instead of asking to discard what is being saved.
+    blocked: saving,
   });
 
   // Handle save
   const handleSave = async () => {
-    if (!validateForm()) {
+    // Taken first: a second tap while the first is sending does nothing.
+    if (saving) return;
+    if (validateForm() > 0) {
       return;
     }
 
@@ -177,58 +200,42 @@ const ItemEditScreen: React.FC = () => {
       return;
     }
 
+    // Nothing is sent from a phone that is offline.
+    if (offline) {
+      showAlert(tr('items.form.couldNotSaveTitle'), tr('items.offline.connectToSave'));
+      return;
+    }
+
     setSaving(true);
     try {
+      // No p_active: the server keeps it. Packaging and description are always sent (an empty one clears it).
       const result = await itemService.updateItem({
         p_item_id: id!,
         p_name: formData.name.trim(),
-        p_packaging: normalizePackaging(formData.packaging, groups) || undefined,
-        p_description: formData.description.trim() || undefined,
-        p_active: formData.active,
+        p_packaging: normalizePackaging(formData.packaging, groups),
+        p_description: formData.description.trim(),
       });
 
       if (result.success) {
         leaveWithoutAsking(() => router.back());
         showToast(tr('items.form.savedToast', { name: formData.name.trim() }));
+      } else if (result.code === 'DUPLICATE_NAME') {
+        setErrors({ name: tr('items.form.duplicateName') });
+        inputs.current.name?.focus();
+      } else if (result.code === 'NOT_FOUND') {
+        // Someone deleted the item while this form was open: back to the Items list, which drops the row.
+        showAlert(tr('items.form.couldNotSaveTitle'), tr('items.form.someoneDeleted'), [
+          { text: tr('common.goBack'), onPress: () => leaveWithoutAsking(() => router.dismissTo('/items')) },
+        ]);
       } else {
-        // Check for duplicate name error
-        if (
-          result.message?.toLowerCase().includes('duplicate') ||
-          result.message?.toLowerCase().includes('unique') ||
-          result.message?.toLowerCase().includes('already exists')
-        ) {
-          setErrors({ name: tr('items.form.duplicateName') });
-        } else {
-          showAlert(tr('items.form.couldNotSaveTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
-        }
+        showAlert(tr('items.form.couldNotSaveTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }));
       }
     } catch (err) {
       console.error('[ItemEdit] Save error:', err);
-      showAlert(tr('items.form.couldNotSaveTitle'), tr('common.checkConnection'));
+      showAlert(tr('items.form.couldNotSaveTitle'), serverText(err, tr('common.checkConnection'), { write: true, form: true }));
     } finally {
       setSaving(false);
     }
-  };
-
-  // Deleting asks first (it takes the item's prices with it); an item in use can be deactivated instead.
-  const handleDelete = () => {
-    if (!originalItem) return;
-    deleteItemFlow(
-      { id: originalItem.id, name: originalItem.name },
-      {
-        onDeleted: () => leaveWithoutAsking(() => router.back()),
-        onDeactivate: async () => {
-          const result = await itemService.toggleItemActive(originalItem.id, false);
-          if (result.success) {
-            setOriginalItem({ ...originalItem, active: false });
-            setFormData((prev) => ({ ...prev, active: false }));
-            showToast(tr('items.form.deactivatedToast', { name: originalItem.name }));
-          } else {
-            showAlert(tr('items.list.couldNotDeactivateTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
-          }
-        },
-      }
-    );
   };
 
   // The header is the same while the item loads, so Back is always there.
@@ -243,6 +250,36 @@ const ItemEditScreen: React.FC = () => {
       <View style={styles.headerSide} />
     </View>
   );
+
+  if (notFound && !loading) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={[styles.flex, styles.loadingContainer]} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={[styles.loadingText, styles.loadFailedText]}>{tr('items.form.notFoundSentence')}</Text>
+          <Button type="secondary" onPress={() => router.dismissTo('/items')}>
+            {tr('common.goBack')}
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
+  if (loadFailed && !loading) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={[styles.flex, styles.loadingContainer]} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={[styles.loadingText, styles.loadFailedText]}>{tr('items.page.loadFailed')}</Text>
+          <Button type="secondary" leftIcon="refresh" onPress={() => void loadItemData()}>
+            {tr('common.retry')}
+          </Button>
+        </View>
+      </View>
+    );
+  }
 
   if (loading || !originalItem) {
     return (
@@ -285,6 +322,7 @@ const ItemEditScreen: React.FC = () => {
               maxLength={80}
               error={errors.name}
               autoCapitalize="words"
+              inputRef={(node) => (inputs.current.name = node)}
             />
             <ItemTextField
               label={tr('common.packaging')}
@@ -293,6 +331,7 @@ const ItemEditScreen: React.FC = () => {
               placeholder={tr('items.form.packagingPlaceholder')}
               maxLength={40}
               error={errors.packaging}
+              inputRef={(node) => (inputs.current.packaging = node)}
             />
             {suggestions.length > 0 && (
               <ChoiceChips
@@ -309,37 +348,8 @@ const ItemEditScreen: React.FC = () => {
               placeholder={tr('items.form.descriptionPlaceholder')}
               maxLength={40}
               error={errors.description}
+              inputRef={(node) => (inputs.current.description = node)}
             />
-          </View>
-
-          {/* Active Toggle */}
-          <Pressable
-            style={styles.switchRow}
-            onPress={() => handleFieldChange('active', !formData.active)}
-            accessibilityRole="switch"
-            accessibilityLabel={tr('common.active')}
-            accessibilityHint={tr('items.form.activeHint')}
-            accessibilityState={{ checked: formData.active }}
-          >
-            <View style={styles.switchLabel}>
-              <Text style={styles.switchTitle}>{tr('common.active')}</Text>
-              <Text style={styles.switchDescription}>{tr('items.form.activeDescription')}</Text>
-            </View>
-            <Switch
-              value={formData.active}
-              onValueChange={(value) => handleFieldChange('active', value)}
-              trackColor={{ false: t.control.trackOff, true: t.brand.fill }}
-              thumbColor={t.control.thumb}
-              ios_backgroundColor={t.control.trackOff}
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-            />
-          </Pressable>
-
-          <View style={styles.deleteRow}>
-            <Button type="tertiary" variant="negative" leftIcon="trash-can-outline" onPress={handleDelete} disabled={saving}>
-              {tr('items.delete.deleteItem')}
-            </Button>
           </View>
         </ScrollView>
 
@@ -360,10 +370,11 @@ type ItemTextFieldProps = Omit<TextInputProps, 'style'> & {
   error?: string;
   maxLength: number;
   value: string;
+  inputRef?: (node: TextInput | null) => void;
 };
 
 /** Labelled text field with focus, error and character count (style guide §13.2). */
-function ItemTextField({ label, required, error, maxLength, value, onFocus, onBlur, ...inputProps }: ItemTextFieldProps) {
+function ItemTextField({ label, required, error, maxLength, value, inputRef, onFocus, onBlur, ...inputProps }: ItemTextFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const [focused, setFocused] = useState(false);
@@ -375,6 +386,7 @@ function ItemTextField({ label, required, error, maxLength, value, onFocus, onBl
       </Text>
       <TextInput
         {...inputProps}
+        ref={inputRef}
         value={value}
         maxLength={maxLength}
         placeholderTextColor={t.text.placeholder}
@@ -426,6 +438,11 @@ const makeStyles = (t: ThemeTokens) => ({
     marginTop: space.lg,
     color: t.text.secondary,
   },
+  loadFailedText: {
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
+    paddingHorizontal: layout.marginCompact,
+  },
   header: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -452,10 +469,6 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingTop: space.md,
     backgroundColor: t.surface.card,
     ...t.shadow[3],
-  },
-  deleteRow: {
-    marginTop: space.xxl,
-    alignItems: 'center' as const,
   },
   keyboardView: {
     flex: 1,
@@ -527,29 +540,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.caption1,
     color: t.text.secondary,
     fontVariant: ['tabular-nums' as const],
-  },
-  switchRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    minHeight: layout.rowMinHeight,
-    borderRadius: radius.card,
-    padding: space.lg,
-    backgroundColor: t.surface.card,
-    ...t.shadow[2],
-  },
-  switchLabel: {
-    flex: 1,
-    marginRight: space.lg,
-  },
-  switchTitle: {
-    ...typography.body,
-    color: t.text.primary,
-  },
-  switchDescription: {
-    ...typography.footnote,
-    marginTop: space.xxs,
-    color: t.text.secondary,
   },
 });
 

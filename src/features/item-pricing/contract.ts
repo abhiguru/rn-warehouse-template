@@ -1,35 +1,21 @@
 import type { PriceType } from '@/types/item-pricing.types';
 
 /**
- * How a rate form opens. The rate boxes (useRateEditor) use every mode; the edit screen (/item-rates/edit) is
- * opened with 'invoice' only (no screen opens it since 2026-10-19: the invoice pricing pencil was removed; kept until
- * the owner decides whether to remove it), and resolves it to a mode itself (section 10).
+ * How a rate form opens. The rate boxes (useRateEditor) use every mode.
  */
-export type EditorMode = 'change' | 'add' | 'addCustomer' | 'correct' | 'upcoming' | 'invoice';
+export type EditorMode = 'change' | 'add' | 'addCustomer' | 'correct' | 'upcoming';
 
-/** What a rate form needs to open. Router params are strings; snake_case names are the ones the invoice screen sends. */
+/** What a rate form needs to open. Built by useRateEditor from its args; the snake_case names are kept from the old route params. */
 export type EditorParams = {
   mode: EditorMode;
   item_id: string;
   item_name?: string;
-  /** Missing = the default rate (all customers); for 'addCustomer' missing = the edit screen cannot open. */
+  /** Missing = the default rate (all customers); for 'addCustomer' it is required. */
   customer_id?: string;
   customer_name?: string;
   price_type?: PriceType;
   /** 'correct' and 'upcoming': the start (YYYY-MM-DD) of the rate being corrected or edited. 'change'/'add'/'addCustomer': a start to preselect. */
   starts_on?: string;
-  /** '1': the form opens with one empty band added after the last (the Add button of the Item pricing list). */
-  add_band?: '1';
-  // Invoice prefill (mode 'invoice'): the line as the invoice shows it.
-  unit_price?: string;
-  labour_rate?: string;
-  tax_percent?: string;
-  weight_min?: string;
-  weight_max?: string;
-  /** Goods-received date (YYYY-MM-DD) of the line. */
-  grn_date?: string;
-  /** '1' when the tapped invoice group holds lots of several received days (grn_date is the latest). */
-  grn_dates_differ?: '1';
 };
 
 /** The stop screen. price_type and the scope decide what stops; the last day is chosen on the screen. */
@@ -41,22 +27,24 @@ export type StopParams = {
   price_type: PriceType;
 };
 
-/** The item page. `on` opens it on another day (read-only); `addBand` opens the default box with one more empty band. */
-export const itemRatesPath = (itemId: string, on?: string, addBand?: boolean) =>
+/** The item page (Items -> an item), on its Overview tab. */
+export const itemPagePath = (itemId: string) => ({ pathname: '/item/[id]', params: { id: itemId } }) as const;
+/** The item page on its Pricing tab: the way into the rates of an item. */
+export const itemRatesPath = (itemId: string) => ({ pathname: '/item/[id]', params: { id: itemId, tab: 'pricing' } }) as const;
+/** The full-screen form of the item's default rate: a new rate, a correction of the rate in force, or a change of an upcoming one. */
+export const rateFormPath = (p: { itemId: string; mode: 'add' | 'correct' | 'upcoming'; priceType: PriceType; startsOn?: string }) =>
   ({
-    pathname: '/item-rates/[itemId]',
-    params: { itemId, ...(on ? { on } : {}), ...(addBand ? { add_band: '1' } : {}) },
+    pathname: '/item-rates/[itemId]/rate',
+    params: { itemId: p.itemId, mode: p.mode, price_type: p.priceType, ...(p.startsOn ? { starts_on: p.startsOn } : {}) },
   }) as const;
-/** The customers who have their own rate for the item (`on`: the day the item page was looking at). */
-export const customerListPath = (itemId: string, on?: string) =>
-  ({ pathname: '/item-rates/[itemId]/customers', params: on ? { itemId, on } : { itemId } }) as const;
-/** The rates typed on single GRNs for the item. */
-export const grnListPath = (itemId: string) => ({ pathname: '/item-rates/[itemId]/grns', params: { itemId } }) as const;
 /** The Pricing tab of a customer, on the box of one item when `itemId` is given. */
 export const customerPricingPath = (customerId: string, itemId?: string) =>
   ({ pathname: '/customer/[id]', params: { id: customerId, tab: 'pricing', ...(itemId ? { item: itemId } : {}) } }) as const;
-/** The box of one customer's own rate for one item. `add` opens the box for a new rate at once (the Pricing tab's "+ Add item"). */
-export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, add?: boolean) =>
+/** The customer's state carried in a link (`deactivated` = '1' or '0'); anything else = not known, the screen reads it. */
+export const knownDeactivated = (value: unknown): boolean | null => (value === '1' ? true : value === '0' ? false : null);
+const deactivatedParam = (deactivated?: boolean | null) => (typeof deactivated === 'boolean' ? { deactivated: deactivated ? '1' : '0' } : {});
+/** The box of one customer's own rate for one item. */
+export const customerRatePath = (itemId: string, customerId: string, on?: string, customerName?: string, deactivated?: boolean | null) =>
   ({
     pathname: '/item-rates/[itemId]/customer/[customerId]',
     params: {
@@ -64,20 +52,18 @@ export const customerRatePath = (itemId: string, customerId: string, on?: string
       customerId,
       ...(on ? { on } : {}),
       ...(customerName ? { customer_name: customerName } : {}),
-      ...(add ? { add: '1' } : {}),
+      ...deactivatedParam(deactivated),
     },
   }) as const;
 /** The full-screen form that adds a customer's own rate for one item (owner, 2026-10-17). */
-export const customerRateAddPath = (itemId: string, customerId: string, customerName?: string) =>
+export const customerRateAddPath = (itemId: string, customerId: string, customerName?: string, deactivated?: boolean | null) =>
   ({
     pathname: '/item-rates/[itemId]/customer-add/[customerId]',
-    params: { itemId, customerId, ...(customerName ? { customer_name: customerName } : {}) },
+    params: { itemId, customerId, ...(customerName ? { customer_name: customerName } : {}), ...deactivatedParam(deactivated) },
   }) as const;
-/** What the edit screen is opened with: formerly the price pencil of an invoice line; no screen opens it since 2026-10-19. */
-export type InvoiceEditorParams = EditorParams & { mode: 'invoice' };
-export const editorPath = (params: InvoiceEditorParams) => ({ pathname: '/item-rates/edit', params }) as const;
 export const stopPath = (params: StopParams) => ({ pathname: '/item-rates/stop', params }) as const;
-export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string } = {}) =>
+/** The changes of one item or of one customer's rate for an item. */
+export const historyPath = (p: { item_id?: string; customer_id?: string; item_name?: string; customer_name?: string }) =>
   ({ pathname: '/item-price-history', params: p }) as const;
 
 // A save in the editor, the stop screen or a delete tells the pages that show rates to refetch that item.

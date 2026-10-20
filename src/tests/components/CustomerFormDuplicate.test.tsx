@@ -1,4 +1,4 @@
-/** G-52: Add customer asks before creating a second customer with the same name or number. */
+/** G-52: Add customer refuses a second customer with the same name or an active customer's number, and asks about a deactivated one. */
 import React from 'react';
 import { Text, TextInput } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -45,6 +45,8 @@ const button = (tree: ReactTestRenderer, label: string) =>
 const type = async (tree: ReactTestRenderer, label: string, text: string) => {
   await act(async () => { input(tree, label).props.onChangeText(text); });
 };
+const shownText = (tree: ReactTestRenderer) =>
+  tree.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
 let tree: ReactTestRenderer | undefined;
 const mountEdit = async () => {
   jest.mocked(useLocalSearchParams).mockImplementation(() => ({ id: 'c1' }) as never);
@@ -73,22 +75,19 @@ const fill = async (screen: ReactTestRenderer, name: string) => {
   await type(screen, 'Mobile number after plus 91, required', '9000000099');
 };
 
-it('asks first when a customer with the same name (any case) exists, and adds only on Add anyway', async () => {
+it('stops when a customer with the same name (any case) exists: Cancel and Open customer only, nothing is created', async () => {
   jest.mocked(customerService.searchCustomers).mockResolvedValue([{ id: 'c8', name: 'Acme Foods', mobile: '9999900308', active: true }] as never);
   const screen = await mountAdd();
   await fill(screen, 'acme  foods');
   await act(async () => { await button(screen, 'Add customer').props.onPress(); });
 
-  expect(customerService.searchCustomers).toHaveBeenCalledWith('acme  foods', 5);
+  expect(customerService.searchCustomers).toHaveBeenCalledWith('acme  foods', 5, { includeInactive: true });
   expect(showAlert).toHaveBeenCalledTimes(1);
   const [title, message] = jest.mocked(showAlert).mock.calls[0];
   expect(title).toBe('Acme Foods already exists');
   expect(message).toContain('It has the mobile number +91 99999 00308.');
-  expect(lastButtons().map(b => b.text)).toEqual(['Cancel', 'Open customer', 'Add anyway']);
+  expect(lastButtons().map(b => b.text)).toEqual(['Cancel', 'Open customer']);
   expect(customerService.createCustomer).not.toHaveBeenCalled();
-
-  await act(async () => { lastButtons()[2].onPress?.(); });
-  expect(customerService.createCustomer).toHaveBeenCalledTimes(1);
 });
 
 it('Open customer goes to the existing customer page', async () => {
@@ -101,12 +100,36 @@ it('Open customer goes to the existing customer page', async () => {
   expect(customerService.createCustomer).not.toHaveBeenCalled();
 });
 
-it('asks when only the mobile number matches', async () => {
+it('refuses an active customer\'s mobile number under the field, naming the customer, with no dialog and no create', async () => {
   jest.mocked(customerService.searchCustomers).mockResolvedValue([{ id: 'c9', name: 'Other Name', mobile: '919000000099', active: true }] as never);
   const screen = await mountAdd();
   await fill(screen, 'Zeta Traders');
   await act(async () => { await button(screen, 'Add customer').props.onPress(); });
-  expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Other Name already exists');
+  expect(showAlert).not.toHaveBeenCalled();
+  expect(shownText(screen)).toContain('Other Name already uses this mobile number. Use a different number.');
+  expect(customerService.createCustomer).not.toHaveBeenCalled();
+});
+
+it('a deactivated customer with only the same number can be added anyway (Cancel, Open customer, Add new customer)', async () => {
+  jest.mocked(customerService.searchCustomers).mockResolvedValue([{ id: 'c9', name: 'Old Name', mobile: '919000000099', active: false }] as never);
+  const screen = await mountAdd();
+  await fill(screen, 'Zeta Traders');
+  await act(async () => { await button(screen, 'Add customer').props.onPress(); });
+  expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Old Name is deactivated');
+  expect(lastButtons().map(b => b.text)).toEqual(['Cancel', 'Open customer', 'Add new customer']);
+  expect(customerService.createCustomer).not.toHaveBeenCalled();
+  await act(async () => { lastButtons()[2].onPress?.(); });
+  expect(customerService.createCustomer).toHaveBeenCalledTimes(1);
+});
+
+it('a deactivated customer with the same name cannot be added again (Cancel, Open customer, Use a different name)', async () => {
+  jest.mocked(customerService.searchCustomers).mockResolvedValue([{ id: 'c9', name: 'Zeta Traders', mobile: '919111111111', active: false }] as never);
+  const screen = await mountAdd();
+  await fill(screen, 'zeta traders');
+  await act(async () => { await button(screen, 'Add customer').props.onPress(); });
+  expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Zeta Traders is deactivated');
+  expect(lastButtons().map(b => b.text)).toEqual(['Cancel', 'Open customer', 'Use a different name']);
+  expect(customerService.createCustomer).not.toHaveBeenCalled();
 });
 
 it('creates at once when nothing matches', async () => {

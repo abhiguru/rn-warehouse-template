@@ -1,6 +1,7 @@
 import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
-import { failureText, serverReason, serverText } from '../serverText';
+import { TimeoutError } from '../rpcClient';
+import { errorCodeOf, failureText, isNetworkError, isTimeoutError, serverReason, serverText, transportText } from '../serverText';
 
 afterEach(() => setLanguage('en'));
 
@@ -221,5 +222,123 @@ describe('business state refusals (migrations 82 and 83)', () => {
     setLanguage('gu');
     expect(serverText(longer, 'FALLBACK')).toBe('FALLBACK');
     expect(serverText(`Error creating GRN: ${DEACTIVATED}`, 'FALLBACK')).toBe('FALLBACK');
+  });
+});
+
+describe('failures that are not a server sentence (English)', () => {
+  it('a network failure says to check the connection', () => {
+    for (const failure of ['TypeError: Network request failed', { message: 'Network request failed', code: '' }, new TypeError('Failed to fetch')]) {
+      expect(serverText(failure, 'x')).toBe('Check your connection and try again.');
+      expect(isNetworkError(failure)).toBe(true);
+    }
+  });
+
+  it('a timeout on a write says it may have been saved; on a read it is the network text', () => {
+    const timeout = new TimeoutError('Save timed out after 30 seconds', 30000);
+    expect(isTimeoutError(timeout)).toBe(true);
+    expect(isNetworkError(timeout)).toBe(false);
+    expect(serverText(timeout, 'x', { write: true })).toBe('No answer from the server. It may have been saved. Pull down to check.');
+    expect(serverText(timeout, 'x')).toBe('Check your connection and try again.');
+    expect(transportText(new Error('Plain failure'))).toBeUndefined();
+  });
+
+  it('a timeout on a form says to go back to the list; on a photo change to check the photos (photo wins over form)', () => {
+    const timeout = new TimeoutError('Save timed out after 30 seconds', 30000);
+    expect(serverText(timeout, 'x', { write: true, form: true })).toBe(t('errors.parsed.timeoutWriteForm'));
+    expect(serverText(timeout, 'x', { write: true, photo: true })).toBe(t('errors.parsed.timeoutWritePhoto'));
+    expect(serverText(timeout, 'x', { write: true, form: true, photo: true })).toBe(t('errors.parsed.timeoutWritePhoto'));
+    expect(transportText(timeout, { write: true, form: true })).toBe(t('errors.parsed.timeoutWriteForm'));
+    expect(t('errors.parsed.timeoutWriteForm')).not.toBe(t('errors.parsed.timeoutWrite'));
+    expect(t('errors.parsed.timeoutWritePhoto')).not.toBe(t('errors.parsed.timeoutWrite'));
+  });
+
+  it('form and photo change nothing for a read, a network failure or a statement timeout', () => {
+    const timeout = new TimeoutError('Load timed out', 30000);
+    expect(serverText(timeout, 'x', { form: true })).toBe(t('errors.parsed.network'));
+    expect(serverText(timeout, 'x', { photo: true })).toBe(t('errors.parsed.network'));
+    expect(serverText('Network request failed', 'x', { write: true, form: true, photo: true })).toBe(t('errors.parsed.network'));
+    expect(serverText({ message: 'canceling statement due to statement timeout', code: '57014' }, 'x', { write: true, form: true })).toBe(
+      t('errors.parsed.timeoutNotSaved'),
+    );
+  });
+
+  it('a timeout on a delete says it may have been deleted (list or detail wording); photo still wins', () => {
+    const timeout = new TimeoutError('Delete timed out after 30 seconds', 30000);
+    expect(serverText(timeout, 'x', { write: true, delete: true })).toBe(
+      'No answer from the server. It may have been deleted. Pull down to check.'
+    );
+    expect(serverText(timeout, 'x', { write: true, form: true, delete: true })).toBe(
+      'No answer from the server. It may have been deleted. Go back to the list and check before trying again.'
+    );
+    expect(serverText(timeout, 'x', { write: true, photo: true, delete: true })).toBe(t('errors.parsed.timeoutWritePhoto'));
+    // A text a shared service worded as a save timeout is swapped for the delete wording, and the other way round.
+    expect(serverText(t('errors.parsed.timeoutWrite'), 'x', { write: true, delete: true })).toBe(t('errors.parsed.timeoutDelete'));
+    expect(serverText(t('errors.parsed.timeoutDelete'), 'x', { write: true, form: true })).toBe(t('errors.parsed.timeoutWriteForm'));
+    expect(serverText(t('errors.parsed.timeoutDeleteForm'), 'x')).toBe(t('errors.parsed.timeoutDeleteForm'));
+    // A statement timeout (57014) still says nothing was saved.
+    expect(serverText({ message: 'canceling statement due to statement timeout', code: '57014' }, 'x', { write: true, delete: true })).toBe(
+      t('errors.parsed.timeoutNotSaved')
+    );
+  });
+
+  it('swaps a timeout sentence a shared service worded for the other kind of screen', () => {
+    const list = t('errors.parsed.timeoutWrite');
+    const form = t('errors.parsed.timeoutWriteForm');
+    const photo = t('errors.parsed.timeoutWritePhoto');
+    expect(serverText(list, 'x', { write: true, form: true })).toBe(form);
+    expect(serverText(form, 'x', { write: true })).toBe(list);
+    expect(serverText(list, 'x', { write: true, photo: true })).toBe(photo);
+    expect(serverText(photo, 'x', { write: true, form: true })).toBe(form);
+    expect(serverText({ message: form }, 'x', { write: true })).toBe(list);
+    // Without write the sentence is not swapped: it is the app's own text and passes through.
+    expect(serverText(form, 'x')).toBe(form);
+    expect(serverText(list, 'x', { write: true })).toBe(list);
+  });
+
+  it('words a code, from the object or from the text', () => {
+    // 42501 is not worded by code: the server's own sentences for it keep their meaning
+    expect(serverText({ message: 'Item belongs to another customer', code: '42501' }, 'x')).toBe('Item belongs to another customer');
+    expect(serverText({ message: 'permission denied for function get_grn', code: '42501' }, 'x')).toBe(t('errors.parsed.noPermission'));
+    expect(serverText('PERMISSION_DENIED', 'x')).toBe(t('errors.parsed.noPermission'));
+    expect(serverText('boom', 'x', { code: '23505' })).toBe(t('errors.parsed.duplicate'));
+    expect(errorCodeOf('Database error: x (SQLState: WH409)')).toBe('WH409');
+  });
+
+  it('tells a network failure or a timeout from a service result', () => {
+    expect(isNetworkError({ message: 'Check your connection and try again.', error: 'Network request failed', errorCode: '' })).toBe(true);
+    expect(isNetworkError({ message: 'x', error: 'x', errorCode: 'NETWORK' })).toBe(true);
+    expect(isTimeoutError({ message: 'x', error: 'x', errorCode: 'TIMEOUT' })).toBe(true);
+    expect(isNetworkError('current transaction is aborted, commands ignored until end of transaction block')).toBe(false);
+    expect(isTimeoutError('time outside the range')).toBe(false);
+  });
+
+  it('a proxy error page is a connection failure', () => {
+    for (const page of ['<html><body>502 Bad Gateway</body></html>', 'error code: 1033']) {
+      expect(isNetworkError(page)).toBe(true);
+      expect(serverText(page, 'x')).toBe('Check your connection and try again.');
+    }
+  });
+
+  it('a statement timeout says nothing was saved', () => {
+    expect(serverText({ message: 'canceling statement due to statement timeout', code: '57014' }, 'x', { write: true })).toBe(
+      'The server took too long and nothing was saved. Try again.',
+    );
+  });
+
+  it('keeps the app\'s own sentence when it passes through twice', () => {
+    expect(serverText(t('errors.code.businessRuleViolation'), 'x')).toBe(t('errors.code.businessRuleViolation'));
+  });
+
+  it('never shows JavaScript engine text', () => {
+    for (const raw of ["Cannot read property 'id' of null", 'Cannot read properties of undefined (reading id)', 'JSON Parse error: Unexpected character', 'Unexpected token < in JSON']) {
+      expect(serverText(raw, 'Could not save')).toBe('Could not save');
+    }
+  });
+
+  it('never shows developer text', () => {
+    for (const raw of ['TypeError: undefined is not a function', 'SOMETHING_WENT_WRONG', '{"code":"22P02"}', 'invalid input syntax for type uuid: "2660"', 'relation "grns" does not exist']) {
+      expect(serverText(raw, 'Could not save')).toBe('Could not save');
+    }
+    expect(serverText('permission denied for function get_grn', 'x')).toBe(t('errors.parsed.noPermission'));
   });
 });

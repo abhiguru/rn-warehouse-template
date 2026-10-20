@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Old invoice rate editor removed
+
+- Old invoice rate editor removed: `app/item-rates/edit.tsx`, `editorPath`/`InvoiceEditorParams`, mode `'invoice'`, the Received start chip, `findCustomerPrice`, 10 `pricing.edit` keys. No backend change.
+
 ## Unreleased — CI jobs can run on the project's own runner
 
 - Every CI job now takes its runner from a repository variable: `CI_RUNNER` for the lint/test, dependency and secret-scan jobs, `ANDROID_ARTIFACT_RUNNER` (as before) for the Android artifact audit. Without the variable a job runs on `ubuntu-latest`.

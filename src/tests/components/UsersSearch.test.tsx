@@ -63,7 +63,7 @@ const user = (id: string, name: string, role: string, extra: Record<string, unkn
 const answer = (users: unknown[], total = users.length) => ({ success: true, data: { users, pagination: { total_count: total, limit: 20, offset: 0, has_more: false } } });
 
 const type = async (text: string) => {
-  const field = tree!.root.find(node => node.props.accessibilityLabel === 'Search users' && typeof node.props.onChangeText === 'function');
+  const field = tree!.root.find(node => node.props.accessibilityLabel === 'Search by name or mobile' && typeof node.props.onChangeText === 'function');
   await act(async () => { field.props.onChangeText(text); });
   await act(async () => { await jest.advanceTimersByTimeAsync(300); });
 };
@@ -73,10 +73,10 @@ afterEach(() => { jest.useRealTimers(); });
 const ALL = [user('1', 'Dev Administrator', 'admin'), user('2', 'Dev Staff', 'staff'), user('3', 'Review Customer', 'customer'), user('4', 'Review Staff', 'staff'), user('5', 'Dev Customer One', 'customer'), user('6', 'Dev Customer Two', 'customer'), user('7', 'Dev Supervisor', 'supervisor')];
 
 describe('Users search', () => {
-  it('has a Search users field, and the count is a line under it', async () => {
+  it('has a Search by name or mobile field, and the count is a line under it', async () => {
     jest.mocked(adminUserService.getUsersList).mockResolvedValue(answer(ALL) as never);
     await act(async () => { tree = create(<UsersScreen />); });
-    expect(tree!.root.findAll(n => n.props.accessibilityLabel === 'Search users').length).toBeGreaterThan(0);
+    expect(tree!.root.findAll(n => n.props.accessibilityLabel === 'Search by name or mobile').length).toBeGreaterThan(0);
     expect(shownText()).toContain('7 users');
   });
 

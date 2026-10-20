@@ -6,7 +6,9 @@
  * Kept current by a timer: every minute while shown the list is marked out of date and
  * asked again behind the rows (useSensorLiveUpdates). Staleness is the absence
  * of changes, so the minute tick (useMinuteTick) redraws the figures, the alerts and the
- * rows from the time alone: a sensor turns "No recent data" without a request.
+ * rows from the time alone: a sensor turns "No recent data" without a request. While the
+ * phone is offline the tick stands still at the last answer (useSensorNow) and the list says
+ * "Couldn't update": the statuses are kept, not turned to "No recent data".
  */
 import React, { useCallback, useMemo } from 'react';
 import { ReportScaffold } from '@/components/reports';
@@ -16,7 +18,7 @@ import { SensorRow } from '@/components/sensors/SensorRow';
 import { STATUS_ICONS } from '@/components/ui';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { sensorAlerts, sensorKpis } from '@/features/sensors/sensorStatus';
-import { useMinuteTick } from '@/features/sensors/useMinuteTick';
+import { useSensorNow } from '@/features/sensors/useMinuteTick';
 import { useSensorSnapshot } from '@/features/sensors/useSensorQueries';
 import { useSensorLiveUpdates } from '@/hooks/useSensorLiveUpdates';
 import { t as tr } from '@/i18n';
@@ -28,8 +30,10 @@ export default function SensorsScreen() {
   const query = useSensorSnapshot();
   // A list that cannot be read has nothing for a change to refresh; "Try again" asks.
   useSensorLiveUpdates(query.phase !== 'error');
-  const now = useMinuteTick();
+  const { now, phoneOffline } = useSensorNow(query.updatedAt, query.error);
   const devices = query.data?.devices;
+  // The rows below were read earlier and cannot be asked again: the scaffold's strip says so.
+  const shownQuery = phoneOffline && query.phase === 'ready' && !query.error ? { ...query, error: tr('sensors.list.phoneOffline') } : query;
 
   const kpis = useMemo<KPIItem[] | undefined>(() => {
     if (!devices) return undefined;
@@ -37,7 +41,7 @@ export default function SensorsScreen() {
     return [
       { icon: 'thermometer', value: figures.total, label: tr('sensors.sensors'), variant: 'primary' },
       { icon: STATUS_ICONS.positive, value: figures.online, label: tr('sensors.status.online'), variant: 'success' },
-      { icon: 'thermometer-off', value: figures.noRecentData, label: tr('sensors.status.noRecentData'), variant: figures.noRecentData > 0 ? 'warning' : 'neutral' },
+      { icon: 'thermometer-off', value: figures.noRecentData, label: tr('sensors.list.offlineOrNoData'), variant: figures.noRecentData > 0 ? 'warning' : 'neutral' },
       { icon: 'battery-alert-variant-outline', value: figures.batteryLow, label: tr('sensors.status.batteryLow'), variant: figures.batteryLow > 0 ? 'warning' : 'neutral' },
     ];
   }, [devices, now]);
@@ -51,7 +55,7 @@ export default function SensorsScreen() {
       title={tr('sensors.title')}
       // Pull to refresh is not offered to a screen reader: the header button is.
       actions={[{ icon: 'refresh', label: tr('sensors.refresh'), onPress: () => void query.refresh(), busy: query.isRefreshing }]}
-      query={query}
+      query={shownQuery}
       kpis={kpis}
       kpiPlaceholders={4}
       rows={devices ?? []}

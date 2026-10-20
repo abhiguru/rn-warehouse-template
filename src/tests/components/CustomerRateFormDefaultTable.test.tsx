@@ -28,6 +28,11 @@ const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(ReactNative.T
 const bandName = (i: number) => bandText(bands[i].weight_min, bands[i].weight_max);
 const row = (tree: ReactTestRenderer, i: number) => tree.root.findAll(n => n.props.testID === `add-rate-default-${i}` && typeof n.type === 'string')[0];
 
+const WINDOW = ReactNative.Dimensions.get('window');
+const setWindow = (fontScale: number) => ReactNative.Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale } });
+beforeEach(() => setWindow(1));
+afterEach(() => ReactNative.Dimensions.set({ window: WINDOW }));
+
 describe('DefaultRatesTable', () => {
   it('shows a heading row and one row per band, each figure in its column', () => {
     const tree = draw(false);
@@ -55,6 +60,20 @@ describe('DefaultRatesTable', () => {
     expect(texts(tree)).not.toContain('1.50');
     expect(texts(tree)).toHaveLength(9);
     expect(row(tree, 0).props.accessibilityLabel).not.toContain('1.50');
+    act(() => tree.unmount());
+  });
+
+  it('at large text Rent stays the one figure column and labour and tax go under the band', () => {
+    setWindow(2);
+    const tree = draw(false);
+    expect(texts(tree).map(x => x.replace(/\u00a0/g, ' '))).toEqual(['Band', 'Rent', bandName(0), 'Labour ₹1.50 · Tax 5%', '12.00', bandName(1), 'Labour ₹2.00 · Tax 12.5%', '14.25']);
+    act(() => tree.unmount());
+  });
+
+  it('at large text a one-time rate puts only the tax under the band', () => {
+    setWindow(2);
+    const tree = draw(true);
+    expect(texts(tree).map(x => x.replace(/\u00a0/g, ' '))).toEqual(['Band', 'Rent', bandName(0), 'Tax 5%', '12.00', bandName(1), 'Tax 12.5%', '14.25']);
     act(() => tree.unmount());
   });
 });

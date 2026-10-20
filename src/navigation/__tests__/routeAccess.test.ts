@@ -30,7 +30,6 @@ describe('signed out', () => {
     [['customers']],
     [['users']],
     [['user-edit', 'user-1']],
-    [['item-pricing']],
     [['item-price-history']],
     [['standard-rate']],
     [['sensors']],
@@ -90,18 +89,18 @@ describe('signed in', () => {
     ['reports/item-stock-summary', 'allow', 'allow', 'allow', 'allow'],
     ['reports/operations-dashboard', 'allow', 'allow', 'home', 'home'],
     // Item pricing is for administrators and supervisors (owner, 2026-10-16).
-    ['item-pricing', 'allow', 'allow', 'home', 'home'],
     ['item-rates', 'allow', 'allow', 'home', 'home'],
     ['item-rates/[itemId]', 'allow', 'allow', 'home', 'home'],
     ['item-rates/[itemId]/customer/[customerId]', 'allow', 'allow', 'home', 'home'],
     ['item-rates/[itemId]/customers', 'allow', 'allow', 'home', 'home'],
     ['item-rates/[itemId]/grns', 'allow', 'allow', 'home', 'home'],
-    ['item-rates/edit', 'allow', 'allow', 'home', 'home'],
     ['item-rates/stop', 'allow', 'allow', 'home', 'home'],
     ['item-price-history', 'allow', 'allow', 'home', 'home'],
     ['standard-rate', 'allow', 'allow', 'home', 'home'],
     ['sensors', 'allow', 'allow', 'allow', 'home'],
     ['sensor-detail/[id]', 'allow', 'allow', 'allow', 'home'],
+    // Editing a sensor is for administrators only.
+    ['sensor-edit/[id]', 'allow', 'home', 'home', 'home'],
     ['users', 'allow', 'allow', 'home', 'home'],
     ['user-edit/[id]', 'allow', 'allow', 'home', 'home'],
     ['enrollment-review', 'allow', 'home', 'home', 'home'],
@@ -142,8 +141,14 @@ describe('by facility capability', () => {
     }
   );
 
+  it('the sensor edit route needs the capability too, and an administrator', () => {
+    const roles = ['admin', 'supervisor', 'staff', 'customer'];
+    expect(roles.map((role) => decideRoute('sensor-edit/[id]', withCapabilities(role, OFF)))).toEqual(['home', 'home', 'home', 'home']);
+    expect(roles.map((role) => decideRoute(['sensor-edit', 'device-1'], withCapabilities(role, ON)))).toEqual(['allow', 'home', 'home', 'home']);
+  });
+
   it('a capability gates only its own routes', () => {
-    expect(decideRoute('item-pricing', withCapabilities('supervisor', OFF))).toBe('allow');
+    expect(decideRoute('item-rates', withCapabilities('supervisor', OFF))).toBe('allow');
     expect(decideRoute('users', withCapabilities('admin', OFF))).toBe('allow');
     expect(decideRoute('settings', withCapabilities('staff', OFF))).toBe('allow');
   });

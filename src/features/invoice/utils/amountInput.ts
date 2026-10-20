@@ -8,6 +8,7 @@
  * else is reported and never stored, so "1,500" is not read as 1.
  */
 import { normalizeDigits, t } from '@/i18n';
+import { RENT_MAX } from '@/utils/priceNumbers';
 
 export type RateField = 'charge' | 'labour_rate' | 'tax';
 
@@ -16,7 +17,7 @@ export type RateField = 'charge' | 'labour_rate' | 'tax';
  * the line Charge is held to 9999.99 by the owner's decision of 2026-10-19.
  */
 export const RATE_MAX: Record<RateField, number> = {
-  charge: 9999.99,
+  charge: RENT_MAX,
   labour_rate: 999999,
   tax: 100,
 };

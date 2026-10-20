@@ -603,7 +603,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       if (result.success) {
         return { success: true, grnId: result.data?.id };
       } else {
-        showAlert(t('errors.grn.form.saveFailedTitle'), serverText(result.error, t('common.checkConnection')));
+        showAlert(t('errors.grn.form.saveFailedTitle'), serverText(result.error, t('common.checkConnection'), { write: true, form: true }));
         return { success: false, error: result.error };
       }
     } catch (error) {

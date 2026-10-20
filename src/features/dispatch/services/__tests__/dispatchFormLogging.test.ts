@@ -1,4 +1,5 @@
 import { createDispatch, loadDispatchData, updateDispatch } from '../dispatchFormService';
+import { t } from '@/i18n';
 
 const mockRpc = jest.fn();
 const mockFinish = jest.fn();
@@ -10,7 +11,7 @@ jest.mock('@/utils/submissionIdempotency', () => ({ submissionIdempotencyKey: as
 jest.mock('@/utils/serviceErrorHandler', () => ({ executeRPC: jest.fn(), createErrorResponse: jest.fn() }));
 jest.mock('../dispatchImageService', () => ({ uploadDeferredDispatchImages: jest.fn() }));
 
-const marker = 'FICTIONAL_PRIVATE_DISPATCH_SENTINEL';
+const marker = 'Fictional private dispatch sentinel';
 const payload = {
   header: { disp_no: 'FXF901', disp_date: '2026-10-01', registration: 'TEST FIXTURE', customer_name: marker, customer_mobile: marker, note: marker },
   items: [{ grnItems_id: 'fictional-lot', disp_quantity: 2 }],
@@ -135,5 +136,16 @@ describe('load-dispatch console privacy', () => {
     const logs = logOutput();
     expect(logs).not.toContain(marker);
     if (kind === 'transport') expect(logs).toContain('PGRST301');
+  });
+});
+
+describe('a statement timeout on a save', () => {
+  it('create and update say nothing was saved (code 57014 reaches serverText)', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'canceling statement due to statement timeout', code: '57014' } });
+    const created = await createDispatch(payload);
+    expect(created.error).toBe(t('errors.parsed.timeoutNotSaved'));
+    const updated = await updateDispatch('fictional-dispatch-id', payload as unknown as Parameters<typeof updateDispatch>[1]);
+    expect(updated.error).not.toMatch(/may have been saved/i);
+    expect(updated.error).toBe(t('errors.parsed.timeoutNotSaved'));
   });
 });

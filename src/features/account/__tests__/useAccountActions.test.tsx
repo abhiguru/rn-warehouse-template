@@ -31,7 +31,8 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ auth: { userProfile: mockProfile } }),
 }));
-jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() }, useIsFocused: () => true }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
 jest.mock('@/config/operatorServer', () => ({
@@ -46,6 +47,16 @@ jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 
 jest.mock('@/store/centralSignOut', () => ({
   deleteFacilityAccount: jest.fn(async () => 'left'),
   signOutEverywhere: jest.fn(async () => ({ ok: true })),
+  // As the real one: holds the leaving count while the work runs.
+  whileLeaving: async (work: () => Promise<unknown>) => {
+    const centralState = jest.requireActual('@/config/centralState');
+    centralState.setCentralState({ leaving: centralState.getCentralState().leaving + 1 });
+    try {
+      return await work();
+    } finally {
+      centralState.setCentralState({ leaving: Math.max(0, centralState.getCentralState().leaving - 1) });
+    }
+  },
 }));
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(() => ({ type: 'test/logout' })),
@@ -164,7 +175,16 @@ describe('central login, signed in to the association', () => {
       confirmText: 'Leave',
     });
     expect(leaveFacility).not.toHaveBeenCalled();
+    // The leaving count is held while the leave runs (the strip and the refusals read it), and released after.
+    let leavingDuring = -1;
+    jest.mocked(leaveFacility).mockImplementationOnce(async () => {
+      leavingDuring = getCentralState().leaving;
+      return 'left';
+    });
+    expect(getCentralState().leaving).toBe(0);
     await act(async () => hook.dialog.onConfirm());
+    expect(leavingDuring).toBe(1);
+    expect(getCentralState().leaving).toBe(0);
     expect(leaveFacility).toHaveBeenCalledWith(mockDispatch);
     expect(signOutEverywhere).not.toHaveBeenCalled();
     expect(logout).not.toHaveBeenCalled();
@@ -175,8 +195,8 @@ describe('central login, signed in to the association', () => {
   });
 
   it.each([
-    ['busy', ['Operation in progress', 'Finish the current operation before switching facilities.']],
-    ['failed', ["Couldn't switch facility", 'Check your connection and try again.']],
+    ['busy', ['Operation in progress', 'A save is still being sent. Wait a few seconds, then try again.']],
+    ['failed', ['Left North Cold Store', "Some of North Cold Store's data couldn't be removed from this phone. Restart the app before someone else uses it."]],
   ] as const)('says why leaving did not happen (%s)', async (outcome, alert) => {
     jest.mocked(leaveFacility).mockResolvedValue(outcome);
     await render();
@@ -238,7 +258,7 @@ describe('central login, signed in to the association', () => {
 
   it.each([
     [{ ok: false, reason: 'local_clear_failed' }, "This phone couldn't remove your association sign-in from its secure storage. Restart the app and check that you're signed out before anyone else uses this phone."],
-    [{ ok: false, reason: 'busy' }, 'Finish the current operation before switching facilities.'],
+    [{ ok: false, reason: 'busy' }, 'A save is still being sent. Wait a few seconds, then try again.'],
   ] as const)('tells the person when the phone sign-out did not complete (%j)', async (result, message) => {
     jest.mocked(signOutEverywhere).mockResolvedValue(result);
     await render();
@@ -250,7 +270,7 @@ describe('central login, signed in to the association', () => {
     jest.mocked(signOutEverywhere).mockResolvedValue({ ok: true, facilityCleanup: 'failed' });
     await render();
     await confirmAction('signOutPhone');
-    expect(alerts()).toEqual([["Couldn't switch facility", 'Check your connection and try again.']]);
+    expect(alerts()).toEqual([['Signed out', "Some of North Cold Store's data couldn't be removed from this phone. Restart the app before someone else uses it."]]);
   });
 
   it('keeps the same two actions for a facility opened with its own SMS sign-in', async () => {
@@ -285,7 +305,7 @@ describe('signOutPhoneWithMessages (My facilities and inside a facility)', () =>
     expect(alerts()).toHaveLength(0);
     jest.mocked(signOutEverywhere).mockResolvedValueOnce({ ok: false, reason: 'busy' });
     await expect(signOutPhoneWithMessages(mockDispatch)).resolves.toEqual({ ok: false, reason: 'busy' });
-    expect(alerts()).toEqual([["Couldn't sign out", 'Finish the current operation before switching facilities.']]);
+    expect(alerts()).toEqual([["Couldn't sign out", 'A save is still being sent. Wait a few seconds, then try again.']]);
   });
 });
 

@@ -45,6 +45,8 @@ export type OpenFailureReason =
   | 'network'
   /** Deleting the account at the facility failed, or its result is not known. */
   | 'account_deletion'
+  /** The facility did not answer: nobody knows whether the account was deleted. */
+  | 'account_deletion_unknown'
   /**
    * The central person changed while a facility was being opened, and the session that the
    * facility gave the earlier sign-in could not be left the normal way: it was ended on this

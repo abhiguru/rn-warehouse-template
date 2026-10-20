@@ -33,6 +33,19 @@ export async function listPendingEnrollments(): Promise<PendingEnrollment[]> {
   return (data || []) as PendingEnrollment[];
 }
 
+/** How many requests wait: a head count of the pending rows (no rows are sent), for the Settings row. */
+export async function countPendingEnrollments(): Promise<number> {
+  const generation = getSessionGeneration();
+  const client = await getAuthenticatedClient();
+  const { count, error } = await client.from('user_profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('role', 'customer')
+    .eq('enrollment_status', 'pending');
+  unchanged(generation);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 /** Whether the facility has at least one active customer: a one-row read, not a scan of every customer. */
 export async function hasEnrollmentCustomers(): Promise<boolean> {
   const generation = getSessionGeneration();
@@ -44,6 +57,27 @@ export async function hasEnrollmentCustomers(): Promise<boolean> {
   unchanged(generation);
   if (error) throw new Error(error.message);
   return (data || []).length > 0;
+}
+
+/**
+ * The newest active customer this administrator created (audit column created_by is the
+ * administrator's profile id), or null when there is none. Read before and after Add customer,
+ * so the screen can tell that one was made.
+ */
+export async function newestOwnCustomer(profileId: string): Promise<EnrollmentCustomer | null> {
+  const generation = getSessionGeneration();
+  const client = await getAuthenticatedClient();
+  const { data, error } = await client.from('customers')
+    .select('id,name,created_at')
+    .eq('created_by', profileId)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  unchanged(generation);
+  if (error) throw new Error(error.message);
+  const row = (data || [])[0] as { id: string; name: string } | undefined;
+  return row ? { id: row.id, name: row.name } : null;
 }
 
 export async function listEnrollmentCustomers(): Promise<EnrollmentCustomer[]> {
@@ -98,12 +132,12 @@ export async function reviewEnrollment(
     if (error.code === 'PGRST202') throw new AppError('REFUSED', t('errors.user.enrollmentServerNeedsUpdate'));
     // Only an answer from the database is the server saying no (INVALID_ROLE ...). A timeout, a gateway
     // page or a changed session leaves open whether the decision was saved.
-    if (UserService.isDatabaseAnswer(error)) throw new AppError('REFUSED', serverText(error.message, t('errors.user.enrollmentReviewNotAccepted')));
+    if (UserService.isDatabaseAnswer(error)) throw new AppError('REFUSED', serverText(error.message, t('errors.user.enrollmentReviewNotAccepted'), { write: true }));
     throw new Error(error.message);
   }
   // The request was decided meanwhile (by another administrator): say so, the screen reloads.
   if (data?.success === false && data?.code === 'unknown_user')
     throw new AppError('REFUSED', t('errors.user.enrollmentAlreadyHandled'));
   if (data?.success !== true || data?.data?.status !== decision)
-    throw new AppError('REFUSED', serverText(data?.message, t('errors.user.enrollmentReviewNotAccepted')));
+    throw new AppError('REFUSED', serverText(data?.message, t('errors.user.enrollmentReviewNotAccepted'), { write: true }));
 }

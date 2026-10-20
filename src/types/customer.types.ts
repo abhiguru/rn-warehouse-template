@@ -44,6 +44,8 @@ export interface CustomerListItem {
   email?: string;
   address?: string;
   active: boolean;
+  /** Set by search_customers: a customer the facility deleted (it cannot be opened). */
+  deleted?: boolean;
 }
 
 // =============================================================================
@@ -164,6 +166,17 @@ export interface CustomerServiceResponse<T = Customer> {
   error?: string;
   /** The server's own error code (DUPLICATE_NAME ...), before any translation. */
   code?: string;
+  /** The form field the refusal is about (`name` or `mobile`), when the server names one. */
+  field?: string;
+  /** For DUPLICATE_NAME / DUPLICATE_MOBILE: the customer that already has the name or number. */
+  details?: CustomerRefusalDetails;
+}
+
+/** What the server says about the customer a duplicate collides with. */
+export interface CustomerRefusalDetails {
+  customer_id?: string;
+  name?: string;
+  active?: boolean;
 }
 
 /**
@@ -175,6 +188,8 @@ export interface CustomerListResponse {
   data: CustomerListItem[];
   pagination?: CustomerPagination;
   error?: string;
+  /** The failure's code (Postgres, PostgREST or the server's own), before any translation. */
+  code?: string;
 }
 
 /**
@@ -245,8 +260,13 @@ export interface CreateCustomerParams {
 /**
  * Update customer RPC request parameters
  */
-export interface UpdateCustomerParams extends CreateCustomerParams {
+export interface UpdateCustomerParams extends Partial<CreateCustomerParams> {
   p_customer_id: string;
+  /**
+   * The `updated_at` read with the customer, exactly as the server wrote it (microseconds).
+   * The server refuses the save (STALE_CUSTOMER) when the customer changed since.
+   */
+  p_expected_updated_at?: string;
 }
 
 /**

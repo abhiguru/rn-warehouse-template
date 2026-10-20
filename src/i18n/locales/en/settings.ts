@@ -2,14 +2,15 @@
 export const settings = {
   title: 'Settings',
   profileHint: 'Opens your profile',
+  // The profile card with central login: role, a middle dot, the facility's name.
+  profileRoleAtFacility: '{{role}} · {{facility}}',
   features: {
     title: 'Warehouse tools',
     customersSubtitle: 'Farmers and traders you store goods for',
     enrollmentReviewSubtitle: 'Approve people who asked to use this facility',
+    enrollmentReviewWaiting: '{{count}} waiting',
     itemsSubtitle: 'Produce you store, like potatoes or garlic',
     usersSubtitle: 'People who can sign in, their role and customers',
-    itemPricing: 'Item pricing',
-    itemPricingSubtitle: 'View and manage prices',
     standardRate: 'Standard rate',
     standardRateSubtitle: 'The rate new items get',
     sensors: 'Temperature and humidity',
@@ -85,6 +86,12 @@ export const settings = {
       'Make another person an administrator in Users first, then delete your account.',
     openUsers: 'Open Users',
     failed: "Couldn't delete your account. Check your connection and try again.",
+    offline: "You're offline. Connect to the internet, then try again.",
+    noAnswer:
+      "{{facility}} didn't answer, so we can't tell whether your account was deleted. Open {{facility}} from My facilities to check.",
+    noAnswerNoName: "The server didn't answer, so we can't tell whether your account was deleted. Try again to check.",
+    deleted: 'Your account at {{facility}} was deleted.',
+    deletedNoName: 'Your account was deleted.',
     // Central login: the account at one facility; {{facility}} is its name.
     centralWarningTitle: 'Delete your account at {{facility}}?',
     centralWarningMessage:

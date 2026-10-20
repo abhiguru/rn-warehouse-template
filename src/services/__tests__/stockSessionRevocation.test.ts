@@ -29,9 +29,12 @@ it.each(['rpc', 'envelope', 'exception'])(
   }
 );
 
-it.each(['Customer access denied', 'Network request failed'])(
-  'preserves valid credentials on %s', async message => {
-    rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message } });
+it.each([
+  ['Customer access denied', 'Customer access denied'],
+  ['Network request failed', 'Check your connection and try again.'],
+])(
+  'preserves valid credentials on %s', async (raw, message) => {
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: raw } });
     expect(await StockService.getCustomerStockAnalysis('fictional-customer')).toMatchObject({ success: false, message });
     expect(store.dispatch).not.toHaveBeenCalled();
   }

@@ -14,7 +14,6 @@ import type {
   ItemPriceHistoryResponse,
   ItemPriceHistoryParams,
   ActiveItem,
-  ItemGrnRate,
   ReplaceRatesInput,
   ReplaceRatesResult,
   UndoRateChangeInput,
@@ -38,7 +37,7 @@ import type { RpcGrnItemRate, RpcGrnItemRates } from '@/types/rpc-canonical.type
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
-import { failureText, serverText } from '@/utils/serverText';
+import { failureText, serverText, transportText } from '@/utils/serverText';
 
 import { rememberRateStartFloor } from './rateStartFloor';
 
@@ -200,7 +199,7 @@ export const getItemStoragePrices = async (
  * cache"; the database itself says 42883 "function ... does not exist". Trying again cannot
  * help until the facility's server is updated.
  */
-function isMissingFunction(
+export function isMissingFunction(
   error: { code?: unknown; message?: unknown } | null | undefined,
   name: string
 ): boolean {
@@ -308,6 +307,7 @@ const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
   NOT_A_RATE_START: 'pricing.error.notARateStart',
   NOTHING_TO_MOVE: 'pricing.error.nothingToMove',
   STALE_RATES: 'pricing.error.staleRates',
+  STALE_STANDARD_RATE: 'pricing.standard.error.stale',
   STANDARD_RATE_MANAGER_ONLY: 'pricing.standard.error.managerOnly',
   // LATER_RATES_EXIST has no message: the screen's dialog explains.
 };
@@ -455,6 +455,8 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
         p_customer_id: input.customerId,
         p_price_type: input.priceType,
         p_starts_on: input.startsOn,
+        // Every row of the scope the screen loaded (ended and planned too): the server answers STALE_RATES when another phone changed the scope since.
+        ...(input.seenRows ? { p_seen_rows: input.seenRows } : {}),
       })),
       RPC_TIMEOUT_MS,
       'Rate change'
@@ -541,55 +543,32 @@ export const listItemRates = (itemId: string): Promise<ItemStoragePrice[]> => re
 export const listRatesOfItems = (itemIds: string[]): Promise<ItemStoragePrice[]> =>
   itemIds.length === 0 ? Promise.resolve([]) : readRates({ item_ids: itemIds });
 
-/**
- * The rates set for one GRN only on this item (backend migration 86), active ones first. A server without
- * the function (an older one) has none: an empty list. Throws when the facility cannot be reached.
- */
-export const getItemGrnRates = async (itemId: string): Promise<ItemGrnRate[]> => {
-  const client = await getAuthenticatedClient();
-  const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_item_grn_rates', { p_item_id: itemId })), RPC_TIMEOUT_MS, 'GRN rates');
-  if (error) {
-    handleGlobalAuthError(error);
-    if (isMissingFunction(error, 'get_item_grn_rates')) return [];
-    throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates for GRNs could not be loaded');
-  }
-  const response = unwrapArrayResponse(data) as { success?: unknown; data?: { rates?: unknown } | null } | null;
-  if (!response || response.success !== true) {
-    handleGlobalAuthError(response);
-    throw new Error('The rates for GRNs could not be loaded');
-  }
-  const rows = Array.isArray(response.data?.rates) ? (response.data!.rates as Array<Record<string, unknown>>) : [];
-  return rows.map(r => ({
-    id: String(r.id),
-    gr_id: String(r.gr_id),
-    gr_no: String(r.gr_no ?? ''),
-    grn_date: String(r.grn_date ?? '').slice(0, 10),
-    customer_id: (r.customer_id as string | null) ?? null,
-    customer_name: (r.customer_name as string | null) ?? null,
-    price_type: r.price_type === 'one_time' ? 'one_time' : 'monthly',
-    weight_min: Number(r.weight_min),
-    weight_max: Number(r.weight_max),
-    unit_price: Number(r.unit_price),
-    labour_rate: Number(r.labour_rate),
-    tax_percent: Number(r.tax_percent),
-    archived: r.archived === true,
-    created_at: String(r.created_at ?? ''),
-  }));
-};
+/** The items table is read this many rows at a time: the server cuts a single read at its row cap. */
+const ITEMS_PAGE_SIZE = 500;
 
-/** The active items, by name (the items table, as the item pickers read it). */
+/** The active items, by name (the items table, as the item pickers read it), page after page so none is cut. */
 export const listActiveItems = async (): Promise<ActiveItem[]> => {
   const client = await getAuthenticatedClient();
-  const { data, error } = await client.from('items').select('id, name, packaging').eq('active', true).order('name');
-  if (error) {
-    handleGlobalAuthError(error);
-    throw new Error(error.message || 'Items could not be loaded');
+  const out: ActiveItem[] = [];
+  for (let from = 0; ; from += ITEMS_PAGE_SIZE) {
+    const { data, error } = await client
+      .from('items')
+      .select('id, name, packaging, description')
+      .eq('active', true)
+      .order('name')
+      .order('id')
+      .range(from, from + ITEMS_PAGE_SIZE - 1);
+    if (error) {
+      handleGlobalAuthError(error);
+      throw new Error(error.message || 'Items could not be loaded');
+    }
+    const page = (data ?? []) as { id: string; name: string; packaging: string | null; description?: string | null }[];
+    for (const row of page) {
+      out.push({ id: row.id, name: row.name, packaging: row.packaging ?? null, description: row.description ?? null });
+    }
+    if (page.length < ITEMS_PAGE_SIZE) break;
   }
-  return (data ?? []).map((row: { id: string; name: string; packaging: string | null }) => ({
-    id: row.id,
-    name: row.name,
-    packaging: row.packaging ?? null,
-  }));
+  return out;
 };
 
 // ---------------------------------------------------------------------------
@@ -636,17 +615,32 @@ export const getStandardRate = async (): Promise<StandardRate> => {
   };
 };
 
+export interface SetStandardRateOptions {
+  /**
+   * The `updated_at` string of the standard rate the draft was built from (get_standard_rate, or the last save's answer);
+   * '-infinity' when no tiers were loaded; undefined sends nothing (the server skips the check).
+   */
+  expectedUpdatedAt?: string | null;
+  /** Check everything and count the items that would be priced; nothing is written. */
+  dryRun?: boolean;
+}
+
 /**
  * Save the standard rate (administrators and supervisors). The server also gives the tiers to every
  * active item that has no default rate yet and says how many (`itemsPriced`). A failure carries
  * `errorCode` and the app's own `message`; the server's English text is never shown.
  */
-export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandardRateResult> => {
+export const setStandardRate = async (tiers: StandardTier[], options: SetStandardRateOptions = {}): Promise<SetStandardRateResult> => {
   const unconfirmed = (): SetStandardRateResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.standard.error.unconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
     const { data, error } = await withTimeout(
-      Promise.resolve(client.rpc('set_standard_rate', { p_tiers: tiers })),
+      Promise.resolve(client.rpc('set_standard_rate', {
+        p_tiers: tiers,
+        // The version the draft was built from, as the exact string the server sent (never through a Date: it would cut the microseconds).
+        ...(options.expectedUpdatedAt !== undefined ? { p_expected_updated_at: options.expectedUpdatedAt } : {}),
+        ...(options.dryRun ? { p_dry_run: true } : {}),
+      })),
       RPC_TIMEOUT_MS,
       'Standard rate'
     );
@@ -655,13 +649,14 @@ export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandar
       itemPricingLogger.error('set_standard_rate RPC error:', error);
       handleGlobalAuthError(error);
       const mapped = mapRateError(error, 'set_standard_rate');
-      // An error with no database code is the connection failing: the save may have gone through.
-      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return unconfirmed();
+      if (mapped.code === 'SERVER_NEEDS_UPDATE') return { success: false, errorCode: mapped.code, message: t('pricing.standard.error.serverNeedsUpdateSave') };
+      // An error with no database code is the connection failing: the save may have gone through (a dry run writes nothing).
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return options.dryRun ? { success: false, errorCode: 'UNKNOWN', message: transportText(error, { write: false }) ?? t('pricing.error.generic') } : unconfirmed();
       return { success: false, errorCode: mapped.code, message: mapped.message };
     }
 
     const response = unwrapArrayResponse(data) as
-      | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown } | null }
+      | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown; updated_at?: unknown } | null }
       | null;
     if (!response || typeof response !== 'object') return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic') };
 
@@ -684,14 +679,19 @@ export const setStandardRate = async (tiers: StandardTier[]): Promise<SetStandar
       success: true,
       tiers: toTiers(details.tiers),
       itemsPriced: Number(details.items_priced ?? 0) || 0,
+      // The new version, exactly as the server wrote it.
+      updatedAt: typeof details.updated_at === 'string' ? details.updated_at : null,
+      dryRun: options.dryRun === true,
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     itemPricingLogger.error('Exception in setStandardRate:', { error: errorMessage });
     handleGlobalAuthError(err);
     if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'set_standard_rate')) {
-      return { success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') };
+      return { success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.standard.error.serverNeedsUpdateSave') };
     }
+    // A dry run writes nothing, so a lost answer to one is only a failure to ask.
+    if (options.dryRun) return { success: false, errorCode: 'UNKNOWN', message: transportText(err, { write: false }) ?? t('pricing.error.generic') };
     // A timeout or a lost answer: the server may have committed the change.
     return unconfirmed();
   }

@@ -6,7 +6,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -46,6 +46,7 @@ export const FACILITY_STATUS_VIEW: Record<FacilityStatus, { kind: StatusKind; la
  */
 const FAILED_TITLES: Partial<Record<OpenFailureReason, TranslationKey>> = {
   account_deletion: 'central.account.deleteFailedTitle',
+  account_deletion_unknown: 'central.account.deleteUnknownTitle',
   ...EARLIER_SESSION_TITLES,
 };
 
@@ -58,7 +59,6 @@ export default function FacilitiesScreen() {
   const userId = central.user?.id ?? '';
   const [list, setList] = useState<MyFacility[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
   const opening = central.opening;
 
   const load = useCallback(async () => {
@@ -74,12 +74,21 @@ export default function FacilitiesScreen() {
   // showing the list. One chance per start; "Switch facility" spends it before coming here.
   const autoOpenSpent = central.autoOpenSpent;
   const hasOutcome = central.outcome !== null;
+  const leaving = central.leaving > 0;
+  const focused = useIsFocused();
   useEffect(() => {
     if (list === null || autoOpenSpent) return;
+    if (!focused) {
+      // Left for another screen while a sign-out was finishing: the chance is gone.
+      if (leaving) setCentralState({ autoOpenSpent: true });
+      return;
+    }
+    // Not while a sign-out is still finishing: the open would be refused with a dialog nobody asked for.
+    if (leaving) return;
     setCentralState({ autoOpenSpent: true });
     const sole = soleApprovedFacility(list);
     if (sole && !opening && !hasOutcome) void openFacility(sole.origin, sole.name);
-  }, [list, autoOpenSpent, opening, hasOutcome]);
+  }, [list, autoOpenSpent, leaving, focused, opening, hasOutcome]);
 
   // The answer of an open. It is held outside this screen, because opening a facility
   // rebuilds the navigation tree and the screen that started it may be gone.
@@ -109,7 +118,7 @@ export default function FacilitiesScreen() {
       ]);
     } else if (result.kind === 'failed') {
       const title = FAILED_TITLES[result.reason];
-      showAlert(title ? tr(title) : tr('central.open.failedTitle', { facility: name }), result.message);
+      showAlert(title ? tr(title, { facility: name }) : tr('central.open.failedTitle', { facility: name }), result.message);
     }
   }, [outcome]);
 
@@ -131,15 +140,26 @@ export default function FacilitiesScreen() {
         text: tr('auth.signOut.action'),
         style: 'destructive',
         onPress: () => {
-          setSigningOut(true);
           // The same sign-out and messages as "Sign out of this phone" inside a facility.
-          void signOutPhoneWithMessages(dispatch).finally(() => setSigningOut(false));
+          void signOutPhoneWithMessages(dispatch);
         },
       },
     ]);
   };
 
-  const busy = opening !== null || signingOut;
+  // Nothing here is silent while the phone signs out or a facility opens: the rows, your name,
+  // Add facility and Sign out stay pressable but are dimmed, and a tap says why it waits.
+  // (A row tapped during an open is answered by openFacility.)
+  const openingName = opening ? list?.find(f => f.origin === opening)?.name : undefined;
+  const waiting = leaving || opening !== null;
+  const tellWaiting = () =>
+    leaving
+      ? showAlert(tr('central.facilities.signingOutTitle'), tr('central.facilities.signingOutMessage'))
+      : showAlert(
+          tr('auth.server.busyTitle'),
+          // A facility that is not in the list has no name to show: the general busy text.
+          openingName ? tr('central.facilities.stillOpening', { facility: openingName }) : tr('central.switch.busyMessage')
+        );
   const personName = central.user?.name || tr('central.facilities.accountLabel');
   const personPhone = formatMobile(central.user?.phoneNumber);
 
@@ -147,11 +167,16 @@ export default function FacilitiesScreen() {
     const view = FACILITY_STATUS_VIEW[item.status];
     const status = tr(view.label);
     const isOpening = opening === item.origin;
+    // The other rows wait while one opens: dimmed and busy like the whole screen while signing out.
+    const waitingRow = leaving || (opening !== null && !isOpening);
     return (
       <Pressable
-        style={({ pressed }) => [styles.cell, pressed && styles.cellPressed]}
-        onPress={() => { void openFacility(item.origin, item.name); }}
-        disabled={busy}
+        style={({ pressed }) => [styles.cell, waitingRow && styles.cellDimmed, pressed && styles.cellPressed]}
+        onPress={() => {
+          // A tap during the wait is the person's own choice: the automatic open is not for them any more.
+          setCentralState({ autoOpenSpent: true });
+          void openFacility(item.origin, item.name);
+        }}
         accessibilityRole="button"
         accessibilityLabel={
           item.city
@@ -159,7 +184,7 @@ export default function FacilitiesScreen() {
             : tr('central.facilities.cellLabel', { name: item.name, status })
         }
         accessibilityHint={tr('central.facilities.cellHint')}
-        accessibilityState={{ disabled: busy, busy: isOpening }}
+        accessibilityState={{ busy: isOpening || waitingRow }}
         testID={`facility-${item.origin}`}
       >
         <View style={styles.avatar}>
@@ -186,6 +211,12 @@ export default function FacilitiesScreen() {
     <View style={styles.screen}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <CentralHeader title={tr('central.facilities.title')} />
+      {leaving ? (
+        <View style={styles.strip} accessibilityRole="alert" accessibilityLiveRegion="polite" testID="facilities-signing-out">
+          <ActivityIndicator size="small" color={t.status.neutral.text} />
+          <Text style={styles.stripText}>{tr('central.facilities.signingOut')}</Text>
+        </View>
+      ) : null}
 
       <FlatList
         data={list ?? []}
@@ -198,12 +229,12 @@ export default function FacilitiesScreen() {
         }
         ListHeaderComponent={
           <Pressable
-            style={({ pressed }) => [styles.account, pressed && styles.cellPressed]}
-            onPress={() => router.push('/central-account')}
-            disabled={busy}
+            style={({ pressed }) => [styles.account, waiting && styles.cellDimmed, pressed && styles.cellPressed]}
+            onPress={() => (waiting ? tellWaiting() : router.push('/central-account'))}
             accessibilityRole="button"
             accessibilityLabel={`${personName}, ${personPhone}`}
             accessibilityHint={tr('central.facilities.accountHint')}
+            accessibilityState={{ busy: waiting }}
             testID="central-account-row"
           >
             <Icon name="account-circle-outline" size={iconSize.xl} color={t.icon.secondary} />
@@ -233,16 +264,22 @@ export default function FacilitiesScreen() {
       />
 
       <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
-        <Button size="fullWidth" leftIcon="plus" onPress={() => router.push('/facility-catalogue')} disabled={busy}>
+        <Button
+          size="fullWidth"
+          leftIcon="plus"
+          onPress={() => (waiting ? tellWaiting() : router.push('/facility-catalogue'))}
+          style={waiting ? styles.cellDimmed : undefined}
+          accessibilityState={{ busy: waiting }}
+        >
           {tr('central.facilities.add')}
         </Button>
         <Button
           type="tertiary"
           variant="negative"
           size="fullWidth"
-          onPress={confirmSignOut}
-          disabled={busy}
-          loading={signingOut}
+          onPress={() => (waiting ? tellWaiting() : confirmSignOut())}
+          style={waiting ? styles.cellDimmed : undefined}
+          accessibilityState={{ busy: waiting }}
         >
           {tr('auth.signOut.action')}
         </Button>
@@ -288,6 +325,17 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.card,
   },
   cellPressed: { backgroundColor: t.surface.cardPressed },
+  cellDimmed: { opacity: t.interaction.disabledOpacity },
+  // Under the header, pushing the list down (style guide: banners never cover content)
+  strip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.status.neutral.background,
+  },
+  stripText: { ...typography.subhead, color: t.status.neutral.text, flex: 1 },
   avatar: {
     width: layout.avatar.md,
     height: layout.avatar.md,
