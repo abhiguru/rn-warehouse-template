@@ -79,7 +79,7 @@ export function validateForm(values: SensorFormValues): SensorFormErrors {
   if (highest === null || (highest !== undefined && outside(highest))) {
     errors.highest = tr('sensors.edit.temperatureInvalid', { min: TEMPERATURE_MIN, max: TEMPERATURE_MAX });
   }
-  if (!errors.lowest && !errors.highest && lowest !== undefined && highest !== undefined && lowest >= highest) {
+  if (!errors.lowest && !errors.highest && lowest != null && highest != null && lowest >= highest) {
     errors.highest = tr('sensors.edit.limitsOrder');
   }
   return errors;

@@ -67,7 +67,7 @@ const APP_WORDED: TranslationKey[] = ['errors.parsed.businessDeactivated', 'erro
 
 /** Sentences the app wrote itself that may reach serverText again; they would look like developer text ("violates"). */
 const APP_OWN_TEXT: TranslationKey[] = [
-  'errors.general.businessRuleViolation',
+  'errors.code.businessRuleViolation',
   'errors.parsed.network',
   'errors.parsed.timeoutWrite',
   'errors.parsed.timeoutWriteForm',
