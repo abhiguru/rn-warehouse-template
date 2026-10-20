@@ -24,7 +24,7 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => false }));
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => null }));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn() }));
-jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(), signOutEverywhere: jest.fn() }));
+jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(), signOutEverywhere: jest.fn(), whileLeaving: (work: () => Promise<unknown>) => work() }));
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(),
   deleteAccount: jest.fn(),

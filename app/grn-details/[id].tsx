@@ -489,7 +489,7 @@ function GRNDetailScreen() {
                   { text: tr('common.done'), onPress: () => router.back() },
                 ]);
               } else {
-                let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true });
+                let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true, delete: true });
 
                 if (result.blocking_dependencies) {
                   const deps = result.blocking_dependencies;

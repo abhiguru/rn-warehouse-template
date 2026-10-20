@@ -31,6 +31,7 @@ jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 
 jest.mock('@/store/centralSignOut', () => ({
   deleteFacilityAccount: jest.fn(async () => 'left'),
   signOutEverywhere: jest.fn(async () => ({ ok: true })),
+  whileLeaving: (work: () => Promise<unknown>) => work(),
 }));
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(() => ({ type: 'test/logout' })),

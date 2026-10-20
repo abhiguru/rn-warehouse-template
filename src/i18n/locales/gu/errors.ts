@@ -138,6 +138,8 @@ export const errors: Translation<typeof source> = {
     // Draft for the owner's wording review (timeout on a form screen, 2026-10-20). Save is સાચવો (glossary), so the text says સચવાઈ.
     timeoutWriteForm: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ સચવાઈ ગયું હોય. ફરી પ્રયાસ કરતાં પહેલાં યાદીમાં પાછા જઈને તપાસો.',
     // Draft for the owner's wording review (timeout on a photo upload or removal, 2026-10-20).
+    timeoutDelete: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ કાઢી નંખાયું હોય. નીચે ખેંચીને તપાસો.',
+    timeoutDeleteForm: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ કાઢી નંખાયું હોય. ફરી પ્રયાસ કરતાં પહેલાં યાદીમાં પાછા જઈને તપાસો.',
     timeoutWritePhoto: 'સર્વરનો જવાબ મળ્યો નથી. ફોટામાં ફેરફાર થઈ ગયો હોય શકે. ફરી પ્રયાસ કરતાં પહેલાં આ સ્ક્રીન પરના ફોટા તપાસો.',
     rateLimitSeconds: 'ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં {{seconds}} સેકન્ડ રાહ જુઓ.',
     rateLimitMinutes: 'ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં {{minutes}} મિનિટ રાહ જુઓ.',

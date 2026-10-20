@@ -666,7 +666,7 @@ function BootstrapApp() {
                 // Named before the call: the facility is no longer open when it ends.
                 const facility = currentFacilityLabel();
                 void leaveFacility(store.dispatch, { localOnly: true }).then(outcome => {
-                  if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.switch.busyMessage'));
+                  if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.leave.saveInFlight'));
                   else if (outcome === 'failed') showFacilityCleanupFailed(translate('central.leave.leftTitle', { facility }), facility);
                 });
               }

@@ -1,4 +1,5 @@
 import { createDispatch, loadDispatchData, updateDispatch } from '../dispatchFormService';
+import { t } from '@/i18n';
 
 const mockRpc = jest.fn();
 const mockFinish = jest.fn();
@@ -135,5 +136,16 @@ describe('load-dispatch console privacy', () => {
     const logs = logOutput();
     expect(logs).not.toContain(marker);
     if (kind === 'transport') expect(logs).toContain('PGRST301');
+  });
+});
+
+describe('a statement timeout on a save', () => {
+  it('create and update say nothing was saved (code 57014 reaches serverText)', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'canceling statement due to statement timeout', code: '57014' } });
+    const created = await createDispatch(payload);
+    expect(created.error).toBe(t('errors.parsed.timeoutNotSaved'));
+    const updated = await updateDispatch('fictional-dispatch-id', payload as unknown as Parameters<typeof updateDispatch>[1]);
+    expect(updated.error).not.toMatch(/may have been saved/i);
+    expect(updated.error).toBe(t('errors.parsed.timeoutNotSaved'));
   });
 });

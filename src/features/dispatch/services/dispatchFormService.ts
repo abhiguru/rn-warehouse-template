@@ -229,7 +229,7 @@ export const createDispatch = async (payload: {
 
     if (error) {
       log.error('create_dispatch_with_stock_check failed', { code: errorCode(error) });
-      throw new Error(serverText(error.message, t('dispatch.service.createFailed'), { write: true, form: true }));
+      throw new Error(serverText(error, t('dispatch.service.createFailed'), { write: true, form: true }));
     }
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
@@ -349,7 +349,7 @@ export const updateDispatch = async (
 
     if (error) {
       log.error('update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
-      throw new Error(serverText(error.message, t('dispatch.service.updateFailed'), { write: true, form: true }));
+      throw new Error(serverText(error, t('dispatch.service.updateFailed'), { write: true, form: true }));
     }
 
     if (data && data.success === false) {

@@ -85,7 +85,6 @@ export const central = {
     nameHelp: 'A facility sees this name when you ask it for access.',
     nameInvalid: 'Enter a name of up to 80 characters.',
     saveName: 'Save name',
-    savedTitle: 'Name saved',
     saveFailedTitle: "Couldn't save the name",
     signedInAs: 'Signed in with {{phone}}',
     deleteAccount: 'Delete my account',

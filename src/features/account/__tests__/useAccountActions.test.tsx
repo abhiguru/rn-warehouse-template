@@ -47,6 +47,16 @@ jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn(async () => 
 jest.mock('@/store/centralSignOut', () => ({
   deleteFacilityAccount: jest.fn(async () => 'left'),
   signOutEverywhere: jest.fn(async () => ({ ok: true })),
+  // As the real one: holds the leaving count while the work runs.
+  whileLeaving: async (work: () => Promise<unknown>) => {
+    const centralState = jest.requireActual('@/config/centralState');
+    centralState.setCentralState({ leaving: centralState.getCentralState().leaving + 1 });
+    try {
+      return await work();
+    } finally {
+      centralState.setCentralState({ leaving: Math.max(0, centralState.getCentralState().leaving - 1) });
+    }
+  },
 }));
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(() => ({ type: 'test/logout' })),
@@ -165,7 +175,16 @@ describe('central login, signed in to the association', () => {
       confirmText: 'Leave',
     });
     expect(leaveFacility).not.toHaveBeenCalled();
+    // The leaving count is held while the leave runs (the strip and the refusals read it), and released after.
+    let leavingDuring = -1;
+    jest.mocked(leaveFacility).mockImplementationOnce(async () => {
+      leavingDuring = getCentralState().leaving;
+      return 'left';
+    });
+    expect(getCentralState().leaving).toBe(0);
     await act(async () => hook.dialog.onConfirm());
+    expect(leavingDuring).toBe(1);
+    expect(getCentralState().leaving).toBe(0);
     expect(leaveFacility).toHaveBeenCalledWith(mockDispatch);
     expect(signOutEverywhere).not.toHaveBeenCalled();
     expect(logout).not.toHaveBeenCalled();

@@ -24,7 +24,7 @@ export { LEAVE_RETRY_WAIT_MS } from './operatorSwitch';
  * also in the moments between the store's request flags and the list changes.
  * A count, so one finishing does not release another still running.
  */
-async function whileLeaving<T>(work: () => Promise<T>): Promise<T> {
+export async function whileLeaving<T>(work: () => Promise<T>): Promise<T> {
   setCentralState({ leaving: getCentralState().leaving + 1 });
   try {
     return await work();

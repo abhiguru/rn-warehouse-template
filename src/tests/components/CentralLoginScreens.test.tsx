@@ -558,6 +558,21 @@ describe('My facilities', () => {
     expect(alerts()).toEqual([['Operation in progress', 'Still opening North Cold Store. Wait for it to finish.']]);
   });
 
+  it('while one facility opens, the other rows are busy too; an opening facility outside the list gives the general busy text', async () => {
+    jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'approved')]);
+    await render(<FacilitiesScreen />);
+    const rows = () => tree!.root.findAll(node => typeof node.props.testID === 'string' && /^facility-https/.test(node.props.testID) && typeof node.props.onPress === 'function');
+    const busyOf = (id: string) => rows().find(node => node.props.testID === id)?.props.accessibilityState?.busy;
+    const north = rows()[0].props.testID as string;
+    const south = rows()[1].props.testID as string;
+    expect([busyOf(north), busyOf(south)]).toEqual([false, false]);
+    await act(async () => { setCentralState({ opening: north.replace('facility-', '') }); });
+    expect([busyOf(north), busyOf(south)]).toEqual([true, true]);
+    await act(async () => { setCentralState({ opening: 'https://not-in-the-list.example.test' }); });
+    await press(button('Add facility'));
+    expect(alerts()).toEqual([['Operation in progress', 'Finish the current operation before switching facilities.']]);
+  });
+
   it('pull to refresh reads the list and asks the association, and contacts no facility', async () => {
     jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'requested')]);
     await render(<FacilitiesScreen />);

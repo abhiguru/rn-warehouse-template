@@ -254,7 +254,7 @@ export const uploadGRNImage = async (
       log.error('Registration failed', loggableError(regError));
       return {
         success: false,
-        error: serverText(regError.message, t('grn.upload.registerFailed'), { write: true, photo: true }),
+        error: serverText(regError, t('grn.upload.registerFailed'), { write: true, photo: true }),
       };
     }
 

@@ -133,6 +133,8 @@ export const errors = {
     timeoutNotSaved: 'The server took too long and nothing was saved. Try again.',
     timeoutWrite: 'No answer from the server. It may have been saved. Pull down to check.',
     timeoutWriteForm: 'No answer from the server. It may have been saved. Go back to the list and check before trying again.',
+    timeoutDelete: 'No answer from the server. It may have been deleted. Pull down to check.',
+    timeoutDeleteForm: 'No answer from the server. It may have been deleted. Go back to the list and check before trying again.',
     timeoutWritePhoto: 'No answer from the server. The photo change may have gone through. Check the photos on this screen before trying again.',
     rateLimitSeconds: 'Too many requests. Please wait {{seconds}} seconds before trying again.',
     rateLimitMinutes: 'Too many requests. Please wait {{minutes}} minutes before trying again.',

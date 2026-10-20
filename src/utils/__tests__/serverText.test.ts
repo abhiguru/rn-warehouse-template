@@ -262,6 +262,25 @@ describe('failures that are not a server sentence (English)', () => {
     );
   });
 
+  it('a timeout on a delete says it may have been deleted (list or detail wording); photo still wins', () => {
+    const timeout = new TimeoutError('Delete timed out after 30 seconds', 30000);
+    expect(serverText(timeout, 'x', { write: true, delete: true })).toBe(
+      'No answer from the server. It may have been deleted. Pull down to check.'
+    );
+    expect(serverText(timeout, 'x', { write: true, form: true, delete: true })).toBe(
+      'No answer from the server. It may have been deleted. Go back to the list and check before trying again.'
+    );
+    expect(serverText(timeout, 'x', { write: true, photo: true, delete: true })).toBe(t('errors.parsed.timeoutWritePhoto'));
+    // A text a shared service worded as a save timeout is swapped for the delete wording, and the other way round.
+    expect(serverText(t('errors.parsed.timeoutWrite'), 'x', { write: true, delete: true })).toBe(t('errors.parsed.timeoutDelete'));
+    expect(serverText(t('errors.parsed.timeoutDelete'), 'x', { write: true, form: true })).toBe(t('errors.parsed.timeoutWriteForm'));
+    expect(serverText(t('errors.parsed.timeoutDeleteForm'), 'x')).toBe(t('errors.parsed.timeoutDeleteForm'));
+    // A statement timeout (57014) still says nothing was saved.
+    expect(serverText({ message: 'canceling statement due to statement timeout', code: '57014' }, 'x', { write: true, delete: true })).toBe(
+      t('errors.parsed.timeoutNotSaved')
+    );
+  });
+
   it('swaps a timeout sentence a shared service worded for the other kind of screen', () => {
     const list = t('errors.parsed.timeoutWrite');
     const form = t('errors.parsed.timeoutWriteForm');

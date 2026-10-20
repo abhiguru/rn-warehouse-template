@@ -283,7 +283,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     if (error) {
       log.error('save_grn failed', loggableError(error));
       if (payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
-      throw new Error(serverText(error.message, t('grn.form.requestFailed'), { write: true, form: true }));
+      throw new Error(serverText(error, t('grn.form.requestFailed'), { write: true, form: true }));
     }
 
     if (!data || !data.success) {
@@ -572,7 +572,7 @@ export const updateGRN = async (
         throw new Error(`Stock Protection: ${error.message}`);
       }
 
-      throw new Error(serverText(error.message, t('grn.form.requestFailed'), { write: true, form: true }));
+      throw new Error(serverText(error, t('grn.form.requestFailed'), { write: true, form: true }));
     }
 
     // RPC returns array, get first result (with safe array access)

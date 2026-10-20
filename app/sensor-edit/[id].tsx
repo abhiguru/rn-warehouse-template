@@ -10,7 +10,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { usePreventRemove } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReportEmptyState, ReportHeader } from '@/components/reports';
 import { Button } from '@/components/ui/Button';
@@ -117,8 +116,7 @@ const SensorEditScreen: React.FC = () => {
   // Every way out asks first when something changed: the header Back, the phone's Back key, the swipe.
   // While a save runs the question is off and every way out is held (a no-op below), so a screen
   // that was discarded cannot toast "saved" or an alert afterwards.
-  const { leaveWithoutAsking } = useLeaveGuard({ hasChanges: changed && !saving });
-  usePreventRemove(saving, () => {});
+  const { leaveWithoutAsking } = useLeaveGuard({ hasChanges: changed, blocked: saving });
 
   const change = useCallback((field: SensorFormField, text: string) => {
     setValues(previous => (previous ? { ...previous, [field]: text } : previous));

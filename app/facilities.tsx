@@ -155,7 +155,11 @@ export default function FacilitiesScreen() {
   const tellWaiting = () =>
     leaving
       ? showAlert(tr('central.facilities.signingOutTitle'), tr('central.facilities.signingOutMessage'))
-      : showAlert(tr('auth.server.busyTitle'), tr('central.facilities.stillOpening', { facility: openingName ?? '' }));
+      : showAlert(
+          tr('auth.server.busyTitle'),
+          // A facility that is not in the list has no name to show: the general busy text.
+          openingName ? tr('central.facilities.stillOpening', { facility: openingName }) : tr('central.switch.busyMessage')
+        );
   const personName = central.user?.name || tr('central.facilities.accountLabel');
   const personPhone = formatMobile(central.user?.phoneNumber);
 
@@ -163,9 +167,11 @@ export default function FacilitiesScreen() {
     const view = FACILITY_STATUS_VIEW[item.status];
     const status = tr(view.label);
     const isOpening = opening === item.origin;
+    // The other rows wait while one opens: dimmed and busy like the whole screen while signing out.
+    const waitingRow = leaving || (opening !== null && !isOpening);
     return (
       <Pressable
-        style={({ pressed }) => [styles.cell, leaving && styles.cellDimmed, pressed && styles.cellPressed]}
+        style={({ pressed }) => [styles.cell, waitingRow && styles.cellDimmed, pressed && styles.cellPressed]}
         onPress={() => {
           // A tap during the wait is the person's own choice: the automatic open is not for them any more.
           setCentralState({ autoOpenSpent: true });
@@ -178,7 +184,7 @@ export default function FacilitiesScreen() {
             : tr('central.facilities.cellLabel', { name: item.name, status })
         }
         accessibilityHint={tr('central.facilities.cellHint')}
-        accessibilityState={{ busy: isOpening || leaving }}
+        accessibilityState={{ busy: isOpening || waitingRow }}
         testID={`facility-${item.origin}`}
       >
         <View style={styles.avatar}>

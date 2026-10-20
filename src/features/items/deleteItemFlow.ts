@@ -150,7 +150,7 @@ export async function deleteItemFlow(
       // Deleted by someone else between the count and the tap (an older server has the text only).
       showGone();
     } else {
-      showAlert(t('items.delete.couldNotDeleteTitle'), serverText(result.message, t('items.list.tryAgainInAMoment'), { write: true, form }));
+      showAlert(t('items.delete.couldNotDeleteTitle'), serverText(result.message, t('items.list.tryAgainInAMoment'), { write: true, form, delete: true }));
     }
   } catch (error) {
     log.error('deleteItem error', loggableError(error));

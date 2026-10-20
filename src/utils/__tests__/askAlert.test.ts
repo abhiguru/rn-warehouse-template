@@ -4,7 +4,15 @@
  * closed without one, and it answers once.
  */
 import { Alert } from 'react-native';
-import { askAlert, registerAlertHost, resetAlertQueueForTests, type AlertRequest } from '../alert';
+import {
+  askAlert,
+  dropAlertsWithHandlers,
+  getAlertQueue,
+  registerAlertHost,
+  resetAlertQueueForTests,
+  showAlert,
+  type AlertRequest,
+} from '../alert';
 
 // Dialogs waiting in the queue are kept for a host that is mounted again, so each test starts empty.
 beforeEach(() => resetAlertQueueForTests());
@@ -62,6 +70,26 @@ describe('askAlert without a host', () => {
       await expect(answer).resolves.toBe('closed');
     } finally {
       native.mockRestore();
+    }
+  });
+});
+
+describe('dropAlertsWithHandlers and askAlert', () => {
+  it('settles a dropped question as dismissed, and keeps a plain message', async () => {
+    const shown: AlertRequest[] = [];
+    const unregister = registerAlertHost(request => shown.push(request));
+    try {
+      const answer = askAlert('Title', undefined, CHOICES, 'closed');
+      showAlert('Plain', 'No buttons');
+      const withHandler = jest.fn();
+      showAlert('Handler', undefined, [{ text: 'Go', onPress: withHandler }]);
+      expect(getAlertQueue()).toHaveLength(3);
+      dropAlertsWithHandlers();
+      await expect(answer).resolves.toBe('closed');
+      expect(getAlertQueue().map(request => request.title)).toEqual(['Plain']);
+      expect(withHandler).not.toHaveBeenCalled();
+    } finally {
+      unregister();
     }
   });
 });

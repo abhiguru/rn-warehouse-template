@@ -72,6 +72,8 @@ const APP_OWN_TEXT: TranslationKey[] = [
   'errors.parsed.timeoutWrite',
   'errors.parsed.timeoutWriteForm',
   'errors.parsed.timeoutWritePhoto',
+  'errors.parsed.timeoutDelete',
+  'errors.parsed.timeoutDeleteForm',
   'errors.parsed.timeoutNotSaved',
 ];
 
@@ -215,15 +217,27 @@ export interface ServerTextOptions {
    * change may have gone through and to check the photos on this screen (wins over `form`).
    */
   photo?: boolean;
+  /**
+   * With `write`: the request deletes something. A timeout then says it may have been deleted, not saved
+   * (`form` still picks the detail-screen wording; `photo` wins over this).
+   */
+  delete?: boolean;
   /** The failure's code, when the text passed in does not carry it. */
   code?: string;
 }
 
-const TIMEOUT_WRITE_KEYS: TranslationKey[] = ['errors.parsed.timeoutWrite', 'errors.parsed.timeoutWriteForm', 'errors.parsed.timeoutWritePhoto'];
+const TIMEOUT_WRITE_KEYS: TranslationKey[] = [
+  'errors.parsed.timeoutWrite',
+  'errors.parsed.timeoutWriteForm',
+  'errors.parsed.timeoutWritePhoto',
+  'errors.parsed.timeoutDelete',
+  'errors.parsed.timeoutDeleteForm',
+];
 
-/** Which timeout sentence a write gets: photo, form or list (pull to refresh). */
+/** Which timeout sentence a write gets: photo, delete, form or list (pull to refresh). */
 function timeoutWriteKey(options: ServerTextOptions): TranslationKey {
   if (options.photo) return 'errors.parsed.timeoutWritePhoto';
+  if (options.delete) return options.form ? 'errors.parsed.timeoutDeleteForm' : 'errors.parsed.timeoutDelete';
   return options.form ? 'errors.parsed.timeoutWriteForm' : 'errors.parsed.timeoutWrite';
 }
 

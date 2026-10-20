@@ -133,6 +133,8 @@ export interface SensorUpdateResult {
   code?: string;
 }
 
+const SAVE_TEXT = { write: true, form: true } as const;
+
 /** Administrators only (update_sensor_device): the name, place, "no recent data" threshold and limits of one sensor. */
 export async function updateDevice(update: SensorUpdate): Promise<SensorUpdateResult> {
   const fallback = t('sensors.edit.couldNotSave');
@@ -152,16 +154,16 @@ export async function updateDevice(update: SensorUpdate): Promise<SensorUpdateRe
     if (error) {
       sensorLogger.error('RPC error:', error);
       const refusal: RpcRefusal = { text: error.message, code: error.code };
-      return { success: false, message: serverText(refusal.text, fallback), code: failureCode(refusal) };
+      return { success: false, message: serverText(error, fallback, SAVE_TEXT), code: failureCode(refusal) };
     }
     const refusal = rpcRefusal(data);
     if (refusal) {
       sensorLogger.warn('Sensor not saved', { code: refusal.code });
-      return { success: false, message: serverText(refusal.text, fallback), code: failureCode(refusal) };
+      return { success: false, message: serverText(refusal.text, fallback, { ...SAVE_TEXT, code: refusal.code }), code: failureCode(refusal) };
     }
     return { success: true };
   } catch (error) {
     sensorLogger.error('Exception:', error);
-    return { success: false, message: fallback };
+    return { success: false, message: serverText(error, fallback, SAVE_TEXT) };
   }
 }

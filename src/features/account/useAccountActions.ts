@@ -23,7 +23,7 @@ import { router, useIsFocused } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { deleteAccount as deleteAccountThunk, isDeleteAccountRejection, logout } from '@/store/slices/authSlice';
 import { leaveFacility } from '@/store/operatorSwitch';
-import { deleteFacilityAccount, signOutEverywhere, type CentralEndOutcome } from '@/store/centralSignOut';
+import { deleteFacilityAccount, signOutEverywhere, whileLeaving, type CentralEndOutcome } from '@/store/centralSignOut';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { adminUserService } from '@/services/admin-user-service';
@@ -203,7 +203,7 @@ export function useAccountActions(): {
         // Leaving the facility: the route guard shows My facilities, or the
         // association's sign-in when that has ended. No screen is pushed here.
         const facility = facilityName || currentFacilityLabel();
-        const outcome = await leaveFacility(dispatch);
+        const outcome = await whileLeaving(() => leaveFacility(dispatch));
         close();
         // Sign out (no central sign-in) says "Signed out"; leaving the facility says "Left <facility>".
         reportLeave(outcome, facility, id === 'leaveFacility' ? undefined : t('central.leave.signedOutTitle'));

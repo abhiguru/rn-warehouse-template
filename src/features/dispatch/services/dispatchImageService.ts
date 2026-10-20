@@ -255,7 +255,7 @@ export const uploadDispatchImage = async (
       console.error('[DispatchImageService] Registration failed:', regError);
       return {
         success: false,
-        error: serverText(regError.message, t('dispatch.photos.registerFailed'), { write: true, photo: true }),
+        error: serverText(regError, t('dispatch.photos.registerFailed'), { write: true, photo: true }),
       };
     }
 

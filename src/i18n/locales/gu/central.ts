@@ -73,7 +73,6 @@ export const central: Translation<typeof source> = {
     nameHelp: 'તમે મંજૂરી માગો ત્યારે કોલ્ડ સ્ટોરેજને આ નામ દેખાય છે.',
     nameInvalid: '૮૦ અક્ષર સુધીનું નામ નાખો.',
     saveName: 'નામ સાચવો',
-    savedTitle: 'નામ સચવાયું',
     saveFailedTitle: 'નામ સાચવી શકાયું નથી',
     signedInAs: '{{phone}}થી લૉગિન કરેલું છે',
     deleteAccount: 'મારું એકાઉન્ટ ડિલીટ કરો',

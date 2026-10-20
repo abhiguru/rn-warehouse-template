@@ -19,6 +19,8 @@ export interface AlertRequest {
   message?: string;
   buttons: AlertButton[];
   options?: AlertOptions;
+  /** True for an `askAlert` question: its promise settles as dismissed when the request is dropped. */
+  asked?: boolean;
 }
 
 type Listener = (request: AlertRequest) => void;
@@ -55,12 +57,17 @@ export function closeAlert(id: number): void {
 /**
  * Drop the waiting dialogs that have a button with a handler. Called when the facility
  * session ends: such a handler would act for a session that is gone. Plain messages stay.
+ * A dropped `askAlert` question is answered as dismissed (its `onDismiss` runs), so the caller
+ * waiting for it carries on as if the person had cancelled.
  */
 export function dropAlertsWithHandlers(): void {
-  const kept = queue.filter(request => !request.buttons.some(b => b.onPress));
-  if (kept.length === queue.length) return;
-  queue = kept;
+  const dropped = queue.filter(request => request.buttons.some(b => b.onPress));
+  if (dropped.length === 0) return;
+  queue = queue.filter(request => !dropped.includes(request));
   notifyQueue();
+  dropped.forEach(request => {
+    if (request.asked) request.options?.onDismiss?.();
+  });
 }
 
 /** Test-only: forget every waiting dialog and host, so one test does not leak into the next. */
@@ -85,7 +92,8 @@ export function showAlert(
   title: string,
   message?: string,
   buttons?: AlertButton[],
-  options?: AlertOptions
+  options?: AlertOptions,
+  asked = false
 ): void {
   // No host, and nothing waiting for one that is being mounted again: the native dialog.
   if (!listener && queue.length === 0) {
@@ -101,6 +109,7 @@ export function showAlert(
     message,
     buttons: buttons && buttons.length > 0 ? buttons : [{ text: t('common.ok') }],
     options,
+    asked: asked || undefined,
   };
   queue = [...queue, request];
   notifyQueue();
@@ -131,7 +140,8 @@ export function askAlert<T>(title: string, message: string | undefined, choices:
       title,
       message,
       choices.map(choice => ({ text: choice.text, style: choice.style, onPress: () => settle(choice.value) })),
-      { cancelable: true, onDismiss: () => settle(dismissed) }
+      { cancelable: true, onDismiss: () => settle(dismissed) },
+      true
     );
   });
 }
