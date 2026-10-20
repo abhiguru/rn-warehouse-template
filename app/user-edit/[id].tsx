@@ -260,7 +260,7 @@ export default function UserEditScreen() {
     let message: string;
     let leave = false;
     if (code === 'NETWORK') message = tr('errors.parsed.network');
-    else if (code === 'TIMEOUT') message = tr('errors.parsed.timeoutWrite');
+    else if (code === 'TIMEOUT') message = tr('errors.parsed.timeoutWriteForm');
     else if (code === 'TIMEOUT_NOT_SAVED') message = tr('errors.parsed.timeoutNotSaved');
     else if (code === 'SELF_EDIT_FORBIDDEN') {
       message = tr(kind === 'role' ? 'users.edit.ownRole' : kind === 'status' ? 'users.edit.ownStatus' : 'users.edit.ownAssignments');
