@@ -92,6 +92,7 @@ import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
+import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { showAlert } from '@/utils/alert';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
@@ -663,8 +664,11 @@ function BootstrapApp() {
             ? // Central login: leave the facility that cannot be reached for My facilities.
               // Nothing is revoked through a server that does not answer.
               () => {
+                // Named before the call: the facility is no longer open when it ends.
+                const facility = currentFacilityLabel();
                 void leaveFacility(store.dispatch, { localOnly: true }).then(outcome => {
                   if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.switch.busyMessage'));
+                  else if (outcome === 'failed') showFacilityCleanupFailed(translate('central.leave.leftTitle', { facility }), facility);
                 });
               }
             : () => setChangingServer(true)

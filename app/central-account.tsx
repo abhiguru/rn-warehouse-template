@@ -71,9 +71,13 @@ export default function CentralAccountScreen() {
 
   const deleteAccount = async () => {
     setDeleting(true);
+    // Named before the call: the facility is no longer open when it ends.
+    const facility = currentFacilityLabel();
     try {
       // On success the central session is gone and the route guard shows central sign-in.
       const result = await deleteAccountEverywhere(dispatch);
+      // The alert host is in the root layout, so it shows on the screen the person lands on.
+      if (result.ok && result.facilityCleanup === 'failed') showFacilityCleanupFailed(tr('central.leave.accountDeletedTitle'), facility);
       if (!result.ok)
         showAlert(
           tr('central.account.deleteFailedTitle'),

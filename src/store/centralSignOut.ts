@@ -68,7 +68,7 @@ export type CentralEndOutcome =
   /** Signed out in memory, but the phone's secure storage kept the session; the next start removes it. */
   | { ok: false; reason: 'local_clear_failed' };
 
-/** Leave the selected facility, if there is one: 'busy' while a write is in flight, 'failed' when the cleanup threw. */
+/** Leave the selected facility, if there is one: 'busy' while a write is in flight, 'failed' when the cleanup threw or the phone kept the sign-in. */
 async function leaveSelectedFacility(dispatch: Dispatch): Promise<'left' | 'busy' | 'failed'> {
   if (!getActiveOperatorServer()) return 'left';
   // A failed cleanup must not keep the person signed in: only "busy" stops here.
@@ -122,11 +122,13 @@ export function signOutAllDevices(dispatch: Dispatch): Promise<CentralEndOutcome
  */
 export function deleteAccountEverywhere(dispatch: Dispatch): Promise<CentralEndOutcome> {
   return whileLeaving(async () => {
-    if ((await leaveSelectedFacility(dispatch)) === 'busy') return { ok: false, reason: 'busy' };
+    const left = await leaveSelectedFacility(dispatch);
+    if (left === 'busy') return { ok: false, reason: 'busy' };
     const deleted = await deleteCentralAccount();
     if (!deleted.ok) return { ok: false, reason: 'central', failure: deleted };
     if (deleted.userId) await deleteMyFacilities(deleted.userId).catch(() => {});
-    return { ok: true };
+    // Deleted, but the facility's cleanup did not all run: said, not hidden.
+    return left === 'failed' ? { ok: true, facilityCleanup: 'failed' } : { ok: true };
   });
 }
 

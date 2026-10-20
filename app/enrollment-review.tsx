@@ -452,7 +452,8 @@ export default function EnrollmentReviewScreen() {
         placeholder={tr('customers.search.placeholder')}
         searchFn={searchCustomers}
         searchErrorText={tr('customers.search.failed')}
-        emptyAction={{ label: tr('auth.review.addCustomer'), onPress: addCustomerFromPicker }}
+        emptyAction={{ label: tr('auth.review.newCustomer'), onPress: addCustomerFromPicker }}
+        emptyActionAfterSearchOnly
         renderItem={renderHit}
         keyExtractor={item => item.id}
         emptyInitialText={tr('users.edit.searchEmpty')}

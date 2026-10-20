@@ -111,6 +111,8 @@ export interface SearchableBottomSheetProps<T> {
   emptySubText?: string;
   /** Optional: a button under the empty-state text (for example Try again when the list could not be loaded) */
   emptyAction?: { label: string; onPress: () => void };
+  /** Optional: show `emptyAction` only after a search found nothing, not in the initial empty state. */
+  emptyActionAfterSearchOnly?: boolean;
   /**
    * Optional: what to say when the search itself failed (no connection ...), for
    * example "Couldn't search customers. Check your connection and try again."
@@ -205,6 +207,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   emptyInitialText: emptyInitialTextProp,
   emptySubText: emptySubTextProp,
   emptyAction,
+  emptyActionAfterSearchOnly,
   searchErrorText,
   keepOpenOnSelect = false,
   resultLimit,
@@ -419,7 +422,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
             />
             <Text style={dynamicStyles.emptyText}>{emptyInitialText}</Text>
             <Text style={dynamicStyles.emptySubText}>{emptySubText}</Text>
-            {emptyAction ? <Button type="secondary" onPress={emptyAction.onPress} testID="sheet-empty-action">{emptyAction.label}</Button> : null}
+            {emptyAction && !emptyActionAfterSearchOnly ? <Button type="secondary" onPress={emptyAction.onPress} testID="sheet-empty-action">{emptyAction.label}</Button> : null}
           </>
         )}
       </View>
@@ -432,6 +435,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
     emptyInitialText,
     emptySubText,
     emptyAction,
+    emptyActionAfterSearchOnly,
     searchFailed,
     searchErrorText,
     performSearchNow,

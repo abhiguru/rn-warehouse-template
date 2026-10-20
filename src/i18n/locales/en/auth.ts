@@ -129,6 +129,7 @@ export const auth = {
     assignHeader: 'Customers this person can see',
     noCustomers: 'No customers yet. Add the customer first, then approve.',
     addCustomer: 'Add customer',
+    newCustomer: 'New customer',
     removeCustomer: 'Remove {{name}}',
     searchTitle: 'Add customer',
     roleLabel: 'Approve as',

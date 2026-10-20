@@ -113,6 +113,8 @@ export function useSearchAutocomplete<T>({
   const handleSearchChange = useCallback(
     (text: string) => {
       setSearchQuery(text);
+      // Loading from the first typed character that will search, so "nothing found" is not shown before the search runs.
+      if (text.trim().length >= minQueryLength) setIsLoading(true);
 
       // Clear previous timeout
       if (searchTimeoutRef.current) {
@@ -124,7 +126,7 @@ export function useSearchAutocomplete<T>({
         performSearch(text);
       }, debounceMs);
     },
-    [performSearch, debounceMs]
+    [performSearch, debounceMs, minQueryLength]
   );
 
   // Clear search

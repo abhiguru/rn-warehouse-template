@@ -126,6 +126,7 @@ export const auth: Translation<typeof source> = {
     assignHeader: 'આ વ્યક્તિ જોઈ શકે તેવા વેપારી',
     noCustomers: 'હજુ કોઈ વેપારી નથી. પહેલાં વેપારી ઉમેરો, પછી મંજૂર કરો.',
     addCustomer: 'વેપારી ઉમેરો',
+    newCustomer: 'નવો વેપારી', // Draft for the owner's wording review
     removeCustomer: '{{name}} કાઢી નાખો',
     searchTitle: 'વેપારી ઉમેરો',
     roleLabel: 'આ રીતે મંજૂર કરો',

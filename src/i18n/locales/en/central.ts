@@ -125,6 +125,7 @@ export const central = {
     thisFacility: 'this facility',
     leftTitle: 'Left {{facility}}',
     signedOutTitle: 'Signed out',
+    accountDeletedTitle: 'Your account was deleted',
     cleanupFailed: "Some of {{facility}}'s data couldn't be removed from this phone. Restart the app before someone else uses it.",
   },
   // Inside a facility: end the association sign-in and the facility on this phone.

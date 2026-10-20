@@ -47,7 +47,7 @@ import type { ItemFormData, ItemValidationErrors } from '@/types/item.types';
 
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
-import { isStatementTimeout, isTimeoutError, serverText } from '@/utils/serverText';
+import { isNetworkError, isStatementTimeout, isTimeoutError, serverText } from '@/utils/serverText';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 /** The order the fields are on the screen: the first wrong one gets focus. */
 const FIELD_ORDER: (keyof ItemValidationErrors)[] = ['name', 'packaging', 'description'];
@@ -170,7 +170,7 @@ const ItemFormScreen: React.FC = () => {
       } else if (result.code === 'DUPLICATE_NAME') {
         const name = formData.name.trim();
         if (timedOutName.current !== null && timedOutName.current === name.toLowerCase()) {
-          // The last try for this name got no answer in time, and the name is taken now: it was probably saved.
+          // The last try for this name got no answer (in time, or the connection dropped), and the name is taken now: it was probably saved.
           showAlert(tr('items.form.couldNotAddTitle'), tr('items.form.alreadyAdded', { name }), [
             { text: tr('common.keepEditing'), style: 'cancel' },
             { text: tr('items.form.goToItems'), onPress: () => leaveWithoutAsking(() => router.dismissTo('/items')) },
@@ -180,13 +180,13 @@ const ItemFormScreen: React.FC = () => {
           inputs.current.name?.focus();
         }
       } else {
-        // No answer in time: the item may have been saved. A server cancel (57014) rolled back.
-        if (isTimeoutError(result) && !isStatementTimeout(result)) timedOutName.current = formData.name.trim().toLowerCase();
+        // No answer in time or a dropped connection: the item may have been saved. A server cancel (57014) rolled back.
+        if ((isTimeoutError(result) && !isStatementTimeout(result)) || isNetworkError(result)) timedOutName.current = formData.name.trim().toLowerCase();
         showAlert(tr('items.form.couldNotAddTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }));
       }
     } catch (err) {
       console.error('[ItemForm] Save error:', err);
-      if (isTimeoutError(err) && !isStatementTimeout(err)) timedOutName.current = formData.name.trim().toLowerCase();
+      if ((isTimeoutError(err) && !isStatementTimeout(err)) || isNetworkError(err)) timedOutName.current = formData.name.trim().toLowerCase();
       showAlert(tr('items.form.couldNotAddTitle'), serverText(err, tr('common.checkConnection'), { write: true, form: true }));
     } finally {
       setSaving(false);

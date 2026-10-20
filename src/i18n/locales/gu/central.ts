@@ -112,6 +112,7 @@ export const central: Translation<typeof source> = {
     thisFacility: 'આ કોલ્ડ સ્ટોરેજ',
     leftTitle: '{{facility}}માંથી નીકળી ગયા',
     signedOutTitle: 'લૉગઆઉટ થયું',
+    accountDeletedTitle: 'તમારું ખાતું કાઢી નાખ્યું', // Draft for the owner's wording review
     cleanupFailed: '{{facility}}નો કેટલોક ડેટા આ ફોનમાંથી કાઢી શકાયો નથી. બીજું કોઈ વાપરે તે પહેલાં ઍપ ફરી શરૂ કરો.',
   },
   phoneSignOut: {
