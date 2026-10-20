@@ -5,7 +5,7 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
-import { serverText } from '@/utils/serverText';
+import { isNetworkError, isStatementTimeout, isTimeoutError, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
@@ -554,7 +554,16 @@ export interface InvoiceDetailsResponse {
     items: InvoiceItem[];
   };
   error?: string;
+  /** The server answered "Invoice not found": the invoice is gone (deleted), not merely unreadable right now. */
+  notFound?: boolean;
+  /** The server answered "Access denied to this invoice": a customer whose access to it has ended. */
+  accessDenied?: boolean;
 }
+
+/** The server's own words for an invoice that is not there (get_invoice_data, whatever the app's language). */
+const INVOICE_NOT_FOUND = /invoice not found/i;
+/** The server's own words for an invoice the signed-in customer may not read (get_invoice_data). */
+const INVOICE_ACCESS_DENIED = /access denied to this invoice/i;
 
 export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetailsResponse> => {
   try {
@@ -604,7 +613,10 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
       return {
         success: false,
         message: serverText(data.message, t('errors.invoice.noneFound')),
-        error: serverText(data.error, t('errors.invoice.notFoundOrDenied'))
+        error: serverText(data.error, t('errors.invoice.notFoundOrDenied')),
+        // From the server's own text: the app's wording of it changes with the language.
+        ...(INVOICE_NOT_FOUND.test(String(data.error ?? data.message ?? '')) ? { notFound: true } : {}),
+        ...(INVOICE_ACCESS_DENIED.test(String(data.error ?? data.message ?? '')) ? { accessDenied: true } : {}),
       };
     }
 
@@ -894,10 +906,39 @@ export interface DeleteInvoiceResponse {
   };
   gr_id?: string;
   error?: string;
+  /**
+   * The request may have reached the server, but no answer came back (owner rule D22): the invoice may be deleted
+   * already. `sentAt` is when it was sent (ms since 1970). No worded message goes with it: the caller waits for the
+   * connection, reads the invoice, and sends the delete again only if the invoice is still there.
+   */
+  lostAnswer?: boolean;
+  sentAt?: number;
+  /** The server answered "Invoice not found": someone else deleted it, so it is gone, as the person wanted. */
+  notFound?: boolean;
 }
 
+/**
+ * Asks the server whether an invoice is still there (a lost delete, owner rule D22). `gone`: the server says "Invoice
+ * not found", so the delete went through, and an open report is told as after any delete (I6). `there`: the invoice
+ * was read. `unknown`: the question itself got no usable answer (no connection, an error): ask again later.
+ */
+export const invoiceDeleteState = async (invoiceId: string): Promise<'gone' | 'there' | 'unknown'> => {
+  const check = await getInvoiceDetails(invoiceId).catch(() => null);
+  if (check?.success && check.data) return 'there';
+  if (!check?.notFound) return 'unknown';
+  void invalidateReportQueries();
+  return 'gone';
+};
+
 // M3 Fix: Using executeRPC wrapper
-export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceResponse> => {
+/**
+ * `options.resend`: this is the delete sent again after one whose answer was lost (owner rule D22). Any failure of it
+ * that is not the server's answer (a statement timeout while it waits behind the first delete, a failure before
+ * sending, a changed session) leaves the attempt unsettled, so the result says `lostAnswer` and the caller goes back to
+ * the check instead of unlocking the page. "Invoice not found" is `notFound`: deleted, as asked.
+ */
+export const deleteInvoice = async (invoiceId: string, options: { resend?: boolean } = {}): Promise<DeleteInvoiceResponse> => {
+  const sentAt = Date.now();
   const result = await executeRPC<{
     message: string;
     invoice_info: DeleteInvoiceResponse['invoice_info'];
@@ -907,11 +948,28 @@ export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceRes
     getAuthenticatedClient,
     'delete_invoice',
     { p_invoice_id: invoiceId },
-    { context: 'InvoiceService.deleteInvoice', write: true, errorMessage: t('errors.invoice.deleteFailed'), unwrapNested: false, validateSuccess: true }
+    // `delete`: a timeout or a dropped connection says the invoice may have been deleted (not saved).
+    { context: 'InvoiceService.deleteInvoice', write: true, delete: true, errorMessage: t('errors.invoice.deleteFailed'), unwrapNested: false, validateSuccess: true }
   );
 
   if (!result.success) {
-    return { success: false, message: result.message, error: result.error };
+    // "Invoice not found" is the server's own raw text: the invoice is gone (deleted on another phone). The caller
+    // tells the person it is deleted, and an open report must stop listing it as after any delete (I6).
+    if (INVOICE_NOT_FOUND.test(result.error ?? '')) {
+      void invalidateReportQueries();
+      return { success: false, message: result.message, error: result.error, notFound: true };
+    }
+    // The request may have reached the server and no answer came: the invoice may be gone already. Nothing is worded
+    // for the person; the caller waits, reads the invoice, and sends the delete again only if it is still there (D22).
+    // (Not the server's own statement timeout, 57014: it rolled back, so nothing was deleted.)
+    if (result.lostAnswer || (options.resend && isUnsettledFailure(result, result.errorCode))) {
+      return { success: false, error: result.error, lostAnswer: true, sentAt };
+    }
+    // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in
+    // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.
+    const transportFailure = !isStatementTimeout(result) && (isTimeoutError(result) || isNetworkError(result));
+    const refusal = transportFailure ? undefined : serverReason(result.error ?? '');
+    return { success: false, message: refusal ?? result.message, error: result.error };
   }
 
   // A report left open under the invoice must not keep listing it (SR-10, as for every other write).

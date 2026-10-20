@@ -17,7 +17,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, identifierInput } from '@/i18n';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -104,8 +104,8 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
           ref={inputRef}
           accessibilityLabel={tr('grn.item.mark')}
           style={[styles.input, isFocused && styles.inputFocused]}
-          value={value}
-          onChangeText={onChange}
+          // A mark is stored with 0-9: typed ૦-૯ are stored as 0-9, a stored mark is shown as it is (owner decision D15).
+          {...identifierInput(value, onChange)}
           placeholder={tr('grn.form.forExample', { example: 'MARK001' })}
           placeholderTextColor={t.text.placeholder}
           returnKeyType="done"

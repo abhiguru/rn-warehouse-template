@@ -174,7 +174,7 @@ describe.each(['staff', 'admin', 'supervisor'])('the question before a new invoi
     const { tree, message } = await confirm();
 
     expect(message).toBe(
-      'Example Traders\nEstimated total ₹945.00\nThe server works out the final total when the invoice is saved.\n\n1 item has a charge of 0.'
+      'Example Traders\nTotal ₹945.00\nIf the server works out a different total, nothing is saved and the new total is shown.\n\n1 item has a charge of 0.'
     );
     await act(async () => { tree.unmount(); });
   });
@@ -191,7 +191,7 @@ describe.each(['staff', 'admin', 'supervisor'])('the question before a new invoi
     mockItems = [line('a', 4), line('b', 5)];
     const { tree, message } = await confirm();
 
-    expect(message).toBe('Example Traders\nEstimated total ₹945.00\nThe server works out the final total when the invoice is saved.');
+    expect(message).toBe('Example Traders\nTotal ₹945.00\nIf the server works out a different total, nothing is saved and the new total is shown.');
     await act(async () => { tree.unmount(); });
   });
 

@@ -6,14 +6,13 @@
  * item?" on a GRN, "Go back to details?" on a dispatch). The two Dispatch
  * stacks turned the swipe off for all their steps; the two GRN stacks did not.
  * Back in the footer, the step circles and the X in the step header are the
- * ways back.
+ * ways back. (The edited GRN's stack reads the GRN before it draws its steps:
+ * src/tests/components/GrnEditLayout.test.tsx checks its stack options too.)
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import GRNFormLayout from '../../../app/grn-form/_layout';
-import GRNEditLayout from '../../../app/grn-edit/[id]/_layout';
 import DispatchFormLayout from '../../../app/dispatch-form/_layout';
-import DispatchEditLayout from '../../../app/dispatch-edit/[id]/_layout';
 
 type ScreenProps = { name: string; options?: Record<string, unknown> };
 type StackProps = { screenOptions?: Record<string, unknown>; children?: React.ReactNode };
@@ -30,7 +29,11 @@ jest.mock('expo-router', () => {
   };
 });
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canCreate: true, canUpdate: true }) }));
-jest.mock('@/store/hooks', () => ({ useAppDispatch: () => jest.fn() }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  // The new-dispatch layout reads the form's number for its refusal when another form is open.
+  useAppStore: () => ({ getState: () => ({ dispatchForm: { header: { disp_no: '' } } }) }),
+}));
 
 let tree: ReactTestRenderer;
 beforeEach(() => {
@@ -46,9 +49,9 @@ afterEach(async () => {
 
 describe.each([
   ['a new GRN', GRNFormLayout],
-  ['an edited GRN', GRNEditLayout],
   ['a new dispatch', DispatchFormLayout],
-  ['an edited dispatch', DispatchEditLayout],
+  // An edited dispatch reads the dispatch before it draws its stack: its stack is tested with its layout
+  // (src/tests/components/DispatchEditLayout.test.tsx).
 ])('the stack of %s', (_name, Layout) => {
   it('turns the edge swipe off for all its steps, and no step turns it on again', async () => {
     await act(async () => { tree = create(<Layout />); });

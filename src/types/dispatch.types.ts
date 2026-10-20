@@ -8,6 +8,7 @@
 // ============================================================================
 
 import { toLocalISODate } from '@/utils/formatters';
+import type { ServerRefusal } from '@/utils/serverRefusal';
 
 export interface DispatchImageData {
   id: string;
@@ -38,6 +39,11 @@ export interface DispatchHeaderData {
   note: string;                 // Max 250 chars, optional
   source_order_id?: string;     // For future order-to-dispatch conversion
   source_order_no?: string;     // Order reference number
+  /**
+   * New dispatch from an order: the `updated_at` of the order as it was read with its lines (wave B, D5). It is sent
+   * with the create, and the server refuses when the order changed since. Only an order read in full has it.
+   */
+  source_order_updated_at?: string;
 }
 
 // ============================================================================
@@ -71,6 +77,19 @@ export interface DispatchItemData {
   original_disp_quantity?: number; // Previous dispatch quantity (for edit mode validation)
 }
 
+/**
+ * What an order asked of one lot when a dispatch form was filled from it (or when its lines were read again after the
+ * order changed; wave B, D5): the bags the order line requested, and the quantity the form was given for the line (the
+ * request, at most the stock). The form keeps one per lot that was on the order then, so a reload can tell a quantity
+ * the person changed from one the form was simply given, and a line the person removed from a lot that was never there.
+ */
+export interface OrderLotAsk {
+  /** The bags the order line requested. */
+  requested: number;
+  /** The quantity the form was given for that lot: `requested`, at most the stock. */
+  defaultQuantity: number;
+}
+
 // ============================================================================
 // FORM STATE
 // ============================================================================
@@ -86,7 +105,6 @@ export interface DispatchFormState {
 
   // UI state
   current_step: number;         // 0-based (0=step1, 1=step2, 2=step3)
-  is_loading: boolean;
   is_saving: boolean;
 
   // Error state for displaying save/load failures to user
@@ -98,6 +116,45 @@ export interface DispatchFormState {
   // Message for a typed dispatch number another dispatch holds. Kept with the form, not
   // in a screen, so step 1 still refuses the number after it was left and reopened.
   takenNumberError?: string | null;
+
+  // The part of the form's identity that is not in the data:
+  /** One random id per form (made when the form first tries to create, kept across retries of it, dropped after a save). It goes into the idempotency key only, never into the request. */
+  submissionNonce?: string | null;
+  /** True once the person picked a date; until then a new form is dated the day it opens. */
+  dateChosenByUser?: boolean;
+  /** True once the person typed the dispatch number; a number the form fetched is not "typed". */
+  dispNoTyped?: boolean;
+  /** Set when this form created a dispatch. A form that did is finished: it is reset when it is left. */
+  savedDispatchId?: string | null;
+  /** True while the app asks the server what became of a create or save that got no answer: the form is locked. */
+  checkingAnswer?: boolean;
+  /**
+   * Edit only: lot id -> the bags the dispatch held on that lot when it was read. Filled with the dispatch and not
+   * changed while it is edited; a lot's stock limit is its stock plus these (the server gives them back on a save).
+   */
+  heldBags?: Record<string, number>;
+  /**
+   * Edit only: the `updated_at` of the dispatch when it was read (wave B, D1). It is sent with the save; the server
+   * refuses with STALE_RECORD when someone else changed the dispatch since. Absent on a server that does not send it.
+   */
+  loadedUpdatedAt?: string | null;
+  /**
+   * Edit only: the number of the invoice a line of this dispatch is on (wave B, D2); null when the dispatch is on no
+   * live invoice. The date and the number of such a dispatch are locked.
+   */
+  invoicedNumber?: string | null;
+  /** Edit only: the date and the number of the dispatch as they were read, to put back when the server says they are locked. */
+  loadedDateNumber?: { disp_no: string; disp_date: string } | null;
+  /**
+   * The message of a refusal of the dispatch date by the server (the date is in the future, or before a GRN, wave B D3).
+   * Kept with the form so step 1 shows it when the person is taken there; it goes when the date changes or step 1 is checked.
+   */
+  dateRefusal?: string | null;
+  /**
+   * New dispatch from an order: lot id -> what the order asked of the lot when the form was filled, or when its lines
+   * were last read again (D5). Null for a form that is not made from an order. Not changed by editing the lines.
+   */
+  orderLots?: Record<string, OrderLotAsk> | null;
 }
 
 // ============================================================================
@@ -120,6 +177,8 @@ export interface CreateDispatchPayload {
     note: string;
     source_order_id?: string | null;
     source_order_no?: string | null;
+    /** Only when the order was read in full (wave B, D5). */
+    source_order_updated_at?: string;
   };
   p_dispatch_items: Array<{
     gr_trl_id: string;          // Lot ID (maps to grnItems_id)
@@ -152,6 +211,30 @@ export interface DispatchApiResponse {
   invoiceNumber?: string;
   source_order_cleared?: boolean;  // True when dispatch was created from an order and the order was soft-deleted
   source_order_id?: string;        // The order ID that was cleared
+  /** Create only (server migration 120): lines of the source order still open after this dispatch; null for a dispatch without an order; absent on an older server. */
+  order_lines_left?: number | null;
+  /** The server's reason for a refusal: 'NUMBER_TAKEN' (or the unique-key error of an older server), or one of wave B's (see `refusal`). */
+  reason?: string;
+  /** Wave B: the refusal the server sent (STALE_RECORD, DISPATCH_INVOICED, DISPATCH_DATE_FUTURE, ...), for the screen to word. */
+  refusal?: ServerRefusal;
+  /** Update only (migration 121): what the edit did to the order, in bags. Absent on an older server. */
+  order_sync?: { given_back: number; taken: number };
+  /** Update only: the dispatch's new `updated_at`, so the next save of the same form carries it. Absent on an older server. */
+  updated_at?: string;
+  /** The number the refusal is about. */
+  number?: string;
+  /**
+   * The person left while the request was on its way or the app was still asking the server what became of it; nothing
+   * more was done. With `success: true` the dispatch was saved before the person left (the screen says so).
+   */
+  aborted?: boolean;
+  /** With `aborted`: the person left while the request was on its way and its answer was lost, so it may have been saved. */
+  maybeSaved?: boolean;
+  /**
+   * The request was sent again after a lost answer and refused for the number twice, with a check that found nothing in
+   * between: the first send may have saved the dispatch. `number` is the number; no next number is offered.
+   */
+  numberMaybeSaved?: boolean;
   /** Create only: photos picked in the form that did not upload after the dispatch was saved. */
   failed_photos?: DispatchImageData[];
 }

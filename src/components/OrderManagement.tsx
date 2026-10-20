@@ -1,5 +1,6 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useIsDisconnected } from '@/utils/lostAnswer';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
@@ -31,22 +32,51 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { OrderService } from '@/services/order-service';
-import { Order, OrderItem, Customer } from '@/types/order.types';
+import { Order, OrderItem, Customer, LineSaved } from '@/types/order.types';
 import ItemCatalogBrowser from './ItemCatalogBrowser';
 import OrderItemCard from './OrderItemCard';
 import CustomerOrderSummary from './CustomerOrderSummary';
 import RecentDispatchesSection from './RecentDispatchesSection';
 import { searchService, SearchResult } from '@/services/search-service';
 
-import { showAlert } from '@/utils/alert';
+import { askAlert, showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { formatCount } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
-import { cartFailureReason, isAlreadyRemoved, isBusinessInactive, isConnectionFailure } from '@/features/orders/cartFailureReason';
-import type { PickerChange, PickerResult } from '@/features/orders/pickerDraft';
+import {
+  accessRefusalText,
+  cartFailureReason,
+  isAlreadyRemoved,
+  isBusinessInactive,
+  isConnectionFailure,
+  isCustomerAccessDenied,
+  mayHaveBeenSaved,
+} from '@/features/orders/cartFailureReason';
+import type { AddItemsOptions, PickerChange, PickerResult } from '@/features/orders/pickerDraft';
+import { abortedError, isAbortError, readUntilAnswered, waitForServer } from '@/utils/lostAnswer';
+import { REFUSAL } from '@/utils/serverRefusal';
 
 const NO_LINES: OrderItem[] = [];
+/** What a line whose answer was lost is being checked for: a change of its quantity, or its removal. */
+type LineCheck = 'save' | 'remove';
+const NO_CHECKS: ReadonlyMap<string, LineCheck> = new Map();
 const isOpenLine = (item: OrderItem) => (item.item_status || '').toLowerCase() !== 'fulfilled';
+
+/**
+ * True when a read of the order, made after a failed call, no longer has the open line: it is gone for certain.
+ * False when the line is still there, or when the read gave no answer (null) or no lines to look at.
+ */
+const isLineMissing = (read: Order | null, lineId: string): boolean =>
+  read !== null && Array.isArray(read.items) && !read.items.some(line => line.id === lineId && isOpenLine(line));
+
+/**
+ * The cart calls for a line the screen has read. The line's version (`updated_at`, owner decision D1) goes along only when
+ * the caller holds one, so a server that sends none gets the same call as before.
+ */
+const changeLine = (lineId: string, orderId: string, quantity: number, version?: string) =>
+  version ? OrderService.updateOrderItemQuantity(lineId, orderId, quantity, version) : OrderService.updateOrderItemQuantity(lineId, orderId, quantity);
+const dropLine = (lineId: string, orderId: string, version?: string) =>
+  version ? OrderService.removeItemFromOrder(lineId, orderId, version) : OrderService.removeItemFromOrder(lineId, orderId);
 
 /** Plain JSON values (server answers) compared by content. */
 function sameValue(a: unknown, b: unknown): boolean {
@@ -277,10 +307,12 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const refreshApplied = useRef(0);
   const refreshesRunning = useRef(0);
 
-  // Handle refresh. Stable, so the line cards keep their props while it runs.
-  const onRefresh = useCallback(async (showSpinner: boolean = true) => {
+  // Reads the order again. Stable, so the line cards keep their props while it runs. Resolves the order that was
+  // read, also when a newer read has been applied meanwhile (it still says what the order held after the call that
+  // asked for it); null when nothing was read (no order, a failed read, the screen has moved on).
+  const rereadOrder = useCallback(async (showSpinner: boolean = true): Promise<Order | null> => {
     const current = orderRef.current;
-    if (!current) return;
+    if (!current) return null;
 
     const sessionGeneration = getSessionGeneration();
     refreshStarted.current += 1;
@@ -290,22 +322,91 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     if (showSpinner !== false) setRefreshing(true);
     try {
       const result = await OrderService.getOrderWithItems(current.id);
-      if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== current.id) return;
-      if (sequence < refreshApplied.current) return;
-      if (result.success && result.data) {
-        const next = result.data;
-        refreshApplied.current = sequence;
-        setOrder(previous => keepUnchanged(previous, next));
-      }
+      if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== current.id) return null;
+      if (!result.success || !result.data) return null;
+      const next = result.data;
+      if (sequence < refreshApplied.current) return next;
+      refreshApplied.current = sequence;
+      setOrder(previous => keepUnchanged(previous, next));
+      return next;
     } catch (error) {
       console.error('[OrderManagement] Refresh error:', error);
+      return null;
     } finally {
       refreshesRunning.current -= 1;
       if (refreshesRunning.current === 0) setRefreshing(false);
     }
   }, []);
 
+  // Handle refresh (pull to refresh, the timed read, after a save).
+  const onRefresh = useCallback(async (showSpinner: boolean = true): Promise<void> => {
+    await rereadOrder(showSpinner);
+  }, [rereadOrder]);
+
   useOrderLiveUpdates(() => onRefresh(false), !!order);
+
+  // The lines this screen is taking off the order, or has taken off (from the question "Remove ...?" on). A save of such a
+  // line that finds it gone is the screen's own doing: nobody is told "someone else removed it". A removal that is
+  // not made (Cancel, or refused) takes the line out again.
+  const ownRemovals = useRef(new Set<string>());
+
+  // The lines (by id) whose answer was lost and which are being checked: locked, shown as checking, and no
+  // change or removal of them is sent meanwhile. `checkingRef` is the one the handlers read; the state is
+  // what the cards are drawn from.
+  const [checkingLines, setCheckingLines] = useState<ReadonlyMap<string, LineCheck>>(NO_CHECKS);
+  const checkingRef = useRef<ReadonlyMap<string, LineCheck>>(NO_CHECKS);
+  // Aborted when the screen is left: it stops the waits and the reads of every check that is running.
+  const screenAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    screenAbort.current = controller;
+    return () => controller.abort();
+  }, []);
+  const setLineChecks = useCallback((ids: string[], kind: LineCheck | null) => {
+    if (ids.length === 0) return;
+    const next = new Map(checkingRef.current);
+    ids.forEach(id => (kind ? next.set(id, kind) : next.delete(id)));
+    checkingRef.current = next;
+    if (!screenAbort.current?.signal.aborted) setCheckingLines(next);
+  }, []);
+
+  // After a change or a removal whose answer was lost (the request may have reached the server, no answer came):
+  // locks `ids` (the lines it concerns), waits until the phone is online and 10 s have passed since `sentAt`, then
+  // reads the order until the server answers, and resolves that order: the server's state, shown on the screen too.
+  // Resolves null when the check was stopped (the screen was left, the editor moved on to another order or a
+  // session, or `signal` was aborted). Nothing is sent again.
+  const checkAfterLostAnswer = useCallback(async (
+    ids: string[],
+    kind: LineCheck,
+    orderId: string,
+    sentAt: number,
+    signal?: AbortSignal,
+  ): Promise<Order | null> => {
+    const sessionGeneration = getSessionGeneration();
+    // One signal for the check: the screen's and the caller's both stop it.
+    const stop = new AbortController();
+    const abort = () => stop.abort();
+    const sources = [screenAbort.current?.signal, signal].filter((source): source is AbortSignal => source !== undefined);
+    sources.forEach(source => {
+      if (source.aborted) abort();
+      else source.addEventListener('abort', abort);
+    });
+    setLineChecks(ids, kind);
+    try {
+      await waitForServer(sentAt, stop.signal);
+      return await readUntilAnswered<Order>(() => {
+        // The screen moved on while it waited: nothing is read for an order that is no longer here.
+        if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== orderId) throw abortedError();
+        return rereadOrder(false);
+      }, stop.signal);
+    } catch (error) {
+      if (isAbortError(error)) return null;
+      throw error;
+    } finally {
+      sources.forEach(source => source.removeEventListener('abort', abort));
+      setLineChecks(ids, null);
+    }
+  }, [rereadOrder, setLineChecks]);
 
   // Handle quantity update for one line, by its id; one function for every card.
   // Resolves true only when the server stored the quantity.
@@ -313,63 +414,219 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // write goes to even when the editor has moved on to another business meanwhile (a quantity
   // still waiting to be saved when the card goes away is saved to its own order, never to the
   // new one). Without it, the order shown now.
-  const handleQuantityUpdate = useCallback(async (itemId: string, newQuantity: number, lineOrderId?: string): Promise<boolean> => {
+  //
+  // A failed save is followed by a silent read of the order, so the card shows what is stored now
+  // (a change that timed out may have been applied; a line may have been taken off meanwhile).
+  //
+  // `expectedUpdatedAt` is the version of the line the card's change is based on (owner decision D1). When the server
+  // refuses with STALE_RECORD (someone else changed the line since), nothing was written: the order is read again, the
+  // person is told so, and this resolves 'stale': the card drops what it was waiting to send, shows the quantity the line
+  // holds now and starts from its latest version (a plain false would make it flash the stock red and ask again). Resolves
+  // `{ updatedAt }` instead of true when the line's new version is known (the server named it, or the read that follows the
+  // save has the line with the quantity that was saved), so the card's next change starts from it.
+  const handleQuantityUpdate = useCallback(async (
+    itemId: string,
+    newQuantity: number,
+    lineOrderId?: string,
+    expectedUpdatedAt?: string,
+  ): Promise<boolean | LineSaved | 'stale' | 'checked'> => {
     const orderId = lineOrderId || orderRef.current?.id;
     if (!orderId) return false;
+    // The answer to an earlier call for this line was lost and is being checked: nothing is sent for it meanwhile.
+    if (checkingRef.current.has(itemId)) return false;
 
     try {
-      const result = await OrderService.updateOrderItemQuantity(
-        itemId,
-        orderId,
-        newQuantity
-      );
+      const sentAt = Date.now();
+      const result = await changeLine(itemId, orderId, newQuantity, expectedUpdatedAt);
 
       if (result.success) {
         // Refresh order, while it is still the one shown
-        if (activeOrderId.current === orderId) await onRefresh();
-        return true;
+        const read = activeOrderId.current === orderId ? await rereadOrder() : null;
+        if (result.updatedAt) return { updatedAt: result.updatedAt };
+        // The server named no new version (an older one): the read that was just made has it, when the line holds the
+        // quantity that was saved (another quantity means someone else changed it since, and the card must not take
+        // over a version it has not seen).
+        const saved = read?.items?.find(line => line.id === itemId && isOpenLine(line));
+        return saved?.updated_at && saved.requested_quantity === newQuantity ? { updatedAt: saved.updated_at } : true;
       }
-      showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), serverText(result.message, tr('common.checkConnection'), { write: true }));
+      // Someone else changed the line after this card read it: the server refused and wrote nothing. The order is read
+      // again, and the card shows what the line holds now.
+      if (result.refusal?.reason === REFUSAL.STALE_RECORD) {
+        const read = activeOrderId.current === orderId ? await rereadOrder(false) : null;
+        // The order is no longer the one shown (the editor moved on to another business, or the screen was left): there
+        // is nothing to tell about it, and no connection problem to report.
+        if (activeOrderId.current !== orderId) return 'stale';
+        const stored = read?.items?.find(line => line.id === itemId && isOpenLine(line));
+        // The line already holds the quantity that was asked (only something else on it changed): nothing is left to do.
+        if (stored && stored.requested_quantity === newQuantity) return stored.updated_at ? { updatedAt: stored.updated_at } : true;
+        if (stored) {
+          showAlert(
+            tr('orders.refusal.staleTitle'),
+            tr('orders.refusal.stale', {
+              current: formatCount(stored.requested_quantity, 'bag'),
+              chosen: formatCount(newQuantity, 'bag'),
+            })
+          );
+        } else if (read) {
+          // Taken off the order (or dispatched) meanwhile; not news when this screen is taking it off itself.
+          if (!ownRemovals.current.has(itemId)) showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+        } else {
+          // The read behind the refusal did not answer, so the quantity it holds now is not known.
+          showAlert(tr('orders.refusal.staleTitle'), tr('common.checkConnection'));
+        }
+        return 'stale';
+      }
+      // No answer after the request went out: the line is locked, the server is asked what became of the change (the
+      // order is read again once the phone is online and 10 s have passed) and the card shows the server's state.
+      // Nothing is sent again by itself.
+      if (mayHaveBeenSaved(result)) {
+        const read = await checkAfterLostAnswer([itemId], 'save', orderId, sentAt);
+        if (read === null) return false;
+        const stored = read.items?.find(line => line.id === itemId && isOpenLine(line));
+        // The change is on the server after all; the line's version is the one the read has, so the card's next change starts from it.
+        if (stored?.requested_quantity === newQuantity) return stored.updated_at ? { updatedAt: stored.updated_at } : true;
+        if (!stored) {
+          // Taken off the order (or dispatched) meanwhile; not news when this screen is taking it off itself.
+          if (!ownRemovals.current.has(itemId)) showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+        } else {
+          showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), tr('orders.manage.lostAnswerNotSaved'));
+        }
+        // Told already: the card shows the stored quantity and does not flash the stock red.
+        return 'checked';
+      }
+      // The order is read again behind the alert, so the card shows what is stored now.
+      const read = activeOrderId.current === orderId ? rereadOrder(false) : Promise.resolve<Order | null>(null);
+      // "Order item not found": taken off the order, or used up by a dispatch, since this screen read it. A customer
+      // login on an older facility is answered "Customer access denied" for such a line, and also for a real
+      // refusal: only the read that no longer has the line says which.
+      const gone = isAlreadyRemoved(result) || (isCustomerAccessDenied(result) && isLineMissing(await read, itemId));
+      if (gone) {
+        // Not while this screen is taking the line off the order itself: that is why the save found no line.
+        if (!ownRemovals.current.has(itemId)) showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+      } else {
+        showAlert(
+          tr('orders.manage.couldNotChangeQuantityTitle'),
+          accessRefusalText(result) ?? serverText(result.message, tr('common.checkConnection'), { write: true })
+        );
+      }
       return false;
     } catch (error) {
       console.error('[OrderManagement] Update quantity error:', error);
       showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), tr('common.checkConnection'));
       return false;
     }
-  }, [onRefresh]);
+  }, [rereadOrder, checkAfterLostAnswer]);
 
-  // Handle removal of one line, by its id; one function for every card.
-  const handleRemoveItem = useCallback((itemId: string) => {
+  // Handle removal of one line, by its id; one function for every card. Asks first, then removes.
+  // Resolves true when the line is gone (removed, or already gone), false when it stays (the person said no, or
+  // the removal was refused), and 'unknown' when no answer came and the line may be gone. The card keeps its
+  // buttons off while this runs and, on false or 'unknown', takes them back (and on 'unknown' sends no change
+  // of the quantity that was waiting).
+  //
+  // `getExpectedUpdatedAt` gives the version of the line the card holds (owner decision D1). It is asked for when the
+  // removal is actually sent, after the question above and after the card's own running save has finished (that save leaves
+  // a new version, and a removal sent with the old one would be refused as stale). A STALE_RECORD answer means someone
+  // else changed the line since: it was not removed, the order is read again, and the person is told to check it.
+  const handleRemoveItem = useCallback(async (
+    itemId: string,
+    getExpectedUpdatedAt?: () => Promise<string | undefined>,
+  ): Promise<boolean | 'unknown'> => {
     const current = orderRef.current;
     const item = current?.items?.find(line => line.id === itemId);
-    if (!current || !item) return;
+    if (!current || !item) return false;
+
+    // The answer to an earlier call for this line was lost and is being checked: nothing is sent for it meanwhile.
+    if (checkingRef.current.has(itemId)) return false;
 
     const itemName = item.grn_item?.name;
-    showAlert(
+    // From the question on, a save of this line that finds it gone is not news (see ownRemovals).
+    ownRemovals.current.add(itemId);
+    const answer = await askAlert<'cancel' | 'remove'>(
       itemName ? tr('orders.manage.removeTitle', { name: itemName }) : tr('orders.manage.removeTitleNoName'),
       itemName ? tr('orders.manage.removeMessage', { name: itemName }) : tr('orders.manage.removeMessageNoName'),
       [
-        { text: tr('common.cancel'), style: 'cancel' },
-        {
-          text: tr('orders.manage.removeItem'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await OrderService.removeItemFromOrder(item.id, current.id);
-              if (result.success) {
-                await onRefresh();
-              } else {
-                showAlert(tr('orders.manage.couldNotRemoveTitle'), serverText(result.message, tr('common.checkConnection'), { write: true }));
-              }
-            } catch (error) {
-              console.error('[OrderManagement] Remove item error:', error);
-              showAlert(tr('orders.manage.couldNotRemoveTitle'), tr('common.checkConnection'));
-            }
-          }
-        }
-      ]
+        { text: tr('common.cancel'), style: 'cancel', value: 'cancel' },
+        { text: tr('orders.manage.removeItem'), style: 'destructive', value: 'remove' },
+      ],
+      'cancel'
     );
-  }, [onRefresh]);
+    if (answer !== 'remove') {
+      ownRemovals.current.delete(itemId);
+      return false;
+    }
+
+    try {
+      const expectedUpdatedAt = await getExpectedUpdatedAt?.();
+      // The answer to a change of this line was lost meanwhile and is being checked: nothing is sent for it until then.
+      if (checkingRef.current.has(itemId)) {
+        ownRemovals.current.delete(itemId);
+        return false;
+      }
+      const sentAt = Date.now();
+      const result = await dropLine(item.id, current.id, expectedUpdatedAt);
+      if (result.success) {
+        const read = await rereadOrder();
+        // The line is off the order but the read that should show it failed: take it off the screen here, so the
+        // card does not wait for a read that may not come.
+        if (read === null && activeOrderId.current === current.id) {
+          setOrder(previous =>
+            previous && previous.id === current.id && previous.items
+              ? { ...previous, items: previous.items.filter(line => line.id !== itemId) }
+              : previous
+          );
+        }
+        return true;
+      }
+      if (isAlreadyRemoved(result)) {
+        // Off the order already, which is what was asked for; the person is told why nothing was removed now.
+        showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+        void rereadOrder(false);
+        return true;
+      }
+      if (result.refusal?.reason === REFUSAL.STALE_RECORD) {
+        // Changed by someone else since this card read the line: nothing was removed. A read that no longer has the line
+        // open says it is off the order already, which is what was asked for.
+        if (isLineMissing(await rereadOrder(false), itemId)) {
+          showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+          return true;
+        }
+        showAlert(tr('orders.manage.couldNotRemoveTitle'), tr('orders.refusal.staleRemove'));
+        ownRemovals.current.delete(itemId);
+        return false;
+      }
+      if (isCustomerAccessDenied(result)) {
+        // A customer login on an older facility is answered "access denied" for a line that is gone, and also for a
+        // real refusal: only the read that no longer has the line says which.
+        if (isLineMissing(await rereadOrder(false), itemId)) {
+          showAlert(tr('orders.manage.lineGoneTitle'), tr('orders.manage.lineGoneMessage'));
+          return true;
+        }
+        showAlert(tr('orders.manage.couldNotRemoveTitle'), accessRefusalText(result) ?? tr('common.checkConnection'));
+        ownRemovals.current.delete(itemId);
+        return false;
+      }
+      // No answer after the request went out: the line is locked and the server is asked whether it is gone (the order
+      // is read again once the phone is online and 10 s have passed). Nothing is sent again by itself.
+      if (mayHaveBeenSaved(result)) {
+        const read = await checkAfterLostAnswer([itemId], 'remove', current.id, sentAt);
+        // Stopped (the screen was left, the editor moved on): nothing more is known, and a save for the line would not be safe.
+        if (read === null) return 'unknown';
+        // Gone: removed, which is what was asked for. The card goes with the read that has just been applied.
+        if (isLineMissing(read, itemId)) return true;
+        ownRemovals.current.delete(itemId);
+        showAlert(tr('orders.manage.couldNotRemoveTitle'), tr('orders.manage.lostAnswerNotRemoved'));
+        return false;
+      }
+      showAlert(tr('orders.manage.couldNotRemoveTitle'), serverText(result.message, tr('common.checkConnection'), { write: true, delete: true }));
+      void rereadOrder(false);
+      ownRemovals.current.delete(itemId);
+      return false;
+    } catch (error) {
+      console.error('[OrderManagement] Remove item error:', error);
+      showAlert(tr('orders.manage.couldNotRemoveTitle'), tr('common.checkConnection'));
+      return 'unknown';
+    }
+  }, [rereadOrder, checkAfterLostAnswer]);
 
   // True while the phone reports no network at all (aeroplane mode, no Wi-Fi and
   // no mobile data). "Connected, but the internet is not reachable" does not
@@ -378,7 +635,10 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // 'unknown' while NetInfo has not decided): the save is tried then.
   const { isConnected, type: networkType } = useNetworkStatus();
   const noNetworkRef = useRef(false);
-  noNetworkRef.current = isConnected === false && networkType === 'none';
+  const noNetwork = isConnected === false && networkType === 'none';
+  noNetworkRef.current = noNetwork;
+  // The "Waiting for the connection…" text follows the same test the wait for the server uses (`useIsDisconnected`).
+  const disconnected = useIsDisconnected();
 
   // Saves what the Add items picker changed, one lot after another, and answers
   // for each lot. A lot the user did not touch is not in `changes`, so a line
@@ -392,18 +652,80 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // lines count: a fully dispatched line is neither "already saved" nor updated.
   // Never rejects and shows no alert: the picker shows each reason on its lot.
   //
-  // The picker has no way out while this runs, so it must not wait long. A lot the
-  // server refuses is an answer, and the next lot is sent. A call that got no
-  // answer (a timeout, no connection, a call that threw) ends the save: every
+  // A lot the server refuses is an answer, and the next lot is sent. A call that
+  // failed before the request left the phone, or that threw, ends the save: every
   // further write could wait its own full time limit on the same dead connection.
-  // The lots not sent come back not saved and stay selected in the picker. For
-  // the same reason the read after such a save is started and not waited for.
+  // The lots not sent come back not saved and stay selected in the picker. For the
+  // same reason the read after such a save is started and not waited for.
+  //
+  // A call whose answer was lost (the request may have reached the server) is not
+  // an answer and not a failure: the lot is locked and named to the picker
+  // (`onChecking`), the save waits until the phone is online and 10 s have passed
+  // since the request was sent, then reads the order until the server answers and
+  // gives the lot the server's state. Nothing is sent again for it. The read has
+  // proved the connection, so the next lot is sent. The picker may stop the check
+  // (`signal`, from X after a warning): the lots not sent then come back not saved.
   const handleItemsAdded = useCallback(async (
     changes: PickerChange[],
     onProgress?: (position: number, total: number) => void,
+    options?: AddItemsOptions,
   ): Promise<PickerResult[]> => {
     const notSaved = (grnItemId: string): PickerResult =>
       ({ grnItemId, ok: false, reason: tr('orders.catalog.reasonNotSaved') });
+    // A lot whose answer was lost: locked, named to the picker, checked, and answered with the server's state.
+    // `stopped` is true when the check could not finish (the picker was left, the screen moved on).
+    const checkLot = async (
+      change: PickerChange,
+      line: OrderItem | undefined,
+      orderId: string,
+      sentAt: number,
+    ): Promise<{ result: PickerResult; stopped: boolean }> => {
+      const removal = change.quantity <= 0;
+      options?.onChecking?.({ grnItemId: change.grnItemId, removal });
+      let read: Order | null;
+      try {
+        read = await checkAfterLostAnswer(line ? [line.id] : [], removal ? 'remove' : 'save', orderId, sentAt, options?.signal);
+      } finally {
+        options?.onChecking?.(null);
+      }
+      if (!read) {
+        // Not known: the picker was left, or the editor moved on.
+        return { stopped: true, result: { grnItemId: change.grnItemId, ok: false, reason: tr('errors.lostAnswer.leaveWarning') } };
+      }
+      const stored = read.items?.find(item => item.grn_item_id === change.grnItemId && isOpenLine(item))?.requested_quantity ?? 0;
+      // The server has what was asked: the lost answer was a saved lot after all.
+      if (stored === change.quantity || (removal && stored === 0)) {
+        return { stopped: false, result: { grnItemId: change.grnItemId, ok: true } };
+      }
+      // Not applied: the lot shows what the server has, and the person decides whether to tap Add again.
+      const reason = removal
+        ? tr('orders.catalog.reasonCheckedNotRemoved')
+        : stored === 0
+          ? tr('orders.catalog.reasonCheckedNotSaved', { chosen: formatCount(change.quantity, 'bag') })
+          : tr('orders.catalog.reasonCheckedOther', { bags: formatCount(stored, 'bag'), chosen: formatCount(change.quantity, 'bag') });
+      return { stopped: false, result: { grnItemId: change.grnItemId, ok: false, reason, savedQuantity: stored } };
+    };
+    // What a lot says when the order holds another quantity than the one the picker started from: someone else changed
+    // it, nothing was overwritten, and the person taps Add again to apply their number knowingly.
+    const changedMeanwhile = (change: PickerChange, savedQuantity: number): string => {
+      const bagsNow = formatCount(savedQuantity, 'bag');
+      return change.quantity <= 0
+        ? tr('orders.catalog.reasonChangedMeanwhileRemove', { bags: bagsNow })
+        : savedQuantity === 0
+          ? tr('orders.catalog.reasonRemovedMeanwhile', { chosen: formatCount(change.quantity, 'bag') })
+          : tr('orders.catalog.reasonChangedMeanwhile', { bags: bagsNow, chosen: formatCount(change.quantity, 'bag') });
+    };
+    // The server refused a change or removal of a line with STALE_RECORD (owner decision D1): the line was changed by
+    // someone else after the order was last read, and nothing was written. The order is read again and the lot says what
+    // the order holds now, as it does for a change found before the call. Nothing is sent again by itself.
+    const staleLot = async (change: PickerChange): Promise<PickerResult> => {
+      const read = await rereadOrder(false);
+      if (read === null) return notSaved(change.grnItemId);
+      const stored = read.items?.find(item => item.grn_item_id === change.grnItemId && isOpenLine(item))?.requested_quantity ?? 0;
+      // The line holds what was asked after all (only something else on it changed).
+      if (stored === change.quantity || (change.quantity <= 0 && stored === 0)) return { grnItemId: change.grnItemId, ok: true };
+      return { grnItemId: change.grnItemId, ok: false, reason: changedMeanwhile(change, stored), savedQuantity: stored };
+    };
     const sessionGeneration = getSessionGeneration();
     // The order the picker was opened for. Every lot goes to it, and the save stops when the
     // editor has moved on (another business, or the screen closed: `activeOrderId` is cleared).
@@ -416,6 +738,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     let noAnswer = false;
 
     for (let index = 0; index < ordered.length; index += 1) {
+      // The person chose "Leave anyway" (the picker's X, after its warning): no further lot is sent. The lots not sent
+      // come back not saved.
+      if (options?.signal?.aborted) break;
       const change = ordered[index];
       const current = orderRef.current;
       // A sign-out or a change of facility ends the save; the rest is not sent.
@@ -431,13 +756,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           continue;
         }
         if (savedQuantity !== change.expected) {
-          const bagsNow = formatCount(savedQuantity, 'bag');
-          const reason = change.quantity <= 0
-            ? tr('orders.catalog.reasonChangedMeanwhileRemove', { bags: bagsNow })
-            : savedQuantity === 0
-              ? tr('orders.catalog.reasonRemovedMeanwhile', { chosen: formatCount(change.quantity, 'bag') })
-              : tr('orders.catalog.reasonChangedMeanwhile', { bags: bagsNow, chosen: formatCount(change.quantity, 'bag') });
-          results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: false, reason, savedQuantity });
+          results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: false, reason: changedMeanwhile(change, savedQuantity), savedQuantity });
           continue;
         }
         if (change.quantity > 0) {
@@ -446,14 +765,48 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             noAnswer = true;
             break;
           }
+          // The line is being checked after an answer of its own card was lost: nothing is sent for it meanwhile.
+          if (line && checkingRef.current.has(line.id)) {
+            results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: false, reason: tr('orders.catalog.reasonLineChecking') });
+            continue;
+          }
           anyCall = true;
+          const sentAt = Date.now();
           const result = line
-            ? await OrderService.updateOrderItemQuantity(line.id, current.id, change.quantity)
+            ? await changeLine(line.id, current.id, change.quantity, line.updated_at || undefined)
             : await OrderService.addItemToOrder(current.id, change.grnItemId, change.quantity);
           if (!result.success) console.error('[OrderManagement] Item not saved:', result.message, result.error);
+          if (!result.success && mayHaveBeenSaved(result)) {
+            const checked = await checkLot(change, line, current.id, sentAt);
+            results.set(change.grnItemId, checked.result);
+            if (checked.stopped) {
+              noAnswer = true;
+              break;
+            }
+            continue;
+          }
+          // Changed by someone else since the order was last read (STALE_RECORD): nothing was written.
+          if (!result.success && line && result.refusal?.reason === REFUSAL.STALE_RECORD) {
+            results.set(change.grnItemId, await staleLot(change));
+            continue;
+          }
+          // A change of a line that is gone is read as removed by someone else, and the lot goes back to "not in
+          // the order". "Order item not found" says so for certain. A customer login on an older facility is answered
+          // "Customer access denied" for such a line, and also for a real refusal: only a read of the order that no
+          // longer has the line says which, and without one the sentence is a refusal (a permission text).
+          let lineConfirmedGone = false;
+          if (!result.success && line && isCustomerAccessDenied(result)) {
+            lineConfirmedGone = isLineMissing(await rereadOrder(false), line.id);
+          }
+          const lineGone = !result.success && !!line && (isAlreadyRemoved(result) || lineConfirmedGone);
           results.set(change.grnItemId, result.success
             ? { grnItemId: change.grnItemId, ok: true }
-            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
+            : {
+                grnItemId: change.grnItemId,
+                ok: false,
+                reason: cartFailureReason(result, line ? { lineKnown: true, lineConfirmedGone, chosen: change.quantity } : undefined),
+                ...(lineGone ? { savedQuantity: 0 } : {}),
+              });
           if (!result.success && isConnectionFailure(result)) {
             noAnswer = true;
             break;
@@ -463,15 +816,36 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             noAnswer = true;
             break;
           }
+          if (checkingRef.current.has(line!.id)) {
+            results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: false, reason: tr('orders.catalog.reasonLineChecking') });
+            continue;
+          }
           anyCall = true;
+          const sentAt = Date.now();
           // A removal that reaches here has an open line: with none, the saved quantity is 0, answered above.
-          const result = await OrderService.removeItemFromOrder(line!.id, current.id);
-          // "Order item not found": someone else removed it first, which is what was asked for.
+          const result = await dropLine(line!.id, current.id, line!.updated_at || undefined);
+          if (!result.success && mayHaveBeenSaved(result)) {
+            const checked = await checkLot(change, line, current.id, sentAt);
+            results.set(change.grnItemId, checked.result);
+            if (checked.stopped) {
+              noAnswer = true;
+              break;
+            }
+            continue;
+          }
+          // Changed by someone else since the order was last read (STALE_RECORD): nothing was removed.
+          if (!result.success && result.refusal?.reason === REFUSAL.STALE_RECORD) {
+            results.set(change.grnItemId, await staleLot(change));
+            continue;
+          }
+          // "Order item not found": someone else removed it first, which is what was asked for. "Customer access
+          // denied" (a customer login on an older facility) is not counted: it may be a real refusal, and the lot
+          // is then shown with the permission text.
           const removed = result.success || isAlreadyRemoved(result);
           if (!removed) console.error('[OrderManagement] Item not removed:', result.message, result.error);
           results.set(change.grnItemId, removed
             ? { grnItemId: change.grnItemId, ok: true }
-            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result) });
+            : { grnItemId: change.grnItemId, ok: false, reason: cartFailureReason(result, { removal: true }) });
           if (!removed && isConnectionFailure(result)) {
             noAnswer = true;
             break;
@@ -501,7 +875,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     }
 
     return changes.map(change => results.get(change.grnItemId) ?? notSaved(change.grnItemId));
-  }, [onRefresh]);
+  }, [onRefresh, rereadOrder, checkAfterLostAnswer]);
 
 
   // The open lines, kept while the order's lines are unchanged.
@@ -587,6 +961,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
                 item={item}
                 onQuantityChange={handleQuantityUpdate}
                 onRemove={handleRemoveItem}
+                checking={checkingLines.get(item.id)}
+                offline={disconnected && checkingLines.has(item.id)}
               />
             ))}
           </>
@@ -691,6 +1067,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           isVisible={showItemCatalog}
           onClose={() => setShowItemCatalog(false)}
           onAddItems={handleItemsAdded}
+          offline={disconnected}
           currentOrderId={order.id}
           customerId={selectedCustomer.id}
           currentOrderItems={pickerLines}

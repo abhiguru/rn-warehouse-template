@@ -41,7 +41,7 @@ import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps }
 import { toLocalISODate, formatDate, toDate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
-import { getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { formatIdentifier, getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 type DispatchHeaderStepProps = {
     mode: 'create' | 'edit';
@@ -52,17 +52,6 @@ const makeStyles = (t: ThemeTokens) => ({
     container: {
         flex: 1,
         backgroundColor: t.background.base,
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center' as const,
-        alignItems: 'center' as const,
-        backgroundColor: t.background.base,
-    },
-    loadingText: {
-        ...typography.body,
-        marginTop: space.md,
-        color: t.text.secondary,
     },
     scrollView: {
         flex: 1,
@@ -108,6 +97,20 @@ const makeStyles = (t: ThemeTokens) => ({
     inputContainerError: {
         borderColor: t.status.negative.border,
         borderWidth: 2,
+    },
+    // A locked field: the date and the number of a dispatch that is on an invoice (wave B D2). Read-only: no border (style guide section 10)
+    inputContainerLocked: {
+        backgroundColor: t.surface.fieldReadOnly,
+        borderWidth: 0,
+    },
+    // The number and the date, when the hint under them is drawn: the hint follows them closely, then the usual gap
+    formGroupAboveHint: {
+        marginBottom: space.sm,
+    },
+    lockHint: {
+        ...typography.footnote,
+        color: t.text.secondary,
+        marginBottom: space.lg,
     },
     loadingInputContainer: {
         flexDirection: 'row' as const,
@@ -228,9 +231,9 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const {
         header,
         validationErrors,
-        isLoading,
         isGeneratingNumber,
         isCreateMode,
+        invoicedNumber,
         updateHeaderField,
         updateHeaderFields,
         handleDispNoChange,
@@ -283,7 +286,13 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         setShowDatePicker(false);
     };
 
+    // Edit: a dispatch that is on an invoice keeps its date and its number until the invoice is deleted or edited (D2).
+    const dateAndNumberLocked = !isCreateMode && invoicedNumber !== null && invoicedNumber !== undefined;
+    // Why they are locked: shown under them, and the hint a screen reader gives for each of the two locked fields.
+    const lockedReason = dateAndNumberLocked ? tr('dispatch.refusal.invoiced', { invoice: formatIdentifier(invoicedNumber || '—') }) : undefined;
+
     const openDatePicker = () => {
+        if (dateAndNumberLocked) return;
         setShowDatePicker(true);
     };
 
@@ -321,16 +330,6 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const formatDisplayDate = (isoDate: string) => {
         return toDate(isoDate) ? formatDate(isoDate) : '';
     };
-
-    // Loading state (edit mode)
-    if (isLoading) {
-        return (
-            <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
-                <ActivityIndicator size="large" color={t.brand.tint} />
-                <Text style={styles.loadingText}>{tr('dispatch.form.loading')}</Text>
-            </View>
-        );
-    }
 
     // Handle step indicator press for navigation
     const handleStepIndicatorPress = async (stepNumber: number) => {
@@ -384,7 +383,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {/* Compact Row: Dispatch Number & Date */}
                         <View style={styles.compactRow}>
                             {/* Dispatch Number */}
-                            <View style={[styles.formGroup, styles.halfField]}>
+                            <View style={[styles.formGroup, styles.halfField, dateAndNumberLocked && styles.formGroupAboveHint]}>
                                 <Text style={styles.label}>
                                     {tr('common.dispatchNumber')}<Text style={styles.required}> *</Text>
                                 </Text>
@@ -397,11 +396,14 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                         <ActivityIndicator size="small" color={t.brand.tint} />
                                     </View>
                                 ) : (
-                                    <View style={[styles.inputContainer, validationErrors.disp_no && styles.inputContainerError]}>
+                                    <View style={[styles.inputContainer, validationErrors.disp_no && styles.inputContainerError, dateAndNumberLocked && styles.inputContainerLocked]}>
                                         <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                                         <TextInput
                                             style={styles.input}
                                             accessibilityLabel={tr('common.dispatchNumber')}
+                                            accessibilityState={{ disabled: dateAndNumberLocked }}
+                                            accessibilityHint={lockedReason}
+                                            editable={!dateAndNumberLocked}
                                             value={header.disp_no}
                                             onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase())}
                                             placeholder="I####"
@@ -415,17 +417,21 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                             </View>
 
                             {/* Date */}
-                            <View style={[styles.formGroup, styles.halfField, styles.dateField]}>
+                            <View style={[styles.formGroup, styles.halfField, styles.dateField, dateAndNumberLocked && styles.formGroupAboveHint]}>
                                 <Text style={styles.label}>
                                     {tr('common.date')}<Text style={styles.required}> *</Text>
                                 </Text>
                                 <Pressable
                                     style={({ pressed }) => [
                                         styles.inputContainer,
-                                        pressed && styles.inputContainerPressed,
+                                        pressed && !dateAndNumberLocked && styles.inputContainerPressed,
                                         validationErrors.disp_date && styles.inputContainerError,
+                                        dateAndNumberLocked && styles.inputContainerLocked,
                                     ]}
                                     onPress={openDatePicker}
+                                    disabled={dateAndNumberLocked}
+                                    accessibilityState={{ disabled: dateAndNumberLocked }}
+                                    accessibilityHint={lockedReason}
                                     accessibilityRole="button"
                                     accessibilityLabel={displayDate ? tr('dispatch.form.dispatchDateLabel', { date: displayDate }) : tr('dispatch.form.chooseDispatchDate')}
                                 >
@@ -442,6 +448,11 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 <FieldError message={validationErrors.disp_date} styles={styles} color={t.status.negative.text} />
                             </View>
                         </View>
+                        {dateAndNumberLocked ? (
+                            <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="dispatch-header-invoiced-hint">
+                                {lockedReason}
+                            </Text>
+                        ) : null}
 
                         {/* Customer - before Registration so we can use customer-specific suggestions */}
                         <View style={styles.formGroup}>

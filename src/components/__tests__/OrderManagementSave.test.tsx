@@ -10,8 +10,12 @@
  * And how long it may take (review 2026-10-14): the picker has no way out while
  * a save runs.
  *  - A refusal is an answer: the next lot is sent.
- *  - A call that got no answer (a timeout, no connection, a call that threw) ends
+ *  - A call that could not be sent (no connection, no session) or that threw ends
  *    the save; the lots not sent come back not saved.
+ *  - A call whose answer was lost (owner decision D22, 2026-10-20) is not a failure:
+ *    the lot is locked and named to the picker, the save waits for the server (the
+ *    10 s wait is stubbed here) and reads the order, gives the lot the server's
+ *    state, sends nothing again, and goes on with the next lot.
  *  - The order is read again after any call, saved or not.
  *  - That read is waited for when the server answered every call, and only
  *    started when the save ended for want of a connection.
@@ -22,10 +26,11 @@ import OrderManagement from '../OrderManagement';
 import { OrderService } from '@/services/order-service';
 import { showAlert } from '@/utils/alert';
 import type { Order, OrderItem } from '@/types/order.types';
-import type { PickerChange, PickerLine, PickerResult } from '@/features/orders/pickerDraft';
+import type { AddItemsOptions, PickerChange, PickerLine, PickerResult } from '@/features/orders/pickerDraft';
+import { abortedError, waitForServer } from '@/utils/lostAnswer';
 
 type PickerProps = {
-  onAddItems: (changes: PickerChange[], onProgress?: (position: number, total: number) => void) => Promise<PickerResult[]>;
+  onAddItems: (changes: PickerChange[], onProgress?: (position: number, total: number) => void, options?: AddItemsOptions) => Promise<PickerResult[]>;
   onClose: () => void;
   currentOrderItems: PickerLine[];
 };
@@ -44,6 +49,16 @@ jest.mock('../ItemCatalogBrowser', () => {
 const mockLive: { refresh?: () => Promise<void> | void } = {};
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({
   useOrderLiveUpdates: (refresh: () => Promise<void> | void) => { mockLive.refresh = refresh; },
+}));
+// The wait for the server reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
+// The 10 s wait of a lost answer belongs to lostAnswer.ts; here it ends at once (a test that wants to see the wait replaces it).
+jest.mock('@/utils/lostAnswer', () => ({
+  ...jest.requireActual('@/utils/lostAnswer'),
+  waitForServer: jest.fn(() => Promise.resolve()),
 }));
 const mockSession = { generation: 1 };
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => mockSession.generation }));
@@ -97,8 +112,14 @@ const saved = { success: true, message: '' } as never;
 const refusal = (message: string, error: unknown = 'API_ERROR') => ({ success: false, message, error }) as never;
 // A failure whose own text is in `error`, under the app's text for the action: how
 // OrderService hands back a call without an answer, and an exception the server raised.
-const failedWith = (error: string) => ({ success: false, message: "Couldn't save the item.", error }) as never;
-const timedOut = failedWith('TimeoutError: Request timeout');
+// `lostAnswer` is the flag executeRPC computed (it knew the HTTP status and the SQL code) and OrderService passes on:
+// the call went out and no answer came.
+const failedWith = (error: string, lostAnswer = false) =>
+  ({ success: false, message: "Couldn't save the item.", error, ...(lostAnswer ? { lostAnswer: true } : {}) }) as never;
+// A call that went out and got no answer (a timeout, a dropped connection): the lot may be on the order already.
+const timedOut = failedWith('TimeoutError: Request timeout', true);
+// A call that never left the phone (no session could be renewed for want of a connection): nothing was sent.
+const notSent = failedWith('Network request failed: session refresh unavailable');
 const NOT_SAVED = 'Not saved. Check your connection and try again.';
 
 const service = jest.mocked(OrderService);
@@ -118,17 +139,17 @@ type Ask = Omit<PickerChange, 'expected'> & { expected?: number };
 const OPENED_WITH: Record<string, number> = { 'lot-kept': 2, 'lot-open': 5 };
 const asked = (changes: Ask[]): PickerChange[] =>
   changes.map(change => ({ ...change, expected: change.expected ?? OPENED_WITH[change.grnItemId] ?? 0 }));
-async function send(changes: Ask[], onProgress?: (position: number, total: number) => void) {
+async function send(changes: Ask[], onProgress?: (position: number, total: number) => void, options?: AddItemsOptions) {
   let results!: PickerResult[];
-  await act(async () => { results = await mockPicker.props!.onAddItems(asked(changes), onProgress); });
+  await act(async () => { results = await mockPicker.props!.onAddItems(asked(changes), onProgress, options); });
   return results;
 }
 // Lets everything that is not waiting for a call run to its end.
 const settle = () => act(async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); });
 // Starts a save without waiting for it: `results` is there once the save has answered.
-async function start(changes: Ask[]) {
+async function start(changes: Ask[], options?: AddItemsOptions) {
   const save: { results?: PickerResult[] } = {};
-  await act(async () => { void mockPicker.props!.onAddItems(asked(changes)).then(results => { save.results = results; }); });
+  await act(async () => { void mockPicker.props!.onAddItems(asked(changes), undefined, options).then(results => { save.results = results; }); });
   await settle();
   return save;
 }
@@ -151,6 +172,7 @@ beforeEach(() => {
   service.addItemToOrder.mockReset().mockResolvedValue(saved);
   service.updateOrderItemQuantity.mockReset().mockResolvedValue(saved);
   service.removeItemFromOrder.mockReset().mockResolvedValue(saved);
+  jest.mocked(waitForServer).mockClear();
   jest.mocked(showAlert).mockReset();
   // A refusal is logged for the developer; it is not a test failure.
   logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -369,7 +391,7 @@ describe('a line changed by someone else is never overwritten unseen', () => {
   });
 });
 
-describe('a call without an answer ends the save', () => {
+describe('a call that could not be sent ends the save', () => {
   // Three kinds of call are waiting behind the first lot: an add, a change and a removal.
   const CHANGES = [
     { grnItemId: 'lot-kept', quantity: 0 },
@@ -379,13 +401,9 @@ describe('a call without an answer ends the save', () => {
   ];
   const noneSaved = CHANGES.map(change => ({ grnItemId: change.grnItemId, ok: false, reason: NOT_SAVED }));
 
-  it.each([
-    ['timed out', timedOut],
-    ['could not be sent', failedWith('TypeError: Network request failed')],
-    ['could not renew the session for want of a connection', failedWith('Network request failed: session refresh unavailable')],
-  ])('a call that %s: nothing more is sent, every lot left comes back not saved, and the order is read again', async (_name, failure) => {
+  it('a call that could not renew the session for want of a connection (nothing was sent): nothing more is sent, every lot comes back not saved, and the order is read again', async () => {
     await openPicker();
-    service.addItemToOrder.mockResolvedValueOnce(failure);
+    service.addItemToOrder.mockResolvedValueOnce(notSent);
     const reads = service.getOrderWithItems.mock.calls.length;
     const progress = jest.fn();
 
@@ -396,14 +414,16 @@ describe('a call without an answer ends the save', () => {
     expect(service.removeItemFromOrder).not.toHaveBeenCalled();
     expect(results).toEqual(noneSaved);
     expect(progress.mock.calls).toEqual([[1, 4]]);
-    // The one call may have been applied: the order is read again, once.
+    // The one call was never sent, but the order is read again, once, all the same.
     expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
+    // Nothing was sent that could be lost: nothing is checked.
+    expect(waitForServer).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
   });
 
   it('keeps what was saved before it, and stops at a change or a removal just the same', async () => {
     await openPicker();
-    service.updateOrderItemQuantity.mockResolvedValueOnce(timedOut);
+    service.updateOrderItemQuantity.mockResolvedValueOnce(notSent);
     const results = await send(CHANGES);
     expect(service.addItemToOrder).toHaveBeenCalledTimes(2);
     expect(service.removeItemFromOrder).not.toHaveBeenCalled();
@@ -414,7 +434,7 @@ describe('a call without an answer ends the save', () => {
       { grnItemId: 'lot-open', ok: false, reason: NOT_SAVED },
     ]);
 
-    service.removeItemFromOrder.mockReset().mockResolvedValueOnce(timedOut);
+    service.removeItemFromOrder.mockReset().mockResolvedValueOnce(notSent);
     expect(await send([{ grnItemId: 'lot-kept', quantity: 0 }, { grnItemId: 'lot-open', quantity: 0 }])).toEqual([
       { grnItemId: 'lot-kept', ok: false, reason: NOT_SAVED },
       { grnItemId: 'lot-open', ok: false, reason: NOT_SAVED },
@@ -440,7 +460,7 @@ describe('a call without an answer ends the save', () => {
 
   it('answers also when the read after it fails or throws', async () => {
     await openPicker();
-    service.addItemToOrder.mockResolvedValue(timedOut);
+    service.addItemToOrder.mockResolvedValue(notSent);
     const reads = service.getOrderWithItems.mock.calls.length;
     service.getOrderWithItems.mockResolvedValueOnce({ success: false, message: '', error: 'TimeoutError: Request timeout' } as never);
     expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: false, reason: NOT_SAVED }]);
@@ -450,6 +470,168 @@ describe('a call without an answer ends the save', () => {
     // The editor still has its order: the next save is sent.
     service.addItemToOrder.mockResolvedValue(saved);
     expect(await send([{ grnItemId: 'lot-one', quantity: 1 }])).toEqual([{ grnItemId: 'lot-one', ok: true }]);
+  });
+});
+
+// Owner decision D22 (2026-10-20): a call whose answer was lost is checked, not resent and not called a failure.
+describe('a call whose answer was lost is checked', () => {
+  // The order of sending is quantities first, removals last: lot-one (add), lot-two (add), lot-open (change), lot-kept (removal).
+  const CHANGES = [
+    { grnItemId: 'lot-kept', quantity: 0 },
+    { grnItemId: 'lot-one', quantity: 1 },
+    { grnItemId: 'lot-two', quantity: 1 },
+    { grnItemId: 'lot-open', quantity: 7 },
+  ];
+  const NOT_SAVED_ONE = 'Checked: it was not saved. Tap Add again to add 1 bag.';
+
+  it.each([
+    ['timed out (it had gone out)', timedOut],
+    ['broke the connection after it had gone out', failedWith('TypeError: Network request failed', true)],
+  ])('a call that %s: the lot is named to the picker, the server is asked, the lot shows what it has, nothing is sent again, and the next lots are sent', async (_name, failure) => {
+    await openPicker();
+    // The server never stored the first lot.
+    service.addItemToOrder.mockResolvedValueOnce(failure);
+    const reads = service.getOrderWithItems.mock.calls.length;
+    const progress = jest.fn();
+    const onChecking = jest.fn();
+
+    const results = await send(CHANGES, progress, { onChecking });
+
+    // Each call was sent once: the lost one is not sent again, and the lots after it are sent.
+    expect(service.addItemToOrder.mock.calls).toEqual([[ORDER_ID, 'lot-one', 1], [ORDER_ID, 'lot-two', 1]]);
+    expect(service.updateOrderItemQuantity.mock.calls).toEqual([['line-lot-open', ORDER_ID, 7]]);
+    expect(service.removeItemFromOrder.mock.calls).toEqual([['line-lot-kept', ORDER_ID]]);
+    expect(results).toEqual([
+      { grnItemId: 'lot-kept', ok: true },
+      { grnItemId: 'lot-one', ok: false, reason: NOT_SAVED_ONE, savedQuantity: 0 },
+      { grnItemId: 'lot-two', ok: true },
+      { grnItemId: 'lot-open', ok: true },
+    ]);
+    expect(progress.mock.calls).toEqual([[1, 4], [2, 4], [3, 4], [4, 4]]);
+    // The picker is told which lot is being checked, and when that is over.
+    expect(onChecking.mock.calls).toEqual([[{ grnItemId: 'lot-one', removal: false }], [null]]);
+    // The wait for the server (10 s, online) was asked for once, for that call.
+    expect(waitForServer).toHaveBeenCalledTimes(1);
+    // The check read the order once, and the save reads it once more at its end.
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 2);
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('a lot the server did apply is saved: the answer was lost, the lot is not', async () => {
+    await openPicker();
+    service.addItemToOrder.mockImplementationOnce(async (_order, lot, quantity) => {
+      server.items!.push(line(lot, quantity));
+      return timedOut;
+    });
+    const results = await send([{ grnItemId: 'lot-new', quantity: 3 }]);
+    expect(results).toEqual([{ grnItemId: 'lot-new', ok: true }]);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    // The picker is told the lot is in the order now.
+    expect(mockPicker.props!.currentOrderItems.map(item => [item.grnItemId, item.quantity])).toContainEqual(['lot-new', 3]);
+  });
+
+  it('a change the server did apply is saved, and one it did not shows the quantity it has', async () => {
+    await openPicker();
+    service.updateOrderItemQuantity.mockImplementationOnce(async () => {
+      server.items!.find(item => item.id === 'line-lot-open')!.requested_quantity = 7;
+      return timedOut;
+    });
+    expect(await send([{ grnItemId: 'lot-open', quantity: 7 }])).toEqual([{ grnItemId: 'lot-open', ok: true }]);
+
+    // Someone else made it 6 meanwhile; this change (to 9) never arrived.
+    service.updateOrderItemQuantity.mockReset().mockImplementationOnce(async () => {
+      server.items!.find(item => item.id === 'line-lot-open')!.requested_quantity = 6;
+      return timedOut;
+    });
+    expect(await send([{ grnItemId: 'lot-open', quantity: 9, expected: 7 }])).toEqual([
+      { grnItemId: 'lot-open', ok: false, reason: 'Checked: the order has 6 bags now. Tap Add again to make it 9 bags.', savedQuantity: 6 },
+    ]);
+  });
+
+  it('a removal the server did apply is done, and one it did not says so and shows the quantity the line has', async () => {
+    await openPicker();
+    service.removeItemFromOrder.mockImplementationOnce(async () => {
+      server.items = server.items!.filter(item => item.id !== 'line-lot-kept');
+      return timedOut;
+    });
+    const onChecking = jest.fn();
+    expect(await send([{ grnItemId: 'lot-kept', quantity: 0 }], undefined, { onChecking })).toEqual([{ grnItemId: 'lot-kept', ok: true }]);
+    // A removal is told to the picker as one, so it says "deleted".
+    expect(onChecking.mock.calls[0]).toEqual([{ grnItemId: 'lot-kept', removal: true }]);
+
+    service.removeItemFromOrder.mockReset().mockResolvedValueOnce(timedOut);
+    expect(await send([{ grnItemId: 'lot-open', quantity: 0 }])).toEqual([
+      { grnItemId: 'lot-open', ok: false, reason: 'Checked: it was not removed. Tap Add again to remove it.', savedQuantity: 5 },
+    ]);
+  });
+
+  it('waits for the server before it reads, and sends nothing while it waits', async () => {
+    await openPicker();
+    const wait = waiting<void>();
+    jest.mocked(waitForServer).mockImplementationOnce(() => wait.promise);
+    service.addItemToOrder.mockResolvedValueOnce(timedOut);
+    const reads = service.getOrderWithItems.mock.calls.length;
+    const onChecking = jest.fn();
+
+    const save = await start([{ grnItemId: 'lot-one', quantity: 1 }, { grnItemId: 'lot-two', quantity: 1 }], { onChecking });
+
+    // Waiting: the lot is named, the second lot is not sent, nothing was read, the save has not answered.
+    expect(onChecking.mock.calls).toEqual([[{ grnItemId: 'lot-one', removal: false }]]);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads);
+    expect(save.results).toBeUndefined();
+    // It was told when the request went out, and could be stopped.
+    const [sentAt, signal] = jest.mocked(waitForServer).mock.calls[0];
+    expect(typeof sentAt).toBe('number');
+    expect(signal).toBeInstanceOf(AbortSignal);
+
+    await act(async () => { wait.answer(); });
+    await settle();
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(2);
+    expect(save.results).toEqual([
+      { grnItemId: 'lot-one', ok: false, reason: 'Checked: it was not saved. Tap Add again to add 1 bag.', savedQuantity: 0 },
+      { grnItemId: 'lot-two', ok: true },
+    ]);
+    expect(onChecking.mock.calls).toEqual([[{ grnItemId: 'lot-one', removal: false }], [null]]);
+  });
+
+  it('is stopped when the picker is left: the lot is not known, the rest is not sent, nothing is resent', async () => {
+    await openPicker();
+    jest.mocked(waitForServer).mockImplementationOnce((_sentAt, signal) => new Promise<void>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(abortedError()));
+    }));
+    service.addItemToOrder.mockResolvedValueOnce(timedOut);
+    const controller = new AbortController();
+    const onChecking = jest.fn();
+
+    const save = await start([{ grnItemId: 'lot-one', quantity: 1 }, { grnItemId: 'lot-two', quantity: 1 }], { onChecking, signal: controller.signal });
+    expect(save.results).toBeUndefined();
+
+    await act(async () => { controller.abort(); });
+    await settle();
+
+    expect(save.results).toEqual([
+      { grnItemId: 'lot-one', ok: false, reason: 'It may have been saved. Check the list before entering it again.' },
+      { grnItemId: 'lot-two', ok: false, reason: NOT_SAVED },
+    ]);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(onChecking.mock.calls).toEqual([[{ grnItemId: 'lot-one', removal: false }], [null]]);
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('is stopped between lots when the person chose Leave anyway: the lots not yet sent come back not saved', async () => {
+    await openPicker();
+    const controller = new AbortController();
+    // The first lot is answered while the person leaves.
+    service.addItemToOrder.mockImplementationOnce(async () => {
+      controller.abort();
+      return saved;
+    });
+
+    const results = await send([{ grnItemId: 'lot-one', quantity: 1 }, { grnItemId: 'lot-two', quantity: 1 }], undefined, { signal: controller.signal });
+
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(results).toEqual([{ grnItemId: 'lot-one', ok: true }, { grnItemId: 'lot-two', ok: false, reason: NOT_SAVED }]);
   });
 });
 
@@ -479,13 +661,14 @@ it('finds a lot saved on the next Add when the write that timed out was in fact 
   });
   const reads = service.getOrderWithItems.mock.calls.length;
 
-  expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: false, reason: NOT_SAVED }]);
-  expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 1);
+  // The lot is checked, found, and answered as saved; the check read it, and the save read once more.
+  expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: true }]);
+  expect(service.getOrderWithItems).toHaveBeenCalledTimes(reads + 2);
   // The picker is told the lot is in the order now.
   expect(mockPicker.props!.currentOrderItems.map(item => [item.grnItemId, item.quantity])).toContainEqual(['lot-new', 3]);
 
   // Add again: the lot is there with that quantity, so nothing is sent and it counts as saved.
-  expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: true }]);
+  expect(await send([{ grnItemId: 'lot-new', quantity: 3, expected: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: true }]);
   expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
   expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
 });
@@ -496,7 +679,10 @@ it('sends a change again as an add once the line someone else removed is known t
   server.items = server.items!.filter(item => item.grn_item_id !== 'lot-open');
   service.updateOrderItemQuantity.mockResolvedValueOnce(refusal('Order item not found'));
 
-  expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([{ grnItemId: 'lot-open', ok: false, reason: NOT_SAVED }]);
+  // The server's "Order item not found" is told at once as "removed by someone else", and the lot is back to "not in the order".
+  expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([
+    { grnItemId: 'lot-open', ok: false, reason: 'Removed by someone else. Tap Add again to add 8 bags.', savedQuantity: 0 },
+  ]);
   // The read has shown the line is gone: the picker expected 5, so this is a change it has not seen.
   expect(await send([{ grnItemId: 'lot-open', quantity: 8 }])).toEqual([
     { grnItemId: 'lot-open', ok: false, reason: 'Removed by someone else. Tap Add again to add 8 bags.', savedQuantity: 0 },
@@ -515,9 +701,9 @@ describe('the read after the save', () => {
   const orderRead = () => ({ success: true, data: copy(server) }) as never;
 
   it.each([
-    ['timed out', () => service.addItemToOrder.mockResolvedValueOnce(timedOut)],
-    ['threw', () => service.addItemToOrder.mockRejectedValueOnce(new Error('fictional failure'))],
-  ])('is started and not waited for when the first call %s: the save answers while the read is out', async (_name, fail) => {
+    ['could not be sent', () => service.addItemToOrder.mockResolvedValueOnce(notSent), NOT_SAVED],
+    ['threw', () => service.addItemToOrder.mockRejectedValueOnce(new Error('fictional failure')), NOT_SAVED],
+  ])('is started and not waited for when the first call %s: the save answers while the read is out', async (_name, fail, firstReason) => {
     await openPicker();
     fail();
     const reads = service.getOrderWithItems.mock.calls.length;
@@ -526,7 +712,7 @@ describe('the read after the save', () => {
     const save = await start(TWO);
 
     expect(save.results).toEqual([
-      { grnItemId: 'lot-one', ok: false, reason: NOT_SAVED },
+      { grnItemId: 'lot-one', ok: false, reason: firstReason },
       { grnItemId: 'lot-two', ok: false, reason: NOT_SAVED },
     ]);
     expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
@@ -582,7 +768,7 @@ describe('the read after the save', () => {
     expect(save.results).toEqual(expected);
   });
 
-  it('spares the next Add a write that was applied, also when it arrives after the save has answered', async () => {
+  it('a lost answer is checked before the save answers: the lot is locked until the order has been read', async () => {
     await openPicker();
     // The server stores the line; its answer never arrives.
     service.addItemToOrder.mockImplementationOnce(async (_order, lot, quantity) => {
@@ -591,18 +777,21 @@ describe('the read after the save', () => {
     });
     const read = waiting<never>();
     service.getOrderWithItems.mockImplementationOnce(() => read.promise);
+    const onChecking = jest.fn();
 
-    const save = await start([{ grnItemId: 'lot-new', quantity: 3 }]);
-    expect(save.results).toEqual([{ grnItemId: 'lot-new', ok: false, reason: NOT_SAVED }]);
-    // The read is still out: the picker has not been told of the lot.
+    const save = await start([{ grnItemId: 'lot-new', quantity: 3 }], { onChecking });
+    // The read of the check is out: the lot is named to the picker, and the save has not answered.
+    expect(save.results).toBeUndefined();
+    expect(onChecking.mock.calls).toEqual([[{ grnItemId: 'lot-new', removal: false }]]);
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
     expect(mockPicker.props!.currentOrderItems.map(item => item.grnItemId)).not.toContain('lot-new');
 
     await act(async () => { read.answer(orderRead()); });
     await settle();
+    // The server has the lot: it is saved, the picker is told, and nothing was sent again.
+    expect(save.results).toEqual([{ grnItemId: 'lot-new', ok: true }]);
+    expect(onChecking.mock.calls).toEqual([[{ grnItemId: 'lot-new', removal: false }], [null]]);
     expect(mockPicker.props!.currentOrderItems.map(item => [item.grnItemId, item.quantity])).toContainEqual(['lot-new', 3]);
-
-    // Add again: the lot is there with that quantity, so nothing is sent and it counts as saved.
-    expect(await send([{ grnItemId: 'lot-new', quantity: 3 }])).toEqual([{ grnItemId: 'lot-new', ok: true }]);
     expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
     expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
   });

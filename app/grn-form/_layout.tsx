@@ -3,6 +3,7 @@ import { Stack, router } from 'expo-router';
 import { useAppDispatch } from '@/store/hooks';
 import { resetForm } from '@/store/slices/grnFormSlice';
 import { usePermissions } from '@/hooks/usePermissions';
+import { nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
 
 export default function GRNFormLayout() {
   const dispatch = useAppDispatch();
@@ -22,6 +23,9 @@ export default function GRNFormLayout() {
   useEffect(() => {
     if (!canCreate) return; // Don't reset if redirecting
     if (__DEV__) console.log('[GRNFormLayout] Resetting form state');
+    // A new form: whatever a save of an earlier form still has running (it was left, or its owner signed out) is
+    // stale and must not touch this one when it answers.
+    nextGrnFormSession();
     dispatch(resetForm());
     // Small delay to ensure Redux state is updated before children mount
     requestAnimationFrame(() => {
@@ -29,6 +33,10 @@ export default function GRNFormLayout() {
       if (__DEV__) console.log('[GRNFormLayout] Form reset complete, ready for child components');
     });
   }, [dispatch, canCreate]);
+
+  // Leaving the create flow (also when the person is signed out under it, which closes this layout) makes whatever a
+  // save still has running stale: its answer is told to the person ("GRN saved") and touches no form.
+  useEffect(() => () => { nextGrnFormSession(); }, []);
 
   // Don't render children until reset is complete or if no permission
   if (!isReady || !canCreate) {

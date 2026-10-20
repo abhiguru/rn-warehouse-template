@@ -4,7 +4,7 @@
  * (`collapsed`), and it reports its measured height (`onHeight`) so the form scrolls clear of it.
  */
 import React from 'react';
-import { Text, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, Text, View, type LayoutChangeEvent } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '@/hooks/useTheme';
@@ -26,6 +26,8 @@ interface Props {
   children?: React.ReactNode;
   /** A one-line hint under `children` (offline, choose a day). */
   helper?: string | null;
+  /** The helper line is a link (a 48 dp target): it takes the person to what the line asks for ("Choose a start date."). */
+  onHelperPress?: () => void;
   primary: PrimarySaveAction;
   /** A second, quieter button left of Save. */
   discard?: SaveBarAction;
@@ -36,7 +38,7 @@ interface Props {
   testID?: string;
 }
 
-export function RateSaveBar({ children, helper, primary, discard, collapsed = false, onHeight, testID = 'save-bar' }: Props) {
+export function RateSaveBar({ children, helper, onHelperPress, primary, discard, collapsed = false, onHeight, testID = 'save-bar' }: Props) {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   return (
@@ -46,7 +48,13 @@ export function RateSaveBar({ children, helper, primary, discard, collapsed = fa
       onLayout={(e: LayoutChangeEvent) => onHeight?.(e.nativeEvent.layout.height)}
     >
       {collapsed ? null : children}
-      {collapsed || !helper ? null : <Text style={styles.helper}>{helper}</Text>}
+      {collapsed || !helper ? null : onHelperPress ? (
+        <Pressable style={styles.helperLink} onPress={onHelperPress} accessibilityRole="link" accessibilityLabel={helper} testID={`${testID}-helper`}>
+          <Text style={styles.helperLinkText}>{helper}</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.helper}>{helper}</Text>
+      )}
       {discard ? (
         <View style={styles.row}>
           <Button type="secondary" onPress={discard.onPress} disabled={discard.disabled} testID={`${testID}-discard`}>
@@ -77,6 +85,8 @@ const makeStyles = (t: ThemeTokens) => ({
     ...t.shadow[3],
   },
   helper: { ...typography.footnote, color: t.text.secondary, textAlign: 'center' as const },
+  helperLink: { minHeight: touchTarget, alignItems: 'center' as const, justifyContent: 'center' as const },
+  helperLinkText: { ...typography.footnote, color: t.brand.tint, textAlign: 'center' as const, textDecorationLine: 'underline' as const },
   row: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.md },
   grow: { flex: 1 },
 });

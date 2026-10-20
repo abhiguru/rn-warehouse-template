@@ -25,7 +25,7 @@ import {
 } from '@/types/user.types';
 import { executeRPC, type RPCResult } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
-import { isNetworkError, isStatementTimeout, isTimeoutError, serverText } from '@/utils/serverText';
+import { isNetworkError, isStatementTimeout, isTimeoutError, requestMayHaveBeenSent, serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 
 // User ids and error codes only: names and mobile numbers stay out of the device log.
@@ -95,6 +95,8 @@ const enrollmentRefusal = (code: unknown): string | null =>
 /**
  * Why a call failed, as the screens read it: 'NETWORK' or 'TIMEOUT' when no answer arrived,
  * otherwise the server's `error_code` (PERMISSION_DENIED, NOT_FOUND, SELF_EDIT_FORBIDDEN ...).
+ * 'TIMEOUT' is no answer after the request went out (it timed out, the connection dropped, a gateway gave up):
+ * a change may have been applied. 'NETWORK' is no answer because the request never left (offline, no session).
  * 'TIMEOUT_NOT_SAVED' is a statement the server cancelled (57014): it rolled back, nothing was saved.
  * 'NO_ACCESS' is the caller losing the right to manage users: the server words that as
  * "Staff access required", "Active account required" or "Administrator required".
@@ -107,7 +109,7 @@ const failureCode = (source: unknown, code?: unknown, message?: unknown): UserFa
   // 57014: the server cancelled the statement and rolled it back, so nothing was saved.
   if (isStatementTimeout(source)) return 'TIMEOUT_NOT_SAVED';
   if (isTimeoutError(source)) return 'TIMEOUT';
-  if (isNetworkError(source)) return 'NETWORK';
+  if (isNetworkError(source)) return requestMayHaveBeenSent(source) ? 'TIMEOUT' : 'NETWORK';
   const text = typeof message === 'string' ? message : typeof source === 'string' ? source : '';
   if ((typeof code !== 'string' || code === 'INTERNAL_ERROR' || code === 'PERMISSION_DENIED') && NO_ACCESS_TEXT.test(text)) {
     return 'NO_ACCESS';

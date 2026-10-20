@@ -24,26 +24,45 @@ import {
   completeHeaderImageUpload,
   failHeaderImageUpload,
   setIsSaving,
+  updateHeader,
   selectGRNRemovedImages,
-  selectGRNSaveUnconfirmed,
+  selectGRNSubmissionNonce,
+  selectGRNGrNoTyped,
   selectGRNRates,
   selectGRNRateChanges,
   selectGRNInvoiced,
+  selectGRNLoadedUpdatedAt,
   selectGRNRemovedRates,
+  loadGRNData as loadGRNFormData,
+  setFirstDispatchDate,
   setGrnRates,
   setRateChanges,
   setRemovedGrnRates,
-  setSaveUnconfirmed,
-  adoptSavedLines,
+  setSubmissionNonce,
+  setGrNoTyped,
+  setTakenNumberError,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
-import { createGRN, updateGRN, findLinesSavedByLostUpdate, type GRNPhotoSaveReport } from '@/features/grn/services/grnFormService';
+import {
+  createGRN,
+  updateGRN,
+  getNextGRNNumber,
+  loadGRNData as loadGRNDataService,
+  type GRNLostAnswer,
+  type GRNPhotoSaveReport,
+} from '@/features/grn/services/grnFormService';
+import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
+import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
+import { askStaleRecord } from '@/utils/staleRecordDialog';
+import { currentGrnFormSession, newSubmissionNonce } from '@/features/grn/utils/grnFormSession';
+import { checkSubmission } from '@/utils/lostAnswer';
+import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
 import { uploadGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '@/features/grn/services/imageUploadService';
 import { photosNotUploadedMessage } from '@/features/grn/utils/photoSaveReport';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
-import { validateStep3 } from '@/features/grn/schemas/grnValidation';
+import { validateStep3, withoutStoredNumberError } from '@/features/grn/schemas/grnValidation';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
 import { ImageOverlay } from '@/components/ImageOverlay';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
@@ -138,14 +157,20 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const dispatch = useAppDispatch();
   // Saved photos removed in this edit; they are deleted when the GRN is saved.
   const removedImages = useAppSelector(selectGRNRemovedImages) ?? [];
-  // The last update got no answer: the server is asked what it holds before the next one.
-  const saveUnconfirmed = useAppSelector(selectGRNSaveUnconfirmed);
+  // The form's session id for the create's idempotency key: null until the first Create makes it, then kept for
+  // every retry of this form (a reset clears it).
+  const submissionNonce = useAppSelector(selectGRNSubmissionNonce);
+  // The number was typed by the person, not offered by the form (see handleNumberTakenAtCreate).
+  const grNoTyped = useAppSelector(selectGRNGrNoTyped);
   // Rates saved with the GRN: the set for this GRN only, and changes of the item's rate (backend migration 86).
   const grnRates = useAppSelector(selectGRNRates);
   const rateChanges = useAppSelector(selectGRNRateChanges);
   const removedRates = useAppSelector(selectGRNRemovedRates);
   // An invoiced GRN being edited: its rates are shown, sent back as they are, and cannot be set here.
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
+  // The GRN's version token as the edit form read it (get_grn_edit_state, backend migration 121); null on an older
+  // server. Save sends it back, and the server refuses the save when someone else changed the GRN since (STALE_RECORD).
+  const loadedUpdatedAt = useAppSelector(selectGRNLoadedUpdatedAt);
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
@@ -154,6 +179,15 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // Photos of the GRN just saved that did not upload; the user is asked to try again or go on.
   const [photosNotUploaded, setPhotosNotUploaded] = useState<{ grnId: string; failed: FailedGRNPhoto[] } | null>(null);
   const [isRetryingPhotos, setIsRetryingPhotos] = useState(false);
+  // A create, an edit save or a photo retry is running: the form is locked. No field, photo or rate changes, and the
+  // header's X, the step pills, Previous, the Back key and every other way off this step do nothing until it ends
+  // (leaving would reset the form under the save).
+  const isSubmittingState = (isCreateMode ? isSubmitting : isSaving) || isRetryingPhotos;
+  // The save got no answer (owner rule D22): the form stays locked while the server is asked about that request.
+  // The X alone leaves, with a warning that the GRN may be saved, and stops the check.
+  const [lostChecking, setLostChecking] = useState(false);
+  const lostAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => lostAbortRef.current?.abort(), []);
   const saveInFlightRef = useRef(false);
   const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
   const [showPrintDialog, setShowPrintDialog] = useState(false);
@@ -225,13 +259,14 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     show('rates');
   };
   const saveRateEntry = (entry: SheetEntry) => {
-    if (!sheetRow) return;
+    if (!sheetRow || isSubmittingState) return;
     const next = withEntry({ grnRates, changes: rateChanges }, sheetRow.item_id, entry, rateCtx);
     dispatch(setGrnRates(next.grnRates));
     dispatch(setRateChanges(next.changes));
     setSheetRow(null);
   };
   const dropRateEntry = (row: PricedRow) => {
+    if (isSubmittingState) return;
     const next = withoutEntryFor({ grnRates, changes: rateChanges }, row);
     dispatch(setGrnRates(next.grnRates));
     dispatch(setRateChanges(next.changes));
@@ -241,6 +276,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    * first (owner, 2026-10-17: it acted with no question and nothing on screen said it waits for the save).
    */
   const undoRateEntry = (row: PricedRow) => {
+    if (isSubmittingState) return;
     if (!(row.rate?.source === 'grn' && row.rate.entry?.saved === true)) {
       dropRateEntry(row);
       return;
@@ -263,12 +299,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
   /** Undo remove: the rate this GRN had goes back, before the save (owner, 2026-10-17). */
   const restoreRateEntry = (row: PricedRow) => {
+    if (isSubmittingState) return;
     const next = restoreRemovedFor({ grnRates, removed: removedRates }, row);
     dispatch(setGrnRates(next.grnRates));
     dispatch(setRemovedGrnRates(next.removed));
   };
   /** `p_rates` as the form holds them now. */
-  const ratesToSave = () => (canSetRates ? buildRates({ grnRates, changes: rateChanges, ctx: rateCtx, lines: items, invoiced: grnInvoiced }) : undefined);
+  const ratesToSave = () => (canSetRates ? buildRates({ grnRates, changes: rateChanges, ctx: rateCtx, lines: items, invoiced: grnInvoiced, stored: stored.rates }) : undefined);
   /** The server refused the rates: read them again and say why. */
   const showRateRefusal = (rateError: { code: string; data: unknown }, message: string) => {
     void stored.refresh();
@@ -278,6 +315,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   // The X in the step header asks before it calls this, so there is no second question here.
   const handleCancel = () => {
+    // During a save nothing leaves; while its lost answer is being checked the X does, after its warning.
+    if (isSubmittingState && !lostChecking) return;
+    lostAbortRef.current?.abort();
     resetFormState();
     // Always navigate to GRN list directly, not back one step
     router.replace('/grn');
@@ -292,7 +332,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const editStep = (step: 1 | 2) => ({ pathname: step === 1 ? ('/grn-edit/[id]/step1' as const) : ('/grn-edit/[id]/step2' as const), params: { id } });
 
-  const handlePrevious = () => {
+  /** Back to the Items step. The callers that may run while a save is being settled check the lock themselves. */
+  const goToItemsStep = () => {
     dispatch(setCurrentStep(2));
     if (openedOnRates) {
       router.replace(editStep(1));
@@ -302,7 +343,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     router.back();
   };
 
-  const handleNavigateToHeader = () => {
+  /** Back to the details step. */
+  const goToDetailsStep = () => {
     dispatch(setCurrentStep(1));
     if (openedOnRates) {
       router.replace(editStep(1));
@@ -314,17 +356,29 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     });
   };
 
-  // The Back key goes to step 2 as Previous does; on the normal way in, the stack already does that.
+  const handlePrevious = () => {
+    if (isSubmittingState) return;
+    goToItemsStep();
+  };
+
+  const handleNavigateToHeader = () => {
+    if (isSubmittingState) return;
+    goToDetailsStep();
+  };
+
+  // The Back key goes to step 2 as Previous does; on the normal way in, the stack already does that. While a save
+  // runs it does nothing (the create route's own handler ignores it too: app/grn-form/step3.tsx).
   useBackHandler({
-    enabled: openedOnRates,
+    enabled: openedOnRates || isSubmittingState,
     onBackPress: () => {
+      if (isSubmittingState) return true;
       handlePrevious();
       return true;
     },
   });
 
   const handleStepIndicatorPress = (stepNumber: number) => {
-    if (stepNumber === STEP_NUMBERS.REVIEW) return;
+    if (isSubmittingState || stepNumber === STEP_NUMBERS.REVIEW) return;
     if (stepNumber === STEP_NUMBERS.ITEMS) {
       handlePrevious();
     } else if (stepNumber === STEP_NUMBERS.HEADER) {
@@ -333,7 +387,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
 
   const validateFormData = async (): Promise<boolean> => {
-    const validation = await validateStep3({ header, items });
+    const checked = await validateStep3({ header, items });
+    // The number of a saved GRN is read-only and goes back as it was stored (owner decision D6): a stored number that
+    // fails today's format (older data) does not stop the edit.
+    const validation = isCreateMode ? checked : withoutStoredNumberError(checked);
 
     if (!validation.isValid) {
       setLocalValidationErrors(validation.errors);
@@ -416,11 +473,14 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     // and every photo picked in the form would be uploaded twice.
     if (saveInFlightRef.current || (isCreateMode && createdRef.current)) return;
     saveInFlightRef.current = true;
+    // The form's session as Confirm is pressed: if it has changed when the save answers, the form was left (and
+    // maybe a new one started), and the answer must not touch the form, its photo files or this screen.
+    const formSession = currentGrnFormSession();
     try {
       if (isCreateMode) {
-        await performCreate();
+        await performCreate(formSession);
       } else {
-        await performUpdate();
+        await performUpdate(formSession);
       }
     } finally {
       saveInFlightRef.current = false;
@@ -447,8 +507,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const handleRetryPhotos = async () => {
     if (!photosNotUploaded || isRetryingPhotos) return;
     const { grnId: savedGrnId, failed } = photosNotUploaded;
+    // The form's saving flag goes with the retry: the create route's Back key reads it, and leaving while the
+    // photos upload would drop the retry (it did leave step 3 before).
+    const formSession = currentGrnFormSession();
     setPhotosNotUploaded(null);
     setIsRetryingPhotos(true);
+    dispatch(setIsSaving(true));
     try {
       const outcome = await uploadGRNPhotos(savedGrnId, failed);
       if (outcome.failed.length > 0) {
@@ -462,6 +526,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       setShowSuccessDialog(true);
     } finally {
       setIsRetryingPhotos(false);
+      // A form that was left (or reset) already has its own saving flag.
+      if (currentGrnFormSession() === formSession) dispatch(setIsSaving(false));
     }
   };
 
@@ -477,11 +543,173 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     setShowSuccessDialog(true);
   };
 
-  const performCreate = async () => {
-    setIsSubmitting(true);
+  /**
+   * A save finished after its form was left (the session changed since Confirm): the GRN is saved but the form,
+   * its photo files and this screen belong to someone else now, so only the person is told, in a dialog, that it
+   * is saved. Otherwise a person who believes the form was discarded enters the same GRN again.
+   */
+  const reportSavedAfterLeaving = (grNo: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
+    markItemRatesStale();
+    showAlert(
+      tr('grn.review.savedAfterLeavingTitle'),
+      tr(photos && photos.failed.length > 0 ? 'grn.review.savedAfterLeavingPhotos' : 'grn.review.savedAfterLeaving', { number: formatIdentifier(grNo ?? '') })
+    );
+  };
+
+  /**
+   * Sends a save and settles a lost answer before anything else happens (owner rule D22). When the save was sent and
+   * got no answer it may be applied, so the form stays locked (`lostChecking`: the strip, no edits, X only with its
+   * warning) and the server is asked about that request's code once the phone is online and 10 s have passed since it
+   * was sent. Found: `send` is called with the stored answer, which is handled like the answer that was lost. Not
+   * found: the identical request is sent once more, byte for byte (`send` is given the lost attempt: its body and its
+   * code), and its answer is handled the same way.
+   *
+   * Once an answer is lost the attempt is settled only by the server's answer to it: a resend that fails without one
+   * (57014 while it waits behind the original, a failure before sending, a changed session, a gateway error) comes
+   * back as a lost answer again (the service sets it), and the form stays locked and goes back to the check. A resend
+   * refused for the number (`numberTaken` with a lost answer) means the first send may have saved it: it goes back to
+   * the check too, and when the check finds nothing and the resend is refused for the number again the result says
+   * `numberMaybeSaved`: no next number is offered. A 57014 on the FIRST send is an answer, not a lost one: nothing was
+   * saved.
+   *
+   * @returns the answer to handle, or null when the form was left while the check ran (the X's warning said so).
+   */
+  const sendUntilAnswered = async <R extends { lostAnswer?: GRNLostAnswer; numberTaken?: { number: string } }>(
+    send: (resend?: GRNLostAnswer, storedAnswer?: unknown) => Promise<R>,
+    formLeft: () => boolean
+  ): Promise<(R & { numberMaybeSaved?: boolean }) | null> => {
     try {
-      const result = await createGRN({
-        header,
+      let result = await send();
+      let takenOnResend = false;
+      while (result.lostAnswer) {
+        if (formLeft()) return null;
+        if (result.numberTaken) {
+          // The second refusal for the number after a check that found nothing: the person looks in the list.
+          if (takenOnResend) return { ...result, lostAnswer: undefined, numberMaybeSaved: true };
+          takenOnResend = true;
+        }
+        const lost = result.lostAnswer;
+        const controller = new AbortController();
+        lostAbortRef.current = controller;
+        setLostChecking(true);
+        let check: { found: boolean; response?: unknown };
+        try {
+          check = await checkSubmission(lost.key, lost.sentAt, controller.signal);
+        } catch (checkError) {
+          // Aborted: the person left through the X. Anything else is not expected (the check retries by itself).
+          if (!controller.signal.aborted) throw checkError;
+          return null;
+        } finally {
+          lostAbortRef.current = null;
+        }
+        if (controller.signal.aborted || formLeft()) return null;
+        result = check.found ? await send(undefined, check.response ?? undefined) : await send(lost);
+      }
+      return result;
+    } finally {
+      setLostChecking(false);
+    }
+  };
+
+  /** Back to step 1, where the number is (the create form's stack is step 1, 2, 3). */
+  const leaveToNumberStep = () => {
+    dispatch(setCurrentStep(1));
+    router.back();
+    requestAnimationFrame(() => {
+      router.back();
+    });
+  };
+
+  /**
+   * Another GRN holds the form's number (it was free when the form got it): the person is told and taken to the step
+   * with the number. A number the form offered is replaced by the next free one (like the dispatch and invoice forms);
+   * a number the person typed is not changed behind their back, step 1 refuses it until they do.
+   */
+  const handleNumberTakenAtCreate = async (takenNumber: string, formLeft: () => boolean) => {
+    triggerError();
+    const okButtons = [{ text: tr('common.ok'), onPress: leaveToNumberStep }];
+    if (!grNoTyped) {
+      let next: string | null = null;
+      try {
+        next = await getNextGRNNumber();
+      } catch (numberError) {
+        log.error('Could not get the next GRN number', loggableError(numberError));
+      }
+      if (formLeft()) return;
+      if (next && next !== takenNumber) {
+        dispatch(updateHeader({ gr_no: next }));
+        showAlert(
+          saveFailedTitle(),
+          tr('grn.review.numberUsedNext', { number: formatIdentifier(takenNumber), next: formatIdentifier(next) }),
+          okButtons
+        );
+        return;
+      }
+    }
+    const message = tr('grn.form.numberTaken', { number: formatIdentifier(takenNumber) });
+    dispatch(setTakenNumberError(message));
+    showAlert(saveFailedTitle(), message, okButtons);
+  };
+
+  /**
+   * The create was refused for its number again after a lost answer and a check that found nothing: the first send may
+   * have saved it. The form stays locked behind this one dialog, whose only button leaves the form for the list; no
+   * next number is offered and nothing can be sent again from here.
+   */
+  const showNumberMaybeSaved = (number: string) => {
+    showAlert(
+      saveFailedTitle(),
+      tr('grn.form.numberMaybeSaved', { number: formatIdentifier(number) }),
+      [
+        {
+          text: tr('common.close'),
+          onPress: () => {
+            resetFormState();
+            router.replace('/grn');
+          },
+        },
+      ],
+      { cancelable: false }
+    );
+  };
+
+  const performCreate = async (formSession: number) => {
+    const formLeft = () => currentGrnFormSession() !== formSession;
+    // Set when the form must stay locked after this call (see showNumberMaybeSaved).
+    let keepLocked = false;
+    setIsSubmitting(true);
+    dispatch(setIsSaving(true));
+    try {
+      // The number is fetched once and kept in the form before the first send: a second press, or a retry after an
+      // answer that never came, then sends the same body and gets the same idempotency key. (createGRN does not
+      // ask for a number: a new one per press would save the GRN twice.)
+      let grNo = header.gr_no;
+      if (!grNo) {
+        try {
+          grNo = await getNextGRNNumber();
+        } catch (numberError) {
+          if (formLeft()) return;
+          triggerError();
+          log.error('Could not get the GRN number', loggableError(numberError));
+          showAlert(tr('errors.grn.form.numberFailedTitle'), connectionHint());
+          return;
+        }
+        if (formLeft()) return;
+        dispatch(updateHeader({ gr_no: grNo }));
+        dispatch(setGrNoTyped(false));
+      }
+
+      // The form's session id, made by the first Create and kept for every retry of this form (it is part of the
+      // request code; a reset after a save clears it).
+      let nonce = submissionNonce;
+      if (!nonce) {
+        nonce = newSubmissionNonce();
+        dispatch(setSubmissionNonce(nonce));
+      }
+
+      // Built once: a send after a lost answer is the identical request, the same body under the same request code.
+      const request = {
+        header: { ...header, gr_no: grNo },
         items: items.map((item) => ({
           item_table_id: item.item_table_id,
           item_name: item.item_name,
@@ -493,7 +721,25 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           trl_images: item.trl_images || [],
         })),
         rates: ratesToSave(),
-      });
+        nonce,
+      };
+
+      const result = await sendUntilAnswered(
+        (resend, storedAnswer) =>
+          createGRN({
+            ...request,
+            ...(storedAnswer === undefined ? {} : { storedAnswer }),
+            ...(resend ? { resend } : {}),
+          }),
+        formLeft
+      );
+      // The form was left while the answer was being checked: nothing more to do here.
+      if (!result) return;
+
+      if (formLeft()) {
+        if (result.success && result.data) reportSavedAfterLeaving(result.data.gr_no, result.data.photos);
+        return;
+      }
 
       if (result.success && result.data) {
         createdRef.current = true;
@@ -510,46 +756,157 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           itemCount: items.length,
         });
         finishSave(result.data.id, result.data.photos);
+      } else if (result.numberMaybeSaved) {
+        triggerError();
+        keepLocked = true;
+        showNumberMaybeSaved(result.numberTaken?.number ?? header.gr_no);
+      } else if (result.numberTaken) {
+        await handleNumberTakenAtCreate(result.numberTaken.number, formLeft);
       } else {
         triggerError();
         if (result.rateError) showRateRefusal(result.rateError, result.error);
         else showAlert(saveFailedTitle(), serverText(result.error, connectionHint(), { write: true, form: true }));
       }
     } catch (error) {
+      if (formLeft()) return;
       triggerError();
       log.error('Submission error', loggableError(error));
       showAlert(saveFailedTitle(), connectionHint());
     } finally {
-      setIsSubmitting(false);
+      if (!keepLocked) {
+        setIsSubmitting(false);
+        // A form that was left (or reset by this very save) already has its own saving flag.
+        if (!formLeft()) dispatch(setIsSaving(false));
+      }
     }
   };
 
-  const performUpdate = async () => {
-    if (!grnId) {
+  /**
+   * The edit form is replaced by what the server holds now (the person chose "Open it again" after a stale save): the
+   * GRN is read again, forced, the form's photo files and everything typed in it go, and the details step opens.
+   * A read that fails changes nothing and says so.
+   */
+  const reopenFromServer = async (editedGrnId: string, formLeft: () => boolean) => {
+    const reloaded = await loadGRNDataService(editedGrnId);
+    if (formLeft()) return;
+    if (!reloaded.success || !reloaded.data) {
+      showAlert(tr('errors.grn.form.loadFailedTitle'), serverText(reloaded.error, tr('common.checkConnection')));
+      return;
+    }
+    resetFormState();
+    dispatch(loadGRNFormData({ ...reloaded.data, grnId: editedGrnId }));
+    goToDetailsStep();
+  };
+
+  /**
+   * update_grn refused the save by one of the rules of backend migration 121. The text is the app's own, written from
+   * the reason and its fields (never the server's English), and the person is sent where it can be put right: the
+   * details step for the number and the date, the items step for a line, Rates for a rate that would go. Nothing was saved.
+   */
+  const handleUpdateRefusal = async (refusal: ServerRefusal, editedGrnId: string, formLeft: () => boolean) => {
+    const lineId = refusalString(refusal, 'line_id');
+    const lineIndex = lineId ? items.findIndex((item) => item.grn_trl_id === lineId) : -1;
+    const itemName = refusalString(refusal, 'item_name') ?? (lineIndex >= 0 ? items[lineIndex].item_name : '');
+    const grNo = refusalString(refusal, 'gr_no') ?? header.gr_no;
+    const invoiceNo = refusalString(refusal, 'invoice_no');
+    const lineTitle = lineIndex >= 0 ? tr('grn.refusal.lineTitle', { position: lineIndex + 1 }) : saveFailedTitle();
+    const ok = (onPress?: () => void) => [{ text: tr('common.ok'), onPress }];
+
+    // What "Open it again" does after a line refusal: the form is replaced by the GRN as the server holds it now. The
+    // refusal may come from a locked line the form did not know (changed by someone else since it was opened), and
+    // nothing in the form could put it right.
+    const reopen = () => {
+      if (!formLeft()) void reopenFromServer(editedGrnId, formLeft);
+    };
+    const reopenButton = { text: tr('errors.refusal.stale.reload'), style: 'destructive' as const, onPress: reopen };
+    // Close leaves the dialog; `then` is where a line refusal sends the person (the items step), when it does.
+    const closeButton = (then?: () => void) => ({ text: tr('common.close'), style: 'cancel' as const, onPress: then });
+
+    switch (refusal.reason) {
+      case REFUSAL.STALE_RECORD: {
+        // 'keep' leaves the form as it is; 'reload' replaces it with the GRN as it is now.
+        const choice = await askStaleRecord('grn');
+        if (choice === 'reload' && !formLeft()) await reopenFromServer(editedGrnId, formLeft);
+        return;
+      }
+      case REFUSAL.LOT_INVOICED:
+        showAlert(lineTitle, lotInvoicedText(itemName, invoiceNo), [closeButton(goToItemsStep), reopenButton]);
+        return;
+      case REFUSAL.LOT_DISPATCHED:
+        showAlert(lineTitle, tr('grn.refusal.lotDispatched', { item: itemName }), [closeButton(goToItemsStep), reopenButton]);
+        return;
+      case REFUSAL.GRN_INVOICED:
+        showAlert(saveFailedTitle(), invoicedNoNewLotText(formatIdentifier(grNo), invoiceNo), ok(goToItemsStep));
+        return;
+      case REFUSAL.GRN_DATE_AFTER_DISPATCH: {
+        // The first dispatch is on this day: the details step's picker and check follow it.
+        const firstDispatch = refusalString(refusal, 'first_dispatch_date')?.slice(0, 10);
+        if (firstDispatch) dispatch(setFirstDispatchDate(firstDispatch));
+        showAlert(
+          saveFailedTitle(),
+          tr('grn.validation.dateAfterDispatch', { grn: formatIdentifier(grNo), date: firstDispatch ? formatDate(firstDispatch) : '' }),
+          ok(goToDetailsStep)
+        );
+        return;
+      }
+      case REFUSAL.GRN_DATE_LOCKED:
+        showAlert(saveFailedTitle(), tr('grn.refusal.dateInvoiced'), ok(goToDetailsStep));
+        return;
+      case REFUSAL.GRN_NUMBER_LOCKED:
+        showAlert(saveFailedTitle(), tr('grn.refusal.numberLocked'), ok(goToDetailsStep));
+        return;
+      case REFUSAL.RATES_NEED_MANAGER: {
+        // A staff edit that would remove a rate set for this GRN: stays here, the form is kept.
+        const names = refusalStrings(refusal, 'items') ?? [];
+        showAlert(
+          saveFailedTitle(),
+          names.length > 0 ? tr('grn.refusal.ratesNeedManagerItems', { items: names.join(', ') }) : tr('grn.refusal.ratesNeedManager')
+        );
+        return;
+      }
+      case REFUSAL.RATES_WOULD_DROP: {
+        // A weight or pricing-mode edit would drop a rate set for this GRN: Rates is where a new one is set.
+        const names = refusalStrings(refusal, 'items') ?? [];
+        void stored.refresh();
+        showAlert(
+          tr('grn.review.ratesRefusedTitle'),
+          names.length > 0 ? tr('grn.refusal.ratesWouldDropItems', { items: names.join(', ') }) : tr('grn.refusal.ratesWouldDrop')
+        );
+        scrollToRates();
+        return;
+      }
+      case REFUSAL.LINE_ON_ORDER:
+        showAlert(
+          tr('grn.refusal.removeTitle'),
+          tr('grn.refusal.lineOnOrder', { item: itemName, customer: refusalString(refusal, 'customer_name') ?? header.customer_name }),
+          [closeButton(), reopenButton]
+        );
+        return;
+      case REFUSAL.LINE_DISPATCHED_BEFORE:
+        showAlert(tr('grn.refusal.removeTitle'), tr('grn.refusal.lineDispatchedBefore', { item: itemName }), [closeButton(), reopenButton]);
+        return;
+      default:
+        // A rule this app does not know yet: the server's own sentence, as before.
+        showAlert(saveFailedTitle(), serverText(refusal.text, connectionHint(), { write: true, form: true }));
+    }
+  };
+
+  const performUpdate = async (formSession: number) => {
+    const formLeft = () => currentGrnFormSession() !== formSession;
+    // The GRN being edited is the route's; the form's id is only what was loaded last. If they differ the form
+    // holds another GRN (the edit layout loads the route's GRN before this step is shown, so this is a guard).
+    const routeGrnId = Array.isArray(id) ? id[0] : id;
+    if (!grnId || (routeGrnId && routeGrnId !== grnId)) {
       showAlert(saveFailedTitle(), tr('grn.form.reopenMessage'));
       return;
     }
+    const editedGrnId = routeGrnId || grnId;
 
     dispatch(setIsSaving(true));
     try {
-      // After an update that got no answer, a line added in this edit may already be on the
-      // GRN: it gets its saved id first, so this Save updates it instead of adding it a second
-      // time. The same Save repeated is also answered from the first by its idempotency key;
-      // the saved ids cover a form that was changed in between and a server without the key.
-      let adopted: Record<string, string> = {};
-      if (saveUnconfirmed) {
-        const check = await findLinesSavedByLostUpdate(grnId, items);
-        if (!check.success) {
-          triggerError();
-          showAlert(saveFailedTitle(), check.error);
-          return;
-        }
-        adopted = check.adopted;
-        dispatch(adoptSavedLines(adopted));
-        dispatch(setSaveUnconfirmed(false));
-      }
-
-      const result = await updateGRN(grnId, {
+      // Built once: a send after a lost answer is the identical request. Its request code is the edit session's key
+      // for this body, kept until a save is answered (grnUpdateIdempotencyKey).
+      const request = {
         header: {
           registration: header.registration,
           date: header.date,
@@ -577,7 +934,26 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           trl_images: item.trl_images || [],
         })),
         rates: ratesToSave(),
-      }, { removedImages, adoptedLineIds: adopted });
+        // The version the form was read at: part of the request, so a resend after a lost answer is byte for byte the same.
+        expectedUpdatedAt: loadedUpdatedAt,
+      };
+
+      const result = await sendUntilAnswered(
+        (resend, storedAnswer) =>
+          updateGRN(editedGrnId, request, {
+            removedImages,
+            ...(storedAnswer === undefined ? {} : { storedAnswer }),
+            ...(resend ? { resend } : {}),
+          }),
+        formLeft
+      );
+      // The form was left while the answer was being checked: nothing more to do here.
+      if (!result) return;
+
+      if (formLeft()) {
+        if (result.success) reportSavedAfterLeaving(header.gr_no, result.data?.photos);
+        return;
+      }
 
       if (result.success) {
         markItemRatesStale();
@@ -616,19 +992,16 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           // Its own dialog first, so the warning is not hidden behind the success dialog. Not awaited:
           // the Save button must not stay busy while the dialog is open. askAlert settles on OK or dismissal.
           void askAlert(tr('grn.review.skippedTitle'), skippedMessage, [{ text: tr('common.ok'), value: true }], false)
-            .then(() => finishSave(grnId, savedPhotos));
+            .then(() => finishSave(editedGrnId, savedPhotos));
         } else {
-          finishSave(grnId, savedPhotos);
+          finishSave(editedGrnId, savedPhotos);
         }
-      } else if (result.outcomeUnknown) {
-        // Sent, not answered: the GRN may or may not be saved. The form stays as it is.
-        triggerError();
-        dispatch(setSaveUnconfirmed(true));
-        showAlert(saveFailedTitle(), tr('grn.review.saveUnanswered'));
       } else {
         triggerError();
         const errorMessage = serverText(result.error, connectionHint(), { write: true, form: true });
-        if (result.rateError) {
+        if (result.refusal) {
+          await handleUpdateRefusal(result.refusal, editedGrnId, formLeft);
+        } else if (result.rateError) {
           showRateRefusal(result.rateError, result.error);
         } else if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
           showAlert(stockProtectedTitle(), stockProtectedMessage());
@@ -637,6 +1010,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         }
       }
     } catch (error) {
+      if (formLeft()) return;
       triggerError();
       log.error('Update error', loggableError(error));
       const errorMessage = error instanceof Error ? error.message : '';
@@ -646,7 +1020,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         showAlert(saveFailedTitle(), connectionHint());
       }
     } finally {
-      dispatch(setIsSaving(false));
+      // A form that was left already has its own saving flag: this save must not clear the next form's.
+      if (!formLeft()) dispatch(setIsSaving(false));
     }
   };
 
@@ -706,7 +1081,6 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // the device under a temporary id and go up when the GRN is saved, so "Discard changes"
   // leaves the saved GRN's photos as they were.
   const imageUploadGrnId = tempGrnId ?? undefined;
-  const isSubmittingState = (isCreateMode ? isSubmitting : isSaving) || isRetryingPhotos;
   const ctaLabel = isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
 
   // The Qty column is as wide as its widest number, the total included.
@@ -725,7 +1099,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           header: tr('grn.rates.colItem'),
           meta: { width: 'grow' },
           cell: ({ row }) => (
-            <GrnReviewItemCell item={row.original} weightText={lineFacts.weightText(row.original)} isProtected={!isCreateMode && row.original.qty !== row.original.stock} styles={styles} table={table} />
+            <GrnReviewItemCell item={row.original} weightText={lineFacts.weightText(row.original)} lock={lineLock(row.original, isCreateMode)} styles={styles} table={table} />
           ),
         }),
         itemColumnHelper.display({
@@ -767,7 +1141,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
+        disabled={isSubmittingState}
+        leaveWarning={lostChecking ? tr('errors.lostAnswer.leaveWarning') : undefined}
       />
+
+      {/* The save got no answer: the form is locked while the server is asked whether it was saved. */}
+      {lostChecking ? <LostAnswerNotice message={tr('errors.lostAnswer.checking')} /> : null}
 
       <View style={styles.contentWrapper}>
         <ScrollView
@@ -853,6 +1232,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                 }}
                 grnId={imageUploadGrnId}
                 imageType="header"
+                disabled={isSubmittingState}
                 maxImages={10}
                 onImagesSelected={() => { }}
                 currentImages={header.gr_images?.map((img) => img.imageUrl) || []}
@@ -862,7 +1242,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                 <ImagePreviewGrid
                   imageData={header.gr_images}
                   removeFromServer={false}
+                  editable={!isSubmittingState}
                   onRemoveImage={(imageId: string) => {
+                    if (isSubmittingState) return;
                     const removed = header.gr_images?.find((img) => img.id === imageId);
                     dispatch(removeHeaderImage(imageId));
                     // A photo that never reached the server: its file on the phone is not needed.
@@ -905,7 +1287,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                 table={itemsTable}
                 variant="nested"
                 testID="grn-review-items-table"
-                rowLabel={row => lineFacts.label(row.original, row.index, !isCreateMode && row.original.qty !== row.original.stock)}
+                rowLabel={row => lineFacts.label(row.original, row.index, lineLock(row.original, isCreateMode))}
                 footer={
                   <View style={styles.itemsTotal} accessible accessibilityLabel={`${tr('grn.review.totalQuantity')}, ${formatNumber(totalQty)}`}>
                     <Text style={[table.primaryStrong, table.grow]}>{tr('common.total')}</Text>
@@ -939,8 +1321,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                   oneTime={rateCtx.priceType === 'one_time'}
                   day={rateCtx.day}
                   invoiced={grnInvoiced}
-                  onChange={setSheetRow}
-                  onAdd={setSheetRow}
+                  onChange={(row) => { if (!isSubmittingState) setSheetRow(row); }}
+                  onAdd={(row) => { if (!isSubmittingState) setSheetRow(row); }}
                   onUndo={undoRateEntry}
                   canRestore={row => removedFor(removedRates, row).length > 0}
                   onRestore={restoreRateEntry}
@@ -1094,8 +1476,33 @@ type TableStyles = ReturnType<typeof makeTableStyles>;
 
 const itemColumnHelper = createAppColumnHelper<GRNItemData>();
 
+/**
+ * What locks a stored line of an edited GRN, as far as the screen says it: 'invoiced' (quantity, item, packing and
+ * weight), 'dispatched' (quantity, item and packing) from the server's locks, or 'quantity' on an older server that
+ * sends none (the line's stock differs from its quantity). null: nothing is locked, or a new GRN.
+ */
+type LineLock = 'invoiced' | 'dispatched' | 'quantity' | null;
+
+function lineLock(item: GRNItemData, isCreateMode: boolean): LineLock {
+  if (isCreateMode) return null;
+  if (item.locks) return item.locks.invoiced ? 'invoiced' : item.locks.dispatched ? 'dispatched' : null;
+  return item.qty !== item.stock ? 'quantity' : null;
+}
+
+/** The tag text and the spoken text of a line's lock. */
+const LOCK_TAG: Record<Exclude<LineLock, null>, () => string> = {
+  invoiced: () => tr('grn.item.lockedInvoiced'),
+  dispatched: () => tr('grn.item.lockedDispatched'),
+  quantity: () => tr('grn.item.quantityLocked'),
+};
+const LOCK_A11Y: Record<Exclude<LineLock, null>, () => string> = {
+  invoiced: () => tr('grn.review.a11yInvoicedLocked'),
+  dispatched: () => tr('grn.review.a11yDispatchedLockedAll'),
+  quantity: () => tr('grn.review.a11yDispatchedLocked'),
+};
+
 /** What a screen reader says for one line of the review's Items table. */
-function itemA11y(item: GRNItemData, index: number, isProtected: boolean, weightText: string | null): string {
+function itemA11y(item: GRNItemData, index: number, lock: LineLock, weightText: string | null): string {
   const qty = item.qty || 0;
   const rack = item.rack?.trim();
   const packageMark = item.package_mark?.trim();
@@ -1109,7 +1516,7 @@ function itemA11y(item: GRNItemData, index: number, isProtected: boolean, weight
     rack ? tr('grn.item.a11yRack', { rack }) : undefined,
     packageMark ? tr('grn.item.a11yMark', { mark: packageMark }) : undefined,
     imageCount > 0 ? formatCount(imageCount, 'photo') : undefined,
-    isProtected ? tr('grn.review.a11yDispatchedLocked') : undefined,
+    lock ? LOCK_A11Y[lock]() : undefined,
   ]
     .filter(Boolean)
     .join(', ');
@@ -1131,12 +1538,12 @@ function itemFactsCache() {
   };
   return {
     weightText: (item: GRNItemData) => entry(item).weightText,
-    label: (item: GRNItemData, index: number, isProtected: boolean) => {
+    label: (item: GRNItemData, index: number, lock: LineLock) => {
       const found = entry(item);
-      const key = `${index}|${isProtected}`;
+      const key = `${index}|${lock}`;
       let label = found.labels.get(key);
       if (label === undefined) {
-        label = itemA11y(item, index, isProtected, found.weightText);
+        label = itemA11y(item, index, lock, found.weightText);
         found.labels.set(key, label);
       }
       return label;
@@ -1148,14 +1555,14 @@ interface GrnReviewItemCellProps {
   item: GRNItemData;
   /** The weight of one package ("50 kg each"); null when the line has none, and then nothing is shown. */
   weightText: string | null;
-  /** A stored line with dispatches: its quantity cannot change. */
-  isProtected: boolean;
+  /** What locks this stored line (see LineLock); null when nothing does. */
+  lock: LineLock;
   styles: GrnReviewStyles;
   table: TableStyles;
 }
 
 /** The Item cell of one line of the review's Items table: name, packaging and the tags. */
-const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightText, isProtected, styles, table }: GrnReviewItemCellProps) {
+const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightText, lock, styles, table }: GrnReviewItemCellProps) {
   const rack = item.rack?.trim();
   const packageMark = item.package_mark?.trim();
   const imageCount = item.trl_images?.length || 0;
@@ -1169,7 +1576,7 @@ const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightTe
         {rack ? <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
         {packageMark ? <StatusTag wrap status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
         {imageCount > 0 && <StatusTag wrap status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />}
-        {isProtected && <StatusTag wrap status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />}
+        {lock !== null && <StatusTag wrap status="critical" label={LOCK_TAG[lock]()} icon="lock-outline" />}
       </View>
     </>
   );

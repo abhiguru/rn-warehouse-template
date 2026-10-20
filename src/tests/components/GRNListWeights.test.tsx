@@ -14,7 +14,7 @@ import { space, typography } from '@/theme/tokens';
 import { getAllGRNItems } from '@/services/grn-service';
 import { setLanguage } from '@/i18n';
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useFocusEffect: jest.fn() }));
 // Every row is drawn, as the list draws the rows on screen.
 jest.mock('@shopify/flash-list', () => {
   const mockReact = require('react');

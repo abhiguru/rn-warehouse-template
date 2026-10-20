@@ -51,7 +51,7 @@ describe('invoice texts in Gujarati', () => {
     expect(formatInvoiceAmount(-250)).toBe('−₹૨૫૦.૦૦');
     expect(formatInvoiceDeduction(250)).toBe('−₹૨૫૦.૦૦');
     expect(t('invoice.review.confirmMessage', { customer: 'Asha Traders', total: formatInvoiceAmount(1906) })).toBe(
-      'Asha Traders\nઅંદાજિત કુલ ₹૧,૯૦૬.૦૦\nઇન્વૉઇસ સચવાય ત્યારે છેલ્લી રકમ સર્વર ગણે છે.'
+      'Asha Traders\nકુલ ₹૧,૯૦૬.૦૦\nસર્વર જુદી કુલ રકમ ગણે તો કંઈ સચવાશે નહીં અને નવી રકમ બતાવાશે.'
     );
   });
 

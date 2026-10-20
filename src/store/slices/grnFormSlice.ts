@@ -38,6 +38,32 @@ export interface GRNHeaderData {
   gr_images: GRNImageData[];
 }
 
+/**
+ * What locks a saved line, as `get_grn_edit_state` says it when the GRN is opened for editing (backend migration 121).
+ * A line has none on a server that does not have that function (the app then falls back on its older rules).
+ */
+export interface GRNLineLocks {
+  /** Dispatch lines point at this lot: its item and packing are locked. */
+  dispatched: boolean;
+  /** A dispatch line or a stock movement exists for the lot: the line can't be removed. */
+  hasHistory: boolean;
+  /** The lot is on a live invoice: item, packing and weight are locked. */
+  invoiced: boolean;
+  /** The number of that invoice, as the app writes invoice numbers. */
+  invoiceNo?: string;
+  /** The lot is on a customer's order: the line can't be removed. */
+  onOrder: boolean;
+  /** The customer whose order it is (the GRN's customer). */
+  customerName?: string;
+}
+
+/** The live invoice of the GRN being edited (`get_grn_edit_state`). */
+export interface GRNInvoiceRef {
+  id: string;
+  /** The invoice number, as the app writes invoice numbers. */
+  invNo: string;
+}
+
 // Item data structure
 export interface GRNItemData {
   grn_trl_id: string; // ID of the GRN item record in goodsreceived_trl table
@@ -50,6 +76,8 @@ export interface GRNItemData {
   rack: string;
   package_mark: string;
   trl_images: GRNImageData[]; // Multiple images per item (changed from single trl_image)
+  /** Edit only: what locks this saved line (see GRNLineLocks). Never sent to the server. */
+  locks?: GRNLineLocks;
 }
 
 /**
@@ -74,6 +102,32 @@ interface GRNFormState {
   // IDs
   grnId: string | null;
   tempGrnId: string | null;
+
+  // Form-session nonce: null until the first Create of this form makes one (a random id), then kept for every
+  // retry of the same form. A reset (also the one after a successful save) clears it, so the next form makes its
+  // own. It goes into what the create's idempotency key hashes and never into the RPC body, so the same GRN
+  // entered again after a delete does not meet the key of the deleted one (contract item 11). It is null in the
+  // initial state so that a reset form equals a fresh one.
+  submissionNonce: string | null;
+
+  // The GRN number was typed by the person (not offered by the form): when another GRN holds it at Create, the
+  // form does not replace it with the next free number.
+  grNoTyped: boolean;
+
+  // The edit form as it was loaded (a signature of what a save would change): Back on the first step asks before
+  // it throws away edits only when the form differs from this. Null for a new GRN.
+  loadedSignature: string | null;
+
+  // Edit only, from get_grn_edit_state (backend migration 121), read before the rows so that a change made in between
+  // makes the token older, never newer. All null on a server that does not have it (the app then sends no token).
+  // `loadedUpdatedAt` is the GRN's version token: Save sends it back as `p_expected_updated_at`.
+  loadedUpdatedAt: string | null;
+  // The GRN's live invoice: its date and a new line are locked while it exists.
+  invoice: GRNInvoiceRef | null;
+  // The day (YYYY-MM-DD) of the earliest dispatch from any lot: the GRN may not be dated after it.
+  firstDispatchDate: string | null;
+  // The GRN's date as it was loaded: a date that was already after the first dispatch is refused only when it is changed.
+  loadedDate: string | null;
 
   // Form data
   header: GRNHeaderData;
@@ -100,10 +154,6 @@ interface GRNFormState {
   // Error state for displaying save/load failures to user
   error: string | null;
 
-  // An update was sent and no answer came back: the server is asked what it
-  // holds before the next Save (see findLinesSavedByLostUpdate).
-  saveUnconfirmed: boolean;
-
   // Message for a typed GRN number another GRN holds. Kept here, not in a
   // screen, so step 1 still refuses the number after it was left and reopened.
   takenNumberError: string | null;
@@ -120,6 +170,13 @@ interface GRNFormState {
 const createInitialState = (): GRNFormState => ({
   grnId: null,
   tempGrnId: null,
+  submissionNonce: null,
+  grNoTyped: false,
+  loadedSignature: null,
+  loadedUpdatedAt: null,
+  invoice: null,
+  firstDispatchDate: null,
+  loadedDate: null,
   header: {
     gr_no: '',
     registration: '',
@@ -145,11 +202,39 @@ const createInitialState = (): GRNFormState => ({
   isLoading: false,
   isSaving: false,
   error: null,
-  saveUnconfirmed: false,
   takenNumberError: null,
   validationErrors: {},
   snapshot: null,
 });
+
+/**
+ * What a save of the form would send, as one string: the header, the lines, the photos by id, the photos and rates
+ * taken out, and the rates set. The edit form is "changed" when this differs from the one made when it was loaded.
+ * Photo upload progress and errors are not part of it.
+ */
+const formSignature = (
+  state: Pick<GRNFormState, 'header' | 'items' | 'removedImages' | 'grnRates' | 'rateChanges' | 'removedGrnRates'>
+): string => {
+  const { gr_images: headerImages, ...header } = state.header;
+  return JSON.stringify([
+    header,
+    (headerImages ?? []).map(image => image.id),
+    state.items.map(item => [
+      item.grn_trl_id,
+      item.item_table_id,
+      item.packaging,
+      item.qty,
+      item.weight,
+      item.rack,
+      item.package_mark,
+      (item.trl_images ?? []).map(image => image.id),
+    ]),
+    state.removedImages.map(image => image.id),
+    state.grnRates,
+    state.rateChanges,
+    state.removedGrnRates,
+  ]);
+};
 
 /** A removed photo that exists on the server (not a photo picked in this form) is kept for the save. */
 const rememberRemovedImage = (state: GRNFormState, image: GRNImageData | undefined) => {
@@ -243,6 +328,11 @@ const grnFormSlice = createSlice({
       if (next !== stored) state.items = next;
     },
     removeItem: (state, action: PayloadAction<string>) => {
+      // A saved line goes with its photos (the server deletes their rows with the line): their files are
+      // removed after the save, so each saved photo of the line is kept in removedImages. Photos picked in
+      // this form have no saved file and are skipped by rememberRemovedImage.
+      const removed = state.items.find(item => item.grn_trl_id === action.payload);
+      (removed?.trl_images ?? []).forEach(image => rememberRemovedImage(state, image));
       state.items = state.items.filter(item => item.grn_trl_id !== action.payload);
     },
 
@@ -408,29 +498,49 @@ const grnFormSlice = createSlice({
     setTakenNumberError: (state, action: PayloadAction<string | null>) => {
       state.takenNumberError = action.payload;
     },
-    setSaveUnconfirmed: (state, action: PayloadAction<boolean>) => {
-      state.saveUnconfirmed = action.payload;
+    /** The form's session id, made by the first Create of the form and kept for its retries (see `submissionNonce`). */
+    setSubmissionNonce: (state, action: PayloadAction<string | null>) => {
+      state.submissionNonce = action.payload;
     },
-    /** Lines the form held as new that the server already has: local id -> saved id. */
-    adoptSavedLines: (state, action: PayloadAction<Record<string, string>>) => {
-      for (const item of state.items) {
-        const savedId = action.payload[item.grn_trl_id];
-        if (savedId) item.grn_trl_id = savedId;
-      }
+    /** The number in the form was typed by the person (true) or offered by the form (false). */
+    setGrNoTyped: (state, action: PayloadAction<boolean>) => {
+      state.grNoTyped = action.payload;
+    },
+
+    /** A refusal said the first dispatch is on another day than the form knew: the picker and the check follow it. */
+    setFirstDispatchDate: (state, action: PayloadAction<string | null>) => {
+      state.firstDispatchDate = action.payload;
     },
 
     // Bulk operations
-    loadGRNData: (state, action: PayloadAction<{ header: GRNHeaderData; items: GRNItemData[]; grnId: string; grnRates?: GrnRate[]; grnInvoiced?: boolean }>) => {
+    loadGRNData: (
+      state,
+      action: PayloadAction<{
+        header: GRNHeaderData;
+        items: GRNItemData[];
+        grnId: string;
+        grnRates?: GrnRate[];
+        grnInvoiced?: boolean;
+        // From get_grn_edit_state; absent on an older server.
+        updatedAt?: string | null;
+        invoice?: GRNInvoiceRef | null;
+        firstDispatchDate?: string | null;
+      }>
+    ) => {
       state.header = action.payload.header;
       state.items = action.payload.items;
       state.grnId = action.payload.grnId;
+      state.loadedUpdatedAt = action.payload.updatedAt ?? null;
+      state.invoice = action.payload.invoice ?? null;
+      state.firstDispatchDate = action.payload.firstDispatchDate ?? null;
+      state.loadedDate = action.payload.header.date ?? null;
       state.grnRates = action.payload.grnRates ?? [];
       state.rateChanges = [];
       state.removedGrnRates = [];
       state.grnInvoiced = action.payload.grnInvoiced === true;
       state.removedImages = [];
-      state.saveUnconfirmed = false;
       state.takenNumberError = null;
+      state.loadedSignature = formSignature(state);
     },
     resetForm: () => {
       return createInitialState();
@@ -506,8 +616,9 @@ export const {
   setValidationErrors,
   clearValidationError,
   setTakenNumberError,
-  setSaveUnconfirmed,
-  adoptSavedLines,
+  setSubmissionNonce,
+  setGrNoTyped,
+  setFirstDispatchDate,
   setGrnRates,
   setRateChanges,
   setRemovedGrnRates,
@@ -531,10 +642,15 @@ export const selectGRNRates = (state: { grnForm: GRNFormState }) => state.grnFor
 export const selectGRNRateChanges = (state: { grnForm: GRNFormState }) => state.grnForm.rateChanges ?? EMPTY_CHANGES;
 export const selectGRNRemovedRates = (state: { grnForm: GRNFormState }) => state.grnForm.removedGrnRates ?? EMPTY_RATES;
 export const selectGRNInvoiced = (state: { grnForm: GRNFormState }) => state.grnForm.grnInvoiced === true;
+export const selectGRNLoadedUpdatedAt = (state: { grnForm: GRNFormState }) => state.grnForm.loadedUpdatedAt ?? null;
+export const selectGRNInvoice = (state: { grnForm: GRNFormState }) => state.grnForm.invoice ?? null;
+export const selectGRNFirstDispatchDate = (state: { grnForm: GRNFormState }) => state.grnForm.firstDispatchDate ?? null;
+export const selectGRNLoadedDate = (state: { grnForm: GRNFormState }) => state.grnForm.loadedDate ?? null;
 const EMPTY_RATES: GrnRate[] = [];
 const EMPTY_CHANGES: RateChange[] = [];
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;
-export const selectGRNSaveUnconfirmed = (state: { grnForm: GRNFormState }) => state.grnForm.saveUnconfirmed === true;
+export const selectGRNSubmissionNonce = (state: { grnForm: GRNFormState }) => state.grnForm.submissionNonce;
+export const selectGRNGrNoTyped = (state: { grnForm: GRNFormState }) => state.grnForm.grNoTyped === true;
 export const selectGRNTakenNumberError = (state: { grnForm: GRNFormState }) => state.grnForm.takenNumberError ?? null;
 export const selectGRNTempId = (state: { grnForm: GRNFormState }) => state.grnForm.tempGrnId;
 export const selectGRNFormValidationErrors = (state: { grnForm: GRNFormState }) => state.grnForm.validationErrors;
@@ -542,6 +658,15 @@ export const selectGRNFormCurrentStep = (state: { grnForm: GRNFormState }) => st
 export const selectGRNFormIsLoading = (state: { grnForm: GRNFormState }) => state.grnForm.isLoading;
 export const selectGRNFormIsSaving = (state: { grnForm: GRNFormState }) => state.grnForm.isSaving;
 export const selectGRNFormError = (state: { grnForm: GRNFormState }) => state.grnForm.error;
+
+const selectFormSignature = createSelector(
+  [selectGRNFormHeader, selectGRNFormItems, selectGRNRemovedImages, selectGRNRates, selectGRNRateChanges, selectGRNRemovedRates],
+  (header, items, removedImages, grnRates, rateChanges, removedGrnRates) =>
+    formSignature({ header, items, removedImages, grnRates, rateChanges, removedGrnRates })
+);
+/** The edit form differs from the GRN as it was loaded (always false for a new GRN). */
+export const selectGRNFormChanged = (state: { grnForm: GRNFormState }): boolean =>
+  state.grnForm.loadedSignature != null && selectFormSignature(state) !== state.grnForm.loadedSignature;
 
 // Memoized selectors (2025 React Native best practice - prevents unnecessary re-renders)
 export const selectGRNFormTotals = createSelector(

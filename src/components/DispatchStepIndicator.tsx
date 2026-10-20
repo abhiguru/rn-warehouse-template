@@ -36,6 +36,9 @@ export interface DispatchStepIndicatorProps {
   /** First step of a new dispatch: what the Android Back key does (see GenericStepIndicatorHeader). */
   backOnFirstStep?: GenericStepIndicatorHeaderProps['backOnFirstStep'];
   isEditMode?: boolean;
+  /** The server is being asked what became of a request: the close button still asks, with `leaveWarning` (see GenericStepIndicatorHeader). */
+  disabled?: boolean;
+  leaveWarning?: string;
 }
 
 export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
@@ -49,6 +52,8 @@ export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
   onStepPress,
   backOnFirstStep,
   isEditMode = false,
+  disabled = false,
+  leaveWarning,
 }) => {
   return (
     <GenericStepIndicatorHeader
@@ -64,6 +69,8 @@ export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
       cancelMessage={cancelMessage}
       onStepPress={onStepPress}
       backOnFirstStep={backOnFirstStep}
+      disabled={disabled}
+      leaveWarning={leaveWarning}
     />
   );
 };

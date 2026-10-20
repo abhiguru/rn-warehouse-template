@@ -6,7 +6,7 @@
  * primary action. Two buttons sit side by side; three or more stack.
  * Android back and tapping the scrim cancel, when the alert is cancelable.
  */
-import React, { useCallback, useEffect, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Modal, Pressable, ScrollView, Text, View, type AlertButton } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -14,6 +14,13 @@ import { closeAlert, getAlertQueue, registerAlertHost, subscribeAlertQueue } fro
 import { t as tr } from '@/i18n';
 
 type Role = 'primary' | 'secondary' | 'destructive';
+
+/**
+ * A dialog ignores every press (buttons, scrim and Android back) for this long after it comes on screen. A
+ * double tap on the button of the dialog before it would otherwise answer the next question too, as when a
+ * confirmation is followed by a second one.
+ */
+const PRESS_GUARD_MS = 250;
 
 function roleOf(button: AlertButton, index: number, buttons: AlertButton[]): Role {
   if (button.style === 'destructive') return 'destructive';
@@ -95,10 +102,22 @@ export function AlertHost() {
 
   const current = queue[0];
 
-  const close = useCallback((id: number, button?: AlertButton) => {
-    closeAlert(id);
+  // When the dialog on screen starts to take presses (see PRESS_GUARD_MS).
+  const takesPressesAt = useRef(0);
+  const currentId = current?.id;
+  useEffect(() => {
+    if (currentId !== undefined) takesPressesAt.current = Date.now() + PRESS_GUARD_MS;
+  }, [currentId]);
+
+  // Returns true when this press closed the dialog. A second press of the same dialog (a double tap before the
+  // modal is gone) closes nothing, and then neither its handler nor its onDismiss runs again.
+  const close = useCallback((id: number, button?: AlertButton): boolean => {
+    // Too soon after the dialog came up: the press belongs to the dialog before it. Nothing runs.
+    if (Date.now() < takesPressesAt.current) return false;
+    if (!closeAlert(id)) return false;
     // Let the dialog close before the handler runs (it may open another alert or navigate).
     if (button?.onPress) setTimeout(() => button.onPress?.(), 0);
+    return true;
   }, []);
 
   const cancel = useCallback(() => {
@@ -107,8 +126,7 @@ export function AlertHost() {
     const cancelButton = current.buttons.find(b => b.style === 'cancel');
     // Mirror Alert.alert: a one-button alert closes with that button's handler.
     const fallback = current.buttons.length === 1 ? current.buttons[0] : undefined;
-    close(current.id, cancelButton ?? fallback);
-    current.options?.onDismiss?.();
+    if (close(current.id, cancelButton ?? fallback)) current.options?.onDismiss?.();
   }, [current, close]);
 
   if (!current) return null;

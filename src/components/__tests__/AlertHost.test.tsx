@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { AlertHost } from '../AlertHost';
-import { showAlert } from '@/utils/alert';
+import { resetAlertQueueForTests, showAlert } from '@/utils/alert';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 
 let mockTheme = { preference: 'light', brand: 'orange' };
@@ -14,7 +14,12 @@ jest.mock('@/store/hooks', () => ({
 function texts(tree: ReactTestRenderer) {
   return tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
 }
+// A dialog takes no press in its first 250 ms (a double tap on the dialog before it): the clock is moved past that.
+function settle() {
+  act(() => { jest.advanceTimersByTime(300); });
+}
 function press(tree: ReactTestRenderer, label: string) {
+  settle();
   const button = tree.root.find(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
   act(() => button.props.onPress());
 }
@@ -69,3 +74,60 @@ describe('showAlert with AlertHost', () => {
     act(() => tree.unmount());
   });
 });
+
+// Review 2026-10-20 (contract item 10, and I7): a second press of a dialog that is closing runs nothing.
+describe('a double press', () => {
+  beforeEach(() => { jest.useFakeTimers(); resetAlertQueueForTests(); });
+  afterEach(() => { jest.useRealTimers(); resetAlertQueueForTests(); });
+
+  it('runs the pressed button handler once when the same dialog is pressed twice before it is gone', () => {
+    const onDelete = jest.fn();
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<AlertHost />); });
+    act(() => showAlert('Delete invoice 7?', 'It will be removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: onDelete },
+    ]));
+    settle();
+    const button = tree.root.find(n => n.props.accessibilityLabel === 'Delete' && typeof n.props.onPress === 'function');
+    act(() => { button.props.onPress(); button.props.onPress(); });
+    act(() => { jest.runAllTimers(); });
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
+  it('runs the cancel handler and onDismiss once when the scrim is pressed twice', () => {
+    const onCancel = jest.fn();
+    const onDismiss = jest.fn();
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<AlertHost />); });
+    act(() => showAlert('Discard this GRN?', undefined, [
+      { text: 'Keep editing', style: 'cancel', onPress: onCancel },
+      { text: 'Discard GRN', style: 'destructive' },
+    ], { cancelable: true, onDismiss }));
+    settle();
+    const scrim = tree.root.find(n => n.props.accessibilityLabel === 'Close dialog' && typeof n.props.onPress === 'function');
+    act(() => { scrim.props.onPress(); scrim.props.onPress(); });
+    act(() => { jest.runAllTimers(); });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
+  it('shows a question that was tapped twice once: the dialog is gone after one press and the handler ran once', () => {
+    const onDelete = jest.fn();
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<AlertHost />); });
+    const ask = () => showAlert('Delete invoice 7?', 'It will be removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: onDelete },
+    ]);
+    act(() => { ask(); ask(); });
+    press(tree, 'Delete');
+    act(() => { jest.runAllTimers(); });
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(texts(tree)).not.toContain('Delete invoice 7?');
+    act(() => tree.unmount());
+  });
+});
+

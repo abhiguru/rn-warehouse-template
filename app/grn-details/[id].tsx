@@ -12,7 +12,7 @@ import { View, Text, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -23,6 +23,9 @@ import {
   DispatchRecord,
   ProcessedImage,
   deleteGRN,
+  settleLostDelete,
+  photoPathsOf,
+  removeGRNPhotoFiles,
   RpcGrnDetails,
 } from '@/services/grn-detail-service';
 import { generateGRNPDF } from '@/services/pdf-service';
@@ -32,6 +35,8 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useBackHandler } from '@/hooks/useBackHandler';
+import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
 import { useGRNDetailTab } from '@/hooks/useGRNDetailTab';
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
@@ -154,6 +159,14 @@ function GRNDetailScreen() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isDeletingImage, setIsDeletingImage] = useState(false);
   const imageMutationRef = useRef(false);
+  // The GRN is being deleted: a synchronous guard (a second press of Delete never starts a second delete),
+  // the state for the button, and Back is ignored until the answer is in.
+  const deleteRunningRef = useRef(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  // The delete got no answer: the screen is locked while the server is asked whether the GRN is gone (owner rule
+  // D22). Leaving is possible only through Back, with a warning, and stops the check.
+  const [deleteChecking, setDeleteChecking] = useState(false);
+  const deleteAbortRef = useRef<AbortController | null>(null);
 
   // Image overlay state
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -200,7 +213,7 @@ function GRNDetailScreen() {
   };
 
   const handleAddHeaderImage = async () => {
-    if (!id || !canEdit || imageMutationRef.current) return;
+    if (!id || !canEdit || imageMutationRef.current || deleteRunningRef.current) return;
     imageMutationRef.current = true;
     try {
       // Android's system picker grants access to the selected asset; broad
@@ -243,7 +256,7 @@ function GRNDetailScreen() {
   };
 
   const handleDeleteImage = (image: GRNImageData) => {
-    if (imageMutationRef.current) return;
+    if (imageMutationRef.current || deleteRunningRef.current) return;
     imageMutationRef.current = true;
     showAlert(tr('grn.details.deleteImageTitle'), tr('grn.details.deleteImageMessage'), [
       { text: tr('common.cancel'), style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
@@ -400,6 +413,54 @@ function GRNDetailScreen() {
     };
   }, [id, fetchGRNDetails, user, session, userProfile]);
 
+  // Load again when the screen comes back into view (after an edit or an invoice change, this screen is still
+  // on the stack and Back would show the figures from before). The first focus is the mount, which the effect
+  // above already loads.
+  const focusCountRef = useRef(0);
+  // This page is the one in front: the "deleted" message's Done leaves only then (a page covered by another screen is
+  // not taken off the stack from under it).
+  const focusedRef = useRef(true);
+  const fetchGRNDetailsRef = useRef(fetchGRNDetails);
+  fetchGRNDetailsRef.current = fetchGRNDetails;
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      focusCountRef.current += 1;
+      if (focusCountRef.current > 1) void fetchGRNDetailsRef.current();
+      return () => {
+        focusedRef.current = false;
+      };
+    }, [])
+  );
+
+  // While the GRN is being deleted the Back key does nothing. While the delete's answer is being checked it asks first
+  // (the answer is not known yet): leaving stops the check.
+  const askToLeaveDuringCheck = () => {
+    showAlert(
+      tr('grn.details.leaveWhileCheckingTitle'),
+      tr('errors.lostAnswer.leaveWarningDelete'),
+      [
+        { text: tr('common.cancel'), style: 'cancel' },
+        {
+          text: tr('common.back'),
+          style: 'destructive',
+          onPress: () => {
+            deleteAbortRef.current?.abort();
+            router.back();
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+  useBackHandler({
+    enabled: isDeleting,
+    onBackPress: () => {
+      if (deleteChecking) askToLeaveDuringCheck();
+      return true;
+    },
+  });
+
   useEffect(() => {
     if (
       (activeTab === 'dispatches' || activeTab === 'items') &&
@@ -436,11 +497,14 @@ function GRNDetailScreen() {
 
   // The invoice page keeps the PDF and sharing; its server call checks the role and customer.
   const handleViewInvoice = (invoiceId: string) => {
+    // Not while a delete is on its way or its answer is being checked: the page must still be here for its result.
+    if (deleteRunningRef.current) return;
     router.push(`/invoice-details/${invoiceId}`);
   };
 
   // Handle edit action
   const handleEditGRN = () => {
+    if (deleteRunningRef.current) return;
     router.push(`/grn-edit/${id}/step1`);
   };
 
@@ -469,13 +533,53 @@ function GRNDetailScreen() {
           text: tr('grn.details.deleteGrn'),
           style: 'destructive',
           onPress: async () => {
-            if (!id) return;
+            if (!id || deleteRunningRef.current) return;
+            deleteRunningRef.current = true;
+            setIsDeleting(true);
+            const grNumber = data?.grn?.gr_no;
+            // The stored photo files of the GRN, read before it is gone: they are removed once it is deleted.
+            const photoPaths = photoPathsOf(data?.grn);
+            // The GRN is gone (this delete, or one whose answer was lost): its photo files go, and Done leaves for the
+            // list only if this page is still the one in front.
+            const showDeleted = (text: string) => {
+              void removeGRNPhotoFiles(photoPaths);
+              showAlert(tr('grn.details.deletedTitle'), text, [
+                {
+                  text: tr('common.done'),
+                  onPress: () => {
+                    if (focusedRef.current) router.back();
+                  },
+                },
+              ]);
+            };
 
             try {
-              const result = await deleteGRN(id);
+              let sentAt = Date.now();
+              let result = await deleteGRN(id);
+
+              // No answer: the delete may have gone through. The screen locks, waits for the connection and for 10 s
+              // to pass since the request was sent, then reads the GRN. Gone: it was deleted (the reports are told, in
+              // settleLostDelete). Still there: the delete is sent once more, and its answer is handled like any other:
+              // a failure of the resend that is not the server's answer (57014 behind the first delete, a failure before
+              // sending) comes back as a lost answer too and starts this again; "GRN not found" is a success (it is
+              // gone, as asked: `alreadyGone`), which is handled below with the photo files removed as well.
+              while (result.lostAnswer) {
+                const controller = new AbortController();
+                deleteAbortRef.current = controller;
+                setDeleteChecking(true);
+                const state = await settleLostDelete(id, sentAt, controller.signal);
+                deleteAbortRef.current = null;
+                if (state === 'aborted') return;
+                if (state === 'gone') {
+                  showDeleted(grNumber ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(grNumber) }) : tr('grn.details.deleted'));
+                  return;
+                }
+                sentAt = Date.now();
+                result = await deleteGRN(id, { resend: true });
+              }
 
               if (result.success) {
-                const message = serverText(result.message, data?.grn?.gr_no ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(data.grn.gr_no) }) : tr('grn.details.deleted'));
+                const message = serverText(result.message, grNumber ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(grNumber) }) : tr('grn.details.deleted'));
                 const details = result.deleted_counts
                   ? tr('grn.details.removedCounts', {
                       items: formatCount(result.deleted_counts.grn_items, 'item'),
@@ -485,9 +589,7 @@ function GRNDetailScreen() {
                     })
                   : '';
 
-                showAlert(tr('grn.details.deletedTitle'), message + details, [
-                  { text: tr('common.done'), onPress: () => router.back() },
-                ]);
+                showDeleted(message + details);
               } else {
                 let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true, delete: true });
 
@@ -512,6 +614,11 @@ function GRNDetailScreen() {
                 tr('grn.details.deleteFailedTitle'),
                 tr('common.checkConnection')
               );
+            } finally {
+              deleteAbortRef.current = null;
+              deleteRunningRef.current = false;
+              setIsDeleting(false);
+              setDeleteChecking(false);
             }
           },
         },
@@ -551,6 +658,8 @@ function GRNDetailScreen() {
 
   // Handle Print
   const handlePrint = () => {
+    // Not while a delete is on its way or its answer is being checked.
+    if (deleteRunningRef.current) return;
     setShowPrintDialog(true);
   };
 
@@ -702,14 +811,26 @@ function GRNDetailScreen() {
               {tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) })}
             </Text>
           ),
-          // Custom back button so Back always returns, even after a deep link
+          // Custom back button so Back always returns, even after a deep link. It does nothing while the GRN is being deleted.
           headerLeft: () => (
-            <HeaderBackButton />
+            <HeaderBackButton
+              onPress={() => {
+                if (deleteChecking) askToLeaveDuringCheck();
+                else if (!deleteRunningRef.current) router.back();
+              }}
+            />
           ),
+          gestureEnabled: !isDeleting,
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
+      {/* While the answer of the delete is being checked nothing on the page can be pressed (no link to another screen, no photo upload, no print). */}
+      <View
+        style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
+        pointerEvents={deleteChecking ? 'none' : 'auto'}
+      >
+        {deleteChecking ? <LostAnswerNotice message={tr('errors.lostAnswer.checkingDelete')} /> : null}
+
         {/* Hero Header - Quick Stats */}
         <GRNHeroHeader
           gr_no={grn.gr_no}
@@ -744,6 +865,7 @@ function GRNDetailScreen() {
               gr_no={grn.gr_no}
               can_edit={canEdit}
               can_delete={canDelete}
+              is_deleting={isDeleting}
               onEdit={handleEditGRN}
               onDelete={handleDeleteGRN}
               onSharePDF={handleSharePDF}

@@ -18,6 +18,8 @@ export const RATE_REFUSAL_CODES = [
   'INVALID_AMOUNT',
   'INVALID_SCOPE',
   'INVALID_DATE',
+  // A rate of an item the entry changes was changed by someone else since the sheet was read (backend migration 120).
+  'STALE_RATES',
 ] as const;
 
 export type RateRefusalCode = (typeof RATE_REFUSAL_CODES)[number];
@@ -58,6 +60,8 @@ export function rateRefusalText(code: string, data: unknown, serverMessage: stri
       return t('grn.review.rateErr.invoiced');
     case 'RATE_NOT_FOR_GRN':
       return t('grn.review.rateErr.notForGrn');
+    case 'STALE_RATES':
+      return t('grn.review.rateErr.stale');
     default:
       return serverText(serverMessage, t('grn.review.rateErr.generic'));
   }

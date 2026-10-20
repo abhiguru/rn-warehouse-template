@@ -27,6 +27,12 @@ export const orders: Translation<typeof source> = {
     removeMessageNoName: 'આ આઇટમ આ ઑર્ડરમાંથી નીકળી જશે.',
     removeItem: 'આઇટમ કાઢી નાખો',
     couldNotRemoveTitle: 'આઇટમ કાઢી શકાઈ નથી',
+    // Draft for the owner's wording review (2026-10-20): a line that is no longer on the order when it is changed or removed.
+    lineGoneTitle: 'આ આઇટમ હવે ઑર્ડરમાં નથી',
+    lineGoneMessage: 'બીજા કોઈએ તેને કાઢી નાખી છે અથવા તેની જાવક થઈ ગઈ છે. ઑર્ડર હવે જેવો છે તેવો ફરી બતાવ્યો છે.',
+    // Drafts for the owner's wording review (2026-10-20): the answer to a change of a line was lost; the server did not apply it.
+    lostAnswerNotSaved: 'સર્વરે ફેરફાર સાચવ્યો નથી. ઑર્ડરમાં હવે જે સચવાયેલું છે તે દેખાય છે.',
+    lostAnswerNotRemoved: 'સર્વરે આઇટમ કાઢી નાખી નથી. તે હજુ ઑર્ડરમાં છે.',
     emptyTitle: 'આ ઑર્ડરમાં કોઈ આઇટમ નથી',
     emptyMessage: 'આ વેપારીના સ્ટોકમાંથી તમે ઉમેરેલી આઇટમ અહીં દેખાશે.',
     labelDetail: '{{label}}, {{detail}}',
@@ -44,6 +50,17 @@ export const orders: Translation<typeof source> = {
     quantity: 'નંગ {{quantity}}',
     quantitySaving: 'નંગ {{quantity}}, સાચવી રહ્યા છીએ',
     quantitySaved: 'નંગ {{quantity}}, સચવાયું',
+    // Draft for the owner's wording review (2026-10-20): the line asks for more than the lot has now.
+    onlyInStock: 'સ્ટોકમાં ફક્ત {{stock}} છે',
+    // Draft for the owner's wording review (2026-10-20): the warning on the order line, and the label of − and −10 above the stock.
+    overStock: 'સ્ટોકમાં ફક્ત {{stock}} છે. તેને ઘટાડીને {{stock}} કે તેથી ઓછું કરો, અથવા કાઢી નાખો.',
+    lowerTo: '{{name}} ને ઘટાડીને {{quantity}} કરો',
+  },
+  // Drafts for the owner's wording review (2026-10-20): someone else changed the line after this screen read it; nothing was saved.
+  refusal: {
+    staleTitle: 'બીજા કોઈએ ઑર્ડરની આ આઇટમ બદલી છે',
+    stale: 'હવે તેમાં {{current}} દેખાય છે. તમે {{chosen}} ઇચ્છતા હતા. હજુ એ જોઈતું હોય તો ફરી બદલો.',
+    staleRemove: 'બીજા કોઈએ ઑર્ડરની આ આઇટમ બદલી છે, તેથી તે કાઢી નાખી નથી. તપાસીને ફરી પ્રયાસ કરો.',
   },
   quickAdd: {
     select: '{{name}} પસંદ કરો',
@@ -87,6 +104,17 @@ export const orders: Translation<typeof source> = {
       other: '{{count}} જથ્થાના ફેરફાર સચવાયા નથી.',
     },
     discardSelections: 'પસંદગી છોડી દો',
+    // The same question when Add would send something: it lists the changes and offers Add to order. Gujarati is a draft.
+    addChangesTitle: 'આ ફેરફાર ઑર્ડરમાં ઉમેરવા છે?',
+    addToOrder: 'ઑર્ડરમાં ઉમેરો',
+    // One line per changed lot; {{lot}} is "name · mark · GRN · weight", {{count}} the bags after the change.
+    // The changed quantity is in words, not "→", so a screen reader says it right.
+    changeAdd: { one: '{{lot}} — {{count}} નંગ ઉમેરો', other: '{{lot}} — {{count}} નંગ ઉમેરો' },
+    changeSet: { one: '{{lot}} — {{from}} થી {{count}} નંગ', other: '{{lot}} — {{from}} થી {{count}} નંગ' },
+    // {{count}} is the bags on the order that would be taken off.
+    changeRemove: { one: '{{lot}} — {{count}} નંગ દૂર કરો', other: '{{lot}} — {{count}} નંગ દૂર કરો' },
+    // Last line of the question when Add is not offered (every lot already on the order was taken off, none chosen). Draft.
+    discardOnlyNote: 'પસંદગી છોડી દેવાથી ઑર્ડર જેમ છે તેમ રહે છે. બધા જથ્થા કાઢવા માટે ઑર્ડરના પેજ પરથી આઇટમ કાઢી નાખો.',
     // Add waits for the server; a lot that was not saved keeps its reason.
     savingProgress: '{{total}} માંથી {{done}} સાચવી રહ્યા છીએ…',
     // Shown only when at least one lot was not saved, so `one` (0 and 1 in Gujarati) is written for 1.
@@ -99,9 +127,19 @@ export const orders: Translation<typeof source> = {
     reasonBelowDispatched: '{{bags}} ની જાવક થઈ ચૂકી છે. એટલા કે વધુ નંગ પસંદ કરો.',
     reasonOrderClosed: 'આ ઑર્ડર પૂર્ણ થયો છે. પાછા જઈને ફરી ખોલો.',
     reasonNotSaved: 'સચવાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+    // Draft for the owner's wording review (2026-10-20): a line that is no longer on the order.
+    reasonLineGone: 'આ આઇટમ હવે ઑર્ડરમાં નથી.',
     // Someone else changed the lot while the picker was open; nothing was overwritten.
     reasonChangedMeanwhile: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
-    reasonRemovedMeanwhile: 'બીજા કોઈએ આ જથ્થો દૂર કર્યો.{{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonRemovedMeanwhile: 'બીજા કોઈએ આ જથ્થો દૂર કર્યો. {{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonChangedMeanwhileRemove: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    // Drafts for the owner's wording review (2026-10-20): the answer was lost, the lot was checked, the server did not apply it.
+    reasonCheckedNotSaved: 'તપાસ્યું: સચવાયું નથી. {{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonCheckedOther: 'તપાસ્યું: ઑર્ડરમાં હવે {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonCheckedNotRemoved: 'તપાસ્યું: દૂર થયું નથી. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonLineChecking: 'આ આઇટમ હજુ તપાસાઈ રહી છે. થોડી વાર પછી ફરી "ઉમેરો" દબાવો.',
+    leaveCheckingTitle: 'તપાસ દરમિયાન છોડવું છે?',
+    keepWaiting: 'રાહ જુઓ',
+    leaveAnyway: 'છતાં છોડી દો',
   },
 };

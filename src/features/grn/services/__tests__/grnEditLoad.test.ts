@@ -1,14 +1,12 @@
 /**
- * Opening a GRN for editing, and asking the server what it holds after an
- * update whose answer was lost.
+ * Opening a GRN for editing.
  *
  * RF-5: a photo list that could not be read is not "no photos". update_grn
  * deletes every photo row it is not sent, so a form opened without them would
  * delete them on Save.
  * RF-9: a row left 'pending' by an upload that could not be cancelled is not a photo.
- * RF-3: lines the form holds as new may already be on the GRN.
  */
-import { findLinesSavedByLostUpdate, loadGRNData } from '../grnFormService';
+import { loadGRNData } from '../grnFormService';
 import { grnUpdateIdempotencyKey } from '@/utils/submissionIdempotency';
 
 type Row = Record<string, unknown>;
@@ -59,7 +57,6 @@ jest.mock('expo-crypto', () => {
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const LINE_ID = '55555555-2222-4333-8444-555555555555';
 const ITEM = '66666666-2222-4333-8444-555555555555';
-const OTHER_ITEM = '88888888-2222-4333-8444-555555555555';
 
 const headerRow = { id: GRN_ID, gr_no: 'A0010', date: '2026-10-01', customer_id: 'c1', customer_name: 'Fictional Traders' };
 const lineRow = { id: LINE_ID, gr_id: GRN_ID, item_id: ITEM, item_name: 'Example Potatoes', packaging: 'Bag', qty: 10, stock: 10, weight: 50, rack: '', package_mark: '' };
@@ -174,45 +171,5 @@ describe('opening a GRN for editing', () => {
     const photoQueries = mockQueries.filter((query) => query.table === 'grn_images');
     expect(photoQueries).toHaveLength(2);
     for (const query of photoQueries) expect(query.filters).toContainEqual(['eq', 'status', 'confirmed']);
-  });
-});
-
-describe('after an update whose answer was lost', () => {
-  const saved = (id: string, overrides: Row = {}): Row => ({ id, item_id: ITEM, packaging: 'Bag', qty: 100, weight: 5000, rack: 'R1/F1/C4', package_mark: 'AB', ...overrides });
-  const formLine = (id: string, overrides: Row = {}) =>
-    ({ grn_trl_id: id, item_table_id: ITEM, packaging: 'Bag', qty: 100, weight: 5000, rack: 'R1/F1/C4', package_mark: 'AB', ...overrides }) as never;
-  const lines = (rows: Row[]) => { mockAnswer = () => ({ data: rows, error: null }); };
-
-  it('finds the added line on the GRN, so the next Save updates it', async () => {
-    lines([saved(LINE_ID, { qty: 10 }), saved('99999999-2222-4333-8444-555555555555')]);
-    const result = await findLinesSavedByLostUpdate(GRN_ID, [formLine(LINE_ID, { qty: 10 }), formLine('item-1700000000000-abc')]);
-    expect(result).toEqual({ success: true, adopted: { 'item-1700000000000-abc': '99999999-2222-4333-8444-555555555555' } });
-    expect(mockQueries[0]).toEqual({ table: 'goodsreceived_trl', filters: [['eq', 'gr_id', GRN_ID]] });
-  });
-
-  it('adopts nothing when the update never reached the server', async () => {
-    lines([saved(LINE_ID, { qty: 10 })]);
-    expect(await findLinesSavedByLostUpdate(GRN_ID, [formLine(LINE_ID, { qty: 10 }), formLine('item-new')])).toEqual({ success: true, adopted: {} });
-  });
-
-  it('does not pair a new line with a saved line that differs, or with one the form already holds', async () => {
-    lines([saved(LINE_ID), saved('99999999-2222-4333-8444-555555555555', { item_id: OTHER_ITEM }), saved('aaaaaaaa-2222-4333-8444-555555555555', { qty: 99 })]);
-    // The new line equals LINE_ID's values, but LINE_ID is a line the form already has.
-    expect(await findLinesSavedByLostUpdate(GRN_ID, [formLine(LINE_ID), formLine('item-new')])).toEqual({ success: true, adopted: {} });
-  });
-
-  it('pairs two equal new lines with two saved lines, each once', async () => {
-    lines([saved('99999999-2222-4333-8444-555555555555'), saved('aaaaaaaa-2222-4333-8444-555555555555')]);
-    const result = await findLinesSavedByLostUpdate(GRN_ID, [formLine('item-a'), formLine('item-b'), formLine('item-c')]);
-    expect(result).toEqual({
-      success: true,
-      adopted: { 'item-a': '99999999-2222-4333-8444-555555555555', 'item-b': 'aaaaaaaa-2222-4333-8444-555555555555' },
-    });
-  });
-
-  it('says so when the server cannot be asked', async () => {
-    mockAnswer = () => ({ data: null, error: { message: 'TypeError: Network request failed' } });
-    const result = await findLinesSavedByLostUpdate(GRN_ID, [formLine('item-new')]);
-    expect(result.success).toBe(false);
   });
 });

@@ -446,6 +446,8 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         canDelete={can_delete}
         onDelete={on_delete_invoice}
         isDeleting={is_deleting}
+        // The invoice page asks its own question (invoice number and customer): one confirmation, as for dispatch and GRN.
+        confirmDelete={false}
       />
 
       {/* Bottom Spacing */}

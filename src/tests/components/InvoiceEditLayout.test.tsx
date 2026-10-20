@@ -13,6 +13,8 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { loadInvoiceData } from '@/features/invoice/services/invoiceFormService';
 import { editPayload, makeInvoiceStore, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
+import { registerInvoiceForm } from '@/features/invoice/utils/openInvoiceForms';
+import { showAlert } from '@/utils/alert';
 import InvoiceEditLayout from '../../../app/invoice-edit/[id]/_layout';
 
 let mockStore: InvoiceStore;
@@ -33,6 +35,7 @@ jest.mock('expo-router', () => {
   };
 });
 jest.mock('@/features/invoice/services/invoiceFormService', () => ({ loadInvoiceData: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
   SafeAreaView: 'SafeAreaView',
@@ -233,5 +236,61 @@ describe('a second edit of the same invoice (R2-10)', () => {
     expect(mockStore.getState().invoiceForm.baseline).toBeNull();
     // afterEach unmounts again
     await act(async () => { tree = create(<InvoiceEditLayout />); });
+  });
+});
+
+describe('another invoice\'s form is open (J1)', () => {
+  it('turns the visit away: nothing is loaded, the form that is open is not touched, the screen goes back', async () => {
+    const release = registerInvoiceForm({ kind: 'edit', id: 'inv-7' });
+    try {
+      await render();
+
+      expect(load).not.toHaveBeenCalled();
+      expect(hasSteps()).toBe(false);
+      expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
+      expect(mockStore.getState().invoiceForm.invoice_id).toBeNull();
+      expect(router.back).toHaveBeenCalledTimes(1);
+      // The message, and the buttons: Close and "Open it" (which takes the person back to the form that is open).
+      expect(showAlert).toHaveBeenCalledWith('Another invoice is open', expect.stringContaining('Finish or cancel'), expect.any(Array));
+    } finally {
+      release();
+    }
+  });
+
+  it('says which invoice is open when its number is known, and a new invoice that is open', async () => {
+    load.mockResolvedValue(loaded());
+    mockStore.dispatch({ type: 'invoiceForm/updateHeader', payload: { inv_no: 7 } });
+    const releaseEdit = registerInvoiceForm({ kind: 'edit', id: 'inv-7' });
+    try {
+      await render();
+      expect(showAlert).toHaveBeenCalledWith('Another invoice is open', 'Finish or cancel the edit of invoice 7 first.', expect.any(Array));
+    } finally {
+      releaseEdit();
+    }
+    await act(async () => { tree.unmount(); });
+    jest.mocked(showAlert).mockClear();
+
+    const releaseNew = registerInvoiceForm({ kind: 'create' });
+    try {
+      await render();
+      expect(showAlert).toHaveBeenCalledWith('Another invoice is open', 'Finish or cancel the new invoice first.', expect.any(Array));
+    } finally {
+      releaseNew();
+    }
+  });
+
+  it('does not reset the open form when the turned-away layout goes', async () => {
+    const release = registerInvoiceForm({ kind: 'edit', id: 'inv-7' });
+    try {
+      mockStore.dispatch({ type: 'invoiceForm/updateHeader', payload: { inv_no: 7 } });
+      await render();
+
+      await act(async () => { tree.unmount(); });
+
+      expect(mockStore.getState().invoiceForm.header.inv_no).toBe(7);
+    } finally {
+      release();
+    }
+    await act(async () => { tree = create(<React.Fragment />); });
   });
 });

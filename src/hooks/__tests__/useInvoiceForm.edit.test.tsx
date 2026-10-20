@@ -123,7 +123,11 @@ describe('the invoice number cap in an edit', () => {
     await act(async () => { result = await form().submitForm(); });
 
     expect(result).toMatchObject({ success: true });
-    expect(updateInvoice).toHaveBeenCalledWith('inv-42', expect.objectContaining({ header: expect.objectContaining({ inv_no: 123456789 }) }));
+    expect(updateInvoice).toHaveBeenCalledWith(
+      'inv-42',
+      expect.objectContaining({ header: expect.objectContaining({ inv_no: 123456789 }) }),
+      expect.stringMatching(/^warehouse-invoice-update-/)
+    );
     await unmount();
   });
 

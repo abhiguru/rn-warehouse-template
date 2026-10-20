@@ -34,6 +34,8 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useBackHandler } from '@/hooks/useBackHandler';
+import { LostAnswerStrip } from '@/features/dispatch/components/LostAnswerStrip';
 import {
   DispatchHeroHeader,
   DispatchTabNavigator,
@@ -159,6 +161,17 @@ function DispatchDetailScreen() {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageUploadRef = useRef(false);
+  // A delete is running (the ref is read by the Back key and by a second tap, the state draws the button)
+  const [isDeleting, setIsDeleting] = useState(false);
+  const isDeletingRef = useRef(false);
+  // The delete went through: the page shows a dispatch that is gone, so Delete and Edit are gone from it (Back is free again).
+  const [isDeleted, setIsDeleted] = useState(false);
+  // The delete got no answer and the server is asked whether the dispatch is gone (owner rule D22): the page is locked,
+  // and the Back key and button ask before they leave. Stopped when the person leaves.
+  const [isCheckingDelete, setIsCheckingDelete] = useState(false);
+  const deleteAbortRef = useRef<AbortController | null>(null);
+  // The first tap on Edit until this screen is in front again: a second tap would open the edit form twice.
+  const isOpeningEdit = useRef(false);
 
   // Image overlay state
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -236,55 +249,122 @@ function DispatchDetailScreen() {
 
   // Track focus count to skip refetch on initial mount
   const focusCountRef = useRef(0);
+  // This page is the one in front: the "deleted" message's button leaves for the list only then (a page covered by
+  // another screen is not replaced from under it).
+  const focusedRef = useRef(true);
 
   // Refetch on focus (e.g., returning from edit screen)
   // Skip the first focus (initial mount) to avoid double-fetch
   useFocusEffect(
     useCallback(() => {
+      isOpeningEdit.current = false;
+      focusedRef.current = true;
       focusCountRef.current += 1;
       // Only refetch on subsequent focuses (not initial mount)
       if (focusCountRef.current > 1) {
         fetchDispatchDetails();
       }
+      return () => {
+        focusedRef.current = false;
+      };
     }, [fetchDispatchDetails])
   );
 
   // Handle GRN navigation
   const handleViewGRN = (grnId: string) => {
+    // Not while a delete is on its way or its answer is being checked: the page must still be here for its result.
+    if (isDeletingRef.current) return;
     router.push(`/grn-details/${grnId}`);
   };
 
   // The invoice page keeps the PDF and sharing; its server call checks the role and customer.
   const handleViewInvoice = (invoiceId: string) => {
+    if (isDeletingRef.current) return;
     router.push(`/invoice-details/${invoiceId}`);
   };
 
+  // A delete that got no answer is being checked: leaving is allowed only after a warning, and stops the check.
+  const leaveWhileChecking = () => {
+    showAlert(tr('dispatch.details.leaveCheckTitle'), tr('dispatch.details.leaveCheckMessage'), [
+      { text: tr('dispatch.details.stayHere'), style: 'cancel' },
+      {
+        text: tr('dispatch.details.leavePage'),
+        style: 'destructive',
+        onPress: () => {
+          deleteAbortRef.current?.abort();
+          router.back();
+        },
+      },
+    ]);
+  };
+
+  // The Back key does nothing while a delete runs: the answer (and the alert after it) belongs to this page. While the
+  // server is asked what became of a delete that got no answer, it warns first.
+  useBackHandler({
+    onBackPress: () => {
+      if (isCheckingDelete) {
+        leaveWhileChecking();
+        return true;
+      }
+      return isDeletingRef.current;
+    },
+  });
+
+  // The check of a delete stops when this page goes
+  useEffect(() => {
+    return () => {
+      deleteAbortRef.current?.abort();
+    };
+  }, []);
+
   // Handle dispatch edit
   const handleEditDispatch = () => {
-    if (!id) return;
+    if (!id || isDeletingRef.current || isDeleted || isOpeningEdit.current) return;
+    isOpeningEdit.current = true;
     // Navigate to dispatch edit screen (step 1)
     router.push(`/dispatch-edit/${id}/step1`);
   };
 
   // Handle dispatch deletion
   const handleDeleteDispatch = async () => {
-    if (!id || !userProfile?.id) return;
+    if (!id || !userProfile?.id || isDeletingRef.current || isDeleted) return;
+    isDeletingRef.current = true;
+    setIsDeleting(true);
+
+    const controller = new AbortController();
+    deleteAbortRef.current = controller;
 
     try {
-      const result = await deleteDispatch(id, userProfile.id);
+      const result = await deleteDispatch(id, userProfile.id, {
+        onLostAnswer: () => setIsCheckingDelete(true),
+        signal: controller.signal,
+      });
+
+      // The person left while the server was still being asked: nobody to tell.
+      if (result.aborted) return;
 
       if (result.success) {
+        setIsDeleted(true);
+        // What happened to the customer's order, in plain words: lines given back, and lines that could not be.
+        const orderNotes = [
+          result.orderLinesGivenBack ? tr('dispatch.details.orderLinesGivenBack', { count: result.orderLinesGivenBack }) : '',
+          result.orderLinesNotRestored ? tr('dispatch.details.orderLinesNotRestored', { count: result.orderLinesNotRestored }) : '',
+          result.orderLinesWithoutOpenOrder ? tr('dispatch.details.orderLinesNoOpenOrder', { count: result.orderLinesWithoutOpenOrder }) : '',
+          // No answer came and the dispatch was found gone: the app cannot say what happened to the order.
+          result.orderCountsUnknown ? tr('dispatch.details.orderCheck') : '',
+        ].filter(Boolean);
+        const deletedText = data?.dispatch.disp_no
+          ? tr('dispatch.details.deletedMessage', { number: formatIdentifier(data.dispatch.disp_no) })
+          : tr('dispatch.details.deletedMessageNoNumber');
         showAlert(
           tr('dispatch.details.deletedTitle'),
-          data?.dispatch.disp_no
-            ? tr('dispatch.details.deletedMessage', { number: formatIdentifier(data.dispatch.disp_no) })
-            : tr('dispatch.details.deletedMessageNoNumber'),
+          [deletedText, ...orderNotes].join('\n\n'),
           [
             {
               text: tr('dispatch.details.viewDispatches'),
               onPress: () => {
-                // Navigate back to dispatch list
-                router.replace('/dispatch');
+                // Navigate back to dispatch list, if this page is still the one in front
+                if (focusedRef.current) router.replace('/dispatch');
               },
             },
           ]
@@ -294,7 +374,7 @@ function DispatchDetailScreen() {
         if (result.blockingReason === 'invoices_exist') {
           showAlert(
             tr('dispatch.details.cannotDeleteTitle'),
-            `${result.error}\n\n${result.instructions || tr('dispatch.details.deleteInvoicesFirst')}`,
+            tr('dispatch.details.hasInvoices'),
             [{ text: tr('common.close') }]
           );
         } else {
@@ -304,6 +384,10 @@ function DispatchDetailScreen() {
     } catch (error) {
       console.error('[DispatchDetailScreen] Error deleting dispatch:', error);
       showAlert(tr('dispatch.details.deleteFailedTitle'), tr('common.checkConnection'));
+    } finally {
+      isDeletingRef.current = false;
+      setIsDeleting(false);
+      setIsCheckingDelete(false);
     }
   };
 
@@ -344,6 +428,8 @@ function DispatchDetailScreen() {
 
   // Handle Print
   const handlePrint = () => {
+    // Not while a delete is on its way or its answer is being checked.
+    if (isDeletingRef.current) return;
     setShowPrintDialog(true);
   };
 
@@ -451,7 +537,7 @@ function DispatchDetailScreen() {
   // A photo can be added after submit (testvm2 issue 4): the create flow's photo
   // section sits below the item list and is easy to miss.
   const handleAddImage = async () => {
-    if (!id || !canUpdate || imageUploadRef.current) return;
+    if (!id || !canUpdate || imageUploadRef.current || isDeletingRef.current) return;
     imageUploadRef.current = true;
     try {
       // Android's system picker grants access to the selected asset; broad
@@ -509,9 +595,12 @@ function DispatchDetailScreen() {
           headerShadowVisible: false,
           headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
-          // Custom back button to ensure it always works
+          // Not while a delete runs (the swipe back, and the button below)
+          gestureEnabled: !isDeleting,
+          // Custom back button to ensure it always works; while a delete runs it does nothing, or warns first when
+          // the server is asked what became of a delete that got no answer
           headerLeft: () => (
-            <HeaderBackButton />
+            <HeaderBackButton onPress={isCheckingDelete ? leaveWhileChecking : isDeleting ? () => {} : undefined} />
           ),
           headerTitle: () => (
             <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
@@ -522,7 +611,11 @@ function DispatchDetailScreen() {
       />
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
 
-      <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}>
+      {/* While the answer of the delete is being checked nothing on the page can be pressed (no link to another screen, no photo upload, no print). */}
+      <View
+        style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
+        pointerEvents={isCheckingDelete ? 'none' : 'auto'}
+      >
         {/* Hero Header - Quick Stats Only */}
         <DispatchHeroHeader
           disp_no={dispatch.disp_no}
@@ -531,6 +624,8 @@ function DispatchDetailScreen() {
           total_quantity={statistics.total_dispatched_qty}
           customer_name={dispatch.customer_details?.name}
         />
+
+        {isCheckingDelete ? <LostAnswerStrip kind="delete" testID="dispatch-details-checking-delete" /> : null}
 
         {/* Tab Navigator */}
         <DispatchTabNavigator
@@ -553,10 +648,12 @@ function DispatchDetailScreen() {
               source_order_no={dispatch.source_order_no ?? undefined}
               dispatch_id={id}
               disp_no={dispatch.disp_no}
-              can_edit={canUpdate}
-              can_delete={canDelete}
+              // Once the dispatch is deleted there is nothing left to edit or delete
+              can_edit={canUpdate && !isDeleted}
+              can_delete={canDelete && !isDeleted}
               onEdit={handleEditDispatch}
               onDelete={handleDeleteDispatch}
+              is_deleting={isDeleting}
               onSharePDF={handleSharePDF}
               is_share_loading={isShareLoading}
               onPrint={!isCustomer ? handlePrint : undefined}

@@ -21,7 +21,7 @@ import { parseReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 
 import { showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
-import { normalizeDigits, t as tr, localizeDigits } from '@/i18n';
+import { normalizeDigits, t as tr, localizeDigits, identifierInput } from '@/i18n';
 
 // The five fields of the row, in the order they are drawn, each with its width.
 const FIELD_WIDTHS = {
@@ -143,6 +143,25 @@ interface HorizontalItemFormProps {
     onViewAll?: () => void;
     isQtyLocked?: boolean;
     onQtyLockedPress?: () => void;
+    /**
+     * The item, and with it the packing, can't be changed: the line was dispatched or is on an invoice, or (for a new
+     * line) the GRN is invoiced and takes no new line. The field is read-only; a tap on it calls `onItemLockedPress`,
+     * which says why (backend migration 121, owner decisions D2 and D9).
+     */
+    isItemLocked?: boolean;
+    onItemLockedPress?: () => void;
+    /**
+     * The weight can't be changed: the line is on an invoice. A tap on it calls `onWeightLockedPress`. The field is
+     * not reachable by a screen reader's double tap, so `weightLockedReason` (why, in the app's words) is its spoken hint.
+     */
+    isWeightLocked?: boolean;
+    onWeightLockedPress?: () => void;
+    weightLockedReason?: string;
+    /**
+     * The GRN takes no new line (it is invoiced): the form's fields are replaced by this notice and the save button is
+     * disabled. The hero strip stays, so the saved lines can still be opened from it.
+     */
+    blockedNotice?: string;
     isValid: boolean;
     isEditing: boolean;
     editingItemNumber: number;
@@ -160,6 +179,12 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             onViewAll,
             isQtyLocked,
             onQtyLockedPress,
+            isItemLocked,
+            onItemLockedPress,
+            isWeightLocked,
+            onWeightLockedPress,
+            weightLockedReason,
+            blockedNotice,
             isValid,
             isEditing,
             editingItemNumber,
@@ -264,6 +289,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const imageCount = currentItem.trl_images?.length || 0;
         const canViewAll = savedItemsCount > 0 && !!onViewAll;
         const itemNumber = isEditing ? editingItemNumber : savedItemsCount + 1;
+        // A GRN that takes no new line has nothing to save (blockedNotice).
+        const saveEnabled = isValid && !blockedNotice;
 
         // The fixed strip names the line in the form: which item and how many of
         // what. Rack and Mark are a screen's width away from Item and Quantity,
@@ -352,18 +379,25 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         style={({ pressed }) => [
                             styles.saveButton,
                             pressed && styles.saveButtonPressed,
-                            !isValid && styles.saveButtonDisabled,
+                            !saveEnabled && styles.saveButtonDisabled,
                         ]}
                         accessibilityRole="button"
                         accessibilityLabel={tr('grn.item.saveLabel')}
-                        accessibilityState={{ disabled: !isValid }}
+                        accessibilityState={{ disabled: !saveEnabled }}
                         onPress={onSaveItem}
-                        disabled={!isValid}
+                        disabled={!saveEnabled}
                     >
                         <Icon name="check" size={iconSize.lg} color={t.brand.onFill} />
                     </Pressable>
                 </View>
 
+                {blockedNotice ? (
+                    <View style={styles.blockedNotice} accessible accessibilityRole="alert" testID="grn-item-blocked-notice">
+                        <Icon name="lock-outline" size={iconSize.md} color={t.status.critical.text} />
+                        <Text style={styles.blockedNoticeText}>{blockedNotice}</Text>
+                    </View>
+                ) : (
+                <>
                 {/* Horizontal Scrolling Form */}
                 <ScrollView
                     ref={scrollRef}
@@ -379,7 +413,38 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         <View style={styles.labelRow}>
                             <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('common.item')}<Text style={styles.required}> *</Text></Text>
+                            {isItemLocked && (
+                                <Icon
+                                    name="lock-outline"
+                                    size={iconSize.sm}
+                                    color={t.icon.secondary}
+                                    accessibilityLabel={tr('grn.item.itemLocked')}
+                                />
+                            )}
                         </View>
+                        {isItemLocked ? (
+                            // Read-only: the item is not searched and the packing it brings stays as it is. A tap says why.
+                            <Pressable
+                                testID="grn-item-locked"
+                                style={({ pressed }) => [
+                                    styles.input,
+                                    styles.inputReadOnly,
+                                    styles.lockedItem,
+                                    pressed && styles.lockedItemPressed,
+                                ]}
+                                onPress={() => onItemLockedPress?.()}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${tr('common.item')}, ${currentItem.item_name || tr('grn.item.searchPlaceholder')}, ${tr('grn.item.itemLocked')}`}
+                                accessibilityHint={tr('grn.item.lockedHint')}
+                            >
+                                <Text
+                                    style={currentItem.item_name ? styles.lockedItemText : styles.lockedItemPlaceholder}
+                                    numberOfLines={2}
+                                >
+                                    {currentItem.item_name || tr('grn.item.searchPlaceholder')}
+                                </Text>
+                            </Pressable>
+                        ) : (
                         <RemoteAutocompleteInput<{ id: string; name: string; packaging?: string }>
                             value={currentItem.item_name}
                             placeholder={tr('grn.item.searchPlaceholder')}
@@ -414,6 +479,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             keyExtractor={(item) => item.id}
                             zIndex={3000}
                         />
+                        )}
                         {renderError(currentItem.errors.item_table_id)}
                     </View>
 
@@ -486,19 +552,30 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.weight }]}>
                         <View style={styles.labelRow}>
                             <Text style={styles.label}>{tr('common.weightEach')}</Text>
+                            {isWeightLocked && (
+                                <Icon
+                                    name="lock-outline"
+                                    size={iconSize.sm}
+                                    color={t.icon.secondary}
+                                    accessibilityLabel={tr('grn.item.weightLocked')}
+                                />
+                            )}
                         </View>
                         <View
                             style={[
                                 styles.input,
                                 styles.suffixField,
-                                borderOf('weight', currentItem.errors.weight),
+                                isWeightLocked ? styles.inputReadOnly : borderOf('weight', currentItem.errors.weight),
                             ]}
                         >
                             <TextInput
                                 ref={weightInputRef}
                                 accessibilityLabel={tr('grn.item.weightInputLabel')}
+                                // The reason itself is the hint: a locked field is not tapped by a screen reader, so "tap to see why" would lead nowhere.
+                                accessibilityHint={isWeightLocked ? (weightLockedReason ?? tr('grn.item.weightLocked')) : undefined}
                                 style={[styles.suffixInput, styles.numericInput]}
                                 value={localizeDigits(currentItem.weight ?? '')}
+                                editable={!isWeightLocked}
                                 onChangeText={(text) => onFieldChange('weight', normalizeDigits(text))}
                                 placeholder={formatNumber(0)}
                                 placeholderTextColor={t.text.placeholder}
@@ -514,6 +591,16 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 selectTextOnFocus
                             />
                             <Text style={styles.suffix} importantForAccessibility="no">{tr('grn.item.weightUnit')}</Text>
+                            {isWeightLocked && (
+                                // A non-editable Android field never gets focus, so a tap on this overlay says why (as the quantity does).
+                                <Pressable
+                                    testID="grn-weight-locked-overlay"
+                                    style={StyleSheet.absoluteFill}
+                                    onPress={() => onWeightLockedPress?.()}
+                                    accessible={false}
+                                    importantForAccessibility="no"
+                                />
+                            )}
                         </View>
                         {renderError(currentItem.errors.weight)}
                     </View>
@@ -532,8 +619,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             ref={rackInputRef}
                             accessibilityLabel={tr('common.rack')}
                             style={[styles.input, borderOf('rack', currentItem.errors.rack)]}
-                            value={rackText}
-                            onChangeText={handleRackTextChange}
+                            // A rack is stored with 0-9: a digit typed as ૦-૯ is stored as 0-9 (owner decision D15); a stored rack is shown as it is.
+                            {...identifierInput(rackText, handleRackTextChange)}
                             placeholder={tr('grn.form.forExample', { example: '20B-20C' })}
                             placeholderTextColor={t.text.placeholder}
                             returnKeyType="next"
@@ -594,8 +681,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             ref={packageMarkInputRef}
                             accessibilityLabel={tr('grn.item.mark')}
                             style={[styles.input, borderOf('package_mark', currentItem.errors.package_mark)]}
-                            value={currentItem.package_mark}
-                            onChangeText={(text) => onFieldChange('package_mark', text)}
+                            // As the rack: typed ૦-૯ are stored as 0-9 (owner decision D15).
+                            {...identifierInput(currentItem.package_mark, (text) => onFieldChange('package_mark', text))}
                             placeholder={tr('grn.form.forExample', { example: 'MARK001' })}
                             placeholderTextColor={t.text.placeholder}
                             returnKeyType="done"
@@ -646,6 +733,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                 <View style={styles.scrollHintRight} pointerEvents="none" importantForAccessibility="no-hide-descendants">
                     <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
                 </View>
+                </>
+                )}
             </View>
         );
     });
@@ -779,6 +868,39 @@ const makeStyles = (t: ThemeTokens) => ({
     suffixField: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
+    },
+    // The item of a locked line: a read-only field in the width of the picker it replaces.
+    lockedItem: {
+        justifyContent: 'center' as const,
+        paddingVertical: space.sm,
+    },
+    lockedItemPressed: {
+        backgroundColor: t.surface.cardPressed,
+    },
+    // The notice that replaces the fields when the GRN takes no new line.
+    blockedNotice: {
+        flexDirection: 'row' as const,
+        alignItems: 'flex-start' as const,
+        gap: space.sm,
+        margin: space.lg,
+        padding: space.md,
+        borderRadius: radius.button,
+        borderWidth: 1,
+        borderColor: t.status.critical.border,
+        backgroundColor: t.status.critical.background,
+    },
+    blockedNoticeText: {
+        ...typography.subhead,
+        flex: 1,
+        color: t.status.critical.text,
+    },
+    lockedItemText: {
+        ...typography.body,
+        color: t.text.primary,
+    },
+    lockedItemPlaceholder: {
+        ...typography.body,
+        color: t.text.placeholder,
     },
     suffixInput: {
         ...typography.body,

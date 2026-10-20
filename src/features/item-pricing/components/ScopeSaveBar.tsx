@@ -1,7 +1,10 @@
 /**
- * The Save bar of the rate boxes, drawn by the page from what ScopeRates reports (`onBar`): the start day, the lots
- * rule, the live "What changes" lines, and Discard / Save. It sits outside the page's scroll view; with the keyboard up
- * (`collapsed`) it keeps only the two buttons, so the cell being typed in stays in view.
+ * The Save bar of the rate boxes, drawn by the page from what ScopeRates reports (`onBar`): the lots rule, the
+ * live "What changes" lines, and Discard / Save. It sits outside the page's scroll view; with the keyboard up
+ * (`collapsed`) it keeps only the two buttons, so the cell being typed in stays in view. The start day is not chosen
+ * here: it is the "From <date>" line at the top of the rate box (RateStartLine). While no day is chosen the bar says
+ * so, and that line is a link to the choice (`chooseStart`); `startsOn` stays in the report as the state of that
+ * choice.
  */
 import React from 'react';
 import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
@@ -12,18 +15,16 @@ import type { StartsOnChoice } from '../editModel';
 import { ChangeSummary } from './ChangeSummary';
 import { EditorStrip } from './EditorStrip';
 import { RateSaveBar } from './RateSaveBar';
-import { StartsOnField } from './StartsOnField';
 
-/** What the page's Save bar shows for the box being edited. Every function keeps its identity between reports. */
+/** What the page's Save bar shows for the box being edited (and the state of its start-day choice, drawn in the box). Every function keeps its identity between reports. */
 export interface RateSaveBarState {
+  /** The start-day choice of the box. The Save bar does not draw it (the box's "From <date>" line does); the page's tests and the report's signature read it. */
   startsOn: {
     choice: StartsOnChoice | null;
     day: string | null;
     today: string;
-    earliest?: string | null;
     canStartInPast: boolean;
     fixed: boolean;
-    error?: string;
     onChange: (choice: StartsOnChoice, day: string) => void;
   };
   /** "Lots received from 1 Nov 2026 are charged the new rate. Lots received before keep ₹11.00." */
@@ -33,6 +34,8 @@ export interface RateSaveBarState {
   summaryLines: string[];
   /** Offline, or no start day yet. */
   helper: string | null;
+  /** The helper asks for a start day: tapping it scrolls the box's "From <date>" line into view and opens the choice. Null: the helper is plain text. */
+  chooseStart: (() => void) | null;
   saveLabel: string;
   save: { onPress: () => void; disabled: boolean; loading: boolean };
   discard: { onPress: () => void };
@@ -56,6 +59,7 @@ export function ScopeSaveBar({ bar, collapsed = false, onHeight }: Props) {
   return (
     <RateSaveBar
       helper={bar.helper}
+      onHelperPress={bar.chooseStart ?? undefined}
       primary={{
         label: bar.saveLabel,
         onPress: bar.save.onPress,
@@ -68,16 +72,6 @@ export function ScopeSaveBar({ bar, collapsed = false, onHeight }: Props) {
       onHeight={onHeight}
     >
       <ScrollView style={{ maxHeight: height * 0.4 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-        <StartsOnField
-          choice={bar.startsOn.choice}
-          day={bar.startsOn.day}
-          today={bar.startsOn.today}
-          earliest={bar.startsOn.earliest}
-          canStartInPast={bar.startsOn.canStartInPast}
-          fixed={bar.startsOn.fixed}
-          error={bar.startsOn.error}
-          onChange={bar.startsOn.onChange}
-        />
         {bar.rule ? <Text style={styles.rule}>{bar.rule}</Text> : null}
         {bar.warning ? <EditorStrip variant="warning" message={bar.warning} /> : null}
         <View>

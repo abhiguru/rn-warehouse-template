@@ -98,11 +98,25 @@ export interface GenericStepIndicatorHeaderProps {
    * Omit on later steps and in edit forms: Back is then left to the screen.
    */
   backOnFirstStep?: FirstStepBack;
+  /**
+   * A save is running: the close button and the step circles do nothing until it ends (leaving then would
+   * reset the form under the save). Dimmed and reported as disabled to screen readers.
+   */
+  disabled?: boolean;
+  /**
+   * With `disabled`: the close button stays usable and asks with this text instead of `cancelMessage` (the save's
+   * answer is not known yet, and the person may still leave, knowing it may have been saved). The step circles stay
+   * disabled. The question's buttons then read "Keep waiting" and "Leave anyway" (not "Keep editing" and "Discard":
+   * nothing is being edited, the app is waiting for the server), as in the Add items picker.
+   */
+  leaveWarning?: string;
 }
 
 export interface FirstStepBack {
   /** Whether the user has entered anything that would be lost. */
   hasData: boolean;
+  /** False leaves the Back key alone (an edit form with nothing changed: Back goes back as it always did). */
+  enabled?: boolean;
   /** Where Back goes when nothing was entered: the list the form was opened from. */
   exitRoute: string;
   /** See useFirstStepBack: `dismissTo` leaves one entry of the list's tab. */
@@ -110,8 +124,8 @@ export interface FirstStepBack {
 }
 
 /** Listens for the Back key while the header is given `backOnFirstStep`; draws nothing. */
-function FirstStepBackKey({ hasData, exitRoute, exitWith, askToDiscard }: FirstStepBack & { askToDiscard: () => void }) {
-  useFirstStepBack({ hasData, exitRoute, exitWith, askToDiscard });
+function FirstStepBackKey({ hasData, enabled, exitRoute, exitWith, askToDiscard }: FirstStepBack & { askToDiscard: () => void }) {
+  useFirstStepBack({ hasData, enabled, exitRoute, exitWith, askToDiscard });
   return null;
 }
 
@@ -150,6 +164,8 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   cancelMessage: cancelMessageProp,
   onStepPress,
   backOnFirstStep,
+  disabled = false,
+  leaveWarning,
 }) => {
   const insets = useSafeAreaInsets();
   const t = useTokens();
@@ -171,8 +187,8 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
 
   // Debounced step press handler
   const handleStepPressDebounced = useCallback((stepNumber: number) => {
-    // Ignore if already navigating
-    if (navigatingToStep !== null) {
+    // Ignore if already navigating, or while the form is being saved
+    if (disabled || navigatingToStep !== null) {
       return;
     }
 
@@ -191,7 +207,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
     navigationTimeoutRef.current = setTimeout(() => {
       setNavigatingToStep(null);
     }, 1500); // 1.5 second cooldown
-  }, [navigatingToStep, onStepPress]);
+  }, [disabled, navigatingToStep, onStepPress]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -202,17 +218,22 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
     };
   }, []);
 
+  // While a save runs the close button does nothing, unless it is given a warning to ask with.
+  const cancelDisabled = disabled && !leaveWarning;
   const handleCancelPress = () => {
+    if (cancelDisabled) return;
+    // The server is being asked what became of a request (leaveWarning): the person waits, or leaves anyway.
+    const waiting = disabled && !!leaveWarning;
     showAlert(
       cancelTitle || defaultDiscardTitle,
-      cancelMessage,
+      waiting ? leaveWarning : cancelMessage,
       [
         {
-          text: tr('common.keepEditing'),
+          text: waiting ? tr('orders.catalog.keepWaiting') : tr('common.keepEditing'),
           style: 'cancel',
         },
         {
-          text: tr('common.discard'),
+          text: waiting ? tr('orders.catalog.leaveAnyway') : tr('common.discard'),
           style: 'destructive',
           onPress: onCancel,
         },
@@ -259,7 +280,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
     const isInteractive = !!onStepPress;
     const glyphColor = isCurrent ? t.brand.onFill : isCompleted ? t.brand.tint : t.text.secondary;
     const isNavigatingToThis = navigatingToStep === stepNumber;
-    const isAnyNavigating = navigatingToStep !== null;
+    const isAnyNavigating = navigatingToStep !== null || disabled;
 
     const circle = (
       <Animated.View
@@ -324,11 +345,13 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
         <View style={styles.headerRow}>
           {/* Cancel: icon button, then the document being created */}
           <Pressable
-            style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
+            style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed, cancelDisabled && styles.cancelButtonDisabled]}
             onPress={handleCancelPress}
+            disabled={cancelDisabled}
             accessibilityRole="button"
             accessibilityLabel={closeLabel}
             accessibilityHint={tr('components.steps.cancelHint')}
+            accessibilityState={cancelDisabled ? { disabled: true } : undefined}
           >
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
@@ -414,6 +437,9 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   cancelButtonPressed: {
     backgroundColor: t.surface.cardPressed,
+  },
+  cancelButtonDisabled: {
+    opacity: t.interaction.disabledOpacity,
   },
   entityTextContainer: {
     flex: 1,

@@ -1,5 +1,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC } from '@/utils/serviceErrorHandler';
+import { isUnsettledFailure } from '@/utils/serverText';
+import { waitForServer } from '@/utils/lostAnswer';
 // Import canonical types (snake_case) - fully migrated
 import type {
   RpcImageInfo,
@@ -377,6 +379,19 @@ export interface DeleteGRNResponse {
   success: boolean;
   error?: string;
   message?: string;
+  /**
+   * The request went out and got no answer (the connection dropped, the 60 s timeout): the GRN may be deleted
+   * all the same. The screen locks, waits (`settleLostDelete`) and reads the GRN before it sends anything again.
+   * A 57014 statement timeout is an answer: nothing was deleted. On a RESEND (`options.resend`) it is also set for any
+   * other failure that is not the server's answer (57014 while the resend waits behind the first delete, a failure
+   * before sending, a changed session): that attempt is not settled, so the screen goes back to the check.
+   */
+  lostAnswer?: boolean;
+  /**
+   * A resend was answered "GRN not found": the GRN is gone, which is what was asked for (the delete whose answer was
+   * lost went through, or someone else deleted it). Returned as a success; the counts are not known.
+   */
+  alreadyGone?: boolean;
   grn_info?: {
     gr_no: string;
     customer_name: string;
@@ -400,7 +415,7 @@ export interface DeleteGRNResponse {
 }
 
 // M3 Fix: Using executeRPC wrapper
-export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
+export const deleteGRN = async (grnId: string, options: { resend?: boolean } = {}): Promise<DeleteGRNResponse> => {
   if (__DEV__) console.log('[GRNDetailService] Deleting GRN ID:', grnId);
 
   if (!grnId) {
@@ -418,6 +433,8 @@ export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
     {
       context: 'GRNDetailService.deleteGRN',
       write: true,
+      // A timeout or a failure after the request started reads "it may have been deleted" (contract item 7).
+      delete: true,
       errorMessage: t('errors.grn.deleteFailed'),
       unwrapNested: false, // delete_grn_safe returns direct response object
       validateSuccess: false // We handle success: false case manually below
@@ -428,11 +445,20 @@ export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
     return {
       success: false,
       message: result.message,
-      error: result.error
+      error: result.error,
+      // A failure on the way after the request went out (executeRPC's `lostAnswer`: not one before it left, and not
+      // an answer). A resend that failed without an answer of the server is not settled either (owner rule D22).
+      lostAnswer: result.lostAnswer === true || (options.resend === true && isUnsettledFailure(result, result.errorCode)),
     };
   }
 
   const responseData = result.data || {} as DeleteGRNResponse;
+
+  // The answer of a resend is "GRN not found": the GRN is gone, as asked. A report left open must stop listing it.
+  if (options.resend && responseData.success === false && /grn not found/i.test(String(responseData.error ?? responseData.message ?? ''))) {
+    void invalidateReportQueries();
+    return { success: true, alreadyGone: true };
+  }
 
   // If the RPC returned success: false, treat it as an error (e.g., blocking dependencies)
   if (responseData.success === false) {
@@ -444,4 +470,93 @@ export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
   // The write changed what reports count: a report on screen asks again (SR-10).
   void invalidateReportQueries();
   return responseData;
+};
+
+/**
+ * After a delete that got no answer: is the GRN still there? 'gone' when the server answers "GRN not found" (it
+ * was deleted), 'exists' when it answers with the GRN, 'unknown' when it cannot be asked or answers otherwise.
+ */
+export const checkGRNGone = async (grnId: string): Promise<'gone' | 'exists' | 'unknown'> => {
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    const { data, error } = await authenticatedClient.rpc('get_grn_details', { p_grn_id: grnId });
+    if (error) return 'unknown';
+    const body = data?.data || data;
+    if (body?.grn) return 'exists';
+    // get_grn_details answers {success:false, message:'GRN not found or access denied'} for a GRN that is not there.
+    if (data?.success === false && typeof data.message === 'string' && /grn not found/i.test(data.message)) return 'gone';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+};
+
+/** Waits `ms`, or less when the signal is aborted. */
+const pause = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise(resolve => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    }
+    signal?.addEventListener('abort', done);
+  });
+
+/** How long the read after a lost delete waits between tries, up to the last value (owner rule D22: up to 30 s). */
+const READ_BACKOFF_MS = [1000, 2000, 5000, 10000, 20000, 30000];
+
+/**
+ * After a delete whose answer was lost: waits until the phone is online and at least 10 s have passed since the
+ * request was sent (`waitForServer`), then reads the GRN. 'gone': the delete had been applied. 'exists': it had
+ * not, the caller sends the delete again once. A read that fails is tried again with a growing wait (up to 30 s)
+ * until the server answers; 'aborted' when the signal is aborted first (the person left).
+ */
+export const settleLostDelete = async (
+  grnId: string,
+  sentAt: number,
+  signal?: AbortSignal
+): Promise<'gone' | 'exists' | 'aborted'> => {
+  try {
+    await waitForServer(sentAt, signal);
+  } catch {
+    if (signal?.aborted) return 'aborted';
+  }
+  for (let attempt = 0; !signal?.aborted; attempt++) {
+    const state = await checkGRNGone(grnId);
+    if (signal?.aborted) break;
+    if (state === 'gone') {
+      // The delete had been applied: a report left open must stop listing the GRN, as after any delete (SR-10).
+      void invalidateReportQueries();
+      return state;
+    }
+    if (state !== 'unknown') return state;
+    await pause(READ_BACKOFF_MS[Math.min(attempt, READ_BACKOFF_MS.length - 1)], signal);
+  }
+  return 'aborted';
+};
+
+/** The stored file of each photo the details data lists, for the GRN's header and for each of its lines. */
+export const photoPathsOf = (grn: { header_images?: RpcImageInfo[]; items?: Array<{ item_images?: RpcImageInfo[] }> } | null | undefined): string[] => {
+  const paths = [
+    ...(grn?.header_images ?? []),
+    ...(grn?.items ?? []).flatMap(item => item.item_images ?? []),
+  ].map(image => image.storage_path);
+  return Array.from(new Set(paths.filter((path): path is string => typeof path === 'string' && path.length > 0)));
+};
+
+/**
+ * After a GRN was deleted: removes its photo files from storage (the server deletes the rows, not the files). A best
+ * effort: a failure is only logged, the GRN is deleted whatever happens here. Never throws.
+ */
+export const removeGRNPhotoFiles = async (paths: string[]): Promise<void> => {
+  if (paths.length === 0) return;
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    const { error } = await authenticatedClient.storage.from('grn-images').remove(paths);
+    if (error) console.warn('[GRNDetailService] Could not remove the photo files of a deleted GRN');
+  } catch {
+    console.warn('[GRNDetailService] Could not remove the photo files of a deleted GRN');
+  }
 };

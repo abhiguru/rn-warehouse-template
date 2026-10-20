@@ -39,6 +39,27 @@ export const dispatch = {
     numberTakenFor: 'Dispatch {{number}} already exists ({{customer}}). Enter a different number.',
     loadFailed: 'Failed to load dispatch data',
     saveFailed: 'Failed to save dispatch',
+    editMismatch: 'This form belongs to a different dispatch. Go back and open the dispatch again.',
+    numberUsedNext: 'Dispatch number {{number}} is already used. The next free number is {{next}}.',
+    // The number was refused when the request was sent again after a lost answer: the first send may have saved it.
+    numberMaybeSaved: 'Dispatch {{number}} may already have been saved. Check the list before entering it again.',
+    // A save finished after the form was left (the same rule as the GRN form's).
+    maybeSavedAfterLeavingTitle: 'No answer from the server',
+    savedAfterLeavingTitle: 'Dispatch saved',
+    savedAfterLeaving: 'Dispatch {{number}} was saved before you left the form. Find it in the Dispatch list.',
+    savedAfterLeavingPhotos: 'Dispatch {{number}} was saved, but its photos were not uploaded. Open it in the Dispatch list and add them under Photos.',
+  },
+  // Opening a dispatch to edit it (the edit form reads the dispatch before it shows a step)
+  edit: {
+    openFailedTitle: "Couldn't open the dispatch",
+    openFailedMessage: 'The dispatch link is incomplete. Open the dispatch again from the list.',
+    // Another dispatch form (or a new dispatch) is already open: this one is not opened over it.
+    finishOtherTitle: 'Another dispatch is open',
+    finishOtherEdit: 'Finish or cancel the edit of dispatch {{number}} first.',
+    finishOtherEditNoNumber: 'Finish or cancel the dispatch edit that is already open first.',
+    finishOtherNew: 'Finish or cancel the new dispatch first.',
+    // The refusal's button: takes the person to the form that is open.
+    openIt: 'Open it',
   },
   // Step 1: dispatch details
   form: {
@@ -105,6 +126,8 @@ export const dispatch = {
     bagsToDispatch: 'Bags to dispatch',
     fromAnotherCustomer: 'Dispatching from another customer:',
     leftAfterDispatch: 'Left after dispatch',
+    // A new dispatch from an order: what the order asks of the lot of a line ("Order asks for 40 bags"), to check the quantity against.
+    orderAsks: 'Order asks for {{bags}}',
     enterBags: 'Enter bags',
     maxBagsOriginal: 'Enter {{count}} bags or fewer. That is the original stock.',
     maxBagsAvailable: 'Enter {{count}} bags or fewer. That is the available stock.',
@@ -234,6 +257,10 @@ export const dispatch = {
       other: '{{count}} items will be saved and stock levels updated.',
     },
     orderFulfilled: 'Order fulfilled and removed from the queue.',
+    orderLinesLeft: {
+      one: '{{count}} line is still open on the order.',
+      other: '{{count}} lines are still open on the order.',
+    },
     photosNotUploadedTitle: 'Photos not uploaded',
     photosNotUploadedMessage: 'Dispatch {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
     failedPhoto: 'Photo {{position}}',
@@ -273,7 +300,7 @@ export const dispatch = {
     dispNoFormat: 'Dispatch number must be alphanumeric (uppercase)',
     dateRequired: 'Dispatch date is required',
     dateInvalid: 'Invalid date format',
-    dateFuture: 'Cannot select a future date',
+    dateFuture: "A dispatch can't be dated in the future. Today is {{today}}.",
     dispatchDateInvalid: 'Invalid dispatch date',
     registrationRequired: 'Vehicle registration is required',
     registrationMax: 'Registration must be at most 30 characters',
@@ -313,6 +340,18 @@ export const dispatch = {
       'GRN {{grn}} was received on {{grnDate}}, which is after the dispatch date ({{dispatchDate}}). Items cannot be dispatched before they are received.',
     dateBeforeGrns:
       'The following GRNs have dates after the dispatch date ({{dispatchDate}}): {{grns}}. Items cannot be dispatched before they are received.',
+  },
+  // What the server refuses on a dispatch (wave B, owner decisions D1 to D5); the screens word these from the reason and the fields
+  refusal: {
+    // Edit: the date and the number are locked while the dispatch is on an invoice (D2)
+    invoiced: 'On invoice {{invoice}}. Delete or edit the invoice first.',
+    dispatchInvoiced: "Dispatch {{dispatch}} is on invoice {{invoice}}. Its date and number can't be changed. Delete or edit the invoice first.",
+    // A new dispatch from an order that changed after the form was opened (D5)
+    orderChangedTitle: 'This order changed after you opened it',
+    orderChangedMessage: 'The lines were reloaded from the order. Check the quantities, then create the dispatch again.',
+    orderEmpty: 'This order has no lines left to dispatch. Go back to Items to add lots, or close the form with X.',
+    // Edit: the order was kept in step with the saved quantities (D4)
+    orderSynced: 'The order was updated to match.',
   },
   // Fallback messages of the dispatch form services (the server's own message is shown when there is one)
   service: {
@@ -378,7 +417,26 @@ export const dispatch = {
     deletedMessageNoNumber: 'The dispatch is deleted.',
     viewDispatches: 'View dispatches',
     cannotDeleteTitle: "Can't delete dispatch",
-    deleteInvoicesFirst: 'Delete its invoices first, then try again.',
+    hasInvoices: "This dispatch has invoices, so it can't be deleted. Delete its invoices first, then try again.",
+    orderLinesGivenBack: {
+      one: "{{count}} line was given back to the customer's order.",
+      other: "{{count}} lines were given back to the customer's order.",
+    },
+    orderLinesNotRestored: {
+      one: "{{count}} line could not be given back to the order: it was saved before the order's quantities were recorded.",
+      other: "{{count}} lines could not be given back to the order: they were saved before the order's quantities were recorded.",
+    },
+    orderLinesNoOpenOrder: {
+      one: '{{count}} line could not be given back: the customer has no open order.',
+      other: '{{count}} lines could not be given back: the customer has no open order.',
+    },
+    // The delete got no answer and the dispatch was found gone: the app cannot say what happened to the order.
+    orderCheck: "Check the customer's order: the app could not tell whether its lines were given back.",
+    // Leaving the page while the app is still asking the server whether a delete went through.
+    leaveCheckTitle: 'Leave this page?',
+    leaveCheckMessage: 'It may have been deleted. Check the dispatch list before deleting it again.',
+    stayHere: 'Stay',
+    leavePage: 'Leave',
     deleteFailedTitle: "Couldn't delete dispatch",
     tryAgain: 'Try again.',
     pdfFailedTitle: "Couldn't create the PDF",

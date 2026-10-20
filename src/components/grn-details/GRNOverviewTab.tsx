@@ -43,6 +43,8 @@ interface GRNOverviewTabProps {
   gr_no?: string;
   can_edit?: boolean;
   can_delete?: boolean;
+  /** The GRN is being deleted: the Delete button is disabled. */
+  is_deleting?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
   onSharePDF?: () => void;
@@ -63,6 +65,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   gr_no,
   can_edit = false,
   can_delete,
+  is_deleting = false,
   onEdit,
   onDelete,
   onSharePDF,
@@ -159,6 +162,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
         canEdit={can_edit}
         canDelete={can_delete}
         onDelete={onDelete}
+        isDeleting={is_deleting}
       />
 
       {/* Bottom Spacing */}

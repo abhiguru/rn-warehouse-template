@@ -94,6 +94,8 @@ export const pricing = {
     unitLabour: 'rupees per bag',
     unitKg: 'kilograms',
     unitPercent: 'percent',
+    bandLine: 'Weight band {{range}}',
+    datesFrom: 'From {{date}}',
     allBands: 'all weight bands',
   },
   customerRate: {

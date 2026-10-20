@@ -42,6 +42,26 @@ export const dispatch: Translation<typeof source> = {
     numberTakenFor: 'જાવક {{number}} પહેલેથી છે ({{customer}}). બીજો નંબર લખો.',
     loadFailed: 'જાવકની વિગતો લોડ કરી શકાઈ નથી',
     saveFailed: 'જાવક સાચવી શકાઈ નથી',
+    editMismatch: 'આ ફોર્મ બીજી જાવકનું છે. પાછા જાઓ અને જાવક ફરી ખોલો.',
+    numberUsedNext: 'જાવક નંબર {{number}} પહેલેથી વપરાયેલો છે. હવે પછીનો ખાલી નંબર {{next}} છે.',
+    // Draft for the owner's wording review (2026-10-20): the number was refused when the request was sent again after a lost answer.
+    numberMaybeSaved: 'જાવક {{number}} કદાચ પહેલેથી સચવાઈ ગઈ હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
+    // Draft for the owner's wording review (2026-10-20): a save that finished after the form was left.
+    maybeSavedAfterLeavingTitle: 'સર્વરનો જવાબ મળ્યો નથી',
+    savedAfterLeavingTitle: 'જાવક સચવાઈ ગઈ',
+    savedAfterLeaving: 'તમે ફોર્મ છોડ્યું તે પહેલાં જાવક {{number}} સચવાઈ ગઈ. તે જાવકની યાદીમાં છે.',
+    savedAfterLeavingPhotos: 'જાવક {{number}} સચવાઈ ગઈ, પણ તેના ફોટો અપલોડ થયા નથી. તેને જાવકની યાદીમાં ખોલો અને ફોટો વિભાગમાં ફોટો ઉમેરો.',
+  },
+  // Opening a dispatch to edit it (the edit form reads the dispatch before it shows a step)
+  edit: {
+    openFailedTitle: 'જાવક ખોલી શકાઈ નથી',
+    openFailedMessage: 'જાવકની લિંક અધૂરી છે. યાદીમાંથી જાવક ફરી ખોલો.',
+    // Draft for the owner's wording review (tweak 2026-10-20, review finding 3): finishOtherTitle to openIt.
+    finishOtherTitle: 'બીજી જાવક ખુલ્લી છે',
+    finishOtherEdit: 'પહેલાં જાવક {{number}} નો ફેરફાર પૂરો કરો અથવા રદ કરો.',
+    finishOtherEditNoNumber: 'પહેલાં ખુલ્લી જાવકનો ફેરફાર પૂરો કરો અથવા રદ કરો.',
+    finishOtherNew: 'પહેલાં નવી જાવક પૂરી કરો અથવા રદ કરો.',
+    openIt: 'તે ખોલો',
   },
   // Step 1: dispatch details
   form: {
@@ -108,6 +128,8 @@ export const dispatch: Translation<typeof source> = {
     bagsToDispatch: 'મોકલવાના નંગ',
     fromAnotherCustomer: 'બીજા વેપારીના માલમાંથી જાવક:',
     leftAfterDispatch: 'જાવક પછી બાકી',
+    // Draft for the owner's wording review (2026-10-20): what the order asks of the lot of a line, to check the quantity against.
+    orderAsks: 'ઑર્ડરમાં {{bags}} માંગ્યા છે',
     enterBags: 'નંગ લખો',
     maxBagsOriginal: '{{count}} કે તેથી ઓછા નંગ લખો. મૂળ સ્ટોક એટલો જ છે.',
     maxBagsAvailable: '{{count}} કે તેથી ઓછા નંગ લખો. સ્ટોકમાં એટલા જ છે.',
@@ -237,6 +259,10 @@ export const dispatch: Translation<typeof source> = {
       other: '{{count}} આઇટમ સચવાશે અને સ્ટોક બદલાશે.',
     },
     orderFulfilled: 'ઑર્ડર પૂરો થયો અને કતારમાંથી નીકળી ગયો.',
+    orderLinesLeft: {
+      one: '{{count}} લાઇન હજુ ઑર્ડરમાં બાકી છે.',
+      other: '{{count}} લાઇન હજુ ઑર્ડરમાં બાકી છે.',
+    },
     photosNotUploadedTitle: 'ફોટો અપલોડ થયા નથી',
     photosNotUploadedMessage: 'જાવક {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     failedPhoto: 'ફોટો {{position}}',
@@ -276,7 +302,8 @@ export const dispatch: Translation<typeof source> = {
     dispNoFormat: 'જાવક નંબરમાં અંગ્રેજી કેપિટલ અક્ષરો અને આંકડા વાપરો',
     dateRequired: 'જાવકની તારીખ જરૂરી છે',
     dateInvalid: 'તારીખ બરાબર નથી',
-    dateFuture: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
+    // Draft for the owner's wording review (2026-10-20): now says today's date.
+    dateFuture: 'જાવકની તારીખ આજ પછીની ન હોઈ શકે. આજે {{today}} છે.',
     dispatchDateInvalid: 'જાવકની તારીખ બરાબર નથી',
     registrationRequired: 'વાહન નંબર જરૂરી છે',
     registrationMax: 'વાહન નંબર વધુમાં વધુ ૩૦ અક્ષરનો હોવો જોઈએ',
@@ -316,6 +343,20 @@ export const dispatch: Translation<typeof source> = {
       'આવક પાવતી {{grn}}નો માલ {{grnDate}}ના રોજ આવ્યો હતો, જે જાવકની તારીખ ({{dispatchDate}}) પછી છે. માલ આવ્યા પહેલાં તેની જાવક ન થઈ શકે.',
     dateBeforeGrns:
       'આ આવક પાવતીની તારીખ જાવકની તારીખ ({{dispatchDate}}) પછીની છે: {{grns}}. માલ આવ્યા પહેલાં તેની જાવક ન થઈ શકે.',
+  },
+  // What the server refuses on a dispatch (wave B, owner decisions D1 to D5); the screens word these from the reason and the fields
+  refusal: {
+    // Draft for the owner's wording review (2026-10-20): the date and the number are locked while the dispatch is on an invoice.
+    invoiced: 'ઇન્વૉઇસ {{invoice}} પર છે. પહેલાં ઇન્વૉઇસ ડિલીટ કરો અથવા તેમાં ફેરફાર કરો.',
+    // Draft for the owner's wording review (2026-10-20).
+    dispatchInvoiced: 'જાવક {{dispatch}} ઇન્વૉઇસ {{invoice}} પર છે. તેની તારીખ અને નંબર બદલી શકાતા નથી. પહેલાં ઇન્વૉઇસ ડિલીટ કરો અથવા તેમાં ફેરફાર કરો.',
+    // Draft for the owner's wording review (2026-10-20): a new dispatch from an order that changed after the form was opened.
+    orderChangedTitle: 'તમે ખોલ્યા પછી આ ઑર્ડર બદલાયો',
+    orderChangedMessage: 'ઑર્ડરની લાઇન ફરી લોડ કરી છે. નંગ તપાસો, પછી ફરી જાવક બનાવો.',
+    // Draft for the owner's wording review (2026-10-20): says what to do (go back to Items, or close the form with X).
+    orderEmpty: 'આ ઑર્ડરમાં જાવક માટે કોઈ લાઇન બાકી નથી. જથ્થા ઉમેરવા આઇટમ પર પાછા જાઓ, અથવા X થી ફોર્મ બંધ કરો.',
+    // Draft for the owner's wording review (2026-10-20): the order was kept in step with the saved quantities.
+    orderSynced: 'ઑર્ડર પણ તે મુજબ બદલાયો.',
   },
   // Fallback messages of the dispatch form services (the server's own message is shown when there is one)
   service: {
@@ -381,7 +422,25 @@ export const dispatch: Translation<typeof source> = {
     deletedMessageNoNumber: 'જાવક ડિલીટ થઈ ગઈ છે.',
     viewDispatches: 'જાવકની યાદી જુઓ',
     cannotDeleteTitle: 'જાવક ડિલીટ કરી શકાતી નથી',
-    deleteInvoicesFirst: 'પહેલાં તેના ઇન્વૉઇસ ડિલીટ કરો, પછી ફરી પ્રયાસ કરો.',
+    hasInvoices: 'આ જાવકના ઇન્વૉઇસ બનેલા છે, તેથી તે ડિલીટ થઈ શકતી નથી. પહેલાં તેના ઇન્વૉઇસ ડિલીટ કરો, પછી ફરી પ્રયાસ કરો.',
+    orderLinesGivenBack: {
+      one: 'વેપારીના ઑર્ડરમાં {{count}} લાઇન પાછી મૂકી.',
+      other: 'વેપારીના ઑર્ડરમાં {{count}} લાઇન પાછી મૂકી.',
+    },
+    orderLinesNotRestored: {
+      one: '{{count}} લાઇન ઑર્ડરમાં પાછી મૂકી શકાઈ નથી: તે ઑર્ડરના નંગ નોંધાતા થયા તે પહેલાં સચવાયેલી હતી.',
+      other: '{{count}} લાઇન ઑર્ડરમાં પાછી મૂકી શકાઈ નથી: તે ઑર્ડરના નંગ નોંધાતા થયા તે પહેલાં સચવાયેલી હતી.',
+    },
+    orderLinesNoOpenOrder: {
+      one: '{{count}} લાઇન પાછી મૂકી શકાઈ નથી: વેપારીનો કોઈ બાકી ઑર્ડર નથી.',
+      other: '{{count}} લાઇન પાછી મૂકી શકાઈ નથી: વેપારીનો કોઈ બાકી ઑર્ડર નથી.',
+    },
+    // Draft for the owner's wording review (tweak 2026-10-20, owner rule D22): orderCheck to leavePage.
+    orderCheck: 'વેપારીનો ઑર્ડર તપાસો: ઑર્ડરમાં લાઇન પાછી મૂકાઈ કે નહીં તે ઍપ કહી શકતી નથી.',
+    leaveCheckTitle: 'આ પાનું છોડવું છે?',
+    leaveCheckMessage: 'જાવક ડિલીટ થઈ ગઈ હોઈ શકે. ફરી ડિલીટ કરતા પહેલાં જાવકની યાદી તપાસો.',
+    stayHere: 'અહીં રહો',
+    leavePage: 'છોડી દો',
     deleteFailedTitle: 'જાવક ડિલીટ કરી શકાઈ નથી',
     tryAgain: 'ફરી પ્રયાસ કરો.',
     pdfFailedTitle: 'PDF બનાવી શકાઈ નથી',

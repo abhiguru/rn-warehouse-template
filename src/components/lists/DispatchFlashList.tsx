@@ -57,6 +57,7 @@ import { localizeDigits, t as translate } from '@/i18n';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { useOpenNewDispatchForm } from '@/features/dispatch/hooks/useOpenNewDispatchForm';
 
 // Filters, search and sort
 import { DISPATCH_FILTERS } from '@/features/filters/configs';
@@ -336,9 +337,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     router.push(`/dispatch-details/${dispatch.dispatch_id}`);
   }, []);
 
-  const handleCreateDispatch = useCallback(() => {
-    router.push('/dispatch-form/step1');
-  }, []);
+  // Resets the form first (a new dispatch never carries what an earlier form left) and ignores a second tap.
+  const handleCreateDispatch = useOpenNewDispatchForm();
 
   // One card. The animation is for one row at a time and is skipped under Reduce Motion (§9).
   const handleToggle = useCallback((dispatchId: string) => {

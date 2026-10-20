@@ -7,7 +7,7 @@
  * @module list-items/CustomerOrderGroupCard
  */
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,14 +16,16 @@ import {
   LayoutAnimation,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCount, formatNumber, formatRelativeTime } from '@/utils/formatters';
 import { Avatar, StatusTag } from '@/components/ui';
 import { t as translate } from '@/i18n';
 import { useAppDispatch } from '@/store/hooks';
 import { loadFromOrder } from '@/store/slices/dispatchFormSlice';
-import { convertOrderToDispatchData, canConvertToDispatch } from '@/utils/orderToDispatchConverter';
+import { openDispatchFormBlocking } from '@/features/dispatch/utils/openDispatchForms';
+import { showOpenDispatchFormRefusal } from '@/features/dispatch/utils/refuseOpenForm';
+import { convertOrderToDispatchData, canConvertToDispatch, type ConvertedDispatchData } from '@/utils/orderToDispatchConverter';
 import { OrderService } from '@/services/order-service';
 import type { Order, OrderItem } from '@/types/order.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -133,14 +135,50 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 
   const handleRetryLoad = useCallback(() => setLoadError(null), []);
 
+  // Set by the first tap on Generate Dispatch until this screen is in front again: a second tap before the form's
+  // first step has opened would fill the form once more and open step 1 a second time.
+  const isOpening = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      isOpening.current = false;
+    }, [])
+  );
+
   // Toggle expand with animation
   const handleToggle = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     onToggleExpand(order.id);
   }, [order.id, onToggleExpand]);
 
+  // Another dispatch form that is still open (maybe hidden under other screens) is told about before anything is
+  // filled in: filling the form first would swap the open form's data. True when the visit was turned away.
+  const refusedByOpenForm = useCallback((): boolean => {
+    const blocker = openDispatchFormBlocking();
+    if (!blocker) return false;
+    showOpenDispatchFormRefusal(blocker);
+    return true;
+  }, []);
+
+  // Fill the dispatch form from the order and open its first step, once per visit to this screen.
+  const openDispatchForm = useCallback(
+    (header: ConvertedDispatchData['header'], items: ConvertedDispatchData['items'], orderLots: ConvertedDispatchData['orderLots']) => {
+      if (isOpening.current) return;
+      if (refusedByOpenForm()) return;
+      isOpening.current = true;
+      dispatch(loadFromOrder({
+        header,
+        items,
+        orderLots,
+        source_order_id: order.id,
+      }));
+      router.push('/dispatch-form/step1');
+    },
+    [dispatch, order.id, refusedByOpenForm, router]
+  );
+
   // Handle Generate Dispatch button press
   const handleGenerateDispatch = useCallback(() => {
+    if (isOpening.current) return;
     const orderToDispatch = fullOrder ?? order;
     if (__DEV__) console.log('[CustomerOrderGroupCard] Generate Dispatch pressed for order:', orderToDispatch.id);
 
@@ -153,8 +191,16 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
       return;
     }
 
+    if (refusedByOpenForm()) return;
+
     // Convert order to dispatch data (use fullOrder which has items)
-    const { header, items, skippedItems } = convertOrderToDispatchData(orderToDispatch);
+    const converted = convertOrderToDispatchData(orderToDispatch);
+    const { items, orderLots, skippedItems } = converted;
+    // Wave B (D5): the order as it was read with its lines. The server refuses the create when the order changed since.
+    // Only an order read in full has it (the row of the queue list does not carry the same `updated_at`).
+    const header: ConvertedDispatchData['header'] = fullOrder?.updated_at
+      ? { ...converted.header, source_order_updated_at: fullOrder.updated_at }
+      : converted.header;
 
     if (__DEV__) console.log('[CustomerOrderGroupCard] Converted dispatch data:', {
       headerCustomer: header.customer_name,
@@ -175,27 +221,15 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
           { text: translate('common.cancel'), style: 'cancel' },
           {
             text: translate('lists.dispatch.create'),
-            onPress: () => {
-              dispatch(loadFromOrder({
-                header,
-                items,
-                source_order_id: order.id,
-              }));
-              router.push('/dispatch-form/step1');
-            },
+            onPress: () => openDispatchForm(header, items, orderLots),
           },
         ]
       );
     } else {
       // No skipped items, proceed directly
-      dispatch(loadFromOrder({
-        header,
-        items,
-        source_order_id: order.id,
-      }));
-      router.push('/dispatch-form/step1');
+      openDispatchForm(header, items, orderLots);
     }
-  }, [order, fullOrder, canDispatch, dispatch, router]);
+  }, [order, fullOrder, canDispatch, refusedByOpenForm, openDispatchForm]);
 
   // Navigate to order details for editing
   const handleEditOrder = useCallback(() => {

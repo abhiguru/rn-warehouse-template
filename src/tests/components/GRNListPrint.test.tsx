@@ -12,7 +12,7 @@ import { printGRNRange } from '@/services/print-service';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useFocusEffect: jest.fn() }));
 // Every row is drawn, as the list draws the rows on screen.
 jest.mock('@shopify/flash-list', () => {
   const mockReact = require('react');

@@ -1,5 +1,6 @@
 // Order System Type Definitions
 // Using "Order" terminology in frontend while mapping to "cart" in backend
+import type { ServerRefusal } from '@/utils/serverRefusal';
 
 export interface Customer {
   id: string;
@@ -105,6 +106,21 @@ export interface OrderServiceResponse<T = any> {
   message: string;
   data?: T;
   error?: string;
+  /** The server's own sentence for a refusal, in English as it sent it (see RPCResult.serverMessage). */
+  serverMessage?: string;
+  /** The change got no answer and may have been applied (RPCResult.lostAnswer, owner rule D22). Absent otherwise. */
+  lostAnswer?: boolean;
+  /**
+   * The rule the server refused by (wave B: `reason` and the values that go with it, see src/utils/serverRefusal.ts).
+   * A screen switches on `refusal.reason` and never reads the server's English. Absent for an old server and for a
+   * refusal that names no rule.
+   */
+  refusal?: ServerRefusal;
+  /**
+   * The new version of the order line after a change of its quantity (`data.updated_at` of the server's answer, owner
+   * decision D1): the next change of the line is sent with it. Absent from an old server, and from the other calls.
+   */
+  updatedAt?: string;
   metadata?: {
     total_count?: number;
     current_count?: number;
@@ -115,6 +131,14 @@ export interface OrderServiceResponse<T = any> {
 export interface GetOrCreateOrderResponse {
   cart_id: string;  // Maps to order.id
   is_new: boolean;
+}
+
+/**
+ * What a line card is told when a change of its quantity was stored. `true` is enough; `{ updatedAt }` also carries the
+ * line's new version (owner decision D1), so the card's next change starts from it and is not refused as stale.
+ */
+export interface LineSaved {
+  updatedAt?: string;
 }
 
 export interface AddToOrderResponse {

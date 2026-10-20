@@ -48,7 +48,7 @@ import {
 } from '@/features/dispatch/components';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { validateSingleItem, checkDuplicateLots } from '@/features/dispatch/schemas/dispatchValidation';
-import type { GRNDetailItem, DispatchItemData, ItemFormData } from '@/types/dispatch.types';
+import type { GRNDetailItem, DispatchItemData, ItemFormData, OrderLotAsk } from '@/types/dispatch.types';
 import { EMPTY_DISPATCH_ITEM } from '@/types/dispatch.types';
 import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { getUserFriendlyError } from '@/utils/errorHandler';
@@ -59,6 +59,11 @@ import { readDispatchQuantityInput } from '@/features/dispatch/utils/dispatchQua
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
+/** The bags a saved dispatch held per lot, for a form that holds none (a new dispatch). */
+const NO_HELD_BAGS: Record<string, number> = {};
+/** What an order asks of each lot, for a form that is not made from an order. */
+const NO_ORDER_LOTS: Record<string, OrderLotAsk> = {};
+
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
     /**
@@ -79,6 +84,8 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const {
         header,
         items: savedItems,
+        heldBags = NO_HELD_BAGS,
+        orderLots = NO_ORDER_LOTS,
         isCreateMode,
         addFormItems,
         updateFormItem,
@@ -180,7 +187,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         if (isCreateMode) {
             router.replace('/dispatch');
         } else {
-            router.back();
+            // The steps of an edit replace each other, so the dispatch's page is one step back. (Two backs left it too.)
             router.back();
         }
     };
@@ -285,14 +292,36 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                         }));
                     }
                 } else {
-                    setCurrentItem((prev) => ({
-                        ...prev,
-                        grns_id: grnHeader.id,
-                        grns_gr_no: grnHeader.gr_no,
-                        grns_date: grnHeader.date,
-                        grns_customer_name: grnHeader.customer_name,
-                        grns_customer_id: grnHeader.customer_id,
-                    }));
+                    // A line takes stock from one lot of one GRN. The lot, the item and the stock the line held
+                    // belong to the GRN that was chosen before: unless the new GRN is the same one (it lists the
+                    // line's lot), they are cleared, as in a new dispatch, so the line cannot show one GRN and
+                    // save the lot of another. The person then chooses the item and the lot of the new GRN.
+                    setCurrentItem((prev) => {
+                        const lotIsOfThisGrn = !!prev.grnItems_id && grnItems.some((item) => item.id === prev.grnItems_id);
+                        return {
+                            ...prev,
+                            grns_id: grnHeader.id,
+                            grns_gr_no: grnHeader.gr_no,
+                            grns_date: grnHeader.date,
+                            grns_customer_name: grnHeader.customer_name,
+                            grns_customer_id: grnHeader.customer_id,
+                            ...(lotIsOfThisGrn
+                                ? {}
+                                : {
+                                    grnItems_item_id: '',
+                                    grnItems_item_name: '',
+                                    grnItems_id: '',
+                                    grnItems_quantity: 0,
+                                    grnItems_stock: 0,
+                                    grnItems_package_mark: '',
+                                    grnItems_rack: '',
+                                    grnItems_weight: 0,
+                                    disp_quantity: 0,
+                                    // The bags the saved line holds are on its own lot, not on one of this GRN.
+                                    original_disp_quantity: 0,
+                                }),
+                        };
+                    });
                 }
 
                 setValidationErrors((prev) => {
@@ -324,6 +353,8 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             grnItems_rack: '',
             grnItems_weight: 0,
             disp_quantity: 0,
+            // No lot yet: the bags held on a lot are set when one is chosen
+            original_disp_quantity: 0,
         }));
 
         setValidationErrors((prev) => {
@@ -336,6 +367,11 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const handleLotSelect = useCallback((lot: GRNDetailItem) => {
         console.log('[DispatchItemsStep] Lot selected:', lot.id);
 
+        // The bags the saved dispatch held on this lot count towards its stock limit (the server gives them back on a
+        // save). They are the ones the dispatch held when it was read, per lot, and they do not move with a line: a line
+        // changed to another lot and back still finds them, and a lot the dispatch did not hold has none.
+        const heldBagsOfLot = heldBags[lot.id] ?? 0;
+
         setCurrentItem((prev) => ({
             ...prev,
             grnItems_id: lot.id,
@@ -346,13 +382,14 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             grnItems_package_mark: lot.package_mark,
             grnItems_rack: lot.rack,
             grnItems_weight: lot.weight,
+            original_disp_quantity: heldBagsOfLot,
         }));
 
         setValidationErrors((prev) => {
             const { grnItems_id, ...rest } = prev;
             return rest;
         });
-    }, []);
+    }, [heldBags]);
 
     // Handle quantity change
     const handleQuantityChange = (text: string) => {
@@ -408,21 +445,13 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         [addedLotIds, editingItemId, selectedGRN]
     );
 
-    // Calculate remaining stock after applying current dispatch quantity
-    // In edit mode: current_stock already excludes original dispatch, so add it back first
-    // then subtract the new quantity to show what will remain
-    const displayStock =
-        editingItemId !== null
-            ? (currentItem.grnItems_stock ?? 0) + ((currentItem.original_disp_quantity ?? 0) - (currentItem.disp_quantity ?? 0))
-            : (currentItem.grnItems_stock ?? 0) - (currentItem.disp_quantity ?? 0);
+    // Calculate remaining stock after applying current dispatch quantity.
+    // The lot's stock already excludes the bags the saved dispatch held on it: they are added back (`original_disp_quantity`
+    // is the held bags of the line's lot, 0 in a new dispatch), then the new quantity is subtracted to show what remains.
+    const displayStock = (currentItem.grnItems_stock ?? 0) + ((currentItem.original_disp_quantity ?? 0) - (currentItem.disp_quantity ?? 0));
 
-    // Max allowed quantity
-    // In edit mode: available = current_stock + original_disp_quantity (what we already hold)
-    // In create mode: available = current_stock
-    const maxAllowedQty =
-        editingItemId !== null
-            ? (currentItem.grnItems_stock ?? 0) + (currentItem.original_disp_quantity ?? 0)
-            : currentItem.grnItems_stock ?? 0;
+    // Max allowed quantity: the lot's stock plus the bags the saved dispatch held on it (none in a new dispatch)
+    const maxAllowedQty = (currentItem.grnItems_stock ?? 0) + (currentItem.original_disp_quantity ?? 0);
 
     // Check if current item is valid
     const isCurrentItemValid =
@@ -531,7 +560,9 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                 grnItems_rack: item.grnItems_rack,
                 grnItems_weight: item.grnItems_weight,
                 disp_quantity: item.disp_quantity,
-                original_disp_quantity: item.original_disp_quantity !== undefined ? item.original_disp_quantity : 0,
+                // What the dispatch held on this line's lot when it was read, not what the line itself says: the line
+                // may have been moved to another lot since.
+                original_disp_quantity: heldBags[item.grnItems_id] ?? 0,
             });
 
             try {
@@ -564,7 +595,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             scrollViewRef.current?.scrollToPosition?.(0, 0, true);
             setTimeout(() => quantityInputRef.current?.focus(), 500);
         },
-        []
+        [heldBags]
     );
 
     // "Stop editing this item" in the strip above the form, in a new dispatch and in an
@@ -695,15 +726,12 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const handleNext = async () => {
         const isEditing = editingItemId !== null;
 
-        if (savedItems.length === 0 && !isCurrentItemValid) {
-            showAlert(tr('dispatch.items.addFirstTitle'), tr('dispatch.items.addFirstMessage'));
-            return;
-        }
-
         // A correction that cannot be saved (no bags, or more than the lot holds) stays
         // here with its fields marked. Going on would review the item as it was before
-        // the correction, without a word.
-        if (isEditing && !isCurrentItemValid) {
+        // the correction, without a word. The same holds for a new line the person filled in (a lot and
+        // bags) that cannot be saved, such as more bags than the stock: going on would drop it unsaid.
+        // A line with no bags typed is still left behind when Next is tapped.
+        if ((isEditing || hasSignificantData()) && !isCurrentItemValid) {
             const validation = await validateSingleItem(currentItem);
             // Text that is not a whole number ("12.5") is still in the field, with its reason
             // under it. The check sees the 0 bags it counts as and would say "at least 1" in
@@ -714,6 +742,13 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     : validation.errors
             );
             showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
+            return;
+        }
+
+        // Nothing saved and nothing in the form that could be: there is no item to review. The check of the item
+        // above comes first, so a line that was filled in but cannot be saved is named, not passed over as "add an item first".
+        if (savedItems.length === 0 && !isCurrentItemValid) {
+            showAlert(tr('dispatch.items.addFirstTitle'), tr('dispatch.items.addFirstMessage'));
             return;
         }
 
@@ -1121,6 +1156,15 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                         </Text>
                                     )}
                                 </View>
+                                {/* A new dispatch from an order: what the order asks of this lot, so the quantity can be checked against it. */}
+                                {currentItem.grnItems_id && orderLots[currentItem.grnItems_id] ? (
+                                    <View style={styles.stockInfoRow} testID="dispatch-items-order-asks">
+                                        <Icon name="clipboard-text-outline" size={iconSize.sm} color={t.status.informative.text} />
+                                        <Text style={styles.stockDisplayText}>
+                                            {tr('dispatch.items.orderAsks', { bags: formatCount(orderLots[currentItem.grnItems_id].requested, 'bag') })}
+                                        </Text>
+                                    </View>
+                                ) : null}
                             </View>
                         )}
 
@@ -1165,10 +1209,9 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                         </View>
                         {exceedsMax &&
                             renderError(
-                                // The limit includes bags this dispatch already holds only for a line
-                                // loaded from a saved dispatch; a line of a new dispatch is limited by
-                                // the available stock alone.
-                                tr(isEditingItem && (currentItem.original_disp_quantity ?? 0) > 0
+                                // The limit includes the bags the saved dispatch held on this lot; in a new
+                                // dispatch, and on a lot it did not hold, it is the available stock alone.
+                                tr((currentItem.original_disp_quantity ?? 0) > 0
                                     ? 'dispatch.items.maxBagsOriginal'
                                     : 'dispatch.items.maxBagsAvailable', {
                                     count: maxAllowedQty,
@@ -1269,6 +1312,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                 onDeleteItem={handleDeleteItem}
                 onEditItem={handleEditItem}
                 editingItemId={editingItemId ?? undefined}
+                orderLots={orderLots}
             />
 
             {/* Confirmation dialogs */}

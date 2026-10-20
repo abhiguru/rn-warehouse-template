@@ -27,8 +27,10 @@ export const grn = {
     checkNumberNetwork: 'Network error checking GRN',
     numberTaken: 'GRN {{number}} already exists. Enter a different number.',
     numberTakenFor: 'GRN {{number}} already exists ({{customer}}). Enter a different number.',
+    // The number was refused when the request was sent again after a lost answer: the first send may have saved it.
+    numberMaybeSaved: 'GRN {{number}} may already have been saved. Check the list before entering it again.',
     nextNumberFailed: 'Failed to get next GRN number',
-    requestFailed: 'RPC call failed',
+    requestFailed: 'Unable to save changes. Please try again.',
     creationFailed: 'GRN creation failed',
     createFailed: 'Failed to create GRN',
     updateRejected: 'GRN update failed',
@@ -36,6 +38,7 @@ export const grn = {
     dispatchedQuantityLocked:
       'Cannot modify quantities for items with existing dispatches. Other details can still be updated.',
     loadFailed: 'Failed to load GRN',
+    itemDeleted: 'An item in this GRN was deleted. Remove that line, then save again.',
   },
 
   // Step 1: GRN details
@@ -43,6 +46,9 @@ export const grn = {
     loading: 'Loading GRN details…',
     dispatchedWarningTitle: 'Some items are already dispatched',
     dispatchedWarningText: "You can't change the quantity or stock of items that were dispatched from this GRN.",
+    // From the server's locks (get_grn_edit_state), which say what is locked.
+    dispatchedLockedText: "You can't change the quantity, item or packing of items that were dispatched from this GRN.",
+    invoicedLockedText: "The weight of items that are on an invoice can't change either. Delete or edit the invoice first.",
     basicInformation: 'BASIC INFORMATION',
     gettingNumber: 'Getting the next GRN number',
     receiptNumberLabel: 'Receipt number',
@@ -111,6 +117,11 @@ export const grn = {
     quantityLocked: 'Quantity locked',
     quantityInputLabel: 'Receipt item quantity',
     quantityLockedHint: 'Locked because this item has dispatches',
+    itemLocked: 'Item locked',
+    weightLocked: 'Weight locked',
+    lockedHint: 'Locked. Tap to see why.',
+    lockedDispatched: 'Quantity, item and packing locked',
+    lockedInvoiced: 'Quantity, item, packing and weight locked',
     weightInputLabel: 'Weight each, in kilograms',
     weightUnit: 'kg',
     floor: 'Floor',
@@ -260,6 +271,7 @@ export const grn = {
       overlap: "This weight band overlaps another band of the item's rate. Use the same band, or change the bands on the item's Pricing tab.",
       invoiced: 'This GRN is invoiced, so its rates for this GRN only cannot change.',
       notForGrn: 'A rate you set does not match an item of this GRN. Check the rates and save again.',
+      stale: 'A rate of one of these items was changed by someone else. The rates are shown again; check them and save again.',
       generic: "The rates couldn't be saved. Check them and try again.",
     },
     savedWithSkipped:
@@ -273,10 +285,11 @@ export const grn = {
     photosPreparingMessage: 'Wait a moment for the photos to finish, then save again.',
     photoNotPreparedTitle: "A photo couldn't be prepared",
     photoNotPreparedMessage: 'Remove the photo marked as failed, or add it again, then save.',
-    saveUnanswered:
-      'The server did not answer, so the GRN may or may not be saved. Nothing in the form was lost. Check your connection and save again: the app first checks what was saved.',
-    saveNotConfirmed:
-      "Couldn't check whether the last save reached the server. Check your connection and try again.",
+    numberUsedNext: 'GRN number {{number}} is already used. The next free number is {{next}}.',
+    savedAfterLeavingTitle: 'GRN saved',
+    savedAfterLeaving: 'GRN {{number}} was saved before you left the form. Find it in the GRN list.',
+    savedAfterLeavingPhotos:
+      'GRN {{number}} was saved, but its photos were not uploaded. Open it in the GRN list and add them under Images.',
     photosNotUploadedMessage: 'GRN {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'The GRN is saved, but these photos were not uploaded:\n{{photos}}',
     failedGrnPhoto: 'GRN photo {{position}}',
@@ -310,6 +323,8 @@ export const grn = {
     totalItems: 'Total items',
     totalQuantity: 'Total quantity',
     a11yDispatchedLocked: 'already dispatched, quantity locked',
+    a11yDispatchedLockedAll: 'already dispatched, quantity, item and packing locked',
+    a11yInvoicedLocked: 'on an invoice, quantity, item, packing and weight locked',
     confirmCreateTitle: 'Create this GRN?',
     confirmSaveTitle: 'Save changes to this GRN?',
     confirmCreateNumbered: {
@@ -472,7 +487,7 @@ export const grn = {
   validation: {
     numberMax: 'GRN number must be at most 8 characters',
     numberNoSpaces: 'GRN number cannot contain spaces',
-    registrationMax: 'Registration must be at most 12 characters',
+    registrationMax: 'Registration must be at most 20 characters',
     dateRequired: 'Date is required',
     dateFuture: 'Cannot select a future date',
     senderRequired: 'Sender name is required',
@@ -504,13 +519,40 @@ export const grn = {
     itemInvalid: 'Invalid item selection',
     itemSelectRequired: 'Please select an item from the catalog',
     itemNameRequired: 'Item name is required',
-    itemNameMax: 'Item name must be at most 30 characters',
-    packagingMax: 'Packaging must be at most 20 characters',
+    itemNameMax: 'Item name must be at most 80 characters',
+    packagingMax: 'Packaging must be at most 40 characters',
     rackMax: 'Rack must be at most 30 characters',
     packageMarkMax: 'Package mark must be at most 60 characters',
     itemsMin: 'At least one item is required',
     itemsRequired: 'Items are required',
     failed: 'Validation failed',
+    // A GRN is not dated after its first dispatch (owner decision D3, wave B).
+    dateAfterDispatch: "GRN {{grn}} can't be dated after its first dispatch, on {{date}}.",
+  },
+
+  // What the server refuses when a GRN is edited, in the app's words (wave B, owner decisions D1 to D24). Written from
+  // the refusal's reason and fields, never from the server's English.
+  refusal: {
+    // Read-only fields of a saved GRN
+    numberLocked: "The number can't be changed. To correct it, delete this GRN and enter it again.",
+    dateInvoiced: 'This GRN is invoiced. Delete or edit the invoice first.',
+    // Lines that are locked or can't be removed
+    lockedTitle: "This can't be changed",
+    lineTitle: "Item {{position}} can't be saved",
+    removeTitle: "This line can't be removed",
+    lotDispatched: "{{item}} has been dispatched. Its item and packing can't be changed.",
+    lotInvoiced: "{{item}} is on invoice {{invoice}}. Item, packing and weight can't be changed. Delete or edit the invoice first.",
+    // The same when the server sends no invoice number.
+    lotInvoicedNoNumber: "{{item}} is on an invoice. Item, packing and weight can't be changed. Delete or edit the invoice first.",
+    invoicedNoNewLot: "GRN {{grn}} is on invoice {{invoice}}. A line can't be added. Delete the invoice first.",
+    invoicedNoNewLotNoNumber: "GRN {{grn}} is invoiced. A line can't be added. Delete the invoice first.",
+    lineOnOrder: "{{item}} is on {{customer}}'s order. Remove it from the order first.",
+    lineDispatchedBefore: "{{item}} was dispatched before, so this line can't be removed.",
+    // Rates
+    ratesNeedManager: 'Ask a manager to make this change. It would remove a rate that was set for this GRN.',
+    ratesNeedManagerItems: 'Ask a manager to make this change. It would remove the rate that was set for this GRN for: {{items}}.',
+    ratesWouldDrop: 'This change removes the rate set for this GRN. Set a new rate in Rates.',
+    ratesWouldDropItems: 'This change removes the rate set for this GRN for: {{items}}. Set a new rate in Rates.',
   },
 
   // GRN details screen
@@ -546,6 +588,7 @@ export const grn = {
     stockMovementCount: { one: '{{count}} stock movement', other: '{{count}} stock movements' },
     deleteFailedTitle: "Couldn't delete the GRN",
     deleteFailed: "Couldn't delete the GRN. Try again.",
+    leaveWhileCheckingTitle: 'Leave this screen?',
     dispatchItemsInvoiced: {
       one: '{{count}} dispatch item invoiced.',
       other: '{{count}} dispatch items invoiced.',

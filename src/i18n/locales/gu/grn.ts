@@ -28,20 +28,28 @@ export const grn: Translation<typeof source> = {
     checkNumberNetwork: 'આવક પાવતી નંબર તપાસતી વખતે નેટવર્કની ભૂલ આવી',
     numberTaken: 'આવક પાવતી {{number}} પહેલેથી છે. બીજો નંબર લખો.',
     numberTakenFor: 'આવક પાવતી {{number}} પહેલેથી છે ({{customer}}). બીજો નંબર લખો.',
+    // Draft for the owner's wording review (2026-10-20): the number was refused when the request was sent again after a lost answer.
+    numberMaybeSaved: 'આવક પાવતી {{number}} કદાચ પહેલેથી સચવાઈ ગઈ હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
     nextNumberFailed: 'આગળનો આવક પાવતી નંબર મળી શક્યો નથી',
-    requestFailed: 'સર્વર સાથે કામ થઈ શક્યું નથી',
+    // Draft for the owner's wording review (2026-10-20): a save that failed with no usable reason.
+    requestFailed: 'ફેરફાર સાચવી શકાયા નથી. ફરી પ્રયાસ કરો.',
     creationFailed: 'આવક પાવતી બની શકી નથી',
     createFailed: 'આવક પાવતી બની શકી નથી',
     updateRejected: 'આવક પાવતી સાચવી શકાઈ નથી',
     updateFailed: 'આવક પાવતી સાચવી શકાઈ નથી',
     dispatchedQuantityLocked: 'જે આઇટમની જાવક થઈ ગઈ છે તેના નંગ બદલી શકાતા નથી. બીજી વિગતો બદલી શકાય છે.',
     loadFailed: 'આવક પાવતી લોડ થઈ શકી નથી',
+    itemDeleted: 'આ આવક પાવતીની એક આઇટમ ડિલીટ થઈ ગઈ છે. તે લાઇન કાઢી નાખો, પછી ફરી સાચવો.',
   },
 
   header: {
     loading: 'આવક પાવતીની વિગતો લોડ થઈ રહી છે…',
     dispatchedWarningTitle: 'કેટલીક આઇટમની જાવક થઈ ગઈ છે',
     dispatchedWarningText: 'આ આવક પાવતીમાંથી જે આઇટમની જાવક થઈ ગઈ છે તેના નંગ કે સ્ટોક બદલી શકાતા નથી.',
+    // Draft for the owner's wording review (2026-10-20).
+    dispatchedLockedText: 'આ આવક પાવતીમાંથી જે આઇટમની જાવક થઈ ગઈ છે તેના નંગ, આઇટમ અને પેકિંગ બદલી શકાતા નથી.',
+    // Draft for the owner's wording review (2026-10-20).
+    invoicedLockedText: 'ઇન્વૉઇસમાં હોય તે આઇટમનું વજન પણ બદલી શકાતું નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
     basicInformation: 'મુખ્ય માહિતી',
     gettingNumber: 'આગળનો આવક પાવતી નંબર લાવી રહ્યા છીએ',
     receiptNumberLabel: 'આવક પાવતી નંબર',
@@ -108,6 +116,16 @@ export const grn: Translation<typeof source> = {
     quantityLocked: 'નંગ લૉક છે',
     quantityInputLabel: 'આઇટમના નંગ',
     quantityLockedHint: 'આ આઇટમની જાવક થઈ હોવાથી લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    itemLocked: 'આઇટમ લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    weightLocked: 'વજન લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    lockedHint: 'લૉક છે. કારણ જોવા ટૅપ કરો.',
+    // Draft for the owner's wording review (2026-10-20).
+    lockedDispatched: 'નંગ, આઇટમ અને પેકિંગ લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    lockedInvoiced: 'નંગ, આઇટમ, પેકિંગ અને વજન લૉક છે',
     weightInputLabel: 'દરેકનું વજન, કિલોમાં',
     weightUnit: 'કિલો',
     floor: 'માળ',
@@ -254,6 +272,7 @@ export const grn: Translation<typeof source> = {
       overlap: 'આ વજન મર્યાદા આઇટમના દરની બીજી વજન મર્યાદા સાથે ભળે છે. એ જ વજન મર્યાદા વાપરો, અથવા આઇટમના દર ટૅબમાં વજન મર્યાદા બદલો.',
       invoiced: 'આ આવક પાવતીનું ઇન્વૉઇસ બની ગયું છે, એટલે ફક્ત આ આવક પાવતીના દર બદલી શકાતા નથી.',
       notForGrn: 'તમે મૂકેલો એક દર આ આવક પાવતીની કોઈ આઇટમ સાથે બંધબેસતો નથી. દર તપાસો અને ફરી સાચવો.',
+      stale: 'આ આઇટમમાંથી કોઈ એકનો દર બીજા કોઈએ બદલ્યો છે. દર ફરી બતાવ્યા છે; તેમને તપાસો અને ફરી સાચવો.',
       generic: 'દર સાચવી શકાયા નહીં. તેમને તપાસો અને ફરી પ્રયાસ કરો.',
     },
     savedWithSkipped:
@@ -267,10 +286,12 @@ export const grn: Translation<typeof source> = {
     photosPreparingMessage: 'ફોટો તૈયાર થાય ત્યાં સુધી થોડી રાહ જુઓ, પછી ફરી સાચવો.',
     photoNotPreparedTitle: 'એક ફોટો તૈયાર થઈ શક્યો નથી',
     photoNotPreparedMessage: 'નિષ્ફળ બતાવેલો ફોટો કાઢી નાખો અથવા ફરી ઉમેરો, પછી સાચવો.',
-    saveUnanswered:
-      'સર્વર તરફથી જવાબ મળ્યો નથી, એટલે આવક પાવતી સચવાઈ છે કે નહીં તે નક્કી નથી. ફોર્મમાંથી કંઈ ગયું નથી. કનેક્શન તપાસો અને ફરી સાચવો: ઍપ પહેલાં તપાસશે કે શું સચવાયું છે.',
-    saveNotConfirmed:
-      'છેલ્લી વાર સાચવેલું સર્વર સુધી પહોંચ્યું કે નહીં તે તપાસી શકાયું નથી. કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+    // Gujarati draft for the owner's wording review (2026-10-20).
+    numberUsedNext: 'આવક પાવતી નંબર {{number}} પહેલેથી વપરાયેલો છે. આગળનો ખાલી નંબર {{next}} છે.',
+    savedAfterLeavingTitle: 'આવક પાવતી સચવાઈ ગઈ',
+    savedAfterLeaving: 'તમે ફોર્મ છોડ્યું તે પહેલાં આવક પાવતી {{number}} સચવાઈ ગઈ. તે આવક પાવતીની યાદીમાં છે.',
+    savedAfterLeavingPhotos:
+      'આવક પાવતી {{number}} સચવાઈ ગઈ, પણ તેના ફોટો અપલોડ થયા નથી. તેને આવક પાવતીની યાદીમાં ખોલો અને ફોટો ટૅબમાં ફોટો ઉમેરો.',
     photosNotUploadedMessage: 'આવક પાવતી {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'આવક પાવતી સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     failedGrnPhoto: 'આવક પાવતીનો ફોટો {{position}}',
@@ -304,6 +325,10 @@ export const grn: Translation<typeof source> = {
     totalItems: 'કુલ આઇટમ',
     totalQuantity: 'કુલ નંગ',
     a11yDispatchedLocked: 'જાવક થઈ ગઈ છે, નંગ લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    a11yDispatchedLockedAll: 'જાવક થઈ ગઈ છે, નંગ, આઇટમ અને પેકિંગ લૉક છે',
+    // Draft for the owner's wording review (2026-10-20).
+    a11yInvoicedLocked: 'ઇન્વૉઇસમાં છે, નંગ, આઇટમ, પેકિંગ અને વજન લૉક છે',
     confirmCreateTitle: 'આ આવક પાવતી બનાવવી છે?',
     confirmSaveTitle: 'આ આવક પાવતીના ફેરફાર સાચવવા છે?',
     confirmCreateNumbered: {
@@ -470,7 +495,7 @@ export const grn: Translation<typeof source> = {
   validation: {
     numberMax: 'આવક પાવતી નંબર વધુમાં વધુ ૮ અક્ષરનો હોઈ શકે',
     numberNoSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ',
-    registrationMax: 'વાહન નંબર વધુમાં વધુ ૧૨ અક્ષરનો હોઈ શકે',
+    registrationMax: 'વાહન નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે',
     dateRequired: 'તારીખ જરૂરી છે',
     dateFuture: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
     senderRequired: 'મોકલનારનું નામ જરૂરી છે',
@@ -502,13 +527,35 @@ export const grn: Translation<typeof source> = {
     itemInvalid: 'આઇટમની પસંદગી બરાબર નથી',
     itemSelectRequired: 'યાદીમાંથી આઇટમ પસંદ કરો',
     itemNameRequired: 'આઇટમનું નામ જરૂરી છે',
-    itemNameMax: 'આઇટમનું નામ વધુમાં વધુ ૩૦ અક્ષરનું હોઈ શકે',
-    packagingMax: 'પેકિંગ વધુમાં વધુ ૨૦ અક્ષરનું હોઈ શકે',
+    itemNameMax: 'આઇટમનું નામ વધુમાં વધુ ૮૦ અક્ષરનું હોઈ શકે',
+    packagingMax: 'પેકિંગ વધુમાં વધુ ૪૦ અક્ષરનું હોઈ શકે',
     rackMax: 'રેક વધુમાં વધુ ૩૦ અક્ષરની હોઈ શકે',
     packageMarkMax: 'માર્કો વધુમાં વધુ ૬૦ અક્ષરનો હોઈ શકે',
     itemsMin: 'ઓછામાં ઓછી એક આઇટમ જરૂરી છે',
     itemsRequired: 'આઇટમ જરૂરી છે',
     failed: 'વિગતો ચકાસી શકાઈ નથી',
+    // Draft for the owner's wording review (2026-10-20).
+    dateAfterDispatch: 'આવક પાવતી {{grn}} ની તારીખ તેની પહેલી જાવક, {{date}}, પછીની રાખી શકાતી નથી.',
+  },
+
+  // Draft for the owner's wording review (2026-10-20): every text of this group.
+  refusal: {
+    numberLocked: 'નંબર બદલી શકાતો નથી. સુધારવા માટે આ આવક પાવતી કાઢી નાખીને ફરી દાખલ કરો.',
+    dateInvoiced: 'આ આવક પાવતીનું ઇન્વૉઇસ બનેલું છે. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
+    lockedTitle: 'આ બદલી શકાતું નથી',
+    lineTitle: 'આઇટમ {{position}} સાચવી શકાતી નથી',
+    removeTitle: 'આ જથ્થો કાઢી શકાતો નથી',
+    lotDispatched: '{{item}} ની જાવક થઈ ગઈ છે. તેની આઇટમ અને પેકિંગ બદલી શકાતા નથી.',
+    lotInvoiced: '{{item}} ઇન્વૉઇસ {{invoice}} માં છે. આઇટમ, પેકિંગ અને વજન બદલી શકાતા નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
+    lotInvoicedNoNumber: '{{item}} ઇન્વૉઇસમાં છે. આઇટમ, પેકિંગ અને વજન બદલી શકાતા નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
+    invoicedNoNewLot: 'આવક પાવતી {{grn}} ઇન્વૉઇસ {{invoice}} માં છે. નવો જથ્થો ઉમેરી શકાતો નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો.',
+    invoicedNoNewLotNoNumber: 'આવક પાવતી {{grn}} નું ઇન્વૉઇસ બનેલું છે. નવો જથ્થો ઉમેરી શકાતો નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો.',
+    lineOnOrder: '{{item}} {{customer}} ના ઑર્ડરમાં છે. પહેલાં તેને ઑર્ડરમાંથી કાઢી નાખો.',
+    lineDispatchedBefore: '{{item}} ની પહેલાં જાવક થઈ હતી, તેથી આ જથ્થો કાઢી શકાતો નથી.',
+    ratesNeedManager: 'આ ફેરફાર એડમિન અથવા સુપરવાઇઝર પાસે કરાવો. તેનાથી આ આવક પાવતી માટે નક્કી કરેલો દર નીકળી જશે.',
+    ratesNeedManagerItems: 'આ ફેરફાર એડમિન અથવા સુપરવાઇઝર પાસે કરાવો. તેનાથી આ આવક પાવતી માટે {{items}} નો નક્કી કરેલો દર નીકળી જશે.',
+    ratesWouldDrop: 'આ ફેરફારથી આ આવક પાવતી માટે નક્કી કરેલો દર નીકળી જશે. દર વિભાગમાં નવો દર નક્કી કરો.',
+    ratesWouldDropItems: 'આ ફેરફારથી આ આવક પાવતી માટે {{items}} નો નક્કી કરેલો દર નીકળી જશે. દર વિભાગમાં નવો દર નક્કી કરો.',
   },
 
   details: {
@@ -543,6 +590,8 @@ export const grn: Translation<typeof source> = {
     stockMovementCount: { one: '{{count}} સ્ટોકની હેરફેર', other: '{{count}} સ્ટોકની હેરફેર' },
     deleteFailedTitle: 'આવક પાવતી ડિલીટ થઈ શકી નથી',
     deleteFailed: 'આવક પાવતી ડિલીટ થઈ શકી નથી. ફરી પ્રયાસ કરો.',
+    // Gujarati draft for the owner's wording review (2026-10-20).
+    leaveWhileCheckingTitle: 'આ સ્ક્રીન છોડવી છે?',
     dispatchItemsInvoiced: {
       one: '{{count}} જાવક આઇટમનું ઇન્વૉઇસ બની ગયું છે.',
       other: '{{count}} જાવક આઇટમનું ઇન્વૉઇસ બની ગયું છે.',

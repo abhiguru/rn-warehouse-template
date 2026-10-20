@@ -18,7 +18,7 @@ import {
   getItemType,
   DEFAULT_LIST_CONFIG,
 } from '@/components/lists/types';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -579,14 +579,22 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   // Fetch a page. A newer request (the user kept typing, or changed a filter)
   // replaces an older one: late answers to old questions are dropped.
   const latestRequest = useRef(0);
-  const fetchGRNItems = useCallback(async (offset = 0, append = false) => {
+  // The rows loaded so far, in the unit the facility pages by (receipts or lines): what a refresh asks for.
+  const loadedCount = useRef(0);
+  loadedCount.current = currentOffset;
+  // `keepPlace`: a refresh when the screen comes back into view. The rows on screen stay until the answer, the list
+  // is not scrolled to the top (the person was reading it), and it asks for as many rows as are loaded (at least a
+  // first page), so the answer replaces them all and the place is not lost when the list is longer than a page.
+  const fetchGRNItems = useCallback(async (offset = 0, append = false, keepPlace = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
     const requestKey = JSON.stringify(request);
     try {
-      if (offset === 0 && !append) setLoading(true);
+      if (offset === 0 && !append && !keepPlace) setLoading(true);
       if (append) setLoadingMore(true);
 
-      const limit = offset === 0 || pageUnit.current === 'receipt' ? PAGE_SIZE : LINE_PAGE_SIZE;
+      const limit = keepPlace
+        ? Math.max(PAGE_SIZE, loadedCount.current)
+        : offset === 0 || pageUnit.current === 'receipt' ? PAGE_SIZE : LINE_PAGE_SIZE;
       const params = withReceiptPages({ ...request, p_limit: limit, p_offset: offset });
       const result = isCustomerAccount
         ? await getAssignedCustomerGRNItems(assignedCustomerIds, params)
@@ -621,7 +629,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           setLoadMoreFailed(false);
           setLoadedAt(Date.now());
           shownRequest.current = requestKey;
-          listRef.current?.scrollToOffset({ offset: 0, animated: false });
+          if (!keepPlace) listRef.current?.scrollToOffset({ offset: 0, animated: false });
         }
       } else {
         // Keep the server message for support; show plain words to the user
@@ -646,6 +654,29 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
     setCurrentOffset(0);
     fetchGRNItems();
   }, [fetchGRNItems]);
+
+  // The list reads again when the screen comes back into view (after a GRN was created, edited or deleted, or
+  // goods were dispatched): the first focus is the mount, which the effect above loads. A failed refresh keeps
+  // the rows on screen under the "last updated" strip.
+  const fetchGRNItemsRef = useRef(fetchGRNItems);
+  fetchGRNItemsRef.current = fetchGRNItems;
+  // The filter request of the latest render, and the one in force when the screen was left: a request that changed
+  // meanwhile (Sort and filter) was loaded from the first page by the effect above, so it is not read again here.
+  const requestKeyRef = useRef('');
+  requestKeyRef.current = JSON.stringify(request);
+  const requestWhenLeftRef = useRef<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const whenLeft = requestWhenLeftRef.current;
+      requestWhenLeftRef.current = null;
+      if (whenLeft !== null && whenLeft === requestKeyRef.current) {
+        void fetchGRNItemsRef.current(0, false, true);
+      }
+      return () => {
+        requestWhenLeftRef.current = requestKeyRef.current;
+      };
+    }, [])
+  );
 
   // Event handlers
   const handleGRNPress = useCallback((group: GRNGroupData) => {

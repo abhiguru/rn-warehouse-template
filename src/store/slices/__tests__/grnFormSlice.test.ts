@@ -2,13 +2,17 @@ import reducer, {
   addHeaderImage,
   addItem,
   addItemImage,
-  adoptSavedLines,
   completeHeaderImageUpload,
   completeItemImageUpload,
   GRNItemData,
   loadGRNData,
+  removeItem,
+  removeItemImage,
   resetForm,
-  setSaveUnconfirmed,
+  selectGRNFormChanged,
+  setGrNoTyped,
+  setSubmissionNonce,
+  updateHeader,
   setTakenNumberError,
   updateHeaderImageProgress,
 } from '../grnFormSlice';
@@ -149,30 +153,130 @@ describe('grnForm photo status', () => {
   });
 });
 
-// RF-3: after an update whose answer was lost.
-describe('grnForm lines the server already holds', () => {
-  const line = (id: string): GRNItemData => ({
-    grn_trl_id: id, item_table_id: 'master-1', item_name: 'Example Potatoes', packaging: 'Bag', qty: 100, stock: 100, weight: 10, rack: '', package_mark: '', trl_images: [],
-  });
-
-  it('gives an adopted line its saved id and keeps everything else of it', () => {
-    let state = reducer(undefined, addItem(line('55555555-2222-4333-8444-555555555555')));
-    state = reducer(state, addItem({ ...line('item-new'), qty: 7 }));
-    state = reducer(state, setSaveUnconfirmed(true));
-    state = reducer(state, adoptSavedLines({ 'item-new': '99999999-2222-4333-8444-555555555555' }));
-    expect(state.items.map((item) => [item.grn_trl_id, item.qty])).toEqual([
-      ['55555555-2222-4333-8444-555555555555', 100],
-      ['99999999-2222-4333-8444-555555555555', 7],
-    ]);
-    expect(state.saveUnconfirmed).toBe(true);
-  });
-
-  it('a freshly loaded or reset form is not marked', () => {
-    let state = reducer(undefined, setSaveUnconfirmed(true));
-    state = reducer(state, setTakenNumberError('taken'));
+// A form that was loaded or reset carries nothing of an earlier save or typed number.
+describe('grnForm a freshly loaded or reset form', () => {
+  it('has no taken-number message, no typed number and no nonce', () => {
+    let state = reducer(undefined, setTakenNumberError('taken'));
+    state = reducer(state, setGrNoTyped(true));
+    state = reducer(state, setSubmissionNonce('nonce-1'));
     state = reducer(state, loadGRNData({ header: state.header, items: [], grnId: 'g1' }));
-    expect(state).toMatchObject({ saveUnconfirmed: false, takenNumberError: null });
-    state = reducer(reducer(state, setSaveUnconfirmed(true)), resetForm());
-    expect(state).toMatchObject({ saveUnconfirmed: false, takenNumberError: null });
+    expect(state).toMatchObject({ takenNumberError: null });
+    state = reducer(reducer(state, setTakenNumberError('taken')), resetForm());
+    expect(state).toMatchObject({ takenNumberError: null, grNoTyped: false, submissionNonce: null });
+  });
+});
+
+// H4: a saved line that is removed in the edit form takes its photos with it; their files go after the save.
+describe('grnForm removing a saved line', () => {
+  const LINE = '55555555-2222-4333-8444-555555555555';
+  const OTHER_LINE = '55555555-2222-4333-8444-666666666666';
+  const SAVED_A = 'bbbbbbbb-2222-4333-8444-000000000001';
+  const SAVED_B = 'bbbbbbbb-2222-4333-8444-000000000002';
+  const KEPT = 'bbbbbbbb-2222-4333-8444-000000000003';
+  const photo = (id: string) => ({ id, fileName: `${id}.webp`, imageUrl: `https://example.invalid/${id}`, storagePath: `items/g/l/${id}.webp`, uploadStatus: 'completed' as const });
+  const picked = { id: 'temp_7', fileName: 'new.webp', imageUrl: 'file:///cache/new.webp', uploadStatus: 'completed' as const };
+  const line = (id: string, images: ReturnType<typeof photo>[]): GRNItemData => ({
+    grn_trl_id: id, item_table_id: 'm', item_name: 'Example Potatoes', packaging: 'Bag', qty: 10, stock: 10, weight: 50, rack: '', package_mark: '',
+    trl_images: images,
+  });
+  const loaded = () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    const header = reducer(undefined, resetForm()).header;
+    return reducer(undefined, loadGRNData({
+      grnId: '11111111-2222-4333-8444-555555555555',
+      header,
+      items: [line(LINE, [photo(SAVED_A), photo(SAVED_B)]), line(OTHER_LINE, [photo(KEPT)])],
+    }));
+  };
+  afterEach(() => jest.restoreAllMocks());
+
+  it('keeps the saved photos of the removed line in removedImages, and none of the lines that stay', () => {
+    const state = reducer(loaded(), removeItem(LINE));
+    expect(state.items.map((item) => item.grn_trl_id)).toEqual([OTHER_LINE]);
+    expect(state.removedImages).toEqual([
+      { id: SAVED_A, storagePath: `items/g/l/${SAVED_A}.webp` },
+      { id: SAVED_B, storagePath: `items/g/l/${SAVED_B}.webp` },
+    ]);
+  });
+
+  it('does not list a photo that was only picked in this form, and counts a photo removed earlier once', () => {
+    let state = loaded();
+    state = reducer(state, addItemImage({ itemId: LINE, imageData: picked }));
+    state = reducer(state, removeItemImage({ itemId: LINE, imageId: SAVED_A }));
+    state = reducer(state, removeItem(LINE));
+    expect(state.removedImages.map((removed) => removed.id)).toEqual([SAVED_A, SAVED_B]);
+  });
+
+  it('removing a line that is not there changes nothing', () => {
+    const before = loaded();
+    expect(reducer(before, removeItem('missing')).removedImages).toEqual([]);
+  });
+});
+
+// Contract item 11: the form's session nonce. It is null in the initial state (a reset form equals a fresh one),
+// made by the form's first Create, kept for its retries, and cleared by the reset after a successful save.
+describe('grnForm submission nonce', () => {
+  it('is null at the start, so a reset form equals a fresh one', () => {
+    expect(reducer(undefined, resetForm())).toEqual(reducer(undefined, { type: '@@init' }));
+    expect(reducer(undefined, resetForm()).submissionNonce).toBeNull();
+  });
+
+  it('is kept while the form is edited and across retries, and cleared by the reset that follows a save', () => {
+    const first = reducer(undefined, setSubmissionNonce('nonce-of-this-form'));
+    const edited = reducer(first, updateHeader({ gr_no: 'A0010' }));
+    expect(edited.submissionNonce).toBe('nonce-of-this-form');
+    expect(reducer(edited, setSubmissionNonce('nonce-of-this-form')).submissionNonce).toBe('nonce-of-this-form');
+
+    expect(reducer(edited, resetForm()).submissionNonce).toBeNull();
+  });
+});
+
+// A number the person typed is theirs: a refusal at Create because another GRN holds it does not replace it.
+describe('grnForm typed number', () => {
+  it('is set by the typed number, cleared by a reset, and not touched by editing other fields', () => {
+    const typed = reducer(undefined, setGrNoTyped(true));
+    expect(typed.grNoTyped).toBe(true);
+    expect(reducer(typed, updateHeader({ note: 'x' })).grNoTyped).toBe(true);
+    expect(reducer(typed, resetForm()).grNoTyped).toBe(false);
+  });
+});
+
+// Back on the first step of an edit form asks before it throws away edits, only when the form differs from the GRN as
+// it was loaded.
+describe('grnForm changed since it was loaded', () => {
+  const PHOTO = 'bbbbbbbb-2222-4333-8444-000000000001';
+  const LINE = '55555555-2222-4333-8444-555555555555';
+  const line = (): GRNItemData => ({
+    grn_trl_id: LINE, item_table_id: 'master-1', item_name: 'Example Potatoes', packaging: 'Bag', qty: 100, stock: 100, weight: 10, rack: '', package_mark: '',
+    trl_images: [{ id: PHOTO, fileName: 'a.webp', imageUrl: 'https://example.invalid/a', storagePath: 'items/g/l/a.webp', uploadStatus: 'completed' }],
+  });
+  const loaded = () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    const header = reducer(undefined, resetForm()).header;
+    return reducer(undefined, loadGRNData({ grnId: 'g1', header: { ...header, gr_no: 'A0010' }, items: [line()] }));
+  };
+  const changed = (grnForm: ReturnType<typeof loaded>) => selectGRNFormChanged({ grnForm });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('is false right after the load, and for a new GRN', () => {
+    expect(changed(loaded())).toBe(false);
+    expect(changed(reducer(undefined, resetForm()))).toBe(false);
+  });
+
+  it('is true after a header field, a line or a photo changed, and false again when a change is undone', () => {
+    const state = loaded();
+    const noted = reducer(state, updateHeader({ note: 'moved to rack 4' }));
+    expect(changed(noted)).toBe(true);
+    expect(changed(reducer(noted, updateHeader({ note: '' })))).toBe(false);
+
+    expect(changed(reducer(state, removeItem(LINE)))).toBe(true);
+    expect(changed(reducer(state, removeItemImage({ itemId: LINE, imageId: PHOTO })))).toBe(true);
+    expect(changed(reducer(state, addHeaderImage({ id: 'temp_1', fileName: 'new.webp', imageUrl: 'file:///cache/new.webp', uploadStatus: 'completed' })))).toBe(true);
+  });
+
+  it('does not count a photo upload report: progress is not a change', () => {
+    const state = reducer(loaded(), addHeaderImage({ id: 'temp_1', fileName: 'new.webp', imageUrl: 'file:///cache/new.webp', uploadStatus: 'uploading' }));
+    const before = changed(state);
+    expect(changed(reducer(state, updateHeaderImageProgress({ imageId: 'temp_1', progress: 60 })))).toBe(before);
   });
 });

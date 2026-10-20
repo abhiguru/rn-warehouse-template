@@ -8,6 +8,7 @@
 import { createLogger } from './logger';
 import { ValidationError } from './inputValidation';
 import { getAppErrorCode } from './appError';
+import { stripErrorPrefix } from './serverText';
 import { getLanguage, localizeDigits, t, type TranslationKey } from '@/i18n';
 // Re-export ServiceResponse from canonical source for backward compatibility
 // @see J6 - DRY Violation: ServiceResponse Type Defined 8+ Times
@@ -433,9 +434,10 @@ export function parseErrorToFriendly(
 
   // The keyword tests below read English text from the server. A message the app
   // wrote in Gujarati is already what the person should read: it is never
-  // matched against English words, it is shown as it is.
+  // matched against English words, it is shown as it is, without the class name
+  // ("AppError: ...") the PostgREST client puts in front of a thrown error's text.
   if (GUJARATI_SCRIPT.test(technicalError)) {
-    return technicalError;
+    return stripErrorPrefix(technicalError);
   }
 
   const errorLower = technicalError.toLowerCase();
@@ -482,7 +484,13 @@ export function parseErrorToFriendly(
   }
 
   // Authentication errors
-  if (errorLower.includes('unauthorized') || errorLower.includes('401') || errorLower.includes('not authenticated')) {
+  if (
+    errorLower.includes('unauthorized') ||
+    errorLower.includes('401') ||
+    errorLower.includes('not authenticated') ||
+    errorLower.includes('jwt expired') ||
+    errorLower.includes('session expired')
+  ) {
     return t('errors.code.sessionExpired');
   }
 

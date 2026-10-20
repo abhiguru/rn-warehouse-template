@@ -1,4 +1,4 @@
-import { rateRefusalText } from '../rateErrors';
+import { isRateRefusalCode, rateRefusalText } from '../rateErrors';
 
 describe('rateRefusalText', () => {
   it('BANDS_OVERLAP with the start day of the conflicting row reads like RATE_PLANNED (D5)', () => {
@@ -8,5 +8,12 @@ describe('rateRefusalText', () => {
 
   it('BANDS_OVERLAP without a day keeps the general text', () => {
     expect(rateRefusalText('BANDS_OVERLAP', {}, 'x')).toContain('overlaps another band');
+  });
+
+  it('STALE_RATES is a rate refusal, worded as a change by someone else (backend migration 120)', () => {
+    expect(isRateRefusalCode('STALE_RATES')).toBe(true);
+    expect(rateRefusalText('STALE_RATES', { ids: ['x'] }, 'server text')).toBe(
+      'A rate of one of these items was changed by someone else. The rates are shown again; check them and save again.'
+    );
   });
 });

@@ -22,7 +22,6 @@ export const errors = {
     operationCompleted: 'Operation completed successfully',
     backendReturnedError: 'Backend returned error',
     rpcReturnedError: 'RPC function returned error',
-    executeFailed: 'Failed to execute {{name}}',
     accessDenied: 'Access denied',
     queryTooShort: 'Query too short',
     invalidResponseFormat: 'Invalid response format',
@@ -49,6 +48,9 @@ export const errors = {
     unauthorized: 'You are not authorized to perform this action. Please sign in.',
     forbidden: 'You do not have permission to access this resource.',
     sessionExpired: 'Your session has expired. Please sign in again.',
+    // A change refused for an expired token: the session is renewed already, the change was not sent again.
+    signInRenewed: 'Your sign-in was renewed. Tap Save again.',
+    signInRenewedDelete: 'Your sign-in was renewed. Tap Delete again.',
     validationError: 'The information provided is invalid. Please check and try again.',
     invalidInput: 'Invalid input provided. Please check your data.',
     databaseError: 'A database error occurred. Please try again later.',
@@ -171,6 +173,14 @@ export const errors = {
     busy: 'The server is busy. Please try again in a moment.',
     businessDeactivated: 'This business is deactivated. Activate it in Customers to receive new goods.',
     businessNotActive: 'This business is not active, so nothing new can be added for it. Activate it in Customers first.',
+  },
+  // One rule for a change whose answer never came (utils/lostAnswer.ts): the screen locks, waits, and asks the server.
+  lostAnswer: {
+    checking: 'No answer from the server. Checking whether it was saved…',
+    checkingDelete: 'No answer from the server. Checking whether it was deleted…',
+    waiting: 'Waiting for the connection…',
+    leaveWarning: 'It may have been saved. Check the list before entering it again.',
+    leaveWarningDelete: 'It may have been deleted. Check the list before deleting it again.',
   },
   auth: {
     authenticationFailed: 'Authentication failed. Please sign in again.',
@@ -518,5 +528,20 @@ export const errors = {
   },
   unsaved: {
     confirmBack: 'You have unsaved changes. Are you sure you want to go back?',
+  },
+  // What the server's refusals (reason constants, src/utils/serverRefusal.ts) say in the areas' own files; this is the one shared question.
+  refusal: {
+    stale: {
+      title: 'Someone else changed this {{what}}',
+      what: {
+        dispatch: 'dispatch',
+        grn: 'GRN',
+        invoice: 'invoice',
+        orderLine: 'order line',
+      },
+      message: 'Open it again to see the latest. What you typed stays on this screen until you leave it.',
+      keep: 'Keep editing',
+      reload: 'Open it again',
+    },
   },
 };

@@ -226,8 +226,10 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
   // after the save, no amount is shown: the form's own figure is an estimate.
   const totalKnown = typeof invoiceData.total === 'number';
   const total = totalKnown ? formatInvoiceAmount(invoiceData.total) : '';
+  // The server accepts a total within 1 of the one confirmed, so a difference of 1 or less is not worth a note.
+  const { total: storedTotal, estimated_total: estimatedTotal } = invoiceData;
   const totalDiffers =
-    totalKnown && typeof invoiceData.estimated_total === 'number' && invoiceData.estimated_total !== invoiceData.total;
+    typeof storedTotal === 'number' && typeof estimatedTotal === 'number' && Math.abs(estimatedTotal - storedTotal) > 1;
 
   return (
     <Modal
@@ -293,7 +295,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
             {!totalKnown && <Text style={styles.totalNote}>{tr('invoice.success.totalNotRead')}</Text>}
             {totalDiffers && (
               <Text style={styles.totalNote}>
-                {tr('invoice.success.totalDiffers', { estimate: formatInvoiceAmount(invoiceData.estimated_total) })}
+                {tr('invoice.success.totalDiffers', { estimate: formatInvoiceAmount(estimatedTotal) })}
               </Text>
             )}
 

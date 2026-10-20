@@ -44,6 +44,11 @@ interface InvoiceCalculationSummaryProps {
    * (the discount field when its text was refused, then the reasons) and is announced (§11.3).
    */
   focusRequest?: number;
+  /**
+   * The step is locked while the server is asked about a save whose answer was lost (owner rule D22): nothing here can
+   * be changed. The figures stay readable.
+   */
+  locked?: boolean;
 }
 
 /** Visual size of the round up/down buttons; hitSlop pads them to the touch target. */
@@ -178,6 +183,15 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingVertical: space.sm,
     minHeight: touchTarget,
   },
+  // A read-only field (guide §10, §13.2): `surface.fieldReadOnly`, no border, the value in `text.primary`.
+  reasonReadOnly: {
+    backgroundColor: t.surface.fieldReadOnly,
+    borderWidth: 0,
+  },
+  reasonHint: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
   tertiary: {
     alignSelf: 'flex-start' as const,
     flexDirection: 'row' as const,
@@ -264,6 +278,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
   zeroChargeReasonRequired = false,
   showErrors = false,
   focusRequest = 0,
+  locked = false,
 }: InvoiceCalculationSummaryProps) {
   const styles = useThemedStyles(makeStyles);
   const { stacked } = useTableLayout();
@@ -386,6 +401,10 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
   // Removing a saved discount is a change that needs a reason too, so the
   // reason field stays when the discount of an invoice being edited is set to 0.
   const discountChanged = roundMoney(header.discount || 0) !== roundMoney(header.saved_discount || 0);
+  // The server keeps the stored reason while the amount is the saved one (a reworded reason is dropped without a
+  // word), so the field is read-only then and shows the stored reason (I9). Only an invoice being edited has a saved
+  // discount; in a new invoice a discount is always a change.
+  const reasonLocked = header.saved_discount_reason !== undefined && header.discount !== 0 && !discountChanged;
 
   // A negative discount is a surcharge: it adds to the total.
   const discountPart =
@@ -422,8 +441,10 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             <Pressable
               style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}
               onPress={handleRoundDown}
+              disabled={locked}
               hitSlop={ROUND_BUTTON_SLOP}
               accessibilityRole="button"
+              accessibilityState={{ disabled: locked }}
               accessibilityLabel={tr('invoice.summary.roundDownA11y')}
               testID="invoice-summary-round-down"
             >
@@ -432,8 +453,10 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             <Pressable
               style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}
               onPress={handleRoundUp}
+              disabled={locked}
               hitSlop={ROUND_BUTTON_SLOP}
               accessibilityRole="button"
+              accessibilityState={{ disabled: locked }}
               accessibilityLabel={tr('invoice.summary.roundUpA11y')}
               testID="invoice-summary-round-up"
             >
@@ -449,6 +472,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             accessibilityLabel={tr('invoice.summary.discountA11y')}
             value={localizeDigits(discountText)}
             onChangeText={handleDiscountChange}
+            editable={!locked}
             onFocus={handleDiscountFocus}
             onBlur={handleDiscountBlur}
             selectTextOnFocus
@@ -465,7 +489,9 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
         <Pressable
           style={({ pressed }) => [styles.tertiary, pressed && styles.tertiaryPressed]}
           onPress={() => setFinalAmountOpen(true)}
+          disabled={locked}
           accessibilityRole="button"
+          accessibilityState={{ disabled: locked }}
           accessibilityLabel={tr('invoice.summary.calculatorA11y')}
           testID="invoice-summary-final-amount"
         >
@@ -482,16 +508,19 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
           </Text>
           <TextInput
             ref={discountReasonRef}
-            style={[styles.reasonInput, discountReasonRed && styles.fieldError]}
+            style={[styles.reasonInput, reasonLocked ? styles.reasonReadOnly : discountReasonRed && styles.fieldError]}
             accessibilityLabel={tr('invoice.label.discountReason')}
-            value={header.discount_reason || ''}
+            value={reasonLocked ? header.saved_discount_reason || '' : header.discount_reason || ''}
             onChangeText={onDiscountReasonChange}
-            placeholder={tr('invoice.summary.discountReasonPlaceholder')}
+            editable={!reasonLocked && !locked}
+            placeholder={reasonLocked ? undefined : tr('invoice.summary.discountReasonPlaceholder')}
             placeholderTextColor={t.text.placeholder}
             maxLength={500}
             multiline
             testID="invoice-summary-discount-reason"
           />
+          {/* The visible line is the only place the reason is told (a hint on the field as well was read twice). */}
+          {reasonLocked && <Text style={styles.reasonHint}>{tr('invoice.summary.discountReasonLocked')}</Text>}
           <InlineValidation message={tr('invoice.summary.reasonMissing')} variant="error" visible={discountReasonRed} />
         </View>
       )}
@@ -508,6 +537,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             accessibilityLabel={tr('invoice.label.zeroChargeReason')}
             value={header.zero_charge_reason || ''}
             onChangeText={onZeroChargeReasonChange}
+            editable={!locked}
             placeholder={tr('invoice.summary.zeroChargeReasonPlaceholder')}
             placeholderTextColor={t.text.placeholder}
             maxLength={500}

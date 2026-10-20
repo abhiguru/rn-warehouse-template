@@ -16,9 +16,10 @@ export const step1Schema = yup.object().shape({
     .max(8, msg('grn.validation.numberMax'))
     .matches(/^\S*$/, msg('grn.validation.numberNoSpaces')),
 
+  // The column holds 20 characters (owner decision D13: the form matches the catalogue and the columns).
   registration: yup
     .string()
-    .max(12, msg('grn.validation.registrationMax')),
+    .max(20, msg('grn.validation.registrationMax')),
 
   // "Today" is worked out when the form is checked. A limit fixed when this
   // file is loaded would reject today's receipts once the app has been open
@@ -176,11 +177,11 @@ export const itemSchema = yup.object().shape({
   item_name: yup
     .string()
     .required(msg('grn.validation.itemNameRequired'))
-    .max(30, msg('grn.validation.itemNameMax')),
+    .max(80, msg('grn.validation.itemNameMax')),
 
   packaging: yup
     .string()
-    .max(20, msg('grn.validation.packagingMax')),
+    .max(40, msg('grn.validation.packagingMax')),
 
   qty: receiptQuantitySchema,
 
@@ -220,6 +221,18 @@ export const fullGRNSchema = yup.object().shape({
   header: step1Schema,
   items: step2Schema.fields.items,
 });
+
+/**
+ * The number of a saved GRN is read-only (owner decision D6) and goes back to the server as it was stored. A stored
+ * number that does not meet today's format (older data: too long, with a space) must not keep an edit from saving, so
+ * its format error is dropped from a result in edit mode; a number another GRN holds is added again by the caller.
+ * `header.gr_no` is the key the whole-form check (validateStep3) uses.
+ */
+export const withoutStoredNumberError = (result: { isValid: boolean; errors: Record<string, string> }): { isValid: boolean; errors: Record<string, string> } => {
+  if (!('gr_no' in result.errors) && !('header.gr_no' in result.errors)) return result;
+  const { gr_no: _number, 'header.gr_no': _headerNumber, ...errors } = result.errors;
+  return { isValid: Object.keys(errors).length === 0, errors };
+};
 
 // Validation helpers
 export const validateStep1 = async (data: any): Promise<{ isValid: boolean; errors: Record<string, string> }> => {

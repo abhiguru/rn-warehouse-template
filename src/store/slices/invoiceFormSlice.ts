@@ -13,6 +13,8 @@ import {
   calculateItemAmounts,
   recalculateItemWithEdits,
   applyBulkGroupPricing,
+  withServerDurations,
+  type ServerLineDuration,
 } from '@/utils/invoiceCalculations';
 
 import { toLocalISODate } from '@/utils/formatters';
@@ -138,6 +140,7 @@ export type InvoiceFormSliceState = InvoiceFormState & {
 const createInitialState = (formSession = 0): InvoiceFormSliceState => ({
   invoice_id: null,
   selected_gr_id: null,
+  loadedUpdatedAt: null,
   header: createInitialHeader(),
   items: [],
   editedItems: {},
@@ -400,8 +403,15 @@ const invoiceFormSlice = createSlice({
       // What goes with the discount stays with it (the same GRN loaded again): an invoice being edited
       // would otherwise forget the discount it was saved with, ask for a reason although nothing
       // changed, and show an empty reason field.
+      // An invoice being edited keeps the discount and reason it was SAVED with even when it moves to another GRN:
+      // the server compares the new discount with the stored invoice, so going to 0 is a change that needs a reason (I9).
       const preservedDiscountRecord = anotherGrn
-        ? {}
+        ? state.baseline
+          ? {
+              saved_discount: state.baseline.header.saved_discount ?? state.header.saved_discount,
+              saved_discount_reason: state.baseline.header.saved_discount_reason ?? state.header.saved_discount_reason,
+            }
+          : {}
         : {
             discount_reason: state.header.discount_reason,
             saved_discount: state.header.saved_discount,
@@ -460,10 +470,14 @@ const invoiceFormSlice = createSlice({
         header: InvoiceHeaderData;
         items: InvoiceItemData[];
         grId: string;
+        /** The invoice's `updated_at` as it was read (D1); absent when the server sent none. */
+        updatedAt?: string | null;
       }>
     ) => {
       // Set invoice ID to enable edit mode
       state.invoice_id = action.payload.invoiceId;
+      // The version this form starts from: the update sends it back, and the server refuses it when the invoice changed.
+      state.loadedUpdatedAt = action.payload.updatedAt || null;
 
       // Replace entire header with loaded data (no preservation needed in edit mode).
       // Remember the stored discount: only a changed discount needs a new reason.
@@ -511,6 +525,18 @@ const invoiceFormSlice = createSlice({
         // Frozen copies: see loadInvoiceFormData.
         items: state.items.map((item) => Object.freeze({ ...item })),
       };
+    },
+
+    // The server refused a save with TOTAL_CHANGED (D18): its own duration and days go on the lines it names, and the
+    // amounts and the header's totals are worked out again from them. Rates, discount, reasons, number and date are
+    // the person's and stay. A duration is never typed on this form, so no typed edit is touched. The header's totals
+    // are worked out again even when no line changed: they may have drifted from the lines, and the caller compares them
+    // with the server's total.
+    applyServerDurations: (state, action: PayloadAction<ServerLineDuration[]>) => {
+      const lines = plainLines(state.items);
+      const next = withServerDurations(lines, action.payload);
+      if (next !== lines) state.items = next;
+      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount));
     },
 
     // An edit that moved to another GRN goes back to the GRN it was saved with: the saved lines, discount and
@@ -589,6 +615,7 @@ export const {
   clearValidationError,
   loadInvoiceFormData,
   loadInvoiceEditData,
+  applyServerDurations,
   restoreSavedGrn,
   resetForm,
   numberRequested,

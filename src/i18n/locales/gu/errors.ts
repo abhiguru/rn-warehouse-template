@@ -25,7 +25,6 @@ export const errors: Translation<typeof source> = {
     operationCompleted: 'કામ પૂરું થયું',
     backendReturnedError: 'સર્વરે ભૂલ જણાવી',
     rpcReturnedError: 'સર્વરે ભૂલ જણાવી',
-    executeFailed: '{{name}} ચલાવી શકાયું નથી',
     accessDenied: 'તમને આની પરવાનગી નથી',
     queryTooShort: 'શોધવા માટે વધુ અક્ષરો લખો',
     invalidResponseFormat: 'સર્વરનો જવાબ સમજી શકાયો નથી',
@@ -52,6 +51,9 @@ export const errors: Translation<typeof source> = {
     unauthorized: 'તમને આ કામ કરવાની પરવાનગી નથી. લૉગિન કરો.',
     forbidden: 'તમને આ જોવાની પરવાનગી નથી.',
     sessionExpired: 'તમારા લૉગિનનો સમય પૂરો થયો છે. ફરી લૉગિન કરો.',
+    // Draft for the owner's wording review (2026-10-20): a change refused for an expired token; the session is renewed already.
+    signInRenewed: 'તમારું લૉગિન નવું કર્યું છે. ફરી "સાચવો" દબાવો.',
+    signInRenewedDelete: 'તમારું લૉગિન નવું કર્યું છે. ફરી "ડિલીટ કરો" દબાવો.',
     validationError: 'આપેલી માહિતી બરાબર નથી. તપાસીને ફરી પ્રયાસ કરો.',
     invalidInput: 'લખેલી માહિતી બરાબર નથી. તમારી માહિતી તપાસો.',
     databaseError: 'સર્વરના ડેટામાં ભૂલ આવી. થોડી વાર પછી ફરી પ્રયાસ કરો.',
@@ -176,6 +178,15 @@ export const errors: Translation<typeof source> = {
     busy: 'સર્વર વ્યસ્ત છે. થોડી વારમાં ફરી પ્રયાસ કરો.',
     businessDeactivated: 'આ વેપારી નિષ્ક્રિય છે. નવો માલ લેવા માટે વેપારીઓમાં તેને સક્રિય કરો.',
     businessNotActive: 'આ વેપારી સક્રિય નથી, તેથી તેના માટે નવું કંઈ ઉમેરી શકાતું નથી. પહેલા વેપારીઓમાં તેને સક્રિય કરો.',
+  },
+  lostAnswer: {
+    // Drafts for the owner's wording review (2026-10-20): a change whose answer never came; the screen waits and asks the server.
+    checking: 'સર્વરનો જવાબ મળ્યો નથી. સચવાયું છે કે નહીં તે તપાસી રહ્યા છીએ…',
+    checkingDelete: 'સર્વરનો જવાબ મળ્યો નથી. કાઢી નંખાયું છે કે નહીં તે તપાસી રહ્યા છીએ…',
+    waiting: 'કનેક્શનની રાહ જોઈ રહ્યા છીએ…',
+    leaveWarning: 'કદાચ સચવાઈ ગયું હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
+    // Draft for the owner's wording review (2026-10-20): leaving while the server is asked whether a delete went through.
+    leaveWarningDelete: 'કદાચ કાઢી નંખાયું હોય. ફરી કાઢતાં પહેલાં યાદી તપાસો.',
   },
   auth: {
     authenticationFailed: 'તમારી ઓળખ ચકાસી શકાઈ નથી. ફરી લૉગિન કરો.',
@@ -524,5 +535,21 @@ export const errors: Translation<typeof source> = {
   },
   unsaved: {
     confirmBack: 'તમારા ફેરફાર સાચવ્યા નથી. પાછા જવું છે?',
+  },
+  refusal: {
+    stale: {
+      // Draft for the owner's wording review (2026-10-20): the record was changed by someone else after this screen read it.
+      // The title is built around ફેરફાર (masculine), so it needs no agreement with the record's name.
+      title: 'આ {{what}}માં બીજા કોઈએ ફેરફાર કર્યો છે',
+      what: {
+        dispatch: 'જાવક',
+        grn: 'આવક પાવતી',
+        invoice: 'ઇન્વૉઇસ',
+        orderLine: 'ઑર્ડરની લાઇન',
+      },
+      message: 'નવી વિગત જોવા માટે તેને ફરી ખોલો. તમે જે લખ્યું છે તે આ સ્ક્રીન છોડો ત્યાં સુધી અહીં જ રહેશે.',
+      keep: 'ફેરફાર ચાલુ રાખો',
+      reload: 'ફરી ખોલો',
+    },
   },
 };

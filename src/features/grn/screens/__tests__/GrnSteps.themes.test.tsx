@@ -28,7 +28,6 @@ const mockForm = {
   items: [
     { grn_trl_id: 't1', item_table_id: 'i1', item_name: 'Potatoes', packaging: 'Bag', qty: 120, stock: 100, weight: 50.5, rack: 'B-14', package_mark: 'PT', trl_images: [] },
   ],
-  isLoading: false,
   isSaving: false,
   isGeneratingNumber: false,
   isCreateMode: false,
@@ -67,7 +66,7 @@ jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: () => null }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn() }));
-jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn() }));
+jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(), withoutStoredNumberError: (result: unknown) => result }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateGRNPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));

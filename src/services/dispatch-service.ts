@@ -4,7 +4,7 @@ import { offsetToPage, hasMoreItems } from '@/utils/paginationUtils';
 import { createBoundedCache, generateScopedCacheKey, getSessionCacheScope } from '@/utils/cacheManager';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { unwrapNestedData } from '@/utils/responseUtils';
-import { createErrorResponse, handleGlobalAuthError, isOfflineFailure } from '@/utils/serviceErrorHandler';
+import { createErrorResponse, executeRPC, handleGlobalAuthError, isOfflineFailure, type RPCResult } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { BackendDispatchData, RecentDispatchedOrdersResponse } from '@/types/dispatch.types';
 import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
@@ -13,7 +13,8 @@ import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import type { RpcPagination } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
-import { serverText } from '@/utils/serverText';
+import { isUnsettledFailure, serverText } from '@/utils/serverText';
+import { waitForServer } from '@/utils/lostAnswer';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
 
@@ -946,58 +947,195 @@ export const getAssignedCustomerDispatchList = async (
 };
 
 /**
+ * Is the dispatch gone? Asked after a delete got no answer. True when the server says there is no such dispatch,
+ * false when it is still there, null when that could not be found out (no answer again, or a refusal that says
+ * nothing about it).
+ */
+const dispatchIsGone = async (dispatchId: string): Promise<boolean | null> => {
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    const { data, error } = await authenticatedClient.rpc('get_dispatch_details', { p_dispatch_id: dispatchId });
+    if (error) return null;
+    const body = data?.data || data;
+    if (body?.dispatch) return false;
+    // "Dispatch not found or access denied": the person who just deleted it may delete it, so it is not the second.
+    return /not found/i.test(rpcRefusal(data)?.text ?? '') ? true : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Waits `ms`, or until `signal` is aborted. */
+const pause = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done);
+  });
+
+/**
+ * What became of a delete that got no answer (owner rule D22): wait until the phone is online and the server has had
+ * time, then read the dispatch. 'gone' = the delete went through, 'there' = it did not, 'aborted' = the person left.
+ * A read that cannot tell is asked again, a little later each time (up to 30 s apart).
+ */
+async function whatBecameOfDelete(dispatchId: string, sentAt: number, signal?: AbortSignal): Promise<'gone' | 'there' | 'aborted'> {
+  let wait = 2000;
+  for (;;) {
+    try {
+      await waitForServer(sentAt, signal);
+    } catch {
+      // Aborted while waiting; the check below says so.
+    }
+    if (signal?.aborted) return 'aborted';
+    const gone = await dispatchIsGone(dispatchId);
+    if (signal?.aborted) return 'aborted';
+    if (gone !== null) return gone ? 'gone' : 'there';
+    await pause(wait, signal);
+    wait = Math.min(wait * 2, 30000);
+  }
+}
+
+/** The server's answer to a delete of a dispatch it does not have ("Dispatch not found"). */
+const isDispatchNotFound = (answer: Record<string, any> | null | undefined): boolean =>
+  answer?.success === false && /dispatch not found/i.test(String(answer.error ?? answer.message ?? ''));
+
+/** A count the server sent, as a whole number (0 when it sent none). */
+const countOf = (value: unknown): number => (typeof value === 'number' && value > 0 ? Math.floor(value) : 0);
+
+export interface DeleteDispatchResult {
+  success: boolean;
+  message: string;
+  error?: string;
+  invoiceItemsCount?: number;
+  blockingReason?: string;
+  instructions?: string;
+  cacheInvalidated?: boolean;
+  orderRestored?: boolean;
+  restoredOrderId?: string;
+  /** Order lines given back to the customer's order. */
+  orderLinesGivenBack?: number;
+  /** Lines saved before the order's quantities were recorded: nothing could be given back for them. */
+  orderLinesNotRestored?: number;
+  /** Lines that could not be given back because the customer has no open order and one could not be made. */
+  orderLinesWithoutOpenOrder?: number;
+  /**
+   * The delete got no answer and the dispatch was found gone afterwards: what became of the customer's order is not
+   * known, so the screen says to check it.
+   */
+  orderCountsUnknown?: boolean;
+  /** The person left while the app was still asking the server what became of the delete; nothing more was done. */
+  aborted?: boolean;
+}
+
+export interface DeleteDispatchOptions {
+  /** The delete got no answer: the screen locks until the server says whether the dispatch is gone. */
+  onLostAnswer?: () => void;
+  /** Aborted when the person leaves; the check stops and the delete is not sent again. */
+  signal?: AbortSignal;
+}
+
+/**
  * Delete a dispatch by ID with comprehensive cleanup
- * Restores stock, recreates order items, restores cart quantities, and resets order status
+ * Restores stock, recreates order items, restores cart quantities, and resets order status.
+ *
+ * When the request gets no answer (it may have reached the server) the screen is told to lock, and once the phone is
+ * online and the server has had time the dispatch is read again: if the server no longer has it the delete went
+ * through, and the answer says so (with `orderCountsUnknown`); if it is still there the delete is sent once more, and
+ * its answer is handled as any answer (a lost answer again repeats this).
  */
 export const deleteDispatch = async (
   dispatchId: string,
-  userId: string
-): Promise<{ success: boolean; message: string; error?: string; invoiceItemsCount?: number; blockingReason?: string; instructions?: string; cacheInvalidated?: boolean; orderRestored?: boolean; restoredOrderId?: string }> => {
+  userId: string,
+  options: DeleteDispatchOptions = {}
+): Promise<DeleteDispatchResult> => {
   try {
-    console.log('[DispatchService] ========== DELETE DISPATCH START ==========');
-    console.log('[DispatchService] Dispatch ID:', dispatchId);
-    console.log('[DispatchService] User ID:', userId);
-    console.log('[DispatchService] Calling RPC: delete_dispatch_with_order_cleanup');
+    console.log('[DispatchService] Deleting dispatch', dispatchId);
 
-    const authenticatedClient = await getAuthenticatedClient();
+    /** The dispatch is not there: the delete went through (this one, or an earlier one whose answer was lost). */
+    const deletedAlready = async (): Promise<DeleteDispatchResult> => {
+      void invalidateReportQueries();
+      try {
+        await invalidateDispatchCache();
+      } catch (cacheError) {
+        console.error('[DispatchService] Cache invalidation failed (mutation succeeded):', cacheError);
+      }
+      return { success: true, message: t('errors.dispatch.deletedWithRestore'), orderCountsUnknown: true };
+    };
 
-    const { data, error } = await authenticatedClient.rpc('delete_dispatch_with_order_cleanup', {
-      p_dispatch_id: dispatchId,
-      p_user_id: userId,
-    });
+    let result: RPCResult<Record<string, any>>;
+    // True after a delete whose answer was lost: from then on this is a RESEND, which has to be settled (owner rule D22).
+    let resent = false;
+    for (;;) {
+      const sentAt = Date.now();
+      result = await executeRPC<Record<string, any>>(
+        getAuthenticatedClient,
+        'delete_dispatch_with_order_cleanup',
+        { p_dispatch_id: dispatchId, p_user_id: userId },
+        {
+          context: 'DispatchService.deleteDispatch',
+          // A failure after the request went out reads "It may have been deleted", not "saved"
+          write: true,
+          delete: true,
+          errorMessage: t('errors.dispatch.deleteFailed'),
+          unwrapNested: false,
+          // A refusal comes as the answer of a successful call; it is read below
+          validateSuccess: false,
+        }
+      );
+      // The answer of a resend is "Dispatch not found": the dispatch is gone, which is what was asked for (the delete
+      // whose answer was lost went through, or someone else deleted it). The order's counts are not known.
+      if (resent && result.success && isDispatchNotFound(result.data)) {
+        console.log('[DispatchService] The resend was answered "not found": the dispatch is gone');
+        return await deletedAlready();
+      }
+      // No answer (`lostAnswer`, from executeRPC; a statement timeout, 57014, is not one: nothing was deleted). On a
+      // resend any failure that is not the server's answer (57014 while it waits behind the first delete, a failure
+      // before sending, a changed session) leaves the attempt unsettled too: back to the check, never an error that
+      // unlocks the screen.
+      const unsettled = !result.success && (result.lostAnswer === true || (resent && isUnsettledFailure(result, result.errorCode)));
+      if (!unsettled) break;
 
-    if (error) {
-      console.error('[DispatchService] delete_dispatch_with_order_cleanup failed', { code: error.code });
-      // Global auth error handling - auto logout on auth failures
-      handleGlobalAuthError(error);
-      return {
-        success: false,
-        message: t('errors.dispatch.deleteFailed'),
-        error: error.message,
-      };
+      console.warn('[DispatchService] delete_dispatch_with_order_cleanup got no answer; asking the server', { code: result.errorCode });
+      options.onLostAnswer?.();
+      const outcome = await whatBecameOfDelete(dispatchId, sentAt, options.signal);
+      if (outcome === 'aborted') return { success: false, aborted: true, message: '' };
+      if (outcome === 'gone') {
+        console.log('[DispatchService] The dispatch is gone: the delete went through');
+        return await deletedAlready();
+      }
+      console.log('[DispatchService] The dispatch is still there; sending the delete again');
+      resent = true;
     }
-
-    // Handle response - the RPC returns a single object, not an array
-    const result = data;
 
     if (!result.success) {
-      console.error('[DispatchService] Dispatch deletion refused', { blocked: Boolean(result.blocking_reason) });
+      console.error('[DispatchService] delete_dispatch_with_order_cleanup failed', { code: result.errorCode });
+      return { success: false, message: result.message, error: result.error };
+    }
+
+    // The RPC returns a single object, not an array
+    const answer = result.data ?? {};
+
+    if (answer.success === false) {
+      console.error('[DispatchService] Dispatch deletion refused', { blocked: Boolean(answer.blocking_reason) });
       return {
         success: false,
-        message: serverText(result.message, t('errors.dispatch.deleteFailed'), { write: true }),
-        error: result.error,
-        invoiceItemsCount: result.invoice_items_count,
-        blockingReason: result.blocking_reason,
-        instructions: result.instructions,
+        message: serverText(answer.message, t('errors.dispatch.deleteFailed'), { write: true }),
+        error: answer.error,
+        invoiceItemsCount: answer.invoice_items_count,
+        blockingReason: answer.blocking_reason,
+        instructions: answer.instructions,
       };
     }
 
-    console.log('[DispatchService] ✅ Dispatch deleted successfully');
+    console.log('[DispatchService] Dispatch deleted successfully');
     // The write changed what reports count: a report on screen asks again (SR-10).
     void invalidateReportQueries();
-    console.log('[DispatchService] Order restored:', result.order_restored || result.orderRestored || false);
-    console.log('[DispatchService] Restored order ID:', result.restored_order_id || result.restoredOrderId || 'N/A');
-    console.log('[DispatchService] Stock restored:', result.stock_restored || result.stockRestored || 'N/A');
+    console.log('[DispatchService] Order restored:', answer.order_restored || answer.orderRestored || false);
 
     // P13: Invalidate cache after successful deletion
     // E10 Fix: Handle cache invalidation errors gracefully
@@ -1009,17 +1147,18 @@ export const deleteDispatch = async (
       cacheInvalidated = false;
     }
 
-    console.log('[DispatchService] ========== DELETE DISPATCH END ==========');
-
     return {
       success: true,
-      message: serverText(result.message, t('errors.dispatch.deletedWithRestore')),
+      message: serverText(answer.message, t('errors.dispatch.deletedWithRestore')),
       cacheInvalidated, // E10: Inform UI if cache invalidation failed
-      orderRestored: result.order_restored || result.orderRestored || false,
-      restoredOrderId: result.restored_order_id || result.restoredOrderId,
+      orderRestored: answer.order_restored || answer.orderRestored || false,
+      restoredOrderId: answer.restored_order_id || answer.restoredOrderId,
+      orderLinesGivenBack: countOf(answer.order_restoration?.total_items_restored),
+      orderLinesNotRestored: countOf(answer.cart_lines_not_restored),
+      orderLinesWithoutOpenOrder: countOf(answer.cart_lines_without_open_cart),
     };
   } catch (error) {
-    console.error('[DispatchService] ❌ Exception deleting dispatch:', error);
+    console.error('[DispatchService] Exception deleting dispatch:', error);
     return createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.deleteDispatch');
   }
 };

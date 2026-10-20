@@ -645,18 +645,23 @@ describe('an update whose answer is lost', () => {
   it.each([
     ['a dropped connection', 'TypeError: Network request failed'],
     ['the request time limit', 'TimeoutError: Request timeout'],
-  ])('is reported as "outcome unknown" after %s', async (_case, message) => {
+  ])('is reported with its request code and time after %s', async (_case, message) => {
     mockRpcHandlers.update_grn = () => ({ data: null, error: { message, code: '', details: '', hint: '' } });
     const result = await edit();
     expect(result.success).toBe(false);
-    expect(result.outcomeUnknown).toBe(true);
+    expect(result.lostAnswer).toEqual({
+      key: expect.stringMatching(/^warehouse-grn-update-[a-f0-9]{64}$/),
+      sentAt: expect.any(Number),
+      args: expect.objectContaining({ p_grn_id: GRN_ID }),
+    });
+    expect(result.lostAnswer?.key).toBe(callsTo('update_grn')[0].args.p_idempotency_key);
   });
 
   it('is not claimed when the server answered with a refusal', async () => {
     mockRpcHandlers.update_grn = () => ({ data: { success: false, message: 'GRN number already exists: A0010' }, error: null });
-    expect((await edit()).outcomeUnknown).toBe(false);
+    expect((await edit()).lostAnswer).toBeUndefined();
     mockRpcHandlers.update_grn = () => ({ data: null, error: { message: 'new row violates check constraint', code: '23514' } });
-    expect((await edit()).outcomeUnknown).toBe(false);
+    expect((await edit()).lostAnswer).toBeUndefined();
   });
 });
 
@@ -722,15 +727,37 @@ describe('the idempotency key of an update', () => {
     expect(keys()[1]).toBe(keys()[0]);
   });
 
-  it('does not depend on the saved ids the form adopted after a lost answer', async () => {
+  // Owner rule D22: after the check found nothing, the identical request is sent again, byte for byte.
+  it('a resend repeats the lost request exactly, under the same code, and makes no new one', async () => {
+    mockRpcHandlers.update_grn = lost;
+    const first = await edit('first note');
+    expect(first.lostAnswer).toBeDefined();
+    mockRpcHandlers.update_grn = () => answer({ idempotent: true });
+    // The form's note is another one now: the resend must still repeat what was sent, not what the form holds.
+    const result = await edit('changed after the loss', { resend: first.lostAnswer });
+
+    expect(result.success).toBe(true);
+    expect(callsTo('update_grn')).toHaveLength(2);
+    expect(callsTo('update_grn')[1].args).toEqual(callsTo('update_grn')[0].args);
+    expect(keys()[1]).toBe(first.lostAnswer?.key);
+  });
+
+  it('a resend that gets no answer either is unsettled again, under the same code', async () => {
+    mockRpcHandlers.update_grn = lost;
+    const first = await edit();
+    const second = await edit('', { resend: first.lostAnswer });
+
+    expect(second.success).toBe(false);
+    expect(second.lostAnswer?.key).toBe(first.lostAnswer?.key);
+  });
+
+  it('a stored answer found by the check is handled as the answer that was lost, and nothing is sent', async () => {
     mockRpcHandlers.update_grn = lost;
     await edit();
-    mockRpcHandlers.update_grn = () => answer({ idempotent: true });
-    await edit('', { adoptedLineIds: { 'item-new': NEW_LINE_ID } });
+    const result = await edit('', { storedAnswer: answer({ idempotent: true }).data });
 
-    expect(keys()[1]).toBe(keys()[0]);
-    // The body itself carries the adopted id, for a server that applies it.
-    expect(callsTo('update_grn')[1].args.p_items.map((item: { id?: string }) => item.id)).toEqual([LINE_ID, NEW_LINE_ID]);
+    expect(result.success).toBe(true);
+    expect(callsTo('update_grn')).toHaveLength(1);
   });
 
   it('takes the replayed answer of the first save as a save: the photo of the added line goes up', async () => {
@@ -759,23 +786,21 @@ describe('the idempotency key of an update', () => {
 
     it('sends the same body once more without the key', async () => {
       oldServer(() => answer());
-      const result = await edit('', { adoptedLineIds: { 'item-new': NEW_LINE_ID } });
+      const result = await edit();
 
       expect(result.success).toBe(true);
       const [withKey, withoutKey] = callsTo('update_grn').map((call) => call.args);
       expect(callsTo('update_grn')).toHaveLength(2);
       expect(withoutKey).not.toHaveProperty('p_idempotency_key');
       expect({ ...withKey, p_idempotency_key: undefined }).toEqual({ ...withoutKey, p_idempotency_key: undefined });
-      // The line the form adopted after a lost answer is updated, not added again.
-      expect(withoutKey.p_items.map((item: { id?: string }) => item.id)).toEqual([LINE_ID, NEW_LINE_ID]);
     });
 
-    it('reports a lost answer of the second request as "outcome unknown"', async () => {
+    it('a lost answer of the second request has no request code to ask about: no lostAnswer', async () => {
       oldServer(lost);
       const result = await edit();
 
       expect(result.success).toBe(false);
-      expect(result.outcomeUnknown).toBe(true);
+      expect(result.lostAnswer).toBeUndefined();
       expect(callsTo('update_grn')).toHaveLength(2);
     });
 

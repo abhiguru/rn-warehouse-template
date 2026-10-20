@@ -11,9 +11,11 @@ import {
 } from '@/types/invoice.types';
 import { t } from '@/i18n';
 
-import { toLocalISODate } from '@/utils/formatters';
+import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
-import { serverReason, serverText } from '@/utils/serverText';
+import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
+import { isLostAnswer } from '@/utils/lostAnswer';
+import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -65,12 +67,13 @@ function serverAmount(value: unknown): number | null {
  * so the figure to show after a save is the stored one. `save_invoice(jsonb)`
  * returns it as `totals.grand_total`; the three-argument save and
  * `update_invoice` return no totals, so the invoice is read back. null when
- * it cannot be read: the save itself has succeeded and stays reported as such.
+ * it cannot be read (or when no connection to the server could be made for it):
+ * the save itself has succeeded and stays reported as such.
  */
-async function savedInvoiceTotal(client: RpcClient, answer: any, invoiceId: string | undefined): Promise<number | null> {
+async function savedInvoiceTotal(client: RpcClient | null, answer: any, invoiceId: string | undefined): Promise<number | null> {
   const fromAnswer = serverAmount(answer?.totals?.grand_total ?? answer?.totals?.total);
   if (fromAnswer !== null) return fromAnswer;
-  if (!invoiceId) return null;
+  if (!invoiceId || !client) return null;
   try {
     const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
     if (error || !data?.success) return null;
@@ -103,13 +106,118 @@ const isInvoiceNumberRange = (text: unknown, code: unknown): boolean =>
   code === INVOICE_NUMBER_RANGE ||
   (typeof text === 'string' && /\(SQLState:\s*WH422\)/i.test(text));
 
+/**
+ * The person's words for a save that failed. Not a `write` text: a failure that may have reached the server (no
+ * answer came) is never worded here. It is asked about and sent again by the form (owner rule D22), so "it may have
+ * been saved, go and check" never reaches Save invoice or Update invoice. What is worded here is a refusal, or a
+ * failure before the request was sent (nothing was saved: "Check your connection and try again").
+ */
 function invoiceSaveMessage(text: unknown, fallback: string, code?: unknown): string {
   if (isInvoiceNumberRange(text, code)) return t('invoice.validation.invoiceNumberRange');
+  // An expired sign-in (PGRST303, "JWT expired") was refused before the save ran and the session is already renewed:
+  // "Your sign-in was renewed. Tap Save again." (PGRST301, which cannot be renewed, says to sign in again).
+  const expired = expiredSessionText(text, { write: true, code: typeof code === 'string' ? code : undefined });
+  if (expired) return expired;
   if (typeof text === 'string' && INVOICE_REFUSAL.test(text)) {
-    return serverReason(text) ?? serverText(text, fallback, { write: true, form: true, code: typeof code === 'string' ? code : undefined });
+    return serverReason(text) ?? serverText(text, fallback, { code: typeof code === 'string' ? code : undefined });
   }
-  return serverText(text, fallback, { write: true, form: true, code: typeof code === 'string' ? code : undefined });
+  return serverText(text, fallback, { code: typeof code === 'string' ? code : undefined });
 }
+/**
+ * The invoice number is taken (I4, backend migration 120): `reason: 'NUMBER_TAKEN'` with the number, in the answer of
+ * save_invoice and update_invoice. A server before migration 120 answers with the unique constraint's SQLSTATE 23505
+ * (as the answer's `error_code`, or as the error's `code`); its text names `unique_inv_no_per_year`. Null when the
+ * answer is any other refusal. `fallbackNumber` is the number that was sent, for an answer that does not repeat it.
+ */
+type MaybeRefusal = { reason?: unknown; number?: unknown; error?: unknown; message?: unknown; details?: unknown; code?: unknown; error_code?: unknown };
+function numberTakenFrom(answer: MaybeRefusal | null | undefined, fallbackNumber: number): { number: number } | null {
+  if (!answer) return null;
+  const code = typeof answer.error_code === 'string' ? answer.error_code : typeof answer.code === 'string' ? answer.code : undefined;
+  const text = [answer.error, answer.message, answer.details].filter((part) => typeof part === 'string').join(' ');
+  const named = answer.reason === 'NUMBER_TAKEN';
+  const olderServer = code === '23505' && /unique_inv_no_per_year/i.test(text);
+  if (!named && !olderServer) return null;
+  const given = Number(answer.number);
+  return { number: Number.isFinite(given) && given > 0 ? given : fallbackNumber };
+}
+
+/** Thrown inside createInvoice so its catch can answer with the taken number instead of a worded failure. */
+class NumberTakenError extends Error {
+  taken: number;
+
+  constructor(taken: number) {
+    super(t('invoice.form.numberTakenNoNext', { number: String(taken) }));
+    this.taken = taken;
+  }
+}
+
+/**
+ * The refusals of a save that a screen acts on by their reason (wave B): the invoice changed since it was opened (D1),
+ * the GRN still has stock (D9), the total the person confirmed is not the server's (D18). Any other refusal keeps the
+ * worded message below. The server runs the version check and the total check only after the answer stored under the
+ * request code is replayed, so a resend of this same save (same payload, same code) is answered with the stored answer
+ * and never refused as STALE_RECORD or TOTAL_CHANGED because of its own first send.
+ */
+const ACTED_ON_REASONS: ReadonlySet<string> = new Set([REFUSAL.STALE_RECORD, REFUSAL.GRN_HAS_STOCK, REFUSAL.TOTAL_CHANGED]);
+function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
+  const refusal = refusalOf(answer);
+  return refusal && ACTED_ON_REASONS.has(refusal.reason) ? refusal : undefined;
+}
+
+/** The result of a save that was refused for one of those reasons: the screen words it from `refusal`. */
+const refusedResponse = (refusal: ServerRefusal, fallback: string): CreateInvoiceResponse => ({
+  success: false,
+  data: { invoice_id: '', invoice_no: 0 },
+  message: serverText(refusal.text, fallback),
+  refusal,
+});
+
+/** A number the app holds for the server's own check (D1, D18): left out of the request when it is not a number. */
+const givenTotal = (total: unknown): { expected_total: number } | Record<string, never> =>
+  typeof total === 'number' && Number.isFinite(total) ? { expected_total: total } : {};
+
+/**
+ * What `createInvoice` and `updateInvoice` are told besides the payload. `resend`: this is the identical request sent
+ * again after a lost answer (owner rule D22). A failure of it that is not the server's answer (57014 while it waits
+ * behind the original, a failure before sending, a changed session) leaves the attempt unsettled, so the result says
+ * `lostAnswer` and the form goes back to the check instead of unlocking.
+ */
+export interface InvoiceSaveOptions {
+  resend?: boolean;
+}
+
+/**
+ * Sends a save and notes when it was sent. A request that throws is told like one that comes back with an error, so
+ * the caller asks one question of both: was the answer lost (owner rule D22)? The HTTP status goes with the error, so
+ * a gateway's 502 or 504 (the request reached it and the server did not answer) is told from the server's own
+ * refusals. The error is copied field by field: a PostgrestError keeps its message as a non-enumerable property, which
+ * a spread would drop.
+ */
+async function sendSave(
+  client: RpcClient,
+  name: string,
+  args: Record<string, unknown>
+): Promise<{ data: any; error: any; sentAt: number }> {
+  const sentAt = Date.now();
+  try {
+    const { data, error, status } = await client.rpc(name, args);
+    if (error && typeof status === 'number') {
+      const { message, code, details, hint } = error as { message?: string; code?: string; details?: string; hint?: string };
+      return { data, error: { message, code, details, hint, status }, sentAt };
+    }
+    return { data, error, sentAt };
+  } catch (thrown) {
+    return { data: null, error: thrown, sentAt };
+  }
+}
+
+/** The answer of a save whose answer was lost: the caller asks the server what became of it (owner rule D22). */
+const lostAnswerResponse = (sentAt: number): CreateInvoiceResponse => ({
+  success: false,
+  data: { invoice_id: '', invoice_no: 0 },
+  lostAnswer: { sentAt },
+});
+
 /** PostgREST found no function that takes the parameters sent (PGRST202). */
 const isUnknownFunctionSignature = (error: { code?: string; message?: string }): boolean =>
   error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
@@ -478,7 +586,7 @@ export const loadInvoiceFormData = async (
 export const checkGrnStillInvoiceable = async (
   grId: string,
   formItems: Pick<InvoiceItemData, 'disp_trl_id' | 'qty'>[]
-): Promise<{ ok: true } | { ok: false; message: string }> => {
+): Promise<{ ok: true } | { ok: false; message: string; linesChanged?: true }> => {
   const fresh = await loadInvoiceFormData(grId);
   if (!fresh.success) {
     return {
@@ -493,18 +601,89 @@ export const checkGrnStillInvoiceable = async (
   const lines = (items: Pick<InvoiceItemData, 'disp_trl_id' | 'qty'>[]) =>
     items.map((item) => `${item.disp_trl_id}:${Number(item.qty)}`).sort().join('|');
   if (lines(fresh.data.items) !== lines(formItems)) {
-    return { ok: false, message: t('invoice.review.grnChanged') };
+    // The caller offers to load the lines again (I3).
+    return { ok: false, message: t('invoice.review.grnChanged'), linesChanged: true };
   }
   return { ok: true };
+};
+
+/** The result of a save_invoice that succeeded: the invoice, and the total the server stored for it. */
+async function createdInvoice(
+  client: RpcClient | null,
+  answer: any,
+  payload: CreateInvoicePayload
+): Promise<CreateInvoiceResponse> {
+  // The write changed what reports count: a report on screen asks again (SR-10).
+  void invalidateReportQueries();
+  return {
+    success: true,
+    data: {
+      invoice_id: answer.invoice_id,
+      invoice_no: answer.invoice_no || payload.header.inv_no,
+      total: await savedInvoiceTotal(client, answer, answer.invoice_id),
+    },
+  };
+}
+
+/** The result of an update_invoice that succeeded. */
+async function updatedInvoice(
+  client: RpcClient | null,
+  answer: any,
+  invoiceId: string,
+  payload: CreateInvoicePayload
+): Promise<CreateInvoiceResponse> {
+  // The write changed what reports count: a report on screen asks again (SR-10).
+  void invalidateReportQueries();
+  return {
+    success: true,
+    data: {
+      invoice_id: answer.invoice_id,
+      invoice_no: parseInt(answer.invoice_number) || payload.header.inv_no,
+      total: await savedInvoiceTotal(client, answer, answer.invoice_id || invoiceId),
+    },
+    message: serverText(answer.message, t('invoice.service.updated')),
+  };
+}
+
+/**
+ * The save went through, but its answer was lost, and the server gave back the answer it stored under the request code
+ * (`get_submission_result`, owner rule D22). The result is the one the save would have had: the invoice and its stored
+ * total, and the reports told as after any save. Null when the stored answer is no success (it is then not used, and
+ * the save is sent again: the code makes the server answer with what it stored or save it once).
+ * `invoiceId` is the invoice being edited, null for a new invoice.
+ */
+export const invoiceFromStoredAnswer = async (
+  invoiceId: string | null,
+  payload: CreateInvoicePayload,
+  stored: unknown
+): Promise<CreateInvoiceResponse | null> => {
+  const answer = stored as { success?: unknown } | null | undefined;
+  if (!answer || answer.success !== true) return null;
+  // The total is read back like after any save; when the connection is not there for it, the save stays reported
+  // as done and the total as not read.
+  let client: RpcClient | null;
+  try {
+    client = await getAuthenticatedClient();
+  } catch {
+    client = null;
+  }
+  return invoiceId ? updatedInvoice(client, answer, invoiceId, payload) : createdInvoice(client, answer, payload);
 };
 
 /**
  * Create a new invoice
  * Calls the save_invoice RPC with header and items data
  * Uses the same RPC and payload structure as web app
+ *
+ * `requestKey` is the save's request code (owner rule D22, backend migration 120): the server stores the answer under
+ * it, so a repeat of the same save answers with the stored answer and the app can ask whether a save that lost its
+ * answer went through. When the answer is lost the result has `lostAnswer` (and no worded message): the caller waits
+ * and asks the server, and sends this same save again only if the server holds no answer for the code.
  */
 export const createInvoice = async (
-  payload: CreateInvoicePayload
+  payload: CreateInvoicePayload,
+  requestKey?: string,
+  options: InvoiceSaveOptions = {}
 ): Promise<CreateInvoiceResponse> => {
   try {
     const authenticatedClient = await getAuthenticatedClient();
@@ -546,6 +725,9 @@ export const createInvoice = async (
       one_time_charge: Boolean(payload.header.one_time_charge),
       is_auto_generated: false, // Manual creation
       ...zeroChargeHeader(payload),
+      // The total the person confirmed: the server refuses the save when its own total differs by more than 1 (D18).
+      ...givenTotal(payload.header.expected_total),
+      ...(requestKey ? { request_key: requestKey } : {}),
     };
 
     // Transform items to match RPC expected format
@@ -583,37 +765,46 @@ export const createInvoice = async (
       p_invoice_items: invoiceItems,
     };
 
-    const { data, error } = await authenticatedClient.rpc('save_invoice', rpcPayload);
+    const { data, error, sentAt } = await sendSave(authenticatedClient, 'save_invoice', rpcPayload);
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
+      // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
+      // a failure of a resend that is not the server's answer: that attempt is not settled either.
+      if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt);
+      const taken = numberTakenFrom(error, payload.header.inv_no);
+      if (taken) throw new NumberTakenError(taken.number);
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed'), error.code));
     }
 
     if (!data || !data.success) {
+      const taken = numberTakenFrom(data, payload.header.inv_no);
+      if (taken) throw new NumberTakenError(taken.number);
+      const refusal = actedOnRefusal(data);
+      if (refusal) return refusedResponse(refusal, t('invoice.service.createFailed'));
       const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
       throw new Error(errorMsg);
     }
-    // The write changed what reports count: a report on screen asks again (SR-10).
-    void invalidateReportQueries();
-
-    return {
-      success: true,
-      data: {
-        invoice_id: data.invoice_id,
-        invoice_no: data.invoice_no || payload.header.inv_no,
-        total: await savedInvoiceTotal(authenticatedClient, data, data.invoice_id),
-      },
-    };
+    return await createdInvoice(authenticatedClient, data, payload);
   } catch (error: any) {
     invoiceFormLogger.error('Error in createInvoice:', errorForLog(error));
+    // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
+    if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now());
+    if (error instanceof NumberTakenError) {
+      return {
+        success: false,
+        data: { invoice_id: '', invoice_no: 0 },
+        message: error.message,
+        numberTaken: { number: error.taken },
+      };
+    }
     return {
       success: false,
       data: {
         invoice_id: '',
         invoice_no: 0,
       },
-      message: serverText(error.message, t('invoice.service.createFailed'), { write: true, form: true }),
+      message: serverText(error.message, t('invoice.service.createFailed')),
     };
   }
 };
@@ -734,7 +925,10 @@ export const loadInvoiceData = async (
       customer_name: header.customer_name || '',
       gr_id: header.gr_id || '',
       gr_no: header.gr_no || '',
-      inv_date: header.inv_date ? header.inv_date.split('T')[0] : toLocalISODate(new Date()),
+      // The day the invoice has on India's calendar, as the details screen shows it. The server sends a UTC
+      // timestamp; its date part is the day before for an invoice stamped after 18:30 UTC (I13).
+      // A text that is not a date at all keeps its first ten characters, as before, and no text gives today.
+      inv_date: indiaDay(header.inv_date) || header.inv_date?.slice(0, 10) || toLocalISODate(new Date()),
       inv_fin_year: finYear,
       inv_no: typeof header.inv_no === 'string' ? parseInt(header.inv_no.replace(/\D/g, ''), 10) || 0 : header.inv_no || 0,
       // The GRN's pricing mode, not the flag stored with the invoice: the
@@ -809,6 +1003,9 @@ export const loadInvoiceData = async (
       data: {
         header: formattedHeader,
         items: formattedItems,
+        // The version token of the invoice (D1), as the server wrote it: sent back unchanged with the update.
+        // An older server sends none.
+        ...(typeof header.updated_at === 'string' && header.updated_at !== '' ? { updated_at: header.updated_at } : {}),
       },
       message: t('invoice.service.loaded'),
     };
@@ -828,10 +1025,14 @@ export const loadInvoiceData = async (
 /**
  * Update an existing invoice
  * Calls the update_invoice RPC with invoice ID and updated data
+ *
+ * `requestKey` and `lostAnswer` work as for createInvoice (owner rule D22).
  */
 export const updateInvoice = async (
   invoiceId: string,
-  payload: CreateInvoicePayload
+  payload: CreateInvoicePayload,
+  requestKey?: string,
+  options: InvoiceSaveOptions = {}
 ): Promise<CreateInvoiceResponse> => {
   try {
     const authenticatedClient = await getAuthenticatedClient();
@@ -872,6 +1073,11 @@ export const updateInvoice = async (
       total: payload.header.total || 0,
       one_time_charge: payload.header.one_time_charge || false,
       ...zeroChargeHeader(payload),
+      // The version the form was loaded from: the server refuses the update when the invoice changed since (D1).
+      ...(payload.header.expected_updated_at ? { expected_updated_at: payload.header.expected_updated_at } : {}),
+      // The total the person confirmed: the server refuses the update when its own total differs by more than 1 (D18).
+      ...givenTotal(payload.header.expected_total),
+      ...(requestKey ? { request_key: requestKey } : {}),
     };
 
     const invoiceItems = payload.items.map((item) => ({
@@ -885,7 +1091,7 @@ export const updateInvoice = async (
     }));
 
     // Call update_invoice RPC
-    const { data, error } = await authenticatedClient.rpc('update_invoice', {
+    const { data, error, sentAt } = await sendSave(authenticatedClient, 'update_invoice', {
       p_invoice_id: invoiceId,
       p_invoice_data: invoiceData,
       p_invoice_items: invoiceItems,
@@ -893,6 +1099,18 @@ export const updateInvoice = async (
 
     if (error) {
       invoiceFormLogger.error('RPC error:', errorForLog(error));
+      // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
+      // a failure of a resend that is not the server's answer: that attempt is not settled either.
+      if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt);
+      const taken = numberTakenFrom(error, payload.header.inv_no);
+      if (taken) {
+        return {
+          success: false,
+          data: { invoice_id: '', invoice_no: 0 },
+          message: t('invoice.form.numberTakenNoNext', { number: String(taken.number) }),
+          numberTaken: { number: taken.number },
+        };
+      }
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.updateFailed'), error.code));
     }
 
@@ -900,6 +1118,17 @@ export const updateInvoice = async (
     const result = data;
 
     if (!result || !result.success) {
+      const taken = numberTakenFrom(result, payload.header.inv_no);
+      if (taken) {
+        return {
+          success: false,
+          data: { invoice_id: '', invoice_no: 0 },
+          message: t('invoice.form.numberTakenNoNext', { number: String(taken.number) }),
+          numberTaken: { number: taken.number },
+        };
+      }
+      const refusal = actedOnRefusal(result);
+      if (refusal) return refusedResponse(refusal, t('invoice.service.updateFailed'));
       const errorMsg = invoiceSaveMessage(result?.error, t('invoice.service.updateFailed'), result?.error_code);
       return {
         success: false,
@@ -907,24 +1136,15 @@ export const updateInvoice = async (
         message: errorMsg,
       };
     }
-    // The write changed what reports count: a report on screen asks again (SR-10).
-    void invalidateReportQueries();
-
-    return {
-      success: true,
-      data: {
-        invoice_id: result.invoice_id,
-        invoice_no: parseInt(result.invoice_number),
-        total: await savedInvoiceTotal(authenticatedClient, result, result.invoice_id || invoiceId),
-      },
-      message: serverText(result.message, t('invoice.service.updated')),
-    };
+    return await updatedInvoice(authenticatedClient, result, invoiceId, payload);
   } catch (error: any) {
     invoiceFormLogger.error('Error updating invoice:', errorForLog(error));
+    // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
+    if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now());
     return {
       success: false,
       data: { invoice_id: '', invoice_no: 0 },
-      message: serverText(error.message, t('invoice.service.updateFailed'), { write: true, form: true }),
+      message: serverText(error.message, t('invoice.service.updateFailed')),
     };
   }
 };

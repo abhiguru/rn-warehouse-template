@@ -7,7 +7,7 @@
  * the answer has the server's sentence in `message`; a raised exception has the
  * app's own text in `message` and the raw text in `error`.
  */
-import { cartFailureReason, isAlreadyRemoved, isConnectionFailure } from '../cartFailureReason';
+import { cartFailureReason, isAlreadyRemoved, isConnectionFailure, isLineGone, mayHaveBeenSaved } from '../cartFailureReason';
 import { setLanguage } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { executeRPC } from '@/utils/serviceErrorHandler';
@@ -18,9 +18,14 @@ const refused = (message: string, error: unknown = 'API_ERROR') => ({ success: f
 const raised = (text: string) => ({ success: false, message: "Couldn't add the item.", error: text });
 
 const NOT_SAVED = { en: 'Not saved. Check your connection and try again.', gu: 'સચવાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.' };
+// A lost answer: while the editor checks it (waits, reads the order) the lot says it is being checked.
+const MAYBE_SAVED = {
+  en: 'No answer from the server. Checking whether it was saved…',
+  gu: 'સર્વરનો જવાબ મળ્યો નથી. સચવાયું છે કે નહીં તે તપાસી રહ્યા છીએ…',
+};
 const ORDER_CLOSED = { en: 'This order is closed. Go back and open it again.', gu: 'આ ઑર્ડર પૂર્ણ થયો છે. પાછા જઈને ફરી ખોલો.' };
 
-const CASES: [string, { message?: unknown; error?: unknown }, { en: string; gu: string }][] = [
+const CASES: [string, { message?: unknown; error?: unknown; lostAnswer?: boolean }, { en: string; gu: string }][] = [
   ['not enough stock on add or change', refused('Insufficient stock. Available: 3, Requested: 10'),
     { en: 'Only 3 bags in stock.', gu: 'સ્ટોકમાં ફક્ત ૩ નંગ છે.' }],
   ['one bag left', refused('Insufficient stock. Available: 1, Requested: 2'),
@@ -46,7 +51,14 @@ const CASES: [string, { message?: unknown; error?: unknown }, { en: string; gu: 
   ['database text that quotes a known sentence', refused('Error adding item: Insufficient stock. Available: 3, Requested: 10'), NOT_SAVED],
   ['a raw database error', raised('permission denied for function add_item_to_order'), NOT_SAVED],
   ['the order was not found', refused('Order not found'), NOT_SAVED],
-  ['no connection', { message: "Couldn't add the item.", error: 'Network request failed' }, NOT_SAVED],
+  // The request had gone out and no answer came back (review 2026-10-20, A13): the lot may be on the order; it is being checked.
+  // (`lostAnswer` is the flag executeRPC computed and OrderService passes on; the text is not classified here.)
+  ['a connection that dropped after the request went out', { message: "Couldn't add the item.", error: 'Network request failed', lostAnswer: true }, MAYBE_SAVED],
+  ['a request that timed out', { message: "Couldn't add the item.", error: 'TimeoutError: Request timeout', lostAnswer: true }, MAYBE_SAVED],
+  ['a socket that was reset', { message: "Couldn't add the item.", error: 'Error: fetch failed: Connection reset by peer', lostAnswer: true }, MAYBE_SAVED],
+  // Nothing was sent: no session that could be renewed, a host that could not be found.
+  ['no session that could be renewed (nothing sent)', { message: "Couldn't add the item.", error: 'Network request failed: session refresh unavailable' }, NOT_SAVED],
+  ['a host that could not be found (nothing sent)', { message: "Couldn't add the item.", error: 'Error: fetch failed: Unable to resolve host "example.test"' }, NOT_SAVED],
   ['an empty answer', { message: "Couldn't add the item.", error: 'EMPTY_RESPONSE' }, NOT_SAVED],
   ['nothing at all', {}, NOT_SAVED],
 ];
@@ -70,6 +82,114 @@ it('answers for a missing failure', () => {
   expect(cartFailureReason(null)).toBe(NOT_SAVED.en);
 });
 
+describe('a line that is gone (review 2026-10-20, A12)', () => {
+  const REMOVED = {
+    en: 'Removed by someone else. Tap Add again to add 8 bags.',
+    gu: 'બીજા કોઈએ આ જથ્થો દૂર કર્યો. ૮ નંગ ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
+  };
+  it.each(['en', 'gu'] as const)('a change of a known line that "Order item not found" is read as removed by someone else, in %s', language => {
+    setLanguage(language);
+    expect(cartFailureReason(refused('Order item not found'), { lineKnown: true, chosen: 8 })).toBe(REMOVED[language]);
+  });
+
+  it('a customer login on an older facility is answered "Customer access denied": the line is gone only when a read of the order says so', () => {
+    expect(cartFailureReason(raised('Customer access denied'), { lineKnown: true, lineConfirmedGone: true, chosen: 8 })).toBe(REMOVED.en);
+    // Without that read it is a refusal of permission, also for a known line; and without the line known (an add).
+    expect(cartFailureReason(raised('Customer access denied'), { lineKnown: true, chosen: 8 })).toBe('You do not have permission to perform this action.');
+    expect(cartFailureReason(raised('Customer access denied'))).toBe('You do not have permission to perform this action.');
+    expect(cartFailureReason(raised('Customer access denied'), { lineKnown: false, lineConfirmedGone: true, chosen: 8 })).toBe('You do not have permission to perform this action.');
+  });
+
+  it('a line gone with no quantity chosen has its own reason, not a dialog title', () => {
+    expect(cartFailureReason(refused('Order item not found'), { lineKnown: true })).toBe('This item is no longer on the order.');
+  });
+
+  // In Gujarati executeRPC puts the app's own text in `message`; the server's sentence is kept in `serverMessage`.
+  it.each(['en', 'gu'] as const)('"Order item not found" is told through executeRPC in %s', async language => {
+    setLanguage(language);
+    const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const client = async () => ({ rpc: async () => ({ data: { success: false, message: 'Order item not found' }, error: null }) });
+    const result = await executeRPC(client, 'update_order_item_quantity', {}, { context: 'fictional', errorMessage: "Couldn't change the item.", unwrapNested: false });
+    logged.mockRestore();
+    expect(result.serverMessage).toBe('Order item not found');
+    expect(isAlreadyRemoved(result)).toBe(true);
+    expect(cartFailureReason(result, { lineKnown: true, chosen: 8 })).toBe(REMOVED[language]);
+  });
+
+  it('is told from a line that is only missing something else', () => {
+    expect(isLineGone(refused('Order item not found'))).toBe(true);
+    expect(isLineGone(raised('Customer access denied'))).toBe(true);
+    expect(isLineGone(refused('Order not found'))).toBe(false);
+    expect(isLineGone(raised('Staff access required'))).toBe(false);
+    expect(isLineGone(undefined)).toBe(false);
+    // Only "not found" says for certain that the line is gone.
+    expect(isAlreadyRemoved(raised('Customer access denied'))).toBe(false);
+  });
+
+  it('a stock refusal still wins over the line being known', () => {
+    expect(cartFailureReason(refused('Insufficient stock. Available: 3, Requested: 10'), { lineKnown: true, chosen: 10 })).toBe('Only 3 bags in stock.');
+  });
+});
+
+describe('a call that may have been applied (review 2026-10-20, A13)', () => {
+  it.each(['en', 'gu'] as const)('a removal that got no answer says it is checking whether it was deleted, in %s', language => {
+    setLanguage(language);
+    const timedOut = { message: "Couldn't remove the item.", error: 'TimeoutError: Request timeout', lostAnswer: true };
+    expect(cartFailureReason(timedOut, { removal: true })).toBe(
+      language === 'en' ? 'No answer from the server. Checking whether it was deleted…' : 'સર્વરનો જવાબ મળ્યો નથી. કાઢી નંખાયું છે કે નહીં તે તપાસી રહ્યા છીએ…'
+    );
+  });
+
+  it('is the flag executeRPC computed, and nothing else', () => {
+    expect(mayHaveBeenSaved({ ...raised('TimeoutError: Request timeout'), lostAnswer: true })).toBe(true);
+    // The text alone does not say it: the status and the code were seen where the flag was made.
+    expect(mayHaveBeenSaved(raised('TimeoutError: Request timeout'))).toBe(false);
+    expect(mayHaveBeenSaved({})).toBe(false);
+    expect(mayHaveBeenSaved(undefined)).toBe(false);
+    expect(mayHaveBeenSaved(null)).toBe(false);
+  });
+
+  // The flag as executeRPC makes it from what the PostgREST client hands back (the status and the code are known there).
+  describe.each(['en', 'gu'] as const)('through executeRPC in %s', language => {
+    beforeEach(() => setLanguage(language));
+    const lostFlag = async (answer: { data: unknown; error: unknown; status?: number }) => {
+      const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const result = await executeRPC(async () => ({ rpc: async () => answer }), 'add_item_to_order', {}, { context: 'fictional', write: true, unwrapNested: false });
+      logged.mockRestore();
+      return mayHaveBeenSaved(result);
+    };
+    const failed = (message: string, extra: { code?: string; status?: number } = {}) => ({
+      data: null,
+      error: { message, details: '', hint: '', code: extra.code ?? '' },
+      ...(extra.status ? { status: extra.status } : {}),
+    });
+
+    it.each([
+      ['a timeout', failed('TimeoutError: Request timeout'), true],
+      ['a dropped connection', failed('TypeError: Network request failed'), true],
+      ['a gateway page', failed('<html>502 Bad Gateway</html>', { status: 502 }), true],
+      ['a gateway\'s plain 504 answer', failed('The upstream server is timing out', { status: 504 }), true],
+      ['a gateway answer that carries only its status', failed('Bad Gateway', { status: 502 }), true],
+      ['a statement timeout (rolled back)', failed('canceling statement due to statement timeout', { code: '57014', status: 500 }), false],
+      ['a host that could not be found', failed('Error: fetch failed: Unable to resolve host "example.test"'), false],
+      ['a refusal sentence', failed('Item belongs to another customer', { code: '42501', status: 403 }), false],
+      ['a PostgREST refusal with a high status', failed('boom', { code: 'PGRST116', status: 503 }), false],
+    ])('%s', async (_name, answer, expected) => {
+      expect(await lostFlag(answer)).toBe(expected);
+    });
+
+    it('no session that could be renewed for want of a connection is nothing sent', async () => {
+      const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const result = await executeRPC(
+        async () => { throw new AppError('NETWORK', 'Network request failed: session refresh unavailable'); },
+        'add_item_to_order', {}, { context: 'fictional', write: true, unwrapNested: false }
+      );
+      logged.mockRestore();
+      expect(mayHaveBeenSaved(result)).toBe(false);
+    });
+  });
+});
+
 it('tells a line that is already gone from any other refusal', () => {
   expect(isAlreadyRemoved(refused('Order item not found'))).toBe(true);
   expect(isAlreadyRemoved(refused('Order not found'))).toBe(false);
@@ -87,7 +207,14 @@ describe('a call without an answer is told from a refusal', () => {
     expect(isConnectionFailure(raised(text))).toBe(true);
   });
 
-  it.each(CASES.filter(([name]) => name !== 'no connection'))('%s is an answer', (_name, failure) => {
+  const NO_ANSWER = [
+    'a connection that dropped after the request went out',
+    'a request that timed out',
+    'a socket that was reset',
+    'no session that could be renewed (nothing sent)',
+    'a host that could not be found (nothing sent)',
+  ];
+  it.each(CASES.filter(([name]) => !NO_ANSWER.includes(name)))('%s is an answer', (_name, failure) => {
     expect(isConnectionFailure(failure)).toBe(false);
   });
 

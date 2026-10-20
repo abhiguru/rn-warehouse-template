@@ -42,12 +42,22 @@ export const invoice: Translation<typeof source> = {
     discardNewTitle: 'આ ઇન્વૉઇસ છોડી દેવું છે?',
     discardEditMessage: 'આ ઇન્વૉઇસમાં કરેલા ફેરફાર જતા રહેશે.',
     discardNewMessage: 'આ ઇન્વૉઇસ માટે લખેલી વિગતો જતી રહેશે.',
+    // Draft for the owner's wording review (2026-10-20): the close button's question while the server is asked about a save or delete whose answer was lost (D22).
+    lostLeaveTitle: 'જવાબ મળ્યા વગર છોડવું છે?',
   },
   // Opening an invoice to edit it
   edit: {
     openFailedTitle: 'ઇન્વૉઇસ ખોલી શકાયું નથી',
     openFailedMessage: 'ઇન્વૉઇસની લિંક અધૂરી છે. યાદીમાંથી ઇન્વૉઇસ ફરી ખોલો.',
     loadFailedTitle: 'ઇન્વૉઇસ લોડ કરી શકાયું નથી',
+    // Draft for the owner's wording review (tweak 2026-10-20, review J1): finishOtherTitle to otherInvoiceMessage (and openIt).
+    finishOtherTitle: 'બીજું ઇન્વૉઇસ ખુલ્લું છે',
+    finishOtherEdit: 'પહેલાં ઇન્વૉઇસ {{number}} નો ફેરફાર પૂરો કરો અથવા રદ કરો.',
+    finishOtherEditNoNumber: 'પહેલાં ખુલ્લા ઇન્વૉઇસનો ફેરફાર પૂરો કરો અથવા રદ કરો.',
+    finishOtherNew: 'પહેલાં નવું ઇન્વૉઇસ પૂરું કરો અથવા રદ કરો.',
+    openIt: 'તે ખોલો',
+    otherInvoiceTitle: 'આ ફૉર્મ બીજા ઇન્વૉઇસનું છે',
+    otherInvoiceMessage: 'આની ઉપર બીજું ઇન્વૉઇસ ખૂલ્યું હતું, એટલે કંઈ સચવાયું નથી. ઇન્વૉઇસ પર પાછા જાઓ અને ફેરફાર ફરી ખોલો.',
   },
   // Step 1: details
   form: {
@@ -95,6 +105,12 @@ export const invoice: Translation<typeof source> = {
     checkInvoiceTitle: 'ઇન્વૉઇસ તપાસો',
     fillRequired: 'જરૂરી વિગતો ભરો, પછી ફરી પ્રયાસ કરો.',
     saveFailedTitle: 'ઇન્વૉઇસ સાચવી શકાયું નથી',
+    // Draft for the owner's wording review (tweak 2026-10-20, review I4): numberTakenTitle to numberTakenNoNext.
+    numberTakenTitle: 'ઇન્વૉઇસ નંબર વપરાઈ ગયો છે',
+    numberTaken: 'ઇન્વૉઇસ નંબર {{number}} વપરાઈ ગયો છે. આગળનો ખાલી નંબર {{next}} છે.',
+    numberTakenNoNext: 'ઇન્વૉઇસ નંબર {{number}} વપરાઈ ગયો છે. બીજો નંબર લખો.',
+    // Draft for the owner's wording review (2026-10-20): the number was refused when the save was sent again after a lost answer.
+    numberMaybeSaved: 'ઇન્વૉઇસ {{number}} કદાચ પહેલેથી સચવાઈ ગયું હોય. ફરી દાખલ કરતાં પહેલાં યાદી તપાસો.',
   },
   // The sheet that lists the GRNs that can be invoiced
   grnPicker: {
@@ -204,6 +220,8 @@ export const invoice: Translation<typeof source> = {
     surchargeTooLarge: 'વધારાનો ચાર્જ {{amount}} થી વધુ ન હોઈ શકે.',
     discountReasonRequired: 'છૂટનું કારણ (જરૂરી)',
     discountReasonPlaceholder: 'આ છૂટ શા માટે આપી છે?',
+    // Draft for the owner's wording review (tweak 2026-10-20, review I9).
+    discountReasonLocked: 'નવું કારણ આપવા છૂટ બદલો',
     zeroChargeReasonRequired: 'શૂન્ય ભાડાનું કારણ (જરૂરી)',
     zeroChargeReasonPlaceholder: 'ભાડાનો દર ૦ શા માટે છે?',
     roundingAdjustment: 'પૂરા રૂપિયા',
@@ -247,7 +265,8 @@ export const invoice: Translation<typeof source> = {
     updateInvoice: 'ઇન્વૉઇસ અપડેટ કરો',
     saveTitle: 'ઇન્વૉઇસ {{number}} સાચવવું છે?',
     updateTitle: 'ઇન્વૉઇસ {{number}} અપડેટ કરવું છે?',
-    confirmMessage: '{{customer}}\nઅંદાજિત કુલ {{total}}\nઇન્વૉઇસ સચવાય ત્યારે છેલ્લી રકમ સર્વર ગણે છે.',
+    // Draft for the owner's wording review (2026-10-20): the server checks the total shown here.
+    confirmMessage: '{{customer}}\nકુલ {{total}}\nસર્વર જુદી કુલ રકમ ગણે તો કંઈ સચવાશે નહીં અને નવી રકમ બતાવાશે.',
     // Added to the question before saving, for every role, when lines have a charge of 0.
     zeroChargeCount: { one: '{{count}} આઇટમનો ભાડાનો દર ૦ છે.', other: '{{count}} આઇટમનો ભાડાનો દર ૦ છે.' },
     noItemsMessage: 'વિગતોના પગલા પર પાછા જાઓ અને જેમાંથી માલની જાવક થઈ હોય એવી આવક પાવતી પસંદ કરો.',
@@ -268,10 +287,22 @@ export const invoice: Translation<typeof source> = {
     updateFailedTitle: 'ઇન્વૉઇસ અપડેટ કરી શકાયું નથી',
     grnNotInvoiceable:
       'આ આવક પાવતીનું ઇન્વૉઇસ હવે બની શકતું નથી. તેનું ઇન્વૉઇસ પહેલેથી બની ગયું હોઈ શકે, અથવા તેની પૂરી જાવક થઈ નથી. ઇન્વૉઇસની યાદી તપાસો.',
+    // Draft for the owner's wording review (tweak 2026-10-20, review I3): grnChanged (reworded) to linesReloaded.
     grnChanged:
-      'તમે આ આવક પાવતી પસંદ કરી તે પછી તેની જાવકમાં ફેરફાર થયો છે. વિગતોના પગલામાં પાછા જાઓ અને આવક પાવતી ફરી પસંદ કરો.',
+      'તમે આ આવક પાવતી પસંદ કરી તે પછી તેની જાવકમાં ફેરફાર થયો છે. ઇન્વૉઇસ નવી જાવક પ્રમાણે કરવા આઇટમ ફરી લોડ કરો.',
+    reloadLines: 'આઇટમ ફરી લોડ કરો',
+    reloadLinesTitle: 'આઇટમ ફરી લોડ કરવી છે?',
+    reloadLinesMessage: 'આઇટમ આવક પાવતીમાંથી ફરી વંચાશે. આઇટમ પર તમે લખેલા દર જતા રહેશે.',
+    linesReloaded: 'આઇટમ આવક પાવતીમાંથી ફરી લોડ થઈ. રકમ તપાસો, પછી સાચવો.',
     pdfCreateFailed: 'PDF બનાવી શકાઈ નથી. ફરી પ્રયાસ કરો.',
     pdfShareFailed: 'PDF શેર કરી શકાઈ નથી. ફરી પ્રયાસ કરો.',
+  },
+  // Draft for the owner's wording review (2026-10-20).
+  refusal: {
+    hasStock: 'આવક પાવતી {{grn}} માં હજુ {{stock}} સ્ટોકમાં છે. પહેલા તેની જાવક કરો, પછી ઇન્વૉઇસ સાચવો.',
+    totalChanged: 'કુલ રકમ હવે {{current}} છે, {{expected}} નથી. રકમ તપાસીને ફરી સાચવો.',
+    // Draft for the owner's wording review (push 2026-10-21).
+    totalUnmatched: 'સર્વર પ્રમાણે કુલ રકમ {{current}} છે. તેની રકમો જોવા ઇન્વૉઇસ ફરી ખોલો.',
   },
   // The dialog after an invoice is saved
   success: {
@@ -321,6 +352,9 @@ export const invoice: Translation<typeof source> = {
     deleteConfirm: 'ઇન્વૉઇસ ડિલીટ કરો',
     deletedTitle: 'ઇન્વૉઇસ {{number}} ડિલીટ થઈ ગયું.',
     deleteFailedTitle: 'ઇન્વૉઇસ ડિલીટ કરી શકાયું નથી',
+    // Draft for the owner's wording review (tweak 2026-10-20, review J5).
+    deletedGoneTitle: 'ઇન્વૉઇસ ડિલીટ થઈ ગયું',
+    deletedGoneMessage: 'આ ઇન્વૉઇસ ડિલીટ થઈ ગયું છે, એટલે તે હવે ખોલી, બદલી કે શેર કરી શકાતું નથી.',
     shareFailedTitle: 'ઇન્વૉઇસ શેર કરી શકાયું નથી',
     shareFailedMessage: 'ઇન્વૉઇસની PDF શેર કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     shareMissingData: 'આ ઇન્વૉઇસમાં નંબર અથવા નાણાકીય વર્ષ નથી. તેને ફરી લોડ કરો અને ફરી પ્રયાસ કરો.',

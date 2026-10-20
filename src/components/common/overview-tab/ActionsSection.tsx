@@ -45,8 +45,14 @@ interface ActionsSectionProps {
   canDelete?: boolean;
   /** Called when Delete is confirmed */
   onDelete?: () => void;
-  /** Whether Delete is in loading state */
+  /** Whether Delete is in loading state. Edit is disabled with it: an invoice that is being deleted is not edited. */
   isDeleting?: boolean;
+  /**
+   * Whether this section asks "Delete ...?" before it calls `onDelete`. Default: yes. A page that asks its own,
+   * more specific question in `onDelete` (invoices: "Invoice N for <customer> will be deleted") passes false, so the
+   * person is asked once, not twice.
+   */
+  confirmDelete?: boolean;
 }
 
 export const ActionsSection: React.FC<ActionsSectionProps> = ({
@@ -64,6 +70,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   canDelete, // If not provided, follows canEdit
   onDelete,
   isDeleting = false,
+  confirmDelete = true,
 }) => {
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
@@ -98,6 +105,10 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
       };
 
   const handleDeletePress = () => {
+    if (!confirmDelete) {
+      onDelete?.();
+      return;
+    }
     showAlert(
       entityNumber ? labels.deleteNumberedTitle(entityNumber) : labels.deleteThisTitle,
       t('components.actions.deleteMessage'),
@@ -175,10 +186,13 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               overviewStyles.primaryButton,
               colorStyles.primaryButton,
               pressed && colorStyles.primaryButtonPressed,
+              isDeleting && overviewStyles.buttonDisabled,
             ]}
             onPress={onEdit}
+            disabled={isDeleting}
             accessibilityRole="button"
             accessibilityLabel={labels.edit}
+            accessibilityState={{ disabled: isDeleting }}
           >
             <Icon name="pencil-outline" size={iconSize.lg} color={colorStyles.iconOnFill} />
             <Text style={[overviewStyles.primaryButtonText, colorStyles.primaryButtonText]}>{labels.edit}</Text>

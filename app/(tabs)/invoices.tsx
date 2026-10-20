@@ -17,6 +17,8 @@ import { Fab } from '@/components/ui/Fab';
 import { t } from '@/i18n';
 import { useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
+import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
+import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
 import type { ThemeTokens } from '@/theme/tokens';
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -43,6 +45,13 @@ export default function InvoicesTab() {
 
   const handleCreateInvoice = useCallback(() => {
     if (isOpening.current) return;
+    // Another invoice form is open (maybe hidden under other screens): say so before anything is reset. Emptying the
+    // form first would leave the open one without its data, and the refusal could never be got past (J1).
+    const blocker = openFormBlocking({ kind: 'create' });
+    if (blocker) {
+      showOpenFormRefusal(blocker);
+      return;
+    }
     isOpening.current = true;
     // Reset form state before creating a new invoice
     dispatch(resetInvoiceForm());

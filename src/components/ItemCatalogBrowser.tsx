@@ -37,7 +37,7 @@ import { SessionRecentItemsService } from '@/services/session-recent-items-servi
 import { GRNItem, Catalog, EnhancedSearchFilters, SearchMetadata } from '@/types/order.types';
 import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
-import { askAlert, showAlert } from '@/utils/alert';
+import { askAlert, showAlert, type AlertChoice } from '@/utils/alert';
 import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
@@ -47,7 +47,10 @@ import {
   seedDraft,
   withQuantity,
   withoutReasons,
+  type AddItemsOptions,
   type PickerChange,
+  type PickerChecking,
+  type PickerDraft,
   type PickerLine,
   type PickerResult,
 } from '@/features/orders/pickerDraft';
@@ -57,6 +60,51 @@ type StockStatus = 'positive' | 'critical' | 'negative';
 const stockLabel = (status: StockStatus): string =>
   status === 'negative' ? tr('common.outOfStock') : status === 'critical' ? tr('common.lowStock') : tr('common.inStock');
 const formatBags = (n: number) => formatCount(n, 'bag');
+
+/** The answers of the "leaving with unsaved changes" question. */
+type UnsavedAnswer = 'add' | 'keep' | 'discard';
+
+/** The answers of the question asked when the picker is left while a lot's answer is being checked. */
+type CheckingLeaveAnswer = 'wait' | 'leave';
+
+/**
+ * What names a lot, in one place for the spoken label of a row and the lines of the
+ * leave question: name, package mark, GRN number and the weight of one package.
+ */
+const lotParts = (item: GRNItem): string[] =>
+  [
+    item.name,
+    item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
+    item.grn_number ? tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) }) : null,
+    formatWeightEach(item.weight),
+  ].filter((part): part is string => Boolean(part));
+
+/** A lot as the leave question names it: the parts of the row's name, set apart by dots. */
+const lotLabel = (item: GRNItem): string => lotParts(item).join(' \u00B7 ');
+
+/** What Add would do to one lot: put it on the order, change its bags, or take it off. */
+const changeLine = (draft: PickerDraft, change: PickerChange): string => {
+  const item = draft.selection.get(change.grnItemId)?.item ?? draft.base.get(change.grnItemId)?.item;
+  const lot = item ? lotLabel(item) : '';
+  if (change.quantity === 0) return tr('orders.catalog.changeRemove', { lot, count: change.expected });
+  if (change.expected === 0) return tr('orders.catalog.changeAdd', { lot, count: change.quantity });
+  return tr('orders.catalog.changeSet', { lot, from: change.expected, count: change.quantity });
+};
+
+/**
+ * The text of the question: how many lots changed, then every change on its own line,
+ * removals first, then changed quantities, then lots new to the order. When Add is not
+ * offered it says what Discard does and where the lots can be taken off instead.
+ */
+const unsavedMessage = (draft: PickerDraft, changes: PickerChange[], canAdd: boolean): string => {
+  const removals = changes.filter(change => change.quantity === 0);
+  const additions = changes.filter(change => change.quantity !== 0 && change.expected === 0);
+  const edits = changes.filter(change => change.quantity !== 0 && change.expected !== 0);
+  const lines = [...removals, ...edits, ...additions].map(change => `\u2022 ${changeLine(draft, change)}`);
+  const parts = [tr('orders.catalog.discardMessage', { count: changes.length }), lines.join('\n')];
+  if (!canAdd) parts.push(tr('orders.catalog.discardOnlyNote'));
+  return parts.join('\n\n');
+};
 
 /**
  * The Add items picker of one order. Mount it once per opening (OrderManagement
@@ -70,12 +118,18 @@ interface ItemCatalogBrowserProps {
   /**
    * Saves what the user changed (quantity 0 = take the lot off the order) and
    * answers for each lot. Must not reject. `onProgress` reports the lot being
-   * saved, counted from 1.
+   * saved, counted from 1. When a lot's answer is lost the save locks that lot, waits
+   * for the server and reads the order again: `options.onChecking` names the lot
+   * meanwhile (`null` when the check is over), and `options.signal` is aborted when
+   * the person leaves the picker through X while it runs.
    */
   onAddItems: (
     changes: PickerChange[],
-    onProgress: (position: number, total: number) => void
+    onProgress: (position: number, total: number) => void,
+    options?: AddItemsOptions
   ) => Promise<PickerResult[]>;
+  /** The phone has no network (passed by OrderManagement): a lot being checked then adds "Waiting for the connection…". */
+  offline?: boolean;
   /** Passed by OrderManagement; not read by the browser. */
   currentOrderId?: string;
   customerId: string;
@@ -127,6 +181,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   onAddItems,
   customerId,
   currentOrderItems = NO_ORDER_ITEMS,
+  offline = false,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -152,6 +207,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const [saving, setSaving] = useState<{ position: number; total: number } | null>(null);
   const isSaving = saving !== null;
   const savingRef = useRef(false);
+  // The lot whose answer was lost while Add was saving: it is being checked (see `onAddItems`).
+  const [checking, setChecking] = useState<PickerChecking | null>(null);
+  const checkingRef = useRef<PickerChecking | null>(null);
+  // Stops the check of the Add that is running, when the person leaves through X.
+  const addAbortRef = useRef<AbortController | null>(null);
   // The callers pass new functions on every render; handlers read the latest.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -159,7 +219,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   onAddItemsRef.current = onAddItems;
   // onClose has been called for this opening; it is called once.
   const closedRef = useRef(false);
-  // "Discard selections?" is on screen.
+  // The leave question is on screen.
   const askingRef = useRef(false);
   // The sheet is off the screen (a swipe took it) while the picker itself is still
   // open. Set by every dismissal the library reports for an open picker, cleared
@@ -549,9 +609,16 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   }, [isVisible, fetchItems]);
 
   // Handle quantity change
-  const handleQuantityChange = useCallback((item: GRNItem, quantity: number) => {
+  const handleQuantityChange = useCallback((item: GRNItem, requested: number) => {
     // Nothing changes while an Add is being saved.
     if (savingRef.current) return;
+    // A lot the order holds above its stock (owner decision D17) may be lowered: a lower number is held at the stock at most
+    // (as the order line's own stepper does), and 0 (or no stock left) takes it off. Raising a lot above its stock stays refused,
+    // and nothing here changes a lot by itself.
+    const chosen = draftRef.current.selection.get(item.id)?.quantity ?? 0;
+    const quantity = chosen > item.current_stock && requested > 0 && requested < chosen
+      ? Math.min(item.current_stock, requested)
+      : requested;
     if (quantity === 0) {
       setDraft(prev => withQuantity(prev, item, 0));
 
@@ -638,39 +705,6 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     onCloseRef.current();
   }, []);
 
-  // Every way out goes through here: Cancel, the Back key, a tap outside and a
-  // swipe down. Nothing unsaved: the picker closes at once. Otherwise it asks
-  // first. While an Add is being saved it does nothing.
-  const requestClose = useCallback(async (source: CloseSource) => {
-    if (savingRef.current || closedRef.current || askingRef.current) return;
-    const unsaved = changesOf(draftRef.current).length;
-    if (unsaved === 0) {
-      finishClose();
-      return;
-    }
-    askingRef.current = true;
-    const discard = await askAlert(
-      tr('orders.catalog.discardTitle'),
-      tr('orders.catalog.discardMessage', { count: unsaved }),
-      [
-        { text: tr('common.keepEditing'), style: 'cancel', value: false },
-        { text: tr('orders.catalog.discardSelections'), style: 'destructive', value: true },
-      ],
-      false
-    );
-    askingRef.current = false;
-    if (!isMountedRef.current) return;
-    if (discard) {
-      finishClose();
-    } else if (source === 'swipe' || sheetDownRef.current) {
-      // A swipe took the sheet away: show it again with what was chosen. That is so
-      // also when another way out asked first: the sheet was flung down, Back or
-      // Cancel was pressed before it was gone, and its dismissal came while the
-      // question was open (and was not asked about a second time).
-      presentSheet();
-    }
-  }, [finishClose, presentSheet]);
-
   // Add: sends only what changed since the picker opened and waits for the
   // answer. Everything saved: the picker closes. Otherwise it stays open with
   // the lots that were not saved, each with its reason.
@@ -698,16 +732,28 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     setDraft(sent);
 
     let answers: PickerResult[] = [];
+    const controller = new AbortController();
+    addAbortRef.current = controller;
     try {
       answers = await onAddItemsRef.current(changes, (position, total) => {
         if (isMountedRef.current) setSaving({ position, total });
+      }, {
+        signal: controller.signal,
+        onChecking: lot => {
+          checkingRef.current = lot;
+          if (isMountedRef.current) setChecking(lot);
+        },
       });
     } catch (error) {
       // The owner answers for every lot and does not reject; this is the guard for one that does.
       console.error('[ItemCatalogBrowser] Add items error:', error);
     }
     savingRef.current = false;
-    if (!isMountedRef.current) return;
+    checkingRef.current = null;
+    addAbortRef.current = null;
+    // Also when the person left through X while a lot was being checked: nothing is shown or presented again.
+    if (!isMountedRef.current || closedRef.current) return;
+    setChecking(null);
 
     // A lot without an answer was not saved.
     const answered = Array.isArray(answers) ? answers : [];
@@ -728,6 +774,76 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     setShowSelectedItems(false);
     if (sheetDownRef.current) presentSheet();
   }, [finishClose, presentSheet]);
+
+  // Every way out goes through here: Cancel, the Back key, a tap outside and a
+  // swipe down. Nothing unsaved: the picker closes at once. Otherwise it asks
+  // first, listing the changes: Add to order (only when Add would send something),
+  // Keep editing, Discard selections. While an Add is being saved it does nothing.
+  const requestClose = useCallback(async (source: CloseSource) => {
+    // A lot's answer was lost and is being checked: the picker is locked. Only X (Cancel) leaves, after a warning;
+    // Back, a tap outside and a swipe do nothing.
+    if (checkingRef.current) {
+      if (source !== 'cancel' || closedRef.current || askingRef.current) return;
+      askingRef.current = true;
+      const leave = await askAlert<CheckingLeaveAnswer>(
+        tr('orders.catalog.leaveCheckingTitle'),
+        tr('errors.lostAnswer.leaveWarning'),
+        [
+          { text: tr('orders.catalog.keepWaiting'), style: 'cancel', value: 'wait' },
+          { text: tr('orders.catalog.leaveAnyway'), style: 'destructive', value: 'leave' },
+        ],
+        'wait'
+      );
+      askingRef.current = false;
+      if (!isMountedRef.current) return;
+      if (leave === 'leave') {
+        addAbortRef.current?.abort();
+        finishClose();
+      }
+      return;
+    }
+    if (savingRef.current || closedRef.current || askingRef.current) return;
+    const asked = draftRef.current;
+    const changes = changesOf(asked);
+    if (changes.length === 0) {
+      finishClose();
+      return;
+    }
+    // Add refuses when every lot was deselected (see handleAddItems), so it is not offered then.
+    const canAdd = asked.selection.size > 0;
+    const choices: AlertChoice<UnsavedAnswer>[] = [];
+    if (canAdd) choices.push({ text: tr('orders.catalog.addToOrder'), value: 'add' });
+    choices.push(
+      { text: tr('common.keepEditing'), style: 'cancel', value: 'keep' },
+      { text: tr('orders.catalog.discardSelections'), style: 'destructive', value: 'discard' }
+    );
+    askingRef.current = true;
+    const answer = await askAlert<UnsavedAnswer>(
+      canAdd ? tr('orders.catalog.addChangesTitle') : tr('orders.catalog.discardTitle'),
+      unsavedMessage(asked, changes, canAdd),
+      choices,
+      'keep'
+    );
+    askingRef.current = false;
+    if (!isMountedRef.current) return;
+    if (answer === 'discard') {
+      finishClose();
+      return;
+    }
+    // A swipe took the sheet away. That is so also when another way out asked first:
+    // the sheet was flung down, Back or Cancel was pressed before it was gone, and
+    // its dismissal came while the question was open (and was not asked about a second time).
+    const sheetIsDown = source === 'swipe' || sheetDownRef.current;
+    // Keep editing, or closing the question without an answer: show the sheet again with what was chosen.
+    if (answer !== 'add') {
+      if (sheetIsDown) presentSheet();
+      return;
+    }
+    // Add to order: the same Add as the header's. The sheet comes back first, so the progress and
+    // any lot that was not saved are seen; with everything saved the picker closes as it does after the header's Add.
+    if (sheetIsDown) presentSheet();
+    await handleAddItems();
+  }, [finishClose, presentSheet, handleAddItems]);
 
   // Helper functions for search UI
   const getSearchPlaceholder = useCallback(() => {
@@ -824,6 +940,14 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   // order with saved lots opens its picker with "Add" and no number.
   const changeCount = useMemo(() => changesOf(draft).length, [draft]);
   const failedReasons = draft.failed;
+  // What the lot being checked says: the question, and while the phone has no network, what it is waiting for.
+  const checkingText = useMemo(() => {
+    if (!checking) return '';
+    return [
+      tr(checking.removal ? 'errors.lostAnswer.checkingDelete' : 'errors.lostAnswer.checking'),
+      offline ? tr('errors.lostAnswer.waiting') : '',
+    ].filter(Boolean).join(' ');
+  }, [checking, offline]);
 
   // Compute display items: merge filtered items with selected items
   // This ensures items with quantity > 0 always show, even if they don't match current filters
@@ -857,18 +981,20 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       }
     });
 
-    if (failedReasons.size === 0) return Array.from(itemMap.values());
+    if (failedReasons.size === 0 && !checking) return Array.from(itemMap.values());
 
-    // Lots that were not saved come first. One whose removal was refused is no
+    // Lots that were not saved, and the lot being checked, come first. One whose removal was refused is no
     // longer selected; its row comes from the saved line.
     const notSaved: GRNItem[] = [];
-    failedReasons.forEach((_reason, itemId) => {
+    const firstIds = new Set<string>(failedReasons.keys());
+    if (checking) firstIds.add(checking.grnItemId);
+    firstIds.forEach(itemId => {
       const item = itemMap.get(itemId) ?? draft.base.get(itemId)?.item;
       if (item) notSaved.push(item);
     });
     const first = new Set(notSaved.map(item => item.id));
     return [...notSaved, ...Array.from(itemMap.values()).filter(item => !first.has(item.id))];
-  }, [filteredItems, selectedItems, showSelectedItems, searchQuery, failedReasons, draft.base]);
+  }, [filteredItems, selectedItems, showSelectedItems, searchQuery, failedReasons, checking, draft.base]);
 
   // Get stock status for Fiori semantic styling - memoized to prevent recreation
   // @see PO1 - FlashList renderItem Inline Function Anti-Pattern
@@ -886,6 +1012,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const quantity = selected?.quantity || 0;
     // Why this lot was not saved by the last Add, if it was not.
     const reason = failedReasons.get(item.id);
+    // This lot's answer was lost and the server is being asked what became of it.
+    const checkingHere = checking?.grnItemId === item.id;
     // Quantities stay as they are while an Add is being saved.
     const locked = isSaving;
 
@@ -894,6 +1022,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       orderItem => orderItem.grnItemId === item.id
     );
 
+    // The lot is chosen above its stock (the order holds more than the lot has now, owner decision D17): a warning says so, and
+    // − and −10 lower it to the stock at most (or take it off when there is none); + stays refused.
+    const overStock = quantity > item.current_stock;
     const stockStatus = getStockStatus(item.current_stock, item.original_quantity);
     const status = t.status[stockStatus];
     const stockWord = stockLabel(stockStatus);
@@ -901,10 +1032,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     // The weight of one package, "50 kg each"; none for a lot without a weight.
     const weightText = formatWeightEach(item.weight);
     const rowLabel = [
-      item.name,
-      item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
-      item.grn_number ? tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) }) : null,
-      weightText,
+      ...lotParts(item),
       tr('orders.catalog.rowStock', { status: stockWord, current: formatBags(item.current_stock), total: formatBags(item.original_quantity) }),
       isInExistingOrder ? tr('orders.catalog.rowAlreadyInOrder') : null,
       quantity > 0 ? tr('orders.catalog.rowSelected', { bags: formatBags(quantity) }) : null,
@@ -912,6 +1040,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
 
     const addBags = (count: number) => tr('orders.catalog.addBags', { count, name: item.name });
     const removeBags = (count: number) => tr('orders.catalog.removeBags', { count, name: item.name });
+    // What − and −10 give a lot above its stock: the quantity it is lowered to (never above the stock, never below 1; 0 when
+    // there is no stock, which takes it off), and the spoken label that says so.
+    const loweredTo = (amount: number) => item.current_stock <= 0 ? 0 : Math.min(item.current_stock, Math.max(1, quantity - amount));
+    const lowerBags = (amount: number) => loweredTo(amount) === 0
+      ? tr('orders.item.removeFromOrder', { name: item.name })
+      : tr('orders.item.lowerTo', { name: item.name, quantity: formatNumber(loweredTo(amount)) });
 
     const preset = (amount: number, label: string, a11y: string, disabled = false) => (
       <Pressable
@@ -1014,6 +1148,20 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           </View>
         ) : null}
 
+        {/* The lot is chosen above its stock: it can be lowered or taken off, not raised */}
+        {overStock ? (
+          <View style={styles.rowReason} testID={`catalog-over-stock-${item.id}`}>
+            <InlineValidation variant="warning" message={tr('orders.item.onlyInStock', { stock: formatNumber(item.current_stock) })} />
+          </View>
+        ) : null}
+
+        {/* The answer for this lot was lost: it is locked while the server is asked what became of it */}
+        {checkingHere ? (
+          <View style={styles.rowReason} testID={`catalog-checking-${item.id}`}>
+            <InlineValidation variant="warning" message={checkingText} />
+          </View>
+        ) : null}
+
         {/* Quantity Section with Presets + Stepper */}
         <View style={styles.quantitySection}>
           {/* Preset Buttons Row */}
@@ -1030,8 +1178,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           {quantity > 0 && (
             <View style={styles.quantityControlsContainer}>
               <View style={styles.quantityControls}>
-                {stepper(Math.max(0, quantity - 10), '−10', removeBags(10), quantity < 10)}
-                {stepper(quantity - 1, '−', removeBags(1), quantity === 0)}
+                {overStock
+                  ? stepper(loweredTo(10), '−10', lowerBags(10), false)
+                  : stepper(Math.max(0, quantity - 10), '−10', removeBags(10), quantity < 10)}
+                {stepper(overStock ? loweredTo(1) : quantity - 1, '−', overStock ? lowerBags(1) : removeBags(1), quantity === 0)}
                 <Text
                   style={styles.quantity}
                   accessibilityLabel={tr('orders.catalog.selectedOf', { bags: formatBags(quantity), name: item.name })}
@@ -1052,7 +1202,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         </View>
       </View>
     );
-  }, [selectedItems, failedReasons, isSaving, currentOrderItems, getStockStatus, handleQuantityChange, styles, t, flashingItems]);
+  }, [selectedItems, failedReasons, isSaving, checking, checkingText, currentOrderItems, getStockStatus, handleQuantityChange, styles, t, flashingItems]);
 
   // Android back asks to leave the picker before anything else (guide §13.9, §15).
   useEffect(() => {
@@ -1121,11 +1271,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         <Pressable
           testID="catalog-cancel"
           onPress={() => { void requestClose('cancel'); }}
-          disabled={isSaving}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed, isSaving && styles.disabled]}
+          disabled={isSaving && !checking}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed, isSaving && !checking && styles.disabled]}
           accessibilityRole="button"
           accessibilityLabel={tr('orders.catalog.cancelAdding')}
-          accessibilityState={{ disabled: isSaving }}
+          accessibilityState={{ disabled: isSaving && !checking }}
         >
           <Text style={styles.headerButtonTextCancel} {...singleLineText()}>{tr('common.cancel')}</Text>
         </Pressable>
@@ -1207,6 +1357,13 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         recentlyAddedItems={recentlyAddedItems.map(item => ({ id: item.id, name: item.name }))}
       />
 
+      {/* A lot's answer was lost: the whole picker is locked while the server is asked, and says so here. */}
+      {checking ? (
+        <View style={styles.notSavedSummary} testID="catalog-checking-summary">
+          <InlineValidation variant="warning" message={checkingText} />
+        </View>
+      ) : null}
+
       {/* What the last Add did not save; those lots are the first rows below. */}
       {failedReasons.size > 0 ? (
         <View style={styles.notSavedSummary} testID="catalog-not-saved-summary">
@@ -1217,7 +1374,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         </View>
       ) : null}
     </>
-  ), [styles, t, requestClose, handleAddItems, changeCount, saving, failedReasons.size, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
+  ), [styles, t, requestClose, handleAddItems, changeCount, saving, checking, checkingText, failedReasons.size, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
 
   // Memoized ListEmptyComponent
   const listEmptyComponent = useMemo(() => {
@@ -1328,7 +1485,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           windowSize={5}
           removeClippedSubviews={Platform.OS === 'android'}
           // A row with a reason on it is taller than the fixed estimate.
-          getItemLayout={failedReasons.size > 0 ? undefined : getItemLayout}
+          getItemLayout={failedReasons.size > 0 || checking ? undefined : getItemLayout}
           ListHeaderComponent={listHeaderComponent}
           ListEmptyComponent={listEmptyComponent}
           ListFooterComponent={listFooterComponent}

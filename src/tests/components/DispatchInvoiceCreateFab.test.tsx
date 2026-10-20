@@ -7,6 +7,8 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+import { registerDispatchForm } from '@/features/dispatch/utils/openDispatchForms';
+import { showAlert } from '@/utils/alert';
 import DispatchTab from '../../../app/(tabs)/dispatch';
 import InvoicesTab from '../../../app/(tabs)/invoices';
 
@@ -23,6 +25,7 @@ jest.mock('expo-router', () => ({
   // The Invoices tab takes "Create invoice" again once it is back in front.
   useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
 }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/components/lists', () => ({ DispatchFlashList: () => null, InvoiceFlashList: () => null }));
 jest.mock('@/components/list/ListErrorBoundary', () => ({
   ListErrorBoundary: ({ children }: { children: React.ReactNode }) => children,
@@ -78,5 +81,61 @@ describe.each(CASES)('$name tab create action', ({ Screen, label, route }) => {
     const tree = render(Screen, 'orange', 'light');
     expect(findFab(tree, label)).toHaveLength(0);
     act(() => tree.unmount());
+  });
+});
+
+describe('Dispatches tab: Create dispatch', () => {
+  beforeEach(() => {
+    mockCanCreate = true;
+    mockPush.mockClear();
+    mockDispatch.mockClear();
+    jest.mocked(showAlert).mockClear();
+  });
+
+  it('empties the form before step 1 opens, so a new dispatch carries nothing an earlier form left', () => {
+    const tree = render(DispatchTab, 'orange', 'light');
+    const [fab] = findFab(tree, 'Create dispatch');
+
+    act(() => fab.props.onPress());
+
+    expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'dispatchForm/resetForm' }));
+    expect(mockPush).toHaveBeenCalledWith('/dispatch-form/step1');
+    expect(mockDispatch.mock.invocationCallOrder[0]).toBeLessThan(mockPush.mock.invocationCallOrder[0]);
+    act(() => tree.unmount());
+  });
+
+  it('a second tap before the tab is back in front opens nothing more', () => {
+    const tree = render(DispatchTab, 'orange', 'light');
+    const [fab] = findFab(tree, 'Create dispatch');
+
+    act(() => { fab.props.onPress(); fab.props.onPress(); });
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
+  // Review 2026-10-20, finding 3: the form that is open (maybe hidden under other screens) is asked about BEFORE the
+  // store is emptied; emptying it first would leave the open form without its data.
+  it('while another dispatch form is open: says which, and resets and opens nothing', () => {
+    const release = registerDispatchForm({ kind: 'edit', id: 'd-7', number: 'DD0007' });
+    try {
+      const tree = render(DispatchTab, 'orange', 'light');
+      const [fab] = findFab(tree, 'Create dispatch');
+
+      act(() => fab.props.onPress());
+
+      expect(showAlert).toHaveBeenCalledWith('Another dispatch is open', 'Finish or cancel the edit of dispatch DD0007 first.', expect.any(Array));
+      expect(mockDispatch).not.toHaveBeenCalled();
+      expect(mockPush).not.toHaveBeenCalled();
+
+      // A later tap, once that form is closed, opens as usual.
+      release();
+      act(() => fab.props.onPress());
+      expect(mockPush).toHaveBeenCalledWith('/dispatch-form/step1');
+      act(() => tree.unmount());
+    } finally {
+      release();
+    }
   });
 });

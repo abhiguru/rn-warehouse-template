@@ -59,6 +59,8 @@ const saved = (over: Partial<DispatchItemData> = {}): DispatchItemData => ({
 const mockForm = {
   header: { disp_no: 'DD0001', customer_id: CUSTOMER, customer_name: 'Example Traders' },
   items: [] as DispatchItemData[],
+  // The bags the saved dispatch held per lot when it was read (an edited dispatch only)
+  heldBags: {} as Record<string, number>,
   isCreateMode: true,
   addFormItems: jest.fn(),
   updateFormItem: jest.fn(),
@@ -95,8 +97,8 @@ jest.mock('@/components/SwipeableFormStep', () => ({ __esModule: true, default: 
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: 'DispatchStepIndicator', dispatchSteps: () => [] }));
 jest.mock('@/features/dispatch/components', () => ({
   GRNAutocompleteBottomSheet: 'GRNAutocompleteBottomSheet',
-  GRNItemBottomSheet: () => null,
-  LotBottomSheet: () => null,
+  GRNItemBottomSheet: 'GRNItemBottomSheet',
+  LotBottomSheet: 'LotBottomSheet',
   ItemsSummaryBottomSheet: 'ItemsSummaryBottomSheet',
 }));
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
@@ -147,6 +149,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   mockForm.items = [];
+  mockForm.heldBags = {};
   mockForm.isCreateMode = true;
   mockForm.navigateToStep.mockImplementation(async () => true);
   back = installHardwareBack();
@@ -335,6 +338,7 @@ describe('Next stops on a correction that cannot be saved', () => {
   it.each(ways)('%s, with more bags than the lot holds: the alert, the field marked, and it stays', async (_name, goOn) => {
     // 5 of this lot are in the dispatch and 5 more are in stock: 10 is the most.
     mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
+    mockForm.heldBags = { [LOT]: 5 };
     mockForm.isCreateMode = false;
     await mount(<DispatchItemsStep mode="edit" />);
     await correct(tree, mockForm.items[0]);
@@ -395,6 +399,7 @@ describe('Next stops on a correction that cannot be saved', () => {
 
   it('a corrected number of bags within the limit goes on after the stop', async () => {
     mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
+    mockForm.heldBags = { [LOT]: 5 };
     mockForm.isCreateMode = false;
     await mount(<DispatchItemsStep mode="edit" />);
     await correct(tree, mockForm.items[0]);
@@ -569,5 +574,211 @@ describe('the bottom bar is the shared WizardBottomBar (R1-08)', () => {
     expect(texts(tree)).toEqual(expect.arrayContaining(['Back', 'Next']));
     expect(button(tree, 'Back to dispatch details')).toBeTruthy();
     expect(button(tree, 'Next, review dispatch')).toBeTruthy();
+  });
+});
+
+// Review 2026-10-20 (M3): a new line the person filled in (a lot and bags) that cannot be saved is not dropped on the way
+// to Review. A line with no bags typed is still left behind (pinned above).
+describe('Next with a new line that cannot be saved', () => {
+  const next = () => button(tree, 'Next, review dispatch').props.onPress();
+
+  it('more bags than the stock: the alert, the field marked, and it stays', async () => {
+    mockForm.items = [saved({ grnItems_id: OTHER_LOT })];
+    await mount(<DispatchItemsStep mode="create" />);
+    // The GRN's first lot with stock is chosen: 95 bags in it. 120 is more.
+    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await type(tree, '120');
+
+    await press(tree, next);
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
+    expect(mockForm.navigateToStep).not.toHaveBeenCalled();
+    expect(mockForm.addFormItems).not.toHaveBeenCalled();
+    expect(quantityLabelColor(tree)).toBe(tokens.status.negative.text);
+    expect(texts(tree)).toContain('Enter 95 bags or fewer. That is the available stock.');
+    // What was typed stays in the form.
+    expect(bags(tree).props.value).toBe('120');
+  });
+
+  it('with nothing saved yet the check of the line comes first, not "Add an item first" (review 2026-10-20, M3)', async () => {
+    await mount(<DispatchItemsStep mode="create" />);
+    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await type(tree, '120');
+
+    await press(tree, next);
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
+    expect(mockForm.navigateToStep).not.toHaveBeenCalled();
+    expect(texts(tree)).toContain('Enter 95 bags or fewer. That is the available stock.');
+  });
+
+  it('after the number is brought within the stock, Next saves the line and goes on', async () => {
+    mockForm.items = [saved({ grnItems_id: OTHER_LOT })];
+    await mount(<DispatchItemsStep mode="create" />);
+    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await type(tree, '120');
+    await press(tree, next);
+    expect(mockForm.navigateToStep).not.toHaveBeenCalled();
+
+    await type(tree, '90');
+    await press(tree, next);
+
+    expect(mockForm.addFormItems).toHaveBeenCalledWith([expect.objectContaining({ grnItems_id: LOT, disp_quantity: 90 })]);
+    expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW);
+  });
+});
+
+// Review 2026-10-20 (M2, A11): in an edited dispatch, a line's GRN, item and lot go together, and the bags the saved
+// line holds count only on its own lot.
+describe('changing the GRN or the lot of a line of an edited dispatch', () => {
+  const GRN_B = '66666666-7777-4888-8999-000000000000';
+  const LOT_B = '77777777-8888-4999-8000-111111111111';
+  const lotB = { id: LOT_B, item_id: ITEM, item_name: 'Example Potatoes', quantity: 60, stock: 30, package_mark: 'M3', rack: 'R3', weight: 50 };
+  const lotOf = (id: string, stock: number) => ({ id, item_id: ITEM, item_name: 'Example Potatoes', quantity: 100, stock, package_mark: 'M1', rack: 'R1', weight: 50 });
+
+  const openLine = async () => {
+    // 5 bags are in the dispatch, 5 more are in stock: the lot allows 10.
+    mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
+    mockForm.heldBags = { [LOT]: 5 };
+    mockForm.isCreateMode = false;
+    jest.mocked(getGRNDetailByNumber).mockImplementation(async (grNo: string) => {
+      const other = grNo === 'G0400';
+      return {
+        success: true,
+        data: {
+          grn: { id: other ? GRN_B : GRN, gr_no: grNo, date: '2026-10-01', customer_id: CUSTOMER, customer_name: 'Example Traders' },
+          items: other ? [lotB] : [lotOf(LOT, 5), lotOf(OTHER_LOT, 40)],
+        },
+      } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>;
+    });
+    await mount(<DispatchItemsStep mode="edit" />);
+    await correct(tree, mockForm.items[0]);
+  };
+  const chooseOtherGrn = () => press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN_B, gr_no: 'G0400' }));
+  const chooseLot = (lot: ReturnType<typeof lotOf>) => press(tree, () => stub(tree, 'LotBottomSheet').props.onSelect(lot));
+  const chooseItem = () => press(tree, () => stub(tree, 'GRNItemBottomSheet').props.onSelect({ item_id: ITEM, item_name: 'Example Potatoes' }));
+
+  it('another GRN clears the line\'s item, lot and bags, so the old lot cannot be saved under the new GRN', async () => {
+    await openLine();
+    expect(texts(tree)).toContain('G0311');
+    expect(bags(tree).props.value).toBe('5');
+
+    await chooseOtherGrn();
+
+    expect(texts(tree)).toContain('G0400');
+    expect(texts(tree)).toContain('Choose item');
+    expect(texts(tree)).toContain('Choose lot');
+    expect(texts(tree)).not.toContain('GRN qty 100 · 5 in stock');
+    expect(bags(tree).props.value).toBe('');
+
+    // Next does not save the line as it is: the lot of the old GRN would be saved under the new one.
+    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+    expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
+    expect(mockForm.updateFormItem).not.toHaveBeenCalled();
+    expect(mockForm.navigateToStep).not.toHaveBeenCalled();
+  });
+
+  it('the item and lot of the new GRN are what is saved', async () => {
+    await openLine();
+    await chooseOtherGrn();
+    await chooseItem();
+    await chooseLot(lotB);
+    await type(tree, '12');
+
+    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+
+    expect(mockForm.updateFormItem).toHaveBeenCalledTimes(1);
+    expect(mockForm.updateFormItem).toHaveBeenCalledWith('line-1', expect.objectContaining({
+      grns_id: GRN_B,
+      grns_gr_no: 'G0400',
+      grnItems_id: LOT_B,
+      disp_quantity: 12,
+      original_disp_quantity: 0,
+    }));
+    expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW);
+  });
+
+  it('the same GRN chosen again keeps the line as it is', async () => {
+    await openLine();
+
+    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+
+    expect(texts(tree)).toContain('GRN qty 100 · 5 in stock');
+    expect(bags(tree).props.value).toBe('5');
+  });
+
+  it('another lot has none of the bags the line holds: its limit is its own stock', async () => {
+    await openLine();
+    await chooseLot(lotOf(OTHER_LOT, 10));
+
+    // 12 is within 10 + 5 (the saved lot's 5 do not belong to this lot) but over the 10 this lot holds.
+    await type(tree, '12');
+    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the available stock.');
+    expect(quantityLabelColor(tree)).toBe(tokens.status.negative.text);
+
+    await type(tree, '10');
+    expect(texts(tree)).not.toContain('Enter 10 bags or fewer. That is the available stock.');
+    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
+  });
+
+  it('choosing the saved lot again gives the line its bags back', async () => {
+    await openLine();
+    await chooseLot(lotOf(OTHER_LOT, 10));
+    await chooseLot(lotOf(LOT, 5));
+
+    await type(tree, '11');
+    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the original stock.');
+    await type(tree, '10');
+    expect(texts(tree)).not.toContain('Enter 10 bags or fewer. That is the original stock.');
+  });
+
+  // The bags are those the dispatch held when it was read, per lot: not what a line says after it was moved (A11).
+  it('a line moved to another lot and back finds the bags the dispatch held on the first lot', async () => {
+    // The dispatch held 5 bags on LOT. In this form the line sits on OTHER_LOT (moved there and saved), so it carries
+    // none of them itself.
+    mockForm.items = [saved({ grnItems_id: OTHER_LOT, grnItems_stock: 40, original_disp_quantity: 0 })];
+    mockForm.heldBags = { [LOT]: 5 };
+    mockForm.isCreateMode = false;
+    await mount(<DispatchItemsStep mode="edit" />);
+    await correct(tree, mockForm.items[0]);
+
+    await chooseLot(lotOf(LOT, 5));
+
+    // 5 in stock and the 5 the dispatch held on this lot: 10 is the most (it was 5 when the held bags followed the line).
+    await type(tree, '11');
+    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the original stock.');
+    await type(tree, '10');
+    expect(texts(tree)).not.toContain('Enter 10 bags or fewer. That is the original stock.');
+    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
+  });
+
+  it('a new line on a lot the dispatch held (its own line was removed) may take those bags too', async () => {
+    mockForm.items = [];
+    mockForm.heldBags = { [LOT]: 5 };
+    mockForm.isCreateMode = false;
+    await mount(<DispatchItemsStep mode="edit" />);
+    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await chooseItem();
+    await chooseLot(lotOf(LOT, 5));
+
+    await type(tree, '11');
+    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the original stock.');
+    await type(tree, '10');
+    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
+  });
+
+  it('a lot the dispatch did not hold has only its own stock, in an edit as in a new dispatch', async () => {
+    mockForm.items = [];
+    mockForm.heldBags = { [LOT]: 5 };
+    mockForm.isCreateMode = false;
+    await mount(<DispatchItemsStep mode="edit" />);
+    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await chooseItem();
+    await chooseLot(lotOf(OTHER_LOT, 10));
+
+    await type(tree, '11');
+    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the available stock.');
   });
 });

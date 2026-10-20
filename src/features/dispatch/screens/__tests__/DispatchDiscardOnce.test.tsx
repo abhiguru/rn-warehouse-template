@@ -175,7 +175,8 @@ describe.each(STEPS)('The X on the %s step of a dispatch that is being edited', 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(ownDiscardDialogs(tree)).toHaveLength(0);
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
-    expect(router.back).toHaveBeenCalled();
+    // The steps of an edit replace each other, so the dispatch's page is one step back (two backs left it, too).
+    expect(router.back).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });

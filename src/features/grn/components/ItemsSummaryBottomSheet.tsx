@@ -45,8 +45,13 @@ export interface ItemsSummaryBottomSheetProps {
   editingItemId?: string;
   /** Called once the sheet is fully gone (iOS only; Android has no such event). */
   onDismissed?: () => void;
-  /** Item IDs that have dispatches and cannot be deleted */
+  /** Item IDs whose quantity is locked (they have dispatches): they get the "Quantity locked" tag. */
   dispatchedItemIds?: Set<string>;
+  /**
+   * Item IDs that can't be removed, each with the reason in the app's words (dispatched before, or on the customer's
+   * order). The swipe shows the lock and the reason is what the person is told. Not the same set as `dispatchedItemIds`.
+   */
+  removeBlockedReasons?: Map<string, string>;
 }
 
 const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
@@ -58,6 +63,7 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
   editingItemId,
   onDismissed,
   dispatchedItemIds,
+  removeBlockedReasons,
 }) => {
   const t = useTokens();
 
@@ -67,10 +73,11 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
   // Get item name for delete dialog
   const getItemName = useCallback((item: ItemFormData) => item.item_name, []);
 
-  // Check if item is protected (has dispatches)
-  const isItemProtected = useCallback(
-    (item: ItemFormData) => dispatchedItemIds?.has(item.grn_trl_id) ?? false,
-    [dispatchedItemIds]
+  // Why a line can't be removed (undefined: it can). Whether a line can be removed is not the same as whether its
+  // quantity is locked: the caller names both sets.
+  const getProtectedMessage = useCallback(
+    (item: ItemFormData) => removeBlockedReasons?.get(item.grn_trl_id),
+    [removeBlockedReasons]
   );
 
   // The one total: the quantity. A total weight is not shown (style guide 12.3);
@@ -114,10 +121,11 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
         }}
         isLast={index === items.length - 1}
         isEditing={isEditing}
-        isProtected={isProtected}
+        // The "Quantity locked" tag follows the quantity lock only, not whether the line can be removed.
+        isProtected={dispatchedItemIds?.has(item.grn_trl_id) ?? false}
       />
     ),
-    [items.length]
+    [items.length, dispatchedItemIds]
   );
 
   return (
@@ -133,7 +141,7 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
       onEditItem={onEditItem}
       onDismissed={onDismissed}
       editingItemKey={editingItemId}
-      isItemProtected={isItemProtected}
+      getProtectedMessage={getProtectedMessage}
       entity="item"
       emptyTitle={tr('grn.item.summaryEmptyTitle')}
       emptySubtitle={tr('grn.item.summaryEmptySubtitle')}

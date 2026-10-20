@@ -1,10 +1,10 @@
 /**
- * A saved or deleted dispatch marks every report out of date, once; a failed or refused
- * one does not (review 2026-10-13, SR-10).
+ * A saved dispatch marks every report out of date, once; a failed or refused one does not
+ * (review 2026-10-13, SR-10). The delete is in services/dispatch-service (its test is
+ * services/__tests__/dispatchServiceReportInvalidation.test.ts).
  */
 import { invalidateReportQueries } from '@/lib/queryClient';
-import { executeRPC } from '@/utils/serviceErrorHandler';
-import { createDispatch, deleteDispatch, updateDispatch } from '../dispatchFormService';
+import { createDispatch, updateDispatch } from '../dispatchFormService';
 
 const mockRpc = jest.fn();
 jest.mock('@/config/supabaseConfig', () => ({
@@ -13,14 +13,19 @@ jest.mock('@/config/supabaseConfig', () => ({
 }));
 jest.mock('@/lib/queryClient', () => ({ ...jest.requireActual('@/lib/queryClient'), invalidateReportQueries: jest.fn(async () => {}) }));
 jest.mock('@/utils/submissionIdempotency', () => ({ submissionIdempotencyKey: async () => 'warehouse-dispatch-fictional-key' }));
-jest.mock('@/utils/serviceErrorHandler', () => ({
-  executeRPC: jest.fn(),
-  createErrorResponse: jest.fn((_error: unknown, message: string) => ({ success: false, error: message })),
-}));
+jest.mock('@/utils/serviceErrorHandler', () => ({ executeRPC: jest.fn() }));
 jest.mock('../dispatchImageService', () => ({ uploadDeferredDispatchImages: jest.fn() }));
+jest.mock('expo-crypto', () => ({ randomUUID: () => 'fictional-uuid' }));
+// A failure before the request was sent is not a lost answer (the helper itself is tested in src/utils/__tests__).
+jest.mock('@/utils/lostAnswer', () => ({ ...jest.requireActual('@/utils/lostAnswer'), isLostAnswer: () => false, checkSubmission: jest.fn(), waitForServer: jest.fn() }));
+// The wait for the server reads the network state from NetInfo (a native module): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
+
 
 const invalidate = jest.mocked(invalidateReportQueries);
-const rpcHelper = jest.mocked(executeRPC);
 const payload = {
   header: {
     disp_no: 'D0005',
@@ -38,7 +43,6 @@ const updatePayload = payload as unknown as Parameters<typeof updateDispatch>[1]
 
 beforeEach(() => {
   mockRpc.mockReset();
-  rpcHelper.mockReset();
   invalidate.mockClear();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -47,7 +51,7 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 const failures = [
-  ['a transport error', { data: null, error: { message: 'Network request failed' } }],
+  ['a failure before the request was sent', { data: null, error: { message: 'No internet connection' } }],
   ['success: false', { data: { success: false, error: 'Not enough stock' }, error: null }],
 ] as const;
 
@@ -75,20 +79,6 @@ describe('updateDispatch', () => {
   it.each(failures)('marks nothing after %s', async (_name, answer) => {
     mockRpc.mockResolvedValue(answer);
     expect((await updateDispatch('d1', updatePayload)).success).toBe(false);
-    expect(invalidate).not.toHaveBeenCalled();
-  });
-});
-
-describe('deleteDispatch', () => {
-  it('marks the reports out of date once after the delete', async () => {
-    rpcHelper.mockResolvedValue({ success: true, data: { message: 'Deleted' } } as never);
-    expect((await deleteDispatch('d1', 'user-a')).success).toBe(true);
-    expect(invalidate).toHaveBeenCalledTimes(1);
-  });
-
-  it('marks nothing when the delete fails', async () => {
-    rpcHelper.mockResolvedValue({ success: false, error: 'Refused' } as never);
-    expect((await deleteDispatch('d1', 'user-a')).success).toBe(false);
     expect(invalidate).not.toHaveBeenCalled();
   });
 });

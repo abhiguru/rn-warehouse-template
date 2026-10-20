@@ -7,6 +7,7 @@ import {
   createErrorResponse,
   executeRPC,
   handleGlobalAuthError,
+  type RPCResult,
 } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -35,6 +36,49 @@ import { t } from '@/i18n';
 import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
+import { refusalOf } from '@/utils/serverRefusal';
+import { facilityKey } from '@/services/stock-service';
+import { isMissingFunction } from '@/services/item-pricing-service';
+
+/**
+ * The new version of the order line in a server answer (`data.updated_at`, owner decision D1; the answer is the body,
+ * since these calls are not unwrapped). Undefined from an old server.
+ */
+function lineVersionOf(body: unknown): string | undefined {
+  const data = (body as { data?: { updated_at?: unknown } } | null | undefined)?.data;
+  const version = data?.updated_at;
+  return typeof version === 'string' && version.trim() !== '' ? version : undefined;
+}
+
+/**
+ * The facilities (by origin and instance) whose `update_order_item_quantity` and `remove_item_from_order` refused
+ * `p_expected_updated_at` as an unknown parameter: a server without migration 121. Their later calls go without it at
+ * once, instead of failing first. Kept for the app's run: a facility that is updated is asked with it again after a
+ * restart.
+ */
+const facilitiesWithoutLineVersion = new Set<string>();
+/** Forget which facilities could not check a line's version (tests). */
+export const forgetLineVersionSupport = (): void => facilitiesWithoutLineVersion.clear();
+
+/**
+ * Sends a write of an order line with the line's version (`p_expected_updated_at`, owner decision D1). A server without
+ * migration 121 knows no such parameter and answers PGRST202 before it runs anything, so the call is sent again
+ * without it (no check) and the facility is remembered. Without a version the call goes out as it always did.
+ */
+async function withLineVersion<T>(
+  rpcName: string,
+  expectedUpdatedAt: string | undefined,
+  send: (withVersion: boolean) => Promise<RPCResult<T>>
+): Promise<RPCResult<T>> {
+  const facility = facilityKey();
+  if (!expectedUpdatedAt || (facility !== '' && facilitiesWithoutLineVersion.has(facility))) return send(false);
+  const result = await send(true);
+  if (!result.success && isMissingFunction({ code: result.errorCode, message: result.serverMessage ?? result.error }, rpcName)) {
+    if (facility !== '') facilitiesWithoutLineVersion.add(facility);
+    return send(false);
+  }
+  return result;
+}
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
 export class OrderService {
@@ -224,24 +268,34 @@ export class OrderService {
     // A changed order changes the reports (Operations: Pending orders); after a success only.
     if (result.success) void invalidateReportQueries();
 
+    const refusal = refusalOf(result);
     return {
       success: result.success,
       message: result.success ? t('errors.order.itemAdded') : result.message,
       data: result.data,
       error: result.error,
+      serverMessage: result.serverMessage,
+      ...(result.lostAnswer ? { lostAnswer: true } : {}),
+      ...(refusal ? { refusal } : {}),
     };
   }
 
   // Update order item quantity using correct RPC
   // M3 Fix: Using executeRPC wrapper
+  //
+  // `expectedUpdatedAt` is the version of the line the change is based on (`updated_at` of the line as the screen read
+  // it, owner decision D1). The server refuses the change with the reason STALE_RECORD (`refusal.reason`) when the line
+  // was changed by someone else since, and writes nothing. It is sent only when the caller holds one. A server without
+  // migration 121 knows no such parameter and answers PGRST202: the call is then sent again without it (no check), see withLineVersion.
   static async updateOrderItemQuantity(
     itemId: string,
     orderId: string,
-    newQuantity: number
+    newQuantity: number,
+    expectedUpdatedAt?: string
   ): Promise<OrderServiceResponse<OrderItem>> {
     if (newQuantity === 0) {
       // If quantity is 0, remove the item
-      const removeResult = await this.removeItemFromOrder(itemId, orderId);
+      const removeResult = await this.removeItemFromOrder(itemId, orderId, expectedUpdatedAt);
       if (!removeResult.success) {
         return removeResult as OrderServiceResponse<OrderItem>;
       }
@@ -259,34 +313,45 @@ export class OrderService {
       };
     }
 
-    const result = await executeRPC<OrderItem>(
-      getAuthenticatedClient,
-      'update_order_item_quantity',
-      {
-        p_new_quantity: newQuantity,
-        p_order_item_id: itemId,
-      },
-      {
-        context: 'OrderService.updateOrderItemQuantity',
-        write: true,
-        errorMessage: t('errors.order.updateQuantityFailed'),
-        unwrapNested: false,
-      }
+    const result = await withLineVersion('update_order_item_quantity', expectedUpdatedAt, withVersion =>
+      executeRPC<OrderItem>(
+        getAuthenticatedClient,
+        'update_order_item_quantity',
+        {
+          p_new_quantity: newQuantity,
+          p_order_item_id: itemId,
+          ...(withVersion ? { p_expected_updated_at: expectedUpdatedAt } : {}),
+        },
+        {
+          context: 'OrderService.updateOrderItemQuantity',
+          write: true,
+          errorMessage: t('errors.order.updateQuantityFailed'),
+          unwrapNested: false,
+        }
+      )
     );
     if (result.success) void invalidateReportQueries();
 
+    const refusal = refusalOf(result);
+    const updatedAt = result.success ? lineVersionOf(result.data) : undefined;
     return {
       success: result.success,
       message: result.success ? t('errors.order.quantityUpdated') : result.message,
       data: result.data,
       error: result.error,
+      serverMessage: result.serverMessage,
+      ...(result.lostAnswer ? { lostAnswer: true } : {}),
+      ...(refusal ? { refusal } : {}),
+      ...(updatedAt ? { updatedAt } : {}),
     };
   }
 
   // Remove item from order. The RPC records the removal in the order history.
+  // `expectedUpdatedAt`: as for updateOrderItemQuantity (STALE_RECORD, nothing removed; see withLineVersion for an old server).
   static async removeItemFromOrder(
     itemId: string,
-    _orderId: string
+    _orderId: string,
+    expectedUpdatedAt?: string
   ): Promise<OrderServiceResponse<void>> {
     if (!itemId) {
       return {
@@ -296,23 +361,29 @@ export class OrderService {
       };
     }
 
-    const result = await executeRPC<void>(
-      getAuthenticatedClient,
-      'remove_item_from_order',
-      { p_order_item_id: itemId },
-      {
-        context: 'OrderService.removeItemFromOrder',
-        write: true,
-        errorMessage: t('errors.order.removeItemFailed'),
-        unwrapNested: false,
-      }
+    const result = await withLineVersion('remove_item_from_order', expectedUpdatedAt, withVersion =>
+      executeRPC<void>(
+        getAuthenticatedClient,
+        'remove_item_from_order',
+        { p_order_item_id: itemId, ...(withVersion ? { p_expected_updated_at: expectedUpdatedAt } : {}) },
+        {
+          context: 'OrderService.removeItemFromOrder',
+          write: true,
+          errorMessage: t('errors.order.removeItemFailed'),
+          unwrapNested: false,
+        }
+      )
     );
     if (result.success) void invalidateReportQueries();
 
+    const refusal = refusalOf(result);
     return {
       success: result.success,
       message: result.success ? t('errors.order.itemRemoved') : result.message,
       error: result.error,
+      serverMessage: result.serverMessage,
+      ...(result.lostAnswer ? { lostAnswer: true } : {}),
+      ...(refusal ? { refusal } : {}),
     };
   }
 

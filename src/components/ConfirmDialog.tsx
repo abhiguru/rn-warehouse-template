@@ -43,6 +43,8 @@ export interface ConfirmDialogProps {
   dismissible?: boolean;
   /** The action is running: spinner in the confirm button, both buttons disabled, Back and the scrim do nothing. */
   busy?: boolean;
+  /** The Android Back key does nothing: the question is answered with its buttons (the scrim is `dismissible`'s). */
+  ignoreBack?: boolean;
   testID?: string;
   /** The dialog has finished closing (iOS only; Android has no such event, watch `visible`). Open the next Modal from here. */
   onDismissed?: () => void;
@@ -147,6 +149,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   icon,
   dismissible = true,
   busy = false,
+  ignoreBack = false,
   testID,
   onDismissed,
 }) => {
@@ -170,7 +173,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={busy ? () => {} : onCancel}
+      onRequestClose={busy || ignoreBack ? () => {} : onCancel}
       onDismiss={onDismissed}
       statusBarTranslucent
     >
