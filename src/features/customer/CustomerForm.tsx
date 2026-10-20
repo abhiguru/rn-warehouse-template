@@ -165,7 +165,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
       }
       showAlert(
         tr('customers.save.errorTitle'),
-        serverText(result, tr('customers.save.saveFailed'), { write: true, code: result.code })
+        serverText(result, tr('customers.save.saveFailed'), { write: true, form: true, code: result.code })
       );
     },
     [editor.retry, refuseField, showDeactivatedName]
@@ -243,7 +243,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
         }
       } catch (error) {
         // A lost connection or a timeout says so (a timed-out save may have gone through); anything else is the general text.
-        showAlert(tr('customers.save.errorTitle'), transportText(error, { write: true }) ?? tr('customers.save.saveFailed'));
+        showAlert(tr('customers.save.errorTitle'), transportText(error, { write: true, form: true }) ?? tr('customers.save.saveFailed'));
       } finally {
         setSaving(false);
       }

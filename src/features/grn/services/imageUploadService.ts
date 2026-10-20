@@ -254,7 +254,7 @@ export const uploadGRNImage = async (
       log.error('Registration failed', loggableError(regError));
       return {
         success: false,
-        error: serverText(regError.message, t('grn.upload.registerFailed'), { write: true }),
+        error: serverText(regError.message, t('grn.upload.registerFailed'), { write: true, photo: true }),
       };
     }
 
@@ -262,7 +262,7 @@ export const uploadGRNImage = async (
       log.error('Registration rejected');
       return {
         success: false,
-        error: serverText(regResult?.error, t('grn.upload.registrationRejected'), { write: true }),
+        error: serverText(regResult?.error, t('grn.upload.registrationRejected'), { write: true, photo: true }),
       };
     }
 
@@ -369,7 +369,7 @@ export const uploadGRNImage = async (
       if (!confirmResult?.success) {
         log.error('Confirmation rejected');
         throw new Error(
-          serverText(confirmResult?.error, t('grn.upload.confirmationFailed'), { write: true })
+          serverText(confirmResult?.error, t('grn.upload.confirmationFailed'), { write: true, photo: true })
         );
       }
 
@@ -637,7 +637,7 @@ const uploadSingleDeferredImage = async (
       log.error(`Registration rejected for deferred ${imageType} image`);
       return {
         success: false,
-        error: serverText(regResult?.error, t('grn.upload.registerFailed'), { write: true }),
+        error: serverText(regResult?.error, t('grn.upload.registerFailed'), { write: true, photo: true }),
       };
     }
 
@@ -687,7 +687,7 @@ const uploadSingleDeferredImage = async (
 
       if (!confirmResult?.success) {
         log.error(`Confirmation rejected for deferred ${imageType} image`);
-        throw new Error(serverText(confirmResult?.error, t('grn.upload.confirmationFailed'), { write: true }));
+        throw new Error(serverText(confirmResult?.error, t('grn.upload.confirmationFailed'), { write: true, photo: true }));
       }
 
       return { success: true };

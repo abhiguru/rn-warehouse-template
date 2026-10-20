@@ -27,6 +27,8 @@ export interface DeleteItemFlowOptions {
   onDeactivate: () => void | Promise<void>;
   /** True while the phone is offline: nothing is sent. */
   offline?: boolean;
+  /** The caller is a form-like page (no pull to refresh): a timeout says to go back to the list and check. */
+  form?: boolean;
 }
 
 /** Where an item is used, as the three counts the server refuses a delete on. */
@@ -57,7 +59,7 @@ function usedInMessage({ grnLines, orderLines, grnRates }: UsedIn, offerDeactiva
  */
 export async function deleteItemFlow(
   item: { id: string; name: string; active?: boolean },
-  { onDeleted, onDeactivate, offline = false }: DeleteItemFlowOptions
+  { onDeleted, onDeactivate, offline = false, form = false }: DeleteItemFlowOptions
 ): Promise<void> {
   if (offline) {
     showAlert(t('items.delete.couldNotDeleteTitle'), t('items.offline.connectToSave'));
@@ -148,7 +150,7 @@ export async function deleteItemFlow(
       // Deleted by someone else between the count and the tap (an older server has the text only).
       showGone();
     } else {
-      showAlert(t('items.delete.couldNotDeleteTitle'), serverText(result.message, t('items.list.tryAgainInAMoment'), { write: true }));
+      showAlert(t('items.delete.couldNotDeleteTitle'), serverText(result.message, t('items.list.tryAgainInAMoment'), { write: true, form }));
     }
   } catch (error) {
     log.error('deleteItem error', loggableError(error));

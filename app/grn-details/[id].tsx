@@ -226,7 +226,7 @@ function GRNDetailScreen() {
       setIsUploadingImage(true);
       const result = await uploadGRNImage(picked.assets[0], id, 'header');
       if (!result.success) {
-        setSnackbarMessage(serverText(result.error, tr('grn.details.imageUploadFailed'), { write: true }));
+        setSnackbarMessage(serverText(result.error, tr('grn.details.imageUploadFailed'), { write: true, photo: true }));
         setSnackbarVisible(true);
         return;
       }
@@ -256,9 +256,9 @@ function GRNDetailScreen() {
             const result = await deleteGRNImage(image.id, image.image_url);
             if (result.success) {
               await fetchGRNDetails();
-              setSnackbarMessage(result.partial ? serverText(result.error, tr('grn.details.imageRemoved'), { write: true }) : tr('grn.details.imageDeleted'));
+              setSnackbarMessage(result.partial ? serverText(result.error, tr('grn.details.imageRemoved'), { write: true, photo: true }) : tr('grn.details.imageDeleted'));
             } else {
-              setSnackbarMessage(serverText(result.error, tr('grn.details.imageDeleteFailed'), { write: true }));
+              setSnackbarMessage(serverText(result.error, tr('grn.details.imageDeleteFailed'), { write: true, photo: true }));
             }
           } catch {
             setSnackbarMessage(tr('grn.details.imageDeleteFailed'));
@@ -489,7 +489,7 @@ function GRNDetailScreen() {
                   { text: tr('common.done'), onPress: () => router.back() },
                 ]);
               } else {
-                let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'), { write: true });
+                let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true });
 
                 if (result.blocking_dependencies) {
                   const deps = result.blocking_dependencies;

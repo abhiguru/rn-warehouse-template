@@ -132,6 +132,8 @@ export const errors = {
     network: 'Check your connection and try again.',
     timeoutNotSaved: 'The server took too long and nothing was saved. Try again.',
     timeoutWrite: 'No answer from the server. It may have been saved. Pull down to check.',
+    timeoutWriteForm: 'No answer from the server. It may have been saved. Go back to the list and check before trying again.',
+    timeoutWritePhoto: 'No answer from the server. The photo change may have gone through. Check the photos on this screen before trying again.',
     rateLimitSeconds: 'Too many requests. Please wait {{seconds}} seconds before trying again.',
     rateLimitMinutes: 'Too many requests. Please wait {{minutes}} minutes before trying again.',
     rateLimit: 'Too many requests. Please wait before trying again.',

@@ -223,7 +223,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
         }
 
       } else {
-        throw new Error(serverText(result.error, tr('grn.photos.uploadFailed'), { write: true }));
+        throw new Error(serverText(result.error, tr('grn.photos.uploadFailed'), { write: true, photo: true }));
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : tr('grn.photos.uploadFailed');

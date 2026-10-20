@@ -110,7 +110,7 @@ export default function ItemPage() {
           setItem(null);
           setNotFound(true);
         } else {
-          showAlert(failTitle, serverText(result, tr('items.list.tryAgainInAMoment'), { write: true }), [{ text: tr('common.ok') }]);
+          showAlert(failTitle, serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }), [{ text: tr('common.ok') }]);
         }
       } catch {
         showAlert(tr('items.list.couldNotUpdateTitle'), tr('common.checkConnection'), [{ text: tr('common.ok') }]);
@@ -153,6 +153,7 @@ export default function ItemPage() {
         onDeleted: () => router.dismissTo('/items'),
         onDeactivate: () => setActive(false),
         offline,
+        form: true,
       }
     ).finally(() => {
       deleting.current = false;

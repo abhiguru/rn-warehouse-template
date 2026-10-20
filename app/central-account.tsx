@@ -47,7 +47,8 @@ export default function CentralAccountScreen() {
   const [deleting, setDeleting] = useState(false);
   const [signingOutAll, setSigningOutAll] = useState(false);
   const busy = saving || deleting || signingOutAll;
-  useLeaveGuard({ hasChanges: name.trim() !== savedName.trim() });
+  // Back does nothing while the name is being saved, so a screen that was left never toasts later.
+  useLeaveGuard({ hasChanges: name.trim() !== savedName.trim(), blocked: saving });
 
   const saveName = async () => {
     if (busy) return;

@@ -70,6 +70,8 @@ const APP_OWN_TEXT: TranslationKey[] = [
   'errors.general.businessRuleViolation',
   'errors.parsed.network',
   'errors.parsed.timeoutWrite',
+  'errors.parsed.timeoutWriteForm',
+  'errors.parsed.timeoutWritePhoto',
   'errors.parsed.timeoutNotSaved',
 ];
 
@@ -202,14 +204,36 @@ export interface ServerTextOptions {
    * read it is only a network failure.
    */
   write?: boolean;
+  /**
+   * With `write`: the screen is a form (no pull to refresh; the person typed and pressed Save or Add).
+   * A timeout then says to go back to the list and check, not to pull down. A text that a shared
+   * service already worded for a list ("... Pull down to check.") is changed to the form's wording, and the other way round.
+   */
+  form?: boolean;
+  /**
+   * With `write`: the request is a photo upload, removal or delete. A timeout then says the photo
+   * change may have gone through and to check the photos on this screen (wins over `form`).
+   */
+  photo?: boolean;
   /** The failure's code, when the text passed in does not carry it. */
   code?: string;
+}
+
+const TIMEOUT_WRITE_KEYS: TranslationKey[] = ['errors.parsed.timeoutWrite', 'errors.parsed.timeoutWriteForm', 'errors.parsed.timeoutWritePhoto'];
+
+/** Which timeout sentence a write gets: photo, form or list (pull to refresh). */
+function timeoutWriteKey(options: ServerTextOptions): TranslationKey {
+  if (options.photo) return 'errors.parsed.timeoutWritePhoto';
+  return options.form ? 'errors.parsed.timeoutWriteForm' : 'errors.parsed.timeoutWrite';
 }
 
 /** The app's sentence for a network failure or a timeout; undefined for any other error. */
 export function transportText(error: unknown, options: ServerTextOptions = {}): string | undefined {
   if (isStatementTimeout(error, options.code)) return t('errors.parsed.timeoutNotSaved');
-  if (isTimeoutError(error)) return options.write ? t('errors.parsed.timeoutWrite') : t('errors.parsed.network');
+  if (isTimeoutError(error)) {
+    if (!options.write) return t('errors.parsed.network');
+    return t(timeoutWriteKey(options));
+  }
   if (isNetworkError(error)) return t('errors.parsed.network');
   return undefined;
 }
@@ -265,12 +289,16 @@ function looksLikeDeveloperText(text: string): boolean {
  *
  * @param text the server's own text, if it sent one; an Error or error object is read too
  * @param fallback the app's message for this action, already translated
- * @param options `write` for a request that changes data; `code` when the text does not carry it
+ * @param options `write` for a request that changes data (`form` too on a form screen, `photo` for a photo upload or removal); `code` when the text does not carry it
  */
 export function serverText(text: unknown, fallback: string, options: ServerTextOptions = {}): string {
   const transport = transportText(text, options);
   if (transport) return transport;
   const raw = textOf(text);
+  // A shared service may have worded the timeout for the other kind of screen: this screen says it its own way.
+  if (options.write && TIMEOUT_WRITE_KEYS.some(key => raw?.trim() === t(key))) {
+    return t(timeoutWriteKey(options));
+  }
   if (raw === undefined || raw.trim() === '') return fallback;
   // English keeps the server's wording; text the app wrote in Gujarati is already right.
   if (writtenInGujarati(raw)) return raw;

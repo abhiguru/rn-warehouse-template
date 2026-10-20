@@ -245,7 +245,9 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{
         disabled: isDisabled,
-        busy: loading,
+        // A screen that keeps a button pressable while it waits (and dims it) says so through accessibilityState.
+        ...props.accessibilityState,
+        busy: loading || Boolean(props.accessibilityState?.busy),
       }}
       accessibilityLabel={props.accessibilityLabel || label}
     >

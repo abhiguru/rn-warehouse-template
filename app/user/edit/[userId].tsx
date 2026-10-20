@@ -190,8 +190,8 @@ const UserEditScreen: React.FC = () => {
           const text = isNetworkError(result)
             ? tr('users.selfEdit.saveOffline')
             : isTimeoutError(result)
-              ? transportText(result, { write: true })
-              : serverText(result.message, tr('users.edit.tryAgainSoon'), { write: true, code: errorCodeOf(result) });
+              ? transportText(result, { write: true, form: true })
+              : serverText(result.message, tr('users.edit.tryAgainSoon'), { write: true, form: true, code: errorCodeOf(result) });
           showAlert(tr('users.selfEdit.couldNotSaveTitle'), text);
         }
       } catch (error) {

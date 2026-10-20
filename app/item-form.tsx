@@ -182,12 +182,12 @@ const ItemFormScreen: React.FC = () => {
       } else {
         // No answer in time: the item may have been saved. A server cancel (57014) rolled back.
         if (isTimeoutError(result) && !isStatementTimeout(result)) timedOutName.current = formData.name.trim().toLowerCase();
-        showAlert(tr('items.form.couldNotAddTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true }));
+        showAlert(tr('items.form.couldNotAddTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }));
       }
     } catch (err) {
       console.error('[ItemForm] Save error:', err);
       if (isTimeoutError(err) && !isStatementTimeout(err)) timedOutName.current = formData.name.trim().toLowerCase();
-      showAlert(tr('items.form.couldNotAddTitle'), serverText(err, tr('common.checkConnection'), { write: true }));
+      showAlert(tr('items.form.couldNotAddTitle'), serverText(err, tr('common.checkConnection'), { write: true, form: true }));
     } finally {
       setSaving(false);
     }

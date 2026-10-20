@@ -204,12 +204,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 result = { success: false };
             }
             if (!result.success) {
-                showAlert(tr('grn.photos.removeFailedTitle'), serverText(result.error, tr('common.checkConnection'), { write: true }));
+                showAlert(tr('grn.photos.removeFailedTitle'), serverText(result.error, tr('common.checkConnection'), { write: true, photo: true }));
                 return;
             }
             // The record is gone; only its stored file could not be confirmed deleted.
             if (result.partial) {
-                showAlert(tr('dispatch.review.photoRemovedTitle'), serverText(result.error, tr('dispatch.photos.removedFileUnconfirmed'), { write: true }));
+                showAlert(tr('dispatch.review.photoRemovedTitle'), serverText(result.error, tr('dispatch.photos.removedFileUnconfirmed'), { write: true, photo: true }));
             }
         }
         removeImageFromForm(imageId);

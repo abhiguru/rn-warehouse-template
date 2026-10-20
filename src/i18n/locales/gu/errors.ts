@@ -135,6 +135,10 @@ export const errors: Translation<typeof source> = {
     network: 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     timeoutNotSaved: 'સર્વરને બહુ સમય લાગ્યો અને કંઈ સેવ થયું નથી. ફરી પ્રયાસ કરો.',
     timeoutWrite: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ સેવ થઈ ગયું હોય. નીચે ખેંચીને તપાસો.',
+    // Draft for the owner's wording review (timeout on a form screen, 2026-10-20). Save is સાચવો (glossary), so the text says સચવાઈ.
+    timeoutWriteForm: 'સર્વરનો જવાબ મળ્યો નથી. કદાચ સચવાઈ ગયું હોય. ફરી પ્રયાસ કરતાં પહેલાં યાદીમાં પાછા જઈને તપાસો.',
+    // Draft for the owner's wording review (timeout on a photo upload or removal, 2026-10-20).
+    timeoutWritePhoto: 'સર્વરનો જવાબ મળ્યો નથી. ફોટામાં ફેરફાર થઈ ગયો હોય શકે. ફરી પ્રયાસ કરતાં પહેલાં આ સ્ક્રીન પરના ફોટા તપાસો.',
     rateLimitSeconds: 'ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં {{seconds}} સેકન્ડ રાહ જુઓ.',
     rateLimitMinutes: 'ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં {{minutes}} મિનિટ રાહ જુઓ.',
     rateLimit: 'ઘણી બધી વિનંતીઓ થઈ. ફરી પ્રયાસ કરતાં પહેલાં થોડી રાહ જુઓ.',

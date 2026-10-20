@@ -227,11 +227,11 @@ const ItemEditScreen: React.FC = () => {
           { text: tr('common.goBack'), onPress: () => leaveWithoutAsking(() => router.dismissTo('/items')) },
         ]);
       } else {
-        showAlert(tr('items.form.couldNotSaveTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true }));
+        showAlert(tr('items.form.couldNotSaveTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }));
       }
     } catch (err) {
       console.error('[ItemEdit] Save error:', err);
-      showAlert(tr('items.form.couldNotSaveTitle'), serverText(err, tr('common.checkConnection'), { write: true }));
+      showAlert(tr('items.form.couldNotSaveTitle'), serverText(err, tr('common.checkConnection'), { write: true, form: true }));
     } finally {
       setSaving(false);
     }

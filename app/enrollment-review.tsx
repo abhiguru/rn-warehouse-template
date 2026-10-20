@@ -260,7 +260,7 @@ export default function EnrollmentReviewScreen() {
                 tr('auth.review.couldNotSaveTitle'),
                 getAppErrorCode(failure) === 'REFUSED' && failure instanceof Error
                   ? failure.message
-                  : transportText(failure, { write: true }) ?? tr('common.checkConnection')
+                  : transportText(failure, { write: true, form: true }) ?? tr('common.checkConnection')
               );
               setBusy(false);
               // The decision may have been saved or handled by someone else: show what is left.

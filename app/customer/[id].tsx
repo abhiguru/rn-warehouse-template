@@ -121,14 +121,14 @@ export default function CustomerPage() {
         } else {
           showAlert(
             tr(active ? 'customers.list.couldNotActivateTitle' : 'customers.list.couldNotDeactivateTitle'),
-            serverText(result, tr('customers.list.tryAgainInAMoment'), { write: true, code: result.code }),
+            serverText(result, tr('customers.list.tryAgainInAMoment'), { write: true, form: true, code: result.code }),
             [{ text: tr('common.ok') }]
           );
         }
       } catch (error) {
         showAlert(
           tr('customers.list.couldNotUpdateTitle'),
-          transportText(error, { write: true }) ?? tr('common.checkConnection'),
+          transportText(error, { write: true, form: true }) ?? tr('common.checkConnection'),
           [{ text: tr('common.ok') }]
         );
       } finally {

@@ -510,7 +510,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       } else {
         triggerError();
         if (result.rateError) showRateRefusal(result.rateError, result.error);
-        else showAlert(saveFailedTitle(), serverText(result.error, connectionHint(), { write: true }));
+        else showAlert(saveFailedTitle(), serverText(result.error, connectionHint(), { write: true, form: true }));
       }
     } catch (error) {
       triggerError();
@@ -623,7 +623,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         showAlert(saveFailedTitle(), tr('grn.review.saveUnanswered'));
       } else {
         triggerError();
-        const errorMessage = serverText(result.error, connectionHint(), { write: true });
+        const errorMessage = serverText(result.error, connectionHint(), { write: true, form: true });
         if (result.rateError) {
           showRateRefusal(result.rateError, result.error);
         } else if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
