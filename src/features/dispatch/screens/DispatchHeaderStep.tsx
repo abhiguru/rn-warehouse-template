@@ -41,7 +41,7 @@ import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps }
 import { toLocalISODate, formatDate, toDate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
-import { getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { formatIdentifier, getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 type DispatchHeaderStepProps = {
     mode: 'create' | 'edit';
@@ -97,6 +97,16 @@ const makeStyles = (t: ThemeTokens) => ({
     inputContainerError: {
         borderColor: t.status.negative.border,
         borderWidth: 2,
+    },
+    // A locked field: the date and the number of a dispatch that is on an invoice (wave B D2)
+    inputContainerLocked: {
+        backgroundColor: t.surface.fieldReadOnly,
+    },
+    lockHint: {
+        ...typography.footnote,
+        color: t.text.secondary,
+        marginTop: -space.sm,
+        marginBottom: space.lg,
     },
     loadingInputContainer: {
         flexDirection: 'row' as const,
@@ -219,6 +229,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         validationErrors,
         isGeneratingNumber,
         isCreateMode,
+        invoicedNumber,
         updateHeaderField,
         updateHeaderFields,
         handleDispNoChange,
@@ -271,7 +282,11 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         setShowDatePicker(false);
     };
 
+    // Edit: a dispatch that is on an invoice keeps its date and its number until the invoice is deleted or edited (D2).
+    const dateAndNumberLocked = !isCreateMode && invoicedNumber !== null && invoicedNumber !== undefined;
+
     const openDatePicker = () => {
+        if (dateAndNumberLocked) return;
         setShowDatePicker(true);
     };
 
@@ -375,11 +390,12 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                         <ActivityIndicator size="small" color={t.brand.tint} />
                                     </View>
                                 ) : (
-                                    <View style={[styles.inputContainer, validationErrors.disp_no && styles.inputContainerError]}>
+                                    <View style={[styles.inputContainer, validationErrors.disp_no && styles.inputContainerError, dateAndNumberLocked && styles.inputContainerLocked]}>
                                         <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                                         <TextInput
                                             style={styles.input}
                                             accessibilityLabel={tr('common.dispatchNumber')}
+                                            editable={!dateAndNumberLocked}
                                             value={header.disp_no}
                                             onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase())}
                                             placeholder="I####"
@@ -400,10 +416,13 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 <Pressable
                                     style={({ pressed }) => [
                                         styles.inputContainer,
-                                        pressed && styles.inputContainerPressed,
+                                        pressed && !dateAndNumberLocked && styles.inputContainerPressed,
                                         validationErrors.disp_date && styles.inputContainerError,
+                                        dateAndNumberLocked && styles.inputContainerLocked,
                                     ]}
                                     onPress={openDatePicker}
+                                    disabled={dateAndNumberLocked}
+                                    accessibilityState={{ disabled: dateAndNumberLocked }}
                                     accessibilityRole="button"
                                     accessibilityLabel={displayDate ? tr('dispatch.form.dispatchDateLabel', { date: displayDate }) : tr('dispatch.form.chooseDispatchDate')}
                                 >
@@ -420,6 +439,11 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 <FieldError message={validationErrors.disp_date} styles={styles} color={t.status.negative.text} />
                             </View>
                         </View>
+                        {dateAndNumberLocked ? (
+                            <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="dispatch-header-invoiced-hint">
+                                {tr('dispatch.refusal.invoiced', { invoice: formatIdentifier(invoicedNumber || '—') })}
+                            </Text>
+                        ) : null}
 
                         {/* Customer - before Registration so we can use customer-specific suggestions */}
                         <View style={styles.formGroup}>

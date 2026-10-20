@@ -14,6 +14,7 @@ import type {
   ItemFormData,
 } from '@/types/dispatch.types';
 import { createEmptyDispatchHeader } from '@/types/dispatch.types';
+import { mergeOrderIntoDispatchItems } from '@/utils/orderToDispatchConverter';
 
 const dispatchFormLogger = createLogger('DispatchFormSlice');
 
@@ -61,6 +62,10 @@ const createInitialState = (): DispatchFormState & { snapshot: DispatchFormSnaps
   savedDispatchId: null,
   checkingAnswer: false,
   heldBags: {},
+  loadedUpdatedAt: null,
+  invoicedNumber: null,
+  loadedDateNumber: null,
+  dateRefusal: null,
 
   // #18 Fix: Snapshot for optimistic update rollback
   snapshot: null,
@@ -87,7 +92,11 @@ const dispatchFormSlice = createSlice({
         ...action.payload,
       };
       // A date that was set is the person's choice: the form no longer follows the clock.
-      if (action.payload.disp_date !== undefined) state.dateChosenByUser = true;
+      if (action.payload.disp_date !== undefined) {
+        state.dateChosenByUser = true;
+        // A date the server refused is not the date any more.
+        state.dateRefusal = null;
+      }
     },
 
     /**
@@ -370,9 +379,13 @@ const dispatchFormSlice = createSlice({
         header: DispatchHeaderData;
         items: DispatchItemData[];
         images?: DispatchImageData[];
+        /** The dispatch's `updated_at` as read (wave B, D1); absent on a server that does not send it. */
+        updatedAt?: string | null;
+        /** The number of the live invoice a line is on (wave B, D2); null or absent when there is none. */
+        invoicedNumber?: string | null;
       }>
     ) => {
-      const { dispatchId, header, items, images } = action.payload;
+      const { dispatchId, header, items, images, updatedAt, invoicedNumber } = action.payload;
       state.dispatch_id = dispatchId;
       state.header = header;
       state.items = items.map(item => ({
@@ -394,6 +407,71 @@ const dispatchFormSlice = createSlice({
         held[item.grnItems_id] = (held[item.grnItems_id] ?? 0) + (item.original_disp_quantity ?? item.disp_quantity ?? 0);
       }
       state.heldBags = held;
+      state.loadedUpdatedAt = updatedAt ?? null;
+      state.invoicedNumber = invoicedNumber ?? null;
+      state.loadedDateNumber = { disp_no: header.disp_no, disp_date: header.disp_date };
+      state.dateRefusal = null;
+    },
+
+    /**
+     * The dispatch was read again after the server said someone else changed it (wave B, D1: "Open it again"). The
+     * header, the lines, the bags the dispatch holds, the version token and the invoice lock are the server's now;
+     * what was typed is replaced. The step the person is on and the photos are not touched.
+     */
+    reloadDispatchData: (
+      state,
+      action: PayloadAction<{
+        dispatchId: string;
+        header: DispatchHeaderData;
+        items: DispatchItemData[];
+        updatedAt?: string | null;
+        invoicedNumber?: string | null;
+      }>
+    ) => {
+      const { dispatchId, header, items, updatedAt, invoicedNumber } = action.payload;
+      state.dispatch_id = dispatchId;
+      state.header = header;
+      state.items = items.map(item => ({
+        ...item,
+        unique_id: item.unique_id || `item_${Date.now()}_${Math.random()}`,
+      }));
+      state.validationErrors = {};
+      state.takenNumberError = null;
+      state.snapshot = null;
+      const held: Record<string, number> = {};
+      for (const item of items) {
+        if (!item.grnItems_id) continue;
+        held[item.grnItems_id] = (held[item.grnItems_id] ?? 0) + (item.original_disp_quantity ?? item.disp_quantity ?? 0);
+      }
+      state.heldBags = held;
+      state.loadedUpdatedAt = updatedAt ?? null;
+      state.invoicedNumber = invoicedNumber ?? null;
+      state.loadedDateNumber = { disp_no: header.disp_no, disp_date: header.disp_date };
+      state.dateRefusal = null;
+    },
+
+    /** A save was accepted: the dispatch's new `updated_at` is the token of the next save of this form (wave B, D1). */
+    setLoadedUpdatedAt: (state, action: PayloadAction<string | null>) => {
+      state.loadedUpdatedAt = action.payload;
+    },
+
+    /**
+     * The server says the dispatch is on an invoice (wave B, D2), which happened after the form read it: its date and
+     * number are locked from now on, and the ones the person typed are put back to the ones that were read (a locked
+     * field must not keep a value the server will never accept).
+     */
+    lockForInvoice: (state, action: PayloadAction<string>) => {
+      state.invoicedNumber = action.payload;
+      state.takenNumberError = null;
+      if (state.loadedDateNumber) {
+        state.header.disp_no = state.loadedDateNumber.disp_no;
+        state.header.disp_date = state.loadedDateNumber.disp_date;
+      }
+    },
+
+    /** The message of the server's refusal of the dispatch date, for step 1 to show; null to clear it. */
+    setDateRefusal: (state, action: PayloadAction<string | null>) => {
+      state.dateRefusal = action.payload;
     },
 
     /**
@@ -418,6 +496,10 @@ const dispatchFormSlice = createSlice({
       state.savedDispatchId = null;
       state.checkingAnswer = false;
       state.heldBags = {};
+      state.loadedUpdatedAt = null;
+      state.invoicedNumber = null;
+      state.loadedDateNumber = null;
+      state.dateRefusal = null;
     },
 
     /**
@@ -452,6 +534,27 @@ const dispatchFormSlice = createSlice({
       state.savedDispatchId = null;
       state.checkingAnswer = false;
       state.heldBags = {};
+      state.loadedUpdatedAt = null;
+      state.invoicedNumber = null;
+      state.loadedDateNumber = null;
+      state.dateRefusal = null;
+    },
+
+    /**
+     * The order the form was made from changed after it was opened (wave B, D5): its lines were read again and are
+     * merged into the form. A lot that is still on the order keeps the quantity typed in the form, at most its stock;
+     * a lot that was taken from the order and is no longer on it is dropped; a lot new on the order comes in with its
+     * default quantity. Lots the person added by hand are not the order's and stay. The order's new `updated_at`
+     * replaces the old one, so the next create is checked against what the form now shows.
+     */
+    reloadFromOrder: (
+      state,
+      action: PayloadAction<{ items: DispatchItemData[]; source_order_updated_at?: string }>
+    ) => {
+      const { items, source_order_updated_at } = action.payload;
+      state.items = mergeOrderIntoDispatchItems(state.items, items);
+      state.header.source_order_updated_at = source_order_updated_at;
+      state.validationErrors = {};
     },
 
     // #18 Fix: Snapshot actions for optimistic update rollback
@@ -538,6 +641,11 @@ export const {
 
   // Bulk actions
   loadDispatchData,
+  reloadDispatchData,
+  setLoadedUpdatedAt,
+  lockForInvoice,
+  setDateRefusal,
+  reloadFromOrder,
   resetForm,
   resetFormData,
   setTakenNumberError,

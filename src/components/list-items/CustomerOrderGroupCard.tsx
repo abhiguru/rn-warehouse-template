@@ -193,7 +193,13 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     if (refusedByOpenForm()) return;
 
     // Convert order to dispatch data (use fullOrder which has items)
-    const { header, items, skippedItems } = convertOrderToDispatchData(orderToDispatch);
+    const converted = convertOrderToDispatchData(orderToDispatch);
+    const { items, skippedItems } = converted;
+    // Wave B (D5): the order as it was read with its lines. The server refuses the create when the order changed since.
+    // Only an order read in full has it (the row of the queue list does not carry the same `updated_at`).
+    const header: ConvertedDispatchData['header'] = fullOrder?.updated_at
+      ? { ...converted.header, source_order_updated_at: fullOrder.updated_at }
+      : converted.header;
 
     if (__DEV__) console.log('[CustomerOrderGroupCard] Converted dispatch data:', {
       headerCustomer: header.customer_name,

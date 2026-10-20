@@ -7,6 +7,9 @@ import type { Order, OrderItem } from '@/types/order.types';
 import type { DispatchHeaderData, DispatchItemData } from '@/types/dispatch.types';
 import { t } from '@/i18n';
 
+/** Every line made from an order line has a `unique_id` that starts with this; a line the person added by hand does not. */
+const ORDER_LINE_ID_PREFIX = 'order_';
+
 export interface ConvertedDispatchData {
   header: Partial<DispatchHeaderData>;
   items: DispatchItemData[];
@@ -46,7 +49,7 @@ export function convertOrderToDispatchData(order: Order): ConvertedDispatchData 
 
     // Create dispatch item
     const dispatchItem: DispatchItemData = {
-      unique_id: `order_${orderItem.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      unique_id: `${ORDER_LINE_ID_PREFIX}${orderItem.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
 
       // GRN Header reference
       grns_id: grnItem.gr_id,
@@ -83,6 +86,37 @@ export function convertOrderToDispatchData(order: Order): ConvertedDispatchData 
     items,
     skippedItems,
   };
+}
+
+/**
+ * The lines of a dispatch form made from an order, merged with the order as it is now (wave B, D5: the order changed
+ * after the form was opened and its lines were read again). `fresh` is what `convertOrderToDispatchData` made from the
+ * order now (a quantity of at most the stock, no line without stock).
+ * - a lot that is on the order now keeps the line already in the form, with the quantity typed there, at most its
+ *   stock now (a quantity of 0 or less is not a typed quantity: the order's own default is used);
+ * - a line made from the order whose lot is no longer on it (or has no stock) is dropped;
+ * - a lot new on the order is added with its default quantity;
+ * - a line the person added by hand (not made from the order) stays as it is, unless the order now has that lot too.
+ * The order of the form's lines is kept, new lots come last.
+ */
+export function mergeOrderIntoDispatchItems(current: DispatchItemData[], fresh: DispatchItemData[]): DispatchItemData[] {
+  const freshByLot = new Map(fresh.map((line) => [line.grnItems_id, line]));
+  const merged: DispatchItemData[] = [];
+  const kept = new Set<string>();
+  for (const line of current) {
+    const now = freshByLot.get(line.grnItems_id);
+    if (now) {
+      const typed = line.disp_quantity > 0 ? line.disp_quantity : now.disp_quantity;
+      merged.push({ ...now, unique_id: line.unique_id, disp_quantity: Math.max(1, Math.min(typed, now.grnItems_stock)) });
+      kept.add(line.grnItems_id);
+    } else if (!line.unique_id.startsWith(ORDER_LINE_ID_PREFIX)) {
+      merged.push(line);
+    }
+  }
+  for (const line of fresh) {
+    if (!kept.has(line.grnItems_id)) merged.push(line);
+  }
+  return merged;
 }
 
 /**

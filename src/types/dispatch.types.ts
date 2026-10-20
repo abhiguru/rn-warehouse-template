@@ -8,6 +8,7 @@
 // ============================================================================
 
 import { toLocalISODate } from '@/utils/formatters';
+import type { ServerRefusal } from '@/utils/serverRefusal';
 
 export interface DispatchImageData {
   id: string;
@@ -38,6 +39,11 @@ export interface DispatchHeaderData {
   note: string;                 // Max 250 chars, optional
   source_order_id?: string;     // For future order-to-dispatch conversion
   source_order_no?: string;     // Order reference number
+  /**
+   * New dispatch from an order: the `updated_at` of the order as it was read with its lines (wave B, D5). It is sent
+   * with the create, and the server refuses when the order changed since. Only an order read in full has it.
+   */
+  source_order_updated_at?: string;
 }
 
 // ============================================================================
@@ -114,6 +120,23 @@ export interface DispatchFormState {
    * changed while it is edited; a lot's stock limit is its stock plus these (the server gives them back on a save).
    */
   heldBags?: Record<string, number>;
+  /**
+   * Edit only: the `updated_at` of the dispatch when it was read (wave B, D1). It is sent with the save; the server
+   * refuses with STALE_RECORD when someone else changed the dispatch since. Absent on a server that does not send it.
+   */
+  loadedUpdatedAt?: string | null;
+  /**
+   * Edit only: the number of the invoice a line of this dispatch is on (wave B, D2); null when the dispatch is on no
+   * live invoice. The date and the number of such a dispatch are locked.
+   */
+  invoicedNumber?: string | null;
+  /** Edit only: the date and the number of the dispatch as they were read, to put back when the server says they are locked. */
+  loadedDateNumber?: { disp_no: string; disp_date: string } | null;
+  /**
+   * The message of a refusal of the dispatch date by the server (the date is in the future, or before a GRN, wave B D3).
+   * Kept with the form so step 1 shows it when the person is taken there; it goes when the date changes or step 1 is checked.
+   */
+  dateRefusal?: string | null;
 }
 
 // ============================================================================
@@ -136,6 +159,8 @@ export interface CreateDispatchPayload {
     note: string;
     source_order_id?: string | null;
     source_order_no?: string | null;
+    /** Only when the order was read in full (wave B, D5). */
+    source_order_updated_at?: string;
   };
   p_dispatch_items: Array<{
     gr_trl_id: string;          // Lot ID (maps to grnItems_id)
@@ -170,8 +195,14 @@ export interface DispatchApiResponse {
   source_order_id?: string;        // The order ID that was cleared
   /** Create only (server migration 120): lines of the source order still open after this dispatch; null for a dispatch without an order; absent on an older server. */
   order_lines_left?: number | null;
-  /** The server refused the number: another dispatch holds it (`reason: 'NUMBER_TAKEN'`, or the unique-key error of an older server). */
-  reason?: 'NUMBER_TAKEN';
+  /** The server's reason for a refusal: 'NUMBER_TAKEN' (or the unique-key error of an older server), or one of wave B's (see `refusal`). */
+  reason?: string;
+  /** Wave B: the refusal the server sent (STALE_RECORD, DISPATCH_INVOICED, DISPATCH_DATE_FUTURE, ...), for the screen to word. */
+  refusal?: ServerRefusal;
+  /** Update only (migration 121): what the edit did to the order, in bags. Absent on an older server. */
+  order_sync?: { given_back: number; taken: number };
+  /** Update only: the dispatch's new `updated_at`, so the next save of the same form carries it. Absent on an older server. */
+  updated_at?: string;
   /** The number the refusal is about. */
   number?: string;
   /**

@@ -24,6 +24,7 @@ import type {
 import { uploadDeferredDispatchImages } from './dispatchImageService';
 import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
+import { REFUSAL, refusalOf } from '@/utils/serverRefusal';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
 
@@ -44,6 +45,27 @@ function isNumberTakenAnswer(answer: unknown): boolean {
   const code = String(fields.error_code ?? fields.code ?? '');
   const text = `${typeof fields.error === 'string' ? fields.error : ''} ${typeof fields.message === 'string' ? fields.message : ''}`;
   return code === '23505' && text.includes('dispatch_disp_no_key');
+}
+
+/**
+ * The refusals of migration 121 that a dispatch form words itself, by reason (the rest of the server's refusals keep the
+ * ordinary failure path). Each goes back to the screen as `{ success: false, reason, refusal }` and the screen writes the
+ * sentence from the reason and the fields.
+ */
+const WORDED_REFUSALS: ReadonlySet<string> = new Set([
+  REFUSAL.STALE_RECORD,
+  REFUSAL.DISPATCH_INVOICED,
+  REFUSAL.DISPATCH_DATE_FUTURE,
+  REFUSAL.DISPATCH_BEFORE_GRN,
+  REFUSAL.ORDER_CHANGED,
+]);
+
+/** The result for a refusal of the list above, or undefined when the answer is none of them. */
+function wordedRefusal(answer: unknown, fallback: string): DispatchApiResponse | undefined {
+  const refusal = refusalOf(answer);
+  if (!refusal || !WORDED_REFUSALS.has(refusal.reason)) return undefined;
+  const text = serverText(refusal.text, fallback, { write: true, form: true });
+  return { success: false, reason: refusal.reason, refusal, error: text, message: text };
 }
 
 /** The number a refusal is about: the one the server names, else the number that was sent. */
@@ -335,6 +357,9 @@ export const createDispatch = async (payload: {
         note: payload.header.note || '',
         source_order_id: payload.header.source_order_id || null,
         source_order_no: payload.header.source_order_no || null,
+        // Wave B (D5): the order as the form read it. The server refuses when the order changed since. Sent only when the
+        // form holds it (an order read in full); part of the body the idempotency key hashes, so a resend is identical.
+        ...(payload.header.source_order_updated_at ? { source_order_updated_at: payload.header.source_order_updated_at } : {}),
       },
       p_dispatch_items: payload.items.map((item) => ({
         gr_trl_id: item.grnItems_id, // The lot ID
@@ -387,10 +412,13 @@ export const createDispatch = async (payload: {
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
-      log.error('create_dispatch_with_stock_check returned failure');
+      log.error('create_dispatch_with_stock_check returned failure', { reason: typeof data.reason === 'string' ? data.reason : undefined });
       if (isNumberTakenAnswer(data)) {
         return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
       }
+      // Wave B: the date rules (D3) and the order that moved (D5) are worded by the screen, from the reason and the fields.
+      const worded = wordedRefusal(data, t('dispatch.service.createFailed'));
+      if (worded) return worded;
       throw new Error(serverText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true }));
     }
 
@@ -481,12 +509,18 @@ export const createDispatch = async (payload: {
  * first tapped and kept until the save's outcome is known, that is for this whole call, however many times the
  * identical request is sent again after a lost answer (see sendUntilAnswered). A save that is tapped again later is
  * another attempt and gets another code.
+ *
+ * Wave B (D1): `expectedUpdatedAt`, the dispatch's `updated_at` as the form read it, goes into `p_dispatch_data` as
+ * `expected_updated_at`; the server refuses with STALE_RECORD when someone else changed the dispatch since. The key is part
+ * of the request that is captured once below, so a resend after a lost answer is byte-identical; the server answers a
+ * resend of one's own saved request from the stored answer of its request code, before it compares versions.
  */
 export const updateDispatch = async (
   dispatchId: string,
   payload: {
     header: DispatchHeaderData;
     items: DispatchItemData[];
+    expectedUpdatedAt?: string | null;
   },
   options: LostAnswerOptions = {}
 ): Promise<DispatchApiResponse> => {
@@ -509,6 +543,8 @@ export const updateDispatch = async (
         supervisor_name: payload.header.supervisor_name,
         note: payload.header.note || '',
         request_key: requestKey,
+        // Only when the form holds it: a dispatch read from a server that sends none is saved as before.
+        ...(payload.expectedUpdatedAt ? { expected_updated_at: payload.expectedUpdatedAt } : {}),
       },
       p_dispatch_items: payload.items.map((item) => ({
         gr_trl_id: item.grnItems_id,
@@ -549,10 +585,14 @@ export const updateDispatch = async (
     }
 
     if (data && data.success === false) {
-      log.error('update_dispatch_smart returned failure', { dispatchId });
+      log.error('update_dispatch_smart returned failure', { dispatchId, reason: typeof data.reason === 'string' ? data.reason : undefined });
       if (isNumberTakenAnswer(data)) {
         return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
       }
+      // Wave B: a stale dispatch (D1), a date or number that is locked by an invoice (D2) and the date rules (D3) are
+      // worded by the screen, from the reason and the fields.
+      const worded = wordedRefusal(data, t('dispatch.service.updateFailed'));
+      if (worded) return worded;
       throw new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true }));
     }
 
@@ -565,10 +605,21 @@ export const updateDispatch = async (
       return { success: true, aborted: true, dispatch_id: data?.dispatch_id ?? dispatchId, error: '', message: '' };
     }
 
+    // Migration 121: the dispatch's new `updated_at` and what the edit did to the order. Both are absent on an older server.
+    const orderSync = data?.order_sync;
     return {
       success: true,
       dispatch_id: data?.dispatch_id ?? dispatchId,
       message: serverText(data?.message, t('dispatch.service.updated')),
+      ...(typeof data?.updated_at === 'string' ? { updated_at: data.updated_at } : {}),
+      ...(orderSync && typeof orderSync === 'object'
+        ? {
+            order_sync: {
+              given_back: Number(orderSync.given_back) || 0,
+              taken: Number(orderSync.taken) || 0,
+            },
+          }
+        : {}),
     };
   } catch (error: any) {
     log.error('Dispatch update failed', { dispatchId });
@@ -595,6 +646,10 @@ export const loadDispatchData = async (
   data?: {
     header: DispatchHeaderData;
     items: DispatchItemData[];
+    /** The dispatch's `updated_at` as read: the version token of the save (wave B, D1). Absent when the server sends none. */
+    updatedAt?: string;
+    /** The number of the live invoice a line of the dispatch is on (wave B, D2); absent when it is on none. */
+    invoicedNumber?: string;
   };
   error?: string;
 }> => {
@@ -670,11 +725,25 @@ export const loadDispatchData = async (
         };
       });
 
+    // A line on a live invoice carries `invoice_details` (the server leaves it out for a deleted invoice). The dispatch is
+    // on that invoice: its date and number are locked (D2). Lines that were skipped above (no GRN details) still count.
+    const invoicedLine = (dispatch.items || []).find((item: any) => item?.invoice_details);
+    const invoicedNumber: string | undefined = invoicedLine
+      ? String(invoicedLine.invoice_details.invoice_no ?? '')
+      : undefined;
+    const updatedAt: string | undefined =
+      typeof dispatch.updated_at === 'string' && dispatch.updated_at !== '' ? dispatch.updated_at : undefined;
+
     log.info('Dispatch loaded', { dispatchId, itemCount: items.length });
 
     return {
       success: true,
-      data: { header, items },
+      data: {
+        header,
+        items,
+        ...(updatedAt !== undefined ? { updatedAt } : {}),
+        ...(invoicedNumber !== undefined ? { invoicedNumber } : {}),
+      },
     };
   } catch (error: any) {
     log.error('Dispatch load failed', { dispatchId });

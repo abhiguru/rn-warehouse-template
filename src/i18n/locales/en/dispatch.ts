@@ -298,7 +298,7 @@ export const dispatch = {
     dispNoFormat: 'Dispatch number must be alphanumeric (uppercase)',
     dateRequired: 'Dispatch date is required',
     dateInvalid: 'Invalid date format',
-    dateFuture: 'Cannot select a future date',
+    dateFuture: "A dispatch can't be dated in the future. Today is {{today}}.",
     dispatchDateInvalid: 'Invalid dispatch date',
     registrationRequired: 'Vehicle registration is required',
     registrationMax: 'Registration must be at most 30 characters',
@@ -338,6 +338,18 @@ export const dispatch = {
       'GRN {{grn}} was received on {{grnDate}}, which is after the dispatch date ({{dispatchDate}}). Items cannot be dispatched before they are received.',
     dateBeforeGrns:
       'The following GRNs have dates after the dispatch date ({{dispatchDate}}): {{grns}}. Items cannot be dispatched before they are received.',
+  },
+  // What the server refuses on a dispatch (wave B, owner decisions D1 to D5); the screens word these from the reason and the fields
+  refusal: {
+    // Edit: the date and the number are locked while the dispatch is on an invoice (D2)
+    invoiced: 'On invoice {{invoice}}. Delete or edit the invoice first.',
+    dispatchInvoiced: "Dispatch {{dispatch}} is on invoice {{invoice}}. Its date and number can't be changed. Delete or edit the invoice first.",
+    // A new dispatch from an order that changed after the form was opened (D5)
+    orderChangedTitle: 'This order changed after you opened it',
+    orderChangedMessage: 'The lines were reloaded from the order. Check the quantities, then create the dispatch again.',
+    orderEmpty: 'This order has no lines left to dispatch.',
+    // Edit: the order was kept in step with the saved quantities (D4)
+    orderSynced: 'The order was updated to match.',
   },
   // Fallback messages of the dispatch form services (the server's own message is shown when there is one)
   service: {

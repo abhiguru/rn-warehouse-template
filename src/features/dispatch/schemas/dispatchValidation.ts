@@ -15,6 +15,9 @@ import { serverText } from '@/utils/serverText';
  */
 const m = (key: TranslationKey) => () => t(key);
 
+/** "A dispatch can't be dated in the future. Today is 20 Oct 2026." (the server's refusal DISPATCH_DATE_FUTURE says the same). */
+const dateFutureMessage = () => t('dispatch.validation.dateFuture', { today: formatDate(new Date()) });
+
 // ============================================================================
 // STEP 1: HEADER SCHEMA
 // ============================================================================
@@ -35,7 +38,7 @@ export const step1Schema = yup.object().shape({
       const date = new Date(value);
       return !isNaN(date.getTime());
     })
-    .test('not-future', m('dispatch.validation.dateFuture'), (value) => {
+    .test('not-future', dateFutureMessage, (value) => {
       if (!value) return true;
       const date = new Date(value);
       const today = new Date();

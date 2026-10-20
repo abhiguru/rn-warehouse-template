@@ -93,6 +93,9 @@ export default function DispatchEditLayout() {
             header: result.data.header,
             items: result.data.items,
             images: [], // Photos are not loaded for an edit
+            // Wave B: the version the save is checked against (D1) and the invoice that locks the date and number (D2).
+            updatedAt: result.data.updatedAt,
+            invoicedNumber: result.data.invoicedNumber,
           })
         );
         setPhase('ready');

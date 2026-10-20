@@ -28,7 +28,15 @@
  *    - Ended when the form is reset, to cancel in-flight async operations
  *    - Checked in async functions before updating Redux state
  *
- * 3. **Edit mode does not load here**
+ * 3. **What the server refuses (wave B, owner decisions D1 to D5)**
+ *    - An edit sends the version it read (`expected_updated_at`); STALE_RECORD comes back as `stale` and the screen asks
+ *      "Keep editing" / "Open it again" (`reloadDispatch`).
+ *    - A dispatch on an invoice has its date and number locked (`invoicedNumber`); DISPATCH_INVOICED and the date rules
+ *      (DISPATCH_DATE_FUTURE, DISPATCH_BEFORE_GRN) come back as `toDetails`, to step 1.
+ *    - A new dispatch made from an order sends the order's version; ORDER_CHANGED reads the order again and merges its
+ *      lines into the form (`orderChanged`).
+ *
+ * 4. **Edit mode does not load here**
  *    - The edit layout (`app/dispatch-edit/[id]/_layout.tsx`) resets the form, reads the dispatch
  *      on every entry and shows the steps only once it is loaded; it resets the form again when it
  *      closes. A step screen can therefore rely on the form holding the dispatch of its route.
@@ -67,6 +75,11 @@ import {
   clearFieldError,
   setTakenNumberError,
   selectDispatchTakenNumberError,
+  setDateRefusal,
+  setLoadedUpdatedAt,
+  lockForInvoice,
+  reloadDispatchData,
+  reloadFromOrder,
   resetForm,
   loadFromOrder,
   selectHasFormData,
@@ -89,6 +102,7 @@ import {
   createDispatch,
   updateDispatch,
   checkDispatchExists,
+  loadDispatchData as readDispatch,
 } from '@/features/dispatch/services/dispatchFormService';
 import { currentDispatchFormSession, endDispatchFormSession } from '@/features/dispatch/utils/dispatchFormSession';
 
@@ -100,7 +114,9 @@ import { serverText } from '@/utils/serverText';
 import { validationSummary } from '@/utils/validationSummary';
 import { documentNumberState } from '@/utils/documentNumberCheck';
 import { linesFromOtherCustomers } from '@/features/dispatch/utils/lotOwnership';
-import { toLocalISODate } from '@/utils/formatters';
+import { formatDate, toLocalISODate } from '@/utils/formatters';
+import { REFUSAL, refusalString, type ServerRefusal } from '@/utils/serverRefusal';
+import { convertOrderToDispatchData } from '@/utils/orderToDispatchConverter';
 
 const log = createLogger('useDispatchForm');
 
@@ -157,6 +173,24 @@ export type DispatchSubmitResult = {
   numberMaybeSaved?: { message: string };
   /** The person left (or the form was reset) while the request was on its way or being checked; nothing more was done and nothing is to be said. */
   aborted?: boolean;
+  /**
+   * Edit: someone else changed the dispatch since it was read (STALE_RECORD, wave B D1). Nothing was saved. The screen
+   * asks "Keep editing" / "Open it again" (`askStaleRecord('dispatch')`) and calls `reloadDispatch` for the second.
+   */
+  stale?: boolean;
+  /**
+   * The server refused something that step 1 holds (the date is in the future or before a GRN, or the dispatch is on an
+   * invoice, wave B D2/D3). The date field already says so; the caller shows the message and takes the person to step 1.
+   */
+  toDetails?: { message: string };
+  /**
+   * A new dispatch from an order that changed after the form was opened (ORDER_CHANGED, wave B D5): the order's lines were
+   * read again and merged into the form. `empty`: no line is left to dispatch (the form stays on its last step, with Create
+   * disabled); otherwise the person is taken to the items step to check the quantities.
+   */
+  orderChanged?: { empty: boolean };
+  /** Edit saved: the server also changed the order to match (wave B D4: bags given back to it or taken from it). */
+  orderSynced?: boolean;
 };
 
 export interface UseDispatchFormReturn {
@@ -174,6 +208,8 @@ export interface UseDispatchFormReturn {
   isCheckingAnswer: boolean;
   /** Edit: lot id -> the bags the dispatch held on that lot when it was read (the stock limit of a lot adds them). */
   heldBags: Record<string, number>;
+  /** Edit: the number of the invoice the dispatch is on (its date and number are locked); null when it is on none. */
+  invoicedNumber: string | null;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
   hasFormData: boolean;
@@ -218,6 +254,12 @@ export interface UseDispatchFormReturn {
    * number field already says so, and the caller takes the person to step 1, where that field is.
    */
   submitForm: (generateInvoice?: boolean, onFailure?: (title: string, message: string) => void) => Promise<DispatchSubmitResult>;
+
+  /**
+   * Edit: read the dispatch again from the server and replace the form with it (wave B D1, "Open it again"). The step
+   * the person is on stays. False when it could not be read (the person was told; the form is as it was).
+   */
+  reloadDispatch: () => Promise<boolean>;
 
   // Reset
   resetFormState: () => void;
@@ -278,7 +320,11 @@ export function useDispatchForm({
 
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>(
-    (): Record<string, string> => (takenNumberError ? { disp_no: takenNumberError } : {})
+    (): Record<string, string> => ({
+      ...(takenNumberError ? { disp_no: takenNumberError } : {}),
+      // The server refused the date (wave B D3) and the person was taken to step 1, where the field says why.
+      ...(dispatchFormState.dateRefusal ? { disp_date: dispatchFormState.dateRefusal } : {}),
+    })
   );
 
   const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.disp_no);
@@ -531,6 +577,8 @@ export function useDispatchForm({
     switch (step) {
       case 1:
         console.log('[useDispatchForm] Validating step 1');
+        // Step 1 is checked again: a date the server refused earlier is judged by the checks now, not remembered.
+        dispatch(setDateRefusal(null));
         result = await validateStep1(header);
         console.log('[useDispatchForm] Step 1 validation result:', result);
         break;
@@ -755,6 +803,87 @@ export function useDispatchForm({
       return { success: false, error: message, numberTaken: { message } };
     };
 
+    /** The server refused the dispatch date (wave B D3): the date field says why, and the caller takes the person to step 1. */
+    const dateRefused = (message: string): DispatchSubmitResult => {
+      dispatch(setDateRefusal(message));
+      setLocalValidationErrors((prev) => ({ ...prev, disp_date: message }));
+      return { success: false, error: message, toDetails: { message } };
+    };
+
+    /**
+     * The refusals of migration 121 that this form words from the reason and the fields (never from the server's English).
+     * Undefined for a reason that is none of them: the caller then shows the ordinary failure.
+     */
+    const wordRefusal = async (refusal: ServerRefusal): Promise<DispatchSubmitResult | undefined> => {
+      switch (refusal.reason) {
+        case REFUSAL.STALE_RECORD:
+          // Nothing was saved; the screen asks whether to keep editing or to open the dispatch again.
+          return { success: false, stale: true };
+
+        case REFUSAL.DISPATCH_INVOICED: {
+          // The dispatch was put on an invoice after this form read it. The date and the number are locked now and are put
+          // back to what was read; the person is taken to step 1, where the two fields say why.
+          const invoice = refusalString(refusal, 'invoice_no') ?? store.getState().dispatchForm.invoicedNumber ?? '';
+          const message = t('dispatch.refusal.dispatchInvoiced', {
+            dispatch: formatIdentifier(refusalString(refusal, 'dispatch_no') ?? header.disp_no),
+            invoice: formatIdentifier(invoice),
+          });
+          dispatch(lockForInvoice(invoice));
+          clearLocalErrors(['disp_no', 'disp_date']);
+          return { success: false, error: message, toDetails: { message } };
+        }
+
+        case REFUSAL.DISPATCH_DATE_FUTURE:
+          return dateRefused(
+            t('dispatch.validation.dateFuture', { today: formatDate(refusalString(refusal, 'today') ?? new Date()) })
+          );
+
+        case REFUSAL.DISPATCH_BEFORE_GRN: {
+          const grnNo = refusalString(refusal, 'gr_no');
+          const grnDate = refusalString(refusal, 'grn_date');
+          return dateRefused(
+            grnNo && grnDate
+              ? t('dispatch.validation.dateBeforeGrn', {
+                  grn: formatIdentifier(grnNo),
+                  grnDate: formatDate(grnDate),
+                  dispatchDate: formatDate(refusalString(refusal, 'date') ?? header.disp_date),
+                })
+              : t('dispatch.validation.dispatchDateInvalid')
+          );
+        }
+
+        case REFUSAL.ORDER_CHANGED: {
+          // The order was changed (or dispatched) after this form was made from it. Its lines are read again and merged
+          // into the form; the person is told, and creates the dispatch again from what the form now shows.
+          const orderId = refusalString(refusal, 'source_order_id') ?? header.source_order_id;
+          if (!orderId) return undefined;
+          // Loaded when needed (as lostAnswer.ts does): a form's screens and tests do not need the whole orders service.
+          const { OrderService } = require('@/services/order-service') as typeof import('@/services/order-service');
+          let read: Awaited<ReturnType<typeof OrderService.getOrderWithItems>> | null = null;
+          try {
+            read = await OrderService.getOrderWithItems(orderId);
+          } catch {
+            read = null;
+          }
+          // The form was left while the order was read: nothing is put into the form that is there now.
+          if (formChanged()) return { success: false, aborted: true };
+          if (!read || !read.success || !read.data) {
+            const message = t('lists.orderGroup.loadFailed');
+            report(t('dispatch.wizard.errorTitle'), message);
+            return { success: false, error: message };
+          }
+          dispatch(reloadFromOrder({
+            items: convertOrderToDispatchData(read.data).items,
+            source_order_updated_at: read.data.updated_at,
+          }));
+          return { success: false, orderChanged: { empty: store.getState().dispatchForm.items.length === 0 } };
+        }
+
+        default:
+          return undefined;
+      }
+    };
+
     try {
       // One id per form, made when the form first tries to create and kept while it is sent again
       // after a lost answer: the same form is the same create, another form with the same
@@ -780,7 +909,12 @@ export function useDispatchForm({
 
       const result = isCreateMode
         ? await createDispatch({ ...payload, submissionNonce }, lostAnswer)
-        : await updateDispatch(dispatchIdParam!, payload, lostAnswer);
+        : await updateDispatch(
+            dispatchIdParam!,
+            // The version the form read (wave B D1): the server refuses the save when the dispatch changed since.
+            { ...payload, expectedUpdatedAt: store.getState().dispatchForm.loadedUpdatedAt },
+            lostAnswer
+          );
 
       // The person left while the server was being asked, with no answer known: nothing is known, nobody to tell
       // (they were warned by the X's question). When they left while the first send was on its way and its answer was
@@ -807,11 +941,14 @@ export function useDispatchForm({
       if (result.success) {
         // The form has made its dispatch: it is finished, and is reset when it is left.
         if (isCreateMode && result.dispatch_id) dispatch(formCreated(result.dispatch_id));
+        // An edit that was accepted: its new version is the one the next save of this form carries (wave B D1).
+        if (!isCreateMode && result.updated_at) dispatch(setLoadedUpdatedAt(result.updated_at));
         return {
           success: true,
           dispatchId: result.dispatch_id,
           orderLinesLeft: result.order_lines_left,
           failedPhotos: result.failed_photos ?? [],
+          ...(result.order_sync && result.order_sync.given_back + result.order_sync.taken > 0 ? { orderSynced: true } : {}),
         };
       }
 
@@ -824,6 +961,12 @@ export function useDispatchForm({
 
       if (result.reason === 'NUMBER_TAKEN') {
         return await reportNumberTaken(result.number || header.disp_no);
+      }
+
+      // Wave B: a stale dispatch, a locked date or number, the date rules, an order that moved.
+      if (result.refusal) {
+        const worded = await wordRefusal(result.refusal);
+        if (worded) return worded;
       }
 
       report(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed'), { write: true, form: true }));
@@ -841,7 +984,33 @@ export function useDispatchForm({
         dispatch(setIsSaving(false));
       }
     }
-  }, [header, items, images, dispatchIdParam, isCreateMode, store, formHoldsRouteDispatch, validateCurrentStep, dispatch]);
+  }, [header, items, images, dispatchIdParam, isCreateMode, store, formHoldsRouteDispatch, validateCurrentStep, clearLocalErrors, dispatch]);
+
+  /**
+   * Edit: the server said someone else changed the dispatch and the person chose "Open it again" (wave B D1). The dispatch is
+   * read again and the form is replaced with what was read, with its new version token; the step the person is on stays.
+   * Forced: nothing here skips a dispatch that is already loaded.
+   */
+  const reloadDispatch = useCallback(async (): Promise<boolean> => {
+    if (!dispatchIdParam) return false;
+    const formSession = currentDispatchFormSession();
+    const result = await readDispatch(dispatchIdParam);
+    // The form was left (or another dispatch is in it) while this one was read: nothing is put into the form that is there now.
+    if (currentDispatchFormSession() !== formSession || store.getState().dispatchForm.dispatch_id !== dispatchIdParam) return false;
+    if (!result.success || !result.data) {
+      showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.loadFailed')));
+      return false;
+    }
+    dispatch(reloadDispatchData({
+      dispatchId: dispatchIdParam,
+      header: result.data.header,
+      items: result.data.items,
+      updatedAt: result.data.updatedAt,
+      invoicedNumber: result.data.invoicedNumber,
+    }));
+    setLocalValidationErrors({});
+    return true;
+  }, [dispatchIdParam, store, dispatch]);
 
   /**
    * Reset form to initial state
@@ -914,6 +1083,7 @@ export function useDispatchForm({
     isSaving: dispatchFormState.is_saving,
     isCheckingAnswer: dispatchFormState.checkingAnswer === true,
     heldBags: dispatchFormState.heldBags ?? NO_HELD_BAGS,
+    invoicedNumber: dispatchFormState.invoicedNumber ?? null,
     validationErrors,
     isCreateMode,
     hasFormData,
@@ -954,6 +1124,9 @@ export function useDispatchForm({
 
     // Submission
     submitForm,
+
+    // Reload (edit)
+    reloadDispatch,
 
     // Reset
     resetFormState,

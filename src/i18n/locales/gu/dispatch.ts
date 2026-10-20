@@ -300,7 +300,8 @@ export const dispatch: Translation<typeof source> = {
     dispNoFormat: 'જાવક નંબરમાં અંગ્રેજી કેપિટલ અક્ષરો અને આંકડા વાપરો',
     dateRequired: 'જાવકની તારીખ જરૂરી છે',
     dateInvalid: 'તારીખ બરાબર નથી',
-    dateFuture: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
+    // Draft for the owner's wording review (2026-10-20): now says today's date.
+    dateFuture: 'જાવકની તારીખ આજ પછીની ન હોઈ શકે. આજે {{today}} છે.',
     dispatchDateInvalid: 'જાવકની તારીખ બરાબર નથી',
     registrationRequired: 'વાહન નંબર જરૂરી છે',
     registrationMax: 'વાહન નંબર વધુમાં વધુ ૩૦ અક્ષરનો હોવો જોઈએ',
@@ -340,6 +341,19 @@ export const dispatch: Translation<typeof source> = {
       'આવક પાવતી {{grn}}નો માલ {{grnDate}}ના રોજ આવ્યો હતો, જે જાવકની તારીખ ({{dispatchDate}}) પછી છે. માલ આવ્યા પહેલાં તેની જાવક ન થઈ શકે.',
     dateBeforeGrns:
       'આ આવક પાવતીની તારીખ જાવકની તારીખ ({{dispatchDate}}) પછીની છે: {{grns}}. માલ આવ્યા પહેલાં તેની જાવક ન થઈ શકે.',
+  },
+  // What the server refuses on a dispatch (wave B, owner decisions D1 to D5); the screens word these from the reason and the fields
+  refusal: {
+    // Draft for the owner's wording review (2026-10-20): the date and the number are locked while the dispatch is on an invoice.
+    invoiced: 'ઇન્વૉઇસ {{invoice}} પર છે. પહેલાં ઇન્વૉઇસ ડિલીટ કરો અથવા તેમાં ફેરફાર કરો.',
+    // Draft for the owner's wording review (2026-10-20).
+    dispatchInvoiced: 'જાવક {{dispatch}} ઇન્વૉઇસ {{invoice}} પર છે. તેની તારીખ અને નંબર બદલી શકાતા નથી. પહેલાં ઇન્વૉઇસ ડિલીટ કરો અથવા તેમાં ફેરફાર કરો.',
+    // Draft for the owner's wording review (2026-10-20): a new dispatch from an order that changed after the form was opened.
+    orderChangedTitle: 'તમે ખોલ્યા પછી આ ઑર્ડર બદલાયો',
+    orderChangedMessage: 'ઑર્ડરની લાઇન ફરી લોડ કરી છે. નંગ તપાસો, પછી ફરી જાવક બનાવો.',
+    orderEmpty: 'આ ઑર્ડરમાં જાવક માટે કોઈ લાઇન બાકી નથી.',
+    // Draft for the owner's wording review (2026-10-20): the order was kept in step with the saved quantities.
+    orderSynced: 'ઑર્ડર પણ તે મુજબ બદલાયો.',
   },
   // Fallback messages of the dispatch form services (the server's own message is shown when there is one)
   service: {

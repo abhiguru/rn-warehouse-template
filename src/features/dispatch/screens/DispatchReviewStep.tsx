@@ -22,6 +22,7 @@ import { t as tr, formatIdentifier } from '@/i18n';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
 import { serverText } from '@/utils/serverText';
+import { askStaleRecord } from '@/utils/staleRecordDialog';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { ReviewCard, ReviewKeyBlock, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSections } from '@/components/review/ReviewSections';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -95,6 +96,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         removeImageFromForm,
         navigateToStep,
         submitForm,
+        reloadDispatch,
         resetFormState,
     } = useDispatchForm({
         mode,
@@ -147,6 +149,11 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Confirm dialog state
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [showEditSuccessDialog, setShowEditSuccessDialog] = useState(false);
+    // The edit also changed the order (bags given back to it or taken from it): the saved dialog says so (wave B D4).
+    const [editOrderSynced, setEditOrderSynced] = useState(false);
+
+    // A new dispatch from an order that has no line left after the order was read again (wave B D5): nothing to create.
+    const orderEmpty = isCreateMode && !!header.source_order_id && items.length === 0;
 
     // The X in the step header asks before it calls this, so there is no second question here.
     const handleCancel = () => {
@@ -263,6 +270,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
     // Handle form submission
     const handleSubmit = async () => {
+        if (orderEmpty) return;
         // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
         // photo still being prepared holds the save; one that could not be prepared has to go.
         if (isCreateMode) {
@@ -314,6 +322,33 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         { text: tr('common.ok'), onPress: () => { void navigateToStep(DISPATCH_STEP_NUMBERS.INFO); } },
                     ]);
             }
+            // Wave B: the date is refused (D3), or the date and number are locked by an invoice (D2): the same way, to step 1.
+            if (result.toDetails) {
+                const { message } = result.toDetails;
+                afterDialog.current = () =>
+                    showAlert(tr('dispatch.wizard.errorTitle'), message, [
+                        { text: tr('common.ok'), onPress: () => { void navigateToStep(DISPATCH_STEP_NUMBERS.INFO); } },
+                    ]);
+            }
+            // Someone else changed the dispatch (D1): keep what was typed, or read the dispatch again.
+            if (result.stale) {
+                afterDialog.current = () => {
+                    void (async () => {
+                        if ((await askStaleRecord('dispatch')) === 'reload') await reloadDispatch();
+                    })();
+                };
+            }
+            // The order the new dispatch was made from changed (D5): its lines were read again into the form. The person
+            // checks the quantities on the items step, or, when no line is left, stays here with Create disabled.
+            if (result.orderChanged) {
+                const { empty } = result.orderChanged;
+                afterDialog.current = () =>
+                    showAlert(
+                        tr('dispatch.refusal.orderChangedTitle'),
+                        tr(empty ? 'dispatch.refusal.orderEmpty' : 'dispatch.refusal.orderChangedMessage'),
+                        [{ text: tr('common.ok'), onPress: () => { if (!empty) void navigateToStep(DISPATCH_STEP_NUMBERS.ITEMS); } }]
+                    );
+            }
             return;
         }
 
@@ -346,6 +381,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             }
             afterDialog.current = () => setShowSuccessDialog(true);
         } else {
+            setEditOrderSynced(result.orderSynced === true);
             afterDialog.current = () => setShowEditSuccessDialog(true);
         }
     };
@@ -603,6 +639,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
             {isCheckingAnswer ? <LostAnswerStrip kind="save" testID="dispatch-review-checking" /> : null}
 
+            {orderEmpty ? (
+                <View style={styles.orderEmptyStrip} testID="dispatch-review-order-empty">
+                    <InlineValidation variant="warning" message={tr('dispatch.refusal.orderEmpty')} />
+                </View>
+            ) : null}
+
             <View style={styles.contentWrapper}>
                 <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                     <ReviewCard testID="dispatch-review-table">
@@ -765,6 +807,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     nextTestID="dispatch-review-submit"
                     nextLabel={submitLabel}
                     loadingLabel={submitBusyLabel}
+                    nextDisabled={orderEmpty}
                     isLoading={isBusy}
                 />
             </View>
@@ -884,7 +927,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             <ConfirmDialog
                 visible={showEditSuccessDialog}
                 title={tr('dispatch.review.savedTitle', { number: formatIdentifier(header.disp_no) })}
-                message={tr('dispatch.review.savedMessage')}
+                message={[tr('dispatch.review.savedMessage'), editOrderSynced ? tr('dispatch.refusal.orderSynced') : null].filter(Boolean).join('\n')}
                 confirmText={tr('dispatch.review.viewDispatch')}
                 cancelText=""
                 onConfirm={handleEditSuccessConfirm}
@@ -989,6 +1032,10 @@ const makeStyles = (t: ThemeTokens) => ({
     scrollContent: {
         padding: space.lg,
         paddingBottom: space.xxl,
+    },
+    orderEmptyStrip: {
+        marginHorizontal: space.lg,
+        marginTop: space.sm,
     },
     totalsSection: {
         borderTopWidth: 1,
