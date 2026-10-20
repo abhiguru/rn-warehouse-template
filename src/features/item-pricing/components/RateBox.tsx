@@ -1,9 +1,13 @@
 /**
- * The rate box: one rate of one scope (a default rate or one customer's own) of one price type, edited in place.
- * The band table is the content; above it the unit of the rate and the strip of a refused save, below it the way to
- * copy the bands of another item (a new rate). The start day, the change summary and Save live in the page's
- * RateSaveBar (ScopeSaveBar), not here. A `locked` box shows its figures and the note that the other box must be
- * saved or discarded first (one box is edited at a time); a `readOnly` box only shows them.
+ * The rate box: one rate of one scope (a default rate or one customer's own) of one price type, edited in place, laid
+ * out as the GRN Change rate screen is (owner, 2026-10-20). Top to bottom: the unit of the rate, the "From <date>" line
+ * (RateStartLine: the rate's own start at rest, the day the new rate starts once the box is changed), the strip of a
+ * refused save, then for every weight band its band line, From and Up to, and Rent, Labour and Tax with + and − under
+ * each (RateBandFields); below them the way to copy the bands of another item (a new rate). The "From <date>" line is
+ * the same height at rest and while edited, and nothing else appears above the bands on the first edit, so the first
+ * tap on a + or − moves nothing under it. The change summary and Save live in the page's RateSaveBar (ScopeSaveBar),
+ * not here. A `locked` box shows its figures and the note that the other box must be saved or discarded first (one box
+ * is edited at a time); a `readOnly` box only shows them.
  */
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
@@ -18,16 +22,19 @@ import type { TierTag } from '../standardRate';
 import { unitText } from '../rateText';
 import type { UseRateEditor } from '../useRateEditor';
 import { priceTypeLabel } from '../utils/priceLabels';
-import { BandsTable } from './BandsTable';
 import { CopyTiersSheet, confirmReplaceBands } from './CopyTiersSheet';
 import { EditorStrip } from './EditorStrip';
 import type { FieldRegistry } from './fieldLink';
+import { RateBandFields } from './RateBandFields';
+import { RateStartLine } from './RateStartLine';
 
 export interface RateBoxProps {
   editor: UseRateEditor;
   fields?: FieldRegistry;
-  /** A line under the unit: since when the rate is in force. */
+  /** The text of the "From <date>" line while nothing is changed: since when the rate is in force. */
   caption?: string;
+  /** Changes when the page's Save bar asks for the start day choice: the "From <date>" line opens it. */
+  startSignal?: number;
   /** Whether the rate is a one-time rate until the editor's draft says so (the draft decides once it is open). */
   oneTime?: boolean;
   /** One tag per band ('Standard' or 'This item'), shown while nothing in the box is changed. */
@@ -44,7 +51,7 @@ const makeStyles = (th: ThemeTokens) => ({
   note: { ...typography.footnote, color: th.text.secondary },
 });
 
-export function RateBox({ editor, fields, caption, oneTime, tags, locked = false, readOnly = false, testID }: RateBoxProps) {
+export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, locked = false, readOnly = false, testID }: RateBoxProps) {
   const styles = useThemedStyles(makeStyles);
   const offline = useIsOffline();
   const [copyOpen, setCopyOpen] = useState(false);
@@ -54,6 +61,9 @@ export function RateBox({ editor, fields, caption, oneTime, tags, locked = false
   const priceType: PriceType = draft.priceType ?? (oneTime ? 'one_time' : 'monthly');
   const adding = ctx.mode === 'add' || ctx.mode === 'addCustomer';
   const disabled = locked || readOnly;
+  // The day of the new rate can be chosen once something in the box is changed, or the box is a new rate; at rest the
+  // "From <date>" line is a fact.
+  const editing = !disabled && (editor.dirty || adding);
   // A refused save that is about the bands is shown under them; the strip would say it twice.
   const stripText = strip && strip !== errors.bands ? strip : null;
 
@@ -72,7 +82,21 @@ export function RateBox({ editor, fields, caption, oneTime, tags, locked = false
         />
       ) : null}
       <Text style={styles.unit}>{unitText(priceType)}</Text>
-      {caption ? <Text style={styles.note} testID={`${testID}-caption`}>{caption}</Text> : null}
+      <RateStartLine
+        day={draft.startsOn}
+        choice={draft.startsOnChoice}
+        today={ctx.today}
+        earliest={ctx.earliestStart}
+        canStartInPast={ctx.canStartInPast}
+        fixed={draft.startsOnChoice === 'fixed'}
+        editing={editing}
+        caption={caption}
+        error={errors.startsOn}
+        onChange={editor.setStartsOn}
+        fields={fields}
+        openSignal={startSignal}
+        testID={`${testID}-starts`}
+      />
       {stripText ? <EditorStrip variant="critical" message={stripText} testID="editor-error" /> : null}
       {editor.rowsChanged ? <EditorStrip variant="warning" message={t('pricing.edit.rowsChanged')} testID="rows-changed" /> : null}
       {copiedFrom ? (
@@ -83,11 +107,12 @@ export function RateBox({ editor, fields, caption, oneTime, tags, locked = false
       {draft.firstBandZeroed ? <Text style={styles.note}>{t('pricing.edit.firstBandZeroed')}</Text> : null}
       {locked ? <Text style={styles.note} testID={`${testID}-locked`}>{t('pricing.box.locked')}</Text> : null}
 
-      <BandsTable
+      <RateBandFields
         draft={draft}
         ctx={ctx}
         errors={errors}
         onChange={editor.setDraft}
+        order={editor.order}
         fields={fields}
         tags={editor.dirty ? null : tags}
         readOnly={disabled}

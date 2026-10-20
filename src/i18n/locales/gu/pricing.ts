@@ -94,6 +94,9 @@ export const pricing: Translation<typeof source> = {
     unitLabour: 'રૂપિયા, નંગ દીઠ',
     unitKg: 'કિલો',
     unitPercent: 'ટકા',
+    // Drafts for the owner's wording review (rate box laid out like the GRN rate form, 2026-10-20); datesFrom is the GRN rate sheet's wording.
+    bandLine: 'વજન મર્યાદા {{range}}',
+    datesFrom: '{{date}}થી',
     allBands: 'બધી વજન મર્યાદા',
   },
   customerRate: {

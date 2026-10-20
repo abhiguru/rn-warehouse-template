@@ -123,6 +123,8 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
   const styles = useThemedStyles(makeStyles);
   const adding = mode === 'add' || mode === 'addCustomer';
   const [saved, setSaved] = useState(false);
+  // The Save bar's "Choose a start date." link asks the box's "From <date>" line to open its choice (counts the requests).
+  const [startAsk, setStartAsk] = useState(0);
   // "Discard this rate?" (house rule, style guide §14.4): typed figures are not thrown away by one tap.
   const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null);
 
@@ -151,15 +153,21 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
   });
   const boxEditor = { ...editor, setDraft: (next: Parameters<typeof editor.setDraft>[0]) => { setSaved(false); editor.setDraft(next); } };
 
-  const { draft, ctx, errors, saving, later } = editor;
+  const { draft, ctx, saving, later } = editor;
   const dirty = editor.ready && editor.dirty && !saved;
   const active = editor.ready && !saved && (dirty || adding);
 
   // Functions the Save bar keeps between reports: they read the latest editor.
-  const latest = useRef({ editor, onClose, onDiscard, special: adding || mode !== 'change', saved });
-  latest.current = { editor, onClose, onDiscard, special: adding || mode !== 'change', saved };
+  const askStart = () => {
+    setStartAsk(count => count + 1);
+    viewRef.current?.scrollToError('startsOn');
+  };
+  const latest = useRef({ editor, onClose, onDiscard, special: adding || mode !== 'change', saved, askStart });
+  latest.current = { editor, onClose, onDiscard, special: adding || mode !== 'change', saved, askStart };
   const stable = useRef({
+    // The start-day choice is drawn in the box (RateStartLine); this setter is part of the report for the page and its tests.
     onChange: (choice: Parameters<typeof editor.setStartsOn>[0], day: string) => latest.current.editor.setStartsOn(choice, day),
+    chooseStart: () => latest.current.askStart(),
     save: () => { void latest.current.editor.submit(); },
     discard: () => {
       const go = () => (latest.current.special ? latest.current.onClose() : latest.current.onDiscard());
@@ -181,28 +189,30 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
         choice: draft.startsOnChoice,
         day: draft.startsOn,
         today: ctx.today,
-        earliest: ctx.earliestStart,
         canStartInPast: ctx.canStartInPast,
         fixed: draft.startsOnChoice === 'fixed',
-        error: errors.startsOn,
         onChange: stable.onChange,
       },
       rule: lotsRule(draft, ctx),
       warning: inThePast && ctx.canStartInPast ? t('pricing.edit.pastDate', { date: dateText(draft.startsOn ?? '') }) : null,
       summaryLines: summaryLines(draft, ctx),
       helper: shared.offline ? t('pricing.error.offline') : !draft.startsOn ? t('pricing.edit.chooseDate') : null,
+      // Without a start day the helper is a link to the choice in the box (offline: just the offline note).
+      chooseStart: !shared.offline && !draft.startsOn ? stable.chooseStart : null,
       saveLabel: ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : ctx.mode === 'addCustomer' ? t('pricing.edit.saveCustomer') : t('pricing.edit.save'),
       save: { onPress: stable.save, disabled: saving || shared.offline || !draft.startsOn, loading: saving },
       discard: { onPress: stable.discard },
     };
   }
   const order = useMemo(() => editor.order.map(key => `${id}:${key}`), [editor.order, id]);
+  // One registry per box while the page's registry stays: the start line registers itself again when this changes.
+  const boxFields = useMemo(() => scopeFields(shared.fields, id), [shared.fields, id]);
   // The scope hears of a change only when something it draws changes, not on every render.
   const signature = JSON.stringify([
     active,
     dirty,
     order,
-    bar && [bar.startsOn.choice, bar.startsOn.day, bar.startsOn.today, bar.startsOn.earliest, bar.startsOn.canStartInPast, bar.startsOn.fixed, bar.startsOn.error, bar.rule, bar.warning, bar.summaryLines, bar.helper, bar.saveLabel, bar.save.disabled, bar.save.loading],
+    bar && [bar.startsOn.choice, bar.startsOn.day, bar.startsOn.today, bar.startsOn.canStartInPast, bar.startsOn.fixed, bar.rule, bar.warning, bar.summaryLines, bar.helper, bar.saveLabel, bar.save.disabled, bar.save.loading],
   ]);
   useEffect(() => {
     report(id, { active, dirty, order, bar });
@@ -250,9 +260,10 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
           ) : null}
           <RateBox
             editor={boxEditor}
-            fields={scopeFields(shared.fields, id)}
+            fields={boxFields}
             oneTime={priceType === 'one_time'}
             caption={caption}
+            startSignal={startAsk}
             locked={locked}
             testID={`rate-box-${id}`}
           />

@@ -29,6 +29,8 @@ interface Props {
   onChange: (choice: StartsOnChoice, day: string) => void;
   /** No red asterisk: a form where every field is required (the Add customer rate form, owner 2026-10-17). */
   hideRequired?: boolean;
+  /** No "Starts on" label (and no asterisk): the field sits under a line that already says it (the rate box's "From <date>" line). */
+  hideLabel?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -40,7 +42,7 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function StartsOnField({ choice, day, today, earliest, canStartInPast, fixed, error, onChange, hideRequired = false }: Props) {
+export function StartsOnField({ choice, day, today, earliest, canStartInPast, fixed, error, onChange, hideRequired = false, hideLabel = false }: Props) {
   const styles = useThemedStyles(makeStyles);
   const chips = startChips(today);
   const nextMonth = chips.find(c => c.id === 'nextMonth')?.day ?? today;
@@ -48,7 +50,7 @@ export function StartsOnField({ choice, day, today, earliest, canStartInPast, fi
   const minimumDate = parseLocalISODate(canStartInPast ? startFloor(today, earliest) : today);
   const maximumDate = parseLocalISODate(addDays(today, START_DAYS_AHEAD));
 
-  const label = (
+  const label = hideLabel ? null : (
     <Text style={styles.label}>
       {t('pricing.edit.startsOn')}
       {hideRequired ? null : <Text style={styles.required}> *</Text>}

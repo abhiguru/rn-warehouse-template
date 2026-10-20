@@ -1,8 +1,10 @@
 /**
  * The customer's rate box (screen B2): one customer's own rate for one item, opened from the customer's Pricing tab.
- * The figures are typed over in place, in the same box as the item's default rate (ScopeRates with a customer): a
- * Save bar with "Starts on" appears when something is changed, "Default rate: ..." sits beside the box, and Correct /
- * Stop sit under it; stopping this rate puts the customer back on the default rate. A customer with no own rate for
+ * The figures are typed over in place, in the same box as the item's default rate (ScopeRates with a customer), laid
+ * out like the GRN Change rate form (a "From <date>" line, Rent / Labour / Tax side by side with + and −): when
+ * something is changed the line turns into the choice of the start day and a Save bar (What changes, Discard, Save)
+ * appears; "Default rate: ..." sits beside the box, and Correct / Stop sit under it; stopping this rate puts the
+ * customer back on the default rate. A customer with no own rate for
  * the item gets the strip that says so and "Add customer rate", which opens the full-screen form that adds it. Old rates are folded at the bottom, and the day
  * control is behind the link "See rates on another day" (a day other than today is read-only).
  */
