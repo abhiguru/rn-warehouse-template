@@ -92,8 +92,12 @@ App ──token──▶ Facility F ──(profile approved?)──▶ F session
   remember the last; always show the current context; search long lists; reset state on switch.
 - **Federated authorization**: one identity provider, many independent resource servers; tokens
   restricted to a single audience; each resource server keeps its own authorization and revocation.
-- **Native-app OAuth** (RFC 8252, OAuth security BCP RFC 9700): authorization code with PKCE,
-  no secrets in the app; optionally DPoP (RFC 9449) to bind tokens to a device key.
+- **First-party native app** (OAuth security BCP RFC 9700): the app is the association's only
+  client, so it signs in directly (phone number, SMS code, then tokens) with no browser redirect;
+  the authorization code flow with PKCE of RFC 8252 does not apply. The facility token exchange
+  follows the shape of RFC 8693 token exchange. No secrets in the app; optionally DPoP (RFC 9449)
+  to bind tokens to a device key. The IETF draft "OAuth 2.0 for First-Party Applications" is the
+  closest standard model if an OAuth shape is wanted later.
 - **SMS codes** are a restricted authenticator (NIST SP 800-63B-4; OWASP MASVS-AUTH): rate limits,
   replay protection, SIM-swap awareness, tokens only in Keychain/Keystore, and a stronger
   option planned.
