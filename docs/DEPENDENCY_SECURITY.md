@@ -35,9 +35,10 @@ list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
   backport manifest.
 - Review the `overrides` in `package.json` on the same date. They are exact
   pins that Dependabot does not edit, so a later fix release of `postcss`,
-  `uuid`, `decode-uri-component`, `compression`, `source-map-js` or
-  `shell-quote` is adopted only by hand. A new advisory against a pinned
-  version at moderate or above now fails this gate.
+  `decode-uri-component`, `compression`, `source-map-js` or
+  `shell-quote` is adopted only by hand. (The `uuid` pin under `xcode` was
+  removed with expo 57.0.31: xcode 4 no longer depends on `uuid`.) A new
+  advisory against a pinned version at moderate or above now fails this gate.
 
 **Installs with scripts turned off.** The two adapters and the backports are
 applied by the npm `postinstall` script and by nothing else. `npm ci
@@ -197,7 +198,6 @@ native SDKs. Expo SDK 54 / React Native 0.81.5 are preserved.
 | --------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Metro package family                    | (no pin)         | Pin removed with SDK 57 (Metro 0.84.5). Was 0.83.8 under SDK 54: the first release without vulnerable `image-size`.                                                                                                                                                                                                                 |
 | PostCSS                                 | 8.5.28           | Patched 8.x release; replaces Expo's older 8.4 pin.                                                                                                                                                                                                                                                                                 |
-| UUID under `xcode` and `@expo/ngrok`    | 11.1.1           | Patched CommonJS-capable release. Both consumers use `uuid.v4()`; targeted tests exercise that API and Xcode project identifier generation. This is a scoped major transitive override, not an SDK upgrade.                                                                                                                         |
 | shell-quote under `react-devtools-core` | 1.11.0           | First patched release for [GHSA-pqg4-j6r4-53mv](https://github.com/advisories/GHSA-pqg4-j6r4-53mv) (critical, published 2026-10-06; `quote()` injection via a line terminator after a comment token, vulnerable >=1.8.4 <1.11.0). Same-major exact override of 1.10.0; only consumer is the development-only React DevTools bridge. |
 
 These overrides are deliberate compatibility exceptions. Review them when Expo
@@ -230,7 +230,7 @@ Babel/Jest rely on it. ESLint's own configuration is `eslint.config.mjs`.
 - TypeScript and full ESLint error checks pass.
 - `npm run test:setup` passes bootstrap and dependency-security test files.
 - Dependency tests cover PNG dimensions in patched Metro, blocked external
-  PostCSS source-map loading with synthetic fixtures, and UUID consumer APIs.
+  PostCSS source-map loading with synthetic fixtures.
 - Android JavaScript export passes: 2,934 modules, 45 assets; review output is
   outside Git. Environment-file loading and Expo telemetry were disabled for
   this export. This is not a native build or physical-device test.
@@ -244,5 +244,4 @@ Babel/Jest rely on it. ESLint's own configuration is `eslint.config.mjs`.
 
 - [Metro 0.83.8 security patch](https://github.com/react/metro/releases/tag/v0.83.8)
 - [PostCSS source-map disclosure advisory](https://github.com/advisories/GHSA-fxqj-rqcc-2cmp)
-- [UUID advisory](https://github.com/advisories/GHSA-w5hq-g745-h8pq)
 - [Expo upgrade procedure](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/)

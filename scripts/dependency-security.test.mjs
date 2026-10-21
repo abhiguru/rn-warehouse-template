@@ -62,10 +62,8 @@ test('PostCSS does not import a source map from an untrusted absolute URL', asyn
   }
 });
 
-test('Xcode retains the UUID v4 API with patched dependencies', () => {
-  const fromConsumer = createRequire(require.resolve('xcode'));
-  assert.equal(fromConsumer('uuid/package.json').version, '11.1.1');
-  assert.match(fromConsumer('uuid').v4(), /^[a-f0-9-]{36}$/);
+// xcode 4 generates identifiers with node:crypto and no longer depends on uuid.
+test('Xcode generates project identifiers', () => {
   const project = require('xcode').project('fictional.pbxproj');
   project.hash = { project: { objects: {} } };
   assert.match(project.generateUuid(), /^[A-F0-9]{24}$/);
