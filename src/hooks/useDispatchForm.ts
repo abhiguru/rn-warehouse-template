@@ -118,6 +118,7 @@ import { documentNumberState } from '@/utils/documentNumberCheck';
 import { linesFromOtherCustomers } from '@/features/dispatch/utils/lotOwnership';
 import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { REFUSAL, refusalString, type ServerRefusal } from '@/utils/serverRefusal';
+import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { convertOrderToDispatchData } from '@/utils/orderToDispatchConverter';
 
 const log = createLogger('useDispatchForm');
@@ -194,7 +195,19 @@ export type DispatchSubmitResult = {
   orderChanged?: { empty: boolean };
   /** Edit saved: the server also changed the order to match (wave B D4: bags given back to it or taken from it). */
   orderSynced?: boolean;
+  /**
+   * Create of a direct dispatch: the server warned that it looks like one made in the last 30 minutes (POSSIBLE_DUPLICATE,
+   * migration 124). Nothing was saved. The screen asks "Possible duplicate" [Cancel | Save anyway]; Save anyway calls
+   * `submitForm` again with `warnDuplicate: false`.
+   */
+  duplicate?: PossibleDuplicate;
 };
+
+/** What a caller may change about one submit. */
+export interface DispatchSubmitOptions {
+  /** Create: false is "Save anyway" after the duplicate warning (default true). */
+  warnDuplicate?: boolean;
+}
 
 export interface UseDispatchFormReturn {
   // State
@@ -260,7 +273,11 @@ export interface UseDispatchFormReturn {
    * Create or save. A refusal for the dispatch number (another dispatch holds it) comes back with `numberTaken`: the
    * number field already says so, and the caller takes the person to step 1, where that field is.
    */
-  submitForm: (generateInvoice?: boolean, onFailure?: (title: string, message: string) => void) => Promise<DispatchSubmitResult>;
+  submitForm: (
+    generateInvoice?: boolean,
+    onFailure?: (title: string, message: string) => void,
+    options?: DispatchSubmitOptions
+  ) => Promise<DispatchSubmitResult>;
 
   /**
    * Edit: read the dispatch again from the server and replace the form with it (wave B D1, "Open it again"). The step
@@ -770,7 +787,11 @@ export function useDispatchForm({
   /**
    * Submit the form (create or update)
    */
-  const submitForm = useCallback(async (generateInvoice: boolean = false, onFailure?: (title: string, message: string) => void): Promise<DispatchSubmitResult> => {
+  const submitForm = useCallback(async (
+    generateInvoice: boolean = false,
+    onFailure?: (title: string, message: string) => void,
+    submitOptions: DispatchSubmitOptions = {}
+  ): Promise<DispatchSubmitResult> => {
     // The form this submit belongs to. A form that is left (X) or reset while the request is on its way is a new
     // session: whatever answer comes late must not touch the next form (its `formCreated`, its saving flags, its alerts).
     const formSession = currentDispatchFormSession();
@@ -930,7 +951,7 @@ export function useDispatchForm({
       const lostAnswer = { onLostAnswer: () => dispatch(setCheckingAnswer(true)), signal: controller.signal };
 
       const result = isCreateMode
-        ? await createDispatch({ ...payload, submissionNonce }, lostAnswer)
+        ? await createDispatch({ ...payload, submissionNonce, warnDuplicate: submitOptions.warnDuplicate }, lostAnswer)
         : await updateDispatch(
             dispatchIdParam!,
             // The version the form read (wave B D1): the server refuses the save when the dispatch changed since.
@@ -986,6 +1007,10 @@ export function useDispatchForm({
       if (result.reason === 'NUMBER_TAKEN') {
         return await reportNumberTaken(result.number || header.disp_no);
       }
+
+      // A likely duplicate of a direct dispatch (migration 124): nothing was saved; the screen asks the person.
+      const possibleDuplicate = possibleDuplicateOf(result, 'dispatch');
+      if (possibleDuplicate) return { success: false, duplicate: possibleDuplicate };
 
       // Wave B: a stale dispatch, a locked date or number, the date rules, an order that moved.
       if (result.refusal) {

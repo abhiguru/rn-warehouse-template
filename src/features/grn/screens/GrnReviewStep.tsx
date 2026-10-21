@@ -58,6 +58,7 @@ import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { currentGrnFormSession, newSubmissionNonce } from '@/features/grn/utils/grnFormSession';
 import { checkSubmission } from '@/utils/lostAnswer';
 import { forgetUnfinishedSave } from '@/services/unfinishedSaves';
+import { askPossibleDuplicate, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
 import { uploadGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '@/features/grn/services/imageUploadService';
 import { photosNotUploadedMessage } from '@/features/grn/utils/photoSaveReport';
@@ -479,7 +480,17 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     const formSession = currentGrnFormSession();
     try {
       if (isCreateMode) {
-        await performCreate(formSession);
+        // A likely duplicate (backend migration 124) is a warning, never a block. The person answers it once the save has
+        // ended (the busy flags are down, the form is as it was): Cancel leaves the form on this step, Save anyway sends
+        // the same GRN again with the warning off. Nothing else can start a save meanwhile (`saveInFlightRef`).
+        let warnDuplicate = true;
+        for (;;) {
+          const duplicate = await performCreate(formSession, warnDuplicate);
+          if (!duplicate) break;
+          const choice = await askPossibleDuplicate(duplicate);
+          if (choice !== 'save' || currentGrnFormSession() !== formSession) break;
+          warnDuplicate = false;
+        }
       } else {
         await performUpdate(formSession);
       }
@@ -677,10 +688,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     );
   };
 
-  const performCreate = async (formSession: number) => {
+  /** @returns the earlier GRN this one looks like, when the server warned about it (nothing was saved). */
+  const performCreate = async (formSession: number, warnDuplicate = true): Promise<PossibleDuplicate | undefined> => {
     const formLeft = () => currentGrnFormSession() !== formSession;
     // Set when the form must stay locked after this call (see showNumberMaybeSaved).
     let keepLocked = false;
+    let possibleDuplicate: PossibleDuplicate | undefined;
     setIsSubmitting(true);
     dispatch(setIsSaving(true));
     try {
@@ -726,6 +739,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         })),
         rates: ratesToSave(),
         nonce,
+        warnDuplicate,
       };
 
       const result = await sendUntilAnswered(
@@ -760,6 +774,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           itemCount: items.length,
         });
         finishSave(result.data.id, result.data.photos);
+      } else if (result.duplicate) {
+        // Nothing was saved: the person is asked once this call has ended (see handleConfirmSubmit).
+        triggerWarning();
+        possibleDuplicate = result.duplicate;
       } else if (result.numberMaybeSaved) {
         triggerError();
         keepLocked = true;
@@ -783,6 +801,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         if (!formLeft()) dispatch(setIsSaving(false));
       }
     }
+    return possibleDuplicate;
   };
 
   /**

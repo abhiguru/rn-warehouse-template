@@ -34,6 +34,7 @@ import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { generateDispatchPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { useDispatchForm, type DispatchSubmitResult } from '@/hooks/useDispatchForm';
+import { askPossibleDuplicate } from '@/utils/possibleDuplicate';
 import { useDispatchLotStock } from '@/features/dispatch/hooks/useDispatchLotStock';
 import { LostAnswerStrip } from '@/features/dispatch/components/LostAnswerStrip';
 import type { DispatchItemData, DispatchImageData } from '@/types/dispatch.types';
@@ -313,6 +314,19 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             }
             // Re-enable button on error so user can retry
             setIsSubmitting(false);
+            // A likely duplicate (migration 124): nothing was saved. Once the confirm is gone the person is asked
+            // "Possible duplicate" [Cancel | Save anyway]; Cancel leaves the form as it was, Save anyway sends the same
+            // dispatch again with the warning off.
+            if (result.duplicate) {
+                const { duplicate } = result;
+                afterDialog.current = () => {
+                    void askPossibleDuplicate(duplicate).then((choice) => {
+                        if (choice !== 'save') return;
+                        setIsSubmitting(true);
+                        void performSubmit({ warnDuplicate: false });
+                    });
+                };
+            }
             // The error is shown by `afterDialog`, once the confirm is gone. When another dispatch holds the number,
             // the number field says so (and may already hold the next free number): the alert takes the person to
             // step 1, where that field is.
@@ -388,10 +402,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         }
     };
 
-    const performSubmit = async () => {
+    // `warnDuplicate: false` is "Save anyway" after the duplicate warning: the confirm is not open then (the person has
+    // answered the warning), so the next dialog is opened here, as when the confirm closed early.
+    const performSubmit = async (options?: { warnDuplicate?: boolean }) => {
         const result = await submitForm(false, (title, message) => {
             afterDialog.current = () => showAlert(title, message);
-        });
+        }, options);
         // The person left (the X) while the server was still being asked what became of the request: nobody to tell.
         if (result.aborted) return;
         setShowConfirmDialog(false);
@@ -400,7 +416,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
         // The confirm was closed earlier (the screen was locked): no "finished closing" is still to come, so the next
         // dialog is opened here.
-        if (confirmClosedEarly.current) {
+        if (confirmClosedEarly.current || options?.warnDuplicate === false) {
             confirmClosedEarly.current = false;
             runAfterDialog();
         }

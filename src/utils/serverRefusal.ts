@@ -51,6 +51,13 @@ export const REFUSAL = {
   GRN_DATE_LOCKED: 'GRN_DATE_LOCKED',
   /** A weight or pricing-mode edit would drop a GRN-only rate and the same save sends no new one (D24). */
   RATES_WOULD_DROP: 'RATES_WOULD_DROP',
+  // Backend migration 124 (fix batch 2026-10-21).
+  /**
+   * A GRN or a direct dispatch that looks like one created in the last 30 minutes (same customer, same set of items or
+   * lots...). Asked for by the caller (`p_warn_duplicate: true` / `warn_duplicate: true`; without it the server never
+   * checks), and a warning, never a block: the person can save anyway, which sends the same save with the flag false.
+   */
+  POSSIBLE_DUPLICATE: 'POSSIBLE_DUPLICATE',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

@@ -84,7 +84,12 @@ describe('createGRN with rates', () => {
     mockRpc.mockResolvedValue(unknown);
     const result = await createGRN({ header, items, rates });
     expect(result.error).toBe("This cold storage's server needs an update before rates can be saved with a GRN.");
-    expect(mockRpc).toHaveBeenCalledTimes(1);
+    // The save is tried once more without the duplicate warning (a server without p_rates has none either); the rates stay.
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    const [first, second] = mockRpc.mock.calls.map(c => c[1]);
+    expect(first.p_warn_duplicate).toBe(true);
+    expect('p_warn_duplicate' in second).toBe(false);
+    expect(second.p_rates).toEqual(rates);
   });
 
   // Review D2: a facility still on migration 85 must go on creating GRNs when no rate was touched.

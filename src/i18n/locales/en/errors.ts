@@ -543,6 +543,22 @@ export const errors = {
       keep: 'Keep editing',
       reload: 'Open it again',
     },
+    // A GRN or a direct dispatch that looks like one created in the last 30 minutes (backend migration 124): a warning,
+    // never a block. The sentences are whole, with and without the person, so a language can order them as it needs.
+    duplicate: {
+      title: 'Possible duplicate',
+      saveAnyway: 'Save anyway',
+      grn: 'GRN {{number}} for {{customer}} was created {{ago}} by {{person}} with the same items ({{items}}). Save this as a new GRN anyway?',
+      grnNoPerson: 'GRN {{number}} for {{customer}} was created {{ago}} with the same items ({{items}}). Save this as a new GRN anyway?',
+      dispatch:
+        'Dispatch {{number}} for {{customer}} was created {{ago}} by {{person}} with the same lots ({{items}}) and vehicle {{vehicle}}. Save this as a new dispatch anyway?',
+      dispatchNoPerson:
+        'Dispatch {{number}} for {{customer}} was created {{ago}} with the same lots ({{items}}) and vehicle {{vehicle}}. Save this as a new dispatch anyway?',
+      justNow: 'just now',
+      ago: { one: '{{count}} minute ago', other: '{{count}} minutes ago' },
+      // Ends a long list of items: the first few are named.
+      moreItems: '+{{count}} more',
+    },
   },
   // A GRN or dispatch whose save had no answer when the app closed: told at the next start, once the server says what became of it.
   unfinished: {

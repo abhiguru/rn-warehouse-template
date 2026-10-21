@@ -59,6 +59,8 @@ const WORDED_REFUSALS: ReadonlySet<string> = new Set([
   REFUSAL.DISPATCH_DATE_FUTURE,
   REFUSAL.DISPATCH_BEFORE_GRN,
   REFUSAL.ORDER_CHANGED,
+  // Migration 124: a likely duplicate of a direct dispatch made in the last 30 minutes (a warning, nothing was saved).
+  REFUSAL.POSSIBLE_DUPLICATE,
 ]);
 
 /** The result for a refusal of the list above, or undefined when the answer is none of them. */
@@ -334,6 +336,13 @@ export const createDispatch = async (payload: {
   images?: DispatchImageData[];
   /** The id of the form that makes this create (see DispatchFormState.submissionNonce): hashed into the key, never sent. */
   submissionNonce?: string;
+  /**
+   * Ask the server to warn about a likely duplicate (`warn_duplicate`, migration 124): a direct dispatch (no source order)
+   * made in the last 30 minutes with the same customer, lots and vehicle. Default true; a dispatch from an order is never
+   * checked and sends nothing. "Save anyway" passes false, after the person confirmed the warning. The flag is part of the
+   * request body, so of the request code: the same form saved with the warning and without it are two requests.
+   */
+  warnDuplicate?: boolean;
 }, options: LostAnswerOptions = {}): Promise<DispatchApiResponse> => {
   let finishMutation: (() => void) | undefined;
   try {
@@ -361,6 +370,9 @@ export const createDispatch = async (payload: {
         // Wave B (D5): the order as the form read it. The server refuses when the order changed since. Sent only when the
         // form holds it (an order read in full); part of the body the idempotency key hashes, so a resend is identical.
         ...(payload.header.source_order_updated_at ? { source_order_updated_at: payload.header.source_order_updated_at } : {}),
+        // Opt-in (migration 124): a direct dispatch asks the server to check for a likely duplicate. A dispatch from an order
+        // is never a duplicate (its order line is used up), and an older server ignores the key.
+        ...(payload.header.source_order_id ? {} : { warn_duplicate: payload.warnDuplicate ?? true }),
       },
       p_dispatch_items: payload.items.map((item) => ({
         gr_trl_id: item.grnItems_id, // The lot ID

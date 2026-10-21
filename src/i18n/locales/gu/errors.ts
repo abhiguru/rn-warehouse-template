@@ -551,6 +551,20 @@ export const errors: Translation<typeof source> = {
       keep: 'ફેરફાર ચાલુ રાખો',
       reload: 'ફરી ખોલો',
     },
+    // Gujarati draft for the owner's wording review (2026-10-21): a likely duplicate of a GRN or direct dispatch made in the last 30 minutes.
+    duplicate: {
+      title: 'શક્ય ડુપ્લિકેટ',
+      saveAnyway: 'તો પણ સાચવો',
+      grn: '{{customer}} માટેની આવક પાવતી {{number}} {{ago}} {{person}} દ્વારા આ જ આઇટમ ({{items}}) સાથે બનાવાઈ હતી. આને નવી આવક પાવતી તરીકે તો પણ સાચવવી છે?',
+      grnNoPerson: '{{customer}} માટેની આવક પાવતી {{number}} {{ago}} આ જ આઇટમ ({{items}}) સાથે બનાવાઈ હતી. આને નવી આવક પાવતી તરીકે તો પણ સાચવવી છે?',
+      dispatch:
+        '{{customer}} માટેની જાવક {{number}} {{ago}} {{person}} દ્વારા આ જ જથ્થા ({{items}}) અને વાહન {{vehicle}} સાથે બનાવાઈ હતી. આને નવી જાવક તરીકે તો પણ સાચવવી છે?',
+      dispatchNoPerson:
+        '{{customer}} માટેની જાવક {{number}} {{ago}} આ જ જથ્થા ({{items}}) અને વાહન {{vehicle}} સાથે બનાવાઈ હતી. આને નવી જાવક તરીકે તો પણ સાચવવી છે?',
+      justNow: 'હમણાં જ',
+      ago: { one: '{{count}} મિનિટ પહેલાં', other: '{{count}} મિનિટ પહેલાં' },
+      moreItems: '+{{count}} વધુ',
+    },
   },
   // Gujarati draft for the owner's wording review (2026-10-21): a save with no answer when the app closed, told at the next start.
   unfinished: {

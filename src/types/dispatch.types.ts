@@ -179,6 +179,11 @@ export interface CreateDispatchPayload {
     source_order_no?: string | null;
     /** Only when the order was read in full (wave B, D5). */
     source_order_updated_at?: string;
+    /**
+     * Create of a dispatch without a source order (migration 124): the server checks for a likely duplicate only when
+     * this is true; false is "Save anyway", after the person confirmed the warning. Absent: no check.
+     */
+    warn_duplicate?: boolean;
   };
   p_dispatch_items: Array<{
     gr_trl_id: string;          // Lot ID (maps to grnItems_id)
@@ -215,7 +220,7 @@ export interface DispatchApiResponse {
   order_lines_left?: number | null;
   /** The server's reason for a refusal: 'NUMBER_TAKEN' (or the unique-key error of an older server), or one of wave B's (see `refusal`). */
   reason?: string;
-  /** Wave B: the refusal the server sent (STALE_RECORD, DISPATCH_INVOICED, DISPATCH_DATE_FUTURE, ...), for the screen to word. */
+  /** Wave B: the refusal the server sent (STALE_RECORD, DISPATCH_INVOICED, DISPATCH_DATE_FUTURE, POSSIBLE_DUPLICATE, ...), for the screen to word. */
   refusal?: ServerRefusal;
   /** Update only (migration 121): what the edit did to the order, in bags. Absent on an older server. */
   order_sync?: { given_back: number; taken: number };

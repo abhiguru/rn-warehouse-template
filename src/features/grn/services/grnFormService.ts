@@ -22,6 +22,7 @@ import { isTemporaryGRNImageId } from './imageId';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { isLostAnswer } from '@/utils/lostAnswer';
 import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
+import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { t, formatIdentifier } from '@/i18n';
 import { refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
@@ -66,6 +67,14 @@ interface CreateGRNPayload {
    * GRN that was deleted since (contract item 11). Absent: the key is the body's alone, as before.
    */
   nonce?: string;
+  /**
+   * Ask the server to warn about a likely duplicate (`p_warn_duplicate`, backend migration 124): a GRN created in the last
+   * 30 minutes with the same customer, date and set of items. Default true. "Save anyway" sends false, after the person
+   * confirmed the warning. The flag is part of the request body, so it is part of the request code: the same form saved
+   * with the warning and without it are two requests. A server without migration 124 knows no such parameter: the save
+   * then goes out without it.
+   */
+  warnDuplicate?: boolean;
   /**
    * The answer of an earlier press of Create that got no answer, found stored on the server under this request's
    * key (`checkSubmission`): it is handled exactly as the answer that was lost, and nothing is sent.
@@ -328,6 +337,14 @@ class NumberTakenRefusal extends Error {
   }
 }
 
+/** save_grn warned that the GRN looks like one created a moment ago (backend migration 124): nothing was saved. */
+class PossibleDuplicateRefusal extends Error {
+  constructor(public readonly duplicate: PossibleDuplicate, message: string) {
+    super(message);
+    this.name = 'PossibleDuplicateRefusal';
+  }
+}
+
 /**
  * save_grn / update_grn refused the request by one of the rules of backend migration 121 (a `reason` and its fields,
  * see utils/serverRefusal). The screen words it itself from the reason; `message` is only the server's own sentence
@@ -406,6 +423,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         p_items: rpcItems,
         // Part of what the idempotency key hashes: the same form with other rates is another save.
         ...(payload.rates ? { p_rates: payload.rates } : {}),
+        // Opt-in (migration 124): the server checks for a likely duplicate only when asked. False is "Save anyway".
+        p_warn_duplicate: payload.warnDuplicate ?? true,
       };
       // The form's nonce is hashed with the body and never sent in it. The same body and nonce give the same key,
       // which is the request code the screen asks the server about after a lost answer.
@@ -430,15 +449,22 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         sent.last = { key, sentAt: Date.now(), args };
         ({ data: answer, error, status } = await authenticatedClient.rpc('save_grn', args));
       } else {
-        ({ data: answer, error, status } = await callSave(rpcPayload));
-        if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
-          // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
-          // has a stored rate, so the old call (and its key) loses nothing.
-          log.warn('save_grn does not take p_rates on this server; sent without it');
-          // The first request was answered (not applied): its note goes before the second one is written.
-          await forgetWritten();
-          const { p_rates: _noRates, ...withoutRates } = rpcPayload as typeof rpcPayload & { p_rates?: unknown };
-          ({ data: answer, error, status } = await callSave(withoutRates as typeof rpcPayload));
+        const body = rpcPayload as typeof rpcPayload & { p_rates?: unknown; p_warn_duplicate?: boolean };
+        ({ data: answer, error, status } = await callSave(body));
+        if (error && isUnknownFunctionSignature(error)) {
+          // PostgREST found no save_grn that takes these parameters: the request was not applied. A server without
+          // migration 124 knows no p_warn_duplicate (the warning is a convenience: the save goes out without it); one
+          // without migration 86 knows no p_rates (with nothing set the app already checked that every row has a stored
+          // rate, so the old call loses nothing). The second request has a body of its own, so a key of its own, and the
+          // first one's note goes before the second one is written.
+          const { p_warn_duplicate: _noWarning, ...withoutWarning } = body;
+          const { p_rates: _noRates, ...withoutRates } = withoutWarning;
+          const fallback = payload.rates && payload.rates.length === 0 ? withoutRates : withoutWarning;
+          if (Object.keys(fallback).length !== Object.keys(body).length) {
+            log.warn('save_grn does not take every parameter on this server; sent without the newer ones');
+            await forgetWritten();
+            ({ data: answer, error, status } = await callSave(fallback as typeof rpcPayload));
+          }
         }
       }
 
@@ -461,6 +487,10 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       log.error('save_grn returned failure', { errorCode: data?.error_code });
       const refusalCode = data?.error_code;
       if (isRateRefusalCode(refusalCode)) throw new RateRefusal(refusalCode, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }), data?.data);
+      // A likely duplicate (migration 124): a warning the person answers; nothing was saved. It is the server's answer to
+      // this request, also when the request is a RESEND after a lost answer: the attempt is settled.
+      const duplicate = possibleDuplicateOf(data, 'grn');
+      if (duplicate) throw new PossibleDuplicateRefusal(duplicate, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }));
       // Another GRN holds the number (it was taken since the form got it): the screen offers the next free one. On a
       // RESEND it means the first send may have saved it: the attempt is unsettled (`lostAnswer`), the screen checks
       // again and, if that finds nothing and it is refused again, says to look in the list; no next number.
@@ -511,7 +541,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
   } catch (error) {
     log.error('Error creating GRN with enhanced RPC', loggableError(error));
     // A resend whose session client could not be got is not settled either: the lock stays.
-    if (!lostAnswer && payload.resend && isUnsettledFailure(error)) lostAnswer = payload.resend;
+    if (!lostAnswer && payload.resend && !(error instanceof PossibleDuplicateRefusal) && isUnsettledFailure(error)) lostAnswer = payload.resend;
     // A refusal, or a failure before the request left: the server did not apply it, so nothing is left in doubt. A lost
     // answer keeps its note.
     if (!lostAnswer) await forgetWritten();
@@ -519,6 +549,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       success: false,
       error: error instanceof Error ? error.message : t('grn.form.createFailed'),
       lostAnswer,
+      duplicate: error instanceof PossibleDuplicateRefusal ? error.duplicate : undefined,
       numberTaken: error instanceof NumberTakenRefusal ? { number: error.number } : undefined,
       rateError: error instanceof RateRefusal ? { code: error.code, data: error.data } : undefined,
     };
