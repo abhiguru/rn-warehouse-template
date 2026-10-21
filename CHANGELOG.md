@@ -2,8 +2,8 @@
 
 ## Unreleased — Fixes from the phone fault test (2026-10-21)
 
-Pairs with the backend branch `fix/duplicate-warning-124` (migration 124) for the duplicate warning only; merge and deploy the backend
-first. The unfinished-save check uses `get_submission_result` (migration 120). I did not check that every facility has it (the GCS box
+Pairs with backend migration 124 for the duplicate warning only. Deploy order does not matter: on a server without 124 the app falls
+back (two stages, `p_rates` kept) and an older server ignores the dispatch's `warn_duplicate` key. The unfinished-save check uses `get_submission_result` (migration 120). I did not check that every facility has it (the GCS box
 may not): on a server without it the app cannot say what became of a save, so the notes are kept and nothing is told.
 
 - **Unfinished creates are remembered.** Before a GRN or dispatch create is sent, the app writes down the kind, the request code
