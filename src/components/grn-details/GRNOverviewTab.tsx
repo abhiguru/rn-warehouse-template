@@ -163,6 +163,9 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
         canDelete={can_delete}
         onDelete={onDelete}
         isDeleting={is_deleting}
+        // The GRN page asks its own, fuller question (the items leave stock; a GRN with dispatches or invoices can't be
+        // deleted): the person is asked once, not twice.
+        confirmDelete={false}
       />
 
       {/* Bottom Spacing */}
