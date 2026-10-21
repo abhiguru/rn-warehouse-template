@@ -57,7 +57,7 @@ import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lock
 import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { currentGrnFormSession, newSubmissionNonce } from '@/features/grn/utils/grnFormSession';
 import { checkSubmission } from '@/utils/lostAnswer';
-import { forgetUnfinishedSave } from '@/services/unfinishedSaves';
+import { forgetUnfinishedSave, releaseUnfinishedSave } from '@/services/unfinishedSaves';
 import { askPossibleDuplicate, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
 import { uploadGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '@/features/grn/services/imageUploadService';
@@ -594,10 +594,18 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       let result = await send();
       let takenOnResend = false;
       while (result.lostAnswer) {
-        if (formLeft()) return null;
+        // The person left: this screen gives the unfinished-save note up (the start-up check may settle it).
+        if (formLeft()) {
+          releaseUnfinishedSave(result.lostAnswer.key);
+          return null;
+        }
         if (result.numberTaken) {
-          // The second refusal for the number after a check that found nothing: the person looks in the list.
-          if (takenOnResend) return { ...result, lostAnswer: undefined, numberMaybeSaved: true };
+          // The second refusal for the number after a check that found nothing: the person looks in the list. They are
+          // told to check it, so nothing is left in doubt for the start-up check.
+          if (takenOnResend) {
+            await forgetUnfinishedSave(result.lostAnswer.key);
+            return { ...result, lostAnswer: undefined, numberMaybeSaved: true };
+          }
           takenOnResend = true;
         }
         const lost = result.lostAnswer;
@@ -610,11 +618,15 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         } catch (checkError) {
           // Aborted: the person left through the X. Anything else is not expected (the check retries by itself).
           if (!controller.signal.aborted) throw checkError;
+          releaseUnfinishedSave(lost.key);
           return null;
         } finally {
           lostAbortRef.current = null;
         }
-        if (controller.signal.aborted || formLeft()) return null;
+        if (controller.signal.aborted || formLeft()) {
+          releaseUnfinishedSave(lost.key);
+          return null;
+        }
         // The server has the stored answer of the lost request: it is the answer, and nothing is left in doubt for the
         // next start of the app (a request that is sent again settles its own note in createGRN).
         if (check.found) await forgetUnfinishedSave(lost.key);

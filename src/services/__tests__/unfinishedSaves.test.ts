@@ -8,6 +8,7 @@ import {
   UNFINISHED_SAVE_MAX_AGE_MS,
   forgetUnfinishedSave,
   readUnfinishedSaves,
+  releaseUnfinishedSave,
   rememberUnfinishedSave,
   resetUnfinishedSavesForTests,
   wasStartedThisRun,
@@ -87,6 +88,22 @@ describe('writing a create down', () => {
     await Promise.all([rememberUnfinishedSave(grn), rememberUnfinishedSave(dispatch)]);
 
     expect((await readUnfinishedSaves()).map((entry) => entry.requestKey).sort()).toEqual([dispatch.requestKey, grn.requestKey].sort());
+  });
+});
+
+describe('a screen that gives its save up', () => {
+  it('hands the note back: it stays stored, and is no longer this run\'s', async () => {
+    await rememberUnfinishedSave(grn);
+    expect(wasStartedThisRun(grn.requestKey)).toBe(true);
+
+    releaseUnfinishedSave(grn.requestKey);
+
+    expect(wasStartedThisRun(grn.requestKey)).toBe(false);
+    expect((await readUnfinishedSaves()).map((entry) => entry.requestKey)).toEqual([grn.requestKey]);
+  });
+
+  it('ignores a code that was never written down', () => {
+    expect(() => releaseUnfinishedSave('never-written')).not.toThrow();
   });
 });
 

@@ -560,13 +560,13 @@ export const errors = {
       moreItems: '+{{count}} more',
     },
   },
-  // A GRN or dispatch whose save had no answer when the app closed: told at the next start, once the server says what became of it.
+  // A GRN or dispatch create that was in flight when the app last closed: told at the next start, once the server says what became of it.
+  // The wording never claims the app closed, and "not found" is not "not saved": a record saved and deleted since is not found either.
   unfinished: {
-    savedTitle: 'Saved before the app closed',
+    title: 'Earlier save',
     grnSaved: 'GRN {{number}} for {{customer}} was saved.',
     dispatchSaved: 'Dispatch {{number}} for {{customer}} was saved.',
-    notSavedTitle: 'Not saved',
-    grnNotSaved: 'GRN {{number}} for {{customer}} was not saved before the app closed. Enter it again if you still need it.',
-    dispatchNotSaved: 'Dispatch {{number}} for {{customer}} was not saved before the app closed. Enter it again if you still need it.',
+    grnNotFound: 'No saved GRN {{number}} for {{customer}} was found. Enter it again if you still need it.',
+    dispatchNotFound: 'No saved dispatch {{number}} for {{customer}} was found. Enter it again if you still need it.',
   },
 };

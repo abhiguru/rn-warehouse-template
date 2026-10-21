@@ -1,10 +1,11 @@
 /**
  * createDispatch writes the create down before the request goes out and takes the note away once the server's answer is
  * known (src/services/unfinishedSaves.ts): saved, refused, found stored, or never sent. It keeps the note while the answer
- * is unknown (the person left, or the number was refused twice after a lost answer), so that the next start of the app
- * can ask the server what became of the request.
+ * is unknown because the person left, and hands it back (`releaseUnfinishedSave`) so that a later sign-in or start of the
+ * app can ask the server what became of the request. When the number was refused twice after a lost answer the person is
+ * told to check the list, and the note is removed.
  */
-import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
+import { forgetUnfinishedSave, releaseUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 import { createDispatch } from '../dispatchFormService';
 
 const order: string[] = [];
@@ -24,6 +25,7 @@ jest.mock('@/utils/submissionIdempotency', () => ({
 jest.mock('@/services/unfinishedSaves', () => ({
   rememberUnfinishedSave: jest.fn(async () => { order.push('remember'); }),
   forgetUnfinishedSave: jest.fn(async () => { order.push('forget'); }),
+  releaseUnfinishedSave: jest.fn(),
 }));
 jest.mock('../dispatchImageService', () => ({ uploadDeferredDispatchImages: jest.fn() }));
 jest.mock('expo-crypto', () => ({ randomUUID: () => 'fictional-uuid' }));
@@ -65,6 +67,7 @@ beforeEach(() => {
   mockCheckSubmission.mockReset();
   jest.mocked(rememberUnfinishedSave).mockClear();
   jest.mocked(forgetUnfinishedSave).mockClear();
+  jest.mocked(releaseUnfinishedSave).mockClear();
   for (const method of ['log', 'warn', 'error'] as const) jest.spyOn(console, method).mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());
@@ -133,7 +136,7 @@ describe('once the answer is known', () => {
   });
 });
 
-describe('while the answer is unknown', () => {
+describe('while the answer is unknown, or the person was told to check the list', () => {
   it('the person leaves during the check: the note stays', async () => {
     mockAnswers = [lost];
     const controller = new AbortController();
@@ -146,6 +149,8 @@ describe('while the answer is unknown', () => {
 
     expect(result).toMatchObject({ success: false, aborted: true });
     expect(forgetUnfinishedSave).not.toHaveBeenCalled();
+    // This screen gives the note up: a later sign-in or start may settle it.
+    expect(releaseUnfinishedSave).toHaveBeenCalledWith(KEY);
   });
 
   it('the person left while the first send was on its way and its answer was lost: the note stays', async () => {
@@ -160,9 +165,16 @@ describe('while the answer is unknown', () => {
 
     expect(result).toMatchObject({ success: false, aborted: true, maybeSaved: true });
     expect(forgetUnfinishedSave).not.toHaveBeenCalled();
+    expect(releaseUnfinishedSave).toHaveBeenCalledWith(KEY);
   });
 
-  it('the identical request is refused for the number twice after a lost answer: the note stays', async () => {
+  it('a save that was answered is not handed back', async () => {
+    mockAnswers = [saved];
+    await createDispatch(payload);
+    expect(releaseUnfinishedSave).not.toHaveBeenCalled();
+  });
+
+  it('the identical request is refused for the number twice after a lost answer: the person is told to check the list, so the note is removed', async () => {
     const taken = { data: { success: false, reason: 'NUMBER_TAKEN', number: 'D0042' }, error: null };
     mockAnswers = [lost, taken, taken];
     mockCheckSubmission.mockResolvedValue({ found: false });
@@ -170,6 +182,7 @@ describe('while the answer is unknown', () => {
     const result = await createDispatch(payload);
 
     expect(result).toMatchObject({ success: false, numberMaybeSaved: true });
-    expect(forgetUnfinishedSave).not.toHaveBeenCalled();
+    expect(forgetUnfinishedSave).toHaveBeenCalledWith(KEY);
+    expect(releaseUnfinishedSave).not.toHaveBeenCalled();
   });
 });

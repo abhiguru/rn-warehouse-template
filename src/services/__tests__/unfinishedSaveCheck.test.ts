@@ -1,29 +1,30 @@
 /**
  * The check at app start of the creates that were in flight when the app closed (src/services/unfinishedSaveCheck.ts):
- * the server is asked about each request code once, and the person is told "Saved before the app closed" [Open | OK],
- * "Not saved" [OK], or nothing (the entry waits for the next start).
+ * the server is asked about each request code once, and the person is told "Earlier save" with [OK | Open] when it was
+ * saved, "Earlier save" with [OK] when no saved record was found, or nothing (the entry waits for the next start). A note
+ * the server has not had time to settle (younger than the lost-answer wait plus 20 s) is not asked about yet.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act } from 'react-test-renderer';
 import { getSessionCacheScope } from '@/utils/cacheManager';
-import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
 import { showAlert } from '@/utils/alert';
 import { setLanguage } from '@/i18n';
-import { checkUnfinishedSaves, savedIdOf } from '../unfinishedSaveCheck';
+import { ASK_AFTER_MS, checkUnfinishedSaves, savedIdOf } from '../unfinishedSaveCheck';
 import { UNFINISHED_SAVE_MAX_AGE_MS, readUnfinishedSaves, rememberUnfinishedSave, resetUnfinishedSavesForTests } from '../unfinishedSaves';
 
 jest.mock('@/utils/cacheManager', () => ({ getSessionCacheScope: jest.fn() }));
-jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: jest.fn() }));
+jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: jest.fn(), onSessionChange: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 // The real question goes to the server; this test gives the answers.
-jest.mock('@/utils/lostAnswer', () => ({ askSubmission: jest.fn() }));
+jest.mock('@/utils/lostAnswer', () => ({ ...jest.requireActual('@/utils/lostAnswer'), askSubmission: jest.fn() }));
 
 const SCOPE = JSON.stringify(['https://alpha.invalid', 'inst-a', 'user-ana']);
 const grn = { kind: 'grn' as const, requestKey: 'warehouse-grn-key-1', number: 'Z0010', customerName: 'Hilltop Fresh Mart' };
 const dispatch = { kind: 'dispatch' as const, requestKey: 'warehouse-dispatch-key-1', number: 'D0042', customerName: 'Green Valley Traders' };
 
 /** An entry from an earlier run of the app (the start-up check leaves the entries of this run to their screens). */
-async function fromEarlierRun(entry: typeof grn | typeof dispatch, startedAt = Date.now() - 60_000) {
+async function fromEarlierRun(entry: typeof grn | typeof dispatch, startedAt = Date.now() - 5 * 60_000) {
   await rememberUnfinishedSave({ ...entry, startedAt });
   resetUnfinishedSavesForTests();
 }
@@ -43,6 +44,7 @@ beforeEach(async () => {
   jest.mocked(getSessionCacheScope).mockResolvedValue(SCOPE);
   generation = 1;
   jest.mocked(getSessionGeneration).mockImplementation(() => generation);
+  jest.mocked(onSessionChange).mockImplementation(() => () => {});
   ask = jest.fn();
   open = jest.fn();
 });
@@ -52,7 +54,7 @@ afterEach(() => {
 });
 
 describe('a create the server saved', () => {
-  it('a GRN: says so with Open and OK, and Open shows the GRN', async () => {
+  it('a GRN: says so with OK and Open (Open is the main action, on the right), and Open shows the GRN', async () => {
     await fromEarlierRun(grn);
     ask.mockResolvedValue({ found: true, response: { success: true, data: { grn_id: 'grn-id-1', gr_no: 'Z0010' } } });
 
@@ -61,11 +63,11 @@ describe('a create the server saved', () => {
     expect(ask).toHaveBeenCalledWith(grn.requestKey);
     expect(alerts()).toHaveLength(1);
     const [title, message, buttons] = alerts()[0];
-    expect(title).toBe('Saved before the app closed');
+    expect(title).toBe('Earlier save');
     expect(message).toBe('GRN Z0010 for Hilltop Fresh Mart was saved.');
-    expect(buttons?.map((button) => button.text)).toEqual(['Open', 'OK']);
+    expect(buttons?.map((button) => [button.text, button.style])).toEqual([['OK', 'cancel'], ['Open', undefined]]);
     expect(open).not.toHaveBeenCalled();
-    buttons?.[0].onPress?.();
+    buttons?.[1].onPress?.();
     expect(open).toHaveBeenCalledWith('grn', 'grn-id-1');
     // Told, so it is not asked about again.
     expect(await keys()).toEqual([]);
@@ -78,9 +80,9 @@ describe('a create the server saved', () => {
     await checkUnfinishedSaves({ ask, open });
 
     const [title, message, buttons] = alerts()[0];
-    expect(title).toBe('Saved before the app closed');
+    expect(title).toBe('Earlier save');
     expect(message).toBe('Dispatch D0042 for Green Valley Traders was saved.');
-    buttons?.[0].onPress?.();
+    buttons?.[1].onPress?.();
     expect(open).toHaveBeenCalledWith('dispatch', 'disp-id-1');
     expect(await keys()).toEqual([]);
   });
@@ -105,19 +107,20 @@ describe('a create the server saved', () => {
   });
 });
 
-describe('a create the server did not save', () => {
+describe('a create for which the server found no saved record', () => {
   it.each([
-    [grn, 'GRN Z0010 for Hilltop Fresh Mart was not saved before the app closed. Enter it again if you still need it.'],
-    [dispatch, 'Dispatch D0042 for Green Valley Traders was not saved before the app closed. Enter it again if you still need it.'],
-  ])('says so with OK alone, and does not ask again', async (entry, sentence) => {
+    [grn, 'No saved GRN Z0010 for Hilltop Fresh Mart was found. Enter it again if you still need it.'],
+    [dispatch, 'No saved dispatch D0042 for Green Valley Traders was found. Enter it again if you still need it.'],
+  ])('says so with OK alone (never that the app closed, or that nothing was saved), and does not ask again', async (entry, sentence) => {
     await fromEarlierRun(entry);
     ask.mockResolvedValue({ found: false });
 
     await checkUnfinishedSaves({ ask, open });
 
     const [title, message, buttons] = alerts()[0];
-    expect(title).toBe('Not saved');
+    expect(title).toBe('Earlier save');
     expect(message).toBe(sentence);
+    expect(message).not.toMatch(/closed|not saved/i);
     expect(buttons?.map((button) => button.text)).toEqual(['OK']);
     expect(await keys()).toEqual([]);
   });
@@ -144,8 +147,8 @@ describe('a question the server does not answer', () => {
   });
 
   it('settles the entries that were answered and keeps the one that was not', async () => {
-    await fromEarlierRun(grn, Date.now() - 120_000);
-    await fromEarlierRun(dispatch, Date.now() - 60_000);
+    await fromEarlierRun(grn, Date.now() - 10 * 60_000);
+    await fromEarlierRun(dispatch, Date.now() - 5 * 60_000);
     ask.mockResolvedValueOnce({ found: false }).mockResolvedValueOnce(undefined);
 
     await checkUnfinishedSaves({ ask, open });
@@ -196,8 +199,8 @@ describe('which entries are asked about', () => {
   });
 
   it('asks about each entry once, oldest first', async () => {
-    await fromEarlierRun(dispatch, Date.now() - 60_000);
-    await fromEarlierRun(grn, Date.now() - 120_000);
+    await fromEarlierRun(dispatch, Date.now() - 5 * 60_000);
+    await fromEarlierRun(grn, Date.now() - 10 * 60_000);
     ask.mockResolvedValue({ found: false });
 
     await checkUnfinishedSaves({ ask, open });
@@ -249,11 +252,146 @@ describe('the words', () => {
     await checkUnfinishedSaves({ ask, open });
 
     const [title, message, buttons] = alerts()[0];
-    expect(title).toBe('સચવાયું નથી');
+    expect(title).toBe('અગાઉ સાચવેલું');
     expect(message).toContain('Hilltop Fresh Mart');
     expect(message).toContain('Z0010');
-    expect(message).not.toMatch(/not saved|GRN/);
+    expect(message).not.toMatch(/saved|GRN/);
     expect(buttons?.[0].text).toBe('ઓકે');
   });
 });
 
+
+describe('a note the server has not had time to settle', () => {
+  // setImmediate stays real so the storage promises can be flushed while the clock is fake.
+  beforeEach(() => jest.useFakeTimers({ now: 1_800_000_000_000, doNotFake: ['setImmediate', 'nextTick'] }));
+  afterEach(() => jest.useRealTimers());
+  const flush = async () => { for (let n = 0; n < 5; n += 1) await new Promise((resolve) => setImmediate(resolve)); };
+
+  it('a note started 2 s ago is not asked about, not told and stays stored; after the wait it is asked', async () => {
+    await fromEarlierRun(grn, Date.now() - 2_000);
+    ask.mockResolvedValue({ found: false });
+
+    await checkUnfinishedSaves({ ask, open });
+
+    expect(ask).not.toHaveBeenCalled();
+    expect(alerts()).toHaveLength(0);
+    expect(await keys()).toEqual([grn.requestKey]);
+    // One timer will run the check again.
+    expect(jest.getTimerCount()).toBe(1);
+
+    await jest.advanceTimersByTimeAsync(ASK_AFTER_MS - 2_000 - 1);
+    await flush();
+    expect(ask).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(2_000);
+    await flush();
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ask).toHaveBeenCalledWith(grn.requestKey);
+    expect(alerts()).toHaveLength(1);
+    expect(await keys()).toEqual([]);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('is old enough at the lost-answer wait plus 20 s, not before', async () => {
+    expect(ASK_AFTER_MS).toBe(30_000);
+    await fromEarlierRun(grn, Date.now() - (ASK_AFTER_MS - 1));
+    await checkUnfinishedSaves({ ask, open });
+    expect(ask).not.toHaveBeenCalled();
+    jest.clearAllTimers();
+
+    await fromEarlierRun(dispatch, Date.now() - ASK_AFTER_MS);
+    ask.mockResolvedValue({ found: false });
+    await checkUnfinishedSaves({ ask, open });
+    expect(ask.mock.calls.map(([key]) => key)).toEqual([dispatch.requestKey]);
+  });
+
+  it('asks the old notes at once, and the young one when it is old enough, with one timer', async () => {
+    await fromEarlierRun(grn, Date.now() - 5 * 60_000);
+    await fromEarlierRun(dispatch, Date.now() - 5_000);
+    ask.mockResolvedValue({ found: false });
+
+    await checkUnfinishedSaves({ ask, open });
+
+    expect(ask.mock.calls.map(([key]) => key)).toEqual([grn.requestKey]);
+    expect(jest.getTimerCount()).toBe(1);
+    await jest.advanceTimersByTimeAsync(ASK_AFTER_MS);
+    await flush();
+    expect(ask.mock.calls.map(([key]) => key)).toEqual([grn.requestKey, dispatch.requestKey]);
+    expect(await keys()).toEqual([]);
+  });
+
+  it('the timer is cancelled when the session changes, and does nothing for a session that is gone', async () => {
+    let sessionChanged: () => void = () => {};
+    const stopWatching = jest.fn();
+    jest.mocked(onSessionChange).mockImplementation((listener) => { sessionChanged = listener; return stopWatching; });
+    await fromEarlierRun(grn, Date.now() - 2_000);
+
+    await checkUnfinishedSaves({ ask, open });
+    expect(jest.getTimerCount()).toBe(1);
+
+    generation = 2;
+    sessionChanged();
+    expect(jest.getTimerCount()).toBe(0);
+    expect(stopWatching).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(ASK_AFTER_MS);
+    await flush();
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it('a timer that fires after the session changed without being told does nothing', async () => {
+    await fromEarlierRun(grn, Date.now() - 2_000);
+    await checkUnfinishedSaves({ ask, open });
+
+    generation = 2;
+    await jest.advanceTimersByTimeAsync(ASK_AFTER_MS);
+    await flush();
+
+    expect(ask).not.toHaveBeenCalled();
+    expect(alerts()).toHaveLength(0);
+  });
+});
+
+describe('the session changing under a check', () => {
+  it('a signal for the new session waits for the old run and then runs for itself', async () => {
+    await fromEarlierRun(grn);
+    let answerOld!: (value: unknown) => void;
+    ask.mockImplementationOnce(() => new Promise((resolve) => { answerOld = resolve; }));
+    ask.mockResolvedValue({ found: false });
+
+    const old = checkUnfinishedSaves({ ask, open });
+    await act(async () => { await new Promise((resolve) => setImmediate(resolve)); });
+    generation = 2;
+    const next = checkUnfinishedSaves({ ask, open });
+    expect(next).not.toBe(old);
+
+    await act(async () => { answerOld({ found: false }); });
+    await Promise.all([old, next]);
+
+    // The old run told nobody (its session had ended); the new one asked again and told once.
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(alerts()).toHaveLength(1);
+    expect(await keys()).toEqual([]);
+  });
+
+  it('a second signal for the SAME session still returns the run that is going', async () => {
+    await fromEarlierRun(grn);
+    ask.mockResolvedValue({ found: false });
+    const first = checkUnfinishedSaves({ ask, open });
+    expect(checkUnfinishedSaves({ ask, open })).toBe(first);
+    await first;
+  });
+
+  it('tells nobody when the session ends while the note is being removed', async () => {
+    await fromEarlierRun(grn);
+    ask.mockResolvedValue({ found: false });
+    const remove = AsyncStorage.removeItem.bind(AsyncStorage);
+    jest.spyOn(AsyncStorage, 'removeItem').mockImplementation(async (key: string) => {
+      generation = 2;
+      return remove(key);
+    });
+
+    await checkUnfinishedSaves({ ask, open });
+
+    expect(alerts()).toHaveLength(0);
+  });
+});

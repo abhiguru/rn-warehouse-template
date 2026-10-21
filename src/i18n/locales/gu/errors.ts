@@ -566,13 +566,12 @@ export const errors: Translation<typeof source> = {
       moreItems: '+{{count}} વધુ',
     },
   },
-  // Gujarati draft for the owner's wording review (2026-10-21): a save with no answer when the app closed, told at the next start.
+  // Gujarati draft for the owner's wording review (2026-10-21): a create that was in flight when the app last closed, told at the next start.
   unfinished: {
-    savedTitle: 'એપ બંધ થયા પહેલાં સચવાઈ ગયું',
+    title: 'અગાઉ સાચવેલું',
     grnSaved: '{{customer}} માટેની આવક પાવતી {{number}} સચવાઈ ગઈ.',
     dispatchSaved: '{{customer}} માટેની જાવક {{number}} સચવાઈ ગઈ.',
-    notSavedTitle: 'સચવાયું નથી',
-    grnNotSaved: '{{customer}} માટેની આવક પાવતી {{number}} એપ બંધ થયા પહેલાં સચવાઈ નહોતી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
-    dispatchNotSaved: '{{customer}} માટેની જાવક {{number}} એપ બંધ થયા પહેલાં સચવાઈ નહોતી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
+    grnNotFound: '{{customer}} માટેની સચવાયેલી આવક પાવતી {{number}} મળી નથી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
+    dispatchNotFound: '{{customer}} માટેની સચવાયેલી જાવક {{number}} મળી નથી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
   },
 };

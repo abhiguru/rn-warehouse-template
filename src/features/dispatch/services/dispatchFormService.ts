@@ -27,7 +27,7 @@ import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
 import { REFUSAL, refusalOf } from '@/utils/serverRefusal';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
-import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
+import { forgetUnfinishedSave, releaseUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 
 const log = createLogger('dispatch');
 
@@ -430,11 +430,19 @@ export const createDispatch = async (payload: {
       options
     );
     // The person left while the answer was unknown, or the answer was lost and they left before being warned: still in
-    // doubt, so the note stays for the next start of the app.
-    if (!answer) return { success: false, aborted: true, error: '', message: '' };
-    if (answer.lostAfterLeaving) return { success: false, aborted: true, maybeSaved: true, error: '', message: '' };
-    // The resend was refused for the number twice: the first send may have saved it. The screen says so; no next number.
+    // doubt, so the note stays, and this screen no longer owns it: the next sign-in or start of the app may settle it.
+    if (!answer) {
+      releaseUnfinishedSave(rpcPayload.p_idempotency_key);
+      return { success: false, aborted: true, error: '', message: '' };
+    }
+    if (answer.lostAfterLeaving) {
+      releaseUnfinishedSave(rpcPayload.p_idempotency_key);
+      return { success: false, aborted: true, maybeSaved: true, error: '', message: '' };
+    }
+    // The resend was refused for the number twice: the first send may have saved it. The screen says so (the person is told
+    // to check the list); no next number. Nothing is left for the start-up check to settle.
     if (answer.numberMaybeSaved) {
+      await forgetUnfinishedSave(rpcPayload.p_idempotency_key);
       return {
         success: false,
         numberMaybeSaved: true,

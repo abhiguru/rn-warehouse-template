@@ -151,6 +151,15 @@ export function readUnfinishedSaves(): Promise<UnfinishedSave[]> {
   }, [] as UnfinishedSave[]);
 }
 
+/**
+ * The screen that was saving gives up on this request (the person left, or the check was stopped) while its answer is still
+ * unknown: from now on the start-up check may settle the note (at a later sign-in or start; it runs once per session), so the
+ * note is no longer "this run's". The note itself stays.
+ */
+export const releaseUnfinishedSave = (requestKey: string): void => {
+  startedThisRun.delete(requestKey);
+};
+
 /** True for a code written down in this run of the app (the screen that sent it is still dealing with it). */
 export const wasStartedThisRun = (requestKey: string): boolean => startedThisRun.has(requestKey);
 
