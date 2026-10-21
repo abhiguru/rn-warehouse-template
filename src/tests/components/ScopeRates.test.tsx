@@ -449,4 +449,18 @@ describe('adding', () => {
     // Only the customer's own rows are in the box: the default rate has none.
     expect(host('rate-box-monthly')).toHaveLength(1);
   });
+
+  it('says the unit once: the "Default rate" line has it, so the box does not repeat it on a line of its own', async () => {
+    await mount({ ...baseProps(itemRows('onion'), 'onion', false), customerId: ORCHARD_B.customer_id, customerName: ORCHARD_B.customer_name });
+    expect(texts()).toContain('Default rate: ₹3.50 per bag, per month');
+    expect(texts().filter(text => text === 'per bag, per month')).toHaveLength(0);
+    // The box itself is there, with its start line.
+    expect(host('rate-box-monthly')).toHaveLength(1);
+  });
+
+  it('a customer without a default rate for the item keeps the unit line over the box', async () => {
+    await mount(baseProps(CUMIN));
+    expect(texts().filter(text => text.startsWith('Default rate:'))).toHaveLength(0);
+    expect(texts().filter(text => text === 'per bag, per month')).toHaveLength(1);
+  });
 });

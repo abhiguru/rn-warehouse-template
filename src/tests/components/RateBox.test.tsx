@@ -46,6 +46,21 @@ function Harness({ tags, locked, readOnly, caption, ...over }: Over) {
   return <RateBox editor={editor} tags={tags} locked={locked} readOnly={readOnly} caption={caption} testID="box" />;
 }
 
+function RateBoxWithoutUnit() {
+  editor = useRateEditor({
+    item: { id: 'garlic', name: 'Review Garlic Desi' },
+    customer: null,
+    priceType: 'monthly',
+    mode: 'change',
+    rows: ROWS,
+    refreshRows: jest.fn(),
+    role: 'admin',
+    today: '2026-10-14',
+    onSaved: jest.fn(),
+  });
+  return <RateBox editor={editor} showUnit={false} testID="box" />;
+}
+
 // A stable array, so the draft is not reopened at every render.
 const ROWS = garlicRows();
 let tree: ReactTestRenderer | undefined;
@@ -80,6 +95,14 @@ it('shows the unit of the rate above its table', async () => {
   await mount();
   expect(texts()).toContain('per bag, per month');
   expect(byTestId('box-table').length).toBeGreaterThan(0);
+});
+
+it('leaves the unit line out when the screen already said it just above (showUnit false)', async () => {
+  await act(async () => { tree = create(<RateBoxWithoutUnit />); });
+  expect(texts()).not.toContain('per bag, per month');
+  // The table is still there, and its rent fields still say "₹/month".
+  expect(byTestId('box-table').length).toBeGreaterThan(0);
+  expect(texts().some(text => text.startsWith('Rent ₹/month'))).toBe(true);
 });
 
 it('shows the line since when the rate is in force under the unit, when it is given', async () => {

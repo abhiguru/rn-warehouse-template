@@ -99,6 +99,8 @@ interface BoxProps {
   startsOn?: string;
   /** Since when the rate in the box is in force. */
   caption?: string;
+  /** False when the line "Default rate: ... <unit>" sits right above the box and already says the unit. */
+  showUnit?: boolean;
   locked: boolean;
   shared: Shared;
   report: (id: string, report: BoxReport | null) => void;
@@ -119,7 +121,7 @@ const makeStyles = (th: ThemeTokens) => ({
   add: { alignSelf: 'flex-start' as const, marginHorizontal: layout.marginCompact },
 });
 
-function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, report, onSaved, onClose, onDiscard }: BoxProps) {
+function ScopeBox({ id, mode, priceType, startsOn, caption, showUnit = true, locked, shared, report, onSaved, onClose, onDiscard }: BoxProps) {
   const styles = useThemedStyles(makeStyles);
   const adding = mode === 'add' || mode === 'addCustomer';
   const [saved, setSaved] = useState(false);
@@ -263,6 +265,7 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, locked, shared, repo
             fields={boxFields}
             oneTime={priceType === 'one_time'}
             caption={caption}
+            showUnit={showUnit}
             startSignal={startAsk}
             locked={locked}
             testID={`rate-box-${id}`}
@@ -534,6 +537,8 @@ export function ScopeRates({
                 priceType={priceType}
                 startsOn={current.startsOn}
                 caption={hasRate && current.mode !== 'upcoming' ? inForceText(bands) : undefined}
+                // "Default rate: ... per bag, per month" is right above the box and says the unit; say it once.
+                showUnit={defaultBands.length === 0}
                 locked={activeId !== undefined && activeId !== priceType}
                 shared={shared}
                 report={report}

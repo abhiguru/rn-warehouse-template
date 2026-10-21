@@ -42,6 +42,12 @@ export interface RateBoxProps {
   /** The other box is being edited: show the figures, say why they cannot be typed in. */
   locked?: boolean;
   readOnly?: boolean;
+  /**
+   * Draw the unit line ("per bag, per month") above the table (default: yes). The customer's page passes false when the
+   * "Default rate: ₹3.00–₹6.00 per bag, per month" line is right above the box: the unit would be said twice in a row.
+   * (The table's rent fields still say "₹/month", and a screen reader hears the full unit on each field.)
+   */
+  showUnit?: boolean;
   testID: string;
 }
 
@@ -51,7 +57,7 @@ const makeStyles = (th: ThemeTokens) => ({
   note: { ...typography.footnote, color: th.text.secondary },
 });
 
-export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, locked = false, readOnly = false, testID }: RateBoxProps) {
+export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, locked = false, readOnly = false, showUnit = true, testID }: RateBoxProps) {
   const styles = useThemedStyles(makeStyles);
   const offline = useIsOffline();
   const [copyOpen, setCopyOpen] = useState(false);
@@ -81,7 +87,7 @@ export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, l
           ]}
         />
       ) : null}
-      <Text style={styles.unit}>{unitText(priceType)}</Text>
+      {showUnit ? <Text style={styles.unit}>{unitText(priceType)}</Text> : null}
       <RateStartLine
         day={draft.startsOn}
         choice={draft.startsOnChoice}
