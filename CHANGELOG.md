@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased — Fixes from the phone fault test (2026-10-21)
+
+Pairs with the backend branch `fix/duplicate-warning-124` (migration 124) for the duplicate warning only; merge and deploy the backend
+first. Everything else needs no backend change beyond migration 120 (`get_submission_result`), which is already on every facility.
+
+- **Unfinished creates are remembered.** Before a GRN or dispatch create is sent, the app writes down the kind, the request code
+  actually sent, the number and the customer's name, per facility and per signed-in person (`src/services/unfinishedSaves.ts`). The note
+  is removed when the answer is known (saved, refused, found stored, or never sent) and kept while the answer is lost. At the next
+  start, once the session is ready, the app asks `get_submission_result` once per note: "Saved before the app closed" [Open | OK],
+  "Not saved" [OK], or nothing (no answer, an error or a server too old to know the question: the note waits for the next start).
+  Notes older than 7 days are dropped. New text: `errors.unfinished.*`, `common.open`.
+- **Possible duplicate.** A normal GRN create sends `p_warn_duplicate: true`; a direct dispatch create sends `warn_duplicate: true` in
+  `p_dispatch_data` (a dispatch from an order sends none). The server's POSSIBLE_DUPLICATE answer opens "Possible duplicate"
+  [Cancel | Save anyway]; Save anyway sends the same save with the flag false. A server without migration 124 gets the GRN save again
+  without the parameter; for a dispatch the extra key is ignored. New text: `errors.refusal.duplicate.*`.
+- **GRN delete asks once** (the Overview tab no longer asks before the page's own, fuller question).
+- **Queue:** "Recently dispatched" is read again, quietly, when the person returns to the queue. It lists at most 10 dispatches.
+- **Customer rate screen:** the unit ("per bag, per month") is said once beside "Default rate", not again on the box.
+- **Dispatch create and save:** a resend after a lost answer uses the current sign-in token (a client holds the token it was made with).
+- **Invoice create/edit while a lost answer is checked:** the X and the Android Back key open "Leave without an answer?" [Keep waiting |
+  Leave anyway] (already in the code; a test now pins it for create and edit).
+
 ## Unreleased — Old invoice rate editor removed
 
 - Old invoice rate editor removed: `app/item-rates/edit.tsx`, `editorPath`/`InvoiceEditorParams`, mode `'invoice'`, the Received start chip, `findCustomerPrice`, 10 `pricing.edit` keys. No backend change.
