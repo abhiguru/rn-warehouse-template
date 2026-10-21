@@ -199,5 +199,9 @@ export const lists: Translation<typeof source> = {
     createdBy: '{{name}} દ્વારા બનાવેલી',
     showItems: '{{items}} બતાવો',
     hideItems: 'આઇટમ છુપાવો',
+    // Gujarati draft for the owner's wording review (2026-10-21): the end of the section when there are more than the newest 10; opens the full list.
+    seeAll: 'બધી {{count}} જુઓ →',
+    seeAllLabel: 'તાજેતરમાં જાવક થયેલા બધા {{count}} ઑર્ડર જુઓ',
+    loadMoreFailed: 'વધુ તાજેતરની જાવક લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
   },
 };

@@ -27,6 +27,7 @@ import {
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getRecentDispatchedOrders } from '@/services/dispatch-service';
+import { Button } from '@/components/ui/Button';
 import { RecentDispatchedOrderCard } from './list-items/RecentDispatchedOrderCard';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -105,6 +106,11 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.callout,
     color: t.brand.tint,
   },
+  // "See all N →" at the end of the list, to the right (a text button, §13.1)
+  seeAll: {
+    alignSelf: 'flex-end' as const,
+    marginHorizontal: layout.marginCompact,
+  },
 });
 
 /** Read when the load fails, so it is in the app's language (docs/I18N.md rule 2). */
@@ -119,13 +125,24 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
   const t = useTokens();
   const [isExpanded, setIsExpanded] = useState(false); // Collapsed by default
   const [dispatches, setDispatches] = useState<RecentDispatchedOrder[]>([]);
+  // How many order dispatches there are in all (the server's count); only the newest `limit` are listed.
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
+  // The number of the newest read: the answer of an older read never replaces the rows of a newer one.
+  const requestRef = useRef(0);
+  // The newest read that shows loading and errors (not quiet) while it is in flight, or 0.
+  const loudRef = useRef(0);
 
-  // Fetch recent dispatched orders. `quiet`: keep what is shown while the read runs, and keep it if the read fails.
-  const fetchDispatches = useCallback(async (quiet: boolean = false) => {
+  // Fetch recent dispatched orders. `quietAsked`: keep what is shown while the read runs, and keep it if the read fails.
+  // A quiet read that takes over from a read that is still showing "loading" does that read's work (loading, error).
+  const fetchDispatches = useCallback(async (quietAsked: boolean = false) => {
+    const request = ++requestRef.current;
+    const latest = () => isMountedRef.current && request === requestRef.current;
+    const quiet = quietAsked && loudRef.current === 0;
     if (!quiet) {
+      loudRef.current = request;
       setLoading(true);
       setError(null);
     }
@@ -137,28 +154,30 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
 
       const result = await getRecentDispatchedOrders(limit, 0);
 
-      if (!isMountedRef.current) return;
+      if (!latest()) return;
 
       if (result.success && result.data) {
+        const rows = result.data.dispatches || [];
         if (__DEV__) {
           console.log('[RecentDispatchedOrdersSection] Fetched:', {
-            count: result.data.dispatches?.length || 0,
+            count: rows.length,
             total: result.data.total_count || 0,
           });
         }
-        setDispatches(result.data.dispatches || []);
+        setDispatches(rows);
+        // An answer without a count (an older server) counts the rows it gave.
+        setTotalCount(typeof result.data.total_count === 'number' ? Math.max(result.data.total_count, rows.length) : rows.length);
         setError(null);
       } else if (!quiet) {
         setError(loadError());
       }
     } catch (err) {
-      if (!isMountedRef.current) return;
+      if (!latest()) return;
       console.error('[RecentDispatchedOrdersSection] Error:', err);
       if (!quiet) setError(loadError());
     } finally {
-      if (isMountedRef.current && !quiet) {
-        setLoading(false);
-      }
+      if (loudRef.current === request) loudRef.current = 0;
+      if (latest()) setLoading(false);
     }
   }, [limit]);
 
@@ -197,18 +216,25 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
     router.push(`/dispatch-details/${dispatch.dispatch_id}`);
   }, []);
 
+  // The full list of recently dispatched orders (app/recent-dispatched.tsx)
+  const handleSeeAll = useCallback(() => {
+    router.push('/recent-dispatched');
+  }, []);
+
   // Don't render section if no dispatches (including during initial load)
   if (dispatches.length === 0 && !error) {
     return null;
   }
 
-  const countLabel = formatCount(dispatches.length, 'dispatch', 'dispatches');
+  // The header counts all the order dispatches; the list below holds the newest `limit` of them.
+  const shownCount = Math.max(totalCount, dispatches.length);
+  const countLabel = formatCount(shownCount, 'dispatch', 'dispatches');
 
   return (
     <View style={styles.wrapper}>
       <SectionHeader
         title={translate('lists.recent.title')}
-        count={loading ? undefined : dispatches.length}
+        count={loading ? undefined : shownCount}
         action={{
           label: isExpanded ? translate('lists.recent.hide') : translate('lists.recent.show'),
           onPress: toggleExpand,
@@ -264,6 +290,19 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
               onPress={handleDispatchPress}
             />
           ))}
+          {/* More dispatches than the newest `limit` listed: the full list is one tap away */}
+          {shownCount > dispatches.length ? (
+            <Button
+              type="tertiary"
+              size="auto"
+              style={styles.seeAll}
+              onPress={handleSeeAll}
+              accessibilityLabel={translate('lists.recent.seeAllLabel', { count: shownCount })}
+              testID="recent-dispatched-see-all"
+            >
+              {translate('lists.recent.seeAll', { count: shownCount })}
+            </Button>
+          ) : null}
         </View>
       )}
     </View>

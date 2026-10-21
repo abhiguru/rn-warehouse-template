@@ -196,5 +196,9 @@ export const lists = {
     createdBy: 'Created by {{name}}',
     showItems: 'Show {{items}}',
     hideItems: 'Hide items',
+    // The end of the section when there are more dispatches than the newest 10 listed: opens the full list.
+    seeAll: 'See all {{count}} →',
+    seeAllLabel: 'See all {{count}} recently dispatched orders',
+    loadMoreFailed: "Couldn't load more recent dispatches. Check your connection and try again.",
   },
 };

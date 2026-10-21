@@ -380,6 +380,8 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
       <Stack.Screen name="help" options={{ headerShown: false }} />
       <Stack.Screen name="customers" options={{ headerShown: false }} />
       <Stack.Screen name="sensors" options={{ headerShown: false }} />
+      {/* Every dispatch made from an order: "See all N" at the end of the order queue's Recently dispatched section */}
+      <Stack.Screen name="recent-dispatched" options={{ headerShown: false }} />
 
       {/* Legal screens */}
       <Stack.Screen name="terms-of-service" options={{ headerShown: false }} />
