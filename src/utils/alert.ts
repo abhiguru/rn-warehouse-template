@@ -56,7 +56,36 @@ export function closeAlert(id: number): boolean {
   if (queue[0]?.id !== id) return false;
   queue = queue.slice(1);
   notifyQueue();
+  wakeClosedWaiters();
   return true;
+}
+
+// iOS cannot present a Modal over one that is still closing (the second is dropped), and the host's dialog is a Modal that
+// takes a moment to close after the last dialog is answered. The host says so (`markAlertHostClosing`), and a screen that
+// is about to open a Modal of its own waits for `whenAlertsClosed` (docs/STYLE_GUIDE.md §14.3: the next dialog opens only
+// after the one before has finished closing). On Android, and with no host, a Modal that is hidden is gone at once.
+let hostClosing = false;
+let closedWaiters: Array<() => void> = [];
+
+function wakeClosedWaiters(): void {
+  if (queue.length > 0 || hostClosing) return;
+  const waiting = closedWaiters;
+  closedWaiters = [];
+  waiting.forEach(resolve => resolve());
+}
+
+/** Called by AlertHost (iOS): true as the last dialog is answered, false when its Modal has finished closing. */
+export function markAlertHostClosing(closing: boolean): void {
+  hostClosing = closing;
+  wakeClosedWaiters();
+}
+
+/** Resolves when no dialog of the host is on screen, or closing: at once if there is none. Never rejects. */
+export function whenAlertsClosed(): Promise<void> {
+  if (queue.length === 0 && !hostClosing) return Promise.resolve();
+  return new Promise<void>(resolve => {
+    closedWaiters.push(resolve);
+  });
 }
 
 /**
@@ -70,6 +99,7 @@ export function dropAlertsWithHandlers(): void {
   if (dropped.length === 0) return;
   queue = queue.filter(request => !dropped.includes(request));
   notifyQueue();
+  wakeClosedWaiters();
   dropped.forEach(request => {
     if (request.asked) request.options?.onDismiss?.();
   });
@@ -79,7 +109,9 @@ export function dropAlertsWithHandlers(): void {
 export function resetAlertQueueForTests(): void {
   queue = [];
   listener = null;
+  hostClosing = false;
   notifyQueue();
+  wakeClosedWaiters();
 }
 
 /**

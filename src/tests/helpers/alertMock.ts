@@ -30,7 +30,8 @@ export function alertModuleMock(showAlert: Recorder) {
         { cancelable: true, onDismiss: () => resolve(dismissed) }
       );
     });
-  return { showAlert, askAlert, registerAlertHost: () => () => undefined };
+  // No Modal is drawn here, so there is nothing left closing.
+  return { showAlert, askAlert, registerAlertHost: () => () => undefined, whenAlertsClosed: async () => undefined };
 }
 
 const callsOf = (showAlert: { mock: { calls: unknown[][] } }) => showAlert.mock.calls as AlertCall[];

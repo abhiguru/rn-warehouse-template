@@ -3,11 +3,11 @@
  * [Cancel | Save anyway], in English and Gujarati, with and without the person who made the earlier record.
  */
 import { setLanguage } from '@/i18n';
-import { askAlert } from '@/utils/alert';
+import { askAlert, whenAlertsClosed } from '@/utils/alert';
 import { REFUSAL } from '@/utils/serverRefusal';
 import { agoText, askPossibleDuplicate, duplicateMessage, itemsText, possibleDuplicateOf, type PossibleDuplicate } from '../possibleDuplicate';
 
-jest.mock('@/utils/alert', () => ({ askAlert: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ askAlert: jest.fn(), whenAlertsClosed: jest.fn(async () => undefined) }));
 
 const NOW = Date.parse('2026-10-21T10:30:00Z');
 const minutesAgo = (n: number) => new Date(NOW - n * 60_000).toISOString();
@@ -109,6 +109,23 @@ describe('how long ago', () => {
     expect(agoText(new Date(NOW - minutes * 60_000).toISOString(), NOW)).toBe(text);
   });
 
+  it('never says more than the window the server looked back over', () => {
+    expect(agoText(minutesAgo(75), NOW, 30)).toBe('30 minutes ago');
+    expect(agoText(minutesAgo(30), NOW, 30)).toBe('30 minutes ago');
+    expect(agoText(minutesAgo(31), NOW, 30)).toBe('30 minutes ago');
+    expect(agoText(minutesAgo(12), NOW, 30)).toBe('12 minutes ago');
+    // The window of the answer is used by the question.
+    const grn = possibleDuplicateOf({ ...grnBody, existing_created_at: minutesAgo(75) }, 'grn') as PossibleDuplicate;
+    expect(duplicateMessage(grn, NOW)).toContain('was created 30 minutes ago by');
+    const short = possibleDuplicateOf({ ...grnBody, existing_created_at: minutesAgo(75), window_minutes: 10 }, 'grn') as PossibleDuplicate;
+    expect(duplicateMessage(short, NOW)).toContain('was created 10 minutes ago by');
+  });
+
+  it('reads "just now" for a negative age (a record dated after this phone\'s clock)', () => {
+    expect(agoText(minutesAgo(-5), NOW, 30)).toBe('just now');
+    expect(agoText(minutesAgo(-0.5), NOW, 30)).toBe('just now');
+  });
+
   it('reads "just now" for a time that is missing, unreadable, or ahead of this phone\'s clock', () => {
     expect(agoText(undefined, NOW)).toBe('just now');
     expect(agoText('not a date', NOW)).toBe('just now');
@@ -186,5 +203,25 @@ describe('the question', () => {
       ['Save anyway', 'save', undefined],
     ]);
     expect(dismissed).toBe('cancel');
+  });
+
+  it('Save anyway is answered only after the dialog has finished closing; Cancel needs no wait', async () => {
+    let closed!: () => void;
+    jest.mocked(whenAlertsClosed).mockReturnValueOnce(new Promise<void>((resolve) => { closed = resolve; }));
+    jest.mocked(askAlert).mockResolvedValueOnce('save');
+    let answered = false;
+
+    const asking = askPossibleDuplicate(grn).then((choice) => { answered = true; return choice; });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(answered).toBe(false);
+
+    closed();
+    await expect(asking).resolves.toBe('save');
+
+    jest.mocked(whenAlertsClosed).mockClear();
+    jest.mocked(askAlert).mockResolvedValueOnce('cancel');
+    await expect(askPossibleDuplicate(grn)).resolves.toBe('cancel');
+    expect(whenAlertsClosed).not.toHaveBeenCalled();
   });
 });

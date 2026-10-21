@@ -1,8 +1,8 @@
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Modal, Platform } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { AlertHost } from '../AlertHost';
-import { resetAlertQueueForTests, showAlert } from '@/utils/alert';
+import { resetAlertQueueForTests, showAlert, whenAlertsClosed } from '@/utils/alert';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 
 let mockTheme = { preference: 'light', brand: 'orange' };
@@ -131,3 +131,88 @@ describe('a double press', () => {
   });
 });
 
+
+// iOS cannot present a Modal over one that is still closing. The host tells a screen that is about to open a Modal of its
+// own (whenAlertsClosed) when its last dialog has finished closing: Modal.onDismiss on iOS, at once on Android.
+describe('whenAlertsClosed', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    resetAlertQueueForTests();
+  });
+  const settled = async (promise: Promise<void>) => {
+    let done = false;
+    void promise.then(() => { done = true; });
+    await act(async () => { await Promise.resolve(); });
+    return done;
+  };
+
+  it('is ready at once when no dialog was ever shown', async () => {
+    expect(await settled(whenAlertsClosed())).toBe(true);
+  });
+
+  it('iOS: waits for the Modal of the last dialog to finish closing', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<AlertHost />); });
+    act(() => showAlert('Possible duplicate', 'Save this anyway?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Save anyway' }]));
+    expect(await settled(whenAlertsClosed())).toBe(false);
+
+    press(tree, 'Save anyway');
+    const waiting = whenAlertsClosed();
+    // The dialog was answered and left the queue, but its Modal has not said it finished closing.
+    expect(await settled(waiting)).toBe(false);
+
+    act(() => { tree.root.findByType(Modal).props.onDismiss(); });
+    expect(await settled(waiting)).toBe(true);
+    expect(await settled(whenAlertsClosed())).toBe(true);
+    act(() => tree.unmount());
+  });
+
+  it('iOS: goes on after a while if the Modal never says so', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<AlertHost />); });
+    act(() => showAlert('Title', 'Message', [{ text: 'OK' }]));
+    press(tree, 'OK');
+    const waiting = whenAlertsClosed();
+    expect(await settled(waiting)).toBe(false);
+
+    act(() => { jest.advanceTimersByTime(1600); });
+
+    expect(await settled(waiting)).toBe(true);
+    act(() => tree.unmount());
+  });
+
+  it('iOS: a dialog that follows another in the queue keeps the host open: only the last one closes it', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<AlertHost />); });
+    act(() => { showAlert('First', 'One', [{ text: 'OK' }]); showAlert('Second', 'Two', [{ text: 'Done' }]); });
+    press(tree, 'OK');
+    // The second dialog is shown in the same Modal: still waiting, and not "closing" yet.
+    expect(texts(tree)).toContain('Second');
+    expect(await settled(whenAlertsClosed())).toBe(false);
+
+    press(tree, 'Done');
+    const waiting = whenAlertsClosed();
+    expect(await settled(waiting)).toBe(false);
+    act(() => { tree.root.findByType(Modal).props.onDismiss(); });
+    expect(await settled(waiting)).toBe(true);
+    act(() => tree.unmount());
+  });
+
+  it('Android: ready as soon as the last dialog is answered', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<AlertHost />); });
+    act(() => showAlert('Title', 'Message', [{ text: 'OK' }]));
+    const waiting = whenAlertsClosed();
+    expect(await settled(waiting)).toBe(false);
+
+    press(tree, 'OK');
+
+    expect(await settled(waiting)).toBe(true);
+    act(() => tree.unmount());
+  });
+});

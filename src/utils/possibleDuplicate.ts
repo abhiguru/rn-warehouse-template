@@ -12,7 +12,7 @@
  * The app words the question itself from these facts, in the app's language (the server's English sentence is
  * never shown).
  */
-import { askAlert } from '@/utils/alert';
+import { askAlert, whenAlertsClosed } from '@/utils/alert';
 import { t, formatIdentifier } from '@/i18n';
 import { REFUSAL, refusalOf, refusalString, refusalNumber, type ServerRefusal } from '@/utils/serverRefusal';
 
@@ -88,14 +88,16 @@ export function possibleDuplicateOf(answer: unknown, fallbackKind: DuplicateKind
 }
 
 /**
- * "just now" under one minute, else "1 minute ago" / "N minutes ago". A time the server did not give (or a clock that is
- * behind the server's) reads "just now": the record is inside the window either way.
+ * "just now" under one minute, else "1 minute ago" / "N minutes ago", never more than the window the server looked back
+ * over (a phone clock that runs ahead would otherwise say "75 minutes ago" of a record inside a 30 minute window). A time the
+ * server did not give, or one ahead of this phone's clock (a negative age), reads "just now": the record is inside the window
+ * either way.
  */
-export function agoText(createdAt: string | undefined, now: number = Date.now()): string {
+export function agoText(createdAt: string | undefined, now: number = Date.now(), windowMinutes: number = DEFAULT_WINDOW_MINUTES): string {
   const created = createdAt ? Date.parse(createdAt) : NaN;
   const minutes = Number.isFinite(created) ? Math.floor((now - created) / 60_000) : 0;
   if (minutes < 1) return t('errors.refusal.duplicate.justNow');
-  return t('errors.refusal.duplicate.ago', { count: minutes });
+  return t('errors.refusal.duplicate.ago', { count: Math.min(minutes, Math.max(1, windowMinutes)) });
 }
 
 function itemLabel(item: DuplicateItem): string {
@@ -115,7 +117,7 @@ export function duplicateMessage(duplicate: PossibleDuplicate, now: number = Dat
   const params = {
     number: formatIdentifier(duplicate.existingNumber),
     customer: duplicate.customerName,
-    ago: agoText(duplicate.createdAt, now),
+    ago: agoText(duplicate.createdAt, now, duplicate.windowMinutes),
     person: duplicate.createdBy ?? '',
     items: itemsText(duplicate.items),
     vehicle: duplicate.vehicle ?? '',
@@ -130,10 +132,12 @@ export type DuplicateChoice = 'cancel' | 'save';
 
 /**
  * The question "Possible duplicate" with [Cancel | Save anyway]. Cancel (and closing the dialog) leaves the form as it
- * was; Save anyway is the person's answer to send the same save again with the override.
+ * was; Save anyway is the person's answer to send the same save again with the override. "Save anyway" is answered only
+ * once the question's dialog has finished closing (iOS cannot present the success dialog over a Modal that is still
+ * closing, and a fast answer could otherwise arrive first: docs/STYLE_GUIDE.md §14.3).
  */
-export function askPossibleDuplicate(duplicate: PossibleDuplicate): Promise<DuplicateChoice> {
-  return askAlert<DuplicateChoice>(
+export async function askPossibleDuplicate(duplicate: PossibleDuplicate): Promise<DuplicateChoice> {
+  const choice = await askAlert<DuplicateChoice>(
     t('errors.refusal.duplicate.title'),
     duplicateMessage(duplicate),
     [
@@ -142,4 +146,6 @@ export function askPossibleDuplicate(duplicate: PossibleDuplicate): Promise<Dupl
     ],
     'cancel'
   );
+  if (choice === 'save') await whenAlertsClosed();
+  return choice;
 }

@@ -6,11 +6,11 @@
  * primary action. Two buttons sit side by side; three or more stack.
  * Android back and tapping the scrim cancel, when the alert is cancelable.
  */
-import React, { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
-import { Modal, Pressable, ScrollView, Text, View, type AlertButton } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Modal, Platform, Pressable, ScrollView, Text, View, type AlertButton } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import { closeAlert, getAlertQueue, registerAlertHost, subscribeAlertQueue } from '@/utils/alert';
+import { closeAlert, getAlertQueue, markAlertHostClosing, registerAlertHost, subscribeAlertQueue, type AlertRequest } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 
 type Role = 'primary' | 'secondary' | 'destructive';
@@ -21,6 +21,9 @@ type Role = 'primary' | 'secondary' | 'destructive';
  * confirmation is followed by a second one.
  */
 const PRESS_GUARD_MS = 250;
+
+/** iOS: the longest the host waits for its Modal to say it has finished closing (`onDismiss`) before it says so itself. */
+const CLOSE_EVENT_TIMEOUT_MS = 1500;
 
 function roleOf(button: AlertButton, index: number, buttons: AlertButton[]): Role {
   if (button.style === 'destructive') return 'destructive';
@@ -102,6 +105,38 @@ export function AlertHost() {
 
   const current = queue[0];
 
+  // iOS: the last dialog was answered and its Modal has not yet said it finished closing. The Modal stays mounted (hidden)
+  // until it does, so that `whenAlertsClosed` can tell a screen that opens a Modal of its own when it is safe to.
+  const [closing, setClosing] = useState(false);
+  const lastShown = useRef<AlertRequest | undefined>(undefined);
+  if (current) lastShown.current = current;
+  const finishClosing = useCallback(() => {
+    setClosing(false);
+    lastShown.current = undefined;
+    markAlertHostClosing(false);
+  }, []);
+  useEffect(() => {
+    if (current) {
+      // A new dialog is on screen: the Modal is open again, nothing is closing.
+      if (closing) finishClosing();
+      return undefined;
+    }
+    if (Platform.OS !== 'ios' || !lastShown.current) return undefined;
+    // The queue emptied without the host's own answer (a session ended and dropped the dialogs).
+    if (!closing) {
+      setClosing(true);
+      markAlertHostClosing(true);
+    }
+    return undefined;
+  }, [current, closing, finishClosing]);
+  useEffect(() => {
+    if (!closing) return undefined;
+    // `onDismiss` does not always come (a Modal that was never fully shown): the host says it is closed after a while.
+    const timer = setTimeout(finishClosing, CLOSE_EVENT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [closing, finishClosing]);
+  useEffect(() => () => markAlertHostClosing(false), []);
+
   // When the dialog on screen starts to take presses (see PRESS_GUARD_MS).
   const takesPressesAt = useRef(0);
   const currentId = current?.id;
@@ -114,6 +149,13 @@ export function AlertHost() {
   const close = useCallback((id: number, button?: AlertButton): boolean => {
     // Too soon after the dialog came up: the press belongs to the dialog before it. Nothing runs.
     if (Date.now() < takesPressesAt.current) return false;
+    // iOS: the last dialog's Modal takes a moment to close; the host says so before the queue empties, so a screen waiting
+    // for `whenAlertsClosed` never sees an empty queue with a Modal still closing.
+    const queued = getAlertQueue();
+    if (Platform.OS === 'ios' && queued.length === 1 && queued[0].id === id) {
+      markAlertHostClosing(true);
+      setClosing(true);
+    }
     if (!closeAlert(id)) return false;
     // Let the dialog close before the handler runs (it may open another alert or navigate).
     if (button?.onPress) setTimeout(() => button.onPress?.(), 0);
@@ -129,16 +171,25 @@ export function AlertHost() {
     if (close(current.id, cancelButton ?? fallback)) current.options?.onDismiss?.();
   }, [current, close]);
 
-  if (!current) return null;
+  // While closing, the Modal is drawn hidden with the last dialog's content, so it can fade out.
+  const shown = current ?? (closing ? lastShown.current : undefined);
+  if (!shown) return null;
 
-  const stacked = current.buttons.length > 2;
+  const stacked = shown.buttons.length > 2;
   // Side by side: cancel first, action last (action on the right).
   const ordered = stacked
-    ? current.buttons
-    : [...current.buttons].sort((a, b) => (a.style === 'cancel' ? -1 : b.style === 'cancel' ? 1 : 0));
+    ? shown.buttons
+    : [...shown.buttons].sort((a, b) => (a.style === 'cancel' ? -1 : b.style === 'cancel' ? 1 : 0));
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={cancel} statusBarTranslucent>
+    <Modal
+      visible={current !== undefined}
+      transparent
+      animationType="fade"
+      onRequestClose={cancel}
+      onDismiss={finishClosing}
+      statusBarTranslucent
+    >
       <View style={styles.overlay}>
         <Pressable
           style={styles.scrim}
@@ -149,18 +200,18 @@ export function AlertHost() {
         <View style={styles.dialog} accessibilityViewIsModal accessibilityRole="alert">
           <ScrollView bounces={false}>
             <Text style={styles.title} accessibilityRole="header">
-              {current.title}
+              {shown.title}
             </Text>
-            {current.message ? <Text style={styles.message}>{current.message}</Text> : null}
+            {shown.message ? <Text style={styles.message}>{shown.message}</Text> : null}
           </ScrollView>
           <View style={stacked ? styles.buttonsStack : styles.buttonsRow}>
             {ordered.map((button, index) => {
-              const role = roleOf(button, current.buttons.indexOf(button), current.buttons);
+              const role = roleOf(button, shown.buttons.indexOf(button), shown.buttons);
               const label = button.text ?? tr('common.ok');
               return (
                 <Pressable
                   key={`${label}-${index}`}
-                  onPress={() => close(current.id, button)}
+                  onPress={() => close(shown.id, button)}
                   accessibilityRole="button"
                   accessibilityLabel={label}
                   style={({ pressed }) => [

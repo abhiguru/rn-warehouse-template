@@ -9,6 +9,7 @@ import { Platform } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { pressAlertButton } from '@/tests/helpers/alertMock';
+import { triggerError, triggerWarning } from '@/hooks/useHaptics';
 
 let mockCreateMode = true;
 let mockChecking = false;
@@ -126,6 +127,26 @@ describe('a direct dispatch that looks like one made a moment ago', () => {
     expect(success().props.isVisible).toBe(false);
   });
 
+  it('is a warning to the hand, not an error: a warning buzz, no error buzz', async () => {
+    mockSubmitForm.mockResolvedValue({ success: false, duplicate });
+    await render();
+
+    await createAndConfirm();
+
+    expect(triggerWarning).toHaveBeenCalledTimes(1);
+    expect(triggerError).not.toHaveBeenCalled();
+  });
+
+  it('a refusal that is not the warning is still an error buzz', async () => {
+    mockSubmitForm.mockResolvedValue({ success: false, error: 'No stock left' });
+    await render();
+
+    await createAndConfirm();
+
+    expect(triggerError).toHaveBeenCalledTimes(1);
+    expect(triggerWarning).not.toHaveBeenCalled();
+  });
+
   it('the first save asked for the check: no override', async () => {
     mockSubmitForm.mockResolvedValue({ success: false, duplicate });
     await render();
@@ -148,6 +169,31 @@ describe('a direct dispatch that looks like one made a moment ago', () => {
     expect(mockSubmitForm).toHaveBeenCalledTimes(2);
     expect(mockSubmitForm.mock.calls[1][2]).toEqual({ warnDuplicate: false });
     expect(success().props.isVisible).toBe(true);
+  });
+
+  it('Save anyway sends nothing, so no answer can arrive, until the question\'s dialog has finished closing (iOS cannot open a Modal over one that is closing)', async () => {
+    const alertModule = require('@/utils/alert');
+    const original = alertModule.whenAlertsClosed;
+    let closed!: () => void;
+    alertModule.whenAlertsClosed = () => new Promise<void>((resolve) => { closed = resolve; });
+    try {
+      mockSubmitForm
+        .mockResolvedValueOnce({ success: false, duplicate })
+        .mockResolvedValueOnce({ success: true, dispatchId: '88888888-2222-4333-8444-555555555555', orderLinesLeft: null, failedPhotos: [] });
+      await render();
+      await createAndConfirm();
+
+      // The person answers; the Modal is still closing: nothing is sent, and no success dialog is open.
+      await act(async () => { pressAlertButton(alertModule.showAlert, 'Save anyway'); });
+      expect(mockSubmitForm).toHaveBeenCalledTimes(1);
+      expect(success().props.isVisible).toBe(false);
+
+      await act(async () => { closed(); });
+      expect(mockSubmitForm).toHaveBeenCalledTimes(2);
+      expect(success().props.isVisible).toBe(true);
+    } finally {
+      alertModule.whenAlertsClosed = original;
+    }
   });
 
   it('Cancel leaves the form as it was on Review: nothing is sent, and Create can be tried again', async () => {

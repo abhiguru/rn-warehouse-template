@@ -210,6 +210,29 @@ describe('a GRN that looks like one created a moment ago', () => {
     await act(async () => { tree.unmount(); });
   });
 
+  it('Save anyway sends nothing until the question\'s dialog has finished closing (iOS cannot open a Modal over one that is closing)', async () => {
+    const alertModule = require('@/utils/alert');
+    const original = alertModule.whenAlertsClosed;
+    let closed!: () => void;
+    alertModule.whenAlertsClosed = () => new Promise<void>((resolve) => { closed = resolve; });
+    try {
+      (createGRN as jest.Mock).mockResolvedValueOnce(refusedAsDuplicate).mockResolvedValueOnce(created);
+      const tree = await render();
+      await save(tree);
+
+      await act(async () => { pressAlertButton(showAlert as never, 'Save anyway'); });
+      expect(createGRN).toHaveBeenCalledTimes(1);
+      expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(false);
+
+      await act(async () => { closed(); });
+      expect(createGRN).toHaveBeenCalledTimes(2);
+      expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
+      await act(async () => { tree.unmount(); });
+    } finally {
+      alertModule.whenAlertsClosed = original;
+    }
+  });
+
   it('Cancel leaves the form as it was on Review: nothing is sent, and Create can be tried again', async () => {
     (createGRN as jest.Mock).mockResolvedValue(refusedAsDuplicate);
     const tree = await render();

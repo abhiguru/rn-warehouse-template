@@ -302,7 +302,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // finished closing.
     const showResult = (result: DispatchSubmitResult) => {
         if (!result.success) {
-            triggerError();
+            // A likely duplicate is a warning, not a failure.
+            if (result.duplicate) triggerWarning();
+            else triggerError();
             // The identical request was refused for the number after a lost answer, and again after the check: the first
             // send may have saved it. The form stays locked (busy) and its only way out is Close, which leaves the form;
             // no next number is offered and nothing can be sent again from here.
