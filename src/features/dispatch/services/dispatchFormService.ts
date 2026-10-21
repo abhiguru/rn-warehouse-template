@@ -162,6 +162,28 @@ export interface LostAnswerOptions {
 
 type RpcAnswer = { data: any; error: any; status?: number };
 
+/**
+ * One send of a write. `resend` is true for every send after an answer was lost. The first send goes out on the client the
+ * function got when it began; a resend gets the CURRENT authenticated client: a client holds the sign-in token it was made
+ * with, and the check that precedes a resend can last minutes (offline, a slow server), long enough for the token to be
+ * renewed (or to expire). A client that cannot be got (offline, the session ended, a server switch) is the failure of that
+ * send, not an exception: on a resend `sendUntilAnswered` then keeps the attempt unsettled and goes back to the check.
+ */
+async function sendOnCurrentClient(
+  first: Awaited<ReturnType<typeof getAuthenticatedClient>>,
+  resend: boolean,
+  call: (client: Awaited<ReturnType<typeof getAuthenticatedClient>>) => PromiseLike<RpcAnswer>
+): Promise<RpcAnswer> {
+  if (!resend) return call(first);
+  let current: Awaited<ReturnType<typeof getAuthenticatedClient>>;
+  try {
+    current = await getAuthenticatedClient();
+  } catch (error) {
+    return { data: null, error };
+  }
+  return call(current);
+}
+
 /** What `sendUntilAnswered` hands back when the attempt is settled (or the person gave up waiting on it being answered). */
 interface SentAnswer {
   data: any;
@@ -203,7 +225,7 @@ interface SentAnswer {
  */
 async function sendUntilAnswered(
   rpcName: string,
-  send: () => PromiseLike<RpcAnswer>,
+  send: (resend: boolean) => PromiseLike<RpcAnswer>,
   requestKey: string,
   options: LostAnswerOptions
 ): Promise<SentAnswer | null> {
@@ -212,7 +234,7 @@ async function sendUntilAnswered(
   let takenOnResend = false;
   for (;;) {
     const sentAt = Date.now();
-    const { data, error, status } = await send();
+    const { data, error, status } = await send(resent);
     const left = options.signal?.aborted === true;
     // The HTTP status goes with the error: a gateway's 502 / 504 is told from the server's own refusals.
     const failure = error ? withHttpStatus(error, status) : null;
@@ -403,7 +425,7 @@ export const createDispatch = async (payload: {
     // and what an identical request is sent again with.
     const answer = await sendUntilAnswered(
       'create_dispatch_with_stock_check',
-      () => authenticatedClient.rpc('create_dispatch_with_stock_check', rpcPayload),
+      (resend) => sendOnCurrentClient(authenticatedClient, resend, (client) => client.rpc('create_dispatch_with_stock_check', rpcPayload)),
       rpcPayload.p_idempotency_key,
       options
     );
@@ -583,7 +605,7 @@ export const updateDispatch = async (
 
     const answer = await sendUntilAnswered(
       'update_dispatch_smart',
-      () => authenticatedClient.rpc('update_dispatch_smart', rpcPayload),
+      (resend) => sendOnCurrentClient(authenticatedClient, resend, (client) => client.rpc('update_dispatch_smart', rpcPayload)),
       requestKey,
       options
     );
