@@ -552,4 +552,13 @@ export const errors: Translation<typeof source> = {
       reload: 'ફરી ખોલો',
     },
   },
+  // Gujarati draft for the owner's wording review (2026-10-21): a save with no answer when the app closed, told at the next start.
+  unfinished: {
+    savedTitle: 'એપ બંધ થયા પહેલાં સચવાઈ ગયું',
+    grnSaved: '{{customer}} માટેની આવક પાવતી {{number}} સચવાઈ ગઈ.',
+    dispatchSaved: '{{customer}} માટેની જાવક {{number}} સચવાઈ ગઈ.',
+    notSavedTitle: 'સચવાયું નથી',
+    grnNotSaved: '{{customer}} માટેની આવક પાવતી {{number}} એપ બંધ થયા પહેલાં સચવાઈ નહોતી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
+    dispatchNotSaved: '{{customer}} માટેની જાવક {{number}} એપ બંધ થયા પહેલાં સચવાઈ નહોતી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
+  },
 };

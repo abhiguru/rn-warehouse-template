@@ -57,6 +57,7 @@ import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lock
 import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { currentGrnFormSession, newSubmissionNonce } from '@/features/grn/utils/grnFormSession';
 import { checkSubmission } from '@/utils/lostAnswer';
+import { forgetUnfinishedSave } from '@/services/unfinishedSaves';
 import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
 import { uploadGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '@/features/grn/services/imageUploadService';
 import { photosNotUploadedMessage } from '@/features/grn/utils/photoSaveReport';
@@ -603,6 +604,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           lostAbortRef.current = null;
         }
         if (controller.signal.aborted || formLeft()) return null;
+        // The server has the stored answer of the lost request: it is the answer, and nothing is left in doubt for the
+        // next start of the app (a request that is sent again settles its own note in createGRN).
+        if (check.found) await forgetUnfinishedSave(lost.key);
         result = check.found ? await send(undefined, check.response ?? undefined) : await send(lost);
       }
       return result;

@@ -27,6 +27,7 @@ import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
 import { REFUSAL, refusalOf } from '@/utils/serverRefusal';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
+import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 
 const log = createLogger('dispatch');
 
@@ -377,6 +378,15 @@ export const createDispatch = async (payload: {
 
     log.debug('Calling create_dispatch_with_stock_check');
 
+    // Written down before the request goes out: if the app dies with the answer still lost, the next start asks the
+    // server about this code (src/services/unfinishedSaves.ts).
+    await rememberUnfinishedSave({
+      kind: 'dispatch',
+      requestKey: rpcPayload.p_idempotency_key,
+      number: payload.header.disp_no,
+      customerName: payload.header.customer_name,
+    });
+
     // The key is the request code of this attempt: it is what the server is asked about when no answer comes back,
     // and what an identical request is sent again with.
     const answer = await sendUntilAnswered(
@@ -385,6 +395,8 @@ export const createDispatch = async (payload: {
       rpcPayload.p_idempotency_key,
       options
     );
+    // The person left while the answer was unknown, or the answer was lost and they left before being warned: still in
+    // doubt, so the note stays for the next start of the app.
     if (!answer) return { success: false, aborted: true, error: '', message: '' };
     if (answer.lostAfterLeaving) return { success: false, aborted: true, maybeSaved: true, error: '', message: '' };
     // The resend was refused for the number twice: the first send may have saved it. The screen says so; no next number.
@@ -397,6 +409,9 @@ export const createDispatch = async (payload: {
         message: '',
       };
     }
+    // Every other outcome is the server's own answer (saved, refused, found stored) or a failure before the request
+    // left: nothing is left in doubt.
+    await forgetUnfinishedSave(rpcPayload.p_idempotency_key);
     const { data, error } = answer;
     // The person left while the request was on its way: only a saved dispatch is worth a word (the screen says it was
     // saved after they left); a refusal is nobody's business any more.

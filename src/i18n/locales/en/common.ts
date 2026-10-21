@@ -18,6 +18,7 @@ export const common = {
   submitting: 'Submitting…',
   confirm: 'Confirm',
   close: 'Close',
+  open: 'Open',
   ok: 'OK',
   yes: 'Yes',
   no: 'No',

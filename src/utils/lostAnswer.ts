@@ -229,7 +229,7 @@ export interface SubmissionResult {
  * no `get_submission_result` (before backend migration 120) cannot say: `found: false`, so the caller sends
  * the identical request once, which its own request code (or its own refusal of a duplicate) makes safe.
  */
-async function askServer(key: string): Promise<SubmissionResult | undefined> {
+async function askServer(key: string, serverWithoutFunction: SubmissionResult | undefined = { found: false }): Promise<SubmissionResult | undefined> {
   // Loaded when asked, like NetInfo above: a screen's test does not need the whole data layer to import this file.
   const { executeRPC } = require('@/utils/serviceErrorHandler') as typeof import('@/utils/serviceErrorHandler');
   const { getAuthenticatedClient } = require('@/config/supabaseConfig') as typeof import('@/config/supabaseConfig');
@@ -247,8 +247,19 @@ async function askServer(key: string): Promise<SubmissionResult | undefined> {
     return undefined;
   }
   // PostgREST: PGRST202 (function not in the schema cache), Postgres: 42883 (undefined function).
-  if (result.errorCode === 'PGRST202' || result.errorCode === '42883') return { found: false };
+  if (result.errorCode === 'PGRST202' || result.errorCode === '42883') return serverWithoutFunction;
   return undefined;
+}
+
+/**
+ * One question, with no waiting and no retry: what became of the request that carried `key`, asked of the server
+ * once. For the check at app start of a save that was in flight when the app closed (src/services/unfinishedSaveCheck.ts).
+ * `undefined` when the question got no answer, and also when the server is too old to have `get_submission_result`
+ * (it cannot say whether the request was applied, so nothing may be told about it); `{ found: false }` only when the
+ * server itself says there is no stored answer for the code.
+ */
+export function askSubmission(key: string): Promise<SubmissionResult | undefined> {
+  return askServer(key, undefined);
 }
 
 /**

@@ -79,6 +79,7 @@ import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
 import { useProfileLanguage } from '@/i18n/useProfileLanguage';
+import { useUnfinishedSaveCheck } from '@/hooks/useUnfinishedSaveCheck';
 import { GuardedScreen, useRootRouteGuard } from '@/navigation/RouteGuard';
 import { REPORTS } from '@/features/reports/reportRegistry';
 import { t as translate } from '@/i18n';
@@ -404,6 +405,8 @@ function ThemedContent() {
   const { language } = useAppLanguage();
   // The choice is also kept on the person's profile at the facility.
   useProfileLanguage();
+  // A GRN or dispatch whose save was in flight when the app last closed: the server is asked what became of it.
+  useUnfinishedSaveCheck();
 
   // Restore credentials before any route screen can redirect an initially
   // empty Redux auth state. Deep links can bypass the tab layout, so auth

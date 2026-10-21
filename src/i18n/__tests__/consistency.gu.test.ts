@@ -97,6 +97,7 @@ describe('one word per idea', () => {
       '{{name}} activated.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       '{{name}} deactivated.': 'agrees with the noun: an item (feminine singular) and customers (masculine plural)',
       'critical': 'a sensor status and a battery level',
+      'open': 'the button that opens a record (ખોલો) and the open status of an order (બાકી, glossary)',
     };
     const groups = new Map<string, Map<string, string[]>>();
     for (const [key, value] of ENGLISH) {

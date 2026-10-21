@@ -544,4 +544,13 @@ export const errors = {
       reload: 'Open it again',
     },
   },
+  // A GRN or dispatch whose save had no answer when the app closed: told at the next start, once the server says what became of it.
+  unfinished: {
+    savedTitle: 'Saved before the app closed',
+    grnSaved: 'GRN {{number}} for {{customer}} was saved.',
+    dispatchSaved: 'Dispatch {{number}} for {{customer}} was saved.',
+    notSavedTitle: 'Not saved',
+    grnNotSaved: 'GRN {{number}} for {{customer}} was not saved before the app closed. Enter it again if you still need it.',
+    dispatchNotSaved: 'Dispatch {{number}} for {{customer}} was not saved before the app closed. Enter it again if you still need it.',
+  },
 };

@@ -21,6 +21,8 @@ export const common: Translation<typeof source> = {
   submitting: 'સબમિટ થઈ રહ્યું છે…',
   confirm: 'કન્ફર્મ કરો',
   close: 'બંધ કરો',
+  // Gujarati draft for the owner's wording review (2026-10-21): the button that opens a record named in an alert.
+  open: 'ખોલો',
   ok: 'ઓકે',
   yes: 'હા',
   no: 'ના',

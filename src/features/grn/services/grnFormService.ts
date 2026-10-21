@@ -21,6 +21,7 @@ import { isTemporaryGRNImageId } from './imageId';
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { isLostAnswer } from '@/utils/lostAnswer';
+import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 import { t, formatIdentifier } from '@/i18n';
 import { refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
@@ -349,6 +350,13 @@ export const createGRN = async (payload: CreateGRNPayload) => {
   let lostAnswer: GRNLostAnswer | undefined;
   // The latest send (a retry without p_rates is a second one): its key and time.
   const sent: { last?: GRNLostAnswer } = {};
+  // The request codes this call wrote down as unfinished (src/services/unfinishedSaves.ts). Removed once the server's
+  // answer is known: it stays only while the answer is lost, so a start of the app after a crash can ask about it.
+  const written = new Set<string>();
+  const forgetWritten = async () => {
+    await Promise.all([...written].map(key => forgetUnfinishedSave(key)));
+    written.clear();
+  };
   try {
     finishMutation = beginOperatorMutation();
 
@@ -404,6 +412,10 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       const callSave = async (body: typeof rpcPayload) => {
         const key = await submissionIdempotencyKey('grn', payload.nonce ? { ...body, nonce: payload.nonce } : body);
         const args = { ...body, p_idempotency_key: key };
+        // Written down before the request goes out: if the app dies with the answer still lost, the next start asks
+        // the server about this code.
+        written.add(key);
+        await rememberUnfinishedSave({ kind: 'grn', requestKey: key, number: grNumber, customerName: payload.header.customer_name });
         sent.last = { key, sentAt: Date.now(), args };
         return authenticatedClient.rpc('save_grn', args);
       };
@@ -413,6 +425,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       if (payload.resend) {
         // The identical request, byte for byte, under the code the check was made for.
         const { key, args } = payload.resend;
+        // Written down by the first send; its answer to this one settles it.
+        written.add(key);
         sent.last = { key, sentAt: Date.now(), args };
         ({ data: answer, error, status } = await authenticatedClient.rpc('save_grn', args));
       } else {
@@ -421,6 +435,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
           // A server without migration 86 knows no p_rates. With nothing set the app already checked that every row
           // has a stored rate, so the old call (and its key) loses nothing.
           log.warn('save_grn does not take p_rates on this server; sent without it');
+          // The first request was answered (not applied): its note goes before the second one is written.
+          await forgetWritten();
           const { p_rates: _noRates, ...withoutRates } = rpcPayload as typeof rpcPayload & { p_rates?: unknown };
           ({ data: answer, error, status } = await callSave(withoutRates as typeof rpcPayload));
         }
@@ -455,6 +471,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       throw new Error(itemGoneText(data) ?? serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));
     }
     const rpcResult = data.data as SaveGRNResult;
+    // The server answered: the GRN is saved, so nothing is left in doubt.
+    await forgetWritten();
     // The write changed what reports count: a report on screen asks again (SR-10).
     void invalidateReportQueries();
 
@@ -494,6 +512,9 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     log.error('Error creating GRN with enhanced RPC', loggableError(error));
     // A resend whose session client could not be got is not settled either: the lock stays.
     if (!lostAnswer && payload.resend && isUnsettledFailure(error)) lostAnswer = payload.resend;
+    // A refusal, or a failure before the request left: the server did not apply it, so nothing is left in doubt. A lost
+    // answer keeps its note.
+    if (!lostAnswer) await forgetWritten();
     return {
       success: false,
       error: error instanceof Error ? error.message : t('grn.form.createFailed'),
