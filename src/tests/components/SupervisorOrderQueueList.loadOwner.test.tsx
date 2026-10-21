@@ -133,3 +133,26 @@ it('loads a change made while hidden once on the return as a new first page, and
   expect(getOrdersList).toHaveBeenCalledTimes(3);
   await act(async () => { renderer.unmount(); });
 });
+
+it('reads "Recently dispatched" again, quietly, on a real return to the queue and on a pull to refresh', async () => {
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
+  // The list header holds the line "last updated" (offline only) and the section: its props are the triggers.
+  const recent = () => (list(renderer).props.ListHeaderComponent.props.children[1].props as { refreshTrigger: number; quietRefreshTrigger: number });
+  expect(recent()).toMatchObject({ refreshTrigger: 0, quietRefreshTrigger: 0 });
+
+  // Away (a dispatch is made from an order) and back: the section is told to read again, without a loading state.
+  await act(async () => { setScreenFocused(false); });
+  expect(recent().quietRefreshTrigger).toBe(0);
+  await act(async () => { setScreenFocused(true); });
+  expect(recent()).toMatchObject({ refreshTrigger: 0, quietRefreshTrigger: 1 });
+
+  await act(async () => { setScreenFocused(false); });
+  await act(async () => { setScreenFocused(true); });
+  expect(recent().quietRefreshTrigger).toBe(2);
+
+  // A pull to refresh uses its own trigger.
+  await act(async () => { list(renderer).props.refreshControl.props.onRefresh(); });
+  expect(recent()).toMatchObject({ refreshTrigger: 1, quietRefreshTrigger: 2 });
+  await act(async () => { renderer.unmount(); });
+});

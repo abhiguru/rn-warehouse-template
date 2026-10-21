@@ -46,6 +46,12 @@ import type { ThemeTokens } from '@/theme/tokens';
 interface RecentDispatchedOrdersSectionProps {
   /** Optional trigger to force refresh (increment to refresh) */
   refreshTrigger?: number;
+  /**
+   * Increment to read the dispatches again without a loading state: the rows and the count stay on screen until the new
+   * ones arrive, and a read that fails leaves them as they are. For a return to the queue, when a dispatch made from an
+   * order meanwhile (the order list is read again then) must show without a pull to refresh.
+   */
+  quietRefreshTrigger?: number;
   /** Maximum number of dispatches to show (default: 10) */
   limit?: number;
 }
@@ -106,6 +112,7 @@ const loadError = () => translate('lists.recent.loadFailed');
 
 const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps> = ({
   refreshTrigger = 0,
+  quietRefreshTrigger = 0,
   limit = 10,
 }) => {
   const styles = useThemedStyles(makeStyles);
@@ -116,10 +123,12 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
 
-  // Fetch recent dispatched orders
-  const fetchDispatches = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // Fetch recent dispatched orders. `quiet`: keep what is shown while the read runs, and keep it if the read fails.
+  const fetchDispatches = useCallback(async (quiet: boolean = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       if (__DEV__) {
@@ -138,15 +147,16 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
           });
         }
         setDispatches(result.data.dispatches || []);
-      } else {
+        setError(null);
+      } else if (!quiet) {
         setError(loadError());
       }
     } catch (err) {
       if (!isMountedRef.current) return;
       console.error('[RecentDispatchedOrdersSection] Error:', err);
-      setError(loadError());
+      if (!quiet) setError(loadError());
     } finally {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && !quiet) {
         setLoading(false);
       }
     }
@@ -164,6 +174,14 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
   useEffect(() => {
     fetchDispatches();
   }, [fetchDispatches, refreshTrigger]);
+
+  // A quiet refresh on a return to the queue: not on mount (the fetch above is the first read).
+  const lastQuietTrigger = useRef(quietRefreshTrigger);
+  useEffect(() => {
+    if (lastQuietTrigger.current === quietRefreshTrigger) return;
+    lastQuietTrigger.current = quietRefreshTrigger;
+    void fetchDispatches(true);
+  }, [fetchDispatches, quietRefreshTrigger]);
 
   // Toggle expand/collapse with animation
   const toggleExpand = useCallback(() => {
@@ -214,7 +232,7 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
             <Icon name="alert-circle-outline" size={iconSize.xl} color={t.status.negative.text} />
             <Text style={styles.errorText}>{error}</Text>
             <Pressable
-              onPress={fetchDispatches}
+              onPress={() => fetchDispatches()}
               style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
               accessibilityRole="button"
               accessibilityLabel={translate('lists.recent.retryLabel')}

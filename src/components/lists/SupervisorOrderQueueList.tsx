@@ -103,6 +103,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
 
   // Refresh trigger for child sections (increment to refresh)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  // Counts the returns to the queue: "Recently dispatched" is read again then, quietly (a dispatch made from an order
+  // while the queue was behind another screen must show without a pull to refresh).
+  const [returnTrigger, setReturnTrigger] = useState(0);
 
   // Track mounted state to prevent state updates after unmount
   const isMountedRef = useRef(true);
@@ -307,6 +310,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       screenFocusedRef.current = true;
       if (blurredRef.current) {
         blurredRef.current = false;
+        setReturnTrigger(prev => prev + 1);
         // Only collapse expanded cards if any are open — avoids a spurious re-render
         setExpandedOrders(prev => (prev.size > 0 ? new Set() : prev));
         // Filters applied while away load a new first page, like an inline change;
@@ -369,9 +373,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   const ListHeaderComponent = useMemo(() => (
     <>
       {offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top testID="queue-last-updated" /> : null}
-      <RecentDispatchedOrdersSection refreshTrigger={refreshTrigger} limit={10} />
+      <RecentDispatchedOrdersSection refreshTrigger={refreshTrigger} quietRefreshTrigger={returnTrigger} limit={10} />
     </>
-  ), [refreshTrigger, offlineUpdatedAt]);
+  ), [refreshTrigger, returnTrigger, offlineUpdatedAt]);
 
   // ============================================================================
   // FLASHLIST RENDER ITEM
@@ -478,7 +482,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     content = (
       <>
         {/* Recently dispatched orders stay in view when the queue is empty */}
-        <RecentDispatchedOrdersSection refreshTrigger={refreshTrigger} limit={10} />
+        <RecentDispatchedOrdersSection refreshTrigger={refreshTrigger} quietRefreshTrigger={returnTrigger} limit={10} />
         <ListEmptyState
           {...filteredEmptyProps(filters, 'orders')}
           emptyIcon="clipboard-check-outline"
