@@ -484,12 +484,17 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         // ended (the busy flags are down, the form is as it was): Cancel leaves the form on this step, Save anyway sends
         // the same GRN again with the warning off. Nothing else can start a save meanwhile (`saveInFlightRef`).
         let warnDuplicate = true;
+        // What the first attempt settled for this form: its number and its id. "Save anyway" is the same GRN, so it uses
+        // them; this render's `header` and `submissionNonce` are older than the first attempt (it may have fetched the
+        // number and made the id after this render).
+        let carried: { grNo: string; nonce: string } | undefined;
         for (;;) {
-          const duplicate = await performCreate(formSession, warnDuplicate);
-          if (!duplicate) break;
-          const choice = await askPossibleDuplicate(duplicate);
+          const attempt = await performCreate(formSession, warnDuplicate, carried);
+          if (!attempt) break;
+          const choice = await askPossibleDuplicate(attempt.duplicate);
           if (choice !== 'save' || currentGrnFormSession() !== formSession) break;
           warnDuplicate = false;
+          carried = { grNo: attempt.grNo, nonce: attempt.nonce };
         }
       } else {
         await performUpdate(formSession);
@@ -700,19 +705,27 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     );
   };
 
-  /** @returns the earlier GRN this one looks like, when the server warned about it (nothing was saved). */
-  const performCreate = async (formSession: number, warnDuplicate = true): Promise<PossibleDuplicate | undefined> => {
+  /**
+   * @param carried the number and the form id an earlier attempt of this same create settled ("Save anyway" repeats the GRN).
+   * @returns the earlier GRN this one looks like, when the server warned about it (nothing was saved), with the number and
+   * the form id this attempt used.
+   */
+  const performCreate = async (
+    formSession: number,
+    warnDuplicate = true,
+    carried?: { grNo: string; nonce: string }
+  ): Promise<{ duplicate: PossibleDuplicate; grNo: string; nonce: string } | undefined> => {
     const formLeft = () => currentGrnFormSession() !== formSession;
     // Set when the form must stay locked after this call (see showNumberMaybeSaved).
     let keepLocked = false;
-    let possibleDuplicate: PossibleDuplicate | undefined;
+    let possibleDuplicate: { duplicate: PossibleDuplicate; grNo: string; nonce: string } | undefined;
     setIsSubmitting(true);
     dispatch(setIsSaving(true));
     try {
       // The number is fetched once and kept in the form before the first send: a second press, or a retry after an
       // answer that never came, then sends the same body and gets the same idempotency key. (createGRN does not
       // ask for a number: a new one per press would save the GRN twice.)
-      let grNo = header.gr_no;
+      let grNo = carried?.grNo ?? header.gr_no;
       if (!grNo) {
         try {
           grNo = await getNextGRNNumber();
@@ -730,7 +743,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
       // The form's session id, made by the first Create and kept for every retry of this form (it is part of the
       // request code; a reset after a save clears it).
-      let nonce = submissionNonce;
+      let nonce = carried?.nonce ?? submissionNonce;
       if (!nonce) {
         nonce = newSubmissionNonce();
         dispatch(setSubmissionNonce(nonce));
@@ -789,7 +802,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       } else if (result.duplicate) {
         // Nothing was saved: the person is asked once this call has ended (see handleConfirmSubmit).
         triggerWarning();
-        possibleDuplicate = result.duplicate;
+        possibleDuplicate = { duplicate: result.duplicate, grNo, nonce };
       } else if (result.numberMaybeSaved) {
         triggerError();
         keepLocked = true;

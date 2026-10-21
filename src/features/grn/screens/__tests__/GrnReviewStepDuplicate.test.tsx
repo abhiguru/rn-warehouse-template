@@ -86,9 +86,9 @@ jest.mock('@/utils/localPhotoFiles', () => ({
   releaseLocalPhotos: jest.fn(async () => 0),
 }));
 
-async function render() {
+async function render(header: typeof mockHeader = mockHeader) {
   mockForm = {
-    header: mockHeader,
+    header,
     items: mockItems,
     grnId: null,
     tempGrnId: 'temp_grn_fixture',
@@ -185,6 +185,28 @@ describe('a GRN that looks like one created a moment ago', () => {
     expect(second.header.gr_no).toBe(first.header.gr_no);
     expect(second.items).toEqual(first.items);
     expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('Save anyway repeats the same GRN: the number the first attempt fetched and its form id, not new ones', async () => {
+    // The form had no number: the first attempt fetches one and makes the form's id. This render's header and nonce still
+    // say "none" (the store is read at the next render), and the second attempt must not fetch another number or make
+    // another id.
+    (getNextGRNNumber as jest.Mock).mockResolvedValueOnce('Z0011').mockResolvedValueOnce('Z0012');
+    (createGRN as jest.Mock).mockResolvedValueOnce(refusedAsDuplicate).mockResolvedValueOnce(created);
+    const tree = await render({ ...mockHeader, gr_no: '' });
+    await save(tree);
+
+    await act(async () => { pressAlertButton(showAlert as never, 'Save anyway'); });
+
+    expect(getNextGRNNumber).toHaveBeenCalledTimes(1);
+    const [first, second] = (createGRN as jest.Mock).mock.calls.map(([payload]) => payload);
+    expect(first.header.gr_no).toBe('Z0011');
+    expect(second.header.gr_no).toBe('Z0011');
+    expect(typeof first.nonce).toBe('string');
+    expect(second.nonce).toBe(first.nonce);
+    expect(first.warnDuplicate).toBe(true);
+    expect(second.warnDuplicate).toBe(false);
     await act(async () => { tree.unmount(); });
   });
 
