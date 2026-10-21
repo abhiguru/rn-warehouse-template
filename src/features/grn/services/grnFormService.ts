@@ -452,18 +452,22 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         const body = rpcPayload as typeof rpcPayload & { p_rates?: unknown; p_warn_duplicate?: boolean };
         ({ data: answer, error, status } = await callSave(body));
         if (error && isUnknownFunctionSignature(error)) {
-          // PostgREST found no save_grn that takes these parameters: the request was not applied. A server without
-          // migration 124 knows no p_warn_duplicate (the warning is a convenience: the save goes out without it); one
-          // without migration 86 knows no p_rates (with nothing set the app already checked that every row has a stored
-          // rate, so the old call loses nothing). The second request has a body of its own, so a key of its own, and the
-          // first one's note goes before the second one is written.
+          // PostgREST found no save_grn that takes these parameters: the request was not applied. Older servers are met
+          // in two stages, each a request of its own (a body of its own, so a key of its own; the earlier request's note
+          // goes before the next one is written):
+          // 1. A server without migration 124 knows no p_warn_duplicate (the warning is a convenience): the save goes out
+          //    without it and with everything else, p_rates included.
+          log.warn('save_grn does not take p_warn_duplicate on this server; sent without it');
+          await forgetWritten();
           const { p_warn_duplicate: _noWarning, ...withoutWarning } = body;
-          const { p_rates: _noRates, ...withoutRates } = withoutWarning;
-          const fallback = payload.rates && payload.rates.length === 0 ? withoutRates : withoutWarning;
-          if (Object.keys(fallback).length !== Object.keys(body).length) {
-            log.warn('save_grn does not take every parameter on this server; sent without the newer ones');
+          ({ data: answer, error, status } = await callSave(withoutWarning as typeof rpcPayload));
+          // 2. Only if that is refused the same way, and nothing was set: a server without migration 86 knows no p_rates
+          //    (the app already checked that every row has a stored rate, so the old call loses nothing).
+          if (error && isUnknownFunctionSignature(error) && payload.rates && payload.rates.length === 0) {
+            log.warn('save_grn does not take p_rates on this server; sent without it');
             await forgetWritten();
-            ({ data: answer, error, status } = await callSave(fallback as typeof rpcPayload));
+            const { p_rates: _noRates, ...withoutRates } = withoutWarning;
+            ({ data: answer, error, status } = await callSave(withoutRates as typeof rpcPayload));
           }
         }
       }

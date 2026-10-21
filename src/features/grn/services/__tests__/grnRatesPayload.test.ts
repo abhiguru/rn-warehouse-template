@@ -92,16 +92,42 @@ describe('createGRN with rates', () => {
     expect(second.p_rates).toEqual(rates);
   });
 
-  // Review D2: a facility still on migration 85 must go on creating GRNs when no rate was touched.
-  it('with no rates set, a server without p_rates gets the old call (no p_rates, the old key) and the GRN is created', async () => {
+  // Review D2: a facility still on migration 85 must go on creating GRNs when no rate was touched. Such a server has no
+  // migration 124 either, so it is met in two stages: first without p_warn_duplicate alone (p_rates stays), then, only
+  // because that was refused the same way, without p_rates.
+  it('with no rates set, a server without p_rates gets the old call (no p_rates, no p_warn_duplicate, the old key) and the GRN is created', async () => {
+    mockRpc.mockResolvedValueOnce(unknown).mockResolvedValueOnce(unknown).mockResolvedValueOnce(created);
+    const result = await createGRN({ header, items, rates: [] });
+    expect(result.success).toBe(true);
+    expect(mockRpc).toHaveBeenCalledTimes(3);
+    const [first, second, third] = mockRpc.mock.calls.map(c => c[1]);
+    expect('p_rates' in first).toBe(true);
+    expect(first.p_warn_duplicate).toBe(true);
+    expect('p_warn_duplicate' in second).toBe(false);
+    expect(second.p_rates).toEqual([]);
+    expect('p_rates' in third).toBe(false);
+    expect('p_warn_duplicate' in third).toBe(false);
+    expect(third.p_idempotency_key).not.toContain('p_rates');
+  });
+
+  it('with no rates set, a server that lacks only p_warn_duplicate keeps p_rates: [] in the second request', async () => {
     mockRpc.mockResolvedValueOnce(unknown).mockResolvedValueOnce(created);
     const result = await createGRN({ header, items, rates: [] });
     expect(result.success).toBe(true);
     expect(mockRpc).toHaveBeenCalledTimes(2);
     const [first, second] = mockRpc.mock.calls.map(c => c[1]);
-    expect('p_rates' in first).toBe(true);
+    expect(first.p_rates).toEqual([]);
+    expect('p_warn_duplicate' in second).toBe(false);
+    expect(second.p_rates).toEqual([]);
+  });
+
+  it('with no rates given at all, only p_warn_duplicate is dropped for an older server', async () => {
+    mockRpc.mockResolvedValueOnce(unknown).mockResolvedValueOnce(created);
+    await createGRN({ header, items });
+    const [first, second] = mockRpc.mock.calls.map(c => c[1]);
+    expect(first.p_warn_duplicate).toBe(true);
+    expect('p_warn_duplicate' in second).toBe(false);
     expect('p_rates' in second).toBe(false);
-    expect(second.p_idempotency_key).not.toContain('p_rates');
   });
 });
 
