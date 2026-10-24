@@ -2,14 +2,15 @@
 
 ## Operator install: what `npm audit` still reports — 24 October 2026
 
-`npm audit` reports 6 high entries on the Expo 57 line. The lockfile now resolves the dev-only `zod` that
+`npm audit` still reports 6 high entries on the Expo 57 line; the gate accepts them all, because each resolves to a
+verified local repair (`PASS_WITH_VERIFIED_BACKPORTS`). The lockfile resolves the dev-only `zod` that
 `eslint-plugin-react-hooks` and `zod-validation-error` use to 4.6.7 (it was 4.6.5, inside the advisory range
-GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The count stays at 6 because the other copies have no fix in this line:
+GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The other copies have no fix in this line:
 
 | Package | Advisory | Pulled in by | Fixed version |
 | ------- | -------- | ------------ | ------------- |
-| `zod` 3.25.76 (nested) | GHSA-mrhx-c7xc-m3w5 | `@expo/cli` (inside `expo`) | none in the 3.x copy that `@expo/cli` 57 pins |
-| `node-forge` | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | none: every release is affected (the local repair above covers installed 1.4.0 only) |
+| `zod` 3.25.76 (nested at `node_modules/expo/node_modules/zod`) | GHSA-mrhx-c7xc-m3w5 | `@expo/cli` (inside `expo`) | none in the 3.x copy that `@expo/cli` 57 pins; upstream fixed 4.6.6 only |
+| `node-forge` | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | none: every release is affected (the local repair below covers installed 1.4.0 only) |
 | `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the two above, as dependents | | follow the two above |
 
 - These are build and development tools: the Expo CLI (Metro, prebuild, export) and the code-signing of over-the-air updates
@@ -20,9 +21,19 @@ GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The count stays at 6 b
 - No fixed version exists in the Expo 57 line. **Do not run `npm audit fix --force`**: it proposes `expo@54.0.38`, a downgrade
   by three SDKs, and breaks the project. Do not add an `overrides` entry for the zod copy under `@expo/cli`; that CLI needs
   zod 3 and stops working with 4.
-- `npm run audit:dependencies` does not list the zod advisory as accepted, because it has no source repair; the gate reports it
-  as `UNREPAIRED` until `@expo/cli` ships a zod without the flaw, or the owner adds a reviewed, dated acceptance for it.
-  The check is that the nested copy stays a dev-time dependency.
+- **The zod repair is a local gate, not an upstream backport.** The advisory (an array schema collects one issue per failing
+  element, so an oversized input exhausts memory) was fixed in zod 4.6.6 (commit
+  `a0ebf970f2d752e5f58527cd2942ff48be4f46bd`, PR 6652) in the v4 code only. `@expo/cli` does `require("zod")` and so loads the
+  zod **3** code (`v3/types`) of the 3.25.76 copy, which has the same flaw (a 200000-element array against `.max(2)` gave 200001
+  issues) and no upstream fix; the copy's own `v4` code, where the fix applies, is not loaded by anything here and is too old
+  to take the 4.6.6 change. So `scripts/security-backports.json` patches `v3/types.cjs` and `v3/types.js` (the require and
+  import entries of the root and of `zod/v3`) with the same idea as 4.6.6: `ZodArray` (`.max`, `.length`) and `ZodSet`
+  (`.max`, `.size`) return invalid, after recording the size issue they already recorded, before any element is parsed when the
+  input is over its upper bound. In-bound input, minimum checks and messages are unchanged. The installer treats a zod from
+  4.6.6 on as unaffected (the top-level 4.6.7 is left alone) and refuses any other zod version it has no entry for.
+- `acceptedAdvisories` lists GHSA-mrhx-c7xc-m3w5 with the advisory's own range `<4.6.6` (the gate compares it to what npm
+  reports; the manifest limits the repair to exactly 3.25.76), review date **2027-01-24**. At that date check whether
+  `@expo/cli` has moved to a zod with the fix, and if so delete the entry and its backport.
 
 ## The audit gate, install check and update channels — 11 October 2026
 
@@ -40,6 +51,7 @@ list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
 | GHSA-86w9-cpqp-85rv | node-forge `<=1.4.0` | Repaired locally from upstream PR 1152; no release has the fix | 2027-01-10 |
 | GHSA-vfj7-8cjw-p6xm | braces `<=3.0.3`     | Repaired locally (depth bound); no patched release             | 2027-01-10 |
 | GHSA-hp3w-g68c-fv3c | sprintf-js `<=1.1.3` | Repaired locally (precision bound); no patched release         | 2027-01-10 |
+| GHSA-mrhx-c7xc-m3w5 | zod `<4.6.6`         | Repaired locally in zod 3.25.76 (size gate); v3 has no fix     | 2027-01-24 |
 
 - Every entry of the npm report at **moderate, high or critical** must resolve
   to advisories on this list, with the same package and affected range, and
