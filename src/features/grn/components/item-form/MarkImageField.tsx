@@ -8,7 +8,7 @@
 
 import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Platform } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

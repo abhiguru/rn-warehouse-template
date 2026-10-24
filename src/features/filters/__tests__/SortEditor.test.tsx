@@ -18,7 +18,7 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ forceLogoutOnInvalidToken: jest.fn() }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 type ListWithRequest = { toRequest: (values: FilterValues, sort: SortState, ctx: FilterContext, today: Date) => unknown };
 const staff: FilterContext = { role: 'staff', isWarehouseRole: true, assignedCustomers: [] };

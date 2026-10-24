@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { View, Text } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
 import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 import { SectionHeader } from './SectionHeader';

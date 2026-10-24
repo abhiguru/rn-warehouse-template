@@ -16,14 +16,15 @@ import {
   LayoutAnimation,
   useWindowDimensions,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { KPICard, KPIVariant } from './KPICard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, space, touchTarget, typography, type ThemeTokens, trackedText } from '@/theme/tokens';
 
 export interface KPIItem {
-  icon: string;
+  icon: IconName;
   value: string | number;
   label: string;
   variant?: KPIVariant;

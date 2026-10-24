@@ -9,7 +9,7 @@
 
 import React, { useCallback } from 'react';
 import { View, Text } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { searchItems } from '@/services/item-search-service';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

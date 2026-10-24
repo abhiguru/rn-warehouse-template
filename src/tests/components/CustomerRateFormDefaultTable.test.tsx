@@ -10,7 +10,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const bands: BandRow[] = [
   { id: 'b1', weight_min: 0, weight_max: 40, unit_price: 12, labour_rate: 1.5, tax_percent: 5 },

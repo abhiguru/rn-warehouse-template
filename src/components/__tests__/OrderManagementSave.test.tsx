@@ -80,7 +80,7 @@ jest.mock('../OrderItemCard', () => ({ __esModule: true, default: () => null }))
 jest.mock('../RecentDispatchesSection', () => ({ __esModule: true, default: () => null }));
 jest.mock('../CustomerOrderSummary', () => ({ __esModule: true, default: () => null }));
 jest.mock('react-native-paper', () => ({ Surface: 'Surface', ActivityIndicator: 'ActivityIndicator' }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn() } }));
 const mockState = { theme: { preference: 'light', brand: 'orange' } };

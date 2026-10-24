@@ -20,7 +20,7 @@ jest.mock('expo-router', () => ({
   useFocusEffect: require('./focusHarness').useFocusEffect,
   useLocalSearchParams: () => ({ id: 'u2' }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('@/services/item-service', () => ({
   itemService: {

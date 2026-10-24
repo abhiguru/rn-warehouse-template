@@ -17,7 +17,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { formatCount, formatNumber, formatRelativeTime } from '@/utils/formatters';
 import { Avatar, StatusTag } from '@/components/ui';
 import { t as translate } from '@/i18n';

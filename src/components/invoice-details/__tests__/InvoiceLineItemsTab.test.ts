@@ -1,6 +1,6 @@
 import { groupItemsByGrnItem, InvoiceLineItem } from '../InvoiceLineItemsTab';
 
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (sel: (s: unknown) => unknown) => sel({ theme: { preference: 'light', brand: 'orange' } }),

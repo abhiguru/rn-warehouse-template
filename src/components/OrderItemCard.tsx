@@ -6,7 +6,7 @@ import {
   ActivityIndicator,
   Animated,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { LineSaved, OrderItem } from '@/types/order.types';
 import { formatDate, formatWeightEach } from '@/utils/formatters';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

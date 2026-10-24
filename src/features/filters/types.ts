@@ -6,6 +6,7 @@
  * single value, not two. Values are plain JSON; dates are local YYYY-MM-DD.
  */
 import type { UserRole } from '@/types/user.types';
+import type { IconName } from '@/types/icon.types';
 
 export type SortOrder = 'asc' | 'desc';
 export interface SortState {
@@ -89,7 +90,7 @@ interface FieldBase {
   key: string;
   label: string;
   /** MaterialCommunityIcons name for the field's row and chip. */
-  icon: string;
+  icon: IconName;
   /** Hide the field for some roles or accounts. Defaults to visible. */
   visibleTo?: (ctx: FilterContext) => boolean;
 }

@@ -14,7 +14,7 @@ import { space, typography } from '@/theme/tokens';
 import { setLanguage } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
 
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>

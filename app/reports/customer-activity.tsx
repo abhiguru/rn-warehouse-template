@@ -24,7 +24,8 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import {
   AgingBucketBar,
   ReportCustomerCard,
@@ -131,7 +132,7 @@ function lastActivity(value: string): string {
 
 /** "No customer activity", and a longer period to try unless there is none. */
 const emptyState = (period: ReportPeriod) => ({
-  icon: 'account-off-outline',
+  icon: 'account-off-outline' as const,
   title: tr('reports.customerActivity.emptyTitle'),
   description: tr(isLongestPeriod(period) ? 'reports.customerActivity.emptyDescriptionLongest' : 'reports.customerActivity.emptyDescription'),
 });
@@ -346,7 +347,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
@@ -487,7 +488,11 @@ const openDocument = (path: string) => router.push(path as never);
  * (not the length of the preview) or, for stock, today's; the action names the report it opens,
  * which shares the period; the preview rows are the latest of any date, and their heading says so.
  */
-function quickAccessHead(report: QuickReport, data: CustomerActivityDetailData, period: ReportPeriod) {
+function quickAccessHead(
+  report: QuickReport,
+  data: CustomerActivityDetailData,
+  period: ReportPeriod,
+): { icon: IconName; head: string; action: string; previewHeading: string } {
   const s = data.summary;
   const range = describeDateRange(period);
   switch (report) {

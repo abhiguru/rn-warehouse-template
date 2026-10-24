@@ -34,7 +34,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { useIsFocused } from 'expo-router';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { itemService } from '@/services/item-service';
 import {
   ItemListItem,

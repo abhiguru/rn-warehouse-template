@@ -13,7 +13,8 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
@@ -23,7 +24,7 @@ import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } fr
 
 export interface ReportHeaderAction {
   /** MaterialCommunityIcons glyph */
-  icon: string;
+  icon: IconName;
   /** Accessible name of the action, e.g. "Share PDF" */
   label: string;
   onPress: () => void;
@@ -41,7 +42,7 @@ interface ReportHeaderProps {
   /** Custom back action */
   onBack?: () => void;
   /** Right-side action button */
-  actionIcon?: string;
+  actionIcon?: IconName;
   /** Right-side action callback */
   onAction?: () => void;
   /** Right-side action accessibility label */

@@ -12,7 +12,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 let mockOffline = false;
 // The strip asks the lost-answer rule's own online test (utils/lostAnswer), the one the wait uses.
 jest.mock('@/utils/lostAnswer', () => ({ useIsDisconnected: () => mockOffline }));

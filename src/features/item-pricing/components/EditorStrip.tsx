@@ -5,7 +5,8 @@
  */
 import React from 'react';
 import { Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 
@@ -17,7 +18,7 @@ interface Props {
   testID?: string;
 }
 
-const ICONS: Record<StripVariant, string> = { info: 'information', warning: 'alert', critical: 'alert-circle' };
+const ICONS: Record<StripVariant, IconName> = { info: 'information', warning: 'alert', critical: 'alert-circle' };
 
 const makeStyles = (_t: ThemeTokens) => ({
   strip: {

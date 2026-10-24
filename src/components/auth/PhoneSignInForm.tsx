@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { BrandMark } from '@/components/BrandMark';
 import { PhoneInput } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';

@@ -12,7 +12,8 @@ import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useAppSelector } from '@/store/hooks';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
 import { LANGUAGES, getLanguage, resolveLanguage, t, type LanguagePreference, type TranslationKey } from '@/i18n';
@@ -52,7 +53,7 @@ import { useFacilityCapabilities } from '@/hooks/useCapability';
 const THEME_OPTIONS: {
   value: ThemePreference;
   label: TranslationKey;
-  icon: string;
+  icon: IconName;
 }[] = [
   { value: 'system', label: 'settings.appearance.system', icon: 'cellphone' },
   { value: 'light', label: 'settings.appearance.light', icon: 'white-balance-sunny' },
@@ -87,12 +88,12 @@ const SettingsScreen: React.FC = () => {
   // How many access requests wait, read each time Settings is shown (administrators only). Null: none, or not readable.
   const [waitingRequests, setWaitingRequests] = useState<number | null>(null);
 
-  const languageOptions: { value: LanguagePreference; label: string; accessibilityLabel: string; icon: string }[] = [
+  const languageOptions: { value: LanguagePreference; label: string; accessibilityLabel: string; icon: IconName }[] = [
     { value: 'system', label: t('settings.language.system'), accessibilityLabel: t('settings.language.system'), icon: 'cellphone' },
     ...LANGUAGES.map(option => ({
       ...option,
       accessibilityLabel: t('settings.language.optionLabel', { language: option.label }),
-      icon: 'translate',
+      icon: 'translate' as const,
     })),
   ];
   const chooseLanguage = (next: LanguagePreference) => {
@@ -112,7 +113,7 @@ const SettingsScreen: React.FC = () => {
 
   // Feature rows by role: the same table the server uses (src/config/roles.ts). A row of a
   // capability this facility does not have (Sensors) is not shown.
-  const FEATURE_ROWS: Record<SettingsFeature, { icon: string; label: string; subtitle: string; value?: string; route: string }> = {
+  const FEATURE_ROWS: Record<SettingsFeature, { icon: IconName; label: string; subtitle: string; value?: string; route: string }> = {
     customers: { icon: 'account-outline', label: t('common.customers'), subtitle: t('settings.features.customersSubtitle'), route: '/customers' },
     enrollmentReview: {
       icon: 'account-plus-outline',

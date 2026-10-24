@@ -15,7 +15,7 @@ jest.mock('expo-router', () => ({
   useFocusEffect: require('./focusHarness').useFocusEffect,
 }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/windowedFlashListMock'));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 // The card is a host element that keeps its props.
 jest.mock('@/components/list-items', () => ({
   MemoizedInvoiceItem: (props: { invoice: { invoice_id: string } }) => require('react').createElement('InvoiceCard', { ...props, testID: `invoice-card-${props.invoice.invoice_id}` }),

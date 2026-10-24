@@ -24,7 +24,7 @@ jest.mock('expo-router', () => ({
 jest.mock('@/hooks/useLeaveGuard', () => ({
   useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons' }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),

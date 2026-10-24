@@ -18,7 +18,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: mockTheme }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 let mockFontScale = 1;
 let mockWidth = 360;
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({

@@ -10,7 +10,8 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
@@ -54,7 +55,7 @@ import { KeyValueCell } from '@/components/fiori/KeyValueCell';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 
 const STATUS = ['negative', 'critical', 'positive', 'informative', 'neutral'] as const;
-const STATUS_ICON: Record<(typeof STATUS)[number], string> = {
+const STATUS_ICON: Record<(typeof STATUS)[number], IconName> = {
   negative: 'alert-circle',
   critical: 'alert',
   positive: 'check-circle',

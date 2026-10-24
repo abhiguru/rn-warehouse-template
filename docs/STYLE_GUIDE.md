@@ -627,7 +627,7 @@ Rules:
 
 ## 8. Iconography
 
-- **One set.** Use MaterialCommunityIcons: `import Icon from 'react-native-vector-icons/MaterialCommunityIcons'`. `Button`, `ConfirmDialog` and `ListEmptyState` take MaterialCommunityIcons names.
+- **One set.** Use MaterialCommunityIcons: `import Icon from '@expo/vector-icons/MaterialCommunityIcons'` (it works in Expo Go). Type an icon-name prop or field as `IconName` from `src/types/icon.types.ts`. `Button`, `ConfirmDialog` and `ListEmptyState` take MaterialCommunityIcons names.
 - **Sizes.** `iconSize.sm` 16 inline with caption text, `md` 20 in rows and inputs, `lg` 24 in toolbars, tabs and buttons, `xl` 32 in empty states and KPI tiles, `hero` 48 in full-screen states.
 - **Colour.** `icon.primary` when the icon is the action or carries meaning, `icon.secondary` when it decorates, `brand.tint` for brand actions, `status.*.text` for status, `brand.onFill` on fills.
 - **Touch area.** An icon button is at least `touchTarget` square (44 iOS, 48 Android), even if the glyph is 24. Use `hitSlop` when space is tight.
@@ -635,7 +635,7 @@ Rules:
 - **Style.** Outline glyphs by default, filled glyphs for the selected tab and for a selected state.
 - **Tags.** Icons inside caption-sized tags and badges use `iconSize.xs` (12).
 - **Back on headerless screens.** Screens that hide the stack header (OTP, customer order page, object pages with hero headers) draw their own back control: the platform glyph (`chevron-left` on iOS, `arrow-left` on Android) in `brand.tint` with the word "Back", at least `touchTarget` in size. Screens with a stack header put `HeaderBackButton` (`ui/HeaderBackButton.tsx`) in `headerLeft`, so the word Back shows and is translated; never the icon-only native back.
-- **One icon set.** Ionicons is not used; the lint guard rejects `@expo/vector-icons` imports.
+- **One icon set.** Ionicons is not used; the lint guard rejects `react-native-vector-icons` and every `@expo/vector-icons` import except `@expo/vector-icons/MaterialCommunityIcons`.
 
 Standard glyphs:
 
@@ -1347,7 +1347,7 @@ The app has one central sign-in that only proves who the user is, then facility 
 | `Alert.alert` | `showAlert` from `src/utils/alert.ts` |
 | `toISOString().split('T')[0]` and similar (UTC: yesterday before 5:30 am in India) | `toLocalISODate()` from `src/utils/formatters.ts` |
 | `useColorScheme` or `Appearance` from react-native | `useTheme()` (only `src/hooks/useTheme.ts` reads the system scheme) |
-| `@expo/vector-icons` | `react-native-vector-icons/MaterialCommunityIcons` |
+| `react-native-vector-icons`, and `@expo/vector-icons` other than its `MaterialCommunityIcons` | `@expo/vector-icons/MaterialCommunityIcons` |
 | The old colour modules (`listColors`, `fioriColors`, `useListColors`, `fioriDesignTokens`, overview-tab `FioriTokens`) and `colors`/`getThemeColors` from `@/theme` | Semantic tokens |
 
 The contrast test (`src/theme/tokens/__tests__/contrast.test.ts`) checks every token pair in all four themes, and render tests draw each area of the app in all four themes.

@@ -23,7 +23,8 @@ import {
   View,
   Insets,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -52,9 +53,9 @@ export interface ButtonProps extends Omit<TouchableOpacityProps, 'style'> {
   /** Disabled state */
   disabled?: boolean;
   /** Left icon name (MaterialCommunityIcons) */
-  leftIcon?: string;
+  leftIcon?: IconName;
   /** Right icon name (MaterialCommunityIcons) */
-  rightIcon?: string;
+  rightIcon?: IconName;
   /** Icon-only button (no text); children becomes the accessibility label */
   iconOnly?: boolean;
   /** Custom container style */

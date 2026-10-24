@@ -7,6 +7,7 @@
  * received quantity is critical "Low stock", otherwise positive "In stock".
  */
 import type { StatusKind } from '@/components/ui';
+import type { IconName } from '@/types/icon.types';
 
 import { LOW_STOCK_RATIO } from '@/utils/stockStatus';
 import { t } from '@/i18n';
@@ -16,7 +17,7 @@ export { LOW_STOCK_RATIO };
 export interface GRNStockStatus {
   status: StatusKind;
   label: string;
-  icon: string;
+  icon: IconName;
 }
 
 /** Status for a received quantity and what is still in stock; null when nothing was received. */

@@ -22,7 +22,7 @@ import { useIsFocused } from 'expo-router';
 import { canOpenScreen } from '@/config/roles';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { adminUserService } from '@/services/admin-user-service';
 import { UserListItem, UserFilters, UserRole } from '@/types/user.types';
 import { subscribeUserListChanges } from '@/utils/userListSync';

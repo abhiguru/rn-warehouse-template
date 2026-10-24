@@ -27,7 +27,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { HeaderCell, OpenBar, RowChevron, makeTableStyles } from '@/components/common/DetailTable';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';

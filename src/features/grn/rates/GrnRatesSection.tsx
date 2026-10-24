@@ -15,6 +15,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
+import type { IconName } from '@/types/icon.types';
 import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui';
 import { HeaderCell, ONE_LINE, crowded, makeTableStyles, nb, nestedRowWidth, numberColumnWidth, useStackedWhen, useTableLayout } from '@/components/common/DetailTable';
@@ -83,9 +84,9 @@ export function replacedRent(rate: RowRate | null): number | null {
 }
 
 /** The tags of a row, in the order they are drawn: source, then a pending change. */
-function tagsOf(rate: RowRate | null): { label: string; status: 'neutral' | 'informative'; icon: string | null }[] {
+function tagsOf(rate: RowRate | null): { label: string; status: 'neutral' | 'informative'; icon: IconName | null }[] {
   if (!rate) return [];
-  const tags: { label: string; status: 'neutral' | 'informative'; icon: string | null }[] = [];
+  const tags: { label: string; status: 'neutral' | 'informative'; icon: IconName | null }[] = [];
   if (rate.source === 'customer') tags.push({ label: t('grn.rates.tagCustomer'), status: 'neutral', icon: null });
   if (rate.source === 'item') tags.push({ label: t('grn.rates.tagItem'), status: 'neutral', icon: null });
   if (rate.source === 'grn') tags.push({ label: t('grn.rates.tagGrn'), status: 'informative', icon: null });

@@ -14,7 +14,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const before = Dimensions.get('window');
 const setWindow = (width: number, fontScale: number) => act(() => Dimensions.set({ window: { width, height: 850, scale: 2.75, fontScale } }));

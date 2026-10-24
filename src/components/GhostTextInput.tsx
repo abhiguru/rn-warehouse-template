@@ -23,7 +23,8 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
@@ -39,7 +40,7 @@ export interface GhostTextInputProps
   /** Optional context ID (e.g., customerId) passed to getSuggestion */
   suggestionContext?: string | null;
   /** Icon name (MaterialCommunityIcons) */
-  icon?: string;
+  icon?: IconName;
   /** Debounce delay in ms (default: 300) */
   debounceMs?: number;
   /** Container style */

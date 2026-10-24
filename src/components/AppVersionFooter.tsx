@@ -22,7 +22,7 @@ import React, { useCallback } from 'react';
 import { Platform, Pressable, Share, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatIdentifier, t as tr } from '@/i18n';

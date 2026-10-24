@@ -18,7 +18,7 @@
 
 import React, { memo, useCallback, useMemo } from 'react';
 import { Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { ReportEmptyState, ReportHeader, ReportScaffold } from '@/components/reports';
 import type { ReportKpiGroup } from '@/components/reports/ReportScaffold';
 import { OPERATIONS_DASHBOARD } from '@/features/filters/configs/reports/operationsDashboard';

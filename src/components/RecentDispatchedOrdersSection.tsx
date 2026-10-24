@@ -25,7 +25,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { getRecentDispatchedOrders } from '@/services/dispatch-service';
 import { Button } from '@/components/ui/Button';
 import { RecentDispatchedOrderCard } from './list-items/RecentDispatchedOrderCard';

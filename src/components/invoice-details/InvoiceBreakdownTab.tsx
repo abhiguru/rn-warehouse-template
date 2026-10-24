@@ -9,7 +9,8 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -221,7 +222,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
 
   const renderDocumentButton = (
     doc: RelatedDocument,
-    iconName: string,
+    iconName: IconName,
     hasNavigation: boolean,
   ) => (
     <Pressable

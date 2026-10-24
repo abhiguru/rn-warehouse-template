@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { iconSize, radius, space, touchTarget, type ThemeTokens } from '@/theme/tokens';

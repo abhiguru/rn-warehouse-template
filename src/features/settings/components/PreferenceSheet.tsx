@@ -8,7 +8,8 @@
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
@@ -19,7 +20,7 @@ export interface PreferenceOption<T extends string> {
   label: string;
   /** Read in place of the label, e.g. "ગુજરાતી language". */
   accessibilityLabel?: string;
-  icon?: string;
+  icon?: IconName;
   /** Drawn in place of the icon, e.g. brand swatches. */
   leading?: React.ReactNode;
 }

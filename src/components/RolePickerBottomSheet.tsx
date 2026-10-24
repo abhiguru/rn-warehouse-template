@@ -13,7 +13,8 @@ import BottomSheet, {
   BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { UserRole } from '@/types/user.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -30,7 +31,7 @@ interface RoleOption {
   value: UserRole;
   /** Key of the one-line description; the name comes from `roleLabel`. */
   descriptionKey: TranslationKey;
-  icon: string;
+  icon: IconName;
   /** Index into the theme's avatar palette (category colour, not status). */
   avatarIndex: number;
 }

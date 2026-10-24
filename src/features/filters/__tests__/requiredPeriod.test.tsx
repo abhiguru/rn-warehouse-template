@@ -52,7 +52,7 @@ const STATUS = {
   key: 'status',
   kind: 'choice' as const,
   label: 'Status',
-  icon: 'tag-outline',
+  icon: 'tag-outline' as const,
   defaultValue: 'all',
   options: [{ value: 'all', label: 'All' }, { value: 'paid', label: 'Paid' }],
 };

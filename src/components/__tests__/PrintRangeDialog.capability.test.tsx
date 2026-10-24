@@ -12,7 +12,7 @@ jest.mock('@/hooks/useTheme', () => {
   const tokens = jest.requireActual('@/theme/tokens').getTokens('orange', 'light');
   return { useTokens: () => tokens, useThemedStyles: (factory: (t: unknown) => unknown) => factory(tokens) };
 });
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 // The demo default says printing is off.
 jest.mock('@/config/demoCapabilities', () => ({
   DEMO_CAPABILITIES: { printing: false, sensors: false, realtime: true, customerDocuments: false },

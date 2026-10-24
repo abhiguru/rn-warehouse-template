@@ -47,7 +47,7 @@ jest.mock('expo-router', () => {
   };
 });
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'ScrollView' }));
 // The sheets draw nothing here, but an open one listens for Back as the real ones do.

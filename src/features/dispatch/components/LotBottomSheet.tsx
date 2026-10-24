@@ -28,7 +28,8 @@ import {
 } from '@gorhom/bottom-sheet';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useRouter, Href } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -360,7 +361,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   }, [grnInfo, handleViewGRNDetails, styles, t]);
 
   const renderStatusTag = useCallback(
-    (kind: 'negative' | 'informative', icon: string, label: string) => (
+    (kind: 'negative' | 'informative', icon: IconName, label: string) => (
       <StatusTag status={kind} icon={icon} label={label} />
     ),
     []

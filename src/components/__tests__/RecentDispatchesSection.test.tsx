@@ -14,7 +14,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('../list-items/MemoizedDispatchItem', () => ({ MemoizedDispatchItem: 'MemoizedDispatchItem' }));
 jest.mock('@/services/dispatch-service', () => ({

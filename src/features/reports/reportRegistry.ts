@@ -6,6 +6,7 @@
  * app/reports/<id>.tsx; reportRegistry.test.ts checks that the three agree.
  */
 import type { RoleGatedScreen } from '@/config/roles';
+import type { IconName } from '@/types/icon.types';
 import { t, type TranslationKey } from '@/i18n';
 
 export type ReportId =
@@ -27,7 +28,7 @@ export interface ReportDefinition {
   /** The line under the title on the Reports tab, in the app's language at the time it is read. */
   readonly description: string;
   /** MaterialCommunityIcons name */
-  icon: string;
+  icon: IconName;
   route: `/reports/${ReportId}`;
   category: ReportCategory;
   /** Whether the report covers a chosen period. False: it shows the stock as it is now. */
@@ -44,7 +45,7 @@ interface ReportEntry {
   id: ReportId;
   title: TranslationKey;
   description: TranslationKey;
-  icon: string;
+  icon: IconName;
   category: ReportCategory;
   hasPeriod: boolean;
   gate?: RoleGatedScreen;

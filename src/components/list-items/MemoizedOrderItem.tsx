@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { formatCount, formatNumber, formatRelativeTime } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import { StatusTag, type StatusKind, Avatar } from '@/components/ui';

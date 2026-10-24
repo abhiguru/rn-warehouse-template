@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Icons work in Expo Go
+
+- Icons now come from `@expo/vector-icons/MaterialCommunityIcons` (works in Expo Go) instead of `react-native-vector-icons`, and the unused `react-native-worklets-core` was removed. No backend change.
+
 ## Unreleased — Fixes from the phone fault test (2026-10-21)
 
 Pairs with backend migration 124 for the duplicate warning only. Deploy order does not matter: on a server without 124 the app falls

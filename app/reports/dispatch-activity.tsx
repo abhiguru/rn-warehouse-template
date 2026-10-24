@@ -12,7 +12,7 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   ReportCustomerCard,
   ReportCustomerPicker,
@@ -155,7 +155,7 @@ export default function DispatchActivityScreen() {
 
 /** "No dispatches in this period", and a longer period to try unless there is none. */
 const emptyState = (period: ReportPeriod, oneCustomer: boolean) => ({
-  icon: 'truck-delivery-outline',
+  icon: 'truck-delivery-outline' as const,
   title: tr('reports.dispatchActivity.emptyTitle'),
   description: isLongestPeriod(period)
     ? undefined
@@ -327,7 +327,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]

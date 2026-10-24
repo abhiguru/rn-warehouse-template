@@ -19,7 +19,7 @@ void globalThis.fetch;
 
 // Icons render as plain host elements in tests. Loading the real icon sets pulls in
 // expo-font, which needs native modules. Individual tests may still override these.
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@expo/vector-icons', () => ({ MaterialCommunityIcons: 'MaterialCommunityIcons', Ionicons: 'Ionicons' }));
 
 // A report opened for a customer whose name the app does not hold asks the facility for it

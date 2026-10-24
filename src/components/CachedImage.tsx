@@ -19,7 +19,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { Image, ImageProps, ImageContentFit } from 'expo-image';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, motion, radius, space } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';

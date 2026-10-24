@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { nb, numberColumnWidth, rowWidth, useTableLayout } from '@/components/common/DetailTable';
 import { useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';

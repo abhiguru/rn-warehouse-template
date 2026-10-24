@@ -6,7 +6,8 @@
  */
 import React from 'react';
 import { Pressable, type StyleProp, type ViewStyle } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, type ThemeTokens } from '@/theme/tokens';
 
@@ -18,7 +19,7 @@ export interface FabProps {
   /** Accessible name, e.g. "Create GRN". */
   label: string;
   onPress: () => void;
-  icon?: string;
+  icon?: IconName;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }

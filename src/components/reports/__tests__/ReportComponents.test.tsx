@@ -15,7 +15,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons' }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -192,7 +192,7 @@ describe('figure tiles and text size', () => {
 
   const rowSizes = (fontScale: number, count: number) => {
     Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale } });
-    const items = Array.from({ length: count }, (_, i) => ({ icon: 'warehouse', value: 1200 + i, label: `Figure ${i + 1}` }));
+    const items = Array.from({ length: count }, (_, i) => ({ icon: 'warehouse' as const, value: 1200 + i, label: `Figure ${i + 1}` }));
     const tree = render('orange', 'light', <KPIGrid items={items} compact />);
     // Each row of tiles is the parent of its cards.
     const parents = new Map<ReactTestInstance, number>();

@@ -15,7 +15,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Portal, Snackbar } from 'react-native-paper';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { fontWeight, iconSize, radius, space, typography, trackedText } from '@/theme/tokens';
@@ -245,7 +246,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
     fetchInvoiceData();
   };
 
-  const renderInfoRow = (icon: string, label: string, value?: string | null) => (
+  const renderInfoRow = (icon: IconName, label: string, value?: string | null) => (
     <View style={styles.infoRow} accessible accessibilityLabel={`${label}, ${value || tr('invoice.details.notSetA11y')}`}>
       <Icon name={icon} size={iconSize.md} color={t.icon.secondary} />
       <View style={styles.infoTextContainer}>

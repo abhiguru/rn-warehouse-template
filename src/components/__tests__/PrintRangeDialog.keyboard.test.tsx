@@ -20,7 +20,7 @@ jest.mock('@/hooks/useTheme', () => {
   const tokens = jest.requireActual('@/theme/tokens').getTokens('orange', 'light');
   return { useTokens: () => tokens, useThemedStyles: (factory: (t: unknown) => unknown) => factory(tokens) };
 });
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/config/demoCapabilities', () => ({
   DEMO_CAPABILITIES: { printing: true, sensors: false, realtime: true, customerDocuments: false },
 }));

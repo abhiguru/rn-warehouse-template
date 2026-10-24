@@ -5,7 +5,8 @@
  */
 import React, { memo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
@@ -19,7 +20,7 @@ import {
   priceHistoryValueText,
 } from '@/features/item-pricing/utils/priceHistoryLabels';
 
-const ACTION_ICONS: Record<string, string> = {
+const ACTION_ICONS: Record<string, IconName> = {
   insert: 'plus-circle-outline',
   update: 'pencil-outline',
   delete: 'trash-can-outline',

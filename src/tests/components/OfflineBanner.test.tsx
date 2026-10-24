@@ -20,7 +20,7 @@ jest.mock('@/hooks/useTheme', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 24, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native', () => {
   const React = require('react');
   const element = (name: string) => ({ children, ...props }: Record<string, unknown>) =>
