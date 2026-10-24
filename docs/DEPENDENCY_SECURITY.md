@@ -1,5 +1,29 @@
 # Dependency security review — 2026-09-14
 
+## Operator install: what `npm audit` still reports — 24 October 2026
+
+`npm audit` reports 6 high entries on the Expo 57 line. The lockfile now resolves the dev-only `zod` that
+`eslint-plugin-react-hooks` and `zod-validation-error` use to 4.6.7 (it was 4.6.5, inside the advisory range
+GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The count stays at 6 because the other copies have no fix in this line:
+
+| Package | Advisory | Pulled in by | Fixed version |
+| ------- | -------- | ------------ | ------------- |
+| `zod` 3.25.76 (nested) | GHSA-mrhx-c7xc-m3w5 | `@expo/cli` (inside `expo`) | none in the 3.x copy that `@expo/cli` 57 pins |
+| `node-forge` | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | none: every release is affected (the local repair above covers installed 1.4.0 only) |
+| `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the two above, as dependents | | follow the two above |
+
+- These are build and development tools: the Expo CLI (Metro, prebuild, export) and the code-signing of over-the-air updates
+  (off in this template, see below). They run on the developer's machine, not in the app. On 2026-10-24 `npx expo export
+  --platform android --source-maps` produced a bundle whose source map lists 3666 modules, none from `node-forge`,
+  `@expo/code-signing-certificates`, `@expo/cli` or `zod` (the only name match is Sentry's unrelated `zoderrors.js`);
+  `expo-updates` appears as its runtime JavaScript only.
+- No fixed version exists in the Expo 57 line. **Do not run `npm audit fix --force`**: it proposes `expo@54.0.38`, a downgrade
+  by three SDKs, and breaks the project. Do not add an `overrides` entry for the zod copy under `@expo/cli`; that CLI needs
+  zod 3 and stops working with 4.
+- `npm run audit:dependencies` does not list the zod advisory as accepted, because it has no source repair; the gate reports it
+  as `UNREPAIRED` until `@expo/cli` ships a zod without the flaw, or the owner adds a reviewed, dated acceptance for it.
+  The check is that the nested copy stays a dev-time dependency.
+
 ## The audit gate, install check and update channels — 11 October 2026
 
 From the 2026-10-10 review. No dependency version changed.

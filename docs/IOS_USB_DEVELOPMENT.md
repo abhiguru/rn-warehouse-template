@@ -1,8 +1,11 @@
 # Physical iPhone development over USB
 
 This is a local source-demo development path, not production hosting. Keep the
-backend bound to `127.0.0.1`; never expose the fictional OTP service to Wi-Fi,
-LAN, a tunnel, or the public internet. iOS does not support `adb reverse`.
+backend bound to `127.0.0.1`; never expose a development backend to Wi-Fi,
+LAN, a tunnel, or the public internet. Sign-in codes
+are real MSG91 SMS; a test installation that must send nothing uses the
+`isolated-` sentinel key and a `.test` address (see the backend's
+`docs/OPERATOR_INSTALL.md`, "Private inputs"). iOS does not support `adb reverse`.
 
 ## Fresh checkout
 
