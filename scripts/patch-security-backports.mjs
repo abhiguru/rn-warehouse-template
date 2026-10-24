@@ -6,6 +6,19 @@ import { isMain } from './is-main.mjs';
 
 const manifest = JSON.parse(readFileSync(new URL('./security-backports.json', import.meta.url)));
 const hash = value => createHash('sha256').update(value).digest('hex');
+const parts = version => {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) throw new Error(`Unreviewed version format: ${version}`);
+  return match.slice(1).map(Number);
+};
+const atLeast = (version, floor) => {
+  const [a, b] = [parts(version), parts(floor)];
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return true;
+};
+// A copy with no entry for its exact version is accepted only when the manifest
+// declares that version range unaffected (a release that already has the fix).
+const unaffected = (name, version) => (manifest.unaffected ?? []).some(entry => entry.package === name && atLeast(version, entry.fromVersion));
 
 export function backportSource(source, version, spec) {
   if (version !== spec.version) throw new Error(`Unreviewed ${spec.package} version`);
@@ -33,7 +46,9 @@ export function securityBackports(root, { verifyOnly = false } = {}) {
       if (realpathSync(directory) !== directory) throw new Error('Symlink dependency refused');
       const pkg = JSON.parse(readFileSync(resolve(directory, 'package.json')));
       if (pkg.name !== name || pkg.version !== lock.packages[path].version) throw new Error('Dependency identity mismatch');
-      for (const spec of manifest.files.filter(file => file.package === name)) {
+      const specs = manifest.files.filter(file => file.package === name && file.version === pkg.version);
+      if (!specs.length && !unaffected(name, pkg.version)) throw new Error(`Unreviewed ${name} version ${pkg.version}; review the backport`);
+      for (const spec of specs) {
         const target = resolve(directory, spec.file);
         if (realpathSync(target) !== target) throw new Error('Symlink backport target refused');
         const source = readFileSync(target, 'utf8');
