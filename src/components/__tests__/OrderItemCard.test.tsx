@@ -7,7 +7,7 @@ import { getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { formatDate } from '@/utils/formatters';
 import { setLanguage } from '@/i18n';
 
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('../StockIndicator', () => 'StockIndicator');
 let mockTheme: { preference: Mode; brand: Brand } = { preference: 'light', brand: 'orange' };
 jest.mock('@/store/hooks', () => ({

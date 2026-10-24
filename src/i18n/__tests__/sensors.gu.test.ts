@@ -4,7 +4,7 @@ import type { SensorHistoryReading } from '@/types/sensor-history.types';
 
 // The chart module pulls in the theme hooks and native views; only its text helpers are used here.
 jest.mock('@/store/hooks', () => ({ useAppDispatch: () => jest.fn(), useAppSelector: () => undefined }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
 

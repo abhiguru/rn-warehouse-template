@@ -16,7 +16,7 @@ jest.mock('@/store/hooks', () => {
       real.useAppSelector((state: object) => selector({ ...state, theme: mockTheme })),
   };
 });
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ listenToKeyboardEvents: () => (component: unknown) => component }));
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({

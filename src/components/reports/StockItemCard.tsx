@@ -37,7 +37,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,

@@ -33,7 +33,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';

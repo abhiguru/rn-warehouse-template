@@ -12,7 +12,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const DATA = { documentNo: 'D0042', customerName: 'Example Traders', date: '9 Oct 2026', itemCount: 3 };
 let tree: ReactTestRenderer;

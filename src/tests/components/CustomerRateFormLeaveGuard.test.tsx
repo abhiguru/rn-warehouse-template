@@ -20,7 +20,7 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn() } }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 let mockGuard: { hasChanges: boolean; title?: string; blocked?: boolean } = { hasChanges: false };
 jest.mock('@/hooks/useLeaveGuard', () => ({

@@ -21,7 +21,7 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   countReceipts,
   getAllGRNItems,

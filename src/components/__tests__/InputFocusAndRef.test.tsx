@@ -7,7 +7,7 @@ import { TextInput } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { Input } from '../ui/Input';
 
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>

@@ -16,7 +16,8 @@ import React, { useCallback, useMemo } from 'react';
 import { Pressable, RefreshControl, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeleton } from '@/components/skeletons/ListSkeleton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
@@ -39,7 +40,7 @@ export interface ReportEmptyAction {
   label: string;
   onPress: () => void;
   /** MaterialCommunityIcons name. Defaults to a calendar, for the period. */
-  icon?: string;
+  icon?: IconName;
 }
 
 /** A group of figures with the heading of what they cover. */
@@ -96,7 +97,7 @@ interface ReportScaffoldBaseProps<T> {
    * Shown when there are no rows and nothing narrows them. `action` is the button
    * under it, for a way out the description suggests ("Choose a longer period").
    */
-  empty: { icon: string; title: string; description?: string; action?: ReportEmptyAction };
+  empty: { icon: IconName; title: string; description?: string; action?: ReportEmptyAction };
   /** Title of the failure with nothing to show. The reason is shown under it. */
   errorTitle?: string;
 }

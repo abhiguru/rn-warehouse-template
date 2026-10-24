@@ -22,7 +22,7 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock('react-native-reanimated', () => ({ ...jest.requireActual('react-native-reanimated'), useReducedMotion: () => true }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('../configs', () => ({ FILTER_CONFIGS: { 'grn-list': { fields: [], fastFilters: [] } } }));
 jest.mock('../components/FilterBar', () => ({ FilterBar: () => 'FilterBar' }));

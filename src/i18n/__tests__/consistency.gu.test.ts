@@ -15,7 +15,7 @@ import { GRN_STEP_COUNT } from '@/constants/grnSteps';
 import { DISPATCH_STEP_COUNT } from '@/constants/dispatchSteps';
 
 jest.mock('@/store/hooks', () => ({ useAppDispatch: () => jest.fn(), useAppSelector: () => undefined }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 
 afterEach(() => setLanguage('en'));

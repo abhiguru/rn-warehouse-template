@@ -15,7 +15,8 @@ import {
   Pressable,
   type LayoutChangeEvent,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typography, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -38,8 +39,8 @@ export const TAB_LABEL_FONT_CAP = 1.5;
 // ============================================================================
 
 export interface TabIconConfig {
-  filled: string;
-  outline: string;
+  filled: IconName;
+  outline: IconName;
 }
 
 export interface TabConfig<T extends string = string> {
@@ -128,7 +129,7 @@ export function GenericDetailTabNavigator<T extends string>({
     }
   };
 
-  const getIconName = (icon: TabIconConfig, isActive: boolean): string => {
+  const getIconName = (icon: TabIconConfig, isActive: boolean): IconName => {
     return isActive ? icon.filled : icon.outline;
   };
 

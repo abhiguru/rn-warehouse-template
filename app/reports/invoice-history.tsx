@@ -12,7 +12,7 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   FactLines,
   ReportCustomerCard,
@@ -167,7 +167,7 @@ export default function InvoiceHistoryScreen() {
 
 /** "No invoices in this period", and a longer period to try unless there is none. */
 const emptyState = (period: ReportPeriod) => ({
-  icon: 'file-document-outline',
+  icon: 'file-document-outline' as const,
   title: tr('reports.invoiceHistory.emptyTitle'),
   description: isLongestPeriod(period) ? undefined : tr('reports.invoiceHistory.emptyDescription'),
 });
@@ -365,7 +365,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]

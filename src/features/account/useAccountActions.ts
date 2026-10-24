@@ -21,6 +21,7 @@ import { AccessibilityInfo } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
 import { router, useIsFocused } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import type { IconName } from '@/types/icon.types';
 import { deleteAccount as deleteAccountThunk, isDeleteAccountRejection, logout } from '@/store/slices/authSlice';
 import { leaveFacility } from '@/store/operatorSwitch';
 import { deleteFacilityAccount, signOutEverywhere, whileLeaving, type CentralEndOutcome } from '@/store/centralSignOut';
@@ -42,7 +43,7 @@ export type AccountActionId = 'signOut' | 'leaveFacility' | 'signOutPhone';
 
 export interface AccountAction {
   id: AccountActionId;
-  icon: string;
+  icon: IconName;
   label: string;
   subtitle: string;
   /** Drawn in the negative colour, without a chevron. */

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TextInput, Platform, Pressable, StyleSheet, AccessibilityInfo, findNodeHandle } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ConfirmInputDialog } from '@/components/ConfirmInputDialog';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';

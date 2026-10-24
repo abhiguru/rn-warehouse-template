@@ -12,7 +12,8 @@
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -28,7 +29,7 @@ const MAX_LABEL_WIDTH = 200;
 export interface FilterBarChipProps {
   label: string;
   /** Leading icon (MaterialCommunityIcons name). */
-  icon?: string;
+  icon?: IconName;
   variant?: 'idle' | 'active' | 'action' | 'text';
   /** Show a chevron: the chip opens a sheet. */
   chevron?: boolean;

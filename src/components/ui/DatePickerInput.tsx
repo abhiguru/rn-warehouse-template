@@ -23,7 +23,7 @@ import {
   Modal,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
 import {
   fontWeight,

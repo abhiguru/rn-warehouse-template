@@ -15,7 +15,8 @@
 
 import React from 'react';
 import { View, Text, Modal, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -35,7 +36,7 @@ export interface ConfirmDialogProps {
   onCancel: () => void;
   variant?: ConfirmVariant;
   /** Optional icon name (MaterialCommunityIcons) */
-  icon?: string;
+  icon?: IconName;
   /** A third action between Cancel and the confirm button (for example "Only this GRN"); drawn when both are given. */
   middleText?: string;
   onMiddle?: () => void;
@@ -161,7 +162,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const destructive = variant === 'danger';
 
   // Icon: status colours for warning and danger, brand tint otherwise
-  const iconName: string | undefined =
+  const iconName: IconName | undefined =
     icon ?? (variant === 'danger' ? 'alert-circle-outline' : variant === 'warning' ? 'alert-outline' : undefined);
   const iconColor =
     variant === 'danger' ? t.status.negative.text : variant === 'warning' ? t.status.critical.text : t.brand.tint;

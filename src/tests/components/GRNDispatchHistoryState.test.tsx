@@ -14,7 +14,7 @@ jest.mock('@/store/hooks', () => ({
     sel({ theme: { preference: 'dark', brand: 'orange' } }),
 }));
 
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const item = {
   id: 'line-a',

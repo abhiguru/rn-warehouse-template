@@ -24,7 +24,8 @@
 import React from 'react';
 import { View, Pressable, Text, StyleSheet, Platform } from 'react-native';
 import type { Tabs } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -43,7 +44,7 @@ import { localizeDigits, t as tr } from '@/i18n';
 const BADGE_SIZE = 18;
 
 // Icon mapping for each tab route
-const TAB_ICONS: Record<string, { outline: string; filled: string }> = {
+const TAB_ICONS: Record<string, { outline: IconName; filled: IconName }> = {
   index: { outline: 'clipboard-text-outline', filled: 'clipboard-text' },
   grn: { outline: 'package-variant', filled: 'package-variant-closed' },
   dispatch: { outline: 'truck-fast-outline', filled: 'truck-fast' },

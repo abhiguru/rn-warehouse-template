@@ -22,7 +22,8 @@ import {
 } from 'react-native';
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -31,7 +32,7 @@ import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 /** Total badge configuration */
 export interface TotalBadge {
-  icon: string;
+  icon: IconName;
   iconColor: string;
   label: string;
   value: string | number;
@@ -88,7 +89,7 @@ export interface ItemsSummaryBottomSheetProps<T> {
   /** Empty state subtitle */
   emptySubtitle?: string;
   /** Header icon name */
-  headerIcon?: string;
+  headerIcon?: IconName;
 }
 
 function ItemsSummaryBottomSheetInner<T>(

@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { ONE_LINE } from '@/components/common/DetailTable';
 import { useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';

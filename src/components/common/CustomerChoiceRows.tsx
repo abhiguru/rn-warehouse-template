@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Avatar } from '@/components/ui/Avatar';
 import { StatusTag } from '@/components/ui';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

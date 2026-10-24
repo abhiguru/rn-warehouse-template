@@ -17,7 +17,7 @@ jest.mock('expo-router', () => ({
 jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
 jest.mock('react-native-paper', () => ({ ActivityIndicator: 'ActivityIndicator' }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
 jest.mock('@/components/list-items', () => ({ MemoizedInvoiceItem: () => null }));
 jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: () => null }));

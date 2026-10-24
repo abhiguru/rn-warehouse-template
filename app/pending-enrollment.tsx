@@ -6,7 +6,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { Button } from '@/components/ui/Button';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import {
@@ -35,7 +36,7 @@ import { t as tr, type TranslationKey } from '@/i18n';
 type EnrollmentStatus = 'pending' | 'approved' | 'rejected' | 'disabled';
 type StatusKind = 'critical' | 'positive' | 'negative';
 
-const STATUS_VIEW: Record<EnrollmentStatus, { kind: StatusKind; icon: string; label: TranslationKey; title: TranslationKey }> = {
+const STATUS_VIEW: Record<EnrollmentStatus, { kind: StatusKind; icon: IconName; label: TranslationKey; title: TranslationKey }> = {
   pending: { kind: 'critical', icon: 'alert', label: 'auth.enrollment.status.pending', title: 'auth.enrollment.title.waiting' },
   approved: { kind: 'positive', icon: 'check-circle', label: 'auth.enrollment.status.approved', title: 'auth.enrollment.title.approved' },
   rejected: { kind: 'negative', icon: 'alert-circle', label: 'auth.enrollment.status.rejected', title: 'auth.enrollment.title.notAvailable' },

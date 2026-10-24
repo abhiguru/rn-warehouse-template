@@ -37,7 +37,7 @@ jest.mock('@/store/hooks', () => {
       useSyncExternalStore(mockStore.subscribe, () => selector(mockStore.getState())),
   };
 });
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/components/RolePickerBottomSheet', () => ({ RolePickerBottomSheet: () => null }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));

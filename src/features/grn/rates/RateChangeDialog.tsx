@@ -19,7 +19,7 @@
 import React, { useMemo } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { Button } from '@/components/ui/Button';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

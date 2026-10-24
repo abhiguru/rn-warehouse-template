@@ -11,6 +11,7 @@
 
 import { getTokens, type ThemeTokens } from '@/theme/tokens';
 import { t, type TranslationKey } from '@/i18n';
+import type { IconName } from '@/types/icon.types';
 
 /** Below this share of the original quantity, stock is low (critical). */
 export const LOW_STOCK_RATIO = 0.2;
@@ -24,7 +25,7 @@ export type StockLevel = 'positive' | 'critical' | 'negative';
 export interface StockStatusResult {
   status: StockLevel;
   label: string;
-  icon: string;
+  icon: IconName;
   /** Remaining stock as a whole percentage of the original quantity, 0 to 100. */
   percentage: number;
 }
@@ -50,7 +51,7 @@ const STOCK_LABEL_KEYS: Record<StockLevel, TranslationKey> = {
 export const getStockLabel = (level: StockLevel): string => t(STOCK_LABEL_KEYS[level]);
 
 /** The standard §3.5 icon for each level (the same as StatusTag's STATUS_ICONS). */
-export const STOCK_ICONS: Record<StockLevel, string> = {
+export const STOCK_ICONS: Record<StockLevel, IconName> = {
   positive: 'check-circle',
   critical: 'alert',
   negative: 'alert-circle',

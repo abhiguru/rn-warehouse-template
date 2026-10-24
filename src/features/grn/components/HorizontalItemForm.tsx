@@ -9,7 +9,7 @@ import {
   Keyboard,
   Platform,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

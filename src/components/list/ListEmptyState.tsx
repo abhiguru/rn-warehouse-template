@@ -11,7 +11,8 @@
 
 import React, { memo } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -21,9 +22,9 @@ export interface ListEmptyStateProps {
   /** Number of active filters (affects messaging) */
   activeFilterCount: number;
   /** Icon to show when no filters applied (MaterialCommunityIcons name) */
-  emptyIcon?: string;
+  emptyIcon?: IconName;
   /** Icon to show when filters are active but no results */
-  filteredIcon?: string;
+  filteredIcon?: IconName;
   /** Title when no items and no filters */
   emptyTitle?: string;
   /** Title when filters active but no results */
@@ -37,7 +38,7 @@ export interface ListEmptyStateProps {
   /** Create button label */
   createButtonLabel?: string;
   /** Create button icon (MaterialCommunityIcons name) */
-  createButtonIcon?: string;
+  createButtonIcon?: IconName;
   /** Called when create button pressed */
   onCreatePress?: () => void;
   /** Called by the "Clear filters" button shown when filters hide every item */
@@ -46,7 +47,7 @@ export interface ListEmptyStateProps {
   clearFiltersLabel?: string;
 }
 
-function Glyph({ name, size, color }: { name: string; size: number; color: string }) {
+function Glyph({ name, size, color }: { name: IconName; size: number; color: string }) {
   return <Icon name={name} size={size} color={color} />;
 }
 

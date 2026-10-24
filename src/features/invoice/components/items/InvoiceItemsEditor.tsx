@@ -39,7 +39,7 @@
  */
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from 'react';
 import { AccessibilityInfo, Keyboard, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useTableLayout } from '@/components/common/DetailTable';
 import { useAppTable } from '@/components/table/appTable';
 import { KeyboardAwareFlashList } from '@/components/lists/KeyboardAwareFlashList';

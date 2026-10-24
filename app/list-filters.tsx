@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessibilityInfo, BackHandler, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { ApplyFiltersButton } from '@/features/filters/components/ApplyFiltersButton';
 import { pickerText } from '@/features/filters/components/editors/OptionPicker';
 import { SortEditor } from '@/features/filters/components/editors/SortEditor';

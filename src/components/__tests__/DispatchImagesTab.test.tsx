@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { DispatchImagesTab } from '../dispatch-details/DispatchImagesTab';
 
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-image', () => ({ Image: 'Image' }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),

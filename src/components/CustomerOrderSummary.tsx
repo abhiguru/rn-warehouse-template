@@ -5,7 +5,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Order } from '@/types/order.types';
 import { formatCount, formatRelativeTime } from '@/utils/formatters';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

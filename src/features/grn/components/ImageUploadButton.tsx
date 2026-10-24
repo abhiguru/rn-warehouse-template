@@ -8,7 +8,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { File } from 'expo-file-system';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { CameraModal, type CapturedPhotoSize } from '@/components/CameraModal';
 import { FioriLinearProgress } from '@/components/FioriLinearProgress';
 import {

@@ -12,7 +12,7 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   ReportCustomerCard,
   ReportCustomerPicker,
@@ -128,7 +128,7 @@ export default function GRNActivityScreen() {
 
 /** "No GRNs in this period", and a longer period to try unless there is none. */
 const emptyState = (period: ReportPeriod) => ({
-  icon: 'package-down',
+  icon: 'package-down' as const,
   title: tr('reports.grnActivity.emptyTitle'),
   description: isLongestPeriod(period) ? undefined : tr('reports.grnActivity.emptyDescription'),
 });
@@ -305,7 +305,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]

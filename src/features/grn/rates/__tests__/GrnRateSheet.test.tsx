@@ -17,7 +17,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 // Jest's window has font scale 2 (large text); the compact-layout cases set 1 or 1.3.
 let mockFontScale = 2;
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({

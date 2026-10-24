@@ -5,14 +5,15 @@
  */
 import React from 'react';
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, singleLineText, space, typography, type ThemeTokens } from '@/theme/tokens';
 
 export type StatusKind = 'negative' | 'critical' | 'positive' | 'informative' | 'neutral';
 
 /** The standard icon for each status (§3.5). */
-export const STATUS_ICONS: Record<StatusKind, string> = {
+export const STATUS_ICONS: Record<StatusKind, IconName> = {
   negative: 'alert-circle',
   critical: 'alert',
   positive: 'check-circle',
@@ -25,7 +26,7 @@ export interface StatusTagProps {
   /** The status word, sentence case: "In stock", "Pending". */
   label: string;
   /** Override the standard icon; pass null for a category tag with no icon. */
-  icon?: string | null;
+  icon?: IconName | null;
   style?: StyleProp<ViewStyle>;
   /** The label wraps onto more lines instead of ending in "…" (a tag in a narrow table column). */
   wrap?: boolean;

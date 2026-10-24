@@ -16,7 +16,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
 // PrintRangeDialog pads its overlay by the safe-area insets (keyboard-safe layout).
 jest.mock('react-native-safe-area-context', () => ({

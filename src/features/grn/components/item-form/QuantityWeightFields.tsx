@@ -10,7 +10,7 @@
 
 import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, Keyboard, Platform, Pressable, StyleSheet } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';

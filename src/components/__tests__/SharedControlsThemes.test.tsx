@@ -32,7 +32,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons' }));
 jest.mock('@/hooks/useHaptics', () => ({
   triggerLightTap: jest.fn(),
@@ -90,7 +90,7 @@ function Gallery() {
       <Button type="tertiary">Edit</Button>
       <Button type="tertiary" variant="negative" size="compact">Clear</Button>
       <Button type="primary" size="fullWidth" loading loadingText="Saving">Save</Button>
-      <Button type="secondary" iconOnly leftIcon="add">Add item</Button>
+      <Button type="secondary" iconOnly leftIcon="plus">Add item</Button>
       <Card header={{ title: 'GRN 311', subtitle: 'Patel Traders', status: { label: 'Pending', type: 'critical' } }}
         footer={{ actions: [{ label: 'Open', onPress: jest.fn(), style: 'primary' }, { label: 'Share', onPress: jest.fn(), style: 'secondary' }] }}>
         <Text>Body</Text>

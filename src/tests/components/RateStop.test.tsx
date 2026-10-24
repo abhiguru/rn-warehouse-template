@@ -27,7 +27,7 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: (o: unknown) => { mockGuardCalls(o); return { leaveWithoutAsking: (go: () => void) => go() }; } }));
 jest.mock('@/services/item-pricing-service', () => ({ replaceItemRates: jest.fn(), listItemRates: jest.fn() }));

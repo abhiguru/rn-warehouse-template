@@ -7,7 +7,7 @@
 import React from 'react';
 import { Platform, Pressable, Text, type StyleProp, type ViewStyle } from 'react-native';
 import { router } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, space, touchTarget, typography, type ThemeTokens, singleLineText } from '@/theme/tokens';
 import { t as tr } from '@/i18n';

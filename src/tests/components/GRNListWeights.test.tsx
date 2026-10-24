@@ -29,7 +29,7 @@ jest.mock('@shopify/flash-list', () => {
 });
 // Reduced motion: the loading skeleton's pulse would otherwise go on running after the test is over.
 jest.mock('react-native-reanimated', () => ({ __esModule: true, ...jest.requireActual('react-native-reanimated'), useReducedMotion: () => true }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));

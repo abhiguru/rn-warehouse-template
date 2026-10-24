@@ -8,7 +8,8 @@
  */
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
@@ -133,7 +134,7 @@ export function SettingsRow({
   testID,
 }: {
   testID?: string;
-  icon?: string;
+  icon?: IconName;
   /** Drawn in place of the icon, e.g. brand swatches. */
   leading?: React.ReactNode;
   label: string;

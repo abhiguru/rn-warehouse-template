@@ -15,7 +15,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const row = (min: number, max: number, rent: number): ItemStoragePrice => ({
   id: `r${min}`, item_id: 'garlic', item_name: 'Review Garlic Desi', customer_id: null, customer_name: null, price_type: 'monthly',

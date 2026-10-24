@@ -19,7 +19,8 @@ import {
   ViewStyle,
   Insets,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -48,7 +49,7 @@ interface SectionHeaderAction {
   /** Text label for button (exclusive with icon) */
   label?: string;
   /** Icon name for icon button (exclusive with label) */
-  icon?: string;
+  icon?: IconName;
   /** Press handler */
   onPress: () => void;
   /** Accessibility label */

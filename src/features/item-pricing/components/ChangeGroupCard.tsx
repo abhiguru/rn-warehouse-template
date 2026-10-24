@@ -5,7 +5,7 @@
  */
 import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';

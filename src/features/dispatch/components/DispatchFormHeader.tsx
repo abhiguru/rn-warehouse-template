@@ -13,7 +13,8 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -34,7 +35,7 @@ export interface DispatchFormHeaderProps {
   confirmCancel?: boolean; // Show confirmation alert (default: true)
   cancelMessage?: string; // Custom cancel confirmation message
   rightAction?: {
-    icon: string; // MaterialCommunityIcons name
+    icon: IconName; // MaterialCommunityIcons name
     label?: string; // Optional label
     onPress: () => void;
     disabled?: boolean;

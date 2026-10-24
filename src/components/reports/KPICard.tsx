@@ -10,7 +10,8 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -28,7 +29,7 @@ export type KPIVariant = 'primary' | 'secondary' | 'accent' | 'neutral' | 'succe
 
 interface KPICardProps {
   /** Icon name from MaterialCommunityIcons */
-  icon: string;
+  icon: IconName;
   /** The KPI value to display */
   value: string | number;
   /** Label describing the KPI */

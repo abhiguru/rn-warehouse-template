@@ -38,7 +38,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-reanimated', () => {
   const { View } = jest.requireActual('react-native');
   return { __esModule: true, default: { View }, FadeIn: { duration: () => undefined }, useReducedMotion: () => false };
@@ -228,7 +228,7 @@ describe('report rows', () => {
     // A 1080 px wide phone is about 392 dp wide.
     const before = Dimensions.get('window');
     Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale: 1 } });
-    const items = ['a', 'b', 'c', 'd'].map(label => ({ icon: 'warehouse', value: 1, label }));
+    const items = ['a', 'b', 'c', 'd'].map(label => ({ icon: 'warehouse' as const, value: 1, label }));
     const tree = render(<KPIGrid items={items} compact />);
     const perRow = new Map<unknown, number>();
     for (const tile of tree.root.findAllByType(KPICard)) perRow.set(tile.parent, (perRow.get(tile.parent) ?? 0) + 1);

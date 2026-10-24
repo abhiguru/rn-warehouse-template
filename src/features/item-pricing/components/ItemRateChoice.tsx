@@ -8,7 +8,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

@@ -18,7 +18,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: mockRole } } }),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 // The owner's phone: 411 dp wide at font scale 1.3 (jest's default window is font scale 2).
 let mockFontScale = 1.3;
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({

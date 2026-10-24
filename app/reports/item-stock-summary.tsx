@@ -447,7 +447,7 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
       // Left out once the facility's server has said it cannot make report PDFs, and for a server
       // that cannot sort the list (older than migration 52, so without generate-report-pdf too).
       ...(serverSorted ? exportHeaderActions({ exportPdf, busy, available }) : []),

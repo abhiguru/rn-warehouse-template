@@ -87,8 +87,7 @@ Expo generates the ignored native directories as needed; use `npm start` for
 later Metro sessions. Native builds are the baseline: Expo Go may not support
 this SDK and does not validate native plugins, permissions or build settings.
 Expo Go (the store app, whose SDK must match `expo` in `package.json`) loads the bundle for a quick look, but it
-never applies the config plugins in `app.config.js` and `plugins/`, uses its own permission strings, and has no
-native module for `react-native-vector-icons`, so the icons can be missing there. A phone on another network than
+never applies the config plugins in `app.config.js` and `plugins/`, and uses its own permission strings. A phone on another network than
 the Metro host cannot use `--lan`; `expo start --tunnel` (ngrok) may fail to start, and a public tunnel puts an
 unauthenticated development server on the internet, so stop it when you are done.
 For a bundle-only check run `npx expo export --platform android`. Cloud builds

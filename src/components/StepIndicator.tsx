@@ -22,7 +22,8 @@ import {
   Pressable,
   useWindowDimensions,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -56,7 +57,7 @@ export interface StepConfig {
   /** Short label for display under the circle */
   shortLabel?: string;
   /** Optional icon name (MaterialCommunityIcons) shown instead of the number */
-  icon?: string;
+  icon?: IconName;
 }
 
 export interface StepIndicatorProps {

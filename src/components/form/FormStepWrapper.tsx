@@ -38,7 +38,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
@@ -54,7 +55,7 @@ export interface StepConfig {
   /** Step label */
   label: string;
   /** Icon name (MaterialCommunityIcons) */
-  icon?: string;
+  icon?: IconName;
 }
 
 /**

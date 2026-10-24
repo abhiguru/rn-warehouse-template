@@ -51,6 +51,9 @@ export * from './item-pricing.types';
 // Report types
 export * from './report.types';
 
+// Icon types
+export * from './icon.types';
+
 // ============================================================================
 // Service & Infrastructure Types
 // ============================================================================

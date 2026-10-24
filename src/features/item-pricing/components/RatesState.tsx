@@ -1,13 +1,14 @@
 /** An empty, error or not-found block for the rate screens: icon, title, text and one action. */
 import React from 'react';
 import { Text, View } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { Button } from '@/components/ui/Button';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, space, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface RatesStateProps {
-  icon: string;
+  icon: IconName;
   title: string;
   text?: string;
   actionLabel?: string;

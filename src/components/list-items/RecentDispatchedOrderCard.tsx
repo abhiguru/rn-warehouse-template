@@ -24,7 +24,7 @@ import {
   LayoutAnimation,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { formatDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';

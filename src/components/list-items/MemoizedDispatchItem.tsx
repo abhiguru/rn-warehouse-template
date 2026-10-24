@@ -13,7 +13,8 @@
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { formatDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
@@ -83,7 +84,7 @@ type StatusKind = 'positive' | 'critical';
 interface StatusConfig {
   kind: StatusKind;
   label: string;
-  icon: string;
+  icon: IconName;
 }
 
 const getDispatchStatus = (dispatch: Dispatch): StatusConfig => {

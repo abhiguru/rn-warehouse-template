@@ -37,7 +37,8 @@ import BottomSheet, {
   BottomSheetBackdropProps,
   BottomSheetFlatList,
 } from '@gorhom/bottom-sheet';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -65,7 +66,7 @@ const SNACKBAR_DURATION_MS = 4000;
 
 
 /** Print job status → Fiori status (guide §3.5). */
-const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: string; labelKey: TranslationKey }> = {
+const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: IconName; labelKey: TranslationKey }> = {
   pending: { kind: 'neutral', icon: 'circle-outline', labelKey: 'common.pending' },
   printing: { kind: 'informative', icon: 'information', labelKey: 'components.printJobs.status.printing' },
   completed: { kind: 'positive', icon: 'check-circle', labelKey: 'components.printJobs.status.completed' },
@@ -75,20 +76,20 @@ const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: string; l
   unknown: { kind: 'critical', icon: 'alert-circle', labelKey: 'components.printJobs.status.unknown' },
 };
 
-const PRINTER_STATUS: Record<PrinterStatus, { kind: StatusKind; icon: string; labelKey: TranslationKey }> = {
+const PRINTER_STATUS: Record<PrinterStatus, { kind: StatusKind; icon: IconName; labelKey: TranslationKey }> = {
   online: { kind: 'positive', icon: 'check-circle', labelKey: 'components.printJobs.printer.online' },
   offline: { kind: 'negative', icon: 'alert-circle', labelKey: 'components.printJobs.printer.offline' },
   error: { kind: 'negative', icon: 'alert-circle', labelKey: 'components.printJobs.printer.error' },
   busy: { kind: 'informative', icon: 'information', labelKey: 'components.printJobs.printer.busy' },
 };
 
-const JOB_TYPE: Record<string, { icon: string; labelKey: TranslationKey }> = {
+const JOB_TYPE: Record<string, { icon: IconName; labelKey: TranslationKey }> = {
   grn: { icon: 'package-down', labelKey: 'common.grn' },
   dispatch: { icon: 'truck-delivery-outline', labelKey: 'common.dispatch' },
   invoice: { icon: 'file-document-outline', labelKey: 'common.invoice' },
 };
 
-const getJobType = (jobType: string): { icon: string; labelKey: TranslationKey } =>
+const getJobType = (jobType: string): { icon: IconName; labelKey: TranslationKey } =>
   JOB_TYPE[jobType.toLowerCase()] ?? { icon: 'file-outline', labelKey: 'components.printJobs.typeDocument' };
 
 export interface PrintJobsBottomSheetRef {
@@ -432,7 +433,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
     }, []);
 
     // Status tag: icon + word on the status background (guide §13.5)
-    const renderStatusTag = (kind: StatusKind, icon: string, label: string) => (
+    const renderStatusTag = (kind: StatusKind, icon: IconName, label: string) => (
       <StatusTag status={kind} icon={icon} label={label} />
     );
 

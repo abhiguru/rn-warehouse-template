@@ -29,7 +29,7 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({}) }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Portal: 'Portal', Snackbar: 'Snackbar' }));
 jest.mock('@/components/skeletons', () => ({ DetailSkeleton: () => null }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));

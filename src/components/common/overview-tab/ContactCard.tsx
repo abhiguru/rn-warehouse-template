@@ -7,7 +7,8 @@
 
 import React from 'react';
 import { View, Text, Pressable, Linking } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { iconSize } from '@/theme/tokens';
 import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 import { t } from '@/i18n';
@@ -23,7 +24,7 @@ interface ContactCardProps {
   name: string;
   phone?: string;
   email?: string;
-  iconName: string;
+  iconName: IconName;
   iconColor: string;
   iconBgColor: string;
 }

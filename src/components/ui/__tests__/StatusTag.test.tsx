@@ -18,7 +18,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));

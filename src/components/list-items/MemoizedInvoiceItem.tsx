@@ -12,7 +12,7 @@
 import { getLanguage } from '@/i18n/language';
 import React, { useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, singleLineText, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';

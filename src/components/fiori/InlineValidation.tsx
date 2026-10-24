@@ -7,7 +7,8 @@
  */
 import React from 'react';
 import { View, Text } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr, type TranslationKey } from '@/i18n';
@@ -22,7 +23,7 @@ interface InlineValidationProps {
 
 const VARIANT_CONFIG: Record<
   ValidationVariant,
-  { icon: string | null; status: 'positive' | 'critical' | 'negative' | null; labelKey: TranslationKey | null }
+  { icon: IconName | null; status: 'positive' | 'critical' | 'negative' | null; labelKey: TranslationKey | null }
 > = {
   helper: { icon: null, status: null, labelKey: null },
   success: { icon: 'check-circle', status: 'positive', labelKey: 'components.validation.successLabel' },

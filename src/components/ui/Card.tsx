@@ -22,7 +22,8 @@ import {
   ViewStyle,
   ActivityIndicator,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -60,7 +61,7 @@ export interface CardHeaderConfig {
   /** Optional subtitle */
   subtitle?: string;
   /** Optional header image/icon */
-  icon?: string;
+  icon?: IconName;
   /** Status badge */
   status?: {
     label: string;
@@ -79,7 +80,7 @@ export interface CardFooterAction {
   /** Button style variant */
   style?: 'primary' | 'secondary' | 'tertiary';
   /** Icon name (optional) */
-  icon?: string;
+  icon?: IconName;
   /** Loading state */
   loading?: boolean;
   /** Disabled state */

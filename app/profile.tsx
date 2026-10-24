@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import type { IconName } from '@/types/icon.types';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -73,7 +74,7 @@ const UserProfileScreen: React.FC = () => {
   // Profile data sections
   const profileSections: Array<{
     title: string;
-    items: Array<{ label: string; value: string; icon: string }>;
+    items: Array<{ label: string; value: string; icon: IconName }>;
   }> = [
     {
       title: tr('users.profile.accountInformation'),

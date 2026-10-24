@@ -17,7 +17,7 @@ import type { InvoiceItemData } from '@/types/invoice.types';
 jest.unmock('react-native/Libraries/Components/TextInput/TextInput');
 let mockStore: InvoiceStore;
 jest.mock('@/store/hooks', () => require('@/tests/helpers/invoiceFixtures').storeHooks(() => mockStore));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ listenToKeyboardEvents: () => (component: unknown) => component }));
 let mockWidth = 411;

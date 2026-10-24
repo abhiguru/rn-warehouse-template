@@ -12,7 +12,7 @@ jest.mock('@/store/hooks', () => ({
 }));
 // No GRN id: the Rates section reads nothing and falls back to the GRN-only rates.
 jest.mock('expo-router', () => ({ useFocusEffect: (cb: () => void) => require('react').useEffect(cb, [cb]) }));
-jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const rate = (over: Partial<RpcGrnRate>): RpcGrnRate => ({
   id: 'r1', item_id: 'gur', item_name: 'Fictional Gur', price_type: 'monthly', weight_min: 21, weight_max: 40, unit_price: 4.5, labour_rate: 1.5, tax_percent: 5, archived: false, ...over,
