@@ -89,7 +89,8 @@ this SDK and does not validate native plugins, permissions or build settings.
 Expo Go (the store app, whose SDK must match `expo` in `package.json`) loads the bundle for a quick look, but it
 never applies the config plugins in `app.config.js` and `plugins/`, and uses its own permission strings. A phone on another network than
 the Metro host cannot use `--lan`; `expo start --tunnel` (ngrok) may fail to start, and a public tunnel puts an
-unauthenticated development server on the internet, so stop it when you are done.
+unauthenticated development server on the internet, so stop it when you are done. Network, tunnel and
+Expo Go errors are covered in [Running Metro for a phone](docs/DEVICE_ACCEPTANCE.md#running-metro-for-a-phone).
 For a bundle-only check run `npx expo export --platform android`. Cloud builds
 need your own EAS project and signing credentials; no signing assets or project
 ownership are included.

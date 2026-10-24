@@ -47,6 +47,37 @@ sha256sum android/app/build/outputs/apk/release/app-release.apk
   verify its checksum; the file name changes with each release.
 - Record the APK's SHA-256 and the audit output with your acceptance notes.
 
+## Running Metro for a phone
+
+For a debug build or a quick look in Expo Go the phone loads its JavaScript from Metro
+(`npx expo start`, port 8081). This is a development server with no sign-in: keep it off
+the internet except for a short, deliberate test.
+
+- **Same network.** `npx expo start --lan` works only when the phone can reach the Metro host
+  on its Wi-Fi. A virtual machine behind NAT (the VMware and VirtualBox default) is not
+  reachable from the phone's Wi-Fi; bridge the VM's network adapter, or use USB
+  (`adb reverse`, or [IOS_USB_DEVELOPMENT.md](IOS_USB_DEVELOPMENT.md) on an iPhone). If the host
+  runs a firewall such as `ufw`, allow port 8081 from the LAN only (for example
+  `sudo ufw allow from 192.168.1.0/24 to any port 8081 proto tcp`, with your own subnet).
+- **`expo start --tunnel` can fail** with `CommandError: failed to start tunnel`
+  (Expo's ngrok v2 agent). Use `--lan` or a USB path instead.
+- **Your own Cloudflare Tunnel in front of Metro.** While it runs, anyone who knows the host
+  name can load your bundle; stop the tunnel when you are done. Set
+  `EXPO_PACKAGER_PROXY_URL=https://<host>` before `npx expo start`, so the URLs in the manifest
+  are https. Metro prints an `exp://` address, which Cloudflare answers with a redirect: in
+  Expo Go open `exps://<host>`. If the bundle request
+  (`/node_modules/expo-router/entry.bundle`) returns 403 "Sorry, you have been blocked", a
+  Cloudflare WAF custom rule that blocks paths containing `node_modules` is the cause: add a
+  skip rule for that host name while you test, and remove it afterwards.
+- **`Cannot find native module 'ExpoAsset'` in Expo Go** although the SDK matches: reload the app
+  in Expo Go (shake the phone, then Reload), or restart Metro with `npx expo start --clear`.
+  Expo Go's Settings shows the SDK it supports; it must be the one in `package.json`.
+- **`ERROR An unknown error occurred while installing React Native DevTools ... chrome-sandbox ...
+  must be owned by root and mode 4755`** (Linux) concerns the DevTools window only. Metro still
+  serves the app; ignore it.
+- **`EXPO_PUBLIC_*` values are inlined when the bundle is built.** After you change `.env`,
+  restart Metro with `npx expo start --clear`, or the phone keeps the old value.
+
 ## Install and drive the phone
 
 ```bash

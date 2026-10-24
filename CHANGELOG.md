@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased — Icons work in Expo Go
+## Unreleased — Operator install fixes
 
-- Icons now come from `@expo/vector-icons/MaterialCommunityIcons` (works in Expo Go) instead of `react-native-vector-icons`, and the unused `react-native-worklets-core` was removed. No backend change.
+- **Metro and Expo Go troubleshooting.** New "Running Metro for a phone" in `docs/DEVICE_ACCEPTANCE.md` (linked from the README's Expo Go paragraph): `--lan` needs the phone on the Metro host's network (a NAT'd VM is not reachable; allow 8081 from the LAN only), `--tunnel` can fail to start, a Cloudflare Tunnel in front of Metro (`exps://`, `EXPO_PACKAGER_PROXY_URL`, a WAF rule on `node_modules`), `ExpoAsset` in Expo Go, the DevTools `chrome-sandbox` message, and restarting with `--clear` after `.env` changes. Docs only.
+- **Sign-in wording.** `docs/IOS_USB_DEVELOPMENT.md` and `.env.example` no longer mention a demo or fictional OTP service (there is none: codes are real MSG91 SMS, and a test installation uses the `isolated-` sentinel key and a `.test` address). The advice to keep a development backend off the LAN and tunnels stays.
+- **Audit.** The lockfile's dev-only `zod` (via `eslint-plugin-react-hooks`) moves from 4.6.5 to 4.6.7. The remaining `npm audit` findings (`zod` 3 inside `@expo/cli`, `node-forge`) have no fix in the Expo 57 line, are build-time tools that are not in the app bundle, and are recorded in `docs/DEPENDENCY_SECURITY.md`; never run `npm audit fix --force` (it downgrades expo to 54). No app code changed.
+- **Icons work in Expo Go.** Icons now come from `@expo/vector-icons/MaterialCommunityIcons` (works in Expo Go) instead of `react-native-vector-icons`, and the unused `react-native-worklets-core` was removed. No backend change.
 
 ## Unreleased — Fixes from the phone fault test (2026-10-21)
 
