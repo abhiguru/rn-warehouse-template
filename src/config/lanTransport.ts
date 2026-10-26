@@ -20,12 +20,13 @@
  *    `PUBLIC_HEADERS_TIMEOUT_MS` (4 s), or when Cloudflare answers HTTP 530. On the LAN path it also fails
  *    when the answer is not the fallback listener's own (no `X-Warehouse-Path: lan`), is a 403 of the
  *    listener (this phone's address is outside the allowed range), or is the gateway's key rejection 401.
- *  - The app then asks `GET /functions/v1/hello` of the other path (`PROBE_TIMEOUT_MS`, 3 s). Before it
- *    sends any credential to the LAN address it also checks, without credentials, that the address
- *    belongs to this warehouse (`get-public-config`: header `X-Warehouse-Path: lan` and the saved
- *    `instanceId`). It also asks the current path's `hello` when the failure did not prove the path down
- *    (a slow or rejected request); if that answers, the request was at fault, not the path, and the app
- *    stays. If the other path answers, the app switches and sticks to it for `LAN_STICK_MS` (10 min).
+ *  - When the failure did not prove the path down (a slow or rejected request), the app first asks the
+ *    current path's own `hello`; if that answers, the request was at fault, not the path, and the app
+ *    stays, having sent nothing to the other address. Otherwise it asks `GET /functions/v1/hello` of the
+ *    other path (`PROBE_TIMEOUT_MS`, 3 s). Before it sends any credential to the LAN address it also
+ *    checks, without credentials, that the address belongs to this warehouse (`get-public-config`:
+ *    header `X-Warehouse-Path: lan` and the saved `instanceId`). If the other path answers, the app
+ *    switches and sticks to it for `LAN_STICK_MS` (10 min).
  *  - The failed READ is sent once more on the new path. A WRITE is never sent again, here or anywhere
  *    below this module: it ends as a lost answer and the screen re-asks through the lost-answer rule
  *    (src/utils/lostAnswer.ts).
@@ -362,23 +363,26 @@ function failOver(from: ConnectionPath, why: FailureReason): Promise<boolean> {
   if (path !== from) return Promise.resolve(true);
   if (decision) return decision;
   const to: ConnectionPath = from === 'public' ? 'lan' : 'public';
-  const definitive = why !== 'rejected' && why !== 'slow';
+  // A 530, the gateway's own refusals on the LAN path and the like prove the path down; a rejected or slow
+  // request, or NetInfo's probe having failed once, may be the request's or the moment's fault.
+  const definitive = why !== 'rejected' && why !== 'slow' && why !== 'netinfo';
   const now = Date.now();
   if (now - lastProbeFailureAt[to] < PROBE_BACKOFF_MS) return Promise.resolve(false);
   if (!definitive && now - lastFoundWorkingAt[from] < PROBE_BACKOFF_MS) return Promise.resolve(false);
   const asked = context;
   decision = (async () => {
     try {
-      const [fromWorks, toWorks] = await Promise.all([
-        definitive ? Promise.resolve(false) : from === 'public' ? probePublic() : probeLan().then(result => result.ok),
-        to === 'lan' ? probeLan().then(result => result.ok) : probePublic(),
-      ]);
+      // The path in use is asked first, unless the failure already proved it down. While it works nothing
+      // is sent to the other address: a slow request must not make the phone probe the warehouse network.
+      const fromWorks = definitive ? false : from === 'public' ? await probePublic() : (await probeLan()).ok;
       // The selected facility changed while the probes were out: their answers are about another server.
       if (context !== asked) return false;
       if (fromWorks) {
         lastFoundWorkingAt[from] = Date.now();
         return false;
       }
+      const toWorks = to === 'lan' ? (await probeLan()).ok : await probePublic();
+      if (context !== asked) return false;
       if (!toWorks) {
         lastProbeFailureAt[to] = Date.now();
         return false;
@@ -431,7 +435,8 @@ export function noteNativeReadFailed(startedOn: ConnectionPath): Promise<boolean
 
 /**
  * NetInfo's own probe of the public `hello` found the internet unreachable (src/config/netReachability.ts).
- * That is a failure of the public path as good as a request's: the LAN address is asked, and used when it answers.
+ * That is a failure of the public path as good as a request's: the app asks the public `hello` once more
+ * (a single lost probe must not move the phone), then the LAN address, and uses it when it answers.
  */
 export function notePublicUnreachable(): void {
   if (context?.lan && path === 'public') void failOver('public', 'netinfo');

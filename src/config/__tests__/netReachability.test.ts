@@ -126,7 +126,7 @@ describe('when the selected server changes', () => {
   });
 });
 
-describe('the LAN address is asked as soon as NetInfo finds the internet unreachable', () => {
+describe('the transport is told as soon as NetInfo finds the internet unreachable', () => {
   beforeEach(() => {
     select(A);
     installNetReachability();

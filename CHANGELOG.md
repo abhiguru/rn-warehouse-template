@@ -42,7 +42,7 @@ Pairs with the backend `gateway-lan` workstream (WS-L backend: `lan.sh on`, `url
   changes and reset when none is selected (`src/config/netReachability.ts`). `useIsOffline` and
   `ensureNetworkConnection` no longer treat a failed public probe as offline while the warehouse network reaches
   the server, so saves are not refused during an outage; a Wi-Fi that blocks Google no longer looks offline
-  either. A failed public probe asks the LAN address at once. The 1-hour public configuration cache now serves an
+  either. A failed public probe makes the phone ask the public `hello` once more and then the LAN address, so the switch does not wait for a request to fail. The 1-hour public configuration cache now serves an
   expired copy when neither path answers.
 - **Help → Connection.** Connected via (Internet / Warehouse network), the warehouse network address and whether
   it is the server's or typed, a field to type one when the saved value is stale (validated on Save; kept until

@@ -14,6 +14,9 @@
  * No imports: the module is used by the config layer, the transport and the Settings screen alike.
  */
 
+/** A sample of the form the address takes, for a field's placeholder and the message about a wrong address. */
+export const LAN_ADDRESS_EXAMPLE = 'http://192.168.1.20:8080';
+
 /** `http://a.b.c.d:port` and nothing else: no user info, path, query, fragment or host name. */
 const LAN_ORIGIN = /^http:\/\/(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})\/?$/i;
 

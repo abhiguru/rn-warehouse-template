@@ -18,6 +18,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { useLanStatus } from '@/hooks/useLanStatus';
 import { getActiveOperatorServer, setTypedLanAddress } from '@/config/operatorServer';
+import { LAN_ADDRESS_EXAMPLE } from '@/config/lanAddress';
 import {
   checkLanNow,
   readLastLanCheck,
@@ -30,8 +31,7 @@ import { formatIdentifier, localizeDigits, t } from '@/i18n';
 import { showToast } from '@/utils/toast';
 import { fontWeight, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 
-/** A sample of the form the address takes, shown in the field and in the message about a wrong one. */
-export const LAN_ADDRESS_EXAMPLE = 'http://192.168.1.20:8080';
+export { LAN_ADDRESS_EXAMPLE };
 
 /** The sentence for the outcome of a check. */
 export function checkResultText(answer: LanCheckAnswer): string {

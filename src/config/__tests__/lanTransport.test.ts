@@ -234,7 +234,8 @@ describe('when the public path fails', () => {
     });
     await expect(transportFetch(rest(), undefined, READ)).rejects.toThrow('Network request failed');
     expect(getConnectionPath()).toBe('public');
-    expect(calls.filter(call => call.startsWith(`GET ${LAN}`)).every(call => /hello|get-public-config/.test(call))).toBe(true);
+    // Nothing was sent to the LAN address: the public path answered, so the other address was not asked.
+    expect(calls.some(call => call.startsWith(`GET ${LAN}`))).toBe(false);
   });
 
   it('stays on the public path when the LAN address belongs to another warehouse', async () => {
@@ -305,6 +306,8 @@ describe('a request that gets no response headers', () => {
     expect(await (result as Response).json()).toEqual({ from: 'public' });
     expect(calls.filter(call => call.includes('/rest/v1/items'))).toHaveLength(1);
     expect(getConnectionPath()).toBe('public');
+    // A slow request made the phone ask the public hello, and nothing at all of the LAN address.
+    expect(calls.some(call => call.startsWith(`GET ${LAN}`))).toBe(false);
   });
 
   it('moves the NEXT request to the LAN path but never sends a WRITE again', async () => {
@@ -562,8 +565,17 @@ describe('other triggers and resets', () => {
     await flush();
     await jest.advanceTimersByTimeAsync(0);
     expect(getConnectionPath()).toBe('lan');
-    // The reachability probe was the public check: the public hello is not asked again.
-    expect(calls).not.toContain(`GET ${PUBLIC}/functions/v1/hello`);
+    // One probe of NetInfo's may have been lost: the public hello is asked once more before the phone moves.
+    expect(calls).toContain(`GET ${PUBLIC}/functions/v1/hello`);
+  });
+
+  it('NetInfo finding the internet unreachable does not move the phone when the public hello answers', async () => {
+    net.public = 'up';
+    notePublicUnreachable();
+    await flush();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(getConnectionPath()).toBe('public');
+    expect(calls.some(call => call.startsWith(`GET ${LAN}`))).toBe(false);
   });
 
   it('does nothing without a LAN address', async () => {

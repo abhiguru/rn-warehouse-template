@@ -10,8 +10,8 @@
  *    (`onOperatorServerChange`), and reset to NetInfo's defaults when there is none (`clearOperatorServer`).
  *  - `useIsOffline` (src/hooks/useNetworkStatus.ts) is false when this public probe fails but the
  *    warehouse network path is in use (src/config/lanTransport.ts).
- *  - When the probe finds the public address unreachable, the LAN address is asked at once
- *    (`notePublicUnreachable`), so the switch does not wait for a request to fail.
+ *  - When the probe finds the public address unreachable, the transport confirms it and asks the LAN
+ *    address (`notePublicUnreachable`), so the switch does not wait for a request to fail.
  *
  * `NetInfo.configure` stops every listener added before it, so it is called only when the probe URL
  * really changes, and the listeners of the hooks are renewed through `netInfoGeneration.ts`.
