@@ -11,6 +11,7 @@ import { View, Text, Pressable, FlatList, Dimensions, ActivityIndicator } from '
 import { Image } from 'expo-image';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatNumber } from '@/utils/formatters';
@@ -199,6 +200,7 @@ const ImageTile: React.FC<{
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const label = imageLabel(item);
+  const imageUri = useViaCurrentPath(item.image_url);
 
   return (
     <View style={styles.imageWrapper}>
@@ -212,7 +214,7 @@ const ImageTile: React.FC<{
         {({ pressed }) => (
           <>
             <Image
-              source={{ uri: item.image_url }}
+              source={{ uri: imageUri }}
               style={styles.image}
               contentFit="cover"
               // A signed URL is new on every load, so a disk copy is never reused and

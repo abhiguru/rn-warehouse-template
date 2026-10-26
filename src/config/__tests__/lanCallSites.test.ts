@@ -4,7 +4,8 @@
 // has to be looked at against src/config/lanTransport.ts before it is added here.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { getConnectionPath, resetLanTransport, setLanContext, transportFetch } from '../lanTransport';
+import { getConnectionPath, noteNetworkState, resetLanTransport, setLanContext, transportFetch } from '../lanTransport';
+import { OTHER_WIFI_SAME_RANGE, onWarehouseWifi } from '@/tests/helpers/lanNetwork';
 
 let mockSignedFails = false;
 jest.mock('@/config/supabaseConfig', () => {
@@ -45,6 +46,14 @@ const sources = [...sourceFiles(join(root, 'src')), ...sourceFiles(join(root, 'a
 /** The code of a file: block comments and whole-line or trailing `//` comments removed (`http://` is not one). */
 const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
 const filesWith = (pattern: RegExp) => sources.filter(({ text }) => pattern.test(code(text))).map(({ file }) => file).sort();
+/** `code` with the text of string literals emptied: what is left is what the program does, not what it says. */
+const bare = (text: string) =>
+  code(text).replace(/'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`/g, "''");
+/** The lines of code that match, as `file: line`: an exemption names the line, never the whole file. */
+const linesWith = (pattern: RegExp, strip: (text: string) => string = code) =>
+  sources
+    .flatMap(({ file, text }) => strip(text).split('\n').filter(line => pattern.test(line)).map(line => `${file}: ${line.trim()}`))
+    .sort();
 const countIn = (file: string, pattern: RegExp) =>
   (code(sources.find(source => source.file === file)?.text ?? '').match(pattern) ?? []).length;
 
@@ -62,6 +71,9 @@ describe('the places the host is rewritten', () => {
         'src/features/dispatch/services/dispatchImageService.ts',
         'src/features/grn/services/grnFormService.ts',
         'src/features/grn/services/imageUploadService.ts',
+        'src/hooks/useLanStatus.ts', // a photo already on screen follows the path
+        'src/components/CachedImage.tsx', // the links preloadImages prefetches
+        'src/components/ImageOverlay.tsx', // the full-screen viewer
         'src/services/dispatch-detail-service.ts',
         'src/services/grn-detail-service.ts',
         'src/utils/shareDocument.ts',
@@ -97,15 +109,44 @@ describe('the places the host is rewritten', () => {
   });
 
   it('no other module calls fetch by itself: the central service, local photo files and the transport are the only ones', () => {
-    expect(filesWith(/(^|[^.\w])fetch\(/)).toEqual(
+    // Exempt by line. A new `fetch(` anywhere else, in a file that already has one included, fails here.
+    expect(linesWith(/(^|[^.\w])fetch\(/)).toEqual(
       [
-        'src/config/centralSession.ts', // the association service, not a facility
-        'src/config/lanTransport.ts',
-        'src/features/dispatch/services/dispatchImageService.ts', // `fetch(uri)` of a file on the phone
-        'src/features/grn/services/imageUploadService.ts', // the same
-        'src/features/reports/useReportQuery.ts', // a callback named fetch, not the network
+        // the association service, not a facility
+        'src/config/centralSession.ts: const response = await fetch(`${config.origin}${path}`, {',
+        // the transport itself
+        "src/config/lanTransport.ts: fetch(url, { method: 'GET', signal: controller.signal }),",
+        "src/config/lanTransport.ts: const request = fetch(on === 'lan' ? retarget(input, swapOrigin(url, ctx.canonical, lan) ?? url) : input, {",
+        'src/config/lanTransport.ts: return fetch(input, init);',
+        // `fetch(uri)` of a photo file on the phone
+        'src/features/dispatch/services/dispatchImageService.ts: const response = await fetch(uri);',
+        'src/features/grn/services/imageUploadService.ts: const response = await fetch(uri);',
+        // a callback named fetch, not the network
+        'src/features/reports/useReportQuery.ts: const result = await fetch();',
       ].sort()
     );
+  });
+
+  it('no other way to reach the network: no alias of fetch, global fetch, XMLHttpRequest, expo/fetch, upload task or image prefetch', () => {
+    // An alias or a reference to fetch (`const f = fetch`, `fetch.bind`, a parameter named fetch), string text not counted.
+    const aliases = linesWith(/(^|[^.\w])fetch\b(?!\s*[(:])/, bare).filter(
+      line => !line.startsWith('src/utils/serverText.ts: ') // patterns that read an error message
+    );
+    expect(aliases).toEqual(
+      [
+        'src/features/reports/useReportQuery.ts: fetch,', // the callback named fetch, destructured
+        'src/services/configService.ts: private static readonly viaTransport: typeof fetch = (input, init) =>', // a type
+        'src/services/configService.ts: fetchImpl: typeof fetch = ConfigService.viaTransport,', // a type
+      ].sort()
+    );
+    expect(linesWith(/\b(?:globalThis|global|window|self)\.fetch\b/, bare)).toEqual([]);
+    expect(linesWith(/\bXMLHttpRequest\b/, bare)).toEqual([]);
+    expect(linesWith(/\bfrom\s*'expo\/fetch'|require\('expo\/fetch'\)/)).toEqual([]);
+    expect(linesWith(/\b(?:uploadAsync|createUploadTask|createDownloadResumable|downloadAsync|downloadFileAsync)\b/, bare)).toEqual([
+      'src/utils/shareDocument.ts: File.downloadFileAsync(url, file, {', // rewritten by viaCurrentPath above
+    ]);
+    // expo-image downloads what it is given: only the preload helper calls prefetch, with links moved to the path in use.
+    expect(linesWith(/\.prefetch\(/, bare)).toEqual(['src/components/CachedImage.tsx: await Image.prefetch(links);']);
   });
 
   it('the one cleartext URL the app builds comes from lanAddress.ts', () => {
@@ -129,6 +170,7 @@ describe('the signed-URL helpers on the warehouse network path', () => {
     mockSignedFails = false;
     resetLanTransport();
     setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: 'instance-0001' });
+    onWarehouseWifi();
     global.fetch = jest.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       const answer = (path: 'lan' | 'public', body: unknown) =>
@@ -154,6 +196,13 @@ describe('the signed-URL helpers on the warehouse network path', () => {
     // A link already signed on the public address is moved too, and one already on the LAN address is left as it is.
     expect(await getImageSignedUrl(mockSigned('grn-images/x.jpg'))).toBe(lan('grn-images/x.jpg'));
     expect(await getImageSignedUrl(lan('grn-images/x.jpg'))).toBe(lan('grn-images/x.jpg'));
+    // Back on the public path (a change of network), a link that was signed on the LAN address comes back on the public one (review L6).
+    noteNetworkState(OTHER_WIFI_SAME_RANGE);
+    expect(getConnectionPath()).toBe('public');
+    expect(await getImageSignedUrl(lan('grn-images/x.jpg'))).toBe(mockSigned('grn-images/x.jpg'));
+    expect(await getDispatchImageSignedUrl(lan('dispatch-images/y.jpg'))).toBe(mockSigned('dispatch-images/y.jpg'));
+    await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true });
+    expect(getConnectionPath()).toBe('lan');
     // The fallbacks that build a storage URL from the client URL follow the path as well.
     mockSignedFails = true;
     const quiet = ['log', 'warn', 'error'].map(method => jest.spyOn(console, method as 'log').mockImplementation(() => {}));

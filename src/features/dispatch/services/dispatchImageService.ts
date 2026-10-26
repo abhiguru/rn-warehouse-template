@@ -19,7 +19,7 @@ import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { mapWithConcurrency } from '@/utils/concurrency';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
-import { viaCurrentPath } from '@/config/lanTransport';
+import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
 import {
   holdLocalPhoto,
   localPhotoUploadEnded,
@@ -707,7 +707,8 @@ export const getDispatchImageSignedUrl = async (
   try {
     // If filePath is already a signed URL, return it as-is
     if (filePath.startsWith('http') && filePath.includes('token=')) {
-      return viaCurrentPath(filePath);
+      // Signed on either address: it is returned on the address the phone reaches the server by now.
+      return viaCurrentPath(toCanonicalUrl(filePath));
     }
 
     const supabase = await getAuthenticatedClient();

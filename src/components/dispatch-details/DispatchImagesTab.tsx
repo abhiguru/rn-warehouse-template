@@ -19,6 +19,7 @@ import {
 import { Image } from 'expo-image';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import {
   fontWeight,
   iconSize,
@@ -53,6 +54,22 @@ interface DispatchImagesTabProps {
   onUpload?: () => void;
   isUploading?: boolean;
 }
+
+/** The photo on the address the phone reaches the server by now: it follows a change of path (WS-L review L6). */
+const DispatchPhoto: React.FC<{ url: string; style: React.ComponentProps<typeof Image>['style'] }> = ({ url, style }) => {
+  const uri = useViaCurrentPath(url);
+  return (
+    <Image
+      source={{ uri }}
+      style={style}
+      contentFit="cover"
+      // A signed URL is new on every load, so a disk copy is never reused and
+      // would only leave the private photo on the device.
+      cachePolicy="memory"
+      transition={150}
+    />
+  );
+};
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {
@@ -199,15 +216,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
       accessibilityLabel={tr('dispatch.photos.photoOf', { index: index + 1, total: images.length })}
       accessibilityHint={tr('dispatch.photos.opensFullScreen')}
     >
-      <Image
-        source={{ uri: item.image_url }}
-        style={styles.image}
-        contentFit="cover"
-        // A signed URL is new on every load, so a disk copy is never reused and
-        // would only leave the private photo on the device.
-        cachePolicy="memory"
-        transition={150}
-      />
+      <DispatchPhoto url={item.image_url} style={styles.image} />
     </Pressable>
   );
 

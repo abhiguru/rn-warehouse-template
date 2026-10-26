@@ -3,6 +3,9 @@
  * passed, ask the server about the request code, keep asking with a doubling pause while the question gets no answer.
  * Time is faked; NetInfo and the RPC call are stand-ins.
  */
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+import { bumpNetInfoGeneration } from '@/config/netInfoGeneration';
 import {
   LOST_ANSWER_FIRST_RETRY_MS,
   LOST_ANSWER_LONGEST_RETRY_MS,
@@ -11,6 +14,7 @@ import {
   checkSubmission,
   isAbortError,
   readUntilAnswered,
+  useIsDisconnected,
   waitForServer,
 } from '../lostAnswer';
 
@@ -121,6 +125,72 @@ describe('waitForServer', () => {
     expect(await state(wait)).toBe('pending');
     controller.abort();
     expect(await state(wait)).toBe('aborted');
+    expect(mockListeners).toHaveLength(0);
+  });
+});
+
+// NetInfo.configure (src/config/netReachability.ts, on a change of facility) stops every listener added before it;
+// the listeners here follow the generation count and subscribe again (WS-L review L4).
+describe('after NetInfo was configured again', () => {
+  /** What NetInfo.configure does to the listeners: they are gone, and the count tells everyone to listen again. */
+  const configureAgain = () => {
+    mockListeners = [];
+    bumpNetInfoGeneration();
+  };
+
+  it('waitForServer listens again and still ends when the connection returns', async () => {
+    mockState = { isConnected: false };
+    const wait = waitForServer(Date.now() - 60_000);
+    expect(await state(wait)).toBe('pending');
+    expect(mockListeners).toHaveLength(1);
+    configureAgain();
+    await flush();
+    expect(mockListeners).toHaveLength(1);
+    mockListeners[0]({ isConnected: true });
+    await expect(wait).resolves.toBeUndefined();
+    // Nothing is left listening, to NetInfo or to the count.
+    expect(mockListeners).toHaveLength(0);
+    bumpNetInfoGeneration();
+    expect(mockListeners).toHaveLength(0);
+  });
+
+  it('a wait that was aborted does not listen again', async () => {
+    mockState = { isConnected: false };
+    const controller = new AbortController();
+    const wait = waitForServer(Date.now() - 60_000, controller.signal);
+    expect(await state(wait)).toBe('pending');
+    controller.abort();
+    expect(await state(wait)).toBe('aborted');
+    configureAgain();
+    expect(mockListeners).toHaveLength(0);
+  });
+
+  it('useIsDisconnected listens again', async () => {
+    let seen = false;
+    const Probe = () => {
+      seen = useIsDisconnected();
+      return null;
+    };
+    let tree: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(React.createElement(Probe));
+    });
+    expect(mockListeners).toHaveLength(1);
+    await act(async () => {
+      mockListeners[0]({ isConnected: false });
+    });
+    expect(seen).toBe(true);
+    await act(async () => {
+      configureAgain();
+    });
+    expect(mockListeners).toHaveLength(1);
+    await act(async () => {
+      mockListeners[0]({ isConnected: true });
+    });
+    expect(seen).toBe(false);
+    await act(async () => {
+      tree!.unmount();
+    });
     expect(mockListeners).toHaveLength(0);
   });
 });
