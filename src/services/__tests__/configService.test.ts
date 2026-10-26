@@ -8,6 +8,7 @@ const server = jest.requireMock('@/config/operatorServer');
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthToken: jest.fn() }));
 jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorOrigin: jest.fn(() => 'http://localhost:18000'),
+  recordServerLanAddress: jest.fn(async () => undefined),
 }));
 const client = {} as SupabaseClient;
 const origin = 'http://localhost:18000';
@@ -214,10 +215,9 @@ it('enforces public memory TTL, scopes origin and rejects legacy caches', async 
   );
   expect(global.fetch).toHaveBeenCalledTimes(3);
 });
-it('rejects future, expired and wrong-origin persistent cache entries', async () => {
+it('rejects future and wrong-origin persistent cache entries, and refetches an expired one', async () => {
   for (const entry of [
     { timestamp: Date.now() + 10000, scope: origin },
-    { timestamp: 1, scope: origin },
     { timestamp: Date.now(), scope: 'http://other.example' },
   ]) {
     await ConfigService.clearCache();
@@ -228,6 +228,37 @@ it('rejects future, expired and wrong-origin persistent cache entries', async ()
     jest.mocked(global.fetch).mockRejectedValue(new Error('Offline'));
     await expect(ConfigService.getPublicConfig()).rejects.toThrow();
   }
+  // An expired copy is not served while the facility answers: the answer replaces it.
+  await ConfigService.clearCache();
+  await AsyncStorage.setItem(
+    `public_config_v2:${origin}`,
+    JSON.stringify({ timestamp: 1, scope: origin, data: publicData() })
+  );
+  const newer = { ...publicData(), version: '9.9.9' };
+  jest.mocked(global.fetch).mockResolvedValue(response(newer) as Response);
+  expect((await ConfigService.getPublicConfig()).version).toBe('9.9.9');
+});
+it('serves an expired public configuration when neither the public address nor the warehouse network answers', async () => {
+  await AsyncStorage.setItem(
+    `public_config_v2:${origin}`,
+    JSON.stringify({ timestamp: 1, scope: origin, data: publicData() })
+  );
+  jest.mocked(global.fetch).mockRejectedValue(new TypeError('Network request failed'));
+  expect(await ConfigService.getPublicConfig()).toEqual(publicData());
+  // Cloudflare's 530 is a path failure as well; any other status is the facility's own answer and stands.
+  jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 530 } as Response);
+  expect(await ConfigService.getPublicConfig()).toEqual(publicData());
+  jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 503 } as Response);
+  await expect(ConfigService.getPublicConfig()).rejects.toThrow();
+});
+it('serves no stale configuration when there is no earlier copy, or the copy is damaged', async () => {
+  jest.mocked(global.fetch).mockRejectedValue(new TypeError('Network request failed'));
+  await expect(ConfigService.getPublicConfig()).rejects.toThrow();
+  await AsyncStorage.setItem(
+    `public_config_v2:${origin}`,
+    JSON.stringify({ timestamp: 1, scope: origin, data: { ...publicData(), anonKey: 'not-a-key' } })
+  );
+  await expect(ConfigService.getPublicConfig()).rejects.toThrow();
 });
 it('bounds a stalled configuration response including body decoding', async () => {
   jest.useFakeTimers();
@@ -283,4 +314,61 @@ it('routes get-config through the identity gate while get-public-config stays ra
   expect(global.fetch).toHaveBeenCalledTimes(2);
   expect(jest.mocked(global.fetch).mock.calls[1][0]).toContain('/get-config');
   remove();
+});
+
+// The warehouse network address (WS-L): `urls.lan` of the authenticated answer.
+describe('urls.lan of the authenticated configuration', () => {
+  const lan = 'http://192.168.1.20:8080';
+  const withLan = () => ({ ...fullData(), urls: { ...fullData().urls, lan } });
+  const answerFrom = (path: 'lan' | 'public', data: unknown) => ({
+    ...response(data),
+    headers: { get: (name: string) => (name.toLowerCase() === 'x-warehouse-path' ? path : null) },
+  });
+  const record = () => jest.mocked(server.recordServerLanAddress);
+  beforeEach(() => {
+    record().mockReset();
+    record().mockResolvedValue(undefined);
+  });
+
+  it('is handed to the saved server after an answer of the public path, also when it is absent', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(answerFrom('public', withLan()) as unknown as Response);
+    expect((await ConfigService.getFullConfig(client))?.urls.lan).toBe(lan);
+    expect(record()).toHaveBeenCalledWith(origin, lan);
+    await ConfigService.clearCache();
+    jest.mocked(global.fetch).mockResolvedValue(answerFrom('public', fullData()) as unknown as Response);
+    await ConfigService.getFullConfig(client);
+    expect(record()).toHaveBeenLastCalledWith(origin, undefined);
+  });
+
+  it('counts an answer without the path header as the public path (a server without the fallback)', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(response(withLan()) as unknown as Response);
+    await ConfigService.getFullConfig(client);
+    expect(record()).toHaveBeenCalledWith(origin, lan);
+  });
+
+  it('is left alone by an answer that came over the warehouse network', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(answerFrom('lan', fullData()) as unknown as Response);
+    expect(await ConfigService.getFullConfig(client)).not.toBeNull();
+    expect(record()).not.toHaveBeenCalled();
+  });
+
+  it('is not asked again for a copy kept in the one-minute cache', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(answerFrom('public', withLan()) as unknown as Response);
+    await ConfigService.getFullConfig(client);
+    await ConfigService.getFullConfig(client);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(record()).toHaveBeenCalledTimes(1);
+  });
+
+  it('never fails the configuration when the address cannot be kept', async () => {
+    record().mockRejectedValueOnce(new Error('storage full'));
+    jest.mocked(global.fetch).mockResolvedValue(answerFrom('public', withLan()) as unknown as Response);
+    expect(await ConfigService.getFullConfig(client)).not.toBeNull();
+  });
+
+  it('is not in the public configuration', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(answerFrom('public', publicData()) as unknown as Response);
+    expect(await ConfigService.getPublicConfig()).toEqual(publicData());
+    expect(record()).not.toHaveBeenCalled();
+  });
 });

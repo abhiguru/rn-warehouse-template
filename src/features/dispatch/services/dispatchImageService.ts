@@ -19,6 +19,7 @@ import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { mapWithConcurrency } from '@/utils/concurrency';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
+import { viaCurrentPath } from '@/config/lanTransport';
 import {
   holdLocalPhoto,
   localPhotoUploadEnded,
@@ -304,9 +305,9 @@ export const uploadDispatchImage = async (
           '[DispatchImageService] Could not create signed URL:',
           urlError
         );
-        finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/${STORAGE_BUCKET}/${confirmedPath}`;
+        finalImageUrl = viaCurrentPath(`${getCurrentConfig().url}/storage/v1/object/${STORAGE_BUCKET}/${confirmedPath}`);
       } else {
-        finalImageUrl = urlData.signedUrl;
+        finalImageUrl = viaCurrentPath(urlData.signedUrl);
       }
 
       // Progress: Complete
@@ -706,7 +707,7 @@ export const getDispatchImageSignedUrl = async (
   try {
     // If filePath is already a signed URL, return it as-is
     if (filePath.startsWith('http') && filePath.includes('token=')) {
-      return filePath;
+      return viaCurrentPath(filePath);
     }
 
     const supabase = await getAuthenticatedClient();
@@ -716,11 +717,11 @@ export const getDispatchImageSignedUrl = async (
       .createSignedUrl(filePath, expiresIn);
 
     if (!error && data?.signedUrl) {
-      return data.signedUrl;
+      return viaCurrentPath(data.signedUrl);
     }
 
     console.error('[DispatchImageService] Failed to create signed URL:', error);
-    return `${getCurrentConfig().url}/storage/v1/object/${STORAGE_BUCKET}/${filePath}`;
+    return viaCurrentPath(`${getCurrentConfig().url}/storage/v1/object/${STORAGE_BUCKET}/${filePath}`);
   } catch (error) {
     console.error('[DispatchImageService] Error getting signed URL:', error);
     return filePath;

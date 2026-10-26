@@ -1,4 +1,5 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { viaCurrentPath } from '@/config/lanTransport';
 import { isJWTSignatureError } from '@/utils/serviceErrorHandler';
 import { store } from '@/store';
 import { forceLogoutOnInvalidToken } from '@/store/slices/authSlice';
@@ -85,7 +86,7 @@ const generateSignedUrl = async (storagePath: string): Promise<string | null> =>
       });
     }
 
-    return data.signedUrl;
+    return data.signedUrl ? viaCurrentPath(data.signedUrl) : data.signedUrl;
   } catch (error) {
     console.warn('[DispatchDetailService] Could not create signed URL for:', storagePath, error);
     return null;

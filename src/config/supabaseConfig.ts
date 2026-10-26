@@ -26,6 +26,8 @@ import { AppError, getAppErrorCode } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { DISCARD_BODY, discardBody } from './discardBody';
+import { isGatewayKeyRejection } from './gatewayRejection';
+import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 
 const authLogger = createLogger('Auth');
 
@@ -101,27 +103,21 @@ export async function awaitIdentityGate(generation: number): Promise<void> {
   if (generation !== getSessionGeneration()) throw new Error('Session changed');
 }
 
-// The gateway (Kong 3) answers a request whose apikey it does not know with one
-// of these bodies. After rotate-keys.sh every installed app still holds the old
-// key and the server has revoked every session, so no request can succeed until
-// the session ends and the app reloads the public configuration. Kong 2 used
-// "Invalid authentication credentials"; PostgREST's own 401s (an expired or
-// foreign access token) carry other messages and stay with the refresh path.
-const GATEWAY_KEY_REJECTIONS = new Set([
-  'Unauthorized',
-  'Invalid authentication credentials',
-  'No API key found in request',
-]);
+// The gateway answers a request whose apikey it does not know with a 401 whose body is one of the
+// messages in ./gatewayRejection.ts. After rotate-keys.sh every installed app still holds the old key
+// and the server has revoked every session, so no request can succeed until the session ends and the
+// app reloads the public configuration. That is true of the PUBLIC path only: the warehouse-network
+// path (src/config/lanTransport.ts) never hands such an answer to this code, and noteUnauthorized
+// below ignores one that carries the LAN path's header anyway (WS-L review H1).
 const keysChangedMessage = () => t('errors.auth.keysChanged');
 
-export const isGatewayKeyRejection = (body: unknown): boolean =>
-  typeof body === 'object' &&
-  body !== null &&
-  GATEWAY_KEY_REJECTIONS.has(String((body as { message?: unknown }).message));
+export { isGatewayKeyRejection };
 
 // Inspects a copy of a 401 response without delaying or consuming the original.
 function noteUnauthorized(response: Response, generation: number): void {
   if (response.status !== 401 || typeof response.clone !== 'function') return;
+  // An answer over the warehouse network never ends the session: a LAN listener with stale keys sends this very 401.
+  if (response.headers?.get?.(WAREHOUSE_PATH_HEADER) === 'lan') return;
   let copy: Response;
   try {
     copy = response.clone();
@@ -248,7 +244,12 @@ async function gatedFetch(
   let response: Response;
   try {
     // The race ends the wait even when the platform's fetch does not settle on abort.
-    response = await Promise.race([fetch(input, { ...init, signal: controller.signal }), deadline]);
+    // The public address first; the warehouse network address when that fails, for a read sent again once
+    // and for a write never (src/config/lanTransport.ts). `mutation` is false exactly for a read.
+    response = await Promise.race([
+      transportFetch(input, { ...init, signal: controller.signal }, { read: !mutation }),
+      deadline,
+    ]);
   } catch (error) {
     release();
     throw error;

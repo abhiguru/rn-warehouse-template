@@ -2,6 +2,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { REQUEST_TIME_LIMIT_MS, awaitIdentityGate, trackReadRequest } from '@/config/supabaseConfig';
 import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
+import { getConnectionPath, noteNativeReadFailed, viaCurrentPath } from '@/config/lanTransport';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { AppError } from '@/utils/appError';
 import { createLogger } from '@/utils/logger';
@@ -199,13 +200,25 @@ async function downloadDocument(pdfUrl: string, filename: string): Promise<Downl
   try {
     if (stopped || generation !== getSessionGeneration()) stop('session');
     else {
-      await File.downloadFileAsync(pdfUrl, file, {
-        idempotent: true,
-        signal: controller.signal,
-        onProgress: ({ bytesWritten, totalBytes }) => {
-          if (bytesWritten > MAX_SHARED_DOCUMENT_BYTES || totalBytes > MAX_SHARED_DOCUMENT_BYTES) stop('too-large');
-        },
-      });
+      const download = (url: string) =>
+        File.downloadFileAsync(url, file, {
+          idempotent: true,
+          signal: controller.signal,
+          onProgress: ({ bytesWritten, totalBytes }) => {
+            if (bytesWritten > MAX_SHARED_DOCUMENT_BYTES || totalBytes > MAX_SHARED_DOCUMENT_BYTES) stop('too-large');
+          },
+        });
+      // The signed URL names the facility's public address; on the warehouse network path (WS-L,
+      // src/config/lanTransport.ts) it is fetched from the LAN address instead. A download that fails
+      // without an answer is a read: the other path is asked once, and the download is tried once more there.
+      const startedOn = getConnectionPath();
+      try {
+        await download(viaCurrentPath(pdfUrl));
+      } catch (error) {
+        if (stopped || statusOf(error) || !(await noteNativeReadFailed(startedOn))) throw error;
+        deleteQuietly(file);
+        await download(viaCurrentPath(pdfUrl));
+      }
       // The last progress event can be skipped; the file on disk has the final word.
       if (!stopped && (file.size ?? 0) > MAX_SHARED_DOCUMENT_BYTES) stop('too-large');
       if (!stopped && generation !== getSessionGeneration()) stop('session');

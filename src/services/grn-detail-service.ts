@@ -1,4 +1,5 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { viaCurrentPath } from '@/config/lanTransport';
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { isUnsettledFailure } from '@/utils/serverText';
 import { waitForServer } from '@/utils/lostAnswer';
@@ -117,7 +118,7 @@ const generateSignedUrl = async (storagePath: string): Promise<string | null> =>
       });
     }
 
-    return data.signedUrl;
+    return data.signedUrl ? viaCurrentPath(data.signedUrl) : data.signedUrl;
   } catch (error) {
     console.warn('[GRNDetailService] Could not create signed URL for:', storagePath, error);
     return null; // Return null for errors
