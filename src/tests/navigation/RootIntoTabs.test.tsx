@@ -20,6 +20,7 @@ import authReducer, { setUserProfile } from '@/store/slices/authSlice';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { verifySelectedOperator } from '@/config/operatorBootstrap';
 import { onOperatorServerChange } from '@/config/operatorServer';
+import { applyNetReachability, installNetReachability } from '@/config/netReachability';
 import { useColdStartDeepLink } from '@/hooks/useColdStartDeepLink';
 import { t } from '@/i18n';
 import RootLayout from '../../../app/_layout';
@@ -194,6 +195,7 @@ jest.mock('@/config/operatorServer', () => ({
   onOperatorServerChange: jest.fn(() => () => undefined),
   getActiveOperatorServer: () => ({ origin: 'https://north-cold.example.test', instanceId: 'instance-north' }),
 }));
+jest.mock('@/config/netReachability', () => ({ installNetReachability: jest.fn(), applyNetReachability: jest.fn() }));
 jest.mock('@/config/operatorBootstrap', () => ({ verifySelectedOperator: jest.fn(), verifyForegroundOperator: jest.fn() }));
 jest.mock('@/config/operatorResume', () => ({
   operatorResumeGate: { installVerifier: jest.fn(() => () => undefined), suspend: jest.fn() },
@@ -347,4 +349,23 @@ it('a facility sign-in during the rebuild began a new session: the tabs restore 
   expect(mockStore.getState().auth.userProfile).toEqual(profileB);
   expect(tabsShown()).toBe(true);
   expect(spinnerShown()).toBe(false);
+});
+
+it('every bootstrap points the reachability probe at the selected facility, after its server was read', async () => {
+  const order: string[] = [];
+  jest.mocked(installNetReachability).mockImplementation(() => { order.push('install'); });
+  jest.mocked(applyNetReachability).mockImplementation(() => { order.push('apply'); });
+  jest.mocked(verifySelectedOperator).mockImplementation(async () => { order.push('verify'); return verifiedFacility as never; });
+  await start();
+  expect(order).toEqual(['install', 'verify', 'apply']);
+  await switchFacility();
+  expect(installNetReachability).toHaveBeenCalledTimes(2);
+  expect(applyNetReachability).toHaveBeenCalledTimes(2);
+});
+
+it('the probe is applied again when the saved facility could not be verified (the phone is offline at start)', async () => {
+  jest.mocked(verifySelectedOperator).mockRejectedValue(new Error('Server discovery timed out.'));
+  await start();
+  expect(installNetReachability).toHaveBeenCalledTimes(1);
+  expect(applyNetReachability).toHaveBeenCalledTimes(1);
 });

@@ -451,6 +451,9 @@ export const components: Translation<typeof source> = {
   },
   offline: {
     message: 'તમે ઑફલાઇન છો. સર્વરની જરૂર હોય તેવાં કામ ફરી કનેક્ટ થશો ત્યારે ચાલશે.',
+    // Draft for the owner's wording review (warehouse network fallback, 2026-10-26).
+    warehouseNetworkOldConfiguration:
+      'વખારના નેટવર્કે જૂના સેટિંગ સાથે જવાબ આપ્યો. તમારું સર્વર ચલાવનાર વ્યક્તિને તેને ફરી ચાલુ કરવા કહો, અથવા ઇન્ટરનેટ સાથે જોડાઓ.',
   },
   stock: {
     currentOfTotal: '{{total}}માંથી {{current}}',

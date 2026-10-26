@@ -15,6 +15,7 @@ import { View, Text, Animated } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useLanStatus } from '@/hooks/useLanStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, motion, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -61,7 +62,10 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const message = messageProp ?? tr('components.offline.message');
+  const lan = useLanStatus();
+  const message =
+    messageProp ??
+    tr(lan.failure === 'old-configuration' ? 'components.offline.warehouseNetworkOldConfiguration' : 'components.offline.message');
   const insets = useSafeAreaInsets();
   const isOffline = useIsOffline();
   const [visible, setVisible] = React.useState(false);

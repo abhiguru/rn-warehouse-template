@@ -95,6 +95,7 @@ import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { showAlert } from '@/utils/alert';
 import { onOperatorServerChange } from '@/config/operatorServer';
+import { applyNetReachability, installNetReachability } from '@/config/netReachability';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
 import { createResumeLifecycle } from '@/config/resumeLifecycle';
@@ -579,11 +580,20 @@ function BootstrapApp() {
     setIsReady(false);
     setNeedsSelection(false);
     setChangingServer(false);
+    // "Online" means the selected facility's server answers (src/config/netReachability.ts). It follows the
+    // selected server from here on; the server saved on the phone is read inside verifySelectedOperator,
+    // so it is applied again once that has run, whatever its outcome.
+    installNetReachability();
 
     try {
-      const result = await verifySelectedOperator(() => run === bootstrapRun.current, async () => {
-        await clearReplacedOperatorInstance();
-      });
+      let result;
+      try {
+        result = await verifySelectedOperator(() => run === bootstrapRun.current, async () => {
+          await clearReplacedOperatorInstance();
+        });
+      } finally {
+        applyNetReachability();
+      }
       if (result.kind === 'superseded') return;
       if (result.kind === 'selection') {
         if (run === bootstrapRun.current) { setNeedsSelection(true); setIsReady(true); }

@@ -7,10 +7,13 @@
  * Issue: I1 - No Network State Monitoring
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
+import { getConnectionPath } from '@/config/lanTransport';
+import { getNetInfoGeneration, subscribeNetInfoGeneration } from '@/config/netInfoGeneration';
+import { useLanStatus } from './useLanStatus';
 
 export interface NetworkStatus {
   isConnected: boolean;
@@ -42,6 +45,9 @@ export function useNetworkStatus(): NetworkStatus {
     type: null,
     isLoading: true,
   });
+
+  // NetInfo.configure (src/config/netReachability.ts) stops the listeners added before it: listen again after one.
+  const netInfoGeneration = useSyncExternalStore(subscribeNetInfoGeneration, getNetInfoGeneration, getNetInfoGeneration);
 
   useEffect(() => {
     let active = true;
@@ -76,7 +82,7 @@ export function useNetworkStatus(): NetworkStatus {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [netInfoGeneration]);
 
   return status;
 }
@@ -84,9 +90,15 @@ export function useNetworkStatus(): NetworkStatus {
 /**
  * Hook to check if device is offline
  * Simpler version that just returns boolean
+ *
+ * "Internet not reachable" is NetInfo's probe of the facility's own `hello`
+ * (src/config/netReachability.ts). When that probe fails but the app is using the
+ * warehouse network path to the same server (src/config/lanTransport.ts), the server is
+ * reachable and the phone is not offline: the banner stays away and saves are not refused.
  */
 export function useIsOffline(): boolean {
   const { isConnected, isInternetReachable, isLoading } = useNetworkStatus();
+  const onWarehouseNetwork = useLanStatus().path === 'lan';
 
   // While loading, assume online
   if (isLoading) return false;
@@ -94,8 +106,9 @@ export function useIsOffline(): boolean {
   // If explicitly not connected, offline
   if (isConnected === false) return true;
 
-  // If connected but internet not reachable, offline
-  if (isConnected && isInternetReachable === false) return true;
+  // If connected but the facility's server is not reachable over the internet, offline unless
+  // the warehouse network reaches it.
+  if (isConnected && isInternetReachable === false) return !onWarehouseNetwork;
 
   return false;
 }
@@ -111,7 +124,7 @@ export async function ensureNetworkConnection(): Promise<void> {
     throw new AppError('NETWORK', t('errors.network.noInternet'));
   }
 
-  if (state.isConnected && state.isInternetReachable === false) {
+  if (state.isConnected && state.isInternetReachable === false && getConnectionPath() !== 'lan') {
     throw new AppError('NETWORK', t('errors.network.notReachable'));
   }
 }

@@ -5,8 +5,10 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 
 let mockOffline = false;
+let mockLanFailure: 'old-configuration' | null = null;
 const mockBannerUnmount = jest.fn();
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }));
+jest.mock('@/hooks/useLanStatus', () => ({ useLanStatus: () => ({ path: 'public', failure: mockLanFailure, lan: null }) }));
 let mockThemeState = { theme: { preference: 'light', brand: 'orange' } };
 // The react-native mock below is minimal, so theme hooks resolve tokens directly.
 jest.mock('@/hooks/useTheme', () => {
@@ -57,6 +59,7 @@ function animation(): Animation {
 beforeEach(() => {
   jest.resetAllMocks();
   mockOffline = false;
+  mockLanFailure = null;
   mockThemeState = { theme: { preference: 'light', brand: 'orange' } };
   hides = [];
   animations = [];
@@ -119,6 +122,20 @@ it('stops the active animation when the banner unmounts', async () => {
   tree = undefined;
   expect(current.stop).toHaveBeenCalledTimes(1);
   await act(async () => { current.finish({ finished: true }); });
+});
+
+it('says the warehouse network answered with an old configuration when it did, and the usual line otherwise', async () => {
+  const OLD =
+    'The warehouse network answered with an old configuration. Ask whoever runs your server to restart it, or connect to the internet.';
+  const shows = (text: string) => tree!.root.findAllByType('Text' as unknown as React.ElementType).some(node => node.props.children === text);
+  mockOffline = true;
+  await act(async () => { tree = create(<OfflineBanner />); });
+  expect(shows(OFFLINE_MESSAGE)).toBe(true);
+  expect(shows(OLD)).toBe(false);
+  mockLanFailure = 'old-configuration';
+  await act(async () => { tree!.update(<OfflineBanner />); });
+  expect(shows(OLD)).toBe(true);
+  expect(shows(OFFLINE_MESSAGE)).toBe(false);
 });
 
 describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const)))(
