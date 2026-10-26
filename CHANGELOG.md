@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Warehouse network fallback (WS-L app, 2026-10-26)
+
+Pairs with the backend `gateway-lan` workstream (WS-L backend: `lan.sh on`, `urls.lan` in the authenticated `get-config`, the
+`X-Warehouse-Path` header). Needs a new APK and iOS build (native configuration changes); merge and deploy the backend first.
+
+- **Owner decision 2026-10-26 amends D24.** Cleartext is allowed to a private LAN address only, as a fallback when the public path
+  fails. The phone uses the server's LAN address (`http://<private IPv4>:<port>`, plain http) only after the public address has failed,
+  and goes back to the public address when it works again. iOS gets `NSAllowsLocalNetworking = true` and
+  `NSLocalNetworkUsageDescription`; Android gets a network-security config. `NSAllowsArbitraryLoads` stays `false` and no exception
+  domain is allowed. The accepted exposure (tokens readable on the warehouse Wi-Fi during an outage) is written down in the backend's
+  `docs/CONTAINER_SECURITY.md`.
+
 ## Unreleased — Operator install fixes
 
 - **Metro and Expo Go troubleshooting.** New "Running Metro for a phone" in `docs/DEVICE_ACCEPTANCE.md` (linked from the README's Expo Go paragraph): `--lan` needs the phone on the Metro host's network (a NAT'd VM is not reachable; allow 8081 from the LAN only), `--tunnel` can fail to start, a Cloudflare Tunnel in front of Metro (`exps://`, `EXPO_PACKAGER_PROXY_URL`, a WAF rule on `node_modules`), `ExpoAsset` in Expo Go, the DevTools `chrome-sandbox` message, and restarting with `--clear` after `.env` changes. Docs only.
@@ -345,6 +357,9 @@ Fixes from the 2026-10-17 operational review (findings M01, M07, M08, M12). No b
   `development` profile; EAS `preview`/`production` refuse those switches), and a Release build phase fails
   an archive whose `Info.plist` still allows local networking or arbitrary loads. Not yet built on a Mac:
   check the generated plist before an iOS release.
+  **Amended 2026-10-26 (owner decision, WS-L):** cleartext is now allowed to a private LAN address only, as a
+  fallback when the public path fails. See "Warehouse network fallback" at the top of this file; every other
+  part of D24 (no arbitrary loads, no exception domains, https for every other origin) stands.
 - **Docs: catalogue trust is TLS-only (M07, owner decision D21).** `docs/CENTRAL_LOGIN.md` says the app does not
   verify the catalogue signature and cites the identity contract; `docs/RELEASE_PREPARATION.md` asks for a
   publicly trusted certificate on the association service.
