@@ -11,7 +11,7 @@ import { useState, useEffect, useSyncExternalStore } from 'react';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
-import { getConnectionPath } from '@/config/lanTransport';
+import { getLanStatus } from '@/config/lanTransport';
 import { getNetInfoGeneration, subscribeNetInfoGeneration } from '@/config/netInfoGeneration';
 import { useLanStatus } from './useLanStatus';
 
@@ -94,11 +94,14 @@ export function useNetworkStatus(): NetworkStatus {
  * "Internet not reachable" is NetInfo's probe of the facility's own `hello`
  * (src/config/netReachability.ts). When that probe fails but the app is using the
  * warehouse network path to the same server (src/config/lanTransport.ts), the server is
- * reachable and the phone is not offline: the banner stays away and saves are not refused.
+ * reachable and the phone is not offline: the banner stays away and saves are not refused. Not
+ * while that path answers REST calls with the old keys of a key change (`failure`): the server is
+ * not usable over it, and the banner says why.
  */
 export function useIsOffline(): boolean {
   const { isConnected, isInternetReachable, isLoading } = useNetworkStatus();
-  const onWarehouseNetwork = useLanStatus().path === 'lan';
+  const lan = useLanStatus();
+  const onWarehouseNetwork = lan.path === 'lan' && lan.failure === null;
 
   // While loading, assume online
   if (isLoading) return false;
@@ -124,7 +127,8 @@ export async function ensureNetworkConnection(): Promise<void> {
     throw new AppError('NETWORK', t('errors.network.noInternet'));
   }
 
-  if (state.isConnected && state.isInternetReachable === false && getConnectionPath() !== 'lan') {
+  const lan = getLanStatus();
+  if (state.isConnected && state.isInternetReachable === false && !(lan.path === 'lan' && lan.failure === null)) {
     throw new AppError('NETWORK', t('errors.network.notReachable'));
   }
 }

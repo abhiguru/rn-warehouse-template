@@ -5,8 +5,9 @@ import { ensureNetworkConnection, useIsOffline } from '../useNetworkStatus';
 import { bumpNetInfoGeneration } from '@/config/netInfoGeneration';
 
 let mockPath: 'public' | 'lan' = 'public';
-jest.mock('@/hooks/useLanStatus', () => ({ useLanStatus: () => ({ path: mockPath, failure: null, lan: null }) }));
-jest.mock('@/config/lanTransport', () => ({ getConnectionPath: () => mockPath }));
+let mockFailure: 'old-configuration' | null = null;
+jest.mock('@/hooks/useLanStatus', () => ({ useLanStatus: () => ({ path: mockPath, failure: mockFailure, lan: null }) }));
+jest.mock('@/config/lanTransport', () => ({ getLanStatus: () => ({ path: mockPath, failure: mockFailure, lan: null }) }));
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
   default: { fetch: jest.fn(), addEventListener: jest.fn() },
@@ -26,6 +27,7 @@ const Harness = () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockPath = 'public';
+  mockFailure = null;
   jest.mocked(NetInfo.fetch).mockResolvedValue(state(true, true));
   jest.mocked(NetInfo.addEventListener).mockImplementation(callback => {
     listener = callback;
@@ -61,6 +63,14 @@ describe('useIsOffline', () => {
     expect(offline).toBe(false);
   });
 
+  it('is true when the warehouse network answers with the old keys of a key change: the server is not usable over it', async () => {
+    mockPath = 'lan';
+    mockFailure = 'old-configuration';
+    await mount();
+    await act(async () => { listener(state(true, false)); });
+    expect(offline).toBe(true);
+  });
+
   it('is true with no network at all, whatever path was in use', async () => {
     mockPath = 'lan';
     await mount();
@@ -85,6 +95,13 @@ describe('ensureNetworkConnection', () => {
     mockPath = 'lan';
     jest.mocked(NetInfo.fetch).mockResolvedValue(state(true, false));
     await expect(ensureNetworkConnection()).resolves.toBeUndefined();
+  });
+
+  it('refuses on the warehouse network path while it answers with old keys', async () => {
+    mockPath = 'lan';
+    mockFailure = 'old-configuration';
+    jest.mocked(NetInfo.fetch).mockResolvedValue(state(true, false));
+    await expect(ensureNetworkConnection()).rejects.toMatchObject({ code: 'NETWORK' });
   });
 
   it('still refuses with no network at all', async () => {
