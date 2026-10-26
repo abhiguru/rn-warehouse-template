@@ -156,7 +156,7 @@ describe('the warehouse network address', () => {
     expect(getLanContext()).toBeNull();
   });
 
-  describe('typed in Settings', () => {
+  describe('typed in Help', () => {
     it('is validated, used instead of the saved one, and kept while the server\'s value does not change', async () => {
       await saveOperatorServer({ ...server, lan: LAN }, false);
       expect(await setTypedLanAddress('http://8.8.8.8:80')).toBe(false);
@@ -171,28 +171,67 @@ describe('the warehouse network address', () => {
       expect((await saved()).lanTyped).toEqual({ address: 'http://192.168.1.99:8080', serverValue: LAN });
     });
 
-    it('is kept when the server stops sending its address, and dropped when the server sends a different one', async () => {
+    it('changes the host part of the server\'s address and nothing else: not another subnet, not a network or broadcast address', async () => {
+      await saveOperatorServer({ ...server, lan: LAN }, false);
+      for (const typed of ['http://192.168.2.20:8080', 'http://10.0.0.5:8080', 'http://192.168.1.0:8080', 'http://192.168.1.255:8080'])
+        expect(await setTypedLanAddress(typed)).toBe(false);
+      expect(getActiveOperatorServer()?.lanTyped).toBeUndefined();
+      expect(await setTypedLanAddress('http://192.168.1.99:9090')).toBe(true);
+    });
+
+    it('is possible only while the server sends an address: the operator cannot be made to use an invented one', async () => {
+      await clearOperatorServer(); // a discovery save of the same server would keep the address it had
+      await saveOperatorServer(server, false);
+      expect(await setTypedLanAddress('http://192.168.1.99:8080')).toBe(false);
+      expect(getActiveOperatorServer()?.lanTyped).toBeUndefined();
+      expect(getLanContext()?.lan).toBeNull();
+      // Clearing is always possible.
+      expect(await setTypedLanAddress('')).toBe(true);
+    });
+
+    it('is dropped with the server\'s address when the server stops sending one (the operator turned the fallback off)', async () => {
       await saveOperatorServer({ ...server, lan: LAN }, false);
       await setTypedLanAddress('http://192.168.1.99:8080');
       await recordServerLanAddress(origin, undefined);
-      expect(getActiveOperatorServer()?.lan).toBeUndefined();
-      expect(lanAddressOf(getActiveOperatorServer())).toBe('http://192.168.1.99:8080');
-      // The same value as when it was typed comes back: still the typed one.
+      expect(getActiveOperatorServer()).toEqual(server);
+      expect(lanAddressOf(getActiveOperatorServer())).toBeNull();
+      expect(getLanContext()?.lan).toBeNull();
+      expect(await saved()).toEqual(server);
+      // The fallback comes back: the server's own value, never the old typed one.
       await recordServerLanAddress(origin, LAN);
-      expect(lanAddressOf(getActiveOperatorServer())).toBe('http://192.168.1.99:8080');
-      // A different one: the server wins.
+      expect(lanAddressOf(getActiveOperatorServer())).toBe(LAN);
+      expect(getActiveOperatorServer()?.lanTyped).toBeUndefined();
+    });
+
+    it('is dropped when the server sends a different value', async () => {
+      await saveOperatorServer({ ...server, lan: LAN }, false);
+      await setTypedLanAddress('http://192.168.1.99:8080');
       await recordServerLanAddress(origin, 'http://192.168.1.30:8080');
       expect(getActiveOperatorServer()?.lanTyped).toBeUndefined();
       expect(lanAddressOf(getActiveOperatorServer())).toBe('http://192.168.1.30:8080');
     });
 
-    it('typed when the server offered none is replaced by the first address the server sends', async () => {
-      await saveOperatorServer(server, false);
-      await setTypedLanAddress('http://192.168.1.99:8080');
-      await recordServerLanAddress(origin, undefined);
-      expect(lanAddressOf(getActiveOperatorServer())).toBe('http://192.168.1.99:8080');
-      await recordServerLanAddress(origin, LAN);
-      expect(lanAddressOf(getActiveOperatorServer())).toBe(LAN);
+    it('does not survive a saved copy that has it without the server\'s address, or that is not a host-part change', async () => {
+      await AsyncStorage.setItem(
+        'operator_server_v1',
+        JSON.stringify({ ...server, lanTyped: { address: 'http://192.168.1.99:8080', serverValue: null } })
+      );
+      expect((await loadOperatorServer())?.lanTyped).toBeUndefined();
+      await AsyncStorage.setItem(
+        'operator_server_v1',
+        JSON.stringify({ ...server, lan: LAN, lanTyped: { address: 'http://10.0.0.9:8080', serverValue: LAN } })
+      );
+      expect((await loadOperatorServer())?.lanTyped).toBeUndefined();
+      await AsyncStorage.setItem(
+        'operator_server_v1',
+        JSON.stringify({ ...server, lan: LAN, lanTyped: { address: 'http://192.168.1.99:8080', serverValue: 'http://192.168.1.21:8080' } })
+      );
+      expect((await loadOperatorServer())?.lanTyped).toBeUndefined();
+      await AsyncStorage.setItem(
+        'operator_server_v1',
+        JSON.stringify({ ...server, lan: LAN, lanTyped: { address: 'http://192.168.1.99:8080', serverValue: LAN } })
+      );
+      expect((await loadOperatorServer())?.lanTyped).toEqual({ address: 'http://192.168.1.99:8080', serverValue: LAN });
     });
 
     it('is cleared by an empty field, back to the server\'s own', async () => {

@@ -8,17 +8,27 @@
  *
  *  - Installed in `bootstrapApp` (app/_layout.tsx); applied again whenever the selected server changes
  *    (`onOperatorServerChange`), and reset to NetInfo's defaults when there is none (`clearOperatorServer`).
+ *  - Only a probe the facility did not answer counts as "unreachable": a 200, a 429 and any answer that carries
+ *    the gateway's `X-Warehouse-Path` header (a 5xx of the gateway included) are the facility answering
+ *    (`publicAnswered`, src/config/lanTransport.ts). Without that, a busy functions limit, which every phone
+ *    behind the facility's address shares, would mark the internet unreachable and move the phone to plain http.
  *  - `useIsOffline` (src/hooks/useNetworkStatus.ts) is false when this public probe fails but the
  *    warehouse network path is in use (src/config/lanTransport.ts).
  *  - When the probe finds the public address unreachable, the transport confirms it and asks the LAN
- *    address (`notePublicUnreachable`), so the switch does not wait for a request to fail.
+ *    address (`notePublicUnreachable`), so the switch does not wait for a request to fail. Every NetInfo
+ *    event also tells the transport the phone's network (`noteNetworkState`): a change of network type,
+ *    Wi-Fi address or subnet puts the phone back on the public path, so the identity check of the LAN
+ *    address runs again on the new network (review H1).
+ *  - NetInfo's `reachabilityShouldRun` is not used to hold the probe back during an upload or in the
+ *    background: NetInfo reads it only when the connection changes, and a "no" there reports the internet as
+ *    unreachable. The transport instead ignores a failed probe while an upload is going out.
  *
  * `NetInfo.configure` stops every listener added before it, so it is called only when the probe URL
  * really changes, and the listeners of the hooks are renewed through `netInfoGeneration.ts`.
  */
-import NetInfo, { type NetInfoConfiguration } from '@react-native-community/netinfo';
+import NetInfo, { type NetInfoConfiguration, type NetInfoState } from '@react-native-community/netinfo';
 import { getActiveOperatorServer, onOperatorServerChange } from './operatorServer';
-import { notePublicUnreachable } from './lanTransport';
+import { noteNetworkState, notePublicUnreachable, publicAnswered, type NetworkSnapshot } from './lanTransport';
 import { bumpNetInfoGeneration } from './netInfoGeneration';
 
 export const REACHABILITY_PATH = '/functions/v1/hello';
@@ -31,7 +41,7 @@ export function reachabilityConfiguration(origin: string): Partial<NetInfoConfig
     reachabilityMethod: 'GET',
     // The platform's own answer is "some network has internet"; only the facility's answer counts here.
     useNativeReachability: false,
-    reachabilityTest: response => Promise.resolve(response.status === 200),
+    reachabilityTest: response => Promise.resolve(publicAnswered(response)),
   };
 }
 
@@ -40,9 +50,22 @@ let applied: string | null | undefined;
 let stopServerListener: (() => void) | undefined;
 let stopNetInfoListener: (() => void) | undefined;
 
+/** The part of a NetInfo state the transport needs; the addresses are those of Wi-Fi and Ethernet only. */
+export function networkOf(state: NetInfoState): NetworkSnapshot {
+  const details = state.details as { ipAddress?: unknown; subnet?: unknown } | null;
+  return {
+    connected: state.isConnected ?? null,
+    type: state.type ?? null,
+    ipAddress: typeof details?.ipAddress === 'string' ? details.ipAddress : null,
+    subnet: typeof details?.subnet === 'string' ? details.subnet : null,
+  };
+}
+
 function listenToNetInfo(): void {
   stopNetInfoListener?.();
   stopNetInfoListener = NetInfo.addEventListener(state => {
+    // The network first: a change puts the phone back on the public path before the check below asks anything.
+    noteNetworkState(networkOf(state));
     if (state.isConnected && state.isInternetReachable === false) notePublicUnreachable();
   });
 }

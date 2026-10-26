@@ -1,5 +1,6 @@
 import {
   LAN_STICK_MS,
+  NETWORK_KNOWN_WAIT_MS,
   PROBE_BACKOFF_MS,
   PROBE_TIMEOUT_MS,
   PUBLIC_HEADERS_TIMEOUT_MS,
@@ -7,9 +8,14 @@ import {
   answeredPath,
   getConnectionPath,
   getLanStatus,
+  isTunnelFailure,
+  lanUsableHere,
   noteNativeReadFailed,
+  noteNetworkState,
   notePublicUnreachable,
   probeLan,
+  probePublic,
+  publicAnswered,
   resetLanTransport,
   setLanContext,
   subscribeLanStatus,
@@ -17,13 +23,23 @@ import {
   transportFetch,
   viaCurrentPath,
 } from '../lanTransport';
+import {
+  ETHERNET,
+  HOME_WIFI,
+  MOBILE_DATA,
+  NO_NETWORK,
+  OTHER_WIFI_SAME_RANGE,
+  WAREHOUSE_WIFI,
+  WIFI_UNKNOWN_SUBNET,
+  onWarehouseWifi,
+} from '@/tests/helpers/lanNetwork';
 
 const PUBLIC = 'https://warehouse.example.test';
 const LAN = 'http://192.168.1.20:8080';
 const INSTANCE = 'instance-0001';
 const originalFetch = global.fetch;
 
-type PublicState = 'up' | 'down' | '530' | 'hang' | 'slow-up';
+type PublicState = 'up' | 'down' | '530' | 'hang' | 'slow-up' | '429' | '503' | 'cf502';
 type LanState = 'up' | 'down' | 'hang' | 'stale-keys' | 'refused' | 'other-device' | 'wrong-instance';
 const net: { public: PublicState; lan: LanState } = { public: 'up', lan: 'up' };
 let calls: string[];
@@ -59,6 +75,14 @@ function route(input: RequestInfo | URL, init?: RequestInit): Promise<Response> 
         return Promise.reject(new TypeError('Network request failed'));
       case '530':
         return Promise.resolve(reply(530, 'error code: 1033'));
+      case '429':
+        // The functions limit, shared by every phone behind the facility's address: the gateway answers.
+        return Promise.resolve(reply(429, { message: 'Too many requests' }, { 'X-Warehouse-Path': 'public' }));
+      case '503':
+        return Promise.resolve(reply(503, { message: 'Service unavailable' }, { 'X-Warehouse-Path': 'public' }));
+      case 'cf502':
+        // Cloudflare's own error page: the tunnel is up, the origin is not. No gateway header.
+        return Promise.resolve(reply(502, '<html>Bad gateway</html>'));
       case 'hang':
         return hang(init?.signal);
       case 'slow-up':
@@ -116,6 +140,7 @@ beforeEach(() => {
   global.fetch = jest.fn(route) as unknown as typeof fetch;
   resetLanTransport();
   setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: INSTANCE });
+  onWarehouseWifi();
 });
 
 afterEach(() => {
@@ -310,20 +335,34 @@ describe('a request that gets no response headers', () => {
     expect(calls.some(call => call.startsWith(`GET ${LAN}`))).toBe(false);
   });
 
-  it('moves the NEXT request to the LAN path but never sends a WRITE again', async () => {
-    net.public = 'hang';
-    let outcome: string | undefined;
-    const pending = transportFetch(rest('rpc/save_grn'), { method: 'POST' }, WRITE).then(
-      () => (outcome = 'answered'),
-      () => (outcome = 'failed')
-    );
-    await jest.advanceTimersByTimeAsync(PUBLIC_HEADERS_TIMEOUT_MS + PROBE_TIMEOUT_MS);
-    expect(getConnectionPath()).toBe('lan');
-    expect(signals[rest('rpc/save_grn')]?.aborted).toBeFalsy();
-    expect(outcome).toBeUndefined();
+  it('a slow WRITE starts no path check at all: it waits for its own answer and the next request still goes public', async () => {
+    net.public = 'slow-up';
+    let result: Response | undefined;
+    const pending = transportFetch(rest('rpc/save_grn'), { method: 'POST' }, WRITE).then(value => (result = value));
+    // The upload-sized answer takes 6 s; a read would have started a check after 4 s.
+    await jest.advanceTimersByTimeAsync(PUBLIC_HEADERS_TIMEOUT_MS + 1000);
+    expect(probesOnly(calls)).toEqual([]);
+    expect(getConnectionPath()).toBe('public');
+    expect(result).toBeUndefined();
+    await jest.advanceTimersByTimeAsync(1500);
+    await pending;
+    expect(await (result as Response).json()).toEqual({ from: 'public' });
+    expect(probesOnly(calls)).toEqual([]);
     expect(calls.filter(call => call.includes('save_grn'))).toEqual([`POST ${rest('rpc/save_grn')}`]);
-    // The caller's own limit ends it (gatedFetch aborts the request).
-    pending.catch(() => {});
+    expect(calls.some(call => call.startsWith(`GET ${LAN}`))).toBe(false);
+  });
+
+  it('a slow WRITE on a path that never answers is not sent again and moves nobody', async () => {
+    net.public = 'hang';
+    const controller = new AbortController();
+    const pending = transportFetch(rest('rpc/save_grn'), { method: 'POST', signal: controller.signal }, WRITE);
+    const settled = expect(pending).rejects.toThrow('Aborted');
+    await jest.advanceTimersByTimeAsync(PUBLIC_HEADERS_TIMEOUT_MS + PROBE_TIMEOUT_MS + 1000);
+    expect(probesOnly(calls)).toEqual([]);
+    expect(getConnectionPath()).toBe('public');
+    controller.abort();
+    await settled;
+    expect(calls.filter(call => call.includes('save_grn'))).toEqual([`POST ${rest('rpc/save_grn')}`]);
   });
 });
 
@@ -608,5 +647,404 @@ describe('other triggers and resets', () => {
     await transportFetch(rest(), undefined, READ);
     setLanContext(null);
     expect(getLanStatus()).toEqual({ path: 'public', failure: null, lan: null });
+  });
+});
+
+// -----------------------------------------------------------------------------
+// WS-L review H1: the LAN path survives a change of network and a wrong device
+// -----------------------------------------------------------------------------
+
+const lanCalls = () => calls.filter(call => call.includes(LAN));
+const lanCredentialed = () => jest.mocked(global.fetch).mock.calls.filter(([input, init]) => String(input).startsWith(LAN) && init?.headers);
+const AUTH = { headers: { Authorization: 'Bearer token', apikey: 'k' } };
+const moveToLan = async () => {
+  net.public = 'down';
+  await transportFetch(rest(), undefined, READ);
+  expect(getConnectionPath()).toBe('lan');
+  calls = [];
+  jest.mocked(global.fetch).mockClear();
+};
+
+describe('a change of network (review H1)', () => {
+  it('puts the phone back on the public path, and nothing credentialed goes to the LAN address before a new identity check', async () => {
+    await moveToLan();
+    noteNetworkState(OTHER_WIFI_SAME_RANGE);
+    expect(getConnectionPath()).toBe('public');
+    expect(getLanStatus().path).toBe('public');
+    const response = await transportFetch(rest('customers'), AUTH, READ);
+    expect(answeredPath(response)).toBe('lan');
+    const sent = lanCalls();
+    // The identity probes (hello and get-public-config, no headers) come first; the credentialed read last.
+    expect(sent.slice(0, 2).sort()).toEqual([`GET ${LAN}/functions/v1/get-public-config`, `GET ${LAN}/functions/v1/hello`]);
+    expect(sent[sent.length - 1]).toBe(`GET ${lanRest('customers')}`);
+    expect(lanCredentialed()).toHaveLength(1);
+  });
+
+  it('refuses another warehouse that holds the same address on the new network: the identity probe fails, no credential goes', async () => {
+    await moveToLan();
+    noteNetworkState(OTHER_WIFI_SAME_RANGE);
+    net.lan = 'wrong-instance';
+    await expect(transportFetch(rest('customers'), AUTH, READ)).rejects.toThrow('Network request failed');
+    expect(lanCredentialed()).toHaveLength(0);
+    expect(getConnectionPath()).toBe('public');
+  });
+
+  it('refuses a device that is not the server on the new network', async () => {
+    await moveToLan();
+    noteNetworkState(OTHER_WIFI_SAME_RANGE);
+    net.lan = 'other-device';
+    await expect(transportFetch(rest('customers'), AUTH, READ)).rejects.toThrow('Network request failed');
+    expect(lanCredentialed()).toHaveLength(0);
+  });
+
+  it('to a network that cannot hold the address: nothing is probed or sent to it at all', async () => {
+    for (const network of [HOME_WIFI, MOBILE_DATA, NO_NETWORK, WIFI_UNKNOWN_SUBNET]) {
+      await moveToLan();
+      noteNetworkState(network);
+      expect(getConnectionPath()).toBe('public');
+      await expect(transportFetch(rest('customers'), AUTH, READ)).rejects.toThrow('Network request failed');
+      expect(lanCalls()).toEqual([]);
+      noteNetworkState(WAREHOUSE_WIFI);
+      jest.advanceTimersByTime(PROBE_BACKOFF_MS + 1);
+    }
+  });
+
+  it('repeats of the same network change nothing: the phone stays on the LAN path', async () => {
+    await moveToLan();
+    noteNetworkState({ ...WAREHOUSE_WIFI });
+    noteNetworkState(WAREHOUSE_WIFI);
+    expect(getConnectionPath()).toBe('lan');
+  });
+
+  it('a probe that was out when the network changed is about the old network and moves nobody', async () => {
+    net.public = 'down';
+    net.lan = 'hang';
+    const pending = transportFetch(rest(), undefined, READ).catch(() => undefined);
+    await flush();
+    net.lan = 'up';
+    noteNetworkState(OTHER_WIFI_SAME_RANGE);
+    await jest.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS + 100);
+    await pending;
+    expect(getConnectionPath()).toBe('public');
+  });
+
+  it('a network that reports a subnet holding the address works: Ethernet too', async () => {
+    noteNetworkState(ETHERNET);
+    net.public = 'down';
+    const response = await transportFetch(rest(), undefined, READ);
+    expect(answeredPath(response)).toBe('lan');
+  });
+});
+
+describe('where the LAN path may be used (review H1)', () => {
+  it.each([
+    ['the warehouse Wi-Fi', WAREHOUSE_WIFI, true],
+    ['Ethernet in the same subnet', ETHERNET, true],
+    ['a Wi-Fi in another private range', HOME_WIFI, false],
+    ['mobile data', MOBILE_DATA, false],
+    ['no connection', NO_NETWORK, false],
+    ['Wi-Fi whose address NetInfo could not read', WIFI_UNKNOWN_SUBNET, false],
+    ['Wi-Fi with a mask of /32 (what Android reports when it cannot read the prefix)', { ...WAREHOUSE_WIFI, subnet: '255.255.255.255' }, false],
+    ['Wi-Fi with a mask of 0.0.0.0 (what iOS reports when it cannot read it)', { ...WAREHOUSE_WIFI, subnet: '0.0.0.0' }, false],
+    ['a VPN', { ...WAREHOUSE_WIFI, type: 'vpn' }, false],
+    ['a /22 that holds the address', { ...WAREHOUSE_WIFI, ipAddress: '192.168.2.9', subnet: '255.255.252.0' }, true],
+    ['a /24 that does not', { ...WAREHOUSE_WIFI, ipAddress: '192.168.2.9', subnet: '255.255.255.0' }, false],
+  ])('%s: %s', (_name, network, usable) => {
+    noteNetworkState(network);
+    expect(lanUsableHere()).toBe(usable);
+  });
+
+  it('is false before NetInfo has said anything', () => {
+    resetLanTransport();
+    setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: INSTANCE });
+    expect(lanUsableHere()).toBe(false);
+  });
+
+  it('on a network that cannot hold the address a failed request costs no probe: the failure is handed over as it was', async () => {
+    noteNetworkState(MOBILE_DATA);
+    net.public = 'down';
+    await expect(transportFetch(rest(), undefined, READ)).rejects.toThrow('Network request failed');
+    expect(calls).toEqual([`GET ${rest()}`]);
+    expect(await probeLan()).toEqual({ ok: false, reason: 'other-network' });
+    expect(calls).toEqual([`GET ${rest()}`]);
+  });
+
+  it.each([
+    ['mobile data', MOBILE_DATA, 'other-network'],
+    ['no connection', NO_NETWORK, 'other-network'],
+    ['a Wi-Fi in another range', HOME_WIFI, 'other-network'],
+    ['Wi-Fi whose address could not be read', WIFI_UNKNOWN_SUBNET, 'network-unknown'],
+    ['Wi-Fi with a mask of /32', { ...WAREHOUSE_WIFI, subnet: '255.255.255.255' }, 'network-unknown'],
+    ['a connection NetInfo has not classified', { ...WAREHOUSE_WIFI, connected: null, type: 'unknown' }, 'network-unknown'],
+  ] as const)('probeLan on %s asks nothing and says %s', async (_name, network, reason) => {
+    noteNetworkState(network);
+    expect(await probeLan()).toEqual({ ok: false, reason });
+    expect(calls).toEqual([]);
+  });
+
+  it('probeLan before NetInfo has said anything says network-unknown', async () => {
+    resetLanTransport();
+    setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: INSTANCE });
+    expect(await probeLan()).toEqual({ ok: false, reason: 'network-unknown' });
+  });
+});
+
+describe('before NetInfo has said where the phone is (a cold start in an outage)', () => {
+  beforeEach(() => {
+    resetLanTransport();
+    setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: INSTANCE });
+  });
+
+  it('a failed first request waits for the reading, then falls back when the phone is on the warehouse Wi-Fi', async () => {
+    net.public = 'down';
+    let result: Response | undefined;
+    const pending = transportFetch(rest(), undefined, READ).then(value => (result = value));
+    await flush();
+    expect(lanCalls()).toEqual([]);
+    expect(result).toBeUndefined();
+    noteNetworkState(WAREHOUSE_WIFI);
+    await pending;
+    expect(answeredPath(result as Response)).toBe('lan');
+    expect(getConnectionPath()).toBe('lan');
+  });
+
+  it('the first reading is not a change of network: it does not undo a decision that is waiting for it', async () => {
+    net.public = 'down';
+    const pending = transportFetch(rest(), undefined, READ);
+    await flush();
+    noteNetworkState(WAREHOUSE_WIFI);
+    expect((await pending).status).toBe(200);
+    expect(getConnectionPath()).toBe('lan');
+  });
+
+  it('gives up after NETWORK_KNOWN_WAIT_MS with no reading: nothing is sent to the LAN address', async () => {
+    net.public = 'down';
+    const pending = transportFetch(rest(), undefined, READ).catch(error => error);
+    await jest.advanceTimersByTimeAsync(NETWORK_KNOWN_WAIT_MS + 10);
+    expect(await pending).toBeInstanceOf(TypeError);
+    expect(lanCalls()).toEqual([]);
+    expect(getConnectionPath()).toBe('public');
+  });
+
+  it('a reading of a network that cannot hold the address ends the wait at once, with nothing sent', async () => {
+    net.public = 'down';
+    const pending = transportFetch(rest(), undefined, READ).catch(error => error);
+    await flush();
+    noteNetworkState(MOBILE_DATA);
+    expect(await pending).toBeInstanceOf(TypeError);
+    expect(lanCalls()).toEqual([]);
+  });
+});
+
+describe('leaving the LAN path (review H1)', () => {
+  it('another device at the address means the public path, whether or not the public path answers', async () => {
+    await moveToLan();
+    net.lan = 'other-device';
+    net.public = 'down';
+    await expect(transportFetch(rest('a'), AUTH, READ)).rejects.toThrow('Network request failed');
+    expect(getConnectionPath()).toBe('public');
+    // The next request goes public first and sends no credential to the LAN address, now or 15 s later.
+    calls = [];
+    jest.mocked(global.fetch).mockClear();
+    await expect(transportFetch(rest('b'), AUTH, READ)).rejects.toThrow('Network request failed');
+    jest.advanceTimersByTime(PROBE_BACKOFF_MS + 1);
+    await expect(transportFetch(rest('c'), AUTH, READ)).rejects.toThrow('Network request failed');
+    expect(lanCredentialed()).toHaveLength(0);
+    expect(calls.some(call => call.startsWith(`GET ${LAN}/rest`))).toBe(false);
+  });
+
+  it("a 403 of the listener means the public path, even when the public path is down", async () => {
+    await moveToLan();
+    net.lan = 'refused';
+    await expect(transportFetch(rest('a'), AUTH, READ)).rejects.toThrow('Network request failed');
+    expect(getConnectionPath()).toBe('public');
+  });
+
+  it('a failed request whose identity probe fails too means the public path', async () => {
+    await moveToLan();
+    net.lan = 'down';
+    await expect(transportFetch(rest('a'), AUTH, READ)).rejects.toThrow('Network request failed');
+    expect(getConnectionPath()).toBe('public');
+  });
+
+  it('a failed request whose identity probe passes stays on the LAN path: the request was at fault', async () => {
+    await moveToLan();
+    let first = true;
+    jest.mocked(global.fetch).mockImplementation((input, init) => {
+      if (String(input) === lanRest('a') && first) {
+        first = false;
+        return Promise.reject(new TypeError('Network request failed'));
+      }
+      return route(input, init);
+    });
+    await expect(transportFetch(rest('a'), AUTH, READ)).rejects.toThrow('Network request failed');
+    expect(getConnectionPath()).toBe('lan');
+  });
+
+  it('the real server with old keys keeps the phone on the LAN path when the public path is down: "old configuration"', async () => {
+    await moveToLan();
+    net.lan = 'stale-keys';
+    net.public = 'down';
+    await expect(transportFetch(rest('a'), AUTH, READ)).rejects.toThrow('Network request failed');
+    expect(getConnectionPath()).toBe('lan');
+    expect(getLanStatus().failure).toBe('old-configuration');
+  });
+
+  it('the old-configuration warning goes away when the phone returns to the public path (review L3)', async () => {
+    await moveToLan();
+    net.lan = 'stale-keys';
+    net.public = 'down';
+    await transportFetch(rest('a'), AUTH, READ).catch(() => undefined);
+    expect(getLanStatus().failure).toBe('old-configuration');
+    net.public = 'up';
+    await jest.advanceTimersByTimeAsync(LAN_STICK_MS + 1);
+    await flush();
+    expect(getConnectionPath()).toBe('public');
+    expect(getLanStatus().failure).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------------
+// WS-L review M1: false switches to cleartext while the public path works
+// -----------------------------------------------------------------------------
+
+describe('what counts as the public path answering (review M1, L2)', () => {
+  const helloAnswer = (status: number, header: boolean) => () =>
+    Promise.resolve(reply(status, status === 200 ? 'Hello' : { message: 'x' }, header ? { 'X-Warehouse-Path': 'public' } : {}));
+  const probeWith = async (status: number, header: boolean) => {
+    jest.mocked(global.fetch).mockImplementation(helloAnswer(status, header));
+    return probePublic();
+  };
+
+  it.each([
+    [200, false, true],
+    [200, true, true],
+    [429, true, true],
+    [429, false, true],
+    [500, true, true],
+    [502, true, true],
+    [503, true, true],
+    [504, true, true],
+    [404, true, true],
+    [502, false, false],
+    [503, false, false],
+    [520, false, false],
+    [530, false, false],
+    [404, false, false],
+    [403, false, false],
+  ])('hello answered %i, gateway header %s: public reachable is %s', async (status, header, reachable) => {
+    expect(await probeWith(status, header)).toBe(reachable);
+    expect(publicAnswered(reply(status, '', header ? { 'X-Warehouse-Path': 'public' } : {}))).toBe(reachable);
+  });
+
+  it('a rejected hello and one with no headers in time are down', async () => {
+    jest.mocked(global.fetch).mockImplementation(() => Promise.reject(new TypeError('Network request failed')));
+    expect(await probePublic()).toBe(false);
+    jest.mocked(global.fetch).mockImplementation((_input, init) => hang(init?.signal));
+    const pending = probePublic();
+    await jest.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS);
+    expect(await pending).toBe(false);
+  });
+
+  it('isTunnelFailure is a 530, or a 5xx without the gateway header', () => {
+    expect(isTunnelFailure(reply(530, ''))).toBe(true);
+    expect(isTunnelFailure(reply(502, ''))).toBe(true);
+    expect(isTunnelFailure(reply(502, '', { 'X-Warehouse-Path': 'public' }))).toBe(false);
+    expect(isTunnelFailure(reply(429, ''))).toBe(false);
+    expect(isTunnelFailure(reply(200, ''))).toBe(false);
+  });
+
+  it.each([429, 502, 503])('a request that fails while the public hello answers %i is the request\'s fault: the phone sends nothing to the LAN', async status => {
+    let first = true;
+    jest.mocked(global.fetch).mockImplementation((input, init) => {
+      if (String(input) === rest() && first) {
+        first = false;
+        return Promise.reject(new TypeError('Network request failed'));
+      }
+      if (String(input).endsWith('/hello') && String(input).startsWith(PUBLIC))
+        return Promise.resolve(reply(status, { message: 'busy' }, { 'X-Warehouse-Path': 'public' }));
+      return route(input, init);
+    });
+    await expect(transportFetch(rest(), undefined, READ)).rejects.toThrow('Network request failed');
+    expect(getConnectionPath()).toBe('public');
+    expect(calls.some(call => call.startsWith(`GET ${LAN}`))).toBe(false);
+  });
+
+  it('a 429 or a 5xx with the gateway header is handed to the caller as the facility\'s answer', async () => {
+    for (const state of ['429', '503'] as const) {
+      net.public = state;
+      const response = await transportFetch(rest(), undefined, READ);
+      expect(response.status).toBe(state === '429' ? 429 : 503);
+    }
+    expect(calls.some(call => call.startsWith(`GET ${LAN}`))).toBe(false);
+    expect(getConnectionPath()).toBe('public');
+  });
+
+  it('Cloudflare\'s 502 without the gateway header is the tunnel down: the read goes over the LAN', async () => {
+    net.public = 'cf502';
+    const response = await transportFetch(rest(), undefined, READ);
+    expect(answeredPath(response)).toBe('lan');
+    expect(getConnectionPath()).toBe('lan');
+  });
+
+  it('the tunnel down and the LAN down: the caller gets Cloudflare\'s 502 as before', async () => {
+    net.public = 'cf502';
+    net.lan = 'down';
+    const response = await transportFetch(rest(), undefined, READ);
+    expect(response.status).toBe(502);
+  });
+});
+
+describe('uploads (review M1)', () => {
+  const photo = `${PUBLIC}/storage/v1/object/grn-images/a.jpg`;
+
+  it('while a photo goes out over the public path, a failed probe of NetInfo starts no check; one is made when it is over', async () => {
+    net.public = 'hang';
+    const controller = new AbortController();
+    const upload = transportFetch(photo, { method: 'POST', signal: controller.signal }, WRITE);
+    const ended = expect(upload).rejects.toThrow('Aborted');
+    await jest.advanceTimersByTimeAsync(PUBLIC_HEADERS_TIMEOUT_MS + 500);
+    notePublicUnreachable();
+    await jest.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS + 500);
+    expect(probesOnly(calls)).toEqual([]);
+    expect(getConnectionPath()).toBe('public');
+    // The upload ends: the skipped check is made now (the public hello is asked first).
+    controller.abort();
+    await ended;
+    await flush();
+    expect(calls).toContain(`GET ${PUBLIC}/functions/v1/hello`);
+  });
+
+  it('while a photo goes out, a rejected READ does not start the public hello probe either', async () => {
+    net.public = 'slow-up';
+    const upload = transportFetch(photo, { method: 'POST' }, WRITE);
+    jest.mocked(global.fetch).mockImplementationOnce(() => Promise.reject(new TypeError('Network request failed')));
+    await expect(transportFetch(rest('items'), undefined, READ)).rejects.toThrow('Network request failed');
+    expect(probesOnly(calls)).toEqual([]);
+    expect(getConnectionPath()).toBe('public');
+    await jest.advanceTimersByTimeAsync(7000);
+    await upload;
+  });
+
+  it('a tunnel failure still moves the phone during an upload: it is the tunnel answering, not a slow probe', async () => {
+    net.public = 'hang';
+    const controller = new AbortController();
+    const upload = transportFetch(photo, { method: 'POST', signal: controller.signal }, WRITE).catch(() => undefined);
+    await flush();
+    net.public = '530';
+    const response = await transportFetch(rest('items'), undefined, READ);
+    expect(answeredPath(response)).toBe('lan');
+    controller.abort();
+    await upload;
+  });
+
+  it('an upload that goes out over the LAN path does not hold the public probe back', async () => {
+    await moveToLan();
+    net.public = 'up';
+    const upload = transportFetch(photo, { method: 'POST' }, WRITE);
+    await jest.advanceTimersByTimeAsync(LAN_STICK_MS + 1);
+    await flush();
+    await upload;
+    expect(calls).toContain(`GET ${PUBLIC}/functions/v1/hello`);
   });
 });

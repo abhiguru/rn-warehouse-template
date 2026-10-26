@@ -13,6 +13,7 @@ import {
 } from '../supabaseConfig';
 import { discoverOperator, loadOperatorServer, saveOperatorServer } from '../operatorServer';
 import { answeredPath, getConnectionPath, getLanStatus, resetLanTransport } from '../lanTransport';
+import { onWarehouseWifi } from '@/tests/helpers/lanNetwork';
 import { store as appStore } from '@/store';
 
 jest.mock('@/services/recent-customers-service', () => ({
@@ -102,6 +103,7 @@ beforeEach(async () => {
     false
   );
   await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  onWarehouseWifi();
 });
 
 afterEach(() => {

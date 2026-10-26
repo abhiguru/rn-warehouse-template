@@ -1,6 +1,7 @@
 import * as Sharing from 'expo-sharing';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { getConnectionPath, resetLanTransport, setLanContext, transportFetch } from '@/config/lanTransport';
+import { onWarehouseWifi } from '@/tests/helpers/lanNetwork';
 import {
   MAX_SHARED_DOCUMENT_BYTES,
   downloadAndSharePDF,
@@ -336,6 +337,7 @@ describe('downloads on the warehouse network path', () => {
     publicUp = false;
     resetLanTransport();
     setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: 'instance-0001' });
+    onWarehouseWifi();
     global.fetch = jest.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.startsWith(PUBLIC)) {

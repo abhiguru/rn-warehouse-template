@@ -1,10 +1,11 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getActiveOperatorServer, onOperatorServerChange } from '../operatorServer';
-import { notePublicUnreachable } from '../lanTransport';
+import { noteNetworkState, notePublicUnreachable } from '../lanTransport';
 import { getNetInfoGeneration } from '../netInfoGeneration';
 import {
   applyNetReachability,
   installNetReachability,
+  networkOf,
   reachabilityConfiguration,
   resetNetReachability,
 } from '../netReachability';
@@ -17,7 +18,11 @@ jest.mock('../operatorServer', () => ({
   getActiveOperatorServer: jest.fn(),
   onOperatorServerChange: jest.fn(),
 }));
-jest.mock('../lanTransport', () => ({ notePublicUnreachable: jest.fn() }));
+jest.mock('../lanTransport', () => ({
+  ...jest.requireActual('../lanTransport'),
+  notePublicUnreachable: jest.fn(),
+  noteNetworkState: jest.fn(),
+}));
 
 const A = 'https://warehouse-a.example.test';
 const B = 'https://warehouse-b.example.test';
@@ -47,12 +52,30 @@ beforeEach(() => {
 afterAll(() => resetNetReachability());
 
 describe('the probe NetInfo uses', () => {
-  it("is the facility's hello: GET, the platform's own answer ignored, only a 200 counts", async () => {
+  const answer = (status: number, gatewayHeader: 'public' | null) => ({
+    status,
+    headers: { get: (name: string) => (name.toLowerCase() === 'x-warehouse-path' ? gatewayHeader : null) },
+  });
+
+  it("is the facility's hello: GET, and the platform's own answer ignored", () => {
     const config = reachabilityConfiguration(A);
     expect(config).toMatchObject({ reachabilityUrl: `${A}/functions/v1/hello`, reachabilityMethod: 'GET', useNativeReachability: false });
-    const test = config.reachabilityTest as (response: unknown) => Promise<boolean>;
-    expect(await test({ status: 200 })).toBe(true);
-    for (const status of [204, 301, 401, 404, 429, 500, 530]) expect(await test({ status })).toBe(false);
+  });
+
+  it('counts the facility answering as reachable: a 200, a 429 and any answer that carries the gateway header', async () => {
+    const test = reachabilityConfiguration(A).reachabilityTest as (response: unknown) => Promise<boolean>;
+    expect(await test(answer(200, null))).toBe(true);
+    expect(await test(answer(200, 'public'))).toBe(true);
+    // Every phone behind the facility's address shares the functions limit: a busy bucket is not a lost internet.
+    expect(await test(answer(429, 'public'))).toBe(true);
+    expect(await test(answer(429, null))).toBe(true);
+    for (const status of [500, 502, 503, 504]) expect(await test(answer(status, 'public'))).toBe(true);
+  });
+
+  it('counts the tunnel or nothing answering as unreachable: a 530, a 5xx without the gateway header, any other answer without it', async () => {
+    const test = reachabilityConfiguration(A).reachabilityTest as (response: unknown) => Promise<boolean>;
+    for (const status of [502, 503, 520, 530]) expect(await test(answer(status, null))).toBe(false);
+    for (const status of [204, 301, 401, 403, 404]) expect(await test(answer(status, null))).toBe(false);
   });
 });
 
@@ -151,5 +174,53 @@ describe('the transport is told as soon as NetInfo finds the internet unreachabl
     serverListener();
     expect(stopNetInfo).toHaveBeenCalledTimes(1);
     expect(NetInfo.addEventListener).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('the transport is told the phone\'s network on every NetInfo event', () => {
+  beforeEach(() => {
+    select(A);
+    installNetReachability();
+  });
+
+  it('Wi-Fi: type, address and subnet; before the unreachable check', () => {
+    const order: string[] = [];
+    jest.mocked(noteNetworkState).mockImplementation(() => void order.push('network'));
+    jest.mocked(notePublicUnreachable).mockImplementation(() => void order.push('unreachable'));
+    netInfoListener({
+      type: 'wifi',
+      isConnected: true,
+      isInternetReachable: false,
+      details: { ipAddress: '192.168.1.50', subnet: '255.255.255.0', ssid: 'warehouse' },
+    });
+    expect(noteNetworkState).toHaveBeenCalledWith({
+      connected: true,
+      type: 'wifi',
+      ipAddress: '192.168.1.50',
+      subnet: '255.255.255.0',
+    });
+    expect(order).toEqual(['network', 'unreachable']);
+  });
+
+  it('every event, whatever the reachability', () => {
+    netInfoListener({ type: 'cellular', isConnected: true, isInternetReachable: true, details: { carrier: 'x' } });
+    netInfoListener({ type: 'none', isConnected: false, isInternetReachable: false, details: null });
+    expect(noteNetworkState).toHaveBeenCalledTimes(2);
+  });
+
+  it('networkOf reads no address from a network that has none, and tolerates what NetInfo leaves out', () => {
+    expect(networkOf({ type: 'cellular', isConnected: true, isInternetReachable: true, details: { carrier: 'x', cellularGeneration: '4g' } } as never)).toEqual({
+      connected: true,
+      type: 'cellular',
+      ipAddress: null,
+      subnet: null,
+    });
+    expect(networkOf({ type: 'unknown', isConnected: null, isInternetReachable: null, details: null } as never)).toEqual({
+      connected: null,
+      type: 'unknown',
+      ipAddress: null,
+      subnet: null,
+    });
+    expect(networkOf({ type: 'wifi', isConnected: true, isInternetReachable: true, details: { ipAddress: null, subnet: 5 } } as never).ipAddress).toBeNull();
   });
 });

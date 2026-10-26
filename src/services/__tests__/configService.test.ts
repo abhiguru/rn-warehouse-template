@@ -245,10 +245,16 @@ it('serves an expired public configuration when neither the public address nor t
   );
   jest.mocked(global.fetch).mockRejectedValue(new TypeError('Network request failed'));
   expect(await ConfigService.getPublicConfig()).toEqual(publicData());
-  // Cloudflare's 530 is a path failure as well; any other status is the facility's own answer and stands.
-  jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 530 } as Response);
+  // Cloudflare's 530 is a path failure as well, and so is a 5xx without the gateway's header (the tunnel is up and the
+  // origin is not; review L2). A status the facility's own gateway sent, with its header, is its answer and stands.
+  const headers = (path: string | null) => ({ get: (name: string) => (name.toLowerCase() === 'x-warehouse-path' ? path : null) });
+  jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 530, headers: headers(null) } as unknown as Response);
   expect(await ConfigService.getPublicConfig()).toEqual(publicData());
-  jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 503 } as Response);
+  jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 502, headers: headers(null) } as unknown as Response);
+  expect(await ConfigService.getPublicConfig()).toEqual(publicData());
+  jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 503, headers: headers('public') } as unknown as Response);
+  await expect(ConfigService.getPublicConfig()).rejects.toThrow();
+  jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 404, headers: headers(null) } as unknown as Response);
   await expect(ConfigService.getPublicConfig()).rejects.toThrow();
 });
 it('serves no stale configuration when there is no earlier copy, or the copy is damaged', async () => {

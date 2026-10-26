@@ -10,7 +10,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getActiveOperatorOrigin, recordServerLanAddress } from '@/config/operatorServer';
-import { answeredPath, transportFetch, type ConnectionPath } from '@/config/lanTransport';
+import { answeredPath, isTunnelFailure, transportFetch, type ConnectionPath } from '@/config/lanTransport';
 import { withLocalizedBootstrapErrors } from '@/config/bootstrapErrors';
 import { createSessionReadFetch } from '@/config/supabaseConfig';
 import { discardBody } from '@/config/discardBody';
@@ -197,13 +197,14 @@ class ConfigService {
           );
           if (!response.ok) {
             discardBody(response);
-            // The status stays on the error: only Cloudflare's 530 (the facility is not reachable) is a
-            // failure of the path; any other status is the facility's own answer.
+            // The status stays on the error: only an answer of the tunnel (Cloudflare's 530, or a 5xx
+            // without the gateway's header: the facility is not reachable) is a failure of the path; any
+            // other status is the facility's own answer.
             throw Object.assign(
               new Error(
                 t('errors.server.configRequestFailedHttp', { status: String(response.status) })
               ),
-              { httpStatus: response.status }
+              { httpStatus: response.status, tunnel: isTunnelFailure(response) }
             );
           }
           answered?.(response);
@@ -243,10 +244,10 @@ class ConfigService {
     } catch (error) {
       // Neither the public address nor the warehouse network answered: an earlier copy of the public
       // configuration, past its hour, still lets the app start. Any answer the facility gave stands.
-      const status = (error as { httpStatus?: number } | null)?.httpStatus;
+      const failed = error as { httpStatus?: number; tunnel?: boolean } | null;
       const age = cached ? Date.now() - cached.timestamp : NaN;
       // Not a copy from the future (a wrong clock), and not another facility's. A copy past its hour is the point.
-      if (cached && cached.scope === origin && Number.isFinite(age) && age >= 0 && (status === undefined || status === 530)) {
+      if (cached && cached.scope === origin && Number.isFinite(age) && age >= 0 && (failed?.httpStatus === undefined || failed.tunnel === true)) {
         try {
           return validatePublicConfig({ success: true, data: cached.data }, origin);
         } catch {
@@ -263,7 +264,7 @@ class ConfigService {
   }
 
   static async getFullConfig(
-    _supabase: SupabaseClient
+    _supabase?: SupabaseClient
   ): Promise<FullConfig | null> {
     const generation = getSessionGeneration();
     const cacheGeneration = this.cacheGeneration;

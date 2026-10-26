@@ -1,19 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { AppState } from 'react-native';
+import ConfigService from '@/services/configService';
+import { HOME_WIFI, MOBILE_DATA, WIFI_UNKNOWN_SUBNET, onWarehouseWifi } from '@/tests/helpers/lanNetwork';
 import {
   DAILY_CHECK_INTERVAL_MS,
   DAILY_CHECK_POLL_MS,
   DAILY_CHECK_START_DELAY_MS,
+  RECHECK_INTERVAL_MS,
   checkLanNow,
   readLastLanCheck,
   runDailyLanCheckIfDue,
   startDailyLanCheck,
   subscribeLanCheck,
 } from '../lanCheck';
-import { resetLanTransport, setLanContext, transportFetch } from '../lanTransport';
+import { noteNetworkState, resetLanTransport, setLanContext, transportFetch } from '../lanTransport';
 
 jest.mock('@react-native-community/netinfo', () => ({ __esModule: true, default: { fetch: jest.fn() } }));
+jest.mock('@/services/configService', () => ({ __esModule: true, default: { getFullConfig: jest.fn(async () => null) } }));
 
 const PUBLIC = 'https://warehouse.example.test';
 const LAN = 'http://192.168.1.20:8080';
@@ -48,6 +52,8 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   resetLanTransport();
   setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: 'instance-0001' });
+  onWarehouseWifi();
+  jest.mocked(ConfigService.getFullConfig).mockClear();
   net('wifi', true, true);
   global.fetch = jest.fn(route) as unknown as typeof fetch;
 });
@@ -105,6 +111,32 @@ describe('checkLanNow', () => {
     setLanContext({ canonical: PUBLIC, lan: 'http://192.168.1.77:8080', instanceId: 'instance-0001' });
     await pending;
     expect(await AsyncStorage.getItem(key)).toBeNull();
+  });
+});
+
+describe('checkLanNow on a network that cannot hold the address (review H1, L5)', () => {
+  it.each([
+    ['another Wi-Fi in another range', HOME_WIFI],
+    ['mobile data', MOBILE_DATA],
+  ])('%s: nothing is asked and nothing is kept (it says nothing about the address)', async (_name, network) => {
+    await checkLanNow('manual');
+    const reachable = await readLastLanCheck();
+    noteNetworkState(network);
+    asked = [];
+    expect(await checkLanNow('manual')).toEqual({ outcome: 'other-network' });
+    expect(asked).toEqual([]);
+    // The earlier good record stays.
+    expect(await readLastLanCheck()).toEqual(reachable);
+  });
+});
+
+describe('checkLanNow when the phone cannot read its Wi-Fi address', () => {
+  it('says so, asks nothing and keeps nothing; the daily check does not run', async () => {
+    noteNetworkState(WIFI_UNKNOWN_SUBNET);
+    expect(await checkLanNow('manual')).toEqual({ outcome: 'network-unknown' });
+    expect(asked).toEqual([]);
+    expect(await AsyncStorage.getItem(key)).toBeNull();
+    expect(await runDailyLanCheckIfDue()).toBeNull();
   });
 });
 
@@ -178,6 +210,65 @@ describe('the daily check', () => {
   });
 });
 
+describe('the daily check on a network that cannot hold the address, and its repeats (review L5)', () => {
+  it.each([
+    ['at home, in another range', HOME_WIFI],
+    ['on mobile data', MOBILE_DATA],
+  ])('does not run %s, and records nothing', async (_name, network) => {
+    noteNetworkState(network);
+    expect(await runDailyLanCheckIfDue()).toBeNull();
+    expect(asked).toEqual([]);
+    expect(await AsyncStorage.getItem(key)).toBeNull();
+  });
+
+  it('repeats after RECHECK_INTERVAL_MS while the last answer was not reachable, and a day after a reachable one', async () => {
+    lanState = 'down';
+    expect(await runDailyLanCheckIfDue()).toMatchObject({ outcome: 'unreachable' });
+    lanState = 'up';
+    asked = [];
+    expect(await runDailyLanCheckIfDue(Date.now() + RECHECK_INTERVAL_MS - 1000)).toBeNull();
+    expect(asked).toEqual([]);
+    jest.setSystemTime(Date.now() + RECHECK_INTERVAL_MS + 1000);
+    expect(await runDailyLanCheckIfDue()).toMatchObject({ outcome: 'reachable' });
+    // Reachable now: the next look waits a day.
+    asked = [];
+    jest.setSystemTime(Date.now() + RECHECK_INTERVAL_MS + 1000);
+    expect(await runDailyLanCheckIfDue()).toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  it('repeats after a refused answer and after another device answered, too', async () => {
+    lanState = 'refused';
+    await runDailyLanCheckIfDue();
+    jest.setSystemTime(Date.now() + RECHECK_INTERVAL_MS + 1000);
+    lanState = 'up';
+    expect(await runDailyLanCheckIfDue()).toMatchObject({ outcome: 'reachable' });
+  });
+
+  it('asks the server for its configuration first, so a changed address is the one checked', async () => {
+    jest.mocked(ConfigService.getFullConfig).mockImplementationOnce(async () => {
+      setLanContext({ canonical: PUBLIC, lan: 'http://192.168.1.77:8080', instanceId: 'instance-0001' });
+      return null;
+    });
+    const answer = await runDailyLanCheckIfDue();
+    expect(ConfigService.getFullConfig).toHaveBeenCalledTimes(1);
+    expect(answer).toMatchObject({ address: 'http://192.168.1.77:8080', outcome: 'reachable' });
+    expect(asked.every(url => !url.startsWith(LAN))).toBe(true);
+  });
+
+  it('still checks when the configuration cannot be had', async () => {
+    jest.mocked(ConfigService.getFullConfig).mockRejectedValueOnce(new Error('offline'));
+    expect(await runDailyLanCheckIfDue()).toMatchObject({ outcome: 'reachable' });
+  });
+
+  it('does not ask for the configuration when no check is due', async () => {
+    await checkLanNow('manual');
+    jest.mocked(ConfigService.getFullConfig).mockClear();
+    expect(await runDailyLanCheckIfDue()).toBeNull();
+    expect(ConfigService.getFullConfig).not.toHaveBeenCalled();
+  });
+});
+
 describe('startDailyLanCheck', () => {
   let appStateListener: (state: string) => void;
   const remove = jest.fn();
@@ -206,7 +297,7 @@ describe('startDailyLanCheck', () => {
     expect(await readLastLanCheck()).toMatchObject({ trigger: 'daily' });
   });
 
-  it('looks every hour and on every return to the foreground, and asks only when a day has passed', async () => {
+  it('looks every 15 minutes and on every return to the foreground, and asks only when a check is due', async () => {
     stop = startDailyLanCheck();
     await jest.advanceTimersByTimeAsync(DAILY_CHECK_START_DELAY_MS);
     expect(lanChecks()).toBe(1);
@@ -216,6 +307,23 @@ describe('startDailyLanCheck', () => {
     await jest.advanceTimersByTimeAsync(0);
     expect(lanChecks()).toBe(1);
     await jest.advanceTimersByTimeAsync(DAILY_CHECK_INTERVAL_MS);
+    expect(lanChecks()).toBe(2);
+  });
+
+  it('repeats a check that failed about an hour later, by itself', async () => {
+    lanState = 'down';
+    stop = startDailyLanCheck();
+    await jest.advanceTimersByTimeAsync(DAILY_CHECK_START_DELAY_MS);
+    expect(lanChecks()).toBe(1);
+    expect(await readLastLanCheck()).toMatchObject({ outcome: 'unreachable' });
+    lanState = 'up';
+    await jest.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS - 60 * 1000);
+    expect(lanChecks()).toBe(1);
+    await jest.advanceTimersByTimeAsync(DAILY_CHECK_POLL_MS + 60 * 1000);
+    expect(lanChecks()).toBe(2);
+    expect(await readLastLanCheck()).toMatchObject({ outcome: 'reachable' });
+    // Reachable now: the next look waits a day.
+    await jest.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS + DAILY_CHECK_POLL_MS * 2);
     expect(lanChecks()).toBe(2);
   });
 

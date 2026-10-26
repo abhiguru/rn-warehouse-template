@@ -4,7 +4,7 @@ import { httpOrigin, validatePublicConfig } from './bootstrapValidation';
 import { withLocalizedBootstrapErrors } from './bootstrapErrors';
 import type { PublicConfig } from '@/services/configService';
 import { t } from '@/i18n';
-import { parseLanOrigin } from './lanAddress';
+import { isHostPartChange, parseLanOrigin } from './lanAddress';
 import { setLanContext, toCanonicalUrl, transportFetch } from './lanTransport';
 
 const STORAGE_KEY = 'operator_server_v1';
@@ -22,8 +22,9 @@ export type OperatorServer = {
    */
   lan?: string;
   /**
-   * An address typed in Settings because the saved one was stale, with the server's value at that moment.
-   * It is used instead of `lan` and kept until the server sends a different value.
+   * An address typed in Help because the saved one was stale (the server's address moved), with the server's value at
+   * that moment. It is used instead of `lan`, only changes the host part of it (`isHostPartChange`) and exists only
+   * while the server sends an address: it is dropped when the server sends a different value or none.
    */
   lanTyped?: { address: string; serverValue: string | null };
 };
@@ -40,16 +41,20 @@ export function lanAddressOf(server: OperatorServer | null | undefined): string 
   return server?.lanTyped?.address ?? server?.lan ?? null;
 }
 
-/** The server with only valid LAN fields: what an old or damaged saved copy may carry is dropped. */
+/**
+ * The server with only valid LAN fields: what an old or damaged saved copy may carry is dropped. A typed address
+ * stays only next to the server's own address, and only as a change of its host part.
+ */
 function withValidLanFields(server: OperatorServer): OperatorServer {
   const { lan, lanTyped, ...rest } = server;
   const savedLan = parseLanOrigin(lan);
   const typed = lanTyped ? parseLanOrigin(lanTyped.address) : null;
   const typedFrom = lanTyped ? parseLanOrigin(lanTyped.serverValue) : null;
+  const keepTyped = Boolean(savedLan && typed && typedFrom === savedLan && isHostPartChange(savedLan, typed));
   return {
     ...rest,
     ...(savedLan ? { lan: savedLan } : {}),
-    ...(typed ? { lanTyped: { address: typed, serverValue: typedFrom } } : {}),
+    ...(keepTyped && typed ? { lanTyped: { address: typed, serverValue: typedFrom } } : {}),
   };
 }
 
@@ -167,11 +172,10 @@ export async function saveOperatorServer(server: OperatorServer, notify = true):
  * Keeps the address the server offers on the warehouse network up to date (WS-L). Called with `urls.lan`
  * of every successful authenticated `get-config` answered over the PUBLIC path, for the server that asked.
  *
- *  - A valid address is saved. A typed address stays unless the server's value is now a different one
- *    than when it was typed; then the server's value wins.
- *  - An absent (or invalid) value removes the saved server value, but a typed address is kept: the person
- *    typed it because the saved one was stale, and a facility that stopped sending its address is not
- *    proof that the typed one is wrong.
+ *  - A valid address is saved. A typed address stays only while the server still sends the value it was
+ *    typed against (and the typed one is a host-part change of it); a different value from the server wins.
+ *  - An absent (or invalid) value removes the saved address AND any typed one (backend contract, hand-off item
+ *    3): the operator turned the fallback off, and that withdraws it from every phone.
  *
  * Nothing is announced to `onOperatorServerChange`: a new address is not a new server.
  */
@@ -180,7 +184,7 @@ export async function recordServerLanAddress(origin: string, value: unknown): Pr
   if (!current || current.origin !== origin) return;
   const offered = parseLanOrigin(value);
   const { lan: _lan, lanTyped, ...rest } = current;
-  const typedStays = lanTyped && (!offered || lanTyped.serverValue === offered);
+  const typedStays = Boolean(offered && lanTyped && lanTyped.serverValue === offered && isHostPartChange(offered, lanTyped.address));
   const next: OperatorServer = {
     ...rest,
     ...(offered ? { lan: offered } : {}),
@@ -194,15 +198,18 @@ export async function recordServerLanAddress(origin: string, value: unknown): Pr
 }
 
 /**
- * The address typed in Settings (WS-L). Empty clears it, back to the server's own. An address that is not
- * `http://<private IPv4>:<port>` is refused. Returns whether it was saved.
+ * The address typed in Help (WS-L). Empty clears it, back to the server's own. A typed address is possible only
+ * while the server sends one, and only as a change of its host part: `http://<same first three numbers>.<other
+ * last number>:<port>` (a DHCP change moves the server inside its network). Anything else is refused. Returns
+ * whether it was saved.
  */
 export async function setTypedLanAddress(text: string): Promise<boolean> {
   const current = activeServer;
   if (!current) return false;
   const { lanTyped: _typed, ...rest } = current;
-  const typed = text.trim() === '' ? null : parseLanOrigin(text);
-  if (text.trim() !== '' && !typed) return false;
+  const blank = text.trim() === '';
+  const typed = blank ? null : parseLanOrigin(text);
+  if (!blank && (!typed || !current.lan || !isHostPartChange(current.lan, typed))) return false;
   const next: OperatorServer = { ...rest, ...(typed ? { lanTyped: { address: typed, serverValue: current.lan ?? null } } : {}) };
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   if (activeServer !== current) return false;
