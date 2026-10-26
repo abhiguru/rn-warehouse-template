@@ -61,6 +61,7 @@ export function scanDirectoryText(directory, names, { maxFileBytes = MAX_AUDIT_F
  * that introduces it. Where each one comes from today:
  *   CAMERA                  expo-camera, expo-image-picker (QR codes, GRN and dispatch photos)
  *   INTERNET                the app itself
+ *   ACCESS_LOCAL_NETWORK    plugins/with-android-lan-cleartext.js (warehouse-network fallback; Android 17 runtime permission)
  *   ACCESS_NETWORK_STATE    @react-native-community/netinfo, expo-image, expo-updates
  *   ACCESS_WIFI_STATE       @react-native-community/netinfo
  *   USE_BIOMETRIC,
@@ -69,6 +70,9 @@ export function scanDirectoryText(directory, names, { maxFileBytes = MAX_AUDIT_F
  *   SYSTEM_ALERT_WINDOW     the Expo prebuild template (React Native's developer overlay)
  */
 export const EXPECTED_ANDROID_PERMISSIONS = [
+  // The warehouse-network fallback talks to the facility server's private LAN address; Android 17 gates that
+  // behind this runtime permission for apps that target SDK 37 (plugins/with-android-lan-cleartext.js).
+  'android.permission.ACCESS_LOCAL_NETWORK',
   'android.permission.ACCESS_NETWORK_STATE',
   'android.permission.ACCESS_WIFI_STATE',
   'android.permission.CAMERA',
