@@ -124,3 +124,26 @@ Observed during acceptance; useful as expected behaviour when recording results:
   the dispatch is submitted.
 - There is no create-user screen: staff accounts come from signing in once,
   approval, and then Settings → Users → edit → role.
+
+## Warehouse network fallback (WS-L)
+
+Needs a backend with `bash scripts/lan.sh on` run on the host (it prints "LAN address for the app"), a build
+from this version (new APK, new iOS build), a phone on the warehouse Wi-Fi that is signed in, and the host's
+internet cable unplugged for the outage steps. Settings → Help and about → Help → **Connection** shows the state.
+
+1. Internet up: Connection says "Connected via Internet", the warehouse network address is the one the host
+   printed ("From your server"), and **Check now** answers "Reachable (answered in N ms)".
+2. Unplug the host's internet cable, keep the Wi-Fi: within about a minute there is no offline banner; a list
+   loads in under 3 s; Connection says "Connected via Warehouse network". Create a GRN with a photo and save it
+   (a save that was in flight when the cable came out ends as the lost-answer screen; the next one works); open a
+   PDF. On iOS, allow the Local Network prompt the first time.
+3. Force-close and open the app: no configuration error screen. Leave it in the background for 15 minutes and come
+   back: it works.
+4. Plug the cable in: the phone stays on the warehouse network for 10 minutes, then Connection says "Connected via
+   Internet" again (the public address is asked at most once per 10 minutes).
+5. A wrong stored address: type one that is not the host's in Connection → Change address; **Check now** says
+   "Not reachable"; "Use your server's address" puts the server's back.
+6. After `rotate-keys.sh` on a host where `gateway-lan` was not recreated: during an outage the phone is NOT
+   signed out; the offline banner says the warehouse network answered with an old configuration.
+7. On a phone outside the allowed range (mobile data, or another Wi-Fi network): Check now says "Not
+   reachable" (or the server refuses this phone's Wi-Fi address).
