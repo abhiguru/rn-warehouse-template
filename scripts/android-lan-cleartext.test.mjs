@@ -4,7 +4,7 @@
 // (src/config/lanAddress.ts, guarded by src/config/__tests__/lanCallSites.test.ts). These tests pin what
 // the config says and that it is written without a new dependency.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -102,4 +102,78 @@ test('app.json runs the plugin, so does app.config.js, and no dependency was add
 
 test('app.json does not set the blanket cleartext flag for Android', () => {
   assert.equal(base.android.usesCleartextTraffic, undefined);
+});
+
+// ---------------------------------------------------------------------------------------------------------
+// Android 17 (WS-L review M3): an app that targets SDK 37 or higher needs the runtime permission
+// ACCESS_LOCAL_NETWORK, or every connection to a private address times out and the fallback dies silently.
+// The permission is declared now (harmless below 37). This guard fails on the day the target SDK reaches 37
+// without a runtime request in `src/`.
+// ---------------------------------------------------------------------------------------------------------
+
+/** The failure message, or null when the target SDK is safe or the request is in place. */
+function localNetworkGuard(targetSdk, requestInSource) {
+  if (targetSdk < 37 || requestInSource) return null;
+  return (
+    `The app targets Android SDK ${targetSdk}. From SDK 37 an app needs the runtime permission ` +
+    `ACCESS_LOCAL_NETWORK (group NEARBY_DEVICES) to reach a private address, so the warehouse network fallback ` +
+    `would time out silently. Add the request (PermissionsAndroid.request, best asked from Help > Connection > ` +
+    `Check now) before raising the target. See docs/RELEASE_PREPARATION.md.`
+  );
+}
+
+/** The highest target SDK the project resolves: React Native's version catalogue, app.json and expo-build-properties. */
+function resolvedTargetSdk() {
+  const found = [];
+  const catalogue = readFileSync(new URL('../node_modules/react-native/gradle/libs.versions.toml', import.meta.url), 'utf8');
+  const fromCatalogue = /^targetSdk\s*=\s*"(\d+)"/m.exec(catalogue);
+  if (fromCatalogue) found.push(Number(fromCatalogue[1]));
+  const fromAndroid = Number(base.android?.targetSdkVersion);
+  if (Number.isInteger(fromAndroid)) found.push(fromAndroid);
+  for (const entry of base.plugins ?? []) {
+    if (Array.isArray(entry) && entry[0] === 'expo-build-properties') {
+      const fromPlugin = Number(entry[1]?.android?.targetSdkVersion);
+      if (Number.isInteger(fromPlugin)) found.push(fromPlugin);
+    }
+  }
+  return found.length ? Math.max(...found) : NaN;
+}
+
+function sourceFiles(directory) {
+  return readdirSync(directory).flatMap(name => {
+    const path = join(directory, name);
+    if (statSync(path).isDirectory()) return name === '__tests__' || name === 'tests' ? [] : sourceFiles(path);
+    return /\.(ts|tsx)$/.test(name) && !/\.test\./.test(name) ? [path] : [];
+  });
+}
+
+function hasRuntimeRequest() {
+  return sourceFiles(new URL('../src', import.meta.url).pathname).some(file => {
+    const text = readFileSync(file, 'utf8');
+    return /PermissionsAndroid\.request\(/.test(text) && text.includes('ACCESS_LOCAL_NETWORK');
+  });
+}
+
+test('the manifest declares ACCESS_LOCAL_NETWORK, once, and the plugin applies it', async () => {
+  const manifest = await XML.parseXMLAsync(MANIFEST);
+  plugin.declareLocalNetworkPermission(plugin.declareLocalNetworkPermission(manifest));
+  const names = (manifest.manifest['uses-permission'] ?? []).map(entry => entry.$['android:name']);
+  assert.equal(names.filter(name => name === 'android.permission.ACCESS_LOCAL_NETWORK').length, 1);
+  assert.ok(names.includes('android.permission.INTERNET'));
+  assert.equal(plugin.LOCAL_NETWORK_PERMISSION, 'android.permission.ACCESS_LOCAL_NETWORK');
+});
+
+test('the guard can fail: SDK 37 or higher without the runtime request is refused', () => {
+  assert.equal(localNetworkGuard(36, false), null);
+  assert.equal(localNetworkGuard(37, true), null);
+  assert.match(localNetworkGuard(37, false), /ACCESS_LOCAL_NETWORK/);
+  assert.match(localNetworkGuard(38, false), /targets Android SDK 38/);
+});
+
+test('the target SDK is found, and below 37 or with the runtime request in place', () => {
+  const targetSdk = resolvedTargetSdk();
+  // A guard that cannot find the number would pass for ever.
+  assert.ok(Number.isInteger(targetSdk) && targetSdk >= 34, `target SDK not found (${targetSdk})`);
+  const message = localNetworkGuard(targetSdk, hasRuntimeRequest());
+  assert.equal(message, null, message ?? undefined);
 });

@@ -19,10 +19,25 @@
  *    facility (`src/config/lanTransport.ts`);
  *  - `src/config/__tests__/lanCallSites.test.ts` fails when another module builds a cleartext URL.
  *
+ * Plainly: the platform now allows cleartext to ANY host, not only to private addresses; the app-level
+ * validation above is the only limit, as the owner's decision accepts. That includes redirects: React Native
+ * follows them whatever `redirect` says and OkHttp follows https to http, which the platform used to refuse
+ * for this app. The precondition is a compromised or misconfigured canonical origin that answers with a
+ * redirect to a cleartext address (a 307/308 re-sends the body; OkHttp drops `Authorization` when the host
+ * changes), so the risk is low, and it is part of the accepted exposure.
+ *
  * Trust anchors stay the system's: user-installed certificates are not trusted, as for any app targeting
  * API 24 or later. The accepted exposure is in the backend's `docs/CONTAINER_SECURITY.md`.
  *
- * The plugin adds `android:networkSecurityConfig` to the application and writes
+ * Android 17 and target SDK 37: the platform protects the local network (10/8, 172.16/12, 192.168/16, 169.254/16,
+ * 100.64/10 on Wi-Fi and Ethernet). An app that targets SDK 37 or higher needs the runtime permission
+ * `ACCESS_LOCAL_NETWORK` (group NEARBY_DEVICES) or its connections to those addresses time out. An app that
+ * targets a lower SDK gets an implicit grant, and the app targets 36 (react-native's `libs.versions.toml`). The
+ * permission is declared here now, which is harmless on 36; the request at run time is NOT written yet.
+ * `scripts/android-lan-cleartext.test.mjs` fails when the target SDK reaches 37 without that request in `src/`,
+ * so the fallback cannot die silently on the day the target is raised (docs/RELEASE_PREPARATION.md).
+ *
+ * The plugin adds `android:networkSecurityConfig` and the permission to the manifest and writes
  * `res/xml/network_security_config.xml`. No dependency (`expo-build-properties` would add one).
  * `android/` is generated and never committed.
  */
@@ -31,6 +46,8 @@ const path = require('path');
 const { AndroidConfig, withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
 
 const CONFIG_NAME = 'network_security_config';
+/** Android 17's local network permission; required at run time once the app targets SDK 37. */
+const LOCAL_NETWORK_PERMISSION = 'android.permission.ACCESS_LOCAL_NETWORK';
 
 const NETWORK_SECURITY_CONFIG_XML = `<?xml version="1.0" encoding="utf-8"?>
 <!--
@@ -56,6 +73,12 @@ function setNetworkSecurityConfig(androidManifest) {
   return androidManifest;
 }
 
+/** Declares `ACCESS_LOCAL_NETWORK`. Safe to call twice. */
+function declareLocalNetworkPermission(androidManifest) {
+  AndroidConfig.Permissions.ensurePermission(androidManifest, LOCAL_NETWORK_PERMISSION);
+  return androidManifest;
+}
+
 /** Writes `res/xml/network_security_config.xml` under the generated Android project. */
 function writeNetworkSecurityConfig(platformProjectRoot) {
   const directory = path.join(platformProjectRoot, 'app', 'src', 'main', 'res', 'xml');
@@ -67,7 +90,7 @@ function writeNetworkSecurityConfig(platformProjectRoot) {
 
 module.exports = function withAndroidLanCleartext(config) {
   config = withAndroidManifest(config, modConfig => {
-    modConfig.modResults = setNetworkSecurityConfig(modConfig.modResults);
+    modConfig.modResults = declareLocalNetworkPermission(setNetworkSecurityConfig(modConfig.modResults));
     return modConfig;
   });
   return withDangerousMod(config, [
@@ -79,6 +102,8 @@ module.exports = function withAndroidLanCleartext(config) {
   ]);
 };
 module.exports.CONFIG_NAME = CONFIG_NAME;
+module.exports.LOCAL_NETWORK_PERMISSION = LOCAL_NETWORK_PERMISSION;
+module.exports.declareLocalNetworkPermission = declareLocalNetworkPermission;
 module.exports.NETWORK_SECURITY_CONFIG_XML = NETWORK_SECURITY_CONFIG_XML;
 module.exports.setNetworkSecurityConfig = setNetworkSecurityConfig;
 module.exports.writeNetworkSecurityConfig = writeNetworkSecurityConfig;

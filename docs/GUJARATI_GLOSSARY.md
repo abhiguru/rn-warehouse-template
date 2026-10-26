@@ -147,6 +147,7 @@ in Gujarati script; **English** = left in English letters.
 | Loading… | લોડ થઈ રહ્યું છે… | translate | Checked |
 | Try again | ફરી પ્રયાસ કરો | translate | Checked |
 | Check now (test whether an address answers) | હમણાં તપાસો | translate | Draft (2026-10-26) |
+| Reachable / Not reachable (the answer of a check) | પહોંચી શકાય છે / પહોંચી શકાતું નથી | translate | Draft (2026-10-26) |
 | Required | જરૂરી | translate | Checked |
 | Today, Yesterday | આજે, ગઈકાલે | translate | Checked |
 | Last 7 days | છેલ્લા ૭ દિવસ | translate | Checked |

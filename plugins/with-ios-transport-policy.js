@@ -12,10 +12,13 @@
  * and accepts nothing but a private address). So every build, Debug and Release alike, has exactly:
  *
  * - `NSAppTransportSecurity`: `NSAllowsArbitraryLoads = false` and `NSAllowsLocalNetworking = true`, and
- *   no exception domain and no other key. Local networking lets the app load from IP addresses and
- *   `.local` names on the local network over http; it does not open the internet to cleartext. It is also
- *   what lets a Debug build load the JavaScript bundle from Metro (localhost, the developer machine's
- *   address, or the USB link-local address of `plugins/with-ios-usb.js`).
+ *   no exception domain and no other key. Apple's text for the key: it enables loads from "unqualified
+ *   domains, `.local` domains, and IP addresses using IPv4 or IPv6". It does NOT say "local only": the
+ *   platform lets the app load over http from any IP-address literal, so `src/config/lanAddress.ts` (private
+ *   RFC 1918 addresses only) is the limit, as on Android. Since iOS 17 ATS blocks IP-address connections by
+ *   default, so the key is REQUIRED for this feature, not just a declaration. It is also what lets a Debug
+ *   build load the JavaScript bundle from Metro (localhost, the developer machine's address, or the USB
+ *   link-local address of `plugins/with-ios-usb.js`).
  * - `NSLocalNetworkUsageDescription`: the sentence iOS shows when the app first reaches a device on the
  *   local network (the Local Network prompt). Without it iOS refuses the access.
  *

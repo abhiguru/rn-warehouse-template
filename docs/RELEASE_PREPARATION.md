@@ -35,7 +35,13 @@ is archived (see [HISTORY.md](HISTORY.md)).
   - iOS, `plugins/with-ios-transport-policy.js`: every build has `NSAllowsArbitraryLoads = false`,
     `NSAllowsLocalNetworking = true` and no other App Transport Security key (no exception domain, no
     web-content or media exemption), plus `NSLocalNetworkUsageDescription` (English text for the Local
-    Network prompt). Local networking also lets a Debug build reach Metro over http. The plugin adds a Run
+    Network prompt). Local networking also lets a Debug build reach Metro over http. Since iOS 17, App
+    Transport Security blocks connections to an IP-address literal by default, so the key is REQUIRED for the
+    fallback to work, not just a declaration; Apple's text for it is "unqualified domains, `.local` domains, and IP
+    addresses using IPv4 or IPv6", it does not say "local only", and `src/config/lanAddress.ts` is the limit to
+    private addresses
+    ([NSAllowsLocalNetworking](https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsallowslocalnetworking)).
+    The plugin adds a Run
     Script phase that fails a Release build when the built `Info.plist` has `NSAllowsArbitraryLoads = true`,
     `NSAllowsArbitraryLoadsInWebContent`, `NSAllowsArbitraryLoadsForMedia` or any `NSExceptionDomains`, and
     also when it cannot look: PlistBuddy is missing, or the built `Info.plist` is missing, unreadable or
@@ -54,7 +60,23 @@ is archived (see [HISTORY.md](HISTORY.md)).
     `http://<RFC 1918 IPv4>:<port>`; every other address the app takes is https;
     `src/config/__tests__/lanCallSites.test.ts` fails when another module builds one. No dependency was added
     (`expo-build-properties` is not used). `scripts/android-lan-cleartext.test.mjs` checks the config and the
-    manifest attribute.
+    manifest attribute. The platform therefore allows cleartext to ANY host, redirects included (React Native
+    follows them whatever `redirect` says and OkHttp follows https to http; the precondition is a compromised or
+    misconfigured canonical origin, and OkHttp drops `Authorization` when the host changes): the accepted exposure.
+  - Android 17 and target SDK 37: the platform protects the local network (10/8, 172.16/12, 192.168/16, 169.254/16
+    and 100.64/10 on Wi-Fi and Ethernet). An app that targets SDK 37 or higher needs the runtime permission
+    `ACCESS_LOCAL_NETWORK` (group NEARBY_DEVICES, shown to the person as a "Nearby devices" prompt); without it the
+    connection to the server's address times out and the fallback fails silently. The app targets SDK 36 today
+    (React Native's `libs.versions.toml`), which gets an implicit grant. The plugin declares the permission now,
+    which is harmless on 36. **Before raising the target SDK to 37** add the runtime request
+    (`PermissionsAndroid.request`, best asked from Help, Connection, Check now). `scripts/android-lan-cleartext.test.mjs`
+    fails when the target reaches 37 and no such request is in `src/`.
+  - Not in this release, recorded for the owner: an authenticated proof of the LAN address. Today the identity
+    check compares the server's public `instanceId`, so it tells this warehouse from another one but not from a
+    device that copies the answer. A challenge that the server answers with an HMAC (a per-session secret from the
+    authenticated `get-config`; server side with pgcrypto and the service key) would make it real authentication and
+    close the "rogue device on the warehouse Wi-Fi" class that the plain-http decision accepts. It needs both
+    repositories.
   - Both native changes need a new APK and iOS build; an OTA update cannot carry them.
 - `.env.example` leaves the optional Sentry/GlitchTip DSN commented out.
   `src/config/sentryConfig.ts` enables it only outside development with a

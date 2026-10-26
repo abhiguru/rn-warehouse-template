@@ -437,6 +437,9 @@ Rules:
 | Facility access (enrollment) | requested / approved / rejected / revoked | Critical / Positive / Negative / Negative | Requested / Approved / Not approved / Revoked |
 | Facility on My facilities (central login) | `approved` / `requested` / `revoked` / `link_needed` / `unavailable` | Positive / Critical / Negative / Neutral / Neutral | Approved / Requested / Revoked / Confirm number / Unavailable |
 | Facility in the association's catalogue (Add facility, central login) | reached at the service's last check / not reached / no app server (`origin: null`) / not reported (a catalogue before central 0.8.0) | Positive / Negative / Neutral / no tag | Online / Offline, with "Last seen …" / No app server yet, the row greyed with `text.secondary` and `icon.secondary` / — |
+| Connection path (Help, Connection section; WS-L) | the internet / the warehouse network while the internet is not working | Neutral / Informative | Internet / Warehouse network |
+| Warehouse network check (Help, Connection section) | the address answered as the server / nothing answered, another device answered, or the server refused this phone's Wi-Fi address / this phone is not on a network that holds the address | Positive / Negative / Neutral | Reachable / Not reachable, with the reason in a sentence under the tag / Not on the warehouse Wi-Fi. No millisecond figure: that is developer text (12.1) |
+| Warehouse network answered with an old configuration (Help, Connection section, and the offline banner) | the LAN listener rejected the keys | Negative | A sentence with the `alert-circle` icon next to it; it is a problem to fix, not a status of an object, so it has no tag |
 | Customer, item, user | active / inactive | no tag / Neutral | Inactive |
 | Operation result | `success` / `error` | Positive / Negative | — |
 

@@ -69,6 +69,14 @@ the request path (`src/config/lanTransport.ts`, which also holds the switching r
   a failure of that path (`gatewayRejection.ts`). A write is never sent again after a path change.
 - The only cleartext URL the app builds comes from `src/config/lanAddress.ts` (RFC 1918 IPv4 and a port). Android
   allows cleartext in its network security config because it cannot name a range, so that validation is the limit.
+- The LAN path is used only on Wi-Fi or Ethernet with the LAN address inside the phone's own subnet
+  (`lanUsableHere`), and every NetInfo event reaches `noteNetworkState`: a change of network puts the phone back on
+  the public path, so the identity check runs again before a credential goes to the LAN address. The phone leaves
+  the LAN path on any answer that is not the server's own, whether or not the public path works.
+- A slow write never starts a path check, and neither does a failed probe while a photo is going out. The public
+  `hello` counts a 200, a 429 and any answer with the gateway's header as "reachable" (`publicAnswered`).
+- A typed LAN address changes only the host part of the address the server sends, and exists only while the server
+  sends one. A photo link is shown through `useViaCurrentPath` (or `viaCurrentPath(toCanonicalUrl(url))`).
 
 When building toward central login, reuse the existing pieces rather than replacing them:
 server switching and its cleanup (`beginOperatorSwitch`, `sessionLifecycle.ts`,
