@@ -52,6 +52,32 @@ The catalogue (`app/facility-catalogue.tsx`, `src/config/catalogueView.ts`) read
   `src/config/permissions.ts` holds create/read/update/delete per role. The server decides
   again on every request. Staff have full order access (2026-10-09 decision).
 
+## Warehouse network fallback (WS-L, owner decision 2026-10-26, amends D24)
+
+When the public address of the facility's server fails, the app retries over the server's address on the
+warehouse network (`urls.lan` of the authenticated `get-config`: `http://<private IPv4>:<port>`, plain http, a
+fallback only; the phone goes back to the public address when it works again). The facility's public origin
+stays its identity (client URL, token store key, caches); only the host of a request changes, and only inside
+the request path (`src/config/lanTransport.ts`, which also holds the switching rule). Rules for new code:
+
+- Send facility requests through `gatedFetch` (or `transportFetch` for a request that must not carry a session).
+  A bare `fetch` to a facility address, a native download, a `createSignedUrl` or any cleartext URL needs a look
+  at `lanTransport.ts`; `src/config/__tests__/lanCallSites.test.ts` fails until the new place is listed.
+- A link the server or client builds from the facility's address and the app then opens itself goes through
+  `viaCurrentPath(url)`.
+- A 401 with the gateway's key-rejection body ends the session over the public path only; over the LAN path it is
+  a failure of that path (`gatewayRejection.ts`). A write is never sent again after a path change.
+- The only cleartext URL the app builds comes from `src/config/lanAddress.ts` (RFC 1918 IPv4 and a port). Android
+  allows cleartext in its network security config because it cannot name a range, so that validation is the limit.
+- The LAN path is used only on Wi-Fi or Ethernet with the LAN address inside the phone's own subnet
+  (`lanUsableHere`), and every NetInfo event reaches `noteNetworkState`: a change of network puts the phone back on
+  the public path, so the identity check runs again before a credential goes to the LAN address. The phone leaves
+  the LAN path on any answer that is not the server's own, whether or not the public path works.
+- A slow write never starts a path check, and neither does a failed probe while a photo is going out. The public
+  `hello` counts a 200, a 429 and any answer with the gateway's header as "reachable" (`publicAnswered`).
+- A typed LAN address changes only the host part of the address the server sends, and exists only while the server
+  sends one. A photo link is shown through `useViaCurrentPath` (or `viaCurrentPath(toCanonicalUrl(url))`).
+
 When building toward central login, reuse the existing pieces rather than replacing them:
 server switching and its cleanup (`beginOperatorSwitch`, `sessionLifecycle.ts`,
 `operatorResumeGate`), the enrollment-review flow (`app/enrollment-review.tsx`) for

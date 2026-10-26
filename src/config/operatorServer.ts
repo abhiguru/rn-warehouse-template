@@ -4,6 +4,8 @@ import { httpOrigin, validatePublicConfig } from './bootstrapValidation';
 import { withLocalizedBootstrapErrors } from './bootstrapErrors';
 import type { PublicConfig } from '@/services/configService';
 import { t } from '@/i18n';
+import { isHostPartChange, parseLanOrigin } from './lanAddress';
+import { setLanContext, toCanonicalUrl, transportFetch } from './lanTransport';
 
 const STORAGE_KEY = 'operator_server_v1';
 const STAGED_KEY = 'operator_server_staged_v1';
@@ -14,6 +16,17 @@ export type OperatorServer = {
   instanceId: string;
   displayName: string;
   companyName: string;
+  /**
+   * The server's address on the warehouse network, `urls.lan` of its last authenticated `get-config`
+   * answered over the public path (WS-L; src/config/lanAddress.ts). Absent while the server offers none.
+   */
+  lan?: string;
+  /**
+   * An address typed in Help because the saved one was stale (the server's address moved), with the server's value at
+   * that moment. It is used instead of `lan`, only changes the host part of it (`isHostPartChange`) and exists only
+   * while the server sends an address: it is dropped when the server sends a different value or none.
+   */
+  lanTyped?: { address: string; serverValue: string | null };
 };
 
 let activeServer: OperatorServer | null = null;
@@ -21,6 +34,35 @@ const listeners = new Set<() => void>();
 export function onOperatorServerChange(listener: () => void) {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
+}
+
+/** The LAN address the transport falls back to: the one typed in Settings, else the server's; null when there is none. */
+export function lanAddressOf(server: OperatorServer | null | undefined): string | null {
+  return server?.lanTyped?.address ?? server?.lan ?? null;
+}
+
+/**
+ * The server with only valid LAN fields: what an old or damaged saved copy may carry is dropped. A typed address
+ * stays only next to the server's own address, and only as a change of its host part.
+ */
+function withValidLanFields(server: OperatorServer): OperatorServer {
+  const { lan, lanTyped, ...rest } = server;
+  const savedLan = parseLanOrigin(lan);
+  const typed = lanTyped ? parseLanOrigin(lanTyped.address) : null;
+  const typedFrom = lanTyped ? parseLanOrigin(lanTyped.serverValue) : null;
+  const keepTyped = Boolean(savedLan && typed && typedFrom === savedLan && isHostPartChange(savedLan, typed));
+  return {
+    ...rest,
+    ...(savedLan ? { lan: savedLan } : {}),
+    ...(keepTyped && typed ? { lanTyped: { address: typed, serverValue: typedFrom } } : {}),
+  };
+}
+
+/** Tells the transport which server is selected and where its LAN address is. */
+function syncLanContext(server: OperatorServer | null): void {
+  setLanContext(
+    server ? { canonical: server.origin, lan: lanAddressOf(server), instanceId: server.instanceId } : null
+  );
 }
 
 export function parseOperatorOrigin(input: string): string {
@@ -62,13 +104,16 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const config = await Promise.race([
     (async () => {
-      const response = await fetch(`${origin}/functions/v1/get-public-config`, {
-        signal: controller.signal,
-        redirect: 'error',
-      });
+      // The public address first; the warehouse network address when it fails (src/config/lanTransport.ts).
+      const response = await transportFetch(
+        `${origin}/functions/v1/get-public-config`,
+        { signal: controller.signal, redirect: 'error' },
+        { read: true }
+      );
       // React Native follows redirects whatever `redirect` says. Where the
       // final address is known, an answer from another origin is named as such.
-      if (response.url && !response.url.startsWith(`${origin}/`))
+      // (An answer over the warehouse network is read as the address it stands for.)
+      if (response.url && !toCanonicalUrl(response.url).startsWith(`${origin}/`))
         throw new Error(t('errors.server.discoveryRedirected'));
       if (!response.ok) throw new Error(t('errors.server.discoveryFailedHttp', { status: String(response.status) }));
       return validateOperatorDiscovery(await response.json(), origin);
@@ -88,16 +133,18 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
 
 export async function loadOperatorServer(): Promise<OperatorServer | null> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (!raw) { activeServer = null; return null; }
+  if (!raw) { activeServer = null; syncLanContext(null); return null; }
   try {
     const saved = JSON.parse(raw) as OperatorServer;
     if (parseOperatorOrigin(saved.origin) !== saved.origin || !saved.instanceId || !saved.displayName)
       throw new Error('Invalid saved server');
-    activeServer = saved;
-    return saved;
+    activeServer = withValidLanFields(saved);
+    syncLanContext(activeServer);
+    return activeServer;
   } catch {
     await AsyncStorage.removeItem(STORAGE_KEY);
     activeServer = null;
+    syncLanContext(null);
     return null;
   }
 }
@@ -109,9 +156,66 @@ export function getActiveOperatorOrigin(): string {
 }
 
 export async function saveOperatorServer(server: OperatorServer, notify = true): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(server));
-  activeServer = server;
+  // A discovery answer carries no LAN address (it is public); the same server keeps the one it had.
+  const previous = activeServer;
+  const sameServer = previous?.origin === server.origin && previous.instanceId === server.instanceId;
+  const next = sameServer && server.lan === undefined && server.lanTyped === undefined
+    ? withValidLanFields({ ...server, ...(previous.lan ? { lan: previous.lan } : {}), ...(previous.lanTyped ? { lanTyped: previous.lanTyped } : {}) })
+    : withValidLanFields(server);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  activeServer = next;
+  syncLanContext(next);
   if (notify) for (const listener of listeners) listener();
+}
+
+/**
+ * Keeps the address the server offers on the warehouse network up to date (WS-L). Called with `urls.lan`
+ * of every successful authenticated `get-config` answered over the PUBLIC path, for the server that asked.
+ *
+ *  - A valid address is saved. A typed address stays only while the server still sends the value it was
+ *    typed against (and the typed one is a host-part change of it); a different value from the server wins.
+ *  - An absent (or invalid) value removes the saved address AND any typed one (backend contract, hand-off item
+ *    3): the operator turned the fallback off, and that withdraws it from every phone.
+ *
+ * Nothing is announced to `onOperatorServerChange`: a new address is not a new server.
+ */
+export async function recordServerLanAddress(origin: string, value: unknown): Promise<void> {
+  const current = activeServer;
+  if (!current || current.origin !== origin) return;
+  const offered = parseLanOrigin(value);
+  const { lan: _lan, lanTyped, ...rest } = current;
+  const typedStays = Boolean(offered && lanTyped && lanTyped.serverValue === offered && isHostPartChange(offered, lanTyped.address));
+  const next: OperatorServer = {
+    ...rest,
+    ...(offered ? { lan: offered } : {}),
+    ...(typedStays && lanTyped ? { lanTyped } : {}),
+  };
+  if (JSON.stringify(next) === JSON.stringify(current)) return;
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  if (activeServer !== current) return; // the selected server changed while saving
+  activeServer = next;
+  syncLanContext(next);
+}
+
+/**
+ * The address typed in Help (WS-L). Empty clears it, back to the server's own. A typed address is possible only
+ * while the server sends one, and only as a change of its host part: `http://<same first three numbers>.<other
+ * last number>:<port>` (a DHCP change moves the server inside its network). Anything else is refused. Returns
+ * whether it was saved.
+ */
+export async function setTypedLanAddress(text: string): Promise<boolean> {
+  const current = activeServer;
+  if (!current) return false;
+  const { lanTyped: _typed, ...rest } = current;
+  const blank = text.trim() === '';
+  const typed = blank ? null : parseLanOrigin(text);
+  if (!blank && (!typed || !current.lan || !isHostPartChange(current.lan, typed))) return false;
+  const next: OperatorServer = { ...rest, ...(typed ? { lanTyped: { address: typed, serverValue: current.lan ?? null } } : {}) };
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  if (activeServer !== current) return false;
+  activeServer = next;
+  syncLanContext(next);
+  return true;
 }
 
 export async function stageOperatorServer(server: OperatorServer): Promise<void> {
@@ -130,5 +234,6 @@ export async function commitStagedOperatorServer(server: OperatorServer): Promis
 export async function clearOperatorServer(): Promise<void> {
   await AsyncStorage.multiRemove([STORAGE_KEY, STAGED_KEY]);
   activeServer = null;
+  syncLanContext(null);
   for (const listener of listeners) listener();
 }

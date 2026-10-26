@@ -95,6 +95,8 @@ import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { showAlert } from '@/utils/alert';
 import { onOperatorServerChange } from '@/config/operatorServer';
+import { applyNetReachability, installNetReachability } from '@/config/netReachability';
+import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
 import { createResumeLifecycle } from '@/config/resumeLifecycle';
@@ -536,6 +538,9 @@ function BootstrapApp() {
     // (src/config/staleFacilitySession.ts) is ended now, and on every return below.
     if (isCentralLoginConfigured()) void retryStaleFacilityCleanup(store.dispatch).catch(() => undefined);
     void bootstrapApp();
+    // Once a day, on Wi-Fi with the internet up, the phone asks the warehouse network address whether it
+    // answers, so a broken fallback shows in Help before an outage (src/config/lanCheck.ts).
+    const stopLanCheck = startDailyLanCheck();
     const unsubscribe = onOperatorServerChange(() => { void bootstrapApp(); });
     const removeVerifier = operatorResumeGate.installVerifier(async current => {
       const run = bootstrapRun.current;
@@ -567,7 +572,7 @@ function BootstrapApp() {
     });
     return () => {
       bootstrapRun.current += 1;
-      lifecycle.remove(); removeVerifier(); unsubscribe(); operatorResumeGate.suspend();
+      lifecycle.remove(); removeVerifier(); unsubscribe(); stopLanCheck(); operatorResumeGate.suspend();
     };
   }, []);
 
@@ -579,11 +584,20 @@ function BootstrapApp() {
     setIsReady(false);
     setNeedsSelection(false);
     setChangingServer(false);
+    // "Online" means the selected facility's server answers (src/config/netReachability.ts). It follows the
+    // selected server from here on; the server saved on the phone is read inside verifySelectedOperator,
+    // so it is applied again once that has run, whatever its outcome.
+    installNetReachability();
 
     try {
-      const result = await verifySelectedOperator(() => run === bootstrapRun.current, async () => {
-        await clearReplacedOperatorInstance();
-      });
+      let result;
+      try {
+        result = await verifySelectedOperator(() => run === bootstrapRun.current, async () => {
+          await clearReplacedOperatorInstance();
+        });
+      } finally {
+        applyNetReachability();
+      }
       if (result.kind === 'superseded') return;
       if (result.kind === 'selection') {
         if (run === bootstrapRun.current) { setNeedsSelection(true); setIsReady(true); }

@@ -1,5 +1,6 @@
 import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
+import { viaCurrentPath } from '@/config/lanTransport';
 import {
   GRNHeaderData,
   GRNItemData,
@@ -1100,7 +1101,7 @@ export const loadGRNData = async (grnId: string) => {
 
         return {
           ...img,
-          signedUrl: urlData?.signedUrl
+          signedUrl: urlData?.signedUrl ? viaCurrentPath(urlData.signedUrl) : urlData?.signedUrl
         };
       }
       log.warn('Image has no storage_path', img.id);
@@ -1164,7 +1165,7 @@ export const loadGRNData = async (grnId: string) => {
 
         return {
           ...img,
-          signedUrl: urlData?.signedUrl
+          signedUrl: urlData?.signedUrl ? viaCurrentPath(urlData.signedUrl) : urlData?.signedUrl
         };
       }
       return img;

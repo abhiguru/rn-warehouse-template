@@ -11,6 +11,8 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import RootLayout from '../../../app/_layout';
 import { verifySelectedOperator } from '@/config/operatorBootstrap';
 import { restoreCentralSession } from '@/config/centralSession';
+import { applyNetReachability, installNetReachability } from '@/config/netReachability';
+import { startDailyLanCheck } from '@/config/lanCheck';
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { useRootRouteGuard } from '@/navigation/RouteGuard';
 import { store } from '@/store';
@@ -98,6 +100,8 @@ jest.mock('@/navigation/RouteGuard', () => ({
   useRootRouteGuard: jest.fn(),
 }));
 jest.mock('@/config/operatorServer', () => ({ onOperatorServerChange: jest.fn(() => () => undefined), getActiveOperatorServer: jest.fn(() => null) }));
+jest.mock('@/config/lanCheck', () => ({ startDailyLanCheck: jest.fn(() => jest.fn()) }));
+jest.mock('@/config/netReachability', () => ({ installNetReachability: jest.fn(), applyNetReachability: jest.fn() }));
 jest.mock('@/config/operatorBootstrap', () => ({ verifySelectedOperator: jest.fn(), verifyForegroundOperator: jest.fn() }));
 jest.mock('@/config/operatorResume', () => ({
   operatorResumeGate: { installVerifier: jest.fn(() => () => undefined), suspend: jest.fn() },
@@ -132,6 +136,22 @@ afterEach(async () => {
 
 describe('no facility server chosen yet', () => {
   beforeEach(() => jest.mocked(verifySelectedOperator).mockResolvedValue({ kind: 'selection' }));
+
+  it('the daily check of the warehouse network address is started once with the app, and stopped with it', async () => {
+    await start();
+    expect(startDailyLanCheck).toHaveBeenCalledTimes(1);
+    const stop = jest.mocked(startDailyLanCheck).mock.results[0].value as jest.Mock;
+    expect(stop).not.toHaveBeenCalled();
+    await act(async () => { tree!.unmount(); });
+    tree = undefined;
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('the reachability probe is installed and applied with no facility, which puts NetInfo back on its defaults', async () => {
+    await start();
+    expect(installNetReachability).toHaveBeenCalledTimes(1);
+    expect(applyNetReachability).toHaveBeenCalledTimes(1);
+  });
 
   it('central login off: only the server address screen is shown, as before', async () => {
     await start();

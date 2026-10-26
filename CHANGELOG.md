@@ -1,5 +1,113 @@
 # Changelog
 
+## Unreleased — Warehouse network fallback (WS-L app, 2026-10-26)
+
+Pairs with the backend `gateway-lan` workstream (WS-L backend: `lan.sh on`, `urls.lan` in the authenticated `get-config`, the
+`X-Warehouse-Path` header). Needs a new APK and iOS build (native configuration changes); merge and deploy the backend first.
+
+- **Owner decision 2026-10-26 amends D24.** Cleartext is allowed to a private LAN address only, as a fallback when the public path
+  fails. The phone uses the server's LAN address (`http://<private IPv4>:<port>`, plain http) only after the public address has failed,
+  and goes back to the public address when it works again. iOS gets `NSAllowsLocalNetworking = true` and
+  `NSLocalNetworkUsageDescription`; Android gets a network-security config. `NSAllowsArbitraryLoads` stays `false` and no exception
+  domain is allowed. The accepted exposure (tokens readable on the warehouse Wi-Fi during an outage) is written down in the backend's
+  `docs/CONTAINER_SECURITY.md`.
+- **The path.** Requests go over the facility's public address; the identity (supabase client URL, token store
+  key `origin|instanceId`, caches, headers) never changes. When the public address fails, the host of a request
+  becomes the LAN address, and only inside the request path: `gatedFetch`, `discoverOperator`, the configuration
+  fetch, the share download and the eight signed-URL sites (`src/config/lanTransport.ts`;
+  `src/config/__tests__/lanCallSites.test.ts` lists them and fails when one is missing or a new one appears). The
+  address comes from `urls.lan` of the authenticated `get-config` (never of `get-public-config`), is saved in the
+  server's record at sign-in and refreshed on every answer of the public path, and is accepted only as
+  `http://<RFC 1918 IPv4>:<port>` (`src/config/lanAddress.ts`).
+- **The switching rule.** Stay on the current path. A request fails on it when its fetch rejects, no response
+  headers arrive within 4 s, or the tunnel answers instead of the facility: Cloudflare's 530, or a 5xx without the
+  gateway's `X-Warehouse-Path` header (a 429 or a 5xx that carries the header is the facility's own answer and no
+  failure). On the LAN path it also fails with an answer without `X-Warehouse-Path: lan`, a 403 of the listener,
+  or the gateway's key-rejection 401. The app then asks `GET /functions/v1/hello` of the other path (3 s); before
+  it sends a credential to the LAN address it also checks, with no credential, that the address answers as this
+  warehouse (`X-Warehouse-Path: lan` and the saved `instanceId`). It also asks the current path's own `hello` when
+  the failure did not prove the path down, so a slow request does not move the phone while the public path works.
+  A slow WRITE never starts a check (it waits for its own answer), and neither does a failed probe of NetInfo or a
+  slow read while a photo is going out over the public path (the upload may be what makes the probe slow). If the
+  other path answers, the phone switches and sticks to it for 10 minutes. The failed read is sent once more on the
+  new path; a write is never sent again (it ends as a lost answer and the screen re-asks through the lost-answer
+  rule). On the LAN path the public `hello` is asked after the stick, at most once per 10 minutes, and the phone
+  goes back when it answers. A probe that failed, or a path found working, is not asked again for 15 s. The
+  association sign-in exchange (`central-exchange`) never goes over the LAN. Operator sign-in does, so an
+  administrator's break-glass code works during an outage.
+- **Where the LAN path may be used, and when the phone leaves it (WS-L app review H1).** Only while NetInfo says Wi-Fi or
+  Ethernet AND the LAN address lies inside the phone's own subnet (NetInfo's `ipAddress` and subnet mask; a mask of
+  `255.255.255.255`, `0.0.0.0` or any that is not a run of ones, which is what the platforms report when they cannot
+  read it, counts as unknown). When the subnet cannot be determined, or on mobile data, another Wi-Fi in another
+  range, a VPN or no network, the LAN path is not used and nothing is probed or sent to it. Every NetInfo event tells
+  the transport the network (`noteNetworkState`, from `src/config/netReachability.ts`); a change of network type,
+  Wi-Fi address, subnet or connection puts the phone back on the public path and forgets what was found, so the
+  identity check runs again, before any credential, on the new network. The phone also leaves the LAN path at once,
+  whether or not the public path answers, when the address answers as another device (no `X-Warehouse-Path: lan`),
+  refuses it (403), or a failed request is followed by a failed identity check; requests then fail on the public
+  path, which sends nothing anywhere unexpected. Only the real server's key rejection (old keys after a rotation)
+  keeps the phone on the LAN path. A cold start that fails before NetInfo has said where the phone is waits up to
+  1.5 s for it. The "old configuration" warning is cleared on every switch.
+- **A key rejection over the LAN path never ends the session** (WS-L backend review H1). A LAN listener that was
+  not recreated after a key rotation answers REST calls with the gateway's `401 {"message":"Unauthorized"}`. Over
+  the LAN path that is a failure of the path: the read goes back to the public path when it answers, a write is
+  not sent again, nothing reaches the session code, and when the public path is down too the offline banner says
+  "The warehouse network answered with an old configuration." The public path still ends the session on it.
+- **Online means the server answers.** NetInfo's reachability probe is the facility's `GET
+  /functions/v1/hello` (only a 200 counts), installed in `bootstrapApp`, applied again when the selected server
+  changes and reset when none is selected (`src/config/netReachability.ts`). `useIsOffline` and
+  `ensureNetworkConnection` no longer treat a failed public probe as offline while the warehouse network reaches
+  the server, so saves are not refused during an outage; a Wi-Fi that blocks Google no longer looks offline
+  either. A failed public probe makes the phone ask the public `hello` once more and then the LAN address, so the switch does not wait for a request to fail. The 1-hour public configuration cache now serves an
+  expired copy when neither path answers (a failure of the path: a rejected fetch, a 530 or a 5xx without the gateway's
+  header). The public `hello` counts a 200, a 429 and any answer with the gateway's header as "reachable": every phone
+  behind the facility's address shares the functions limit, and a busy bucket must not mark the internet unreachable
+  or move the phone to plain http (WS-L app review M1).
+- **Help → Connection.** Connected via (a status tag: Internet / Warehouse network), the warehouse network address and
+  whether it is the server's or typed, a field to correct it when the saved value is stale, Check now (a status tag
+  and, for a problem, the reason in a sentence: Reachable; Not reachable because nothing answered, another device
+  answered or the server refused the phone's Wi-Fi address; Not on the warehouse Wi-Fi when the phone's network
+  cannot hold the address, which asks nothing and is not kept), and the last check. The section uses `HelpSection`,
+  `StatusTag` (new rows in style guide 3.5), the alert icon for a problem, no millisecond figure (developer text),
+  and a label with its value as one screen-reader element (review L9). The typed address (review M2, backend
+  hand-off item 3): possible only while the server sends an address, and only as a change of its host part (the same
+  first three numbers, not `.0` or `.255`, any port); it is dropped when the server sends a different address or none
+  (`lan.sh off` withdraws the fallback from every phone), and "Change address" is not offered when the server
+  offers none. The phone checks the address by itself once a day, only on Wi-Fi inside the address's subnet with the
+  internet up (never at home or on another network, where the answer would only be "not reachable"), asks the
+  server's configuration first so a changed address is the one checked, and repeats a check that did not find it
+  reachable after about an hour (a first check can fail while iOS asks for the Local Network permission; on iPhone
+  the sentence for "nothing answered" also says where to allow it).
+  New text: `settings.connection.*`, `components.offline.warehouseNetworkOldConfiguration`; the Gujarati is a draft
+  for the owner's wording review. The old-configuration advice now asks the operator to run the server's start step
+  again (`bash start.sh`), because a restart keeps the stale container; the matching TROUBLESHOOTING anchor belongs
+  to the backend repository.
+- **Native configuration (new APK and iOS build).** iOS: `NSAllowsLocalNetworking = true` in every build and
+  `NSLocalNetworkUsageDescription`; `NSAllowsArbitraryLoads` stays `false`, no exception domain; the Release
+  guard still refuses anything wider. `WAREHOUSE_IOS_LOCAL_NETWORKING` is gone (local networking is in every
+  build; `npm run ios` is plain `expo run:ios`); regenerate an old `ios/` with `npx expo prebuild --platform ios
+  --clean`. Android: a network security config (`plugins/with-android-lan-cleartext.js`, no new dependency) with
+  `cleartextTrafficPermitted="true"` in the base-config, because Android cannot name an address range; the app
+  limits cleartext to private addresses. See `docs/RELEASE_PREPARATION.md`.
+- **Android 17.** `ACCESS_LOCAL_NETWORK` is declared now (harmless on target SDK 36); a test fails when the target
+  SDK reaches 37 without a runtime request in `src/` (review M3, `docs/RELEASE_PREPARATION.md`).
+- **Other fixes of the WS-L app review.** The port range is 1024-65535 as the contract says (L1); the stale
+  public-configuration rule treats a 5xx without the gateway's header as a path failure (L2); the lost-answer
+  listeners subscribe to NetInfo again after `NetInfo.configure` (L4); signed links come back on the address in use
+  when they were signed on the other one, and photos already on screen follow a change of path
+  (`useViaCurrentPath`, the photo grids and the full-screen viewer, L6); the call-site test now also catches an alias of `fetch`, `globalThis.fetch`,
+  `XMLHttpRequest`, `expo/fetch`, upload tasks and `Image.prefetch`, with exemptions by line (L7); the iOS plugin
+  comment quotes Apple's wording and says the key is required since iOS 17 (L11); the Android cleartext
+  exposure now says plainly that redirects are included (L12). Not done: NetInfo's `reachabilityShouldRun` as a
+  background or upload switch (NetInfo reads it only when the connection changes, and "no" there reports the
+  internet as unreachable), so a failed probe during an upload is ignored by the transport instead.
+- **Known limits.** The phone starts on the public path every time; a cold start during an outage pays up to 4 s for
+  the failed request, up to 3 s for the public `hello` (the current path is asked first when the failure is not
+  definitive), and then the LAN probe. A photo already on screen (the grids and the full-screen viewer) follows a
+  change of path; a cached detail query keeps the link it was loaded with until it is loaded again. Sign-in still
+  needs the internet (an administrator's break-glass code excepted). The identity check is not authentication (see
+  `docs/RELEASE_PREPARATION.md`).
+
 ## Unreleased — Operator install fixes
 
 - **Metro and Expo Go troubleshooting.** New "Running Metro for a phone" in `docs/DEVICE_ACCEPTANCE.md` (linked from the README's Expo Go paragraph): `--lan` needs the phone on the Metro host's network (a NAT'd VM is not reachable; allow 8081 from the LAN only), `--tunnel` can fail to start, a Cloudflare Tunnel in front of Metro (`exps://`, `EXPO_PACKAGER_PROXY_URL`, a WAF rule on `node_modules`), `ExpoAsset` in Expo Go, the DevTools `chrome-sandbox` message, and restarting with `--clear` after `.env` changes. Docs only.
@@ -345,6 +453,9 @@ Fixes from the 2026-10-17 operational review (findings M01, M07, M08, M12). No b
   `development` profile; EAS `preview`/`production` refuse those switches), and a Release build phase fails
   an archive whose `Info.plist` still allows local networking or arbitrary loads. Not yet built on a Mac:
   check the generated plist before an iOS release.
+  **Amended 2026-10-26 (owner decision, WS-L):** cleartext is now allowed to a private LAN address only, as a
+  fallback when the public path fails. See "Warehouse network fallback" at the top of this file; every other
+  part of D24 (no arbitrary loads, no exception domains, https for every other origin) stands.
 - **Docs: catalogue trust is TLS-only (M07, owner decision D21).** `docs/CENTRAL_LOGIN.md` says the app does not
   verify the catalogue signature and cites the identity contract; `docs/RELEASE_PREPARATION.md` asks for a
   publicly trusted certificate on the association service.

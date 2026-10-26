@@ -22,8 +22,9 @@
  * `useIsDisconnected`, is that same test for the notices ("Waiting for the connection…"), so what a screen says is
  * what the wait waits for.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { isLostAnswer } from '@/utils/serverText';
+import { getNetInfoGeneration, subscribeNetInfoGeneration } from '@/config/netInfoGeneration';
 
 /** How long after a request was sent the app waits before it asks what became of it. */
 export const LOST_ANSWER_MIN_WAIT_MS = 10_000;
@@ -99,6 +100,8 @@ const hasNoNetwork = (state: { isConnected: boolean | null }): boolean => state.
  */
 export function useIsDisconnected(): boolean {
   const [disconnected, setDisconnected] = useState(false);
+  // NetInfo.configure (src/config/netReachability.ts) stops the listeners added before it: listen again after one.
+  const netInfoGeneration = useSyncExternalStore(subscribeNetInfoGeneration, getNetInfoGeneration, getNetInfoGeneration);
   useEffect(() => {
     const info = netInfo();
     if (!info) return undefined;
@@ -121,7 +124,7 @@ export function useIsDisconnected(): boolean {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [netInfoGeneration]);
   return disconnected;
 }
 
@@ -143,21 +146,33 @@ async function waitUntilOnline(signal?: AbortSignal): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let done = false;
     let unsubscribe: (() => void) | undefined;
+    let stopGeneration: (() => void) | undefined;
     const finish = (error?: Error) => {
       if (done) return;
       done = true;
       signal?.removeEventListener('abort', onAbort);
       unsubscribe?.();
+      stopGeneration?.();
       if (error) reject(error);
       else resolve();
     };
     const onAbort = () => finish(abortedError());
     signal?.addEventListener('abort', onAbort);
-    unsubscribe = info.addEventListener(state => {
-      if (!hasNoNetwork(state)) finish();
+    const listen = () => {
+      unsubscribe?.();
+      unsubscribe = info.addEventListener(state => {
+        if (!hasNoNetwork(state)) finish();
+      });
+      // The listener may have answered before `unsubscribe` was set.
+      if (done) unsubscribe();
+    };
+    listen();
+    // NetInfo.configure stops the listener added above (a change of facility does it): add it again after one.
+    stopGeneration = subscribeNetInfoGeneration(() => {
+      if (!done) listen();
     });
-    // The listener may have answered before `unsubscribe` was set.
-    if (done) unsubscribe();
+    // `finish` may have run before `stopGeneration` was set.
+    if (done) stopGeneration();
   });
 }
 

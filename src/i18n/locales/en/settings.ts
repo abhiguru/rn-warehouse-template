@@ -146,4 +146,47 @@ export const settings = {
     newNumber: 'New mobile number: you sign in with your number, and the app cannot change it. Ask an administrator of your facility what to do.',
     newRole: 'Different role or access: only an administrator of your facility can change your role and the customers you see.',
   },
+  // Help, "Connection": how the phone reaches the server, and the warehouse network fallback
+  // (src/features/connection/ConnectionSection.tsx, src/config/lanTransport.ts). {{example}} is a sample address.
+  connection: {
+    title: 'Connection',
+    connectedVia: 'Connected via',
+    viaInternet: 'Internet',
+    viaWarehouseNetwork: 'Warehouse network',
+    viaHelp:
+      'The phone uses the warehouse network only while the internet is not working, and goes back to the internet when it works again.',
+    // The old configuration is cured by creating the gateway-lan container again (the server's start step), not by a restart.
+    oldConfiguration:
+      "The warehouse network answered with an old configuration. Ask whoever runs your server to run the server's start step again.",
+    addressTitle: 'Warehouse network address',
+    addressFromServer: 'From your server',
+    addressTyped: 'Typed by you',
+    addressNone: 'Your server does not offer a warehouse network address, so this phone uses only the internet.',
+    addressChange: 'Change address',
+    addressSave: 'Save address',
+    addressUseServer: "Use your server's address",
+    addressFieldLabel: 'Warehouse network address',
+    addressHelp: 'Your server shows this address. It starts with http:// and ends with a port number.',
+    // {{server}}: the address the server offers.
+    addressInvalid: "Change only the last number of your server's address, {{server}}. Example: {{example}}.",
+    addressSaved: 'Address saved.',
+    checkNow: 'Check now',
+    checking: 'Checking…',
+    // The words of a check (shown as a status tag) and the sentence under each one that failed.
+    statusReachable: 'Reachable',
+    statusUnreachable: 'Not reachable',
+    statusOtherNetwork: 'Not on the warehouse Wi-Fi',
+    detailUnreachable: 'Nothing answered at this address. Check the address, and that this phone is on the warehouse Wi-Fi.',
+    detailUnreachableIos: 'On iPhone, also open Settings, Privacy & Security, Local Network, and allow this app.',
+    detailRefused: "Your server does not accept this phone's Wi-Fi address.",
+    detailWrongServer: 'Another device answered at this address.',
+    detailOtherNetwork: 'Connect this phone to the warehouse Wi-Fi, then check again.',
+    statusNetworkUnknown: 'Wi-Fi address not known',
+    detailNetworkUnknown: 'This phone could not read its own Wi-Fi address, so it does not use the warehouse network. Try again in a moment.',
+    resultNotSet: 'No address to check',
+    lastChecked: 'Last checked {{when}}: {{result}}',
+    neverChecked: 'Not checked yet',
+    dailyNote:
+      'The phone checks this address once a day while it is on the warehouse Wi-Fi and the internet works, and again every hour until it is reachable.',
+  },
 };

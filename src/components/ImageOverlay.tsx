@@ -29,6 +29,8 @@ import ImageViewing from 'react-native-image-viewing';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { useLanStatus } from '@/hooks/useLanStatus';
+import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
 import { fontWeight, iconSize, layout, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
@@ -106,10 +108,15 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
 
   // Convert images to format expected by react-native-image-viewing
   // P6 Fix: Memoize to prevent array recreation on every render
+  // The links are worked out again when the phone changes path (WS-L, src/config/lanTransport.ts), so a photo opened
+  // after the phone went back to the internet is not asked of the warehouse network address.
+  const { path } = useLanStatus();
   const imageUrls = useMemo(() =>
     images.map(img => ({
-      uri: img.imageUrl,
-    })), [images]);
+      uri: viaCurrentPath(toCanonicalUrl(img.imageUrl)),
+    })),
+    // `path` is not read above: it decides what viaCurrentPath returns, so the links are worked out again when it changes.
+    [images, path]);
 
   // Header: close button and image counter
   const renderHeader = (imageIndex: number) => (

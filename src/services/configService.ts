@@ -9,7 +9,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getActiveOperatorOrigin } from '@/config/operatorServer';
+import { getActiveOperatorOrigin, recordServerLanAddress } from '@/config/operatorServer';
+import { answeredPath, isTunnelFailure, transportFetch, type ConnectionPath } from '@/config/lanTransport';
 import { withLocalizedBootstrapErrors } from '@/config/bootstrapErrors';
 import { createSessionReadFetch } from '@/config/supabaseConfig';
 import { discardBody } from '@/config/discardBody';
@@ -98,6 +99,12 @@ export interface FullConfig {
     api: string;
     storage: string;
     auth: string;
+    /**
+     * The server's address on the warehouse network, `http://<private IPv4>:<port>` (src/config/lanAddress.ts).
+     * Present only while the operator has the fallback on, and only in this authenticated answer, never in
+     * `get-public-config`.
+     */
+    lan?: string;
   };
   limits: {
     otpHourlyLimit: number;
@@ -158,10 +165,18 @@ class ConfigService {
     }
   }
 
+  /**
+   * A request that changes nothing, over the public address and, when that fails, the warehouse network
+   * address (src/config/lanTransport.ts). `answered` is told which response was read.
+   */
+  private static readonly viaTransport: typeof fetch = (input, init) =>
+    transportFetch(input, init, { read: true });
+
   private static async fetchConfig(
     path: string,
     token?: string,
-    fetchImpl: typeof fetch = fetch
+    fetchImpl: typeof fetch = ConfigService.viaTransport,
+    answered?: (response: Response) => void
   ): Promise<unknown> {
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -182,10 +197,17 @@ class ConfigService {
           );
           if (!response.ok) {
             discardBody(response);
-            throw new Error(
-              t('errors.server.configRequestFailedHttp', { status: String(response.status) })
+            // The status stays on the error: only an answer of the tunnel (Cloudflare's 530, or a 5xx
+            // without the gateway's header: the facility is not reachable) is a failure of the path; any
+            // other status is the facility's own answer.
+            throw Object.assign(
+              new Error(
+                t('errors.server.configRequestFailedHttp', { status: String(response.status) })
+              ),
+              { httpStatus: response.status, tunnel: isTunnelFailure(response) }
             );
           }
+          answered?.(response);
           return response.json();
         })(),
         new Promise<never>((_, reject) => {
@@ -216,7 +238,24 @@ class ConfigService {
         /* Reject corrupt or expired public-key caches. */
       }
     }
-    const fetched = await this.fetchConfig('get-public-config');
+    let fetched: unknown;
+    try {
+      fetched = await this.fetchConfig('get-public-config');
+    } catch (error) {
+      // Neither the public address nor the warehouse network answered: an earlier copy of the public
+      // configuration, past its hour, still lets the app start. Any answer the facility gave stands.
+      const failed = error as { httpStatus?: number; tunnel?: boolean } | null;
+      const age = cached ? Date.now() - cached.timestamp : NaN;
+      // Not a copy from the future (a wrong clock), and not another facility's. A copy past its hour is the point.
+      if (cached && cached.scope === origin && Number.isFinite(age) && age >= 0 && (failed?.httpStatus === undefined || failed.tunnel === true)) {
+        try {
+          return validatePublicConfig({ success: true, data: cached.data }, origin);
+        } catch {
+          /* A damaged copy is no fallback. */
+        }
+      }
+      throw error;
+    }
     const data = withLocalizedBootstrapErrors(() => validatePublicConfig(fetched, origin));
     const entry = { data, timestamp: Date.now(), scope: origin };
     this.publicCache = entry;
@@ -225,7 +264,7 @@ class ConfigService {
   }
 
   static async getFullConfig(
-    _supabase: SupabaseClient
+    _supabase?: SupabaseClient
   ): Promise<FullConfig | null> {
     const generation = getSessionGeneration();
     const cacheGeneration = this.cacheGeneration;
@@ -278,9 +317,20 @@ class ConfigService {
       }
       // The bearer token is a credential: route it through the identity gate.
       // get-public-config stays raw; it is public discovery used by forced logout.
-      const fetched = await this.fetchConfig('get-config', token, createSessionReadFetch());
+      let answeredOver: ConnectionPath = 'public';
+      const fetched = await this.fetchConfig('get-config', token, createSessionReadFetch(), response => {
+        answeredOver = answeredPath(response);
+      });
       const data = withLocalizedBootstrapErrors(() => validateFullConfig(fetched, origin));
       if (!current() || this.fullKey !== key) return null;
+      // The warehouse network address the server offers is refreshed from every answer of the public path.
+      if (answeredOver === 'public') {
+        try {
+          await recordServerLanAddress(origin, data.urls.lan);
+        } catch {
+          // Keeping the address is optional; it never fails the configuration.
+        }
+      }
       const entry = { data, timestamp: Date.now(), scope };
       this.fullCache = entry;
       await this.write(async () => {

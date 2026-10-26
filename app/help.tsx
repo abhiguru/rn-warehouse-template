@@ -2,7 +2,8 @@
  * Help (review 2026-10-13, O07): a grouped list on background.grouped, opened
  * from Settings.
  *
- * Sections: the facility and its server address; who to ask (the app's
+ * Sections: the facility and its server address; the connection (which path
+ * reaches the server, the warehouse network address and its check); who to ask (the app's
  * configuration holds no support contact, so Help says so rather than inventing
  * one, and the legal pages are not offered as help); the four roles, with the
  * person's own marked; what to do when the phone, the number or the role
@@ -16,8 +17,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { SectionHeader } from '@/components/ui/SectionHeader';
+import { HelpSection as Section } from '@/components/HelpSection';
 import { AppVersionFooter } from '@/components/AppVersionFooter';
+import { ConnectionSection } from '@/features/connection/ConnectionSection';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { useAppSelector } from '@/store/hooks';
@@ -27,8 +29,6 @@ import { roleLabel } from '@/utils/roleLabel';
 import {
   fontWeight,
   iconSize,
-  layout,
-  radius,
   space,
   touchTarget,
   typography,
@@ -41,16 +41,6 @@ const ROLES: { role: string; description: TranslationKey }[] = [
   { role: 'staff', description: 'users.roleDescription.staff' },
   { role: 'customer', description: 'users.roleDescription.customer' },
 ];
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.section}>
-      <SectionHeader title={title} style={styles.sectionHeader} />
-      <View style={styles.sectionContent}>{children}</View>
-    </View>
-  );
-}
 
 export default function HelpScreen() {
   const insets = useSafeAreaInsets();
@@ -96,6 +86,8 @@ export default function HelpScreen() {
             </View>
           )}
         </Section>
+
+        {server ? <ConnectionSection /> : null}
 
         <Section title={t('settings.help.askTitle')}>
           <View style={styles.cell}>
@@ -183,20 +175,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   scrollView: {
     flex: 1,
-  },
-  section: {
-    marginBottom: space.xxl,
-  },
-  // SectionHeader brings its own top padding; the section's bottom margin already spaces it.
-  sectionHeader: {
-    marginHorizontal: layout.marginCompact,
-    paddingTop: 0,
-  },
-  sectionContent: {
-    marginHorizontal: layout.marginCompact,
-    borderRadius: radius.card,
-    overflow: 'hidden' as const,
-    backgroundColor: t.surface.card,
   },
   cell: {
     paddingHorizontal: space.lg,

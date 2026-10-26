@@ -90,6 +90,7 @@ in Gujarati script; **English** = left in English letters.
 | Standard (rate every new item gets) | પ્રમાણભૂત | translate | Draft |
 | Weight band (a range of bag weights with one rate; English "weight band", not "tier", in the rate editor) | વજન મર્યાદા | translate | Draft |
 | Warehouse, godown | વખાર | translate | Owner's choice |
+| Warehouse network (the LAN fallback to the server) | વખારનું નેટવર્ક | translate | Draft (2026-10-26) |
 | Photo | ફોટો | Gujarati letters | Checked |
 | Order status: open | બાકી | translate | Owner's choice |
 | Order status: closed | પૂર્ણ | translate | Owner's choice |
@@ -145,6 +146,8 @@ in Gujarati script; **English** = left in English letters.
 | Refresh | રિફ્રેશ કરો | Gujarati letters | Checked |
 | Loading… | લોડ થઈ રહ્યું છે… | translate | Checked |
 | Try again | ફરી પ્રયાસ કરો | translate | Checked |
+| Check now (test whether an address answers) | હમણાં તપાસો | translate | Draft (2026-10-26) |
+| Reachable / Not reachable (the answer of a check) | પહોંચી શકાય છે / પહોંચી શકાતું નથી | translate | Draft (2026-10-26) |
 | Required | જરૂરી | translate | Checked |
 | Today, Yesterday | આજે, ગઈકાલે | translate | Checked |
 | Last 7 days | છેલ્લા ૭ દિવસ | translate | Checked |

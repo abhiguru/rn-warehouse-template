@@ -24,6 +24,7 @@ import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 import { createLimiter } from '@/utils/concurrency';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
+import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
 import {
   holdLocalPhoto,
   localPhotoUploadEnded,
@@ -298,9 +299,9 @@ export const uploadGRNImage = async (
       if (urlError || !urlData?.signedUrl) {
         log.warn('Could not create signed URL', loggableError(urlError));
         // Use direct storage URL as fallback
-        finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/grn-images/${confirmedPath}`;
+        finalImageUrl = viaCurrentPath(`${getCurrentConfig().url}/storage/v1/object/grn-images/${confirmedPath}`);
       } else {
-        finalImageUrl = urlData.signedUrl;
+        finalImageUrl = viaCurrentPath(urlData.signedUrl);
       }
 
       // Progress: Complete
@@ -488,7 +489,8 @@ export const getImageSignedUrl = async (
   try {
     // If filePath is already a signed URL, return it as-is
     if (filePath.startsWith('http') && filePath.includes('token=')) {
-      return filePath;
+      // Signed on either address: it is returned on the address the phone reaches the server by now.
+      return viaCurrentPath(toCanonicalUrl(filePath));
     }
 
     const supabase = await getSupabaseWithJWT();
@@ -500,7 +502,7 @@ export const getImageSignedUrl = async (
         .createSignedUrl(filePath, expiresIn);
 
       if (!error && data?.signedUrl) {
-        return data.signedUrl;
+        return viaCurrentPath(data.signedUrl);
       }
 
       if (attempt < 3) {
@@ -511,7 +513,7 @@ export const getImageSignedUrl = async (
     }
 
     // Fallback to direct storage URL
-    const baseUrl = `${getCurrentConfig().url}/storage/v1/object/grn-images/${filePath}`;
+    const baseUrl = viaCurrentPath(`${getCurrentConfig().url}/storage/v1/object/grn-images/${filePath}`);
     log.warn('Using fallback direct storage URL');
     return baseUrl;
   } catch (error) {

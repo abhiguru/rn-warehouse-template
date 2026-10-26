@@ -26,23 +26,58 @@ is archived (see [HISTORY.md](HISTORY.md)).
   bundle included, for the forbidden text patterns, and fails on a file above
   256 MiB instead of skipping it. Its JSON report has `scanned` and `skipped`
   counts, and CI runs it on `dist` after `expo export`.
-- The iOS network policy is declared by `plugins/with-ios-transport-policy.js`, not
-  taken from Expo's template default (which allows arbitrary loads and an http
-  exception for `localhost`). A release project has `NSAllowsArbitraryLoads = false`
-  and no other App Transport Security key: no exception domain and no local-networking
-  exception. `NSAllowsLocalNetworking` is added only when the native project is
-  generated for development (`WAREHOUSE_IOS_LOCAL_NETWORKING=1`, the USB helper's
-  `WAREHOUSE_IOS_USB_HOST`, or the EAS `development` profile). `Info.plist` is shared by
-  Debug and Release, so generate the project for a release archive **without** those
-  variables (`npx expo prebuild --platform ios --clean`); the EAS `preview` and
-  `production` profiles refuse them. The plugin also adds a Run Script phase that fails a
-  Release build when the built `Info.plist` has `NSAllowsLocalNetworking`,
-  `NSAllowsArbitraryLoads = true` or any `NSExceptionDomains`, and also when it cannot look:
-  PlistBuddy is missing, or the built `Info.plist` is missing, unreadable or unparseable. A
-  development project therefore cannot be archived. That phase
-  is checked as generated project text only; it has not been built (no macOS or Xcode here). `scripts/ios-transport.test.mjs` checks the
-  generated configuration on any machine. It does not replace the archive check listed
-  below, which needs macOS.
+- The network policy is declared by two config plugins, not taken from Expo's template default (which
+  allows arbitrary loads and an http exception for `localhost`). Owner decision 2026-10-26 (WS-L)
+  amends D24: cleartext is allowed to a private LAN address only, as a fallback when the public path to the
+  facility's server fails (`src/config/lanTransport.ts`; the phone uses `urls.lan` of the server's
+  authenticated `get-config`, `http://<private IPv4>:<port>`, and returns to the public address when it works
+  again). The accepted exposure is written down in the backend's `docs/CONTAINER_SECURITY.md`.
+  - iOS, `plugins/with-ios-transport-policy.js`: every build has `NSAllowsArbitraryLoads = false`,
+    `NSAllowsLocalNetworking = true` and no other App Transport Security key (no exception domain, no
+    web-content or media exemption), plus `NSLocalNetworkUsageDescription` (English text for the Local
+    Network prompt). Local networking also lets a Debug build reach Metro over http. Since iOS 17, App
+    Transport Security blocks connections to an IP-address literal by default, so the key is REQUIRED for the
+    fallback to work, not just a declaration; Apple's text for it is "unqualified domains, `.local` domains, and IP
+    addresses using IPv4 or IPv6", it does not say "local only", and `src/config/lanAddress.ts` is the limit to
+    private addresses
+    ([NSAllowsLocalNetworking](https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsallowslocalnetworking)).
+    The plugin adds a Run
+    Script phase that fails a Release build when the built `Info.plist` has `NSAllowsArbitraryLoads = true`,
+    `NSAllowsArbitraryLoadsInWebContent`, `NSAllowsArbitraryLoadsForMedia` or any `NSExceptionDomains`, and
+    also when it cannot look: PlistBuddy is missing, or the built `Info.plist` is missing, unreadable or
+    unparseable. That phase is checked as generated project text only; it has not been built (no macOS or
+    Xcode here). `scripts/ios-transport.test.mjs` checks the generated configuration on any machine. It does
+    not replace the archive check listed below, which needs macOS. An `ios/` folder made before 2026-10-26
+    has the old phase, which refuses local networking: generate it again
+    (`npx expo prebuild --platform ios --clean`). The USB helper's `WAREHOUSE_IOS_USB_HOST` is refused under the
+    EAS `preview` and `production` profiles.
+  - Android, `plugins/with-android-lan-cleartext.js`: `android:networkSecurityConfig` and
+    `res/xml/network_security_config.xml` with `cleartextTrafficPermitted="true"` in the `base-config`,
+    system trust anchors only. This is as narrow as Android allows: a network security config names a host or
+    one exact IP address, never a range, and a facility's address is chosen by its operator's DHCP, so
+    "private addresses only" cannot be written there. The app keeps cleartext to private addresses:
+    `src/config/lanAddress.ts` is the only place a cleartext URL is built and accepts only
+    `http://<RFC 1918 IPv4>:<port>`; every other address the app takes is https;
+    `src/config/__tests__/lanCallSites.test.ts` fails when another module builds one. No dependency was added
+    (`expo-build-properties` is not used). `scripts/android-lan-cleartext.test.mjs` checks the config and the
+    manifest attribute. The platform therefore allows cleartext to ANY host, redirects included (React Native
+    follows them whatever `redirect` says and OkHttp follows https to http; the precondition is a compromised or
+    misconfigured canonical origin, and OkHttp drops `Authorization` when the host changes): the accepted exposure.
+  - Android 17 and target SDK 37: the platform protects the local network (10/8, 172.16/12, 192.168/16, 169.254/16
+    and 100.64/10 on Wi-Fi and Ethernet). An app that targets SDK 37 or higher needs the runtime permission
+    `ACCESS_LOCAL_NETWORK` (group NEARBY_DEVICES, shown to the person as a "Nearby devices" prompt); without it the
+    connection to the server's address times out and the fallback fails silently. The app targets SDK 36 today
+    (React Native's `libs.versions.toml`), which gets an implicit grant. The plugin declares the permission now,
+    which is harmless on 36. **Before raising the target SDK to 37** add the runtime request
+    (`PermissionsAndroid.request`, best asked from Help, Connection, Check now). `scripts/android-lan-cleartext.test.mjs`
+    fails when the target reaches 37 and no such request is in `src/`.
+  - Not in this release, recorded for the owner: an authenticated proof of the LAN address. Today the identity
+    check compares the server's public `instanceId`, so it tells this warehouse from another one but not from a
+    device that copies the answer. A challenge that the server answers with an HMAC (a per-session secret from the
+    authenticated `get-config`; server side with pgcrypto and the service key) would make it real authentication and
+    close the "rogue device on the warehouse Wi-Fi" class that the plain-http decision accepts. It needs both
+    repositories.
+  - Both native changes need a new APK and iOS build; an OTA update cannot carry them.
 - `.env.example` leaves the optional Sentry/GlitchTip DSN commented out.
   `src/config/sentryConfig.ts` enables it only outside development with a
   nonempty DSN. Setting a DSN is the operator's consent: the app has no
@@ -138,8 +173,11 @@ and the final AAB/APK/iOS archive hashes. Keep signing keys and account secrets
 outside this record. Attach platform-specific archive inspection for contents,
 permissions/entitlements, certificates, embedded configuration, and applicable
 third-party notices. For iOS include the `Info.plist` inside the archive's `.app`
-(`plutil -p`): `NSAppTransportSecurity` must show `NSAllowsArbitraryLoads = 0` and no
-`NSExceptionDomains` or `NSAllowsLocalNetworking`. Record the actual store or enterprise review outcome and
+(`plutil -p`): `NSAppTransportSecurity` must show `NSAllowsArbitraryLoads = 0` and
+`NSAllowsLocalNetworking = 1` and nothing else (no `NSExceptionDomains`), and `NSLocalNetworkUsageDescription`
+must be present. For Android, the merged manifest of the release build must name
+`android:networkSecurityConfig="@xml/network_security_config"` and the package must contain that file with
+`cleartextTrafficPermitted="true"` in its base-config only. Record the actual store or enterprise review outcome and
 targeted device acceptance on those exact builds. If telemetry is enabled,
 attach the redacted received-event test and retention/access review; otherwise
 record that it remains disabled. The historical source-demo phone results

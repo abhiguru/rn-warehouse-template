@@ -71,6 +71,7 @@
       "./plugins/with-ios-linking-manager",
       "./plugins/with-ios-usb",
       "./plugins/with-ios-transport-policy",
+      "./plugins/with-android-lan-cleartext",
       "expo-secure-store",
       [
         "expo-local-authentication",

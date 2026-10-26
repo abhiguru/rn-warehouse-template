@@ -1,5 +1,7 @@
 import * as Sharing from 'expo-sharing';
 import { withNativeHandoff } from '@/config/nativeHandoff';
+import { getConnectionPath, resetLanTransport, setLanContext, transportFetch } from '@/config/lanTransport';
+import { onWarehouseWifi } from '@/tests/helpers/lanNetwork';
 import {
   MAX_SHARED_DOCUMENT_BYTES,
   downloadAndSharePDF,
@@ -317,5 +319,76 @@ describe('sweepSharedDocuments', () => {
     } finally {
       listSpy.mockRestore();
     }
+  });
+});
+
+// The warehouse network path (WS-L): the signed link names the public address; the native download reads
+// it from the LAN address while the phone is on that path.
+describe('downloads on the warehouse network path', () => {
+  const PUBLIC = 'https://warehouse.example.test';
+  const LAN = 'http://192.168.1.20:8080';
+  const lanUrl = signedUrl.replace(PUBLIC, LAN);
+  const originalFetch = global.fetch;
+  let publicUp: boolean;
+  const answer = (path: 'lan' | 'public', body: unknown = 'Hello') =>
+    ({ ok: true, status: 200, headers: { get: () => path }, json: async () => body, clone: () => answer(path, body) }) as unknown as Response;
+
+  beforeEach(() => {
+    publicUp = false;
+    resetLanTransport();
+    setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: 'instance-0001' });
+    onWarehouseWifi();
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith(PUBLIC)) {
+        if (!publicUp) throw new TypeError('Network request failed');
+        return answer('public');
+      }
+      return answer('lan', url.endsWith('/get-public-config') ? { success: true, data: { instanceId: 'instance-0001' } } : 'Hello');
+    }) as unknown as typeof fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+    resetLanTransport();
+  });
+
+  it('downloads from the public address while that works', async () => {
+    publicUp = true;
+    await downloadPDF(signedUrl, 'GRN_1.pdf');
+    expect(download.mock.calls[0][0]).toBe(signedUrl);
+  });
+
+  it('downloads from the LAN address, same path and token, once the phone is on that path', async () => {
+    await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true });
+    expect(getConnectionPath()).toBe('lan');
+    const result = await downloadPDF(signedUrl, 'GRN_1.pdf');
+    expect(result.success).toBe(true);
+    expect(download.mock.calls[0][0]).toBe(lanUrl);
+  });
+
+  it('asks the other path once when a download fails without an answer, and tries once more there', async () => {
+    download.mockRejectedValueOnce(new Error('Unable to resolve host warehouse.example.test'));
+    const result = await downloadPDF(signedUrl, 'GRN_1.pdf');
+    expect(result.success).toBe(true);
+    expect(download.mock.calls.map(call => call[0])).toEqual([signedUrl, lanUrl]);
+    expect(getConnectionPath()).toBe('lan');
+  });
+
+  it('does not ask about the path when the server answered with a status', async () => {
+    respond({ ok: false, status: 404 });
+    const result = await downloadPDF(signedUrl, 'GRN_1.pdf');
+    expect(result.success).toBe(false);
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(getConnectionPath()).toBe('public');
+  });
+
+  it('fails as before when the other path does not answer either', async () => {
+    global.fetch = jest.fn(async () => {
+      throw new TypeError('Network request failed');
+    }) as unknown as typeof fetch;
+    download.mockRejectedValueOnce(new Error('Unable to resolve host warehouse.example.test'));
+    const result = await downloadPDF(signedUrl, 'GRN_1.pdf');
+    expect(result.success).toBe(false);
+    expect(download).toHaveBeenCalledTimes(1);
   });
 });

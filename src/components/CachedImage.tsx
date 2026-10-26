@@ -24,6 +24,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, motion, radius, space } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
+import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
 
 // Placeholder image as base64 (gray background with image icon)
 const PLACEHOLDER_BLURHASH = '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7teleayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
@@ -164,7 +165,9 @@ export async function preloadImages(uris: string[]): Promise<void> {
   if (validUris.length === 0) return;
 
   try {
-    await Image.prefetch(validUris);
+    // The links go over the address the phone reaches the server by now (WS-L, src/config/lanTransport.ts).
+    const links = validUris.map(uri => viaCurrentPath(toCanonicalUrl(uri)));
+    await Image.prefetch(links);
     if (__DEV__) {
       if (__DEV__) console.log(`[CachedImage] Preloaded ${validUris.length} images`);
     }

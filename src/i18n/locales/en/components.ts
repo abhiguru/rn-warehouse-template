@@ -453,6 +453,10 @@ export const components = {
   },
   offline: {
     message: "You're offline. Actions that need the server will work again when you reconnect.",
+    // Shown instead of the line above when the warehouse network (not the internet) reached the server but
+    // answered with keys from before a key change (src/config/lanTransport.ts).
+    warehouseNetworkOldConfiguration:
+      "The warehouse network answered with an old configuration. Ask whoever runs your server to run the server's start step again, or connect to the internet.",
   },
   stock: {
     currentOfTotal: '{{current}} of {{total}}',

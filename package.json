@@ -21,7 +21,7 @@
     "preandroid": "node scripts/check-install.mjs",
     "android": "expo run:android",
     "preios": "node scripts/check-install.mjs",
-    "ios": "WAREHOUSE_IOS_LOCAL_NETWORKING=1 expo run:ios",
+    "ios": "expo run:ios",
     "preweb": "node scripts/check-install.mjs",
     "web": "expo start --web",
     "lint": "eslint . --ext .ts,.tsx",

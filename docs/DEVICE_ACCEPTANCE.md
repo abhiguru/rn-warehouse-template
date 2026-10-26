@@ -124,3 +124,212 @@ Observed during acceptance; useful as expected behaviour when recording results:
   the dispatch is submitted.
 - There is no create-user screen: staff accounts come from signing in once,
   approval, and then Settings → Users → edit → role.
+
+## Warehouse network fallback (WS-L)
+
+What this checks: while the internet works the phone sends nothing to the server's address on the warehouse
+network; in an outage it switches by itself and keeps working; it leaves that address as soon as it is on another
+network or the address stops answering as the server; and Help → Connection tells the truth about each of these.
+
+**Needs.** A backend with the fallback on (`bash scripts/lan.sh on auto` on the host; it prints "LAN address for
+the app: http://192.168.1.20:8080", used below as `<server address>`), a build from this version (new APK, new iOS
+build), a phone on the warehouse Wi-Fi that is signed in, a laptop on the same Wi-Fi with `python3`, and the host's
+internet cable (the outage). The phone's own Wi-Fi address is in the phone's Wi-Fi details; call it
+`<phone address>`. On iOS, allow the Local Network prompt the first time.
+
+**Reading the host's log.** From the backend's folder on the host:
+
+    bash scripts/compose.sh --profile lan logs --no-log-prefix gateway-lan 2>&1 | grep -cF '<phone address> '
+
+counts the requests the phone made to the warehouse network address (one line each: the time, the path, the status).
+`logs ... gateway-lan | grep -F '<phone address> ' | tail -20` shows them.
+
+**Where it is in the app.** Settings → Help and about → Help → the **Connection** section: "Connected via" with a tag
+("Internet" or "Warehouse network"), the "Warehouse network address" and where it comes from, **Check now**, and the
+last check. Record PASS or FAIL for every step, with the values asked for under Evidence.
+
+**Steps.** Each step is one action (typing an address and tapping Save address is one). If a step's start state is
+not reached, do not guess: go back to the step that makes it, or mark the step NOT RUN and say why.
+
+1. Start state: internet works; phone on the warehouse Wi-Fi; Connection shows "Connected via" with the tag
+   "Internet", the address `<server address>` with "From your server" under it, and "Last checked": "Not checked yet" (or
+   an earlier time).
+   Action: tap **Check now**.
+   Expected: within 3 s a green tag "Reachable" appears under the button; the line under it reads "Last checked
+   <now>: Reachable" (a new time, not the earlier one); no millisecond figure anywhere.
+   Evidence: the "Last checked" text before and after; the result tag; screenshot.
+   A broken app would show: "Checking…" for more than 3 s, a red "Not reachable" tag with a sentence under it, a grey
+   tag "Not on the warehouse Wi-Fi" or "Wi-Fi address not known" (the phone cannot tell it is inside the server's
+   subnet, so the fallback is switched off on this phone: record the phone, its Android or iOS version and stop, no
+   later step can pass), or the old "Last checked" text unchanged.
+
+2. Start state: step 1 passed; note the host's request count for `<phone address>` as N0 and the time T0.
+   Action: use the app normally for 3 minutes with the internet working: open Dispatch and GRNs, pull to refresh each
+   twice, open one dispatch and one GRN.
+   Expected: the host's count for `<phone address>` is still N0 (the phone sent nothing to the warehouse network
+   address); Connection still shows the tag "Internet".
+   Evidence: N0 and N1 (count after the 3 minutes); the tag.
+   A broken app would show: N1 greater than N0 with lines for `/rest/v1/`, `/storage/v1/` or `/functions/v1/` other than
+   hello and get-public-config, or the tag "Warehouse network" while the internet works.
+
+3. Start state: step 2 passed; Connection says "Internet"; the Dispatch list shows its rows.
+   Action: unplug the host's internet cable (keep its power and the Wi-Fi), then pull the Dispatch list down to
+   refresh.
+   Expected: the list is refreshed within 10 s with the same rows and no error message; no "You're offline" banner
+   appears in the next 60 s; Connection shows the blue tag "Warehouse network"; the host's log has new lines for
+   `<phone address>` with `/rest/v1/` paths. Write down the time of the first such line as Ts.
+   Evidence: seconds to refresh; banner yes or no after 60 s; the tag; N2 (new count) and Ts.
+   A broken app would show: an error message or an empty list instead of the rows, the offline banner (and "Save"
+   refused), the tag still "Internet", or N2 equal to N1.
+
+4. Start state: step 3 passed; the tag says "Warehouse network".
+   Action: create a GRN with a photo of the GRN book entry and tap its save.
+   Expected: the GRN is saved and shows its number; Connection still says "Warehouse network"; the host's log shows
+   the photo upload (`/storage/v1/object/`) from `<phone address>`.
+   Evidence: the new GRN number; the log line for the upload.
+   A broken app would show: a "could not save" or "offline" message, a lost-answer screen that does not clear within 30
+   s, or no upload line in the host's log.
+
+5. Start state: step 4 passed.
+   Action: open that GRN and tap its PDF (print or share).
+   Expected: the PDF opens within 10 s.
+   Evidence: seconds; the host's log shows the PDF download from `<phone address>`.
+   A broken app would show: an error "could not open the document", or a PDF download line that is missing from the
+   log (the document came over the internet, which is down).
+
+6. Start state: step 5 passed; the outage goes on.
+   Action: force-close the app, then open it again.
+   Expected: the app reaches its signed-in home screen within 15 s (the first request waits up to 4 s and the public
+   check up to 3 s); no "configuration" error screen; after a refresh, Connection says "Warehouse network".
+   Evidence: seconds to the home screen; the tag.
+   A broken app would show: the sign-in screen, an error screen about the server's configuration, or the home screen
+   after more than 30 s.
+
+7. Start state: step 6 passed; the outage goes on; Connection says "Warehouse network".
+   Action: send the app to the background for 15 minutes (home button), then open it and pull the Dispatch list down.
+   Expected: still signed in; the list refreshes within 10 s; Connection still says "Warehouse network" (the phone
+   goes back to the internet only when the internet answers).
+   Evidence: the list's refresh time; the tag.
+   A broken app would show: the sign-in screen, or a list that keeps its old rows with an error.
+
+8. Start state: step 7 passed; the cable is still out; Connection says "Warehouse network".
+   Action: plug the host's internet cable in and write down the time as Tp; leave the phone on Connection and wait
+   (do not open other screens).
+   Expected: without any tap the tag changes to "Internet" no later than Tp + 11 minutes (the phone asks the public
+   address once every 10 minutes while it is on the warehouse network, and goes back when it answers).
+   Evidence: Tp and the time the tag changed (Tr); Tr minus Tp is at most 11 minutes.
+   A broken app would show: the tag still "Warehouse network" at Tp + 15 minutes with the internet working.
+
+9. Start state: internet works; Connection says "Internet"; nothing else is running.
+   Action: unplug the cable and pull the Dispatch list down (the first host log line for `<phone address>` after that
+   is Ts), then plug the cable back in one minute later.
+   Expected: at Ts + 5 minutes the tag still says "Warehouse network" although the internet is back (the phone stays at
+   least 10 minutes); at about Ts + 10 minutes, with no tap, it says "Internet".
+   Evidence: the tag at Ts + 5 minutes; the time it changed (Tr); Tr minus Ts is 9 to 11 minutes.
+   A broken app would show: "Internet" before Ts + 9 minutes (it went back too early and would move between the two
+   paths on a flaky line), or still "Warehouse network" at Ts + 15 minutes.
+
+10. Start state: internet works; Connection says "Internet" and "From your server"; `<server address>` is
+   `http://192.168.1.20:8080` (use the first three numbers of yours below). Step 1 gave "Reachable" on this phone.
+   Action: tap **Change address**, type `http://192.168.1.199:8080` (the same first three numbers, a host where
+   nothing listens), tap **Save address**, then tap **Check now**.
+   Expected: "Typed by you" appears under the address `http://192.168.1.199:8080`; after at most 3 s the result tag
+   is "Not reachable" with the sentence "Nothing answered at this address. Check the address, and that this phone is
+   on the warehouse Wi-Fi." (on iPhone the sentence continues with where to allow the Local Network).
+   Evidence: the source text under the address; the tag and sentence; the host's log shows no line for this check.
+   A broken app would show: "Reachable" (the check does not ask the typed address), "From your server" still under
+   the address, or no sentence under the tag.
+
+11. Start state: step 10 passed; the laptop is on the warehouse Wi-Fi with address `<laptop address>` (the first three
+    numbers as the server's); on the laptop run `python3 -m http.server 8080` in an empty folder.
+    Action: tap **Change address**, type `http://<laptop address>:8080`, tap **Save address**, then tap **Check now**.
+    Expected: the tag "Not reachable" with the sentence "Another device answered at this address."; the laptop's
+    terminal prints exactly two requests, `GET /functions/v1/hello` and `GET /functions/v1/get-public-config`, both
+    with status 404, and no request with `/rest/v1/`.
+    Evidence: the sentence; the laptop's terminal lines.
+    A broken app would show: the sentence "Nothing answered at this address..." (the check cannot tell a stranger
+    from silence), "Reachable", or any `/rest/v1/` line on the laptop (a credential would have gone to a stranger).
+
+12. Start state: step 11 passed; the typed address is `http://<laptop address>:8080`.
+    Action: tap **Use your server's address**, then **Check now**.
+    Expected: the address reads `<server address>` with "From your server" under it, the "Use your server's address"
+    button is gone, and the tag is "Reachable".
+    Evidence: the address text and source; the tag.
+    A broken app would show: the typed address still shown, or "Not reachable".
+
+13. Start state: step 10 or 11 left a typed address on the phone (type one again if not); the internet works.
+    Action: on the host run `bash scripts/lan.sh off`, then on the phone force-close the app, open it and open
+    Connection.
+    Expected: the address reads "Not set" with the sentence "Your server does not offer a warehouse network address, so
+    this phone uses only the internet."; there is no "Typed by you", no **Change address** button, and **Check now** is
+    greyed. (Run `bash scripts/lan.sh on auto` afterwards; the phone learns the address again when it next starts.)
+    Evidence: the address line; the buttons that are present.
+    A broken app would show: the typed address still shown, or **Change address** still offered (the operator's "off"
+    would not have withdrawn the fallback from this phone).
+
+14. Start state: the outage is on again (cable out); the phone is on the warehouse Wi-Fi, has switched (pull the
+    Dispatch list down once; Connection says "Warehouse network"); the host's count for `<phone address>` is N3.
+    Action: switch the phone's Wi-Fi off, so it is on mobile data, then pull the Dispatch list down to refresh.
+    Expected: the refresh fails with the usual network message (the facility is not reachable); Connection says
+    "Internet" (the phone is back on the public path); the host's count for `<phone address>` is still N3.
+    Evidence: the tag; N3 and the count after.
+    A broken app would show: the tag "Warehouse network" on mobile data, or a count above N3 (the phone sent
+    something to the warehouse network address from another network).
+
+15. Start state: step 14 passed; the cable is still out; a second Wi-Fi network (a phone hotspot or a router on the
+    same private range, `192.168.1.x`) is available, with the laptop on it set to the SERVER'S address
+    `192.168.1.20` and running `python3 -m http.server 8080` there.
+    Action: join the phone to that second Wi-Fi and pull the Dispatch list down to refresh.
+    Expected: the refresh fails with the usual network message; the laptop's terminal shows at most the two requests
+    `GET /functions/v1/hello` and `GET /functions/v1/get-public-config` (404), and no request for `/rest/v1/`; the
+    tag says "Internet".
+    Evidence: the laptop's terminal lines; the tag.
+    A broken app would show: any `/rest/v1/` line on the laptop (the phone sent its session to the stranger who
+    holds the server's address on a network it has never seen), or the tag "Warehouse network".
+
+16. Start state: internet works; the phone is on mobile data (Wi-Fi off); Connection says "Internet".
+    Action: tap **Check now**.
+    Expected: the grey tag "Not on the warehouse Wi-Fi" with the sentence "Connect this phone to the warehouse Wi-Fi,
+    then check again."; the "Last checked" line is unchanged; the host's count for the phone's mobile address is 0.
+    Evidence: the tag and sentence; the "Last checked" text before and after; the host's log.
+    A broken app would show: "Not reachable" or "Reachable" (the phone asked a private address from mobile data), or
+    a new "Last checked" time.
+
+17. Start state: the internet works; the host runs the fallback with `LAN_CIDR` set to a range that does not contain
+    the phone's Wi-Fi address (`bash scripts/lan.sh on auto --cidr 192.168.77.0/24` on a throw-away facility; restore
+    it afterwards); the phone is on the warehouse Wi-Fi.
+    Action: tap **Check now**.
+    Expected: the red tag "Not reachable" with the sentence "Your server does not accept this phone's Wi-Fi address."
+    Evidence: the sentence; the host's log shows a 403 for `<phone address>`.
+    A broken app would show: "Reachable", or the "Nothing answered ..." sentence (the 403 was not told apart).
+
+18. Start state: a throw-away facility whose `gateway-lan` holds a different `ANON_KEY` than the installation: edit
+    `ANON_KEY` in `config/compose.env` to another well-formed key, run
+    `bash scripts/compose.sh --profile lan up -d --force-recreate --no-deps gateway-lan`, and put the original line
+    back (the public gateway keeps the right key); the host's internet cable is out; the phone is signed in on the
+    warehouse Wi-Fi.
+    Action: pull the Dispatch list down to refresh.
+    Expected: the phone is NOT signed out (no sign-in screen); within 60 s the banner reads "The warehouse network
+    answered with an old configuration. Ask whoever runs your server to run the server's start step again, or connect
+    to the internet."; Connection shows "Warehouse network" and the same sentence in red with the alert icon. Then run
+    `bash scripts/compose.sh --profile lan up -d --force-recreate --no-deps gateway-lan` on the host and refresh
+    again: the banner is gone and the list loads.
+    Evidence: the banner text; the Connection sentence; whether the sign-in screen appeared; the state after the
+    recreate.
+    A broken app would show: the sign-in screen (the session ended on the stale listener's 401), or the ordinary
+    "You're offline" banner without the sentence about the old configuration.
+
+19. Start state: step 17 left the last check at "Not reachable" at time t (tap **Check now** while `LAN_CIDR` is still
+    wrong if it did not); the host's fallback is back to normal (`bash scripts/lan.sh on auto`); the phone is on the
+    warehouse Wi-Fi with the internet working, and the app stays open in the foreground.
+    Action: leave the app open on Connection for 75 minutes.
+    Expected: "Last checked" shows a time after t with the result "Reachable" (the phone repeats a check that failed by
+    itself, about every hour); the host's log shows exactly one `hello` and one `get-public-config` more from
+    `<phone address>` and nothing else.
+    Evidence: the "Last checked" text before and after; the number of new log lines.
+    A broken app would show: the old "Last checked" time and "Not reachable" after 75 minutes (a failed check would be
+    repeated only after a day), or more than those two requests.
+
+Unit tests that cover what a phone cannot show here: a network change with the same private range and a stranger at the
+address (`src/config/__tests__/lanTransport.test.ts`, "a change of network"), the 429 and 5xx rule, the slow write and
+the upload (`lanTransport.test.ts`), and the typed address (`operatorServer.test.ts`).

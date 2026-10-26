@@ -104,6 +104,8 @@ it('says when no facility is chosen', async () => {
   const { texts } = await shown();
   expect(texts).toContain('No facility is chosen on this phone.');
   expect(texts).not.toContain('Server address');
+  // There is no server to be connected to, so no connection section either.
+  expect(texts).not.toContain('CONNECTION');
 });
 
 it('names the role in Gujarati and keeps the address as typed', async () => {
@@ -136,5 +138,5 @@ it('keeps "ask an administrator" for a staff member', async () => {
 it('draws its section titles with the shared SectionHeader', async () => {
   const { tree } = await shown();
   const headers = tree.root.findAllByType(SectionHeader).map(node => node.props.title);
-  expect(headers).toEqual(['Your facility', 'Getting help', 'Roles', 'When something changes', 'Details for support']);
+  expect(headers).toEqual(['Your facility', 'Connection', 'Getting help', 'Roles', 'When something changes', 'Details for support']);
 });
