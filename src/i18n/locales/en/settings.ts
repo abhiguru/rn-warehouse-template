@@ -146,4 +146,36 @@ export const settings = {
     newNumber: 'New mobile number: you sign in with your number, and the app cannot change it. Ask an administrator of your facility what to do.',
     newRole: 'Different role or access: only an administrator of your facility can change your role and the customers you see.',
   },
+  // Help, "Connection": how the phone reaches the server, and the warehouse network fallback
+  // (src/features/connection/ConnectionSection.tsx, src/config/lanTransport.ts). {{example}} is a sample address.
+  connection: {
+    title: 'Connection',
+    connectedVia: 'Connected via',
+    viaInternet: 'Internet',
+    viaWarehouseNetwork: 'Warehouse network',
+    viaHelp:
+      'The phone uses the warehouse network only while the internet is not working, and goes back to the internet when it works again.',
+    oldConfiguration:
+      'The warehouse network answered with an old configuration. Ask whoever runs your server to restart it.',
+    addressTitle: 'Warehouse network address',
+    addressFromServer: 'From your server',
+    addressTyped: 'Typed by you',
+    addressChange: 'Change address',
+    addressSave: 'Save address',
+    addressUseServer: "Use your server's address",
+    addressFieldLabel: 'Warehouse network address',
+    addressHelp: 'Your server shows this address. It starts with http:// and ends with a port number.',
+    addressInvalid: 'Enter an address like {{example}}: a private address, with a port number.',
+    addressSaved: 'Address saved.',
+    checkNow: 'Check now',
+    checking: 'Checking…',
+    resultReachable: 'Reachable (answered in {{ms}} ms)',
+    resultUnreachable: 'Not reachable',
+    resultRefused: "Not reachable: your server does not accept this phone's Wi-Fi address",
+    resultWrongServer: 'Not reachable: another device answered at this address',
+    resultNotSet: 'No address to check',
+    lastChecked: 'Last checked {{when}}: {{result}}',
+    neverChecked: 'Not checked yet',
+    dailyNote: 'The phone checks this address once a day while it is on Wi-Fi and the internet works.',
+  },
 };

@@ -195,6 +195,7 @@ jest.mock('@/config/operatorServer', () => ({
   onOperatorServerChange: jest.fn(() => () => undefined),
   getActiveOperatorServer: () => ({ origin: 'https://north-cold.example.test', instanceId: 'instance-north' }),
 }));
+jest.mock('@/config/lanCheck', () => ({ startDailyLanCheck: jest.fn(() => jest.fn()) }));
 jest.mock('@/config/netReachability', () => ({ installNetReachability: jest.fn(), applyNetReachability: jest.fn() }));
 jest.mock('@/config/operatorBootstrap', () => ({ verifySelectedOperator: jest.fn(), verifyForegroundOperator: jest.fn() }));
 jest.mock('@/config/operatorResume', () => ({

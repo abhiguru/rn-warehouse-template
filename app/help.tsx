@@ -2,7 +2,8 @@
  * Help (review 2026-10-13, O07): a grouped list on background.grouped, opened
  * from Settings.
  *
- * Sections: the facility and its server address; who to ask (the app's
+ * Sections: the facility and its server address; the connection (which path
+ * reaches the server, the warehouse network address and its check); who to ask (the app's
  * configuration holds no support contact, so Help says so rather than inventing
  * one, and the legal pages are not offered as help); the four roles, with the
  * person's own marked; what to do when the phone, the number or the role
@@ -18,6 +19,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { AppVersionFooter } from '@/components/AppVersionFooter';
+import { ConnectionSection } from '@/features/connection/ConnectionSection';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { useAppSelector } from '@/store/hooks';
@@ -96,6 +98,8 @@ export default function HelpScreen() {
             </View>
           )}
         </Section>
+
+        {server ? <ConnectionSection /> : null}
 
         <Section title={t('settings.help.askTitle')}>
           <View style={styles.cell}>
