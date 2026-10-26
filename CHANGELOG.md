@@ -11,6 +11,57 @@ Pairs with the backend `gateway-lan` workstream (WS-L backend: `lan.sh on`, `url
   `NSLocalNetworkUsageDescription`; Android gets a network-security config. `NSAllowsArbitraryLoads` stays `false` and no exception
   domain is allowed. The accepted exposure (tokens readable on the warehouse Wi-Fi during an outage) is written down in the backend's
   `docs/CONTAINER_SECURITY.md`.
+- **The path.** Requests go over the facility's public address; the identity (supabase client URL, token store
+  key `origin|instanceId`, caches, headers) never changes. When the public address fails, the host of a request
+  becomes the LAN address, and only inside the request path: `gatedFetch`, `discoverOperator`, the configuration
+  fetch, the share download and the eight signed-URL sites (`src/config/lanTransport.ts`;
+  `src/config/__tests__/lanCallSites.test.ts` lists them and fails when one is missing or a new one appears). The
+  address comes from `urls.lan` of the authenticated `get-config` (never of `get-public-config`), is saved in the
+  server's record at sign-in and refreshed on every answer of the public path, and is accepted only as
+  `http://<RFC 1918 IPv4>:<port>` (`src/config/lanAddress.ts`).
+- **The switching rule.** Stay on the current path. A request fails on it when its fetch rejects, no response
+  headers arrive within 4 s, or Cloudflare answers 530 (on the LAN path also: an answer without
+  `X-Warehouse-Path: lan`, a 403 of the listener, or the gateway's key-rejection 401). The app then asks `GET
+  /functions/v1/hello` of the other path (3 s); before it sends a credential to the LAN address it also checks,
+  with no credential, that the address answers as this warehouse (`X-Warehouse-Path: lan` and the saved
+  `instanceId`). It also asks the current path's own `hello` when the failure did not prove the path down, so a
+  slow request does not move the phone while the public path works. If the other path answers, the phone
+  switches and sticks to it for 10 minutes. The failed read is sent once more on the new path; a write is never
+  sent again (it ends as a lost answer and the screen re-asks through the lost-answer rule). On the LAN path the
+  public `hello` is asked after the stick, at most once per 10 minutes, and the phone goes back when it answers.
+  A probe that failed, or a path found working, is not asked again for 15 s. The association sign-in exchange
+  (`central-exchange`) never goes over the LAN. Operator sign-in does, so an administrator's break-glass code
+  works during an outage.
+- **A key rejection over the LAN path never ends the session** (WS-L backend review H1). A LAN listener that was
+  not recreated after a key rotation answers REST calls with the gateway's `401 {"message":"Unauthorized"}`. Over
+  the LAN path that is a failure of the path: the read goes back to the public path when it answers, a write is
+  not sent again, nothing reaches the session code, and when the public path is down too the offline banner says
+  "The warehouse network answered with an old configuration." The public path still ends the session on it.
+- **Online means the server answers.** NetInfo's reachability probe is the facility's `GET
+  /functions/v1/hello` (only a 200 counts), installed in `bootstrapApp`, applied again when the selected server
+  changes and reset when none is selected (`src/config/netReachability.ts`). `useIsOffline` and
+  `ensureNetworkConnection` no longer treat a failed public probe as offline while the warehouse network reaches
+  the server, so saves are not refused during an outage; a Wi-Fi that blocks Google no longer looks offline
+  either. A failed public probe asks the LAN address at once. The 1-hour public configuration cache now serves an
+  expired copy when neither path answers.
+- **Help → Connection.** Connected via (Internet / Warehouse network), the warehouse network address and whether
+  it is the server's or typed, a field to type one when the saved value is stale (validated on Save; kept until
+  the server sends a different one; kept when the server stops sending its own), Check now (reachable with the
+  time `hello` took, not reachable, refused because the phone's Wi-Fi address is outside the server's range, or
+  another device answered), and the last check. Once a day, on Wi-Fi with the internet up, the phone asks the
+  address by itself and records the result, so a broken fallback shows before an outage.
+  New text: `settings.connection.*`, `components.offline.warehouseNetworkOldConfiguration`; the Gujarati is a draft
+  for the owner's wording review.
+- **Native configuration (new APK and iOS build).** iOS: `NSAllowsLocalNetworking = true` in every build and
+  `NSLocalNetworkUsageDescription`; `NSAllowsArbitraryLoads` stays `false`, no exception domain; the Release
+  guard still refuses anything wider. `WAREHOUSE_IOS_LOCAL_NETWORKING` is gone (local networking is in every
+  build; `npm run ios` is plain `expo run:ios`); regenerate an old `ios/` with `npx expo prebuild --platform ios
+  --clean`. Android: a network security config (`plugins/with-android-lan-cleartext.js`, no new dependency) with
+  `cleartextTrafficPermitted="true"` in the base-config, because Android cannot name an address range; the app
+  limits cleartext to private addresses. See `docs/RELEASE_PREPARATION.md`.
+- **Known limits.** The phone starts on the public path every time; a cold start during an outage pays the 4 s
+  and the probe once. Pictures already on screen keep the link they were loaded with; new links follow the path.
+  Sign-in still needs the internet (an administrator's break-glass code excepted).
 
 ## Unreleased — Operator install fixes
 

@@ -70,18 +70,16 @@ npm run android
 npm run ios
 ```
 
-`npm run ios` generates a development project (it sets `WAREHOUSE_IOS_LOCAL_NETWORKING=1`, so the
-Debug build can reach Metro over http). Never archive that project for release: regenerate it without
-the flag first (see [RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md)).
-
-`npm run ios` reuses an existing `ios/` folder, so a folder that was generated for release keeps
-the release policy in Debug (Metro over http is refused), because `expo run:ios` prebuilds only
-when `ios/` is missing. Regenerate it with
-`WAREHOUSE_IOS_LOCAL_NETWORKING=1 npx expo prebuild --platform ios --clean` (or delete `ios/`)
-and run `npm run ios` again. The other way round, a
-local Release build through `npm run ios` fails on purpose: the project it generates is a
-development one, and a Release Run Script phase refuses it (it also fails when it cannot read
-the built `Info.plist`).
+Every iOS build, Debug and Release, has the same App Transport Security policy
+(`plugins/with-ios-transport-policy.js`): `NSAllowsArbitraryLoads = false` and
+`NSAllowsLocalNetworking = true`, nothing else. Local networking is what lets a Debug build reach
+Metro over http and what lets the app fall back to the server's address on the warehouse network
+when the internet is down. A Release Run Script phase fails an archive whose built `Info.plist`
+allows arbitrary loads or has an exception domain (it also fails when it cannot read the plist).
+An `ios/` folder generated before this policy (Release builds refused local networking) has the
+older Run Script phase: regenerate it with `npx expo prebuild --platform ios --clean` (or delete `ios/`).
+On Android the same fallback needs cleartext to a private address; `plugins/with-android-lan-cleartext.js`
+writes the network security config (see [RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md)).
 
 Expo generates the ignored native directories as needed; use `npm start` for
 later Metro sessions. Native builds are the baseline: Expo Go may not support

@@ -1,7 +1,9 @@
 // Ops review 2026-10-17, M12 / D24: the generated iOS Info.plist must not allow arbitrary
-// loads or carry an http exception in a release build. Local networking is allowed only in a
-// development build. No macOS is needed: `expo config --type introspect` evaluates the same
-// config plugins that `expo prebuild` runs and prints the Info.plist they would write.
+// loads or carry an http exception. Owner decision 2026-10-26 (WS-L) amends D24: every build, Debug and
+// Release, allows local networking (NSAllowsLocalNetworking) for the warehouse network fallback and
+// carries NSLocalNetworkUsageDescription, and nothing else is allowed. No macOS is needed:
+// `expo config --type introspect` evaluates the same config plugins that `expo prebuild` runs and prints
+// the Info.plist they would write.
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,7 +14,11 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
-const { isDevelopmentBuild, transportPolicy } = require('../plugins/with-ios-transport-policy.js');
+const {
+  LOCAL_NETWORK_USAGE_DESCRIPTION,
+  refuseUsbHostInRelease,
+  transportPolicy,
+} = require('../plugins/with-ios-transport-policy.js');
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 // Everything that can switch the development policy on, so a developer's shell cannot change
@@ -31,70 +37,74 @@ function introspect(extraEnv = {}) {
   });
 }
 
-function atsOf(extraEnv) {
+function plistOf(extraEnv) {
   const result = introspect(extraEnv);
   assert.equal(result.status, 0, `expo config failed: ${result.stderr}`);
-  const config = JSON.parse(result.stdout);
-  return config.ios.infoPlist.NSAppTransportSecurity;
+  return JSON.parse(result.stdout).ios.infoPlist;
 }
+const atsOf = extraEnv => plistOf(extraEnv).NSAppTransportSecurity;
 
-test('a release Info.plist forbids arbitrary loads and has no exception of any kind', () => {
+// The two keys of the warehouse network fallback, and nothing else.
+const POLICY = { NSAllowsArbitraryLoads: false, NSAllowsLocalNetworking: true };
+
+test('an Info.plist forbids arbitrary loads, has no exception, and allows local networking and nothing else', () => {
   const ats = atsOf();
   assert.equal(ats.NSAllowsArbitraryLoads, false);
-  // Exactly one key: no exception domains (Expo's template adds localhost), no local
-  // networking, no web-content or media exemption.
-  assert.deepEqual(ats, { NSAllowsArbitraryLoads: false });
+  assert.equal(ats.NSAllowsLocalNetworking, true);
+  // Exactly two keys: no exception domains (Expo's template adds localhost), no web-content or media exemption.
+  assert.deepEqual(ats, POLICY);
 });
 
-test('the development switches allow local networking and nothing else', () => {
+test('the Info.plist has the Local Network prompt text, in English', () => {
+  const plist = plistOf();
+  assert.equal(plist.NSLocalNetworkUsageDescription, LOCAL_NETWORK_USAGE_DESCRIPTION);
+  assert.match(plist.NSLocalNetworkUsageDescription, /warehouse network/);
+  assert.match(plist.NSLocalNetworkUsageDescription, /^\$\(PRODUCT_NAME\) /);
+});
+
+test('every build profile and development switch gets the same policy', () => {
   for (const env of [
-    { WAREHOUSE_IOS_LOCAL_NETWORKING: '1' },
+    {},
     { WAREHOUSE_IOS_USB_HOST: '169.254.43.183:8081' },
     { EAS_BUILD_PROFILE: 'development' },
+    { EAS_BUILD_PROFILE: 'preview' },
+    { EAS_BUILD_PROFILE: 'production' },
   ]) {
-    const ats = atsOf(env);
-    assert.deepEqual(ats, { NSAllowsArbitraryLoads: false, NSAllowsLocalNetworking: true }, JSON.stringify(env));
-    assert.equal(ats.NSExceptionDomains, undefined, JSON.stringify(env));
+    const plist = plistOf(env);
+    assert.deepEqual(plist.NSAppTransportSecurity, POLICY, JSON.stringify(env));
+    assert.equal(plist.NSAppTransportSecurity.NSExceptionDomains, undefined, JSON.stringify(env));
+    assert.equal(plist.NSLocalNetworkUsageDescription, LOCAL_NETWORK_USAGE_DESCRIPTION, JSON.stringify(env));
   }
 });
 
-test('the EAS preview and production profiles stay on the release policy', () => {
+test('a release profile refuses the USB development host instead of building', () => {
   for (const profile of ['preview', 'production']) {
-    assert.deepEqual(atsOf({ EAS_BUILD_PROFILE: profile }), { NSAllowsArbitraryLoads: false }, profile);
-  }
-});
-
-test('a release profile refuses the development switches instead of building', () => {
-  for (const profile of ['preview', 'production']) {
-    const result = introspect({ EAS_BUILD_PROFILE: profile, WAREHOUSE_IOS_LOCAL_NETWORKING: '1' });
+    const result = introspect({ EAS_BUILD_PROFILE: profile, WAREHOUSE_IOS_USB_HOST: '169.254.43.183:8081' });
     assert.notEqual(result.status, 0, profile);
-    assert.match(result.stderr, /must not allow cleartext local networking/, profile);
+    assert.match(result.stderr, /must not use it/, profile);
   }
 });
 
-test('the policy decision for each combination of switches', () => {
-  assert.equal(isDevelopmentBuild({}), false);
-  assert.equal(isDevelopmentBuild({ WAREHOUSE_IOS_LOCAL_NETWORKING: '' }), false);
-  assert.equal(isDevelopmentBuild({ WAREHOUSE_IOS_LOCAL_NETWORKING: '0' }), false);
-  assert.equal(isDevelopmentBuild({ WAREHOUSE_IOS_LOCAL_NETWORKING: '1' }), true);
-  assert.equal(isDevelopmentBuild({ WAREHOUSE_IOS_USB_HOST: '169.254.43.183:8081' }), true);
-  assert.equal(isDevelopmentBuild({ EAS_BUILD_PROFILE: 'development' }), true);
-  assert.equal(isDevelopmentBuild({ EAS_BUILD_PROFILE: 'preview' }), false);
-  assert.equal(isDevelopmentBuild({ EAS_BUILD_PROFILE: 'production' }), false);
-  // A misspelt switch must not quietly give a development build without local networking.
-  assert.throws(() => isDevelopmentBuild({ WAREHOUSE_IOS_LOCAL_NETWORKING: 'true' }), /must be 1/);
+test('the policy is the two keys, and the USB host is refused only under a release profile', () => {
+  assert.deepEqual(transportPolicy(), POLICY);
+  assert.doesNotThrow(() => refuseUsbHostInRelease({}));
+  assert.doesNotThrow(() => refuseUsbHostInRelease({ EAS_BUILD_PROFILE: 'production' }));
+  assert.doesNotThrow(() => refuseUsbHostInRelease({ EAS_BUILD_PROFILE: 'development', WAREHOUSE_IOS_USB_HOST: '169.254.43.183:8081' }));
+  assert.doesNotThrow(() => refuseUsbHostInRelease({ WAREHOUSE_IOS_USB_HOST: '169.254.43.183:8081' }));
   assert.throws(
-    () => isDevelopmentBuild({ EAS_BUILD_PROFILE: 'production', WAREHOUSE_IOS_USB_HOST: '169.254.43.183:8081' }),
+    () => refuseUsbHostInRelease({ EAS_BUILD_PROFILE: 'production', WAREHOUSE_IOS_USB_HOST: '169.254.43.183:8081' }),
     /"production" build profile/
   );
-  assert.deepEqual(transportPolicy(false), { NSAllowsArbitraryLoads: false });
-  assert.deepEqual(transportPolicy(true), { NSAllowsArbitraryLoads: false, NSAllowsLocalNetworking: true });
+  assert.throws(
+    () => refuseUsbHostInRelease({ EAS_BUILD_PROFILE: 'preview', WAREHOUSE_IOS_USB_HOST: '169.254.43.183:8081' }),
+    /"preview" build profile/
+  );
 });
 
-test('npm run ios, the local debug build, generates the development policy', () => {
+test('npm run ios needs no switch: local networking is in every build', () => {
   const { scripts } = require('../package.json');
-  assert.match(scripts.ios, /^WAREHOUSE_IOS_LOCAL_NETWORKING=1 expo run:ios$/);
-  // The USB helper's prebuild sets WAREHOUSE_IOS_USB_HOST, which is a development switch too.
+  assert.equal(scripts.ios, 'expo run:ios');
+  // The USB helper's prebuild still sets WAREHOUSE_IOS_USB_HOST (the bundle address of a USB debug build).
   const usb = readFileSync(new URL('./ios-usb.mjs', import.meta.url), 'utf8');
   assert.match(usb, /prebuild[^]*WAREHOUSE_IOS_USB_HOST/);
 });
@@ -120,8 +130,10 @@ test('the generated Xcode project gets a Release-only guard phase, once', () => 
   // It is valid shell (the Xcode build cannot be run here, but the syntax can be).
   assert.equal(spawnSync('sh', ['-n', '-c', script]).status, 0);
   assert.match(script, /\$CONFIGURATION" = "Release"/);
-  assert.match(script, /NSAppTransportSecurity:NSAllowsLocalNetworking/);
   assert.match(script, /NSAppTransportSecurity:NSAllowsArbitraryLoads/);
+  assert.match(script, /NSAppTransportSecurity:NSExceptionDomains/);
+  // Local networking is the fallback: the guard must not refuse it.
+  assert.doesNotMatch(script, /NSAllowsLocalNetworking/);
   assert.match(script, /exit 1/);
   // The phase belongs to the app target's build phases.
   const target = project.getFirstTarget();
@@ -161,7 +173,8 @@ function runGuard({ plist, configuration = 'Release', standIn = true }) {
     rmSync(directory, { recursive: true, force: true });
   }
 }
-const CLEAN = 'CFBundleIdentifier=com.example.test\nNSAppTransportSecurity:NSAllowsArbitraryLoads=false\n';
+const CLEAN =
+  'CFBundleIdentifier=com.example.test\nNSAppTransportSecurity:NSAllowsArbitraryLoads=false\nNSAppTransportSecurity:NSAllowsLocalNetworking=true\n';
 
 test('the Release guard passes a clean Info.plist and ignores other configurations', () => {
   assert.equal(runGuard({ plist: CLEAN }).status, 0);
@@ -183,16 +196,27 @@ test('the Release guard fails when PlistBuddy itself is missing', () => {
   assert.match(result.stderr, /PlistBuddy is missing/);
 });
 
-test('the Release guard fails on local networking, arbitrary loads and exception domains', () => {
+test('the Release guard accepts local networking, with or without the key', () => {
+  assert.equal(runGuard({ plist: CLEAN }).status, 0);
+  assert.equal(
+    runGuard({ plist: 'CFBundleIdentifier=com.example.test\nNSAppTransportSecurity:NSAllowsArbitraryLoads=false\n' }).status,
+    0
+  );
+});
+
+test('the Release guard fails on exception domains, the arbitrary-load exemptions and arbitrary loads', () => {
   for (const [extra, message] of [
-    ['NSAppTransportSecurity:NSAllowsLocalNetworking=true', /NSAllowsLocalNetworking/],
     ['NSAppTransportSecurity:NSExceptionDomains=Dict', /NSExceptionDomains/],
+    ['NSAppTransportSecurity:NSAllowsArbitraryLoadsInWebContent=true', /NSAllowsArbitraryLoadsInWebContent/],
+    ['NSAppTransportSecurity:NSAllowsArbitraryLoadsForMedia=true', /NSAllowsArbitraryLoadsForMedia/],
   ]) {
     const result = runGuard({ plist: `${CLEAN}${extra}\n` });
     assert.equal(result.status, 1, extra);
     assert.match(result.stderr, message);
   }
-  const arbitrary = runGuard({ plist: 'CFBundleIdentifier=com.example.test\nNSAppTransportSecurity:NSAllowsArbitraryLoads=true\n' });
+  const arbitrary = runGuard({
+    plist: 'CFBundleIdentifier=com.example.test\nNSAppTransportSecurity:NSAllowsArbitraryLoads=true\nNSAppTransportSecurity:NSAllowsLocalNetworking=true\n',
+  });
   assert.equal(arbitrary.status, 1);
   assert.match(arbitrary.stderr, /NSAllowsArbitraryLoads/);
 });
