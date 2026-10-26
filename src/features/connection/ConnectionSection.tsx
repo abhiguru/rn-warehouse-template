@@ -5,17 +5,22 @@
  *  - Connected via: Internet, or Warehouse network while the internet is not working
  *    (src/config/lanTransport.ts).
  *  - Warehouse network address: the server's own (`urls.lan`), or one typed here when the saved one is
- *    stale (a DHCP change). A typed address is kept until the server sends a different one.
- *  - Check now, and the last check, daily on Wi-Fi (src/config/lanCheck.ts).
+ *    stale (a DHCP change moved the server inside its network). Typing is offered only while the server
+ *    sends an address, and only the last number of it can change; the typed one is dropped when the server
+ *    sends a different one or none (src/config/operatorServer.ts).
+ *  - Check now, and the last check, daily on the warehouse Wi-Fi (src/config/lanCheck.ts).
  *
- * Built from the style guide's grouped list (§14.12): cells on `surface.card`, `ui/Input` and `ui/Button`.
+ * Built from the style guide's grouped list (§14.12): `HelpSection`, cells on `surface.card`, `StatusTag` for
+ * every status (§3.5), `ui/Input` and `ui/Button`. A label with its value reads as one element (§11.3).
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui';
-import { SectionHeader } from '@/components/ui/SectionHeader';
-import { useThemedStyles } from '@/hooks/useTheme';
+import { StatusTag, STATUS_ICONS, type StatusKind } from '@/components/ui/StatusTag';
+import { HelpSection } from '@/components/HelpSection';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useLanStatus } from '@/hooks/useLanStatus';
 import { getActiveOperatorServer, setTypedLanAddress } from '@/config/operatorServer';
 import { LAN_ADDRESS_EXAMPLE } from '@/config/lanAddress';
@@ -27,37 +32,72 @@ import {
   type LanCheckRecord,
 } from '@/config/lanCheck';
 import { formatDateTime } from '@/utils/formatters';
-import { formatIdentifier, localizeDigits, t } from '@/i18n';
+import { formatIdentifier, t } from '@/i18n';
 import { showToast } from '@/utils/toast';
-import { fontWeight, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, space, typography, type ThemeTokens } from '@/theme/tokens';
 
 export { LAN_ADDRESS_EXAMPLE };
 
-/** The sentence for the outcome of a check. */
-export function checkResultText(answer: LanCheckAnswer): string {
+/** How an outcome of a check is shown: a status (§3.5) with its word, and the sentence under it for a problem. */
+export type CheckPresentation = {
+  /** Null for "No address to check", which is not a status. */
+  status: StatusKind | null;
+  word: string;
+  detail: string | null;
+};
+
+/** The status word and sentence for the outcome of a check. */
+export function checkPresentation(answer: LanCheckAnswer): CheckPresentation {
   switch (answer.outcome) {
     case 'reachable':
-      return t('settings.connection.resultReachable', {
-        ms: localizeDigits(String(Math.max(1, Math.round((answer as LanCheckRecord).ms ?? 0)))),
-      });
+      return { status: 'positive', word: t('settings.connection.statusReachable'), detail: null };
     case 'refused':
-      return t('settings.connection.resultRefused');
+      return { status: 'negative', word: t('settings.connection.statusUnreachable'), detail: t('settings.connection.detailRefused') };
     case 'wrong-server':
-      return t('settings.connection.resultWrongServer');
+      return { status: 'negative', word: t('settings.connection.statusUnreachable'), detail: t('settings.connection.detailWrongServer') };
+    case 'other-network':
+      return { status: 'neutral', word: t('settings.connection.statusOtherNetwork'), detail: t('settings.connection.detailOtherNetwork') };
+    case 'network-unknown':
+      return { status: 'neutral', word: t('settings.connection.statusNetworkUnknown'), detail: t('settings.connection.detailNetworkUnknown') };
     case 'not-set':
-      return t('settings.connection.resultNotSet');
-    default:
-      return t('settings.connection.resultUnreachable');
+      return { status: null, word: t('settings.connection.resultNotSet'), detail: null };
+    default: {
+      // On iPhone a refused Local Network permission looks exactly like an address nobody answers.
+      const hint = Platform.OS === 'ios' ? ` ${t('settings.connection.detailUnreachableIos')}` : '';
+      return {
+        status: 'negative',
+        word: t('settings.connection.statusUnreachable'),
+        detail: `${t('settings.connection.detailUnreachable')}${hint}`,
+      };
+    }
   }
+}
+
+function CheckResult({ answer, styles }: { answer: LanCheckAnswer; styles: ReturnType<typeof makeStyles> }) {
+  const shown = checkPresentation(answer);
+  return (
+    <View
+      style={styles.result}
+      accessible
+      accessibilityLabel={shown.detail ? `${shown.word}. ${shown.detail}` : shown.word}
+      accessibilityLiveRegion="polite"
+    >
+      {shown.status ? <StatusTag status={shown.status} label={shown.word} /> : <Text style={styles.value}>{shown.word}</Text>}
+      {shown.detail ? <Text style={styles.secondary}>{shown.detail}</Text> : null}
+    </View>
+  );
 }
 
 export function ConnectionSection() {
   const styles = useThemedStyles(makeStyles);
+  const tokens = useTokens();
   const lan = useLanStatus();
   // The server read from the saved copy each time the address changes or is saved here.
   const [saves, setSaves] = useState(0);
   const server = getActiveOperatorServer();
   const typed = Boolean(server?.lanTyped);
+  // Typing is possible only while the server sends an address: the person corrects its host part.
+  const offered = server?.lan ?? null;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
@@ -83,7 +123,12 @@ export function ConnectionSection() {
   const save = async () => {
     const saved = await setTypedLanAddress(draft);
     if (!saved) {
-      setProblem(t('settings.connection.addressInvalid', { example: formatIdentifier(LAN_ADDRESS_EXAMPLE) }));
+      setProblem(
+        t('settings.connection.addressInvalid', {
+          server: formatIdentifier(offered ?? LAN_ADDRESS_EXAMPLE),
+          example: formatIdentifier(LAN_ADDRESS_EXAMPLE),
+        })
+      );
       return;
     }
     setEditing(false);
@@ -110,132 +155,129 @@ export function ConnectionSection() {
     }
   };
 
-  return (
-    <View style={styles.section}>
-      <SectionHeader title={t('settings.connection.title')} style={styles.sectionHeader} />
-      <View style={styles.sectionContent}>
-        <View style={[styles.cell, styles.divided]}>
-          <Text style={styles.label}>{t('settings.connection.connectedVia')}</Text>
-          <Text style={styles.value}>
-            {t(lan.path === 'lan' ? 'settings.connection.viaWarehouseNetwork' : 'settings.connection.viaInternet')}
-          </Text>
-          <Text style={styles.secondary}>{t('settings.connection.viaHelp')}</Text>
-          {lan.failure === 'old-configuration' ? (
-            <Text style={styles.warning} accessibilityLiveRegion="polite">
-              {t('settings.connection.oldConfiguration')}
-            </Text>
-          ) : null}
-        </View>
+  const viaWord = t(lan.path === 'lan' ? 'settings.connection.viaWarehouseNetwork' : 'settings.connection.viaInternet');
+  const sourceWord = t(typed ? 'settings.connection.addressTyped' : 'settings.connection.addressFromServer');
+  const addressText = address ? formatIdentifier(address) : t('common.notSet');
+  const problemText = lan.failure === 'old-configuration' ? t('settings.connection.oldConfiguration') : null;
 
-        <View style={[styles.cell, styles.divided]}>
+  return (
+    <HelpSection title={t('settings.connection.title')}>
+      <View style={[styles.cell, styles.divided]}>
+        <View
+          style={styles.group}
+          accessible
+          accessibilityLabel={`${t('settings.connection.connectedVia')}, ${viaWord}. ${t('settings.connection.viaHelp')}`}
+        >
+          <Text style={styles.label}>{t('settings.connection.connectedVia')}</Text>
+          <StatusTag status={lan.path === 'lan' ? 'informative' : 'neutral'} label={viaWord} />
+          <Text style={styles.secondary}>{t('settings.connection.viaHelp')}</Text>
+        </View>
+        {problemText ? (
+          <View style={styles.problem} accessible accessibilityLabel={problemText} accessibilityLiveRegion="polite">
+            <Icon name={STATUS_ICONS.negative} size={iconSize.sm} color={tokens.status.negative.text} />
+            <Text style={styles.warning}>{problemText}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={[styles.cell, styles.divided]}>
+        <View
+          style={styles.group}
+          accessible
+          accessibilityLabel={
+            address
+              ? `${t('settings.connection.addressTitle')}, ${addressText}. ${sourceWord}`
+              : `${t('settings.connection.addressTitle')}, ${addressText}. ${t('settings.connection.addressNone')}`
+          }
+        >
           <Text style={styles.label}>{t('settings.connection.addressTitle')}</Text>
           <Text style={styles.value} selectable>
-            {address ? formatIdentifier(address) : t('common.notSet')}
+            {addressText}
           </Text>
-          {address ? (
-            <Text style={styles.secondary}>
-              {t(typed ? 'settings.connection.addressTyped' : 'settings.connection.addressFromServer')}
-            </Text>
-          ) : null}
-          {editing ? (
-            <View style={styles.form}>
-              <Input
-                label={t('settings.connection.addressFieldLabel')}
-                value={draft}
-                onChangeText={text => {
-                  setDraft(text);
-                  if (problem) setProblem(null);
-                }}
-                placeholder={LAN_ADDRESS_EXAMPLE}
-                helperText={t('settings.connection.addressHelp')}
-                error={problem ?? undefined}
-                identifier
-                keyboardType="url"
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="done"
-                onSubmitEditing={() => void save()}
-                showClearButton
-              />
-              <View style={styles.buttons}>
-                <Button type="primary" size="auto" onPress={() => void save()}>
-                  {t('settings.connection.addressSave')}
-                </Button>
-                <Button
-                  type="secondary"
-                  variant="normal"
-                  size="auto"
-                  onPress={() => {
-                    setEditing(false);
-                    setProblem(null);
-                  }}
-                >
-                  {t('common.cancel')}
-                </Button>
-              </View>
-            </View>
-          ) : (
+          <Text style={styles.secondary}>{address ? sourceWord : t('settings.connection.addressNone')}</Text>
+        </View>
+        {editing ? (
+          <View style={styles.form}>
+            <Input
+              label={t('settings.connection.addressFieldLabel')}
+              value={draft}
+              onChangeText={text => {
+                setDraft(text);
+                if (problem) setProblem(null);
+              }}
+              placeholder={LAN_ADDRESS_EXAMPLE}
+              helperText={t('settings.connection.addressHelp')}
+              error={problem ?? undefined}
+              identifier
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={() => void save()}
+              showClearButton
+            />
             <View style={styles.buttons}>
+              <Button type="primary" size="auto" onPress={() => void save()}>
+                {t('settings.connection.addressSave')}
+              </Button>
+              <Button
+                type="secondary"
+                variant="normal"
+                size="auto"
+                onPress={() => {
+                  setEditing(false);
+                  setProblem(null);
+                }}
+              >
+                {t('common.cancel')}
+              </Button>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.buttons}>
+            {offered ? (
               <Button type="tertiary" size="auto" onPress={openEditor}>
                 {t('settings.connection.addressChange')}
               </Button>
-              {typed ? (
-                <Button type="tertiary" size="auto" onPress={() => void useServerAddress()}>
-                  {t('settings.connection.addressUseServer')}
-                </Button>
-              ) : null}
-            </View>
-          )}
-        </View>
-
-        <View style={styles.cell}>
-          <View style={styles.buttons}>
-            <Button
-              type="secondary"
-              size="auto"
-              onPress={() => void check()}
-              loading={checking}
-              loadingText={t('settings.connection.checking')}
-              disabled={!address || checking}
-            >
-              {t('settings.connection.checkNow')}
-            </Button>
+            ) : null}
+            {typed ? (
+              <Button type="tertiary" size="auto" onPress={() => void useServerAddress()}>
+                {t('settings.connection.addressUseServer')}
+              </Button>
+            ) : null}
           </View>
-          {result ? (
-            <Text
-              style={result.outcome === 'reachable' ? styles.value : styles.warning}
-              accessibilityLiveRegion="polite"
-            >
-              {checkResultText(result)}
-            </Text>
-          ) : null}
-          <Text style={styles.secondary}>
-            {last
-              ? t('settings.connection.lastChecked', { when: formatDateTime(new Date(last.at)), result: checkResultText(last) })
-              : t('settings.connection.neverChecked')}
-          </Text>
-          <Text style={styles.secondary}>{t('settings.connection.dailyNote')}</Text>
-        </View>
+        )}
       </View>
-    </View>
+
+      <View style={styles.cell}>
+        <View style={styles.buttons}>
+          <Button
+            type="secondary"
+            size="auto"
+            onPress={() => void check()}
+            loading={checking}
+            loadingText={t('settings.connection.checking')}
+            disabled={!address || checking}
+          >
+            {t('settings.connection.checkNow')}
+          </Button>
+        </View>
+        {result ? <CheckResult answer={result} styles={styles} /> : null}
+        <Text style={styles.secondary}>
+          {last
+            ? t('settings.connection.lastChecked', {
+                when: formatDateTime(new Date(last.at)),
+                result: checkPresentation(last).word,
+              })
+            : t('settings.connection.neverChecked')}
+        </Text>
+        <Text style={styles.secondary}>{t('settings.connection.dailyNote')}</Text>
+      </View>
+    </HelpSection>
   );
 }
 
 const makeStyles = (t: ThemeTokens) => ({
-  section: {
-    marginBottom: space.xxl,
-  },
-  // SectionHeader brings its own top padding; the section's bottom margin already spaces it.
-  sectionHeader: {
-    marginHorizontal: layout.marginCompact,
-    paddingTop: 0,
-  },
-  sectionContent: {
-    marginHorizontal: layout.marginCompact,
-    borderRadius: radius.card,
-    overflow: 'hidden' as const,
-    backgroundColor: t.surface.card,
-  },
   cell: {
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
@@ -244,6 +286,9 @@ const makeStyles = (t: ThemeTokens) => ({
   divided: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: t.border.divider,
+  },
+  group: {
+    gap: space.xs,
   },
   form: {
     gap: space.sm,
@@ -254,6 +299,15 @@ const makeStyles = (t: ThemeTokens) => ({
     flexWrap: 'wrap' as const,
     gap: space.sm,
     alignItems: 'center' as const,
+  },
+  result: {
+    gap: space.xs,
+  },
+  problem: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
+    marginTop: space.xs,
   },
   label: {
     ...typography.footnote,
@@ -269,6 +323,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   warning: {
     ...typography.body,
+    flex: 1,
     fontWeight: fontWeight.semibold,
     color: t.status.negative.text,
   },

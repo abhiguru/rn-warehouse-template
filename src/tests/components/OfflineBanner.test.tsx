@@ -126,7 +126,7 @@ it('stops the active animation when the banner unmounts', async () => {
 
 it('says the warehouse network answered with an old configuration when it did, and the usual line otherwise', async () => {
   const OLD =
-    'The warehouse network answered with an old configuration. Ask whoever runs your server to restart it, or connect to the internet.';
+    "The warehouse network answered with an old configuration. Ask whoever runs your server to run the server's start step again, or connect to the internet.";
   const shows = (text: string) => tree!.root.findAllByType('Text' as unknown as React.ElementType).some(node => node.props.children === text);
   mockOffline = true;
   await act(async () => { tree = create(<OfflineBanner />); });

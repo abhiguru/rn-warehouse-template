@@ -456,7 +456,7 @@ export const components = {
     // Shown instead of the line above when the warehouse network (not the internet) reached the server but
     // answered with keys from before a key change (src/config/lanTransport.ts).
     warehouseNetworkOldConfiguration:
-      'The warehouse network answered with an old configuration. Ask whoever runs your server to restart it, or connect to the internet.',
+      "The warehouse network answered with an old configuration. Ask whoever runs your server to run the server's start step again, or connect to the internet.",
   },
   stock: {
     currentOfTotal: '{{current}} of {{total}}',

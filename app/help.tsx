@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { SectionHeader } from '@/components/ui/SectionHeader';
+import { HelpSection as Section } from '@/components/HelpSection';
 import { AppVersionFooter } from '@/components/AppVersionFooter';
 import { ConnectionSection } from '@/features/connection/ConnectionSection';
 import { getActiveOperatorServer } from '@/config/operatorServer';
@@ -29,8 +29,6 @@ import { roleLabel } from '@/utils/roleLabel';
 import {
   fontWeight,
   iconSize,
-  layout,
-  radius,
   space,
   touchTarget,
   typography,
@@ -43,16 +41,6 @@ const ROLES: { role: string; description: TranslationKey }[] = [
   { role: 'staff', description: 'users.roleDescription.staff' },
   { role: 'customer', description: 'users.roleDescription.customer' },
 ];
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.section}>
-      <SectionHeader title={title} style={styles.sectionHeader} />
-      <View style={styles.sectionContent}>{children}</View>
-    </View>
-  );
-}
 
 export default function HelpScreen() {
   const insets = useSafeAreaInsets();
@@ -187,20 +175,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   scrollView: {
     flex: 1,
-  },
-  section: {
-    marginBottom: space.xxl,
-  },
-  // SectionHeader brings its own top padding; the section's bottom margin already spaces it.
-  sectionHeader: {
-    marginHorizontal: layout.marginCompact,
-    paddingTop: 0,
-  },
-  sectionContent: {
-    marginHorizontal: layout.marginCompact,
-    borderRadius: radius.card,
-    overflow: 'hidden' as const,
-    backgroundColor: t.surface.card,
   },
   cell: {
     paddingHorizontal: space.lg,
