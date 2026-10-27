@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { httpOrigin, validatePublicConfig } from './bootstrapValidation';
 import { withLocalizedBootstrapErrors } from './bootstrapErrors';
@@ -6,6 +7,9 @@ import type { PublicConfig } from '@/services/configService';
 import { t } from '@/i18n';
 import { isHostPartChange, parseLanOrigin } from './lanAddress';
 import { setLanContext, toCanonicalUrl, transportFetch } from './lanTransport';
+import { AppTooOldError } from './appTooOld';
+import { clearUpgradeNotice } from './upgradeNotice';
+import { DISCOVERY_BUSY_CODE, UPGRADING_CODE } from '@/utils/serverText';
 
 const STORAGE_KEY = 'operator_server_v1';
 const STAGED_KEY = 'operator_server_staged_v1';
@@ -80,6 +84,23 @@ export function compareVersions(current: string, minimum: string): number {
   return 0;
 }
 
+/**
+ * The public Google Play listing of this build (owner decision: updates reach the phones through Play), built from the
+ * real application id: the id the build was made with (app.config.js, `Constants.expoConfig.android.package`) when it is a
+ * real one, else `EXPO_PUBLIC_ANDROID_PACKAGE`. No link when neither is real (missing, or the template's `com.example...`
+ * placeholder) or the phone is not an Android one: a link to a listing that does not exist is worse than none, and the screen
+ * then says to ask the facility. The build's own id comes first so that a stale environment value can never send the person
+ * to another app's listing.
+ */
+export function updateUrlOf(): string | undefined {
+  if (Platform.OS !== 'android') return undefined;
+  const isReal = (id: string) => /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}$/.test(id) && !id.startsWith('com.example');
+  const built = (Constants.expoConfig?.android?.package || '').trim();
+  const configured = (process.env.EXPO_PUBLIC_ANDROID_PACKAGE || '').trim();
+  const id = isReal(built) ? built : isReal(configured) ? configured : '';
+  return id ? `https://play.google.com/store/apps/details?id=${id}` : undefined;
+}
+
 export function validateOperatorDiscovery(json: unknown, origin: string): PublicConfig {
   const config = withLocalizedBootstrapErrors(() => validatePublicConfig(json, origin));
   if (
@@ -94,8 +115,29 @@ export function validateOperatorDiscovery(json: unknown, origin: string): Public
   ) throw new Error(t('errors.server.discoveryIncompatible'));
   const currentVersion = Constants.expoConfig?.version || '0.1.0';
   if (compareVersions(currentVersion, config.minimumClientVersion) < 0)
-    throw new Error(t('errors.server.requiresAppVersion', { version: config.minimumClientVersion }));
+    throw new AppTooOldError(
+      t('errors.server.requiresAppVersion', { version: config.minimumClientVersion }),
+      config.minimumClientVersion,
+      currentVersion,
+      updateUrlOf()
+    );
   return config;
+}
+
+/**
+ * What a non-OK answer of the discovery request is called. The facility ANSWERED in two cases, and says so in words the
+ * person can use; the identity the phone holds is untouched by either (nothing is saved on a failed discovery):
+ *  - 503 with the body code `upgrading`: the gateway is closed for an upgrade (docs/API_CONTRACT.md in the backend);
+ *  - 429: the facility is rate limiting this phone.
+ * Anything else keeps the "HTTP <status>" text.
+ */
+async function discoveryHttpError(response: Response): Promise<Error> {
+  if (response.status === 429) return Object.assign(new Error(t('errors.server.discoveryBusy')), { code: DISCOVERY_BUSY_CODE });
+  if (response.status === 503) {
+    const body = await response.json().catch(() => null) as { code?: unknown } | null;
+    if (body?.code === UPGRADING_CODE) return Object.assign(new Error(t('components.upgrading.message')), { code: UPGRADING_CODE });
+  }
+  return new Error(t('errors.server.discoveryFailedHttp', { status: String(response.status) }));
 }
 
 export async function discoverOperator(input: string): Promise<{ server: OperatorServer; config: PublicConfig }> {
@@ -115,7 +157,7 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
       // (An answer over the warehouse network is read as the address it stands for.)
       if (response.url && !toCanonicalUrl(response.url).startsWith(`${origin}/`))
         throw new Error(t('errors.server.discoveryRedirected'));
-      if (!response.ok) throw new Error(t('errors.server.discoveryFailedHttp', { status: String(response.status) }));
+      if (!response.ok) throw await discoveryHttpError(response);
       return validateOperatorDiscovery(await response.json(), origin);
     })(),
     new Promise<never>((_, reject) => {
@@ -237,3 +279,6 @@ export async function clearOperatorServer(): Promise<void> {
   syncLanContext(null);
   for (const listener of listeners) listener();
 }
+
+// A change of server ends the notice about the facility the phone has left (a session change does too: upgradeNotice.ts).
+onOperatorServerChange(clearUpgradeNotice);

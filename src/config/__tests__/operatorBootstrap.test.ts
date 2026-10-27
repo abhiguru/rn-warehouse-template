@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { verifySelectedOperator, verifyForegroundOperator } from '../operatorBootstrap';
 import { getActiveOperatorServer, loadOperatorServer, saveOperatorServer } from '../operatorServer';
+import { clearAppTooOld, getAppTooOld } from '../appTooOld';
+import { isUpgrading, resetUpgradeNotice } from '../upgradeNotice';
+import { operatorResumeGate } from '../operatorResume';
 
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '0.1.0' } } }));
 const oldFetch = global.fetch;
@@ -24,6 +27,8 @@ function deferred<T>() {
 }
 
 beforeEach(async () => {
+  clearAppTooOld();
+  resetUpgradeNotice();
   await AsyncStorage.clear();
   await loadOperatorServer();
   global.fetch = jest.fn().mockResolvedValue(publicResponse());
@@ -131,4 +136,51 @@ it('offline foreground verification preserves selection and never initializes an
   await expect(verifyForegroundOperator(() => true, clear, initialize)).rejects.toThrow('offline');
   expect(clear).not.toHaveBeenCalled(); expect(initialize).not.toHaveBeenCalled();
   expect(getActiveOperatorServer()).toEqual(selected);
+});
+
+describe('what the active facility answers is told to the whole app, also on a return to the foreground', () => {
+  const needing = (minimumClientVersion: string) => ({
+    ...publicResponse(),
+    json: async () => ({ ...(await publicResponse().json()), data: { ...(await publicResponse().json()).data, minimumClientVersion } }),
+  } as Response);
+  const upgrading = { ok: false, status: 503, json: async () => ({ code: 'upgrading', message: 'being updated' }) } as Response;
+
+  it('a minimum above this build puts the "Update the app" information in the store, and a later good check clears it', async () => {
+    await saveOperatorServer(selected);
+    jest.mocked(global.fetch).mockResolvedValue(needing('0.7.0'));
+    await expect(verifyForegroundOperator(() => true, jest.fn(), jest.fn())).rejects.toMatchObject({ code: 'app_too_old' });
+    expect(getAppTooOld()).toMatchObject({ minimum: '0.7.0', current: '0.1.0' });
+    jest.mocked(global.fetch).mockResolvedValue(publicResponse());
+    expect(await verifyForegroundOperator(() => true, jest.fn(), jest.fn())).toBe(true);
+    expect(getAppTooOld()).toBeNull();
+  });
+
+  it('a check that is no longer current reports nothing', async () => {
+    await saveOperatorServer(selected);
+    jest.mocked(global.fetch).mockResolvedValue(needing('0.7.0'));
+    // Current when the selection is read, superseded by the time the facility answers.
+    let asked = 0;
+    await expect(verifySelectedOperator(() => ++asked === 1, jest.fn())).rejects.toBeDefined();
+    expect(getAppTooOld()).toBeNull();
+  });
+
+  it('the upgrade answer raises the banner and the error carries the code; a good check lowers it without asking for another', async () => {
+    await saveOperatorServer(selected);
+    jest.mocked(global.fetch).mockResolvedValue(upgrading);
+    await expect(verifyForegroundOperator(() => true, jest.fn(), jest.fn())).rejects.toMatchObject({ code: 'upgrading' });
+    expect(isUpgrading()).toBe(true);
+    jest.mocked(global.fetch).mockResolvedValue(publicResponse());
+    expect(await verifyForegroundOperator(() => true, jest.fn(), jest.fn())).toBe(true);
+    expect(isUpgrading()).toBe(false);
+    expect(operatorResumeGate.isVerified()).toBe(true);
+  });
+
+  it('another failure (unreachable) leaves the banner and the screen as they were', async () => {
+    await saveOperatorServer(selected);
+    jest.mocked(global.fetch).mockResolvedValue(upgrading);
+    await verifyForegroundOperator(() => true, jest.fn(), jest.fn()).catch(() => {});
+    jest.mocked(global.fetch).mockRejectedValue(new Error('offline'));
+    await verifyForegroundOperator(() => true, jest.fn(), jest.fn()).catch(() => {});
+    expect(isUpgrading()).toBe(true);
+  });
 });

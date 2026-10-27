@@ -92,6 +92,17 @@ export const components: Translation<typeof source> = {
     opensPlayStore: 'Play Store ખોલે છે',
     securityNotice: 'આ અપડેટમાં સુરક્ષાના મહત્વના સુધારા છે.',
   },
+  // Drafts for the owner's wording review (the version gate and the upgrade notice).
+  appTooOld: {
+    title: 'ઍપ અપડેટ કરો',
+    message: 'આ કોલ્ડ સ્ટોરેજ માટે ઍપનું વર્ઝન {{minimum}} અથવા તેનાથી નવું જોઈએ. તમારી પાસે {{current}} છે.',
+    update: 'અપડેટ મેળવો',
+    updateHint: 'અપડેટ જ્યાં મૂકેલું છે તે પેજ ખોલે છે',
+    noLink: 'નવું વર્ઝન ક્યાંથી મળશે તે કોલ્ડ સ્ટોરેજને પૂછો.',
+  },
+  upgrading: {
+    message: 'કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ થઈ રહ્યું છે. થોડી મિનિટ પછી ફરી પ્રયાસ કરો.',
+  },
   invalidRoute: {
     title: 'પેજ મળ્યું નથી',
     message: 'આ પેજ નથી અથવા તેની લિંક અધૂરી છે. પાછા જાઓ અને ફરી પ્રયાસ કરો.',

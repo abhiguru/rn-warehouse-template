@@ -46,7 +46,7 @@ const BELOW_DISPATCHED = /^Quantity cannot be below the (\d+) already dispatched
 const ORDER_CLOSED = /^Cannot (add items to|change items on|remove items from) .+ orders$/i;
 // The 42501 texts of warehouse_security.authorize_rpc and of add_item_to_order.
 const ACCESS_REFUSED =
-  /^(Item belongs to another customer|Customer access denied|Staff access required|Administrator required|Active account required)$/i;
+  /^(Item belongs to another customer|Customer access denied|Staff access required|Administrator required)$/i;
 
 const sentence = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;

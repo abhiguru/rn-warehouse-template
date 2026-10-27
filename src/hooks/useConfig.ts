@@ -78,18 +78,14 @@ export const useSupport = () => {
 };
 
 /**
- * Hook to check if app is in maintenance mode
- * @returns true if in maintenance mode, false otherwise
+ * Hook to check if the facility says it is in maintenance mode (`maintenanceMode` of its configuration). The app
+ * shows the same "being updated" banner for it as for the gateway's "upgrading" answer (src/hooks/useUpgrading.ts).
+ * @returns true if in maintenance mode, false otherwise (also while no configuration is loaded)
  */
-export const useMaintenanceMode = (): boolean => {
-  const { publicConfig, fullConfig } = useConfig();
-
-  return (
-    fullConfig?.features.maintenanceMode ||
-    publicConfig?.maintenanceMode ||
-    false
+export const useMaintenanceMode = (): boolean =>
+  useAppSelector(
+    (state) => state.config?.fullConfig?.features.maintenanceMode === true || state.config?.publicConfig?.maintenanceMode === true
   );
-};
 
 /**
  * Hook to check if app is in test mode (SMS bypass)

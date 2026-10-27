@@ -37,8 +37,7 @@ import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { refusalOf } from '@/utils/serverRefusal';
-import { facilityKey } from '@/services/stock-service';
-import { isMissingFunction } from '@/services/item-pricing-service';
+import { backendHasFeature } from '@/config/backendFeatures';
 
 /**
  * The new version of the order line in a server answer (`data.updated_at`, owner decision D1; the answer is the body,
@@ -51,33 +50,17 @@ function lineVersionOf(body: unknown): string | undefined {
 }
 
 /**
- * The facilities (by origin and instance) whose `update_order_item_quantity` and `remove_item_from_order` refused
- * `p_expected_updated_at` as an unknown parameter: a server without migration 121. Their later calls go without it at
- * once, instead of failing first. Kept for the app's run: a facility that is updated is asked with it again after a
- * restart.
- */
-const facilitiesWithoutLineVersion = new Set<string>();
-/** Forget which facilities could not check a line's version (tests). */
-export const forgetLineVersionSupport = (): void => facilitiesWithoutLineVersion.clear();
-
-/**
- * Sends a write of an order line with the line's version (`p_expected_updated_at`, owner decision D1). A server without
- * migration 121 knows no such parameter and answers PGRST202 before it runs anything, so the call is sent again
- * without it (no check) and the facility is remembered. Without a version the call goes out as it always did.
+ * Sends a write of an order line with the line's version (`p_expected_updated_at`, owner decision D1). Whether the
+ * facility's backend knows that parameter is read from its release (`schemaHead`, src/config/backendFeatures.ts),
+ * never learned from a failed call: a backend older than migration 121 is sent the call without it, deliberately and
+ * silently; a current one is sent it with, and a PGRST202 from it is a real error that goes to the caller, with
+ * nothing remembered. Without a version the call goes out as it always did.
  */
 async function withLineVersion<T>(
-  rpcName: string,
   expectedUpdatedAt: string | undefined,
   send: (withVersion: boolean) => Promise<RPCResult<T>>
 ): Promise<RPCResult<T>> {
-  const facility = facilityKey();
-  if (!expectedUpdatedAt || (facility !== '' && facilitiesWithoutLineVersion.has(facility))) return send(false);
-  const result = await send(true);
-  if (!result.success && isMissingFunction({ code: result.errorCode, message: result.serverMessage ?? result.error }, rpcName)) {
-    if (facility !== '') facilitiesWithoutLineVersion.add(facility);
-    return send(false);
-  }
-  return result;
+  return send(Boolean(expectedUpdatedAt) && backendHasFeature('orderLineVersion'));
 }
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
@@ -313,7 +296,7 @@ export class OrderService {
       };
     }
 
-    const result = await withLineVersion('update_order_item_quantity', expectedUpdatedAt, withVersion =>
+    const result = await withLineVersion(expectedUpdatedAt, withVersion =>
       executeRPC<OrderItem>(
         getAuthenticatedClient,
         'update_order_item_quantity',
@@ -361,7 +344,7 @@ export class OrderService {
       };
     }
 
-    const result = await withLineVersion('remove_item_from_order', expectedUpdatedAt, withVersion =>
+    const result = await withLineVersion(expectedUpdatedAt, withVersion =>
       executeRPC<void>(
         getAuthenticatedClient,
         'remove_item_from_order',

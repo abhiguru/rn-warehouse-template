@@ -110,8 +110,9 @@ describe('replaceItemRates', () => {
   it('maps 42501 and "access required" to PERMISSION_DENIED', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'Staff access required' } });
     expect(await replaceItemRates(input)).toMatchObject({ errorCode: 'PERMISSION_DENIED', message: t('errors.parsed.noPermission') });
+    // The words alone are not read any more (docs/API_CONTRACT.md, "What the app may match": 42501 is the code).
     rpc.mockResolvedValueOnce({ data: null, error: { code: 'P0001', message: 'Admin Access Required' } });
-    expect((await replaceItemRates(input)).errorCode).toBe('PERMISSION_DENIED');
+    expect((await replaceItemRates(input)).errorCode).not.toBe('PERMISSION_DENIED');
   });
 
   it('maps a missing function to SERVER_NEEDS_UPDATE', async () => {

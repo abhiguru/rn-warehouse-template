@@ -333,3 +333,44 @@ not reached, do not guess: go back to the step that makes it, or mark the step N
 Unit tests that cover what a phone cannot show here: a network change with the same private range and a stranger at the
 address (`src/config/__tests__/lanTransport.test.ts`, "a change of network"), the 429 and 5xx rule, the slow write and
 the upload (`lanTransport.test.ts`), and the typed address (`operatorServer.test.ts`).
+
+## Version gate and the upgrade answer (app 0.6.0)
+
+What this checks: a build older than the facility's minimum is refused with its own screen on both ways in; the "being
+updated" banner shows during an upgrade without signing anyone out or saving twice; and an order line edit against a current
+backend keeps its concurrency check. Record PASS or FAIL for every step, with the values asked for under Evidence.
+
+**Needs.** The Dev facility on a backend that publishes `minimumClientVersion` and `schemaHead`; a build of this version; a
+second build or a backend file edit that makes the minimum higher than the build (`app-compat.json` of the Dev checkout, then
+`setup.sh`; restore it afterwards); the ability to run `upgrade.sh` on Dev (it closes the API for a few minutes). Step 7 needs a backend that reports `schemaHead`; a
+facility that does not (an earlier release) is treated as older, and its order line edits go without the concurrency check.
+
+1.  Setup: sign in at Dev by its address. Action: raise the minimum above the build, close the app and open it.
+    Expected: the full-screen "Update the app" with "This facility needs app version X or newer. You have Y." (X and Y are the
+    real numbers); not a connection message. Back opens the server address screen with central login off (a build without it),
+    and My facilities with central login on (the Dev and Metro setting).
+    Evidence: a screenshot; the two numbers. A broken app would show: "Can't be reached" or a generic error.
+2.  Setup: central login on, signed in centrally. Action: in My facilities open the same facility.
+    Expected: the same "Update the app" screen, no dialog; Back returns to My facilities with the facility's status unchanged.
+3.  Setup: a build with a real application id (not `com.example...`). Action: tap "Get the update". Expected: the phone opens
+    the Google Play listing of that id. With a `com.example...` id: no button, and "Ask the facility where to get the new
+    version."
+4.  Setup: restore the minimum; signed in; the Orders list open. Action: start `upgrade.sh` on Dev and pull the list down while
+    it runs. Expected: a banner "The facility's server is being updated. Try again in a few minutes." under the status bar, the
+    person still signed in, no error dialog; the banner goes away by itself after the upgrade, on the next request that works.
+5.  Setup: as 4, a GRN form filled in. Action: tap Save during the upgrade.
+    Expected: the message above and the form stays editable; it is NOT shown as "checking" or "may have been saved". Save again
+    after the upgrade: one GRN, not two. A broken app would show "checking" until the upgrade ends.
+6.  Setup: signed in at Dev with the Orders list open; the phone stays on (or is put in the background for a minute and brought back).
+    Action: raise the minimum above the build on Dev as in step 1, then put the app in the background and bring it back (or run
+    `upgrade.sh` with a list open, then use the app after it ends). A phone that stays in the foreground and sends nothing
+    during an upgrade keeps the old minimum until its next background stay (accepted). Expected: the same "Update the app" screen over the app, without restarting it. Restore the minimum
+    afterwards; a restart then opens the app as before.
+7.  Setup: Dev on the current backend, an order with a line, two phones (or one phone and a manual change of the line in the
+    database). Action: change the line on the second phone, then change its quantity on the first without refreshing.
+    Expected: the first phone is told the line changed (the concurrency check), and nothing is overwritten.
+
+Unit tests that cover what a phone cannot show here: the typed refusal in both ways in (`operatorServer.test.ts`,
+`openFacility.test.ts`, `operatorBootstrap.test.ts`, `BootstrapCentral.test.tsx`, `OperatorServerSelection.test.tsx`), the 503 handling in the request layer
+(`upgradeAnswer.test.ts`, `functionUpgradingAnswer.test.ts`), the saves (`grnUpgradingAnswer.test.ts`, `dispatchUpgradingAnswer.test.ts`) and the release table
+(`backendFeatures.test.ts`, `orderLineVersion.test.ts`).

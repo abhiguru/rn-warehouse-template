@@ -5,6 +5,7 @@ import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { logout } from '@/store/slices/authSlice';
 import { showAlert } from '@/utils/alert';
 import { beginOperatorSwitch } from '@/config/supabaseConfig';
+import { AppTooOldError } from '@/config/appTooOld';
 import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, stageOperatorServer } from '@/config/operatorServer';
 
 jest.mock('react-native', () => {
@@ -42,6 +43,11 @@ jest.mock('@/components/LanguageSwitch', () => ({
   LanguageSwitch: () => require('react').createElement('LanguageSwitch'),
 }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// The screen has its own tests (src/components/__tests__/AppTooOldAndUpgrading.test.tsx); here only that it is shown.
+jest.mock('@/components/AppTooOldScreen', () => ({
+  __esModule: true,
+  default: ({ onClose, ...props }: Record<string, unknown>) => require('react').createElement('AppTooOldScreen', { ...props, onClose }),
+}));
 jest.mock('@/i18n/useAppLanguage', () => ({
   useAppLanguage: () => ({ language: 'en', preference: 'system', setPreference: jest.fn() }),
 }));
@@ -203,4 +209,17 @@ it('a network failure says the server could not be checked; the app\'s own messa
   jest.mocked(discoverOperator).mockRejectedValueOnce(new Error('Use an https:// address'));
   await act(async () => { button('Check server')!.props.onPress(); });
   expect(showAlert).toHaveBeenLastCalledWith('Server unavailable', 'Use an https:// address');
+});
+
+it('a facility that needs a newer app shows the "Update the app" screen, not an alert; Back returns to the field', async () => {
+  await act(async () => { renderer = create(<OperatorServerSelection initial />); });
+  jest.mocked(showAlert).mockClear();
+  jest.mocked(discoverOperator).mockRejectedValueOnce(new AppTooOldError('requires 0.7.0', '0.7.0', '0.6.0', 'https://updates.example.test/app.apk'));
+  await act(async () => { button('Check server')!.props.onPress(); });
+  const screen = renderer!.root.findByType(tag('AppTooOldScreen'));
+  expect(screen.props).toMatchObject({ minimum: '0.7.0', current: '0.6.0', updateUrl: 'https://updates.example.test/app.apk' });
+  expect(showAlert).not.toHaveBeenCalled();
+  await act(async () => { screen.props.onClose(); });
+  expect(renderer!.root.findAllByType(tag('AppTooOldScreen'))).toHaveLength(0);
+  expect(button('Check server')).toBeDefined();
 });

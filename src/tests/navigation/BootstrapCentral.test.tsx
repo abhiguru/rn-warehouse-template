@@ -10,6 +10,7 @@ import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import RootLayout from '../../../app/_layout';
 import { verifySelectedOperator } from '@/config/operatorBootstrap';
+import { AppTooOldError, clearAppTooOld, getAppTooOld, reportAppTooOld } from '@/config/appTooOld';
 import { restoreCentralSession } from '@/config/centralSession';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
 import { startDailyLanCheck } from '@/config/lanCheck';
@@ -84,6 +85,10 @@ jest.mock('@/components/ConfigErrorScreen', () => {
   const React = require('react');
   return { __esModule: true, default: (props: Record<string, unknown>) => React.createElement('ConfigError', props) };
 });
+jest.mock('@/components/AppTooOldScreen', () => {
+  const React = require('react');
+  return { __esModule: true, default: (props: Record<string, unknown>) => React.createElement('AppTooOld', props) };
+});
 jest.mock('@/components/ErrorBoundary', () => ({ ErrorBoundary: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));
 jest.mock('@/components/AlertHost', () => ({ AlertHost: () => null }));
@@ -124,6 +129,7 @@ const screens = () => tree!.root.findAll(node => (node.type as unknown) === 'Sta
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearAppTooOld();
   mockCentralOn = false;
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -209,6 +215,71 @@ describe('the chosen facility cannot be reached', () => {
     expect(leaveFacility).toHaveBeenCalledTimes(1);
     expect(leaveFacility).toHaveBeenCalledWith(store.dispatch, { localOnly: true });
     expect(shows('ServerSelection')).toBe(false);
+  });
+});
+
+describe('the chosen facility needs a newer app', () => {
+  beforeEach(() =>
+    jest.mocked(verifySelectedOperator).mockRejectedValue(new AppTooOldError('requires 0.7.0', '0.7.0', '0.6.0', 'https://updates.example.test/app.apk'))
+  );
+  const screen = () => tree!.root.find(node => (node.type as unknown) === 'AppTooOld');
+
+  it('shows the "Update the app" screen with the versions and the link, not the connection error', async () => {
+    await start();
+    expect(shows('ConfigError')).toBe(false);
+    expect(screen().props).toMatchObject({ minimum: '0.7.0', current: '0.6.0', updateUrl: 'https://updates.example.test/app.apk' });
+  });
+
+  it('central login off: Back opens the server address screen and signs nothing out', async () => {
+    await start();
+    await act(async () => { screen().props.onClose(); });
+    expect(shows('ServerSelection')).toBe(true);
+    expect(leaveFacility).not.toHaveBeenCalled();
+  });
+
+  it('central login on: Back leaves that facility for My facilities without sending it anything', async () => {
+    mockCentralOn = true;
+    await start();
+    await act(async () => { screen().props.onClose(); });
+    expect(leaveFacility).toHaveBeenCalledWith(store.dispatch, { localOnly: true });
+  });
+});
+
+describe('a facility that needs a newer app is found out while the app is open (the phone was resumed after an upgrade)', () => {
+  // (Central login on and no facility chosen renders the app shell; the screen then replaces it as it would a facility's screens.)
+  beforeEach(() => jest.mocked(verifySelectedOperator).mockResolvedValue({ kind: 'selection' }));
+  const screen = () => tree!.root.find(node => (node.type as unknown) === 'AppTooOld');
+  const foundOut = () => act(async () => {
+    reportAppTooOld(new AppTooOldError('requires 0.8.0', '0.8.0', '0.6.0', 'https://updates.example.test/app.apk'));
+  });
+
+  it('the app that was working is replaced by the "Update the app" screen with the new minimum', async () => {
+    mockCentralOn = true;
+    await start();
+    expect(shows('AppStack')).toBe(true);
+    expect(shows('AppTooOld')).toBe(false);
+    await foundOut();
+    expect(shows('AppStack')).toBe(false);
+    expect(screen().props).toMatchObject({ minimum: '0.8.0', current: '0.6.0', updateUrl: 'https://updates.example.test/app.apk' });
+  });
+
+  it('central login off: Back opens the server address screen', async () => {
+    jest.mocked(verifySelectedOperator).mockResolvedValue({ kind: 'verified', discovery: {} as never });
+    await start();
+    await foundOut();
+    await act(async () => { screen().props.onClose(); });
+    expect(shows('ServerSelection')).toBe(true);
+    expect(leaveFacility).not.toHaveBeenCalled();
+  });
+
+  it('central login on: Back leaves the facility, and the screen goes with it', async () => {
+    mockCentralOn = true;
+    await start();
+    await foundOut();
+    await act(async () => { screen().props.onClose(); });
+    expect(leaveFacility).toHaveBeenCalledWith(store.dispatch, { localOnly: true });
+    expect(getAppTooOld()).toBeNull();
+    expect(shows('AppTooOld')).toBe(false);
   });
 });
 

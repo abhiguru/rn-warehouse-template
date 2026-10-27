@@ -89,6 +89,16 @@ export const components = {
     opensPlayStore: 'Opens the Play Store',
     securityNotice: 'This update includes important security improvements.',
   },
+  appTooOld: {
+    title: 'Update the app',
+    message: 'This facility needs app version {{minimum}} or newer. You have {{current}}.',
+    update: 'Get the update',
+    updateHint: 'Opens the page where the update is published',
+    noLink: 'Ask the facility where to get the new version.',
+  },
+  upgrading: {
+    message: "The facility's server is being updated. Try again in a few minutes.",
+  },
   invalidRoute: {
     title: 'Page not found',
     message: "This page doesn't exist or its link is incomplete. Go back and try again.",

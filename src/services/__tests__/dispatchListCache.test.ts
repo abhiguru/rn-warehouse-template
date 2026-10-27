@@ -137,3 +137,14 @@ it('does not dump tokens, sessions or request parameters to the console', async 
   const output = JSON.stringify(logs.flatMap(log => log.mock.calls));
   expect(output).not.toMatch(/Token check|Session check|RPC params being sent/);
 });
+
+it('hands the code of a failed list to its caller (the gateway\'s "upgrading" answer is told apart from a lost connection)', async () => {
+  rpc.mockResolvedValueOnce({
+    data: null,
+    error: { message: "The facility's server is being updated. Try again in a few minutes.", details: '', hint: '', code: 'upgrading', status: 503 },
+  });
+  const result = await getDispatchListWithItems({ p_limit: 20 });
+  expect(result.success).toBe(false);
+  expect(result.errorCode).toBe('upgrading');
+  expect(result.fromCache).toBeUndefined();
+});

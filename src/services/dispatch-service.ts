@@ -197,6 +197,8 @@ export interface DispatchUserAccess {
 export interface DispatchListResponseNew {
   success: boolean;
   message: string;
+  /** The code of the failure (the gateway's `upgrading`, a PostgREST or SQL state code) when the request failed with one. */
+  errorCode?: string;
   /** True when the network failed and this is the list kept on the phone from an earlier load, not a fresh answer. */
   fromCache?: boolean;
   /** With `fromCache`: when (ms since 1970) the kept list was stored, i.e. really loaded. */
@@ -498,6 +500,7 @@ export const getDispatchListWithItems = async (
       return {
         success: false,
         message: serverText(error.message, t('errors.dispatch.fetchListFailed')),
+        ...(error.code ? { errorCode: error.code } : {}),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },

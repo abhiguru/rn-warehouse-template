@@ -20,6 +20,8 @@ jest.mock('react-native', () => {
     Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles },
   };
 });
+// The "Update the app" screen has its own tests; it is not rendered here.
+jest.mock('@/components/AppTooOldScreen', () => ({ __esModule: true, default: () => null }));
 jest.mock('expo-camera', () => ({ CameraView: () => null, useCameraPermissions: () => [{ granted: true }, jest.fn()] }));
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');

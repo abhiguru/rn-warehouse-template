@@ -11,6 +11,8 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } 
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppDispatch } from '@/store/hooks';
 import { switchOperatorServer } from '@/store/operatorSwitch';
+import { appTooOldInfo, isAppTooOld, type AppTooOldInfo } from '@/config/appTooOld';
+import AppTooOldScreen from '@/components/AppTooOldScreen';
 import { discoverOperator, getActiveOperatorServer, parseOperatorOrigin } from '@/config/operatorServer';
 
 import { showAlert } from '@/utils/alert';
@@ -61,6 +63,8 @@ export function OperatorServerSelection({
   const [origin, setOrigin] = useState('');
   const [candidate, setCandidate] = useState<Discovery | null>(null);
   const [busy, setBusy] = useState(false);
+  // The facility checked needs a newer app: the "Update the app" screen, until the person goes back.
+  const [tooOld, setTooOld] = useState<AppTooOldInfo | null>(null);
   const [scanning, setScanning] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const inspection = useRef(0);
@@ -84,6 +88,7 @@ export function OperatorServerSelection({
       setCandidate(discovered);
     } catch (error) {
       if (request !== inspection.current) return;
+      if (isAppTooOld(error)) { setTooOld(appTooOldInfo(error)); return; }
       // The app's own texts (discoverOperator throws them as plain Errors) are shown as they are;
       // a network failure (TypeError) or a reply that is not JSON (SyntaxError) is not for the person to read.
       const own = error instanceof Error && !(error instanceof TypeError) && !(error instanceof SyntaxError);
@@ -144,6 +149,8 @@ export function OperatorServerSelection({
   };
 
   const fieldStyle = [styles.input, focused && styles.inputFocused];
+
+  if (tooOld) return <AppTooOldScreen {...tooOld} onClose={() => setTooOld(null)} />;
 
   return <SafeAreaView style={styles.screen} edges={underHeader ? ['bottom', 'left', 'right'] : undefined}>
     {initial && <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />}

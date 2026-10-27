@@ -19,6 +19,7 @@ import { addMyFacility, loadMyFacilities, updateMyFacility } from '../centralFac
 import { getCentralState, resetCentralStateForTests, setCentralState } from '../centralState';
 import { requestFacilityToken } from '../centralSession';
 import { clearOperatorServer, discoverOperator, getActiveOperatorServer } from '../operatorServer';
+import { AppTooOldError } from '../appTooOld';
 import { beginOperatorSwitch, exchangeCentralIdentity, signInWithPhone } from '../supabaseConfig';
 import { markStaleFacility, STALE_FACILITY_KEY } from '../staleFacilitySession';
 import { queryClient } from '@/lib/queryClient';
@@ -396,6 +397,50 @@ describe('before the facility is asked', () => {
       kind: 'failed',
       reason: 'facility_unreachable',
       message: "North Cold Store can't be reached right now. Check your connection and try again.",
+    });
+    expect(await status()).toBe('approved');
+    expect(mockEvents).toEqual([]);
+    expect(getActiveOperatorServer()).toBe(previous);
+  });
+
+  it('a facility that is being upgraded is said so (not "can\'t be reached"), nothing is switched and the status stays', async () => {
+    await updateMyFacility('asha', ORIGIN, { status: 'approved' });
+    jest.mocked(discoverOperator).mockRejectedValue(
+      Object.assign(new Error("The facility's server is being updated. Try again in a few minutes."), { code: 'upgrading' })
+    );
+    expect(await openFacility(ORIGIN, NAME)).toEqual({
+      kind: 'failed',
+      reason: 'facility_unreachable',
+      message: "The facility's server is being updated. Try again in a few minutes.",
+    });
+    expect(await status()).toBe('approved');
+    expect(mockEvents).toEqual([]);
+  });
+
+  it('a facility that answers "busy" (HTTP 429) is said so, nothing is switched and the status stays', async () => {
+    await updateMyFacility('asha', ORIGIN, { status: 'approved' });
+    jest.mocked(discoverOperator).mockRejectedValue(
+      Object.assign(new Error("The facility's server is busy. Try again in a moment."), { code: 'discovery_busy' })
+    );
+    expect(await openFacility(ORIGIN, NAME)).toEqual({
+      kind: 'failed',
+      reason: 'facility_unreachable',
+      message: "The facility's server is busy. Try again in a moment.",
+    });
+    expect(await status()).toBe('approved');
+    expect(mockEvents).toEqual([]);
+  });
+
+  it('a facility that needs a newer app is its own outcome, not "unreachable", with the versions and the link; nothing is switched and the status stays', async () => {
+    await updateMyFacility('asha', ORIGIN, { status: 'approved' });
+    jest.mocked(discoverOperator).mockRejectedValue(
+      new AppTooOldError('This server requires app version 0.7.0 or newer.', '0.7.0', '0.6.0', 'https://updates.example.test/app.apk')
+    );
+    expect(await openFacility(ORIGIN, NAME)).toEqual({
+      kind: 'failed',
+      reason: 'app_too_old',
+      message: 'This server requires app version 0.7.0 or newer.',
+      appTooOld: { minimum: '0.7.0', current: '0.6.0', updateUrl: 'https://updates.example.test/app.apk' },
     });
     expect(await status()).toBe('approved');
     expect(mockEvents).toEqual([]);

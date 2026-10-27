@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import {
   clearOperatorServer,
   compareVersions,
@@ -13,6 +15,7 @@ import {
   setTypedLanAddress,
 } from '../operatorServer';
 import { getLanContext, resetLanTransport } from '../lanTransport';
+import { AppTooOldError, isAppTooOld } from '../appTooOld';
 
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '0.1.0' } } }));
 
@@ -245,5 +248,105 @@ describe('the warehouse network address', () => {
       await clearOperatorServer();
       expect(await setTypedLanAddress('http://192.168.1.99:8080')).toBe(false);
     });
+  });
+});
+
+describe('a facility that needs a newer app', () => {
+  const answer = (data: Record<string, unknown>) =>
+    jest.mocked(global.fetch).mockResolvedValueOnce({ ok: true, json: async () => ({ ...config(), data: { ...config().data, ...data } }) } as Response);
+
+  const onAndroid = (id: string | undefined, run: () => Promise<void>) => async () => {
+    const before = { os: Platform.OS, id: process.env.EXPO_PUBLIC_ANDROID_PACKAGE };
+    Platform.OS = 'android';
+    if (id === undefined) delete process.env.EXPO_PUBLIC_ANDROID_PACKAGE; else process.env.EXPO_PUBLIC_ANDROID_PACKAGE = id;
+    try { await run(); } finally {
+      Platform.OS = before.os;
+      if (before.id === undefined) delete process.env.EXPO_PUBLIC_ANDROID_PACKAGE; else process.env.EXPO_PUBLIC_ANDROID_PACKAGE = before.id;
+    }
+  };
+
+  it('is refused with the typed error: code app_too_old, both versions, and the public Play listing of the real application id', onAndroid('org.example.coldstore', async () => {
+    answer({ minimumClientVersion: '0.2.0' });
+    const error = await discoverOperator(origin).catch(e => e);
+    expect(error).toBeInstanceOf(AppTooOldError);
+    expect(isAppTooOld(error)).toBe(true);
+    expect(error).toMatchObject({
+      code: 'app_too_old', minimum: '0.2.0', current: '0.1.0',
+      updateUrl: 'https://play.google.com/store/apps/details?id=org.example.coldstore',
+    });
+  }));
+
+  it.each([
+    ['the placeholder com.example id', 'com.example.warehousemanager'],
+    ['no id', undefined],
+    ['a malformed id', 'Not An Id'],
+  ])('carries no link for %s', (_name, id) => onAndroid(id, async () => {
+    answer({ minimumClientVersion: '0.2.0' });
+    const error = await discoverOperator(origin).catch(e => e);
+    expect(error.updateUrl).toBeUndefined();
+  })());
+
+  it('carries no link on a phone that is not an Android one, even with a real id', async () => {
+    const before = process.env.EXPO_PUBLIC_ANDROID_PACKAGE;
+    process.env.EXPO_PUBLIC_ANDROID_PACKAGE = 'org.example.coldstore';
+    try {
+      answer({ minimumClientVersion: '0.2.0' });
+      expect((await discoverOperator(origin).catch(e => e)).updateUrl).toBeUndefined();
+    } finally {
+      if (before === undefined) delete process.env.EXPO_PUBLIC_ANDROID_PACKAGE; else process.env.EXPO_PUBLIC_ANDROID_PACKAGE = before;
+    }
+  });
+
+  it.each([
+    ['the build\'s own real id wins over a different environment value', 'org.example.built', 'org.example.stale', 'org.example.built'],
+    ['the environment value is used when the build has the placeholder id', 'com.example.warehousemanager', 'org.example.coldstore', 'org.example.coldstore'],
+    ['the environment value is used when the build has no id', undefined, 'org.example.coldstore', 'org.example.coldstore'],
+  ])('the link: %s', (_name, built, env, expected) => onAndroid(env, async () => {
+    const config = Constants.expoConfig as { android?: { package?: string } };
+    const before = config.android;
+    config.android = built === undefined ? undefined : { package: built };
+    try {
+      answer({ minimumClientVersion: '0.2.0' });
+      expect((await discoverOperator(origin).catch(e => e)).updateUrl).toBe(`https://play.google.com/store/apps/details?id=${expected}`);
+    } finally {
+      config.android = before;
+    }
+  })());
+
+  it('is not told apart from an unreachable facility when the answer is merely incompatible', async () => {
+    answer({ supportedApiVersions: ['2'] });
+    const error = await discoverOperator(origin).catch(e => e);
+    expect(isAppTooOld(error)).toBe(false);
+  });
+});
+
+describe('discovery answered with an HTTP error', () => {
+  const answerWith = (status: number, body: unknown) =>
+    jest.mocked(global.fetch).mockResolvedValueOnce({ ok: false, status, json: async () => body } as Response);
+
+  it('503 with the code "upgrading" says the server is being updated, not "HTTP 503"', async () => {
+    answerWith(503, { code: 'upgrading', message: "The facility's server is being updated. Try again in a few minutes." });
+    await expect(discoverOperator(origin)).rejects.toThrow("The facility's server is being updated. Try again in a few minutes.");
+  });
+
+  it('503 "upgrading" and 429 carry a code, so a caller does not have to read the words', async () => {
+    answerWith(503, { code: 'upgrading', message: 'x' });
+    await expect(discoverOperator(origin)).rejects.toMatchObject({ code: 'upgrading' });
+    answerWith(429, { message: 'Too many requests' });
+    await expect(discoverOperator(origin)).rejects.toMatchObject({ code: 'discovery_busy' });
+    answerWith(503, { message: 'The upstream server is unavailable' });
+    await expect(discoverOperator(origin)).rejects.not.toHaveProperty('code');
+  });
+
+  it('another 503 keeps the HTTP text', async () => {
+    answerWith(503, { message: 'The upstream server is unavailable' });
+    await expect(discoverOperator(origin)).rejects.toThrow('Server discovery failed (HTTP 503).');
+  });
+
+  it('429 says the server is busy (it answered), and the identity the phone holds is kept', async () => {
+    await saveOperatorServer({ origin, instanceId: 'instance-0001', displayName: 'Warehouse One', companyName: 'Example Operator' }, false);
+    answerWith(429, { message: 'Too many requests' });
+    await expect(discoverOperator(origin)).rejects.toThrow("The facility's server is busy. Try again in a moment.");
+    expect(await loadOperatorServer()).toMatchObject({ origin, instanceId: 'instance-0001' });
   });
 });

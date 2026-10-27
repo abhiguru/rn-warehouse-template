@@ -39,8 +39,11 @@ import {
 } from './centralState';
 import { requestFacilityToken, type CentralFailure } from './centralSession';
 import { updateMyFacility } from './centralFacilities';
+import { appTooOldInfo, isAppTooOld, type AppTooOldInfo } from './appTooOld';
 import { discoverOperator, getActiveOperatorServer, type OperatorServer } from './operatorServer';
+import { DISCOVERY_BUSY_CODE, UPGRADING_CODE } from '@/utils/serverText';
 import { setFacilityCapabilities } from './facilityCapabilities';
+import { setFacilityRelease } from './backendFeatures';
 import { clearStaleFacility, forgetStaleGeneration, isStaleFacility, markStaleFacility } from './staleFacilitySession';
 import { getSessionGeneration } from './sessionLifecycle';
 import {
@@ -61,11 +64,17 @@ type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
 /** The name a facility goes by in messages: its company name, as on the sign-in screen. */
 export const facilityNameOf = (server: OperatorServer): string => server.companyName || server.displayName;
 
-const failed = (reason: OpenFailureReason, message: string, retryAfterSeconds?: number): OpenOutcome => ({
+const failed = (
+  reason: OpenFailureReason,
+  message: string,
+  retryAfterSeconds?: number,
+  appTooOld?: AppTooOldInfo
+): OpenOutcome => ({
   kind: 'failed',
   reason,
   message,
   ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
+  ...(appTooOld ? { appTooOld } : {}),
 });
 
 /** The person an open began for, and the identity generation at that moment. */
@@ -291,7 +300,13 @@ async function discover(ticket: Ticket, origin: string, fallbackName: string): P
     if (!isCurrent(ticket)) return ended();
     await record(ticket, origin, { instanceId: discovery.server.instanceId });
     return discovery;
-  } catch {
+  } catch (error) {
+    // The facility answered, and needs a newer app: not a connection problem, and the person's access is unchanged.
+    if (isAppTooOld(error)) return failed('app_too_old', error.message, undefined, appTooOldInfo(error));
+    // The facility answered, but is being upgraded or is rate limiting this phone: said so, as at the start of the app.
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code === UPGRADING_CODE) return failed('facility_unreachable', t('components.upgrading.message'));
+    if (code === DISCOVERY_BUSY_CODE) return failed('facility_unreachable', t('errors.server.discoveryBusy'));
     // Not reachable right now; nothing was learned about the person's access there.
     return failed('facility_unreachable', t('central.open.unreachable', { facility: fallbackName }));
   }
@@ -315,6 +330,7 @@ async function switchAndExchange(ticket: Ticket, discovery: Discovery): Promise<
   // nothing.
   initializeSupabase(config.supabaseUrl, config.anonKey);
   setFacilityCapabilities(server, config.capabilities);
+  setFacilityRelease(server, config);
   return settle(ticket, server, await exchange(ticket, server.origin), false);
 }
 
@@ -464,6 +480,7 @@ export async function beginFacilitySmsSignIn(origin: string, name: string): Prom
     return failed('switch_failed', t('central.open.switchFailed', { facility: facilityNameOf(discovery.server) }));
   initializeSupabase(discovery.config.supabaseUrl, discovery.config.anonKey);
   setFacilityCapabilities(discovery.server, discovery.config.capabilities);
+  setFacilityRelease(discovery.server, discovery.config);
   if (!isCurrent(ticket)) return ended();
   setCentralState({ facilitySmsOrigin: discovery.server.origin, autoOpenSpent: true });
   return { kind: 'sms_offer' };

@@ -11,6 +11,8 @@
  */
 
 import { QueryClient } from '@tanstack/react-query';
+import { UPGRADING_CODE } from '@/utils/serverText';
+import { isUpgrading } from '@/config/upgradeNotice';
 
 // Default stale time for queries (5 minutes)
 const DEFAULT_STALE_TIME = 5 * 60 * 1000;
@@ -20,7 +22,7 @@ const DEFAULT_GC_TIME = 30 * 60 * 1000;
 
 const MAX_QUERY_RETRIES = 3;
 const REFUSED_CODES = new Set(['42501', 'PGRST301', 'PGRST302', '401', '403']);
-const REFUSED_TEXT = /access denied|permission denied|not authori[sz]ed|unauthori[sz]ed|forbidden|session expired|authentication required|not authenticated|active account required|jwt expired|invalid (jwt|token)/i;
+const REFUSED_TEXT = /access denied|permission denied|not authori[sz]ed|unauthori[sz]ed|forbidden|session expired|authentication required|not authenticated|jwt expired|invalid (jwt|token)/i;
 
 /**
  * Whether a failed query is worth asking again. A request the network let
@@ -32,6 +34,10 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
   if (failureCount >= MAX_QUERY_RETRIES) return false;
   const detail = (error ?? {}) as { status?: unknown; code?: unknown; message?: unknown };
   const status = Number(detail.status);
+  // The gateway's upgrade answer: the request layer has already waited Retry-After and asked once more for a read
+  // (src/config/upgradeNotice.ts); asking again here would only stretch the wait. The banner says what is going on.
+  // (An error that lost its code on the way to the query, such as a service's message rethrown, is covered by the notice.)
+  if (detail.code === UPGRADING_CODE || isUpgrading()) return false;
   if (status >= 400 && status < 500 && status !== 408 && status !== 429) return false;
   if (typeof detail.code === 'string' && REFUSED_CODES.has(detail.code)) return false;
   if (typeof detail.message === 'string' && REFUSED_TEXT.test(detail.message)) return false;

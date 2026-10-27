@@ -19,7 +19,7 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/^this business is deactivated\. activate it in customers to receive new goods\.?$/, 'errors.parsed.businessDeactivated'],
   [/^business is not active\.?$/, 'errors.parsed.businessNotActive'],
   // An access token the server found expired (PostgREST: 401 "JWT expired", PGRST301 / PGRST303; the edge functions' own sentence).
-  [/session expired|not authenticated|authentication required|active account required|invalid refresh token|jwt expired|invalid or expired access token/, 'errors.code.sessionExpired'],
+  [/session expired|not authenticated|authentication required|invalid refresh token|jwt expired|invalid or expired access token/, 'errors.code.sessionExpired'],
   [
     /access denied|permission|only admins?\b|only administrators|only supervisors|supervisors cannot|staff access required|administrator required|you cannot change your own|self_edit_forbidden|cannot_modify_admin|cannot_promote_to_admin/,
     'errors.parsed.noPermission',
@@ -215,6 +215,31 @@ export function errorCodeOf(error: unknown): string | undefined {
   return /^[A-Z][A-Z0-9_]{2,}$/.test(text) ? text : undefined;
 }
 
+/** The `code` of the gateway's answer while the facility's server is being upgraded (HTTP 503, docs/API_CONTRACT.md). */
+export const UPGRADING_CODE = 'upgrading';
+
+/** `code` of the error discovery throws for an HTTP 429 (the facility answered: it is rate limiting this phone). */
+export const DISCOVERY_BUSY_CODE = 'discovery_busy';
+
+/**
+ * True when the gateway answered "the server is being updated". It answered before anything reached a service, so
+ * the request did NOT run: it is a definite "not saved", neither a lost answer nor a lost connection.
+ */
+export function isUpgradingAnswer(error: unknown): boolean {
+  return errorCodeOf(error) === UPGRADING_CODE;
+}
+
+/**
+ * The body of an edge function's answer when it is the gateway's upgrading answer (`/functions/v1/` is answered with the
+ * same 503 body as the REST API), else undefined. The functions are called with plain fetch, so there is no error object
+ * to carry the code: a caller shows `serverText(upgradingBody(body) ?? body.error, ...)`, which words it in the app's language.
+ */
+export function upgradingBody(body: unknown): { code: string } | undefined {
+  return typeof body === 'object' && body !== null && (body as { code?: unknown }).code === UPGRADING_CODE
+    ? (body as { code: string })
+    : undefined;
+}
+
 /**
  * A gateway's own answer (Kong's JSON 502 "An invalid response was received from the upstream server",
  * 504 "The upstream server is timing out"): an error object that carries the HTTP status (`status`, as
@@ -231,6 +256,8 @@ function isGatewayAnswer(error: unknown): boolean {
 /** True when the request got no answer: no connection, a dropped or aborted request, a gateway that gave up. */
 export function isNetworkError(error: unknown): boolean {
   if (getAppErrorCode(error) === 'NETWORK') return true;
+  // The upgrade answer is a 503 too, but a request it refuses never ran: not a lost connection, not a gateway that gave up.
+  if (isUpgradingAnswer(error)) return false;
   if (isTimeoutError(error)) return false;
   if (errorCodeOf(error) === 'NETWORK') return true;
   if (isGatewayAnswer(error)) return true;
@@ -347,6 +374,9 @@ export function withHttpStatus(error: unknown, status?: number): unknown {
 export function isUnsettledFailure(error: unknown, code?: string): boolean {
   const appCode = getAppErrorCode(error);
   if (appCode) return appCode !== 'REFUSED';
+  // A RESEND refused by the upgrade answer says nothing about the ORIGINAL request, which may have landed before the
+  // gateway closed: the attempt stays unsettled and goes back to the check.
+  if (isUpgradingAnswer(error)) return true;
   if (isStatementTimeout(error, code)) return true;
   if (isTimeoutError(error) || isNetworkError(error)) return true;
   if (isSessionExpiredError(error, code)) return true;
@@ -453,6 +483,7 @@ const REASON_BY_CODE: Record<string, TranslationKey> = {
   SELF_EDIT_FORBIDDEN: 'errors.parsed.noPermission',
   CANNOT_MODIFY_ADMIN: 'errors.parsed.noPermission',
   CANNOT_PROMOTE_TO_ADMIN: 'errors.parsed.noPermission',
+  [UPGRADING_CODE]: 'components.upgrading.message',
   PGRST301: 'errors.code.sessionExpired',
   PGRST303: 'errors.code.sessionExpired',
   SESSION_EXPIRED: 'errors.code.sessionExpired',

@@ -76,8 +76,8 @@ export async function getOperationsDashboard(
     if (error) {
       logger.error('[OperationsDashboard] RPC error:', error.message);
 
-      // Check for access denied error
-      if (error.message.includes('Access denied') || error.code === '42501') {
+      // A guard refusal over HTTP carries SQLSTATE 42501 (docs/API_CONTRACT.md, "What the app may match"); the words are not read.
+      if (error.code === '42501') {
         return {
           success: false,
           data: EMPTY_RESPONSE,

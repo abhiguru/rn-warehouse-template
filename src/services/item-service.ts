@@ -355,7 +355,7 @@ class ItemService {
     );
     if (!result.success || !result.data) {
       // A server without migration 114 has no get_item_usage: the caller falls back to asking first.
-      if (isMissingFunction({ code: result.errorCode, message: result.error }, 'get_item_usage')) {
+      if (isMissingFunction({ code: result.errorCode })) {
         return { success: false, message: result.message, error: result.error, code: 'SERVER_NEEDS_UPDATE' };
       }
       return { success: false, message: result.message, error: result.error, code: result.errorCode };

@@ -66,7 +66,6 @@ describe('server text in Gujarati', () => {
     ['You cannot change your own role', 'errors.parsed.noPermission'],
     ['PERMISSION_DENIED', 'errors.parsed.noPermission'],
     ['Session expired or revoked', 'errors.code.sessionExpired'],
-    ['Active account required', 'errors.code.sessionExpired'],
     ['Insufficient stock: only 4 bags left', 'errors.code.insufficientStock'],
     ['Delete invoices first before deleting this dispatch', 'errors.parsed.inUse'],
     ['Cannot delete item "Garlic" - has 3 existing dispatches', 'errors.parsed.inUse'],

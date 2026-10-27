@@ -30,6 +30,8 @@ export type FacilityStatus = 'approved' | 'requested' | 'revoked' | 'link_needed
 export type OpenFailureReason =
   | 'not_signed_in'
   | 'facility_unreachable'
+  /** The facility needs a newer app than this one (`appTooOld` carries the versions and the update link). */
+  | 'app_too_old'
   | 'busy'
   | 'switch_failed'
   | 'central'
@@ -69,7 +71,7 @@ export type OpenOutcome =
   | { kind: 'link_required'; codeSent: boolean; message?: string; retryAfterSeconds?: number }
   /** The facility does not accept association sign-in: offer its own SMS sign-in. */
   | { kind: 'sms_offer' }
-  | { kind: 'failed'; reason: OpenFailureReason; message: string; retryAfterSeconds?: number };
+  | { kind: 'failed'; reason: OpenFailureReason; message: string; retryAfterSeconds?: number; appTooOld?: { minimum: string; current: string; updateUrl?: string } };
 
 export type PendingLink = {
   origin: string;
