@@ -20,7 +20,8 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
-import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
@@ -245,7 +246,7 @@ function ItemsSummaryBottomSheetInner<T>(
       statusBarTranslucent={false}
       accessibilityViewIsModal
     >
-      {/* GestureHandlerRootView is required for Swipeable to work inside Modal */}
+      {/* GestureHandlerRootView is required for ReanimatedSwipeable to work inside Modal */}
       <GestureHandlerRootView style={styles.gestureRoot}>
         <View style={[styles.modalOverlay, { paddingTop: insets.top }]}>
           {/* Backdrop - tap to close */}
@@ -318,7 +319,7 @@ function ItemsSummaryBottomSheetInner<T>(
                 const isProtected = checkItemProtected(item);
 
                 return (
-                  <Swipeable
+                  <ReanimatedSwipeable
                     key={itemKey}
                     renderRightActions={() => renderRightActions(item)}
                     overshootRight={false}
@@ -334,7 +335,7 @@ function ItemsSummaryBottomSheetInner<T>(
                     >
                       {renderItem(item, index, isEditing, isProtected)}
                     </Pressable>
-                  </Swipeable>
+                  </ReanimatedSwipeable>
                 );
               })
             )}

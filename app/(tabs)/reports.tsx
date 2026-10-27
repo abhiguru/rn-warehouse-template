@@ -31,6 +31,7 @@ import { reportHubSections, type ReportHubSectionId } from '@/components/reports
 import { SectionHeader } from '@/components/ui';
 import { t as translate } from '@/i18n';
 import { isWarehouseUser } from '@/config/roles';
+import type { ScrollViewRef } from '@/types/nativeRefs';
 
 /** A second tap on a report within this long of the first is a double tap, and is ignored. */
 const REPORT_PUSH_GUARD_MS = 600;
@@ -132,7 +133,7 @@ export default function ReportsScreen() {
   // A section that appears or changes at the top (Recent after the first report opened, Pinned
   // after the first pin) would be out of sight on a tab scrolled down: go back to the top. Only a
   // change in the number of sections or the first one's id counts, not a draw or a re-focus.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
   const shownSections = useRef<string | null>(null);
   const sectionsKey = `${sections.length}:${sections[0]?.id ?? ''}`;
   useEffect(() => {

@@ -24,6 +24,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens, singleLineText } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
+import type { ScrollViewRef, TextRef } from '@/types/nativeRefs';
 
 const makeStyles = (t: ThemeTokens) => ({
   screen: { flex: 1, backgroundColor: t.background.base },
@@ -87,9 +88,9 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
   // Where each filter section starts in the scrolled content, and each wrong range's error text, so a blocked
   // Apply can bring the first wrong field into view and move focus to its error (§10, §11.3).
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
   const sectionY = useRef<Record<string, number>>({});
-  const errorNodes = useRef<Record<string, Text | null>>({});
+  const errorNodes = useRef<Record<string, TextRef | null>>({});
   // Counts presses of Reset: fields that keep typed text remount then, and only then.
   const [resets, setResets] = useState(0);
 

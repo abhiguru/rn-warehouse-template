@@ -5,9 +5,10 @@
  * item page's rate boxes.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollView } from 'react-native';
+import { Keyboard, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { space } from '@/theme/tokens';
 import type { FieldNode, FieldRegistry } from './components/fieldLink';
+import type { ScrollViewRef } from '@/types/nativeRefs';
 
 /** A focused field ends this far above the keyboard (P-09). */
 export const ABOVE_KEYBOARD = space.xxl;
@@ -19,7 +20,7 @@ export interface UseEditorFieldsOptions {
 
 export interface UseEditorFields {
   /** Pass to the ScrollView that holds the fields. */
-  scrollRef: React.RefObject<ScrollView | null>;
+  scrollRef: React.RefObject<ScrollViewRef | null>;
   /** Pass to the ScrollView's `onScroll` (with `scrollEventThrottle`). */
   onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /** Spread onto each field with `fieldLink(fields, key)`. */
@@ -37,7 +38,7 @@ export interface UseEditorFields {
 
 export function useEditorFields(order: string[], options: UseEditorFieldsOptions = {}): UseEditorFields {
   const { trackKeyboard = false } = options;
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
   const scrollY = useRef(0);
   const keyboardTop = useRef<number | null>(null);
   const focusedKey = useRef<string | null>(null);
@@ -119,5 +120,5 @@ export function useEditorFields(order: string[], options: UseEditorFieldsOptions
     scrollY.current = event.nativeEvent.contentOffset.y;
   }, []);
 
-  return { scrollRef: scrollRef as React.RefObject<ScrollView | null>, onScroll, fields, barHeight, setBarHeight, scrollToError, scrollToTop, keyboardUp };
+  return { scrollRef: scrollRef as React.RefObject<ScrollViewRef | null>, onScroll, fields, barHeight, setBarHeight, scrollToError, scrollToTop, keyboardUp };
 }

@@ -363,12 +363,12 @@ export function Card({
     isPressed && styles.cardPressed,
     selected && styles.cardSelected,
     style,
-  ]);
+  ]) ?? {};
   const borderWidth = typeof containerStyle.borderWidth === 'number' ? containerStyle.borderWidth : 0;
   const clipStyle: ViewStyle = StyleSheet.flatten([
     styles.cardClip,
     { borderRadius: Math.max(0, radius.card - borderWidth) },
-  ]);
+  ]) ?? {};
 
   // Simple mode: use padding prop
   const simpleContentStyle: ViewStyle = {

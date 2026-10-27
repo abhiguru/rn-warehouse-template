@@ -47,6 +47,7 @@ import {
   type CustomerFormFields,
 } from '@/features/customer/schemas/customerValidation';
 import { useCustomerEditor } from '@/features/customer/useCustomerEditor';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 /** Top to bottom: the order errors are scrolled to. */
 const FIELD_ORDER: (keyof CustomerFormFields)[] = [
@@ -79,7 +80,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
   const [working, setWorking] = useState(false);
   const [keyboardShown, setKeyboardShown] = useState(false);
   const busy = useRef(false);
-  const inputs = useRef<Partial<Record<keyof CustomerFormFields, TextInput | null>>>({});
+  const inputs = useRef<Partial<Record<keyof CustomerFormFields, TextInputRef | null>>>({});
 
   const { leaveWithoutAsking } = useLeaveGuard({
     hasChanges: editor.hasChanges,
@@ -529,7 +530,6 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 maxLength={300}
                 multiline
                 numberOfLines={3}
-                textAlignVertical="top"
                 multilineField
               />
             </View>
@@ -641,7 +641,7 @@ type FieldProps = TextInputProps & {
   /** Fixed text before the field, such as the +91 country code. */
   prefix?: string;
   multilineField?: boolean;
-  inputRef?: (node: TextInput | null) => void;
+  inputRef?: (node: TextInputRef | null) => void;
 };
 
 /** A labelled text field with focus, error and helper states (style guide §13.2). */
@@ -748,7 +748,7 @@ const makeStyles = (t: ThemeTokens) => ({
     borderColor: t.border.field,
     color: t.text.primary,
   },
-  multiline: { minHeight: touchTarget * 2 },
+  multiline: { minHeight: touchTarget * 2, textAlignVertical: 'top' as const },
   inputFocused: { borderColor: t.border.fieldFocus, borderWidth: 2 },
   inputError: { borderColor: t.status.negative.border, borderWidth: 2 },
   messageRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.xs },

@@ -9,6 +9,7 @@ import { roundMoney } from '@/utils/invoiceCalculations';
 import { parseRateInput, RATE_MAX, type RateField } from '@/features/invoice/utils/amountInput';
 import { groupKeyOf, type InvoiceItemGroup } from '@/features/invoice/utils/groupInvoiceItems';
 import type { GroupRates, InvoiceItemData } from '@/types/invoice.types';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 export type { RateField };
 export const RATE_FIELDS: readonly RateField[] = ['charge', 'labour_rate', 'tax'];
@@ -285,7 +286,7 @@ export interface ItemsActions {
   /** A stacked shared field reports how far below the top of its row it starts (null when the fields are side by side or it unmounts). */
   stackedOffset: (key: string, offset: number | null) => void;
   /** A stable ref callback for the input of a field. */
-  refFor: (key: string) => (node: import('react-native').TextInput | null) => void;
+  refFor: (key: string) => (node: TextInputRef | null) => void;
 }
 
 const FIELD_HEADING: Record<RateField, TranslationKey> = {

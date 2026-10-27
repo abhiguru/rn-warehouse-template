@@ -35,6 +35,7 @@ const THEME_IMPORT_RULES = {
     { name: 'react-native-vector-icons', message: "Use MaterialCommunityIcons: import Icon from '@expo/vector-icons/MaterialCommunityIcons' (style guide §8)." },
     { name: '@expo/vector-icons', message: "Use MaterialCommunityIcons: import Icon from '@expo/vector-icons/MaterialCommunityIcons' (style guide §8)." },
     { name: '@/theme', importNames: ['colors', 'darkColors', 'getThemeColors', 'Colors', 'default'], message: 'Use semantic tokens (useTokens/useThemedStyles).' },
+    { name: 'react-native-gesture-handler', importNames: ['Swipeable'], message: 'Use ReanimatedSwipeable: gesture-handler 3 (Expo SDK 58) has no Swipeable.' },
   ],
   patterns: [
     { group: ['react-native-vector-icons/*', '@expo/vector-icons/*', '!@expo/vector-icons/MaterialCommunityIcons'], message: "Use MaterialCommunityIcons: import Icon from '@expo/vector-icons/MaterialCommunityIcons' (style guide §8)." },

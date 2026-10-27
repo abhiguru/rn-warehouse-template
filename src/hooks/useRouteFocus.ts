@@ -4,7 +4,7 @@
  * (a report asked again when the person comes back to it).
  */
 import { useContext, useEffect, useState } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState } from 'react-native';
 // Expo Router ships React Navigation inside itself. NavigationContext is read directly so
 // that a component rendered outside a navigator (tests, a root-level sheet) counts as
 // focused instead of throwing, which `useIsFocused` would do there.
@@ -37,7 +37,7 @@ export function useRouteFocus(enabled: boolean): boolean {
   return focused;
 }
 
-function isForeground(status: AppStateStatus | null | undefined): boolean {
+function isForeground(status: string | null | undefined): boolean {
   return status !== 'background' && status !== 'inactive';
 }
 

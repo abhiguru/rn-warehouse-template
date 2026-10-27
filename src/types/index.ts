@@ -63,11 +63,8 @@ export * from './service.types';
 
 // Filter system types
 
-// RPC response types (raw backend data - legacy dual-naming)
-export * from './rpc.types';
-
 // Canonical RPC types (snake_case only)
-// NOTE: To avoid conflicts with rpc.types.ts, import directly from '@/types/rpc-canonical.types'
+// NOTE: Types not listed here are imported directly from '@/types/rpc-canonical.types'
 // Only re-export types that don't conflict:
 export type {
   // Common types

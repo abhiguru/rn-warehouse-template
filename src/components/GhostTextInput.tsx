@@ -28,6 +28,7 @@ import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 export interface GhostTextInputProps
   extends Omit<TextInputProps, 'value' | 'onChangeText' | 'style'> {
@@ -80,7 +81,7 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
     },
     ref
   ) => {
-    const inputRef = useRef<TextInput>(null);
+    const inputRef = useRef<TextInputRef>(null);
     const [suggestion, setSuggestion] = useState<string | null>(null);
     const [internalFocused, setInternalFocused] = useState(false);
     const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

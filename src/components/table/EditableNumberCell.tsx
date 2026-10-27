@@ -28,6 +28,7 @@ import { Pressable, TextInput, View, type TextInputProps } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { localizeDigits, normalizeDigits } from '@/i18n';
 import { radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 /**
  * The text of a field while it has the focus (0-9 digits): copied from `value` on focus, then the
@@ -96,7 +97,7 @@ export interface EditableNumberCellProps
   onStart?: () => void;
   /** Draw the cell as an input box at rest (default false: borderless, the general rule of 13.7). */
   boxed?: boolean;
-  ref?: React.Ref<TextInput>;
+  ref?: React.Ref<TextInputRef>;
 }
 
 export function EditableNumberCell({
@@ -118,7 +119,7 @@ export function EditableNumberCell({
   const styles = useThemedStyles(makeStyles);
   const own = useOwnText(value, onChangeText);
   const focused = own.focused;
-  const input = useRef<TextInput | null>(null);
+  const input = useRef<TextInputRef | null>(null);
   // A cell that goes (its row is recycled for another record) does not leave the native focus on the
   // view that is reused.
   useLayoutEffect(
@@ -129,10 +130,10 @@ export function EditableNumberCell({
   );
   // The tap focuses the input, and the caller's ref gets the same input.
   const setRefs = useCallback(
-    (node: TextInput | null) => {
+    (node: TextInputRef | null) => {
       input.current = node;
       if (typeof ref === 'function') ref(node);
-      else if (ref) (ref as React.MutableRefObject<TextInput | null>).current = node;
+      else if (ref) (ref as React.MutableRefObject<TextInputRef | null>).current = node;
     },
     [ref]
   );

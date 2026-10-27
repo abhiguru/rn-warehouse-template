@@ -6,6 +6,19 @@
   repair (upstream PR 1152, closed unmerged) is retired because 1.4.1 compares a canonical DigestInfo encoding and rejects the same
   forgery; the dependency gate now accepts three advisories (braces, sprintf-js, zod) and the Dependabot ignore for node-forge is
   gone. No backend migration; no native change.
+- **SDK 58 preparation on SDK 57 (no backend change, no new APK needed for behaviour; the swipe rows use another gesture component).**
+  - Swipe rows (customers, items, GRN list, items summary sheet, GRN and lot pickers) use `ReanimatedSwipeable`; lint refuses
+    `import { Swipeable }` from `react-native-gesture-handler` (gesture-handler 3 has none).
+  - `npm run typecheck:strict` type-checks against React Native's strict TypeScript API (the SDK 58 default) and runs in CI; ref types
+    use `React.ComponentRef<typeof X>` through `src/types/nativeRefs.ts`.
+  - The worklets Babel plugin is added once (by `babel-preset-expo`), no longer twice.
+  - Dead code removed: `rpc.types.ts`, `retryUtils.ts`, `clearExpiredCacheInBackground`, `MaintenanceScreen`, the `@/screens` alias.
+  - Unused packages removed: `react-native-calendars`, `react-native-dropdown-picker`, `react-native-modal-datetime-picker`,
+    `@react-native-community/slider`. `react-test-renderer` 19.2.3 is declared as a devDependency.
+  - `scripts/patch-navigation-decoder.mjs` says it is obsolete (and succeeds) once no package needs `query-string`;
+    `scripts/check-android-sdk.mjs` compares CI's Android pins with React Native's `libs.versions.toml`.
+  - New: `docs/SDK_UPGRADE.md` (checklist for each Expo SDK step) and a monthly `sdk-watch` workflow that opens an issue when a newer
+    Expo SDK is released.
 
 ## Unreleased — Warehouse network fallback (WS-L app, 2026-10-26)
 

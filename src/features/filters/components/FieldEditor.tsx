@@ -1,6 +1,5 @@
 /** The editor for one filter field, whatever its kind. Used by the single-filter sheet and the full page. */
 import React from 'react';
-import type { Text } from 'react-native';
 import { t } from '@/i18n';
 import type {
   DateRangeValue,
@@ -16,6 +15,7 @@ import { ChoiceChips } from './ChoiceChips';
 import { DateRangeEditor } from './editors/DateRangeEditor';
 import { OptionPicker } from './editors/OptionPicker';
 import { NumberRangeEditor, TextEditor, TextRangeEditor } from './editors/RangeEditors';
+import type { TextRef } from '@/types/nativeRefs';
 
 export interface FieldEditorProps {
   field: FilterFieldDef;
@@ -24,7 +24,7 @@ export interface FieldEditorProps {
   ctx: FilterContext;
   onInvalid?: (invalid: boolean) => void;
   /** The error text of a number range, for moving focus to it when Apply is pressed while the range is wrong. */
-  errorRef?: React.Ref<Text>;
+  errorRef?: React.Ref<TextRef>;
 }
 
 export function FieldEditor({ field, value, onChange, ctx, onInvalid, errorRef }: FieldEditorProps) {

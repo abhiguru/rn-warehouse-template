@@ -298,7 +298,7 @@ const ItemPriceHistoryScreen: React.FC = () => {
             <View style={styles.refreshStrip}>
               <EditorStrip variant="critical" message={`${tr('pricing.history.refreshFailed')} ${refreshError}`} testID="history-refresh-error" />
             </View>
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={renderFooter}
         refreshControl={

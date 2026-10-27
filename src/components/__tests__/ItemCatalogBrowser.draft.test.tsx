@@ -27,7 +27,6 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@react-native-community/slider', () => 'Slider');
 
 type SheetProps = { onDismiss?: () => void; enablePanDownToClose?: boolean; enableDismissOnClose?: boolean };
 const mockSheet: { props: SheetProps; present: jest.Mock; dismiss: jest.Mock } = {

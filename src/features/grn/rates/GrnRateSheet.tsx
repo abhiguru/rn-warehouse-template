@@ -11,7 +11,7 @@
  * start of the header, the form scrolls, Save rate stays pinned at the bottom above the keyboard.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
@@ -48,6 +48,7 @@ import {
   type SheetEntry,
 } from './grnRateModel';
 import type { RateScope } from './types';
+import type { ScrollViewRef, TextInputRef } from '@/types/nativeRefs';
 
 export interface GrnRateSheetProps {
   visible: boolean;
@@ -248,10 +249,10 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
   const [referenceOpen, setReferenceOpen] = useState(false);
   // Where the dates, the weights and the figures sit in the scroll, to bring the first wrong one into view when a save
   // is refused (style guide §14.4).
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
   const sectionY = useRef({ dates: 0, band: 0, figures: 0 });
   // The keypad's Next moves through the fields in order; the last one shows Done and only closes the keyboard.
-  const fieldRefs = useRef<Partial<Record<StepKey, TextInput | null>>>({});
+  const fieldRefs = useRef<Partial<Record<StepKey, TextInputRef | null>>>({});
 
   useEffect(() => {
     if (!visible || !preload) return;
@@ -439,7 +440,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
   const keypadProps = (key: StepKey) => {
     const next = fieldOrder[fieldOrder.indexOf(key) + 1];
     return {
-      ref: (node: TextInput | null) => { fieldRefs.current[key] = node; },
+      ref: (node: TextInputRef | null) => { fieldRefs.current[key] = node; },
       returnKeyType: next ? ('next' as const) : ('done' as const),
       submitBehavior: next ? ('submit' as const) : ('blurAndSubmit' as const),
       onSubmitEditing: next ? () => fieldRefs.current[next]?.focus() : undefined,

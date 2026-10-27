@@ -46,6 +46,7 @@ import { transportText } from '@/utils/serverText';
 import { showToast } from '@/utils/toast';
 import { publishUserListChange } from '@/utils/userListSync';
 import { t as tr, type TranslationKey } from '@/i18n';
+import type { ScrollViewRef, TextRef } from '@/types/nativeRefs';
 
 type ChosenCustomer = { id: string; name: string };
 type Suggestion = { forUser: string; customer: ChosenCustomer };
@@ -84,10 +85,10 @@ export default function EnrollmentReviewScreen() {
   const lastQueryRef = useRef('');
   const suggestionForRef = useRef<string | null>(null);
   const addFlowRef = useRef(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
   const cardYRef = useRef(0);
   const revealPendingRef = useRef(false);
-  const roleLabelRef = useRef<Text>(null);
+  const roleLabelRef = useRef<TextRef>(null);
   const profileId = useAppSelector(state => state.auth.userProfile?.id);
   // The administrator's newest customer as read before Add customer (undefined: could not be read).
   const beforeAddRef = useRef<Promise<{ id: string; name: string } | null | undefined> | null>(null);

@@ -21,7 +21,12 @@ export function adapt(source, version) {
 export function patch(root, { verifyOnly = false } = {}) {
   const lock = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
   const paths = Object.keys(lock.packages).filter(path => /(^|\/)node_modules\/query-string$/.test(path));
-  if (!paths.length) throw new Error('Expected reviewed query-string consumer is missing.');
+  if (!paths.length) {
+    // The consumer is gone (a newer React Navigation or Expo Router no longer depends on query-string): nothing
+    // to adapt or verify. Say so and succeed, so that the next maintainer removes this script and its checks.
+    console.log('patch-navigation-decoder: no query-string consumer in package-lock.json; this adapter is obsolete and should be removed');
+    return;
+  }
   // Validate every consumer before writing any adapter.
   const changes = paths.map(path => {
     const directory = resolve(root, path);

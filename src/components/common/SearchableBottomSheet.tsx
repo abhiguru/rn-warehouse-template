@@ -61,10 +61,16 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+// The sheet's input is a gesture-handler wrapper whose instance type has no `focus` under React Native's strict API.
+function focusInput(input: unknown): void {
+  (input as TextInputRef | null)?.focus();
+}
 
 export interface SearchableBottomSheetProps<T> {
   /** Whether the bottom sheet is visible */
@@ -219,7 +225,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   const searchNormalized = useCallback((query: string) => searchFn(normalizeDigits(query)), [searchFn]);
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const sheet = useModalSheet(bottomSheetRef);
-  const inputRef = useRef<React.ElementRef<typeof BottomSheetTextInput>>(null);
+  const inputRef = useRef<React.ComponentRef<typeof BottomSheetTextInput>>(null);
 
   // Get user ID for scoping recent items storage
   const userId = useAppSelector((state) => state.auth.userProfile?.id);
@@ -458,7 +464,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
       }
       sheet.present();
       setTimeout(() => {
-        inputRef.current?.focus();
+        focusInput(inputRef.current);
       }, 100);
     } else {
       sheet.dismiss();
@@ -561,7 +567,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
                 clearSearch();
                 // A sheet that lists everything with nothing typed lists it again.
                 if (minQueryLength === 0) void performSearchNow('');
-                inputRef.current?.focus();
+                focusInput(inputRef.current);
               }}
               accessibilityRole="button"
               accessibilityLabel={tr('common.clearSearch')}
@@ -583,7 +589,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
           ListFooterComponent={
             resultLimit && limitText && results.length > resultLimit ? (
               <Text style={[dynamicStyles.emptySubText, { paddingTop: space.md }]} accessibilityLiveRegion="polite">{limitText}</Text>
-            ) : null
+            ) : undefined
           }
           ItemSeparatorComponent={() => <View style={dynamicStyles.separator} />}
         />

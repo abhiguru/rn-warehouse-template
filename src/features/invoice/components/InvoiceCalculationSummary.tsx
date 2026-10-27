@@ -18,6 +18,7 @@ import { InlineValidation } from '@/components/fiori';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 import { clampDiscount, parseDiscountInput, parseFinalAmountInput } from '@/features/invoice/utils/amountInput';
 import { useTableLayout } from '@/components/common/DetailTable';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 interface InvoiceCalculationSummaryProps {
   header: InvoiceHeaderData;
@@ -294,9 +295,9 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
   // invoice (and so the total) keeps it, never a prefix of what was typed.
   const enteredDiscount = useRef(header.discount);
   const editing = useRef(false);
-  const discountRef = useRef<TextInput>(null);
-  const discountReasonRef = useRef<TextInput>(null);
-  const zeroReasonRef = useRef<TextInput>(null);
+  const discountRef = useRef<TextInputRef>(null);
+  const discountReasonRef = useRef<TextInputRef>(null);
+  const zeroReasonRef = useRef<TextInputRef>(null);
   const [finalAmountOpen, setFinalAmountOpen] = useState(false);
   const [finalAmountText, setFinalAmountText] = useState<string>('');
   const [finalAmountError, setFinalAmountError] = useState<string | null>(null);

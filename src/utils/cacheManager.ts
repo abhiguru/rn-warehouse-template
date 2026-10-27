@@ -6,7 +6,6 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { InteractionManager } from 'react-native';
 import { createLogger } from './logger';
 import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES } from '@/config/cacheConfig';
 import { getSessionIdentity } from '@/config/supabaseConfig';
@@ -496,18 +495,6 @@ export async function clearExpiredCache(expiryMs = DEFAULT_CACHE_EXPIRY_MS): Pro
   }
 
   return clearedCount;
-}
-
-/**
- * Clear expired cache entries in the background after interactions complete.
- * This prevents blocking the UI during cache cleanup operations.
- */
-export function clearExpiredCacheInBackground(expiryMs = DEFAULT_CACHE_EXPIRY_MS): void {
-  InteractionManager.runAfterInteractions(() => {
-    clearExpiredCache(expiryMs).catch((error) => {
-      cacheLogger.warn('Background cache cleanup failed:', error);
-    });
-  });
 }
 
 /**

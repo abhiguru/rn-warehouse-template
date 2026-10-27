@@ -1,0 +1,49 @@
+name: Expo SDK watch
+
+# Once a month: is there an Expo SDK newer than the one this app is on? The team's rule
+# (docs/SDK_UPGRADE.md) is to adopt a new SDK within 8 weeks of its release and never to be
+# more than one SDK behind, so this opens (or comments on) an issue instead of waiting for
+# someone to notice.
+on:
+  schedule:
+    - cron: '17 6 3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    name: Compare the Expo SDK with the latest release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open or update the "Expo SDK is available" issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # No checkout: the manifest is read through the API, so the job runs no repository code.
+          declared="$(gh api "repos/${REPO}/contents/package.json?ref=${REF}" --jq .content | base64 -d | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).dependencies.expo))')"
+          current="$(printf '%s' "$declared" | grep -oE '[0-9]+' | head -n1)"
+          latest_version="$(npm view expo version)"
+          latest="${latest_version%%.*}"
+          echo "package.json declares expo ${declared} (SDK ${current}); the latest release is ${latest_version} (SDK ${latest})"
+          case "${current}${latest}" in
+            ''|*[!0-9]*) echo "Could not read both SDK numbers" >&2; exit 1 ;;
+          esac
+          if [ "${latest}" -le "${current}" ]; then
+            echo "Up to date."
+            exit 0
+          fi
+          title="Expo SDK ${latest} is available"
+          body="Expo SDK ${latest} (expo ${latest_version}) is released and this app is on SDK ${current}. Follow docs/SDK_UPGRADE.md; the rule is to adopt a new SDK within 8 weeks and never to be more than one SDK behind."
+          existing="$(gh issue list --repo "${REPO}" --state open --search "\"${title}\" in:title" --json number,title --jq "[.[] | select(.title == \"${title}\")][0].number // empty")"
+          if [ -n "${existing}" ]; then
+            gh issue comment "${existing}" --repo "${REPO}" --body "Still open: ${body}"
+          else
+            gh issue create --repo "${REPO}" --title "${title}" --body "${body}"
+          fi

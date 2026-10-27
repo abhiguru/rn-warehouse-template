@@ -81,7 +81,6 @@ export { default as StepIndicator } from './StepIndicator';
 export { ErrorBoundary } from './ErrorBoundary';
 export { ListErrorBoundary, ListErrorFallback } from './list';
 export { default as ConfigErrorScreen } from './ConfigErrorScreen';
-export { default as MaintenanceScreen } from './MaintenanceScreen';
 export { TokenExpiryBanner } from './TokenExpiryBanner';
 export { AppVersionFooter, getAppVersionInfo, buildDiagnostics } from './AppVersionFooter';
 export type { AppVersionFooterProps, AppVersionInfo } from './AppVersionFooter';

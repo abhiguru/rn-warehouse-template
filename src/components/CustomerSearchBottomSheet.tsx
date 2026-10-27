@@ -301,7 +301,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                         ListHeaderComponent={
                             !isSearchMode && displayData.length > 0 ? (
                                 <Text style={styles.sectionHeader} accessibilityRole="header">{tr('customers.search.recentHeader')}</Text>
-                            ) : null
+                            ) : undefined
                         }
                         renderItem={({ item }: { item: { value: string; label: string; detail?: string } }) => (
                             <Pressable
@@ -450,12 +450,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.body,
     flex: 1,
     color: t.text.primary,
-    paddingVertical: 0,
-    ...Platform.select({
-      android: {
-        paddingVertical: space.sm,
-      },
-    }),
+    paddingVertical: Platform.OS === 'android' ? space.sm : 0,
   },
   searchLoader: {
     marginHorizontal: space.md,

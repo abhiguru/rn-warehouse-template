@@ -39,6 +39,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 export const CODE_LENGTH = 6;
 
@@ -80,7 +81,7 @@ export function CodeEntryForm({
   const [resendTimer, setResendTimer] = useState(60);
   const [expiryTimer, setExpiryTimer] = useState(300); // 5 minutes
   const [, setFocusedIndex] = useState(0);
-  const hiddenInputRef = useRef<TextInput | null>(null);
+  const hiddenInputRef = useRef<TextInputRef | null>(null);
   const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();

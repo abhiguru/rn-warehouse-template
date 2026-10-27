@@ -1,6 +1,6 @@
 import { getLanguage } from '@/i18n/language';
 import { useMemo } from 'react';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { StyleSheet, useColorScheme, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   ThemePreference,
@@ -77,10 +77,13 @@ export function useTokens(): ThemeTokens {
 // so list rows do not each build their own. Token objects are memoised per
 // brand and mode, so the inner WeakMap holds at most four entries per factory.
 // Text styles depend on the language too (line heights), so each language has its own sheet.
+/** A style sheet's shape (`StyleSheet.NamedStyles` is not in React Native's strict TypeScript API). */
+type NamedStyles<T> = { [P in keyof T]: ViewStyle | TextStyle | ImageStyle };
+
 const styleCache = new WeakMap<object, WeakMap<ThemeTokens, Map<string, unknown>>>();
 
 /** Build (or reuse) the stylesheet for a factory and a token set. */
-export function getThemedStyles<T extends StyleSheet.NamedStyles<T>>(
+export function getThemedStyles<T extends NamedStyles<T>>(
   factory: (tokens: ThemeTokens) => T,
   tokens: ThemeTokens
 ): T {
@@ -103,7 +106,7 @@ export function getThemedStyles<T extends StyleSheet.NamedStyles<T>>(
   return styles;
 }
 
-export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(
+export function useThemedStyles<T extends NamedStyles<T>>(
   factory: (tokens: ThemeTokens) => T
 ): T {
   const tokens = useTokens();
