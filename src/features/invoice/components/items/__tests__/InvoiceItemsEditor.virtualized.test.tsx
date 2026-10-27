@@ -31,6 +31,9 @@ const rowsOf = (tree: ReactTestRenderer): ItemsRow[] => tree.root.findByType('Fl
 const chargeCells = (tree: ReactTestRenderer) =>
   tree.root.findAllByType(TextInput).filter((node) => /^cell\|.*\|charge$/.test(String(node.props.testID)));
 
+// Rendering 300 lines takes about 3 s on a lightly loaded machine; parallel workers (npm test) make it slower.
+jest.setTimeout(20000);
+
 describe.each([[125], [300]])('a group of %d lines', (count) => {
   it('is one row per line plus the head, the shared block, the toggle and the headings, with no "Show more"', async () => {
     const tree = await render(groupLines(count));

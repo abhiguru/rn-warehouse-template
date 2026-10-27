@@ -15,6 +15,7 @@ import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
 import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
+import { markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
 import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
@@ -148,6 +149,7 @@ class NumberTakenError extends Error {
   constructor(taken: number) {
     super(t('invoice.form.numberTakenNoNext', { number: String(taken) }));
     this.taken = taken;
+    markRefusal(this, 'NUMBER_TAKEN');
   }
 }
 
@@ -165,12 +167,15 @@ function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
 }
 
 /** The result of a save that was refused for one of those reasons: the screen words it from `refusal`. */
-const refusedResponse = (refusal: ServerRefusal, fallback: string): CreateInvoiceResponse => ({
-  success: false,
-  data: { invoice_id: '', invoice_no: 0 },
-  message: serverText(refusal.text, fallback),
-  refusal,
-});
+const refusedResponse = (refusal: ServerRefusal, fallback: string, requestKey?: string): CreateInvoiceResponse => {
+  reportOutcome('save_refused', { code: refusal.reason, requestKey });
+  return {
+    success: false,
+    data: { invoice_id: '', invoice_no: 0 },
+    message: serverText(refusal.text, fallback),
+    refusal,
+  };
+};
 
 /** A number the app holds for the server's own check (D1, D18): left out of the request when it is not a number. */
 const givenTotal = (total: unknown): { expected_total: number } | Record<string, never> =>
@@ -212,11 +217,14 @@ async function sendSave(
 }
 
 /** The answer of a save whose answer was lost: the caller asks the server what became of it (owner rule D22). */
-const lostAnswerResponse = (sentAt: number): CreateInvoiceResponse => ({
-  success: false,
-  data: { invoice_id: '', invoice_no: 0 },
-  lostAnswer: { sentAt },
-});
+const lostAnswerResponse = (sentAt: number, requestKey?: string): CreateInvoiceResponse => {
+  reportOutcome('lost_answer', { requestKey });
+  return {
+    success: false,
+    data: { invoice_id: '', invoice_no: 0 },
+    lostAnswer: { sentAt },
+  };
+};
 
 /** PostgREST found no function that takes the parameters sent (PGRST202). */
 const isUnknownFunctionSignature = (error: { code?: string; message?: string }): boolean =>
@@ -771,7 +779,7 @@ export const createInvoice = async (
       invoiceFormLogger.error('RPC error:', errorForLog(error));
       // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
-      if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt);
+      if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);
       const taken = numberTakenFrom(error, payload.header.inv_no);
       if (taken) throw new NumberTakenError(taken.number);
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed'), error.code));
@@ -781,15 +789,17 @@ export const createInvoice = async (
       const taken = numberTakenFrom(data, payload.header.inv_no);
       if (taken) throw new NumberTakenError(taken.number);
       const refusal = actedOnRefusal(data);
-      if (refusal) return refusedResponse(refusal, t('invoice.service.createFailed'));
+      if (refusal) return refusedResponse(refusal, t('invoice.service.createFailed'), requestKey);
       const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
-      throw new Error(errorMsg);
+      // The server answered success: false by one of its rules; with no answer at all it is a failure.
+      throw data ? markRefusal(new Error(errorMsg), typeof data.error_code === 'string' ? data.error_code : undefined) : new Error(errorMsg);
     }
     return await createdInvoice(authenticatedClient, data, payload);
   } catch (error: any) {
     invoiceFormLogger.error('Error in createInvoice:', errorForLog(error));
     // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
-    if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now());
+    if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now(), requestKey);
+    reportSaveError(error, { requestKey });
     if (error instanceof NumberTakenError) {
       return {
         success: false,
@@ -1101,9 +1111,10 @@ export const updateInvoice = async (
       invoiceFormLogger.error('RPC error:', errorForLog(error));
       // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
-      if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt);
+      if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);
       const taken = numberTakenFrom(error, payload.header.inv_no);
       if (taken) {
+        reportOutcome('save_refused', { code: 'NUMBER_TAKEN', requestKey });
         return {
           success: false,
           data: { invoice_id: '', invoice_no: 0 },
@@ -1120,6 +1131,7 @@ export const updateInvoice = async (
     if (!result || !result.success) {
       const taken = numberTakenFrom(result, payload.header.inv_no);
       if (taken) {
+        reportOutcome('save_refused', { code: 'NUMBER_TAKEN', requestKey });
         return {
           success: false,
           data: { invoice_id: '', invoice_no: 0 },
@@ -1128,8 +1140,9 @@ export const updateInvoice = async (
         };
       }
       const refusal = actedOnRefusal(result);
-      if (refusal) return refusedResponse(refusal, t('invoice.service.updateFailed'));
+      if (refusal) return refusedResponse(refusal, t('invoice.service.updateFailed'), requestKey);
       const errorMsg = invoiceSaveMessage(result?.error, t('invoice.service.updateFailed'), result?.error_code);
+      if (result) reportOutcome('save_refused', { code: typeof result.error_code === 'string' ? result.error_code : undefined, requestKey });
       return {
         success: false,
         data: { invoice_id: '', invoice_no: 0 },
@@ -1140,7 +1153,8 @@ export const updateInvoice = async (
   } catch (error: any) {
     invoiceFormLogger.error('Error updating invoice:', errorForLog(error));
     // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
-    if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now());
+    if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now(), requestKey);
+    reportSaveError(error, { requestKey });
     return {
       success: false,
       data: { invoice_id: '', invoice_no: 0 },

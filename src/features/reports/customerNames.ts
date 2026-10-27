@@ -16,7 +16,8 @@
  * Memory only, and emptied whenever the session changes: a name belongs to the
  * facility and the account that read it.
  */
-import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 
 const names = new Map<string, string>();
@@ -84,4 +85,4 @@ export function forgetCustomerNames(): void {
 }
 
 // Sign-in, sign-out, forced sign-out and a facility switch all change the session.
-onSessionChange(forgetCustomerNames);
+registerSessionScoped('report-customer-names', forgetCustomerNames, { onGenerationChange: true });

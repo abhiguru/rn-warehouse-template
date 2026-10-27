@@ -15,7 +15,8 @@
  * MAX_HISTORY_ENTRIES answered histories are kept, the least recently used
  * going first. A load still in flight is never dropped to make room.
  */
-import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 /** How long a collected history answers list requests before it is read again. */
 export const CUSTOMER_HISTORY_TTL_MS = 2 * 60 * 1000;
@@ -27,7 +28,7 @@ type Entry = { generation: number; loadedAt: number; value: Promise<unknown>; se
 const entries = new Map<string, Entry>();
 
 // Sign-in, sign-out, token store or clear, server switch: nothing of the old session stays.
-onSessionChange(() => entries.clear());
+registerSessionScoped('customer-history', () => entries.clear(), { onGenerationChange: true });
 
 /** Drops the least recently used answered histories beyond MAX_HISTORY_ENTRIES. */
 function trim(): void {

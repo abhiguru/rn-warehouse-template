@@ -24,6 +24,7 @@ import type {
 import { uploadDeferredDispatchImages } from './dispatchImageService';
 import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
+import { markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
 import { REFUSAL, refusalOf } from '@/utils/serverRefusal';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -68,6 +69,7 @@ function wordedRefusal(answer: unknown, fallback: string): DispatchApiResponse |
   const refusal = refusalOf(answer);
   if (!refusal || !WORDED_REFUSALS.has(refusal.reason)) return undefined;
   const text = serverText(refusal.text, fallback, { write: true, form: true });
+  reportOutcome('save_refused', { code: refusal.reason });
   return { success: false, reason: refusal.reason, refusal, error: text, message: text };
 }
 
@@ -250,6 +252,7 @@ async function sendUntilAnswered(
 
     log.warn(`${rpcName} is not settled; asking the server what became of it`, { code: errorCode(error) });
     options.onLostAnswer?.();
+    reportOutcome('lost_answer', { requestKey });
     let check: Awaited<ReturnType<typeof checkSubmission>>;
     try {
       check = await checkSubmission(requestKey, sentAt, options.signal);
@@ -335,13 +338,16 @@ export const getAvailableStock = async (grTrlId: string): Promise<StockCheckResp
 };
 
 /** The refusal the screens turn into "number already used, the next free one is ...". */
-const numberTakenResponse = (number: string): DispatchApiResponse => ({
-  success: false,
-  reason: 'NUMBER_TAKEN',
-  number,
-  error: t('dispatch.service.duplicate'),
-  message: t('dispatch.service.duplicate'),
-});
+const numberTakenResponse = (number: string): DispatchApiResponse => {
+  reportOutcome('save_refused', { code: 'NUMBER_TAKEN' });
+  return {
+    success: false,
+    reason: 'NUMBER_TAKEN',
+    number,
+    error: t('dispatch.service.duplicate'),
+    message: t('dispatch.service.duplicate'),
+  };
+};
 
 // ============================================================================
 // CREATE DISPATCH
@@ -367,6 +373,8 @@ export const createDispatch = async (payload: {
   warnDuplicate?: boolean;
 }, options: LostAnswerOptions = {}): Promise<DispatchApiResponse> => {
   let finishMutation: (() => void) | undefined;
+  // The save's request code once it is made, for the outcome report of the catch below.
+  let reportedKey: string | undefined;
   try {
     finishMutation = beginOperatorMutation();
     log.info('Creating dispatch', {
@@ -414,6 +422,7 @@ export const createDispatch = async (payload: {
 
     // Written down before the request goes out: if the app dies with the answer still lost, the next start asks the
     // server about this code (src/services/unfinishedSaves.ts).
+    reportedKey = rpcPayload.p_idempotency_key;
     await rememberUnfinishedSave({
       kind: 'dispatch',
       requestKey: rpcPayload.p_idempotency_key,
@@ -442,6 +451,7 @@ export const createDispatch = async (payload: {
     // The resend was refused for the number twice: the first send may have saved it. The screen says so (the person is told
     // to check the list); no next number. Nothing is left for the start-up check to settle.
     if (answer.numberMaybeSaved) {
+      reportOutcome('save_refused', { code: 'NUMBER_TAKEN', requestKey: rpcPayload.p_idempotency_key });
       await forgetUnfinishedSave(rpcPayload.p_idempotency_key);
       return {
         success: false,
@@ -476,7 +486,7 @@ export const createDispatch = async (payload: {
       // Wave B: the date rules (D3) and the order that moved (D5) are worded by the screen, from the reason and the fields.
       const worded = wordedRefusal(data, t('dispatch.service.createFailed'));
       if (worded) return worded;
-      throw new Error(serverText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true }));
+      throw markRefusal(new Error(serverText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
     }
 
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
@@ -527,6 +537,7 @@ export const createDispatch = async (payload: {
     };
   } catch (error: any) {
     log.error('Dispatch creation failed');
+    reportSaveError(error, { requestKey: reportedKey });
 
     // Parse error message for user-friendly display
     let errorMessage = t('dispatch.service.createFailed');
@@ -581,11 +592,13 @@ export const updateDispatch = async (
   },
   options: LostAnswerOptions = {}
 ): Promise<DispatchApiResponse> => {
+  let reportedKey: string | undefined;
   try {
     log.info('Updating dispatch', { dispatchId, itemCount: payload.items.length });
 
     const authenticatedClient = await getAuthenticatedClient();
     const requestKey = `warehouse-dispatch-update-${Crypto.randomUUID()}`;
+    reportedKey = requestKey;
 
     // Transform data to match RPC function format
     const rpcPayload = {
@@ -621,6 +634,7 @@ export const updateDispatch = async (
     if (answer.lostAfterLeaving) return { success: false, aborted: true, maybeSaved: true, error: '', message: '' };
     // The resend was refused for the number twice: the first send may have saved it. The screen says so; no next number.
     if (answer.numberMaybeSaved) {
+      reportOutcome('save_refused', { code: 'NUMBER_TAKEN', requestKey });
       return {
         success: false,
         numberMaybeSaved: true,
@@ -650,7 +664,7 @@ export const updateDispatch = async (
       // worded by the screen, from the reason and the fields.
       const worded = wordedRefusal(data, t('dispatch.service.updateFailed'));
       if (worded) return worded;
-      throw new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true }));
+      throw markRefusal(new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
     }
 
     log.info('Dispatch updated', { dispatchId });
@@ -680,6 +694,7 @@ export const updateDispatch = async (
     };
   } catch (error: any) {
     log.error('Dispatch update failed', { dispatchId });
+    reportSaveError(error, { requestKey: reportedKey });
     return {
       success: false,
       error: serverText(error.message, t('dispatch.service.updateFailed'), { write: true, form: true }),
