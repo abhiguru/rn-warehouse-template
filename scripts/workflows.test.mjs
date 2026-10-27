@@ -53,7 +53,11 @@ test('every checkout drops its credentials, and the token is read-only', () => {
 test('every Dependabot ignore entry names the update types it ignores', () => {
   const lines = dependabot.split('\n');
   const names = lines.flatMap((line, index) => (/^\s+- dependency-name:/.test(line) ? [index] : []));
-  assert.ok(names.length >= 32, 'ignore entries were read');
+  // Two independent counts must agree, so an entry the line pattern misses is caught
+  // and adding or removing an entry needs no hand-kept number.
+  const raw = dependabot.split('dependency-name:').length - 1;
+  assert.ok(raw > 0, 'ignore entries were read');
+  assert.equal(names.length, raw, 'every dependency-name line was recognised');
   for (const index of names) {
     assert.match(lines[index + 1], /^\s+update-types: \["version-update:semver-(?:major|minor|patch)"(?:, "version-update:semver-(?:major|minor|patch)")*\]$/, lines[index].trim());
   }

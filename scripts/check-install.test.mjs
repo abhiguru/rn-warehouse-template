@@ -23,7 +23,7 @@ const named = name => Object.keys(lock.packages).filter(path => path === `node_m
 function installedCopy() {
   const root = mkdtempSync(join(tmpdir(), 'warehouse-check-install-'));
   cpSync(resolve(project, 'package-lock.json'), join(root, 'package-lock.json'));
-  for (const name of ['query-string', 'decode-uri-component', ...new Set(manifest.files.map(file => file.package))]) {
+  for (const name of ['query-string', 'decode-uri-component', ...new Set([...manifest.files, ...(manifest.unaffected ?? [])].map(entry => entry.package))]) {
     for (const path of named(name)) cpSync(resolve(project, path), join(root, path), { recursive: true });
   }
   for (const file of ['node_modules/expo/package.json', join(relative(project, cliDirectory), 'package.json'), serverFile]) {

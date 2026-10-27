@@ -37,8 +37,12 @@ export function securityBackports(root, { verifyOnly = false } = {}) {
   root = realpathSync(root);
   const lock = JSON.parse(readFileSync(resolve(root, 'package-lock.json')));
   const changes = [];
-  for (const name of [...new Set(manifest.files.map(file => file.package))]) {
+  const patched = new Set(manifest.files.map(file => file.package));
+  // A package that only has an `unaffected` entry is still checked: a copy below its
+  // fixed version has no repair here and must be refused, not skipped.
+  for (const name of new Set([...patched, ...(manifest.unaffected ?? []).map(entry => entry.package)])) {
     const paths = Object.keys(lock.packages).filter(path => path.endsWith(`/node_modules/${name}`) || path === `node_modules/${name}`);
+    if (!paths.length && !patched.has(name)) continue;
     if (!paths.length) throw new Error(`Expected ${name} dependency missing; review obsolete backport`);
     for (const path of paths) {
       if (!path.startsWith('node_modules/') || path.includes('\\') || path.split('/').includes('..')) throw new Error('Invalid dependency path');
