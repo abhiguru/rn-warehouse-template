@@ -246,6 +246,38 @@ test('installer patches only the zod copy below 4.6.6 and refuses an unreviewed 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('a package with only an unaffected entry is refused below its fixed version and accepted from it', () => {
+  const root = mkdtempSync(join(tmpdir(), 'warehouse-unaffected-'));
+  const entry = manifest.unaffected.find(item => item.package === 'node-forge');
+  const lay = version => {
+    const path = 'node_modules/node-forge';
+    mkdirSync(join(root, path), { recursive: true });
+    writeFileSync(join(root, path, 'package.json'), JSON.stringify({ name: 'node-forge', version }));
+    for (const spec of manifest.files) {
+      const other = `node_modules/${spec.package}`;
+      mkdirSync(dirname(join(root, other, spec.file)), { recursive: true });
+      writeFileSync(join(root, other, 'package.json'), JSON.stringify({ name: spec.package, version: spec.version }));
+      writeFileSync(join(root, other, spec.file), backportSource(originalSource(spec), spec.version, spec));
+    }
+    const packages = { [path]: { version } };
+    for (const spec of manifest.files) packages[`node_modules/${spec.package}`] = { version: spec.version };
+    writeFileSync(join(root, 'package-lock.json'), JSON.stringify({ packages }));
+  };
+  try {
+    assert.equal(entry.fromVersion, '1.4.1');
+    for (const version of ['1.4.0', '1.3.9', '0.10.0']) {
+      lay(version);
+      assert.throws(() => securityBackports(root), new RegExp(`Unreviewed node-forge version ${version.replaceAll('.', '\\.')}`));
+      assert.throws(() => securityBackports(root, { verifyOnly: true }), /Unreviewed node-forge version/);
+    }
+    for (const version of ['1.4.1', '1.5.0', '2.0.0']) {
+      lay(version);
+      assert.equal(securityBackports(root).filter(change => change.package === 'node-forge').length, 0);
+      assert.equal(securityBackports(root, { verifyOnly: true }).filter(change => change.package === 'node-forge').length, 0);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 const issueSummary = result => result.error.issues.map(issue => [issue.code, issue.path.join('.'), issue.message, issue.maximum ?? issue.minimum, issue.exact]);
 const big = n => new Array(n).fill(1);
 

@@ -54,6 +54,13 @@ Pairs with the backend release that publishes `backendRelease`, `schemaHead` and
   (`rpcRefusal.ts`, `isAccessRefusal`); each says so in a comment.
 - Gujarati for the new texts is a draft for the owner's wording review (`components.appTooOld`, `components.upgrading`, `errors.server.discoveryBusy`).
 
+## Unreleased — fix batch 2026-10
+
+- **node-forge 1.4.1.** `overrides` pins `node-forge` to 1.4.1 (published 2026-10-27, about ten high fixes). The local GHSA-86w9-cpqp-85rv
+  repair (upstream PR 1152, closed unmerged) is retired because 1.4.1 compares a canonical DigestInfo encoding and rejects the same
+  forgery; the dependency gate now accepts three advisories (braces, sprintf-js, zod) and the Dependabot ignore for node-forge is
+  gone. No backend migration; no native change.
+
 ## Unreleased — Warehouse network fallback (WS-L app, 2026-10-26)
 
 Pairs with the backend `gateway-lan` workstream (WS-L backend: `lan.sh on`, `urls.lan` in the authenticated `get-config`, the
