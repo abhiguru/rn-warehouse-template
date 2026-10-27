@@ -31,7 +31,7 @@
     "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json",
     "typecheck:tests": "tsc -p tsconfig.test.json",
     "pretest": "node scripts/check-install.mjs",
-    "test": "jest --runInBand",
+    "test": "jest --maxWorkers=50%",
     "test:setup": "node --test scripts/*.test.mjs",
     "check:backend": "node scripts/check-backend.mjs",
     "update-supabase-keys": "bash scripts/update-supabase-keys.sh",

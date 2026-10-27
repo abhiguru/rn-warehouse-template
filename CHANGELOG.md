@@ -20,6 +20,12 @@
   - New: `docs/SDK_UPGRADE.md` (checklist for each Expo SDK step) and a monthly `sdk-watch` workflow that opens an issue when a newer
     Expo SDK is released.
 
+- **Guards and docs (maintainability review items 18 and 23).** No backend migration needed; no new APK needed for the guards. One
+  session-scoped registry (`src/config/sessionScopedRegistry.ts`) that `clearSessionScopedState` runs, with a scan test that fails for a
+  new module-level cache under `src/services` or `src/features` that is neither registered nor allow-listed; the route tables are
+  exported and tested against `app/`; a redacted save-outcome event (`reportOutcome`: refused, failed, lost answer, lost answer settled)
+  goes through the existing error reporting when a DSN is set (see `docs/TELEMETRY_AND_PRIVACY.md`); `npm test` runs Jest in parallel at half the CPUs (`--maxWorkers=50%`; 2 min 12 s with two workers instead of 7 min 24 s with `--runInBand` on an 8-core machine); `docs/DEVELOPER_HANDOFF.md` says which list is cached.
+
 ## Unreleased — Warehouse network fallback (WS-L app, 2026-10-26)
 
 Pairs with the backend `gateway-lan` workstream (WS-L backend: `lan.sh on`, `urls.lan` in the authenticated `get-config`, the

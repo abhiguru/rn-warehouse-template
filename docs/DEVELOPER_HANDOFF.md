@@ -100,10 +100,18 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
 
 ## Session-scoped state
 
-`clearSessionScopedState` (`src/store/sessionScopedState.ts`) cancels and clears react-query, the
-autocomplete cache, the four form drafts, every list cache (`clearAllCaches`) and the shared-documents
-directory. It runs on logout, forced logout, account deletion and both server-switch paths. List caches are
-keyed by session identity (origin, instance, subject) and are served only for offline failures.
+`clearSessionScopedState` (`src/store/sessionScopedState.ts`) runs every clear function registered with
+`registerSessionScoped(name, clear)` (`src/config/sessionScopedRegistry.ts`), in registration order. It cancels and
+clears react-query, the autocomplete cache, the three form drafts (GRN, dispatch, invoice), the list filters, the
+rate caches, every list cache (`clearAllCaches`), the image caches, the local photo files and the shared-documents
+directory. It runs on logout, forced logout, account deletion and both server-switch paths. A module that keeps
+session data outside the store registers its own clear (pass `{ onGenerationChange: true }` to also clear whenever the
+session generation advances); `src/tests/sessionScopedRegistry.scan.test.ts` fails for a module under `src/services`
+or `src/features` that holds a module-level `Map`, `Set` or object and neither registers nor is on its allow-list
+with a reason. At this commit only the dispatch list keeps offline copies of list answers (a bounded cache in
+`dispatch-service.ts`, keyed by session identity: origin, instance, subject), and it serves them only after an
+offline failure; reports keep their own session-keyed cache (`src/features/reports/reportCache.ts`). The GRN, order,
+invoice and stock list prefixes in `cacheConfig.ts` are cleared too, but no list service writes them today.
 
 ## Commands
 
@@ -115,6 +123,12 @@ npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm 
 npm run audit:dependencies -- --report-dir /tmp/dependency-security-report
 npm run doctor              # read-only check against an installed backend
 ```
+
+`npm test` runs Jest with `--maxWorkers=50%`: the worker count follows the CPU count of the machine (and of the CI
+runner named by the repository variable `CI_RUNNER`). Measured 2026-10-27 on an 8-core development machine, 658 suites
+green each time: 1 min 30 s with Jest's default of all cores but one, 2 min 12 s with two workers, 7 min 24 s with
+`--runInBand`. Half the cores is used so that the slow UI suites (for example the 300-line invoice editor) keep
+their time to spare under load. No suite needs `--runInBand`; add it only to debug one suite.
 
 Dependabot ignores the packages pinned by the backports (`.github/dependabot.yml`); bump them together
 with the manifest. It also ignores every package whose version the Expo SDK sets; move those together
