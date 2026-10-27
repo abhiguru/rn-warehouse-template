@@ -68,8 +68,8 @@ import type { TextInputRef } from '@/types/nativeRefs';
 // ============================================================================
 
 // The sheet's input is a gesture-handler wrapper whose instance type has no `focus` under React Native's strict API.
-function focusInput(input: unknown): void {
-  (input as TextInputRef | null)?.focus();
+function focusInput(input: React.ComponentRef<typeof BottomSheetTextInput> | null): void {
+  (input as unknown as TextInputRef | null)?.focus();
 }
 
 export interface SearchableBottomSheetProps<T> {

@@ -10,8 +10,13 @@ export const sdkPackages = ['platform-tools', 'platforms;android-36', 'build-too
 // (or the reverse) is the first thing that breaks on a React Native bump, so it is checked here rather than in Gradle.
 export const reactNativeVersionsFile = fileURLToPath(new URL('../node_modules/react-native/gradle/libs.versions.toml', import.meta.url));
 export class PinMismatchError extends Error {}
+export class MissingReactNativeVersionsError extends Error {}
 export function readReactNativeVersions(file = reactNativeVersionsFile) {
-  const text = readFileSync(file, 'utf8');
+  let text;
+  try { text = readFileSync(file, 'utf8'); } catch (error) {
+    if (error?.code === 'ENOENT') throw new MissingReactNativeVersionsError("React Native's libs.versions.toml not found; run npm ci first");
+    throw error;
+  }
   const versions = text.split(/\r?\n/).reduce((state, line) => {
     const section = line.match(/^\s*\[(.+)\]\s*$/);
     if (section) return { ...state, inVersions: section[1] === 'versions' };
@@ -64,7 +69,7 @@ export function checkAndroidSDK(root, { reactNativeVersions = reactNativeVersion
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try { console.log(JSON.stringify(checkAndroidSDK(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT))); }
   catch (error) {
-    if (error instanceof PinMismatchError) console.error(error.message);
+    if (error instanceof PinMismatchError || error instanceof MissingReactNativeVersionsError) console.error(error.message);
     console.error('Android SDK prerequisite check failed. Install and verify the pinned packages listed in README.md (Quickstart) before Gradle; preserve SDK-manager failures.');
     process.exitCode=1;
   }

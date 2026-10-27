@@ -16,7 +16,10 @@ permissions:
 jobs:
   watch:
     name: Compare the Expo SDK with the latest release
-    runs-on: ubuntu-latest
+    # The repository variable CI_RUNNER (a JSON runs-on value) picks the runner, as in ci.yml. Whatever runner it names must
+    # provide gh, node and npm (the hosted ubuntu-latest image does). This workflow never runs for a pull request, so it
+    # has no fork clause.
+    runs-on: ${{ fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
     timeout-minutes: 5
     steps:
       - name: Open or update the "Expo SDK is available" issue

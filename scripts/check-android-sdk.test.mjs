@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { checkAndroidSDK, checkReactNativePins, readReactNativeVersions, reactNativeVersionsFile, PinMismatchError } from './check-android-sdk.mjs';
+import { checkAndroidSDK, checkReactNativePins, readReactNativeVersions, reactNativeVersionsFile, PinMismatchError, MissingReactNativeVersionsError } from './check-android-sdk.mjs';
 function fixture(t) {
   const root=mkdtempSync(join(tmpdir(),'warehouse-sdk-check-')); t.after(()=>rmSync(root,{recursive:true}));
   const file=(p,text='',mode=0o600)=>{mkdirSync(dirname(join(root,p)),{recursive:true});writeFileSync(join(root,p),text,{mode});};
@@ -53,4 +53,10 @@ test('a toml without the keys fails instead of passing silently', t=>{
   const root=mkdtempSync(join(tmpdir(),'warehouse-rn-toml-')); t.after(()=>rmSync(root,{recursive:true}));
   const file=join(root,'libs.versions.toml'); writeFileSync(file,'[versions]\nminSdk = "24"\n');
   assert.throws(()=>checkReactNativePins(file),/no compileSdk/);
+});
+test('a missing React Native toml fails with an instruction instead of the generic message', t=>{
+  const root=mkdtempSync(join(tmpdir(),'warehouse-rn-toml-')); t.after(()=>rmSync(root,{recursive:true}));
+  const absent=join(root,'gradle','libs.versions.toml');
+  assert.throws(()=>checkReactNativePins(absent),error=>error instanceof MissingReactNativeVersionsError&&error.message==="React Native's libs.versions.toml not found; run npm ci first");
+  assert.throws(()=>checkAndroidSDK(fixture(t),{reactNativeVersions:absent}),MissingReactNativeVersionsError);
 });
