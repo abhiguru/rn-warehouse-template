@@ -13,7 +13,7 @@ jest.mock('react-native-paper', () => Object.fromEntries(
 ));
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useFocusEffect: jest.fn() }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: jest.fn() }));
-jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
+jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1, onSessionChange: jest.fn() }));
 // The list's search and filters read the session-only filter store and the list configurations.
 jest.mock('@/store/slices/authSlice', () => ({
   forceLogoutOnInvalidToken: jest.fn(),

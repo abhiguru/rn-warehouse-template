@@ -16,6 +16,7 @@
  */
 import { UPGRADING_CODE } from '@/utils/serverText';
 import { operatorResumeGate } from './operatorResume';
+import { registerSessionScoped } from './sessionScopedRegistry';
 
 /** Used when the answer carries no usable `Retry-After`; the gateway's own value. */
 export const DEFAULT_RETRY_AFTER_SECONDS = 120;
@@ -61,10 +62,12 @@ export function noteDiscoveryAnswered(): void {
   setUpgrading(false);
 }
 
-/** A server or session change (operatorServer.ts, supabaseConfig.ts register it): the notice belonged to the facility the phone has left. */
+/** A server or session change: the notice belonged to the facility the phone has left. */
 export function clearUpgradeNotice(): void {
   setUpgrading(false);
 }
+// Session end and every session generation change (sign-in or out); a change of server is also cleared by operatorServer.ts.
+registerSessionScoped('upgrade-notice', () => clearUpgradeNotice(), { onGenerationChange: true });
 
 /**
  * Reads a 503: raises the notice and says whether it was the upgrade answer (any other 503 leaves the notice as it

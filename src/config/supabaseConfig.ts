@@ -27,7 +27,7 @@ import { localizeDigits, t } from '@/i18n';
 import { isUpgradingAnswer, serverText, UPGRADING_CODE, upgradingBody } from '@/utils/serverText';
 import { DISCARD_BODY, discardBody } from './discardBody';
 import { isGatewayKeyRejection } from './gatewayRejection';
-import { clearUpgradeNotice, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from './upgradeNotice';
+import { noteServerAnswered, noteUpgradeAnswer, waitForRetry } from './upgradeNotice';
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 
 const authLogger = createLogger('Auth');
@@ -1618,8 +1618,6 @@ export function invalidateStoredTokenCache(): void {
 // A session change (advanceSessionGeneration) drops the copy synchronously, so reads queued right
 // after it read SecureStore again.
 onSessionChange(invalidateStoredTokenCache);
-// Signing in or out ends the notice about the facility the person has left (the banner is global; src/config/upgradeNotice.ts).
-onSessionChange(clearUpgradeNotice);
 
 // Session Management (supports both JWT tokens and session markers)
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage

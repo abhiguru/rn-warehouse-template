@@ -1,3 +1,5 @@
+import { registerSessionScoped } from './sessionScopedRegistry';
+
 /**
  * The facility needs a newer app than this one: `minimumClientVersion` of its public configuration is above
  * this build's version (docs/API_CONTRACT.md, "Which app builds a release supports"). Thrown by discovery
@@ -55,3 +57,6 @@ function setAppTooOld(next: AppTooOldInfo | null): void {
 }
 export const reportAppTooOld = (error: AppTooOldError): void => setAppTooOld(appTooOldInfo(error));
 export const clearAppTooOld = (): void => setAppTooOld(null);
+// The screen is about the facility the phone is signed in to; logout, forced logout, account deletion and a server switch end it.
+// Not on every generation change: a token refresh must not lift the screen while the facility still needs a newer app.
+registerSessionScoped('app-too-old', () => clearAppTooOld());

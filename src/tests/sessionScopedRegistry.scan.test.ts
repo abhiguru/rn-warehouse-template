@@ -24,9 +24,6 @@ const ALLOWED: Record<string, { why: string; clearedBy?: readonly string[] }> = 
   'src/services/stock-service.ts': {
     why: "facilitiesWithoutItemSort: which facility backends lack a sort parameter; a fact about the server, kept for the run of the app",
   },
-  'src/services/order-service.ts': {
-    why: "facilitiesWithoutLineVersion: which facility backends lack a parameter; a fact about the server, kept for the run",
-  },
   'src/services/unfinishedSaves.ts': {
     why: "startedThisRun: request codes written this run, so the start-up check leaves them to the saving screen; no personal data, and the notes survive a teardown on purpose",
   },
@@ -116,6 +113,9 @@ const ALLOWED: Record<string, { why: string; clearedBy?: readonly string[] }> = 
   },
   'src/config/facilityCapabilities.ts': {
     why: "byServer: capabilities by facility server (a fact about the server); listeners: subscriptions",
+  },
+  'src/config/backendFeatures.ts': {
+    why: "byServer: the release (backendRelease, schemaHead) each facility server last reported, by server; a fact about the server, not the session, so it outlives a sign-out on the same facility",
   },
   'src/config/lanCheck.ts': {
     why: "listeners: subscriptions; checking: the check in progress",
