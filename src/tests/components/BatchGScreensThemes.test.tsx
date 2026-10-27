@@ -32,9 +32,12 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   KeyboardAwareScrollView: require('react-native').ScrollView,
 }));
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({
+  __esModule: true,
+  default: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock('react-native-gesture-handler', () => ({
   GestureHandlerRootView: require('react-native').View,
-  Swipeable: ({ children }: { children: React.ReactNode }) => children,
 }));
 jest.mock('@/components/GenericStepIndicatorHeader', () => ({ GenericStepIndicatorHeader: () => null }));
 jest.mock('@/components/RolePickerBottomSheet', () => ({ RolePickerBottomSheet: () => null }));

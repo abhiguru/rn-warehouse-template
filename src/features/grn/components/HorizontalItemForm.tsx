@@ -22,6 +22,7 @@ import { parseReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 import { showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
 import { normalizeDigits, t as tr, localizeDigits, identifierInput } from '@/i18n';
+import type { ScrollViewRef, TextInputRef } from '@/types/nativeRefs';
 
 // The five fields of the row, in the order they are drawn, each with its width.
 const FIELD_WIDTHS = {
@@ -194,11 +195,11 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const styles = useThemedStyles(makeStyles);
         const t = useTokens();
 
-        const scrollRef = useRef<ScrollView>(null);
-        const qtyInputRef = useRef<TextInput>(null);
-        const weightInputRef = useRef<TextInput>(null);
-        const rackInputRef = useRef<TextInput>(null);
-        const packageMarkInputRef = useRef<TextInput>(null);
+        const scrollRef = useRef<ScrollViewRef>(null);
+        const qtyInputRef = useRef<TextInputRef>(null);
+        const weightInputRef = useRef<TextInputRef>(null);
+        const rackInputRef = useRef<TextInputRef>(null);
+        const packageMarkInputRef = useRef<TextInputRef>(null);
 
         // Scroll to keep focused field visible
         const scrollToField = useCallback((offset: number) => {

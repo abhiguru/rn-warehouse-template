@@ -9,6 +9,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { identifierInput, normalizeDigits, t as translate, numericInput } from '@/i18n';
 import { radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { NumberRangeValue, TextRangeValue } from '../../types';
+import type { TextRef } from '@/types/nativeRefs';
 
 const makeStyles = (t: ThemeTokens) => ({
   wrap: { gap: space.xs },
@@ -49,7 +50,7 @@ export interface NumberRangeEditorProps {
   /** Called with true while the range is the wrong way round. */
   onInvalid?: (invalid: boolean) => void;
   /** The error text, so a blocked Apply can move the screen reader's focus to it (§10, §11.3). */
-  errorRef?: React.Ref<Text>;
+  errorRef?: React.Ref<TextRef>;
 }
 
 export function NumberRangeEditor({ label, value, onChange, unit, integer = false, identifier = false, onInvalid, errorRef }: NumberRangeEditorProps) {

@@ -25,7 +25,8 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
-import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -555,7 +556,7 @@ const GRNListItem = memo<GRNListItemProps>(({
   ), [styles, t, handleViewDetails, item.gr_no]);
 
   return (
-    <Swipeable
+    <ReanimatedSwipeable
       renderRightActions={renderRightActions}
       overshootRight={false}
       friction={2}
@@ -600,7 +601,7 @@ const GRNListItem = memo<GRNListItemProps>(({
           </View>
         </View>
       </Pressable>
-    </Swipeable>
+    </ReanimatedSwipeable>
   );
 }, (prevProps, nextProps) => {
   // Custom comparison for memo - only re-render if these change

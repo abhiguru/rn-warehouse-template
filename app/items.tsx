@@ -30,7 +30,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useIsFocused } from 'expo-router';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -706,7 +706,7 @@ interface FioriItemCardProps {
 }
 
 function FioriItemCard({ item, noRate, busy = false, onPress, onToggleActive, onDelete }: FioriItemCardProps) {
-  const swipeableRef = useRef<Swipeable | null>(null);
+  const swipeableRef = useRef<SwipeableMethods | null>(null);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const actionLabel = item.active ? tr('items.list.deactivate') : tr('items.list.activate');
@@ -761,7 +761,7 @@ function FioriItemCard({ item, noRate, busy = false, onPress, onToggleActive, on
   );
 
   return (
-    <Swipeable
+    <ReanimatedSwipeable
       ref={swipeableRef}
       renderRightActions={renderRightActions}
       overshootRight={false}
@@ -822,7 +822,7 @@ function FioriItemCard({ item, noRate, busy = false, onPress, onToggleActive, on
         {/* Fiori Object Cell: Chevron */}
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </Pressable>
-    </Swipeable>
+    </ReanimatedSwipeable>
   );
 }
 

@@ -129,6 +129,9 @@ in one SDK upgrade with `npx expo install --fix`.
 `release.yml` validates any semantic `v*` tag (`scripts/check-release.sh`) with the same gates plus
 `expo export`; publishing a GitHub release stays a manual step after the validation run passes.
 
+`.github/workflows/sdk-watch.yml` opens an issue when a newer Expo SDK is released. Each SDK step follows
+[SDK_UPGRADE.md](SDK_UPGRADE.md): adopt a new SDK within 8 weeks and never be more than one behind.
+
 Three CI details to keep in step. (1) `expo-doctor` is a devDependency at an exact version and both workflows run
 `npx --no-install expo-doctor`, so a run never fetches an unreviewed copy; bump it with each Expo SDK upgrade and let
 `npm run audit:dependencies` cover its tree. (2) Lint is `npm run lint -- --max-warnings N` in `ci.yml` and

@@ -20,6 +20,7 @@ import type { StartsOnChoice } from '../editModel';
 import { dateText } from '../rateText';
 import { type FieldNode, type FieldRegistry } from './fieldLink';
 import { StartsOnField } from './StartsOnField';
+import type { ViewRef } from '@/types/nativeRefs';
 
 interface Props {
   /** The start day of the rate being edited (null: not chosen yet). */
@@ -81,7 +82,7 @@ export function RateStartLine({ day, choice, today, earliest, canStartInPast, fi
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const [open, setOpen] = useState(false);
-  const anchor = useRef<View>(null);
+  const anchor = useRef<ViewRef>(null);
 
   // A refused save scrolls to the day: register the line under the key the editor names it by.
   useEffect(() => {

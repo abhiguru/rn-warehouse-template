@@ -777,7 +777,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
   );
 
   // FlashList spreads its style into an object: it takes one plain style, not an array.
-  const listStyle = useMemo(() => StyleSheet.flatten(style), [style]);
+  const listStyle = useMemo(() => StyleSheet.flatten(style) ?? undefined, [style]);
   const listContentStyle = useMemo(() => {
     const { gap: _gap, rowGap: _rowGap, columnGap: _columnGap, ...rest } = StyleSheet.flatten(contentContainerStyle) ?? {};
     return rest;

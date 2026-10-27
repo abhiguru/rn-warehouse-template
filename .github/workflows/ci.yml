@@ -53,6 +53,9 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Type check (strict React Native API)
+        run: npm run typecheck:strict
+
       - name: Test type check
         run: npm run typecheck:tests
 

@@ -25,11 +25,14 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunity
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({
+  __esModule: true,
+  default: (props: { children?: React.ReactNode }) => require('react').createElement('Swipeable', null, props.children),
+}));
 jest.mock('react-native-gesture-handler', () => {
   const ReactMock = require('react');
   return {
     GestureHandlerRootView: (props: { children?: React.ReactNode }) => ReactMock.createElement('GHRoot', null, props.children),
-    Swipeable: (props: { children?: React.ReactNode }) => ReactMock.createElement('Swipeable', null, props.children),
   };
 });
 jest.mock('@react-native-async-storage/async-storage', () => ({

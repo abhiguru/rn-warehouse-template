@@ -59,6 +59,7 @@ import { readDispatchQuantityInput } from '@/features/dispatch/utils/dispatchQua
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 /** The bags a saved dispatch held per lot, for a form that holds none (a new dispatch). */
 const NO_HELD_BAGS: Record<string, number> = {};
 /** What an order asks of each lot, for a form that is not made from an order. */
@@ -99,7 +100,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
 
     // Refs
     const scrollViewRef = useRef<any>(null);
-    const quantityInputRef = useRef<TextInput>(null);
+    const quantityInputRef = useRef<TextInputRef>(null);
 
     // Current item form state (single item being filled)
     const [currentItem, setCurrentItem] = useState<ItemFormData>({

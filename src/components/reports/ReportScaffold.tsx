@@ -193,7 +193,7 @@ function ReportScaffoldInner<T>({
     () => (
       <RefreshControl
         refreshing={isRefreshing}
-        onRefresh={refresh}
+        onRefresh={() => { void refresh(); }}
         colors={[t.brand.tint]}
         tintColor={t.brand.tint}
         progressBackgroundColor={t.surface.card}

@@ -43,7 +43,7 @@ function isForeground(status: AppStateStatus | null | undefined): boolean {
 
 /** Whether the app is in the foreground (AppState 'active'). */
 export function useAppForeground(): boolean {
-  const [foreground, setForeground] = useState<boolean>(() => isForeground(AppState.currentState));
+  const [foreground, setForeground] = useState<boolean>(() => isForeground(AppState.currentState as AppStateStatus | null | undefined));
   useEffect(() => {
     const subscription = AppState.addEventListener('change', next => {
       setForeground(next === 'active');

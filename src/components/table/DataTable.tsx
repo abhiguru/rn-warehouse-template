@@ -22,7 +22,7 @@ import {
   LayoutAnimation,
   Pressable,
   View,
-  type AccessibilityActionInfo,
+  type AccessibilityProps,
   type FlatListProps,
   type StyleProp,
   type ViewStyle,
@@ -34,6 +34,9 @@ import { t } from '@/i18n';
 import { iconSize, space, touchTarget, type ThemeTokens } from '@/theme/tokens';
 import { functionalUpdate, type ExpandedState, type RowData, type Updater } from '@tanstack/react-table';
 import type { AppColumnMeta, AppRow, AppTable } from './appTable';
+
+/** One TalkBack action (React Native's strict TypeScript API does not export `AccessibilityActionInfo`). */
+type AccessibilityActionInfo = NonNullable<AccessibilityProps['accessibilityActions']>[number];
 
 export interface DataTableProps<TData extends RowData> {
   table: AppTable<TData>;

@@ -16,13 +16,16 @@ jest.mock('@/hooks/useHaptics', () => ({ useHaptics: () => ({ selection: mockSel
 
 // A recorder in place of the gesture: the handlers the rail registers are kept here.
 const mockHandlers: { onUpdate?: (event: { y: number }) => void; onFinalize?: () => void } = {};
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({
+  __esModule: true,
+  default: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock('react-native-gesture-handler', () => {
   const chain: Record<string, unknown> = {};
   chain.runOnJS = () => chain;
   chain.onUpdate = (fn: (event: { y: number }) => void) => { mockHandlers.onUpdate = fn; return chain; };
   chain.onFinalize = (fn: () => void) => { mockHandlers.onFinalize = fn; return chain; };
   return {
-    Swipeable: ({ children }: { children: React.ReactNode }) => children,
     Gesture: { Pan: () => chain },
     GestureDetector: ({ children }: { children: React.ReactNode }) => children,
   };

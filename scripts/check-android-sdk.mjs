@@ -1,11 +1,48 @@
 import assert from 'node:assert/strict';
 import { accessSync, constants, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const sdkPackages = ['platform-tools', 'platforms;android-36', 'build-tools;36.0.0',
   'build-tools;35.0.0', 'ndk;27.1.12297006', 'ndk;27.0.12077973', 'cmake;3.22.1'];
-export function checkAndroidSDK(root) {
+
+// The toolchain versions React Native itself builds with. A pin that CI installs but React Native does not use
+// (or the reverse) is the first thing that breaks on a React Native bump, so it is checked here rather than in Gradle.
+export const reactNativeVersionsFile = fileURLToPath(new URL('../node_modules/react-native/gradle/libs.versions.toml', import.meta.url));
+export class PinMismatchError extends Error {}
+export class MissingReactNativeVersionsError extends Error {}
+export function readReactNativeVersions(file = reactNativeVersionsFile) {
+  let text;
+  try { text = readFileSync(file, 'utf8'); } catch (error) {
+    if (error?.code === 'ENOENT') throw new MissingReactNativeVersionsError("React Native's libs.versions.toml not found; run npm ci first");
+    throw error;
+  }
+  const versions = text.split(/\r?\n/).reduce((state, line) => {
+    const section = line.match(/^\s*\[(.+)\]\s*$/);
+    if (section) return { ...state, inVersions: section[1] === 'versions' };
+    const entry = line.match(/^\s*([A-Za-z][\w-]*)\s*=\s*"([^"]*)"/);
+    if (state.inVersions && entry) state.values[entry[1]] = entry[2];
+    return state;
+  }, { inVersions: false, values: {} }).values;
+  for (const key of ['compileSdk', 'buildTools', 'ndkVersion']) {
+    assert.ok(versions[key], `${file} has no ${key} in [versions]`);
+  }
+  return versions;
+}
+export function checkReactNativePins(file = reactNativeVersionsFile) {
+  const rn = readReactNativeVersions(file);
+  const pinned = name => sdkPackages.filter(entry => entry.startsWith(name)).map(entry => entry.slice(name.length));
+  const compare = (label, rnValue, pins) => {
+    if (!pins.includes(rnValue)) {
+      throw new PinMismatchError(`CI pins ${label} ${pins.join(' and ')} but React Native uses ${rnValue} (libs.versions.toml); update sdkPackages in scripts/check-android-sdk.mjs and the CI/Gradle pins together.`);
+    }
+  };
+  compare('platforms;android-', rn.compileSdk, pinned('platforms;android-'));
+  compare('build-tools;', rn.buildTools, pinned('build-tools;'));
+  compare('ndk;', rn.ndkVersion, pinned('ndk;'));
+}
+export function checkAndroidSDK(root, { reactNativeVersions = reactNativeVersionsFile } = {}) {
+  checkReactNativePins(reactNativeVersions);
   assert.ok(typeof root === 'string' && isAbsolute(root), 'Set an absolute ANDROID_HOME or ANDROID_SDK_ROOT');
   const property = (dir, name, expected) => {
     const text = readFileSync(resolve(root, dir, 'source.properties'), 'utf8');
@@ -31,5 +68,9 @@ export function checkAndroidSDK(root) {
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try { console.log(JSON.stringify(checkAndroidSDK(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT))); }
-  catch { console.error('Android SDK prerequisite check failed. Install and verify the pinned packages listed in README.md (Quickstart) before Gradle; preserve SDK-manager failures.'); process.exitCode=1; }
+  catch (error) {
+    if (error instanceof PinMismatchError || error instanceof MissingReactNativeVersionsError) console.error(error.message);
+    console.error('Android SDK prerequisite check failed. Install and verify the pinned packages listed in README.md (Quickstart) before Gradle; preserve SDK-manager failures.');
+    process.exitCode=1;
+  }
 }
