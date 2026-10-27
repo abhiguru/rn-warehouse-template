@@ -21,7 +21,7 @@ import {
   Dispatch,
 } from '@/services/dispatch-service';
 import { t } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { serverText, UPGRADING_CODE } from '@/utils/serverText';
 
 // ============================================================================
 // TYPES
@@ -45,6 +45,14 @@ export interface UseDispatchListResult {
   isRefetching: boolean;
   error: Error | null;
   refetch: () => void;
+}
+
+/** The error a failed list request throws: the words for the screen, and the code the query layer reads (no retry for `upgrading`). */
+function listFailure(response: DispatchListResponseNew): Error {
+  const upgrading = response.errorCode === UPGRADING_CODE;
+  return Object.assign(new Error(serverText(response.message, t('errors.dispatch.fetchFailed'), upgrading ? { code: UPGRADING_CODE } : {})), {
+    ...(response.errorCode ? { code: response.errorCode } : {}),
+  });
 }
 
 // ============================================================================
@@ -97,7 +105,7 @@ export function useDispatchList(options: UseDispatchListOptions = {}): UseDispat
       });
 
       if (!response.success) {
-        throw new Error(serverText(response.message, t('errors.dispatch.fetchFailed')));
+        throw listFailure(response);
       }
 
       return response;
@@ -188,7 +196,7 @@ export function useInfiniteDispatchList(options: UseInfiniteDispatchListOptions 
       });
 
       if (!response.success) {
-        throw new Error(serverText(response.message, t('errors.dispatch.fetchFailed')));
+        throw listFailure(response);
       }
 
       return response;
@@ -309,7 +317,7 @@ export function usePrefetchDispatchList() {
         });
 
         if (!response.success) {
-          throw new Error(serverText(response.message, t('errors.dispatch.fetchFailed')));
+          throw listFailure(response);
         }
 
         return response;

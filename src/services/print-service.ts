@@ -3,7 +3,7 @@ import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { serverText, upgradingBody } from '@/utils/serverText';
 
 // Logging rule: the print endpoints carry the session credential, document
 // ranges and printer diagnostics. Only the HTTP status and ok flag of a
@@ -136,7 +136,7 @@ async function submitPrintJob(
     if (!response.ok) {
       return {
         success: false,
-        error: serverText(data.error, t('errors.print.httpError', { status: String(response.status) })),
+        error: serverText(upgradingBody(data) ?? data.error, t('errors.print.httpError', { status: String(response.status) })),
         // The backend says so (`unconfirmed: true`), or a 502 names a recorded job: the printer did
         // not confirm it. Never resubmit on a guess.
         ...(data.unconfirmed === true || (response.status === 502 && data.print_job_id) ? { unconfirmed: true } : {}),
@@ -256,8 +256,8 @@ export async function getPrintJobs(
       return {
         success: false,
         error:
-          serverText(data.error ||
-          data.message, t('errors.print.httpError', { status: String(response.status) })),
+          serverText(upgradingBody(data) ?? (data.error ||
+          data.message), t('errors.print.httpError', { status: String(response.status) })),
       };
     }
 
@@ -311,7 +311,7 @@ export async function cancelPrintJob(
     if (!response.ok) {
       return {
         success: false,
-        error: serverText(data.error || data.message, t('errors.print.cancelFailed')),
+        error: serverText(upgradingBody(data) ?? (data.error || data.message), t('errors.print.cancelFailed')),
       };
     }
 
@@ -365,8 +365,8 @@ export async function getPrinterStatus(
       return {
         success: false,
         error:
-          serverText(data.error ||
-          data.message, t('errors.print.httpError', { status: String(response.status) })),
+          serverText(upgradingBody(data) ?? (data.error ||
+          data.message), t('errors.print.httpError', { status: String(response.status) })),
       };
     }
 

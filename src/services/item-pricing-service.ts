@@ -194,22 +194,17 @@ export const getItemStoragePrices = async (
 };
 
 /**
- * True when the server answered that it has no `get_item_price_history`: a backend without
- * migration 48. PostgREST says PGRST202 "Could not find the function ... in the schema
- * cache"; the database itself says 42883 "function ... does not exist". Trying again cannot
- * help until the facility's server is updated.
+ * True when the server answered that it has no such function (or no such parameter): PostgREST says
+ * PGRST202, the database itself 42883. Read by code only (docs/API_CONTRACT.md, "What the app may match":
+ * the words of the message are not part of the contract). Trying again cannot help until the facility's server
+ * is updated.
  */
-export function isMissingFunction(
-  error: { code?: unknown; message?: unknown } | null | undefined,
-  name: string
-): boolean {
-  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
-  if (error?.code === 'PGRST202' || message.includes('could not find the function')) return true;
-  return message.includes(name) && (error?.code === '42883' || message.includes('does not exist'));
+export function isMissingFunction(error: { code?: unknown } | null | undefined): boolean {
+  return error?.code === 'PGRST202' || error?.code === '42883';
 }
 
 const priceHistoryMissing = (error: { code?: unknown; message?: unknown } | null | undefined): boolean =>
-  isMissingFunction(error, 'get_item_price_history');
+  isMissingFunction(error);
 
 /** One page of the price history is 50 entries; the server allows 1 to 200. */
 export const PRICE_HISTORY_PAGE_SIZE = 50;
@@ -319,9 +314,8 @@ const mapRateError = (
   error: { code?: unknown; message?: unknown },
   fn: string
 ): { code: RateErrorCode; message: string } => {
-  const text = typeof error.message === 'string' ? error.message.toLowerCase() : '';
-  if (isMissingFunction(error, fn)) return { code: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') };
-  if (error.code === '42501' || text.includes('access required')) return { code: 'PERMISSION_DENIED', message: t('errors.parsed.noPermission') };
+  if (isMissingFunction(error)) return { code: 'SERVER_NEEDS_UPDATE', message: t('pricing.error.serverNeedsUpdate') };
+  if (error.code === '42501') return { code: 'PERMISSION_DENIED', message: t('errors.parsed.noPermission') };
   return { code: 'UNKNOWN', message: t('pricing.error.generic') };
 };
 
@@ -432,7 +426,7 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
     const errorMessage = err instanceof Error ? err.message : String(err);
     itemPricingLogger.error('Exception in replaceItemRates:', { error: errorMessage });
     handleGlobalAuthError(err);
-    if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'replace_item_rates')) {
+    if (isMissingFunction(err as { code?: unknown } | null)) {
       return rateFailure('SERVER_NEEDS_UPDATE', t('pricing.error.serverNeedsUpdate'));
     }
     // A timeout or a lost answer: the server may have committed the change.
@@ -493,7 +487,7 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
     const errorMessage = err instanceof Error ? err.message : String(err);
     itemPricingLogger.error('Exception in undoRateChange:', { error: errorMessage });
     handleGlobalAuthError(err);
-    if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'undo_rate_change')) {
+    if (isMissingFunction(err as { code?: unknown } | null)) {
       return failure('SERVER_NEEDS_UPDATE', t('pricing.error.serverNeedsUpdate'));
     }
     return failure('UNKNOWN', t('pricing.error.generic'));
@@ -599,7 +593,7 @@ export const getStandardRate = async (): Promise<StandardRate> => {
   if (error) {
     itemPricingLogger.error('get_standard_rate RPC error:', error);
     handleGlobalAuthError(error);
-    if (isMissingFunction(error, 'get_standard_rate')) throw Object.assign(new Error(t('pricing.standard.error.serverNeedsUpdate')), { code: 'SERVER_NEEDS_UPDATE' });
+    if (isMissingFunction(error)) throw Object.assign(new Error(t('pricing.standard.error.serverNeedsUpdate')), { code: 'SERVER_NEEDS_UPDATE' });
     throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The standard rate could not be loaded');
   }
   const response = unwrapArrayResponse(data) as { success?: unknown; data?: { tiers?: unknown; updated_at?: unknown; updated_by_name?: unknown } | null } | null;
@@ -687,7 +681,7 @@ export const setStandardRate = async (tiers: StandardTier[], options: SetStandar
     const errorMessage = err instanceof Error ? err.message : String(err);
     itemPricingLogger.error('Exception in setStandardRate:', { error: errorMessage });
     handleGlobalAuthError(err);
-    if (isMissingFunction({ code: (err as { code?: unknown } | null)?.code, message: errorMessage }, 'set_standard_rate')) {
+    if (isMissingFunction(err as { code?: unknown } | null)) {
       return { success: false, errorCode: 'SERVER_NEEDS_UPDATE', message: t('pricing.standard.error.serverNeedsUpdateSave') };
     }
     // A dry run writes nothing, so a lost answer to one is only a failure to ask.
@@ -708,7 +702,7 @@ export const getGrnItemRates = async (grnId: string): Promise<RpcGrnItemRates | 
   const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_grn_item_rates', { p_grn_id: grnId })), RPC_TIMEOUT_MS, 'GRN item rates');
   if (error) {
     handleGlobalAuthError(error);
-    if (isMissingFunction(error, 'get_grn_item_rates')) return null;
+    if (isMissingFunction(error)) return null;
     throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates of the GRN could not be loaded');
   }
   const response = unwrapArrayResponse(data) as { success?: unknown; data?: Record<string, unknown> | null } | null;

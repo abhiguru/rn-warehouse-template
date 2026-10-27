@@ -31,7 +31,7 @@ if (Platform.OS !== 'android' && buildSplashBackground) {
   SystemUI.setBackgroundColorAsync(buildSplashBackground);
 }
 
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react';
 
 // Type declaration for React Native's global ErrorUtils
 interface ErrorUtilsType {
@@ -72,9 +72,13 @@ import { clearPendingEnrollment } from '@/config/supabaseConfig';
 import ConfigErrorScreen from '@/components/ConfigErrorScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import UpgradingBanner from '@/components/UpgradingBanner';
+import AppTooOldScreen from '@/components/AppTooOldScreen';
+import { clearAppTooOld, getAppTooOld, isAppTooOld, reportAppTooOld, subscribeAppTooOld } from '@/config/appTooOld';
 import { AlertHost } from '@/components/AlertHost';
 import { ToastHost } from '@/components/ToastHost';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useUpgrading } from '@/hooks/useUpgrading';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
@@ -287,14 +291,15 @@ const SplashScreen = () => (
 // Inner component that applies safe area to the navigation stack
 // Must be inside SafeAreaProvider to use useSafeAreaInsets
 /**
- * While offline, the banner at the top already pads for the status bar, so the
+ * While offline or upgrading, the banner at the top already pads for the status bar, so the
  * screens below it get a zero top inset; otherwise their headers would add a
  * second status-bar gap under the banner.
  */
 function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   const isOffline = useIsOffline();
-  const value = React.useMemo(() => (isOffline ? { ...insets, top: 0 } : insets), [insets, isOffline]);
+  const upgrading = useUpgrading();
+  const value = React.useMemo(() => (isOffline || upgrading ? { ...insets, top: 0 } : insets), [insets, isOffline, upgrading]);
   return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;
 }
 
@@ -494,6 +499,7 @@ function ThemedContent() {
             <GestureHandlerRootView style={{ flex: 1 }}>
               <ForceUpdateModal />
               <OfflineBanner />
+              <UpgradingBanner />
               <UpdatePrompt />
               <BottomSheetModalProvider>
                 <BelowOfflineBanner>
@@ -521,6 +527,9 @@ function BootstrapApp() {
   const [isReady, setIsReady] = useState(false);
   const [needsSelection, setNeedsSelection] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  // The selected facility needs a newer app: its own screen, not a connection error. Set by the facility check
+  // (src/config/operatorBootstrap.ts) at the start and on every return to the foreground, so a phone resumed after an upgrade is told too.
+  const appTooOld = useSyncExternalStore(subscribeAppTooOld, getAppTooOld, getAppTooOld);
   // The configuration error screen can open server selection. Credentials
   // stay untouched until the operator confirms a change there; a committed
   // change re-runs the bootstrap, which clears this flag.
@@ -581,6 +590,7 @@ function BootstrapApp() {
     // A retry must leave the prior error state before starting. Otherwise a
     // successful refresh completes behind the still-mounted error screen.
     setConfigError(null);
+    clearAppTooOld();
     setIsReady(false);
     setNeedsSelection(false);
     setChangingServer(false);
@@ -652,6 +662,11 @@ function BootstrapApp() {
       if (run === bootstrapRun.current) { setConfigError(null); setIsReady(true); }
     } catch (error: any) {
       console.error('[Bootstrap] Unexpected bootstrap error:', error);
+      if (run === bootstrapRun.current && isAppTooOld(error)) {
+        reportAppTooOld(error);
+        setIsReady(true);
+        return;
+      }
       if (run === bootstrapRun.current) {
         setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
         setIsReady(true);
@@ -669,6 +684,34 @@ function BootstrapApp() {
   const centralLogin = isCentralLoginConfigured();
   if (needsSelection && !centralLogin) return <OperatorServerSelection initial />;
 
+  // Central login: leave the facility that cannot be used for My facilities. Nothing is revoked through a server that does not answer.
+  const leaveForFacilities = () => {
+    // Named before the call: the facility is no longer open when it ends.
+    const facility = currentFacilityLabel();
+    void leaveFacility(store.dispatch, { localOnly: true }).then(outcome => {
+      // The facility is left (or its cleanup is reported): the "Update the app" screen has done its part.
+      if (outcome !== 'busy') clearAppTooOld();
+      if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.leave.saveInFlight'));
+      else if (outcome === 'failed') showFacilityCleanupFailed(translate('central.leave.leftTitle', { facility }), facility);
+    });
+  };
+
+  if (appTooOld) {
+    // "Back" is the way out: the facility choice, or My facilities with central login (as for a facility that does not answer).
+    return changingServer ? (
+      <OperatorServerSelection initial onCancel={() => setChangingServer(false)} />
+    ) : (
+      <AppTooOldScreen
+        {...appTooOld}
+        onClose={
+          centralLogin
+            ? leaveForFacilities
+            : () => setChangingServer(true)
+        }
+      />
+    );
+  }
+
   if (configError) {
     if (changingServer) {
       return <OperatorServerSelection initial onCancel={() => setChangingServer(false)} />;
@@ -681,14 +724,7 @@ function BootstrapApp() {
           centralLogin
             ? // Central login: leave the facility that cannot be reached for My facilities.
               // Nothing is revoked through a server that does not answer.
-              () => {
-                // Named before the call: the facility is no longer open when it ends.
-                const facility = currentFacilityLabel();
-                void leaveFacility(store.dispatch, { localOnly: true }).then(outcome => {
-                  if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.leave.saveInFlight'));
-                  else if (outcome === 'failed') showFacilityCleanupFailed(translate('central.leave.leftTitle', { facility }), facility);
-                });
-              }
+            leaveForFacilities
             : () => setChangingServer(true)
         }
       />

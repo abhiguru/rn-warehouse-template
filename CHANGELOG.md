@@ -1,5 +1,59 @@
 # Changelog
 
+## Unreleased — The version gate and the upgrade answer (app 0.6.0)
+
+Pairs with the backend release that publishes `backendRelease`, `schemaHead` and the release's own `minimumClientVersion` in
+`get-public-config`, and answers 503 `{"code":"upgrading"}` while it upgrades. Needs a new APK and iOS build.
+
+- **The app has a real version.** `app.json` and `package.json` say `0.6.0` (they said `0.1.0` since the first commit), and the
+  Android `versionCode` follows it (`MAJOR*10000 + MINOR*100 + PATCH`, 600). Every release build bumps the version first:
+  `scripts/app-version.test.mjs` (part of `npm run test:setup`) fails when `app.json` and `package.json` differ and when the
+  `versionCode` does not follow; in a checkout that has the release tags it also fails when the version is still the one of the newest
+  tag once commits follow it (a reminder for maintainers; CI checks out without tags and skips it). The rule that guards a release is
+  `scripts/check-release.sh`, run by the release workflow: the tag, without its `v` and any `-prerelease`, must equal `expo.version` in
+  `app.json`. A facility compares this version with its `minimumClientVersion`, so a build that never moved would be refused or
+  accepted wrongly.
+- **"Update the app".** A facility whose `minimumClientVersion` is above this build is no longer reported as unreachable: the app
+  shows a full-screen "Update the app", "This facility needs app version X or newer. You have Y.", and a button to this build's public
+  Google Play listing, built from the real application id (the id the build was made with, else `EXPO_PUBLIC_ANDROID_PACKAGE`); with
+  no real id (missing, or the template's `com.example...`) or on iOS there is no button and it says to ask the facility. Both ways in
+  show it: the facility chosen by its address (and a start with that facility selected), and a facility opened from My facilities
+  (`app_too_old` outcome; Android Back closes it). The person's access status is left as it was.
+  A phone that is resumed, or stays open, through an upgrade is told too: every return to the foreground checks the facility again,
+  and a minimum above the build there puts the same screen over the app (`appTooOld.ts`, shown by `BootstrapApp`). When the banner
+  below goes down because the server answers again, the next request checks the facility once more first, so a new minimum or a new
+  release is picked up without restarting the app.
+- **The server is being updated.** The gateway's 503 `upgrading` answer is read once, in the request layer, for every screen: a
+  banner "The facility's server is being updated. Try again in a few minutes." (a status, not an error; the session is untouched).
+  A read waits `Retry-After` (at most 30 s, the limit a read has anyway; the caller's abort ends the wait) and is sent once more; a
+  write is never sent again silently. The same answer to a check of the facility (start, return to the foreground) raises the
+  banner and carries the code `upgrading`, so queries do not ask again; the banner is cleared when the server or the session changes.
+  An edge function (PDF, print, sign-in code) that gets it says the same sentence instead of its HTTP status. A GRN, dispatch or other save that gets it
+  is a definite "not saved" with that message: it is no longer taken for a lost answer and sent to the "checking" flow (a RESEND that
+  gets it stays unsettled and goes back to the check, because the original may have landed). The facility's `maintenanceMode` shows
+  the same banner.
+  A start or a check of a facility during an upgrade says the same sentence instead of "HTTP 503", and an HTTP 429 at discovery says
+  the server is busy ("The facility's server is busy. Try again in a moment."); neither touches the identity the phone holds. Opening
+  a facility from My facilities says both too, and no longer "can't be reached". An
+  invoice save gets the same message as the GRN and dispatch saves.
+  Both Supabase clients now have `db: { retry: false }` (`src/config/supabaseConfig.ts`): postgrest-js otherwise repeated every
+  failed table read three times and waited the gateway's `Retry-After` (120 s) between the tries, about six minutes for one read
+  during an upgrade. The request layer alone decides about a repeat of a read; the query client does not ask again after the
+  "upgrading" answer (nor while the notice is up). Table reads made outside the query client no longer get the silent network retries
+  of postgrest-js either, including the retry of PostgREST's brief 503 after a schema reload.
+- **Older backends are told by the release, not by a failed call.** Whether the backend knows `p_expected_updated_at` on an order
+  line is read from `schemaHead` (`src/config/backendFeatures.ts`: the migration number that introduced it, 121). An older backend is
+  sent the call without it, silently; a current one is sent it with, and a PGRST202 from it is a real error. Nothing is remembered
+  for the run any more. A backend that does not say its release (no `schemaHead`: a release from before the field existed) counts as
+  OLDER: the call goes without the version, silently, as it did before this change, so a facility that is not upgraded yet keeps
+  editing order lines; the price is that such a backend does not get the concurrency check it may have.
+- **Codes, not texts.** `isMissingFunction` reads PGRST202 / 42883 only; the operations dashboard, the rate functions and the
+  queries' retry rule read 42501 and the other codes, not the English words; "Active account required" is no longer matched (it
+  cannot reach the app over HTTP). Kept on purpose, as text, until the backend gives those refusals a code: the wrapped refusal of
+  `update_user_role` (`INTERNAL_ERROR` inside an HTTP 200, `admin-user-service.ts`) and the report refusals
+  (`rpcRefusal.ts`, `isAccessRefusal`); each says so in a comment.
+- Gujarati for the new texts is a draft for the owner's wording review (`components.appTooOld`, `components.upgrading`, `errors.server.discoveryBusy`).
+
 ## Unreleased — Warehouse network fallback (WS-L app, 2026-10-26)
 
 Pairs with the backend `gateway-lan` workstream (WS-L backend: `lan.sh on`, `urls.lan` in the authenticated `get-config`, the

@@ -153,6 +153,13 @@ describe('Operations Dashboard', () => {
     expect(isAccessRefusal({ code: result.error, text: result.message })).toBe(true);
   });
 
+  it('an HTTP refusal is told by its code 42501, not by the words of the message', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'Whatever the server words it' } });
+    expect(await getOperationsDashboard(RANGE)).toMatchObject({ success: false, error: 'STAFF_ONLY' });
+    rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'Access denied: admin or supervisor role required' } });
+    expect(await getOperationsDashboard(RANGE)).not.toMatchObject({ error: 'STAFF_ONLY' });
+  });
+
   it('reads a report when the body is one', async () => {
     answer({ kpis: { total_grns: 4 }, trends: {}, recent_activity: [] });
     const result = await getOperationsDashboard(RANGE);

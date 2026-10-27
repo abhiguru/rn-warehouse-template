@@ -4,8 +4,10 @@
  * that facility last answered with. Opening one asks the facility again; no
  * facility is contacted in the background.
  */
+import AppTooOldScreen from '@/components/AppTooOldScreen';
+import type { AppTooOldInfo } from '@/config/appTooOld';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { router, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -60,6 +62,18 @@ export default function FacilitiesScreen() {
   const [list, setList] = useState<MyFacility[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const opening = central.opening;
+  // A facility that needs a newer app: its own screen over the list, until the person goes back.
+  const [tooOld, setTooOld] = useState<AppTooOldInfo | null>(null);
+
+  // The "Update the app" screen is an overlay of this screen, not a route: Android Back closes it, as its Back button does.
+  useEffect(() => {
+    if (!tooOld) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setTooOld(null);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [tooOld]);
 
   const load = useCallback(async () => {
     setList(await loadMyFacilities(userId));
@@ -116,6 +130,8 @@ export default function FacilitiesScreen() {
           },
         },
       ]);
+    } else if (result.kind === 'failed' && result.reason === 'app_too_old' && result.appTooOld) {
+      setTooOld(result.appTooOld);
     } else if (result.kind === 'failed') {
       const title = FAILED_TITLES[result.reason];
       showAlert(title ? tr(title, { facility: name }) : tr('central.open.failedTitle', { facility: name }), result.message);
@@ -206,6 +222,8 @@ export default function FacilitiesScreen() {
       </Pressable>
     );
   };
+
+  if (tooOld) return <AppTooOldScreen {...tooOld} onClose={() => setTooOld(null)} />;
 
   return (
     <View style={styles.screen}>

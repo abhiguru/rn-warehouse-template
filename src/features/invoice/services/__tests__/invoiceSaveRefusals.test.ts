@@ -216,3 +216,21 @@ describe('what a failed invoice call writes to the device log', () => {
     }
   });
 });
+
+describe('an invoice save while the facility\'s server is being upgraded', () => {
+  const upgrading = {
+    data: null,
+    error: { code: 'upgrading', message: "The facility's server is being updated. Try again in a few minutes." },
+    status: 503,
+  };
+
+  it.each(['en', 'gu'] as const)('says it is being updated (%s), and is not a lost answer', async (language) => {
+    setLanguage(language);
+    const rpc = mockRpc(upgrading);
+    const result = await createInvoice(payload);
+    expect(result.success).toBe(false);
+    expect(result.lostAnswer).toBeUndefined();
+    expect(result.message).toBe(t('components.upgrading.message'));
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+});

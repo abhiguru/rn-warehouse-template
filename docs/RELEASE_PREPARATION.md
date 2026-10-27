@@ -6,6 +6,19 @@ handoff; it does not approve a production identity, privacy statement, signed
 artifact, or store submission. The 2026-09-22 Android development APK evidence
 is archived (see [HISTORY.md](HISTORY.md)).
 
+## Every release build bumps the version
+
+`app.json` `expo.version` (and `package.json` `version`, and `expo.android.versionCode` = `MAJOR*10000 + MINOR*100 + PATCH`) must move
+before a release build is made. A facility compares the app's version with its `minimumClientVersion` and tells an older build to
+update, so a version that never moves breaks that gate. `scripts/app-version.test.mjs` (`npm run test:setup`) fails when the three
+disagree; in a checkout that has the tags it also fails when the version is still the one of the newest `vX.Y.Z` tag once commits
+follow it (CI has no tags and skips that one). The release workflow runs `scripts/check-release.sh`, which refuses a tag that, without
+its `v` and any `-prerelease` suffix, differs from `expo.version` in `app.json`.
+
+The `versionCode` formula leaves two digits for MINOR and for PATCH: from MINOR 100 or PATCH 100 on, two versions would share a code.
+Move to a new MAJOR (or change the formula in `app.config.js` and the test together) before that. `WAREHOUSE_ANDROID_VERSION_CODE`
+overrides the formula at build time; leave it unset, or keep it equal to the formula, so the code in the store follows the version.
+
 ## What is ready to use
 
 - `eas.json` has development, internal preview, and store production build

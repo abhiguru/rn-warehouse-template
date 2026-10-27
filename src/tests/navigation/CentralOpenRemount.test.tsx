@@ -61,6 +61,7 @@ import { discoverOperator, onOperatorServerChange, saveOperatorServer } from '@/
 import { requestFacilityToken, verifyCentralCode } from '@/config/centralSession';
 import { exchangeCentralIdentity, getPendingEnrollmentToken, signInWithPhone, signOutPendingEnrollment } from '@/config/supabaseConfig';
 import { Button } from '@/components/ui/Button';
+import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { showAlert } from '@/utils/alert';
 
 require('expo-router/build/testing-library/mocks');
@@ -762,6 +763,39 @@ describe('two My facilities mounted at once, however that came about', () => {
     await publish({ kind: 'failed', reason: 'account_unavailable', message: 'Dev Cold Storage has withdrawn your access.' });
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(getCentralState().outcome).toBeNull();
+  });
+
+  it('a facility that needs a newer app shows the "Update the app" screen, not an alert', async () => {
+    await start();
+    await publish({
+      kind: 'failed',
+      reason: 'app_too_old',
+      message: 'This server requires app version 0.7.0 or newer.',
+      appTooOld: { minimum: '0.7.0', current: '0.6.0' },
+    });
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(texts()).toContain('Update the app');
+    expect(texts()).toContain('This facility needs app version 0.7.0 or newer. You have 0.6.0.');
+  });
+
+  it('the "Update the app" overlay is closed by Android Back (it is not a route), and the list is there again', async () => {
+    const back = installHardwareBack();
+    try {
+      await start();
+      await publish({
+        kind: 'failed',
+        reason: 'app_too_old',
+        message: 'This server requires app version 0.7.0 or newer.',
+        appTooOld: { minimum: '0.7.0', current: '0.6.0' },
+      });
+      expect(texts()).toContain('Update the app');
+      await act(async () => { expect(back.press()).toBe(true); });
+      expect(texts()).not.toContain('Update the app');
+      // Nothing is left listening: the next Back is the system's.
+      expect(back.press()).toBe(false);
+    } finally {
+      back.restore();
+    }
   });
 
   it('`pending` opens one waiting screen', async () => {

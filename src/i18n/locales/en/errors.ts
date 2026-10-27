@@ -245,6 +245,7 @@ export const errors = {
     discoveryIncompatible: 'Server discovery is incomplete or incompatible.',
     requiresAppVersion: 'This server requires app version {{version}} or newer.',
     discoveryFailedHttp: 'Server discovery failed (HTTP {{status}}).',
+    discoveryBusy: "The facility's server is busy. Try again in a moment.",
     discoveryTimedOut: 'Server discovery timed out.',
     discoveryRedirected: 'This address forwards to another server. Enter the address of the server itself.',
     selectFirst: 'Select an operator server first.',

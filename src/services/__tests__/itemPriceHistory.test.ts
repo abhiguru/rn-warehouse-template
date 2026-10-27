@@ -1,6 +1,6 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { setLanguage } from '@/i18n';
-import { getItemPriceHistory } from '../item-pricing-service';
+import { getItemPriceHistory, isMissingFunction } from '../item-pricing-service';
 
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
@@ -122,10 +122,6 @@ describe('a server without the price history', () => {
 
   it.each([
     ['the PostgREST code', { code: 'PGRST202', message: 'Not found' }],
-    [
-      'the PostgREST text',
-      { message: 'Could not find the function public.get_item_price_history(p_limit, p_offset) in the schema cache' },
-    ],
     ['the database code', { code: '42883', message: 'function public.get_item_price_history(integer, integer) does not exist' }],
   ])('says the server needs an update (%s)', async (_name, error) => {
     rpc.mockResolvedValue({ data: null, error });
@@ -134,8 +130,16 @@ describe('a server without the price history', () => {
     expect(result.error).toBe(error.message);
   });
 
+  it('is told by the code, not by the words of the message', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'Could not find the function public.get_item_price_history(p_limit, p_offset) in the schema cache' },
+    });
+    expect((await getItemPriceHistory()).message).not.toBe(NEEDS_UPDATE);
+  });
+
   it('says so when the request throws that answer', async () => {
-    rpc.mockRejectedValue(new Error('Could not find the function public.get_item_price_history(p_limit, p_offset) in the schema cache'));
+    rpc.mockRejectedValue(Object.assign(new Error('Could not find the function public.get_item_price_history(p_limit, p_offset) in the schema cache'), { code: 'PGRST202' }));
     expect((await getItemPriceHistory()).message).toBe(NEEDS_UPDATE);
   });
 
@@ -148,5 +152,17 @@ describe('a server without the price history', () => {
   it('keeps "try again" for another missing thing', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: 'PGRST116', message: 'invalid input syntax for type integer' } });
     expect((await getItemPriceHistory()).message).toBe('Try again in a moment.');
+  });
+});
+
+describe('isMissingFunction reads the code only', () => {
+  it.each([
+    [{ code: 'PGRST202' }, true],
+    [{ code: '42883' }, true],
+    [{ code: '42501' }, false],
+    [{ message: 'Could not find the function public.x in the schema cache' }, false],
+    [null, false],
+  ])('%j is %s', (error, expected) => {
+    expect(isMissingFunction(error as { code?: unknown } | null)).toBe(expected);
   });
 });

@@ -99,11 +99,15 @@ const enrollmentRefusal = (code: unknown): string | null =>
  * a change may have been applied. 'NETWORK' is no answer because the request never left (offline, no session).
  * 'TIMEOUT_NOT_SAVED' is a statement the server cancelled (57014): it rolled back, nothing was saved.
  * 'NO_ACCESS' is the caller losing the right to manage users: the server words that as
- * "Staff access required", "Active account required" or "Administrator required".
+ * "Staff access required" or "Administrator required".
  */
 export type UserFailureCode = string;
 
-const NO_ACCESS_TEXT = /\b(staff access|active account|administrator) required\b/i;
+// A TEXT match, kept on purpose: update_user_role wraps the guard's refusal in an HTTP 200 envelope with the code
+// INTERNAL_ERROR (docs/API_CONTRACT.md, "wrapped-refusal"), so only the words say it was a refusal. Backend item: a
+// migration that gives that refusal a code of its own (the 42501 of the other guards); then this match goes.
+// ("Active account required" cannot reach the app over HTTP: the session check answers first, so it is not matched.)
+const NO_ACCESS_TEXT = /\b(staff access|administrator) required\b/i;
 
 const failureCode = (source: unknown, code?: unknown, message?: unknown): UserFailureCode | undefined => {
   // 57014: the server cancelled the statement and rolled it back, so nothing was saved.

@@ -24,9 +24,10 @@ import {
 } from './sessionLifecycle';
 import { AppError, getAppErrorCode } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { isUpgradingAnswer, serverText, UPGRADING_CODE, upgradingBody } from '@/utils/serverText';
 import { DISCARD_BODY, discardBody } from './discardBody';
 import { isGatewayKeyRejection } from './gatewayRejection';
+import { clearUpgradeNotice, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from './upgradeNotice';
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 
 const authLogger = createLogger('Auth');
@@ -87,6 +88,8 @@ type GatedFetchOptions = {
    * reconciles a late response (refreshSession revokes obsolete tokens).
    */
   honorSwitch: boolean;
+  /** Set on the one repeat of a read after the gateway's "upgrading" answer; there is no second wait. */
+  afterUpgradeWait?: boolean;
 };
 
 // Every credentialed request waits for the foreground identity check, then
@@ -194,7 +197,7 @@ function abortedRead(): Error {
 async function gatedFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  { generation, mutation, honorSwitch }: GatedFetchOptions
+  { generation, mutation, honorSwitch, afterUpgradeWait }: GatedFetchOptions
 ): Promise<Response> {
   // A verified identity is the common case; keep it synchronous so a server
   // switch sees this request registered before the first await.
@@ -256,6 +259,31 @@ async function gatedFetch(
   }
   // A copy, read outside the request's tracked life: it must not hold a switch back.
   noteUnauthorized(response, generation);
+  // The gateway's "upgrading" answer (src/config/upgradeNotice.ts): the banner is raised for every screen. A read
+  // waits Retry-After and goes out once more; a write never does, the person decides.
+  // (Only a 503 is read, and only it waits: every other answer goes on in the same tick as before.)
+  if (response.status !== 503) noteServerAnswered();
+  let upgrade = { upgrading: false, retryAfter: 0 };
+  if (response.status === 503) {
+    try {
+      // The body of this 503 is bounded like every other body read here: a stalled one ends with the limit or the abort.
+      upgrade = await Promise.race([noteUpgradeAnswer(response), deadline, aborted]);
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
+  if (upgrade.upgrading && !mutation && !afterUpgradeWait) {
+    controller.abort();
+    release();
+    // Never longer than the limit a read has anyway: the caller's own time limits (a form's 15 s, a pricing read's 30 s)
+    // are not signals this layer can see, and a screen must not hang for the gateway's 120 s. A repeat that is
+    // still refused leaves the banner up and the error with the code (no further repeat, no query retry).
+    await waitForRetry(Math.min(upgrade.retryAfter, REQUEST_TIME_LIMIT_MS.read / 1000), init?.signal);
+    // The caller's own limit (a sign-in check's 15 s) can end the wait: its error still says "being updated".
+    if (init?.signal?.aborted) throw Object.assign(abortedRead(), { code: UPGRADING_CODE });
+    return gatedFetch(input, init, { generation, mutation, honorSwitch, afterUpgradeWait: true });
+  }
   if (honorSwitch && invalidated()) {
     release();
     throw new Error('Session changed');
@@ -471,6 +499,9 @@ export const initializeSupabase = (
             honorSwitch: false,
           }),
       },
+      // postgrest-js otherwise repeats a failed read up to 3 times and waits the gateway's Retry-After (120 s while the
+      // facility upgrades), so one read could hang for minutes. The request layer decides on a repeat (gatedFetch).
+      db: { retry: false },
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -528,6 +559,9 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
         fetch: (input, init) =>
           sessionFetch(input, init, generation, !isReadRequest(input, init)),
       },
+      // postgrest-js otherwise repeats a failed read up to 3 times and waits the gateway's Retry-After (120 s while the
+      // facility upgrades), so one read could hang for minutes. The request layer decides on a repeat (gatedFetch).
+      db: { retry: false },
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -670,7 +704,7 @@ async function operatorOtpRequest(
     const retryAfterSeconds = retryAfterSecondsOf(response, result);
     const limit = otpLimit(response.status, result.error || result.message, retryAfterSeconds);
     if (limit) return { success: false, ...limit, retryAfterSeconds };
-    return { success: false, error: serverText(result.error || result.message, t('errors.auth.requestFailedHttp', { status: String(response.status) })) };
+    return { success: false, error: serverText(upgradingBody(result) ?? (result.error || result.message), t('errors.auth.requestFailedHttp', { status: String(response.status) })) };
   }
   return result;
 }
@@ -691,7 +725,9 @@ export const getEnrollmentStatus = async () => {
     if (!['pending', 'approved', 'rejected', 'disabled'].includes(String(status)))
       return { success: false as const, error: t('errors.auth.enrollmentInvalidStatus') };
     return { success: true as const, status: status as 'pending' | 'approved' | 'rejected' | 'disabled' };
-  } catch {
+  } catch (error) {
+    // The check's own limit can end the wait of an upgrade answer (gatedFetch): say so, not "check failed".
+    if (isUpgradingAnswer(error)) return { success: false as const, error: t('components.upgrading.message') };
     return { success: false as const, error: t('errors.auth.enrollmentCheckFailed') };
   }
 };
@@ -1582,6 +1618,8 @@ export function invalidateStoredTokenCache(): void {
 // A session change (advanceSessionGeneration) drops the copy synchronously, so reads queued right
 // after it read SecureStore again.
 onSessionChange(invalidateStoredTokenCache);
+// Signing in or out ends the notice about the facility the person has left (the banner is global; src/config/upgradeNotice.ts).
+onSessionChange(clearUpgradeNotice);
 
 // Session Management (supports both JWT tokens and session markers)
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage

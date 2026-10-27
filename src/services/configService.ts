@@ -38,6 +38,10 @@ export interface PublicConfig {
   canonicalOrigin: string;
   supportedApiVersions: string[];
   minimumClientVersion: string;
+  /** The backend's release tag; null when the server does not say (docs/API_CONTRACT.md, "Which app builds a release supports"). */
+  backendRelease?: string | null;
+  /** The name of the newest applied migration; null when the server does not say. */
+  schemaHead?: string | null;
   capabilities: Record<string, unknown>;
   /**
    * The association issuer this facility trusts for central login, or null /

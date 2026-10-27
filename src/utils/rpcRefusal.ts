@@ -54,6 +54,11 @@ const ACCESS_REFUSAL_CODES: ReadonlySet<string> = new Set(['42501', ACCESS_REFUS
  * True when the refusal is the server saying this person may not have what was
  * asked for: by its code, whatever language the sentence is in, or by the
  * server's own English words when no code came.
+ *
+ * The words are a TEXT match, kept on purpose: the report functions still refuse inside an HTTP 200
+ * envelope, and some of those refusals come with INTERNAL_ERROR instead of 42501 (docs/API_CONTRACT.md,
+ * "wrapped-refusal" and "report-refusal"). Backend item: a migration that gives every such refusal the
+ * code 42501; then the words go.
  */
 export function isAccessRefusal(refusal: RpcRefusal): boolean {
   return (

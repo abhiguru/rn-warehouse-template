@@ -251,6 +251,7 @@ export const errors: Translation<typeof source> = {
     discoveryIncompatible: 'આ સર્વરની માહિતી અધૂરી છે અથવા આ ઍપ સાથે મેળ ખાતી નથી.',
     requiresAppVersion: 'આ સર્વર માટે ઍપનું વર્ઝન {{version}} અથવા તેનાથી નવું જોઈએ.',
     discoveryFailedHttp: 'સર્વરની માહિતી મેળવી શકાઈ નથી (HTTP {{status}}).',
+    discoveryBusy: 'કોલ્ડ સ્ટોરેજનું સર્વર વ્યસ્ત છે. થોડી વાર પછી ફરી પ્રયાસ કરો.', // Draft for the owner's wording review
     discoveryTimedOut: 'સર્વરનો જવાબ સમયસર મળ્યો નથી.',
     discoveryRedirected: 'આ સરનામું બીજા સર્વર પર મોકલે છે. સર્વરનું પોતાનું સરનામું લખો.',
     selectFirst: 'પહેલાં કોલ્ડ સ્ટોરેજનું સર્વર પસંદ કરો.',
