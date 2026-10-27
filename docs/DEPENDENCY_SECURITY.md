@@ -1,5 +1,22 @@
 # Dependency security review — 2026-09-14
 
+## node-forge 1.4.1 — 2026-10-27
+
+- **What moved.** `package.json` `overrides` pins `node-forge` to 1.4.1. Both consumers (`@expo/cli` through `expo`, and
+  `@expo/code-signing-certificates` through `expo-updates`) resolve the one copy. 1.4.1 was published on 2026-10-27 with fixes
+  for about ten high advisories, so the audit would otherwise have listed them as `UNREPAIRED`.
+- **The local GHSA-86w9-cpqp-85rv repair is retired.** It copied upstream PR 1152, which was closed unmerged. 1.4.1 instead
+  re-encodes the DigestInfo canonically and compares the bytes (`lib/rsa.js`), which rejects the same forgery and more.
+  `scripts/security-backports.json` now declares node-forge `unaffected` from 1.4.1 (the same mechanism as zod from 4.6.6) and no
+  longer patches it; the patch script refuses any other node-forge version. The regression test in
+  `scripts/security-backports.test.mjs` is unchanged and now runs against the installed, unpatched 1.4.1: a signature whose
+  DigestInfo carries an extra nested DigestAlgorithm element must fail `verify`.
+- **Accepted set now.** Three advisories, each repaired locally: braces (GHSA-vfj7-8cjw-p6xm, review by 2027-01-10), sprintf-js
+  (GHSA-hp3w-g68c-fv3c, 2027-01-10) and zod (GHSA-mrhx-c7xc-m3w5, 2027-01-24). `npm run audit:dependencies` reports
+  `PASS_WITH_VERIFIED_BACKPORTS`. The Dependabot ignore for node-forge is removed, so Dependabot proposes node-forge updates again.
+- The tables and notes below describe the state before this change; where they say node-forge is repaired locally or has no fixed
+  release, they are superseded by this section.
+
 ## Operator install: what `npm audit` still reports — 24 October 2026
 
 `npm audit` still reports 6 high entries on the Expo 57 line; the gate accepts them all, because each resolves to a
@@ -10,7 +27,7 @@ GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The other copies have 
 | Package | Advisory | Pulled in by | Fixed version |
 | ------- | -------- | ------------ | ------------- |
 | `zod` 3.25.76 (nested at `node_modules/expo/node_modules/zod`) | GHSA-mrhx-c7xc-m3w5 | `@expo/cli` (inside `expo`) | none in the 3.x copy that `@expo/cli` 57 pins; upstream fixed 4.6.6 only |
-| `node-forge` | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | none: every release is affected (the local repair below covers installed 1.4.0 only) |
+| `node-forge` (history) | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | 1.4.1 (2026-10-27); no longer accepted, see the section above |
 | `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the two above, as dependents | | follow the two above |
 
 - These are build and development tools: the Expo CLI (Metro, prebuild, export) and the code-signing of over-the-air updates
@@ -48,7 +65,6 @@ list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
 
 | Advisory            | Package and range    | Why it is accepted                                             | Review by  |
 | ------------------- | -------------------- | -------------------------------------------------------------- | ---------- |
-| GHSA-86w9-cpqp-85rv | node-forge `<=1.4.0` | Repaired locally from upstream PR 1152; no release has the fix | 2027-01-10 |
 | GHSA-vfj7-8cjw-p6xm | braces `<=3.0.3`     | Repaired locally (depth bound); no patched release             | 2027-01-10 |
 | GHSA-hp3w-g68c-fv3c | sprintf-js `<=1.1.3` | Repaired locally (precision bound); no patched release         | 2027-01-10 |
 | GHSA-mrhx-c7xc-m3w5 | zod `<4.6.6`         | Repaired locally in zod 3.25.76 (size gate); v3 has no fix     | 2027-01-24 |

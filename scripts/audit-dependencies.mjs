@@ -13,7 +13,6 @@ import { isMain } from './is-main.mjs';
 // until someone checks upstream for a release and either removes the entry
 // with its backport or moves the date; see docs/DEPENDENCY_SECURITY.md.
 export const acceptedAdvisories = {
-  'GHSA-86w9-cpqp-85rv': { package: 'node-forge', range: '<=1.4.0', reviewBy: '2027-01-10', reason: 'RSA signature check backported from upstream PR 1152; no release has it' },
   'GHSA-vfj7-8cjw-p6xm': { package: 'braces', range: '<=3.0.3', reviewBy: '2027-01-10', reason: 'local depth bound; no patched release' },
   'GHSA-hp3w-g68c-fv3c': { package: 'sprintf-js', range: '<=1.1.3', reviewBy: '2027-01-10', reason: 'local precision bound; no patched release' },
   'GHSA-mrhx-c7xc-m3w5': { package: 'zod', range: '<4.6.6', reviewBy: '2027-01-24', reason: 'local size gate in the zod 3.25.76 copy under expo (@expo/cli loads its v3 code); upstream fixed only the v4 code in 4.6.6' },

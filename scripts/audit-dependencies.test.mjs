@@ -3,13 +3,13 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { acceptedAdvisories, assessDependencyAudit } from './audit-dependencies.mjs';
 
-const nodePath = 'node_modules/node-forge';
-const verified = [{ package: 'node-forge', installedPath: nodePath }];
-const advisory = { name: 'node-forge', url: 'https://github.com/advisories/GHSA-86w9-cpqp-85rv', range: '<=1.4.0', severity: 'high' };
+const nodePath = 'node_modules/braces';
+const verified = [{ package: 'braces', installedPath: nodePath }];
+const advisory = { name: 'braces', url: 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm', range: '<=3.0.3', severity: 'high' };
 function report(extra = {}) {
   const vulnerabilities = {
-    'node-forge': { severity: 'high', nodes: [nodePath], via: [advisory] },
-    'expo': { severity: 'high', nodes: ['node_modules/expo'], via: ['node-forge'] },
+    'braces': { severity: 'high', nodes: [nodePath], via: [advisory] },
+    'expo': { severity: 'high', nodes: ['node_modules/expo'], via: ['braces'] },
     ...extra,
   };
   const count = severity => Object.values(vulnerabilities).filter(entry => entry.severity === severity).length;
@@ -39,7 +39,7 @@ test('audit propagates repaired roots through cyclic meta-vulnerability graphs',
 
 test('audit rejects new advisories and their transitive consumers', () => {
   const input = report();
-  input.vulnerabilities['node-forge'].via.push({ ...advisory, url: 'https://github.com/advisories/GHSA-new-unknown' });
+  input.vulnerabilities['braces'].via.push({ ...advisory, url: 'https://github.com/advisories/GHSA-new-unknown' });
   const result = assess(input, verified);
   assert.equal(result.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
   assert.equal(result.unresolved.length, 2);
@@ -47,18 +47,18 @@ test('audit rejects new advisories and their transitive consumers', () => {
 
 test('audit rejects unverified installed copies, changed affected ranges and package mismatch', () => {
   assert.throws(() => assess(report(), []), /every verified/);
-  const extra = report(); extra.vulnerabilities['node-forge'].nodes.push('node_modules/other/node_modules/node-forge');
+  const extra = report(); extra.vulnerabilities['braces'].nodes.push('node_modules/other/node_modules/braces');
   assert.throws(() => assess(extra, verified), /every verified/);
-  for (const change of [{ range: '<=9.0.0' }, { name: 'other-package' }, { url: 'https://evil.invalid/GHSA-86w9-cpqp-85rv' }]) {
-    const input = report(); input.vulnerabilities['node-forge'].via = [{ ...advisory, ...change }];
+  for (const change of [{ range: '<=9.0.0' }, { name: 'other-package' }, { url: 'https://evil.invalid/GHSA-vfj7-8cjw-p6xm' }]) {
+    const input = report(); input.vulnerabilities['braces'].via = [{ ...advisory, ...change }];
     assert.equal(assess(input, verified).unresolved.length, 2);
   }
 });
 
 test('audit rejects empty cycles, missing dependencies and malformed reports', () => {
-  const input = report(); input.vulnerabilities['node-forge'].via = ['expo'];
+  const input = report(); input.vulnerabilities['braces'].via = ['expo'];
   assert.equal(assess(input, verified).unresolved.length, 2);
-  input.vulnerabilities['node-forge'].via = ['missing'];
+  input.vulnerabilities['braces'].via = ['missing'];
   assert.throws(() => assess(input, verified), /Missing transitive/);
   assert.throws(() => assess({ error: 'network failure' }, verified), /Missing or unsupported/);
   const wrongCount = report(); wrongCount.metadata.vulnerabilities.high = 0;
@@ -117,13 +117,13 @@ test('a low advisory does not fail the gate but is listed', () => {
 });
 
 test('an accepted advisory stops being accepted after its review date', () => {
-  const reviewBy = acceptedAdvisories['GHSA-86w9-cpqp-85rv'].reviewBy;
+  const reviewBy = acceptedAdvisories['GHSA-vfj7-8cjw-p6xm'].reviewBy;
   assert.equal(assess(report(), verified, on(reviewBy)).status, 'PASS_WITH_VERIFIED_BACKPORTS');
   const [year, month, day] = reviewBy.split('-').map(Number);
   const nextDay = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
   const late = assess(report(), verified, on(nextDay));
   assert.equal(late.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
-  assert.deepEqual(late.unresolved.map(entry => entry.reasons), [['REVIEW_OVERDUE:GHSA-86w9-cpqp-85rv'], ['REVIEW_OVERDUE:GHSA-86w9-cpqp-85rv']]);
+  assert.deepEqual(late.unresolved.map(entry => entry.reasons), [['REVIEW_OVERDUE:GHSA-vfj7-8cjw-p6xm'], ['REVIEW_OVERDUE:GHSA-vfj7-8cjw-p6xm']]);
   // The installed repair is still required of an overdue entry.
   assert.throws(() => assess(report(), [], on(nextDay)), /every verified/);
   assert.throws(() => assess(report(), verified, on('11 October 2026')), /date/);
