@@ -60,7 +60,7 @@ export interface UseAppStateResult {
  * ```
  */
 export function useAppState(callbacks?: AppStateCallbacks): UseAppStateResult {
-  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState as AppStateStatus);
   const previousStateRef = useRef<AppStateStatus | null>(null);
   const backgroundTimeRef = useRef<number | null>(null);
   const [lastForegroundTime, setLastForegroundTime] = useState<number | null>(null);

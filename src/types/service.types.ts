@@ -11,7 +11,7 @@
  */
 
 // Import canonical types for use in this file
-// Note: These are re-exported from index.ts to avoid conflicts with rpc.types.ts
+// Note: These are re-exported from index.ts
 import type { RpcPagination } from './rpc-canonical.types';
 export type { RpcPagination };
 

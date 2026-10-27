@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
-import { Swipeable } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import {
   View,
   Text,
@@ -616,7 +616,7 @@ export default function CustomersScreen() {
                 <Text style={styles.cappedFooter}>
                   {tr('customers.list.cappedFooter', { shown: state.data.length, total: state.total })}
                 </Text>
-              ) : null
+              ) : undefined
             }
             showsVerticalScrollIndicator={false}
             onScrollToIndexFailed={handleScrollToIndexFailed}
@@ -653,7 +653,7 @@ interface FioriCustomerCardProps {
 function FioriCustomerCard({ customer, busy, onPress, onToggleActive }: FioriCustomerCardProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const swipeableRef = useRef<Swipeable | null>(null);
+  const swipeableRef = useRef<SwipeableMethods | null>(null);
   const mobile = customer.mobile ? formatMobile(customer.mobile) : null;
   const actionLabel = customer.active ? tr('customers.list.deactivate') : tr('customers.list.activate');
   const rowLabel = [
@@ -701,7 +701,7 @@ function FioriCustomerCard({ customer, busy, onPress, onToggleActive }: FioriCus
   );
 
   return (
-    <Swipeable
+    <ReanimatedSwipeable
       ref={swipeableRef}
       renderRightActions={renderRightActions}
       overshootRight={false}
@@ -763,7 +763,7 @@ function FioriCustomerCard({ customer, busy, onPress, onToggleActive }: FioriCus
           <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         )}
       </Pressable>
-    </Swipeable>
+    </ReanimatedSwipeable>
   );
 }
 

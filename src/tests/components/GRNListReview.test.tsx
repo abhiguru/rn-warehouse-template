@@ -11,7 +11,7 @@
  *  - The header's busy line while new results load over the rows on screen.
  */
 import React from 'react';
-import { Swipeable } from 'react-native-gesture-handler';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import GRNListFiori from '@/components/GRNListFiori';

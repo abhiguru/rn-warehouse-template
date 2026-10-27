@@ -18,6 +18,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { triggerSelection } from '@/hooks/useHaptics';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import type { TextRef } from '@/types/nativeRefs';
 
 /** Visual height of a segment or group button; the touch area is padded to touchTarget. */
 const CONTROL_HEIGHT = 32;
@@ -397,7 +398,7 @@ export interface RadioGroupProps {
   /** Container style override */
   style?: StyleProp<ViewStyle>;
   /** Ref to the group's label text, so a screen can move screen-reader focus to it */
-  labelRef?: React.Ref<Text>;
+  labelRef?: React.Ref<TextRef>;
 }
 
 export const RadioGroup: React.FC<RadioGroupProps> = ({

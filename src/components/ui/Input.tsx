@@ -29,6 +29,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 /** Touch area padding that brings the 20 pt clear glyph up to the minimum target. */
 const CLEAR_HIT_SLOP = (touchTarget - iconSize.md) / 2;
@@ -85,7 +86,7 @@ export interface InputProps extends TextInputProps {
   /** Called with the field box's layout (`y` below the label, `height`): a caller that puts something beside the field, not beside its label, centres it on the box. */
   onFieldLayout?: (event: LayoutChangeEvent) => void;
   /** The caller's ref to the TextInput; the field keeps its own too (the clear button refocuses). */
-  ref?: React.Ref<TextInput>;
+  ref?: React.Ref<TextInputRef>;
 }
 
 // ============================================================================
@@ -119,7 +120,7 @@ export function Input({
 }: InputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [internalValue, setInternalValue] = useState(value || '');
-  const inputRef = useRef<TextInput | null>(null);
+  const inputRef = useRef<TextInputRef | null>(null);
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
 
@@ -134,10 +135,10 @@ export function Input({
   // Both the caller and the clear button need the TextInput.
   // A stable callback: a new one on every render would detach and re-attach the caller's ref each time.
   const setRefs = useCallback(
-    (node: TextInput | null) => {
+    (node: TextInputRef | null) => {
       inputRef.current = node;
       if (typeof callerRef === 'function') callerRef(node);
-      else if (callerRef) (callerRef as React.MutableRefObject<TextInput | null>).current = node;
+      else if (callerRef) (callerRef as React.MutableRefObject<TextInputRef | null>).current = node;
     },
     [callerRef]
   );

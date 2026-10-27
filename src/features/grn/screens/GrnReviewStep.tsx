@@ -112,6 +112,7 @@ import { t as tr, formatIdentifier } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
+import type { ScrollViewRef } from '@/types/nativeRefs';
 
 const log = createLogger('grn');
 
@@ -209,7 +210,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // no rate is checked and `p_rates` is left out of the save.
   const role = useAppSelector((s) => s.auth?.userProfile?.role);
   const canSetRates = canOpenScreen(role, 'itemPricing');
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
   const ratesY = useRef(0);
   // The sections are rows of one table card: RATES' place in the scroll is the card's plus its own in the card.
   const cardY = useRef(0);

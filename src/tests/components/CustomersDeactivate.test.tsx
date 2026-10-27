@@ -20,6 +20,28 @@ jest.mock('@/services/customer-service', () => ({
   customerService: { getCustomerList: jest.fn(), getCustomerCounts: jest.fn(async () => null), inactivateCustomer: jest.fn(), restoreCustomer: jest.fn() },
 }));
 
+// The REAL ReanimatedSwipeable, wrapped only to count calls of the close() the row makes through its ref.
+const mockClose = jest.fn();
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
+  const mockReact = require('react');
+  const Actual = jest.requireActual('react-native-gesture-handler/ReanimatedSwipeable').default;
+  return {
+    __esModule: true,
+    default: mockReact.forwardRef((props: Record<string, unknown>, ref: unknown) =>
+      mockReact.createElement(Actual, {
+        ...props,
+        ref: (methods: { close: () => void } | null) => {
+          if (methods && !(methods as { wrapped?: boolean }).wrapped) {
+            const close = methods.close;
+            Object.assign(methods, { wrapped: true, close: () => { mockClose(); close(); } });
+          }
+          if (typeof ref === 'function') ref(methods);
+          else if (ref) (ref as { current: unknown }).current = methods;
+        },
+      })),
+  };
+});
+
 const rows = [
   { id: 'c1', name: 'Hilltop Fresh Mart', mobile: '9999900320', city: 'Rajkot', active: true },
   { id: 'c2', name: 'Old Stores', mobile: '9999900321', city: 'Surat', active: false },
@@ -52,5 +74,16 @@ it('asks with the title and a message that says what deactivating does', async (
   expect(title).toBe('Deactivate Hilltop Fresh Mart?');
   expect(message).toBe("They won't appear when you choose a customer for a new GRN, dispatch or order. Their records stay, and you can activate them again.");
   expect((buttons as { text: string }[]).map(b => b.text)).toEqual(['Cancel', 'Deactivate customer']);
+  expect(customerService.inactivateCustomer).not.toHaveBeenCalled();
+});
+
+it('the visible Deactivate button of the swipe closes the row and opens the same confirmation', async () => {
+  const screen = await mount();
+  const button = screen.root.findAll(node => node.props.accessibilityLabel === 'Deactivate Hilltop Fresh Mart' && typeof node.props.onPress === 'function')[0];
+  expect(button).toBeDefined();
+  await act(async () => { button.props.onPress(); });
+  expect(mockClose).toHaveBeenCalledTimes(1);
+  expect(showAlert).toHaveBeenCalledTimes(1);
+  expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Deactivate Hilltop Fresh Mart?');
   expect(customerService.inactivateCustomer).not.toHaveBeenCalled();
 });

@@ -196,7 +196,7 @@ export function OptionPicker({ field, value, onChange, ctx }: OptionPickerProps)
           )
         }
         ListEmptyComponent={
-          loading ? null : (
+          loading ? undefined : (
             <Text style={styles.message}>
               {failed
                 ? pickerText(field.noun, 'loadFailed')

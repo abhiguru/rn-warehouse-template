@@ -9,7 +9,6 @@ import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { ListErrorFallback } from '@/components/list/ListErrorBoundary';
-import MaintenanceScreen from '@/components/MaintenanceScreen';
 import { InvalidRouteScreen } from '@/components/InvalidRouteScreen';
 import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 
@@ -98,12 +97,6 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
   it('ListErrorFallback names the list', () => {
     act(() => { tree = create(<ListErrorFallback listName="invoices" onRetry={jest.fn()} />); });
     expect(textOf(tree!)).toContain("Couldn't show the invoices. Try again.");
-  });
-
-  it('MaintenanceScreen renders on the theme background', () => {
-    act(() => { tree = create(<MaintenanceScreen />); });
-    expect(textOf(tree!)).toContain('The app is under maintenance');
-    expect(hasBackground(tree!, t.background.base)).toBe(true);
   });
 
   it('InvalidRouteScreen renders with a Go back action', () => {

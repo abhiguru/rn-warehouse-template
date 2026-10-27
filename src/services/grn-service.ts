@@ -9,7 +9,8 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { t } from '@/i18n';
 import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
-import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { noteGrnPagingUnit } from '@/config/facilityGrnPaging';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 
@@ -490,7 +491,7 @@ const unitsOf = (entry: CursorEntry, rows: GRNItem[]): GRNItem[][] => {
 const MAX_CURSORS = 4;
 /** Insertion order is the least recently used order. */
 const cursors = new Map<string, CursorEntry>();
-onSessionChange(() => cursors.clear());
+registerSessionScoped('grn-list-cursors', () => cursors.clear(), { onGenerationChange: true });
 
 const cursorKey = (generation: number, targetIds: string[], params: GRNListParams) => {
   const { customer_ids: _customerIds, ...filters } = params.p_filters || {};

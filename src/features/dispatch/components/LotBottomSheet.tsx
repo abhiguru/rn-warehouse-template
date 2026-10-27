@@ -26,7 +26,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
-import { Swipeable } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useRouter, Href } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
@@ -460,17 +460,17 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
         </Pressable>
       );
 
-      // Wrap with Swipeable if GRN info is available AND lot is not disabled
+      // Wrap with ReanimatedSwipeable if GRN info is available AND lot is not disabled
       if (canViewGRN) {
         return (
-          <Swipeable
+          <ReanimatedSwipeable
             renderRightActions={renderRightActions}
             overshootRight={false}
             friction={2}
             rightThreshold={40}
           >
             {lotContent}
-          </Swipeable>
+          </ReanimatedSwipeable>
         );
       }
 

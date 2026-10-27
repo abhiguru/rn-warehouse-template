@@ -24,6 +24,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 /** Visual size of the minus/plus buttons; the touch area is padded to touchTarget. */
 const BUTTON_SIZE = 36;
@@ -72,7 +73,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [inputValue, setInputValue] = useState(value.toFixed(decimalPlaces));
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputRef>(null);
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
 

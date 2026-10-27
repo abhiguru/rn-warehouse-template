@@ -37,7 +37,6 @@ export {
   invalidateCacheByPrefix,
   getAllCacheKeys,
   clearExpiredCache,
-  clearExpiredCacheInBackground,
   getCacheStats,
 } from './cacheManager';
 export type { CacheOptions } from './cacheManager';

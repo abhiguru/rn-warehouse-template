@@ -12,7 +12,6 @@ jest.mock('@/store/hooks', () => ({
 }));
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@react-native-community/slider', () => 'Slider');
 jest.mock('@gorhom/bottom-sheet', () => {
   const React = require('react');
   return {

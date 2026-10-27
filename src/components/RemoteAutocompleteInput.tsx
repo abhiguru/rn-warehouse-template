@@ -28,6 +28,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { normalizeDigits, t as tr } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 const DROPDOWN_MAX_HEIGHT = 200;
 const CLEAR_HIT_SLOP = (touchTarget - iconSize.md) / 2;
@@ -126,7 +127,7 @@ export function RemoteAutocompleteInput<T>({
   // longer current is discarded so an earlier, slower search cannot reopen
   // suggestions after the operator moved on.
   const searchRequestRef = useRef(0);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputRef>(null);
 
   const cancelPendingSearch = useCallback(() => {
     searchRequestRef.current += 1;

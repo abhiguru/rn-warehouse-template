@@ -277,7 +277,7 @@ export default function FacilitiesScreen() {
           )
         }
         ListFooterComponent={
-          list && list.length > 0 ? <Text style={styles.footnote}>{tr('central.facilities.refreshNote')}</Text> : null
+          list && list.length > 0 ? <Text style={styles.footnote}>{tr('central.facilities.refreshNote')}</Text> : undefined
         }
       />
 

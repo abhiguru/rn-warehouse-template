@@ -8,7 +8,7 @@
  * with changes asks first (useLeaveGuard); Save shows busy and ignores a second press.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReportEmptyState, ReportHeader } from '@/components/reports';
@@ -38,6 +38,7 @@ import { updateDevice } from '@/services/sensor-service';
 import { layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
@@ -105,7 +106,7 @@ const SensorEditScreen: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const inputs = useRef<Partial<Record<SensorFormField, TextInput | null>>>({});
+  const inputs = useRef<Partial<Record<SensorFormField, TextInputRef | null>>>({});
   // What the server refused, by field; a field's refusal goes when it is typed in again.
   const [refused, setRefused] = useState<SensorFormErrors>({});
 

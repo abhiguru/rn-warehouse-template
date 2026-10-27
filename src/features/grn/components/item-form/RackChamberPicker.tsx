@@ -16,6 +16,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, typography, trackedText, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 // Floor and Chamber options
 export const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
@@ -104,7 +105,7 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
   function RackChamberPickerInner({ value, onChange, error, onSubmitEditing, onFocus, onBlur }, ref) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
-    const inputRef = useRef<TextInput>(null);
+    const inputRef = useRef<TextInputRef>(null);
     const [selectedFloor, setSelectedFloor] = useState<string>('');
     const [selectedChamber, setSelectedChamber] = useState<string>('');
     const [isFocused, setIsFocused] = useState(false);

@@ -22,6 +22,7 @@ import { isTemporaryGRNImageId } from './imageId';
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { isLostAnswer } from '@/utils/lostAnswer';
+import { reportSaveError } from '@/utils/reportOutcome';
 import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { t, formatIdentifier } from '@/i18n';
@@ -549,6 +550,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     if (!lostAnswer && payload.resend && !(error instanceof PossibleDuplicateRefusal) && isUnsettledFailure(error)) lostAnswer = payload.resend;
     // A refusal, or a failure before the request left: the server did not apply it, so nothing is left in doubt. A lost
     // answer keeps its note.
+    reportSaveError(error, { lost: !!lostAnswer, requestKey: (lostAnswer ?? sent.last)?.key });
     if (!lostAnswer) await forgetWritten();
     return {
       success: false,
@@ -935,6 +937,7 @@ export const updateGRN = async (
     log.error('Error updating GRN with RPC', loggableError(error));
     // A resend whose session client could not be got is not settled either: the lock stays.
     if (!lostAnswer && options.resend && isUnsettledFailure(error)) lostAnswer = options.resend;
+    reportSaveError(error, { lost: !!lostAnswer, requestKey: (lostAnswer ?? sent.last)?.key });
 
     // Provide user-friendly error messages
     let errorMessage = t('grn.form.updateFailed');

@@ -5,9 +5,9 @@
  * carries no focus ring.
  */
 import React, { useCallback, useLayoutEffect, useRef } from 'react';
-import type { TextInput } from 'react-native';
 import { useOwnText } from '@/components/table/EditableNumberCell';
 import { Input, type InputProps } from '@/components/ui/Input';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 type Props = Omit<InputProps, 'value' | 'onChangeText'> & {
   /** The text, with 0-9 digits. */
@@ -17,7 +17,7 @@ type Props = Omit<InputProps, 'value' | 'onChangeText'> & {
 
 export function RateInput({ value, onChangeText, onFocus, onBlur, ref, ...rest }: Props) {
   const own = useOwnText(value, onChangeText);
-  const node = useRef<TextInput | null>(null);
+  const node = useRef<TextInputRef | null>(null);
   useLayoutEffect(
     () => () => {
       if (node.current?.isFocused?.()) node.current.blur();
@@ -26,10 +26,10 @@ export function RateInput({ value, onChangeText, onFocus, onBlur, ref, ...rest }
   );
   // Stable while the caller's ref is: a new callback each render would release and set the ref each time.
   const setRef = useCallback(
-    (input: TextInput | null) => {
+    (input: TextInputRef | null) => {
       node.current = input;
       if (typeof ref === 'function') ref(input);
-      else if (ref) (ref as React.MutableRefObject<TextInput | null>).current = input;
+      else if (ref) (ref as React.MutableRefObject<TextInputRef | null>).current = input;
     },
     [ref]
   );

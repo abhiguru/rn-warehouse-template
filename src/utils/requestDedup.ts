@@ -6,7 +6,7 @@
  * only one network call is made and all callers share the result.
  */
 
-import { onSessionChange } from '@/config/sessionLifecycle';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 type PendingRequest<T> = Promise<T>;
 
@@ -14,10 +14,8 @@ type PendingRequest<T> = Promise<T>;
 const pendingRequests = new Map<string, PendingRequest<unknown>>();
 
 // A request of the previous session (sign-out, sign-in, server switch) is never joined.
-// sessionLifecycle imports nothing, so this adds no import cycle.
-onSessionChange(() => {
-  clearAllPendingRequests();
-});
+// The registry imports only sessionLifecycle, which imports nothing, so this adds no import cycle.
+registerSessionScoped('request-dedup', () => { clearAllPendingRequests(); }, { onGenerationChange: true });
 
 /**
  * Stable JSON stringify that sorts object keys recursively.

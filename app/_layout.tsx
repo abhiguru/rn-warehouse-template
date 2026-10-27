@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import { LogBox, Platform } from 'react-native';
+import { LogBox, Platform, type AppStateStatus } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import * as NavigationBar from 'expo-navigation-bar';
 import Constants from 'expo-constants';
@@ -565,7 +565,7 @@ function BootstrapApp() {
     const resume = createResumeLifecycle({
       gate: operatorResumeGate,
       isHandoffActive: () => isNativeHandoffActive() || hasActiveOperatorMutation(),
-      initialState: AppState.currentState,
+      initialState: AppState.currentState as AppStateStatus,
     });
     const lifecycle = AppState.addEventListener('change', state => {
       // First, so a throwing listener cannot skip it. Runs on every change to active, including

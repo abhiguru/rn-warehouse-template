@@ -18,6 +18,7 @@ import type { FilterFieldDef } from '../types';
 import type { useListFilters } from '../useListFilters';
 import { CHIP_HEIGHT, CHIP_INSET, FilterBarChip } from './FilterBarChip';
 import { SingleFilterSheet, type OpenFilter } from './SingleFilterSheet';
+import type { ScrollViewRef } from '@/types/nativeRefs';
 
 export interface FilterBarProps {
   config: CountableFilterList;
@@ -62,7 +63,7 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
   const sortText = describeSort(config, sort);
 
   // When filters come or go the chips reorder: show the row from its start, where Filters and Sort are.
-  const rowRef = useRef<ScrollView>(null);
+  const rowRef = useRef<ScrollViewRef>(null);
   const activeKeys = active.map(field => field.key).join(',') + (recognised.date ? ',date' : '') + (recognised.range ? ',range' : '') + (recognised.financialYear !== undefined ? ',year' : '') + (filters.hasAny ? ',any' : '');
   useEffect(() => {
     rowRef.current?.scrollTo({ x: 0, animated: false });

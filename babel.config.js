@@ -9,7 +9,6 @@ module.exports = function (api) {
         alias: {
           '@': './src',
           '@/components': './src/components',
-          '@/screens': './src/screens',
           '@/store': './src/store',
           '@/utils': './src/utils',
           '@/types': './src/types',
@@ -19,7 +18,6 @@ module.exports = function (api) {
         },
       },
     ],
-    'react-native-reanimated/plugin',
   ];
 
   // Remove console.* statements in production builds

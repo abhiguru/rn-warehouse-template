@@ -5,7 +5,7 @@
  * applied by the one button, which shows how many results it will give.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, type Text } from 'react-native';
+import { AccessibilityInfo } from 'react-native';
 import { t } from '@/i18n';
 import type { CountableFilterList } from '../configs';
 import { resolveDateRange } from '../datePresets';
@@ -17,6 +17,7 @@ import { ApplyFiltersButton } from './ApplyFiltersButton';
 import { SortEditor } from './editors/SortEditor';
 import { FieldEditor } from './FieldEditor';
 import { SheetFrame } from './SheetFrame';
+import type { TextRef } from '@/types/nativeRefs';
 
 export type OpenFilter = { type: 'sort' } | { type: 'field'; key: string } | null;
 
@@ -32,7 +33,7 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
   const [draft, setDraft] = useState<FilterValue | undefined>(undefined);
   const [invalid, setInvalid] = useState(false);
   // The field's error text: a blocked press moves focus to it (the field itself is already in view).
-  const errorRef = useRef<Text>(null);
+  const errorRef = useRef<TextRef>(null);
   // Counts presses of Reset: editors that keep typed text remount then, and only then.
   const [resets, setResets] = useState(0);
 

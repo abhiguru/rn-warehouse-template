@@ -4,11 +4,11 @@
  * a field the list has not drawn (it is virtualized) takes the focus as soon as it mounts.
  */
 import { useCallback, useMemo, useRef } from 'react';
-import type { TextInput } from 'react-native';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 export interface FieldWalk {
   /** Called with the input when it mounts and with null when it unmounts. */
-  register: (key: string, node: TextInput | null) => void;
+  register: (key: string, node: TextInputRef | null) => void;
   /** Focus a field, scrolling its row up first (also when it is drawn, so it clears the keyboard). */
   focusKey: (key: string) => void;
   /** Scroll a field's row up into the visible part (a tap on a cell, before it takes the focus). */
@@ -29,7 +29,7 @@ interface Options {
 }
 
 export function useFieldWalk({ order, rowOf, scrollToRow }: Options): FieldWalk {
-  const nodes = useRef(new Map<string, TextInput>()).current;
+  const nodes = useRef(new Map<string, TextInputRef>()).current;
   const pending = useRef<string | null>(null);
   const latest = useRef({ order, rowOf, scrollToRow });
   latest.current = { order, rowOf, scrollToRow };
@@ -87,8 +87,8 @@ export function useFieldWalk({ order, rowOf, scrollToRow }: Options): FieldWalk 
  * key it reports, and that is not the field going away.
  */
 export function useRefFactory(register: FieldWalk['register'], onGone: (key: string) => void) {
-  const cache = useRef(new Map<string, (node: TextInput | null) => void>()).current;
-  const nodeOf = useRef(new Map<string, TextInput>()).current;
+  const cache = useRef(new Map<string, (node: TextInputRef | null) => void>()).current;
+  const nodeOf = useRef(new Map<string, TextInputRef>()).current;
   const callbacks = useRef({ register, onGone });
   callbacks.current = { register, onGone };
   return useCallback(

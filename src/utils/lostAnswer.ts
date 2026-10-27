@@ -25,6 +25,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { isLostAnswer } from '@/utils/serverText';
 import { getNetInfoGeneration, subscribeNetInfoGeneration } from '@/config/netInfoGeneration';
+import { reportOutcome } from '@/utils/reportOutcome';
 
 /** How long after a request was sent the app waits before it asks what became of it. */
 export const LOST_ANSWER_MIN_WAIT_MS = 10_000;
@@ -287,5 +288,7 @@ export function askSubmission(key: string): Promise<SubmissionResult | undefined
  */
 export async function checkSubmission(key: string, sentAt: number, signal?: AbortSignal): Promise<SubmissionResult> {
   await waitForServer(sentAt, signal);
-  return readUntilAnswered(() => askServer(key), signal);
+  const result = await readUntilAnswered(() => askServer(key), signal);
+  reportOutcome('lost_answer_settled', { requestKey: key });
+  return result;
 }

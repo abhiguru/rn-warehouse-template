@@ -51,7 +51,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { hashKey, useQuery, type Query } from '@tanstack/react-query';
 import { useAppForeground, useRouteFocus } from '@/hooks/useRouteFocus';
 import { queryClient } from '@/lib/queryClient';
-import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { isAccessRefusal } from '@/utils/rpcRefusal';
 import { readReportCache, removeReportCache, removeReportCachePrefix, writeReportCache } from './reportCache';
 
@@ -172,7 +173,7 @@ interface NotedRefusal {
 let refusalCount = 0;
 const lastRefusals = new Map<string, NotedRefusal>();
 // A refusal was given to one account on one server.
-onSessionChange(() => lastRefusals.clear());
+registerSessionScoped('report-refusals', () => lastRefusals.clear(), { onGenerationChange: true });
 
 /** How many customers' reports (or keys) have a refusal noted. For tests: a change of session leaves none. */
 export const notedRefusals = (): number => lastRefusals.size;

@@ -43,6 +43,7 @@ import { getInvoiceableGrns } from '@/features/invoice/services/invoiceFormServi
 import { formatCount, formatDate, toDate } from '@/utils/formatters';
 import { normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { createLogger } from '@/utils/logger';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 const log = createLogger('GRNAutocomplete');
 
@@ -265,7 +266,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Counts the searches; an answer is used only while its search is the latest.
   const searchRequest = useRef(0);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputRef>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [grns, setGrns] = useState<InvoiceableGrn[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -445,7 +446,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
       </Pressable>
       <View style={styles.divider} />
     </View>
-  ) : null;
+  ) : undefined;
 
   // Render empty, loading and error states
   const renderEmptyState = useCallback(() => {

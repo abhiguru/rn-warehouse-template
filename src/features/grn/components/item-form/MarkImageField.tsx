@@ -18,6 +18,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
 import { t as tr, identifierInput } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -57,7 +58,7 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
   ) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
-    const inputRef = useRef<TextInput>(null);
+    const inputRef = useRef<TextInputRef>(null);
     const [isFocused, setIsFocused] = useState(false);
 
     // Expose focus method to parent

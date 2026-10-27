@@ -20,7 +20,7 @@ import {
 } from '@/components/lists/types';
 import { router, useFocusEffect } from 'expo-router';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
-import { Swipeable } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   countReceipts,
@@ -297,7 +297,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const t = useTokens();
   const reduceMotion = useReducedMotion();
   const matched = hiddenMatches(group, words);
-  const swipeableRef = useRef<Swipeable>(null);
+  const swipeableRef = useRef<SwipeableMethods>(null);
 
   // Totals of the receipt: bags received and bags in stock. A total weight is
   // not shown (style guide 12.3); the open table has each line's "Kg each".
@@ -471,7 +471,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
   // A role with no action to offer gets a plain card: no swipe that would show only "View".
   if (actions.length === 0) return card;
   return (
-    <Swipeable
+    <ReanimatedSwipeable
       // One swipe state per GRN: FlashList reuses this cell for another GRN, which must not appear already swiped open.
       key={group.grnId}
       ref={swipeableRef}
@@ -481,7 +481,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
       rightThreshold={40}
     >
       {card}
-    </Swipeable>
+    </ReanimatedSwipeable>
   );
 });
 

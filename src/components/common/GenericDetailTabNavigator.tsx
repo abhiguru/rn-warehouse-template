@@ -22,6 +22,7 @@ import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typograp
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatNumber } from '@/utils/formatters';
 import { localizeDigits } from '@/i18n';
+import type { ScrollViewRef } from '@/types/nativeRefs';
 
 /** Default tab glyph size. */
 const DEFAULT_TAB_ICON_SIZE = iconSizes.md;
@@ -100,7 +101,7 @@ export function GenericDetailTabNavigator<T extends string>({
 
   // Keep the selected tab fully visible: with many tabs or large text the row scrolls,
   // and the last tab would otherwise be clipped at the screen edge ("Invoic").
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
   const tabBounds = useRef<Record<string, { x: number; width: number }>>({});
   const viewportWidth = useRef(0);
   const scrollActiveIntoView = useCallback(() => {

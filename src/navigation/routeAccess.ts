@@ -26,7 +26,7 @@ export const PUBLIC_ROUTES: readonly string[] = [
  * Routes the app offers to some roles only. Keys are a route's first segment, or its first
  * two for a single report. The server refuses the same roles (see `canOpenScreen`).
  */
-const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
+export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   customers: 'masterData',
   customer: 'masterData',
   'customer-form': 'masterData',

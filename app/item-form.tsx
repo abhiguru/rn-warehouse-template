@@ -50,6 +50,7 @@ import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 import { isNetworkError, isStatementTimeout, isTimeoutError, serverText } from '@/utils/serverText';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import type { TextInputRef } from '@/types/nativeRefs';
 /** The order the fields are on the screen: the first wrong one gets focus. */
 const FIELD_ORDER: (keyof ItemValidationErrors)[] = ['name', 'packaging', 'description'];
 
@@ -68,7 +69,7 @@ const ItemFormScreen: React.FC = () => {
   });
   const [errors, setErrors] = useState<ItemValidationErrors>({});
   const offline = useIsOffline();
-  const inputs = useRef<Partial<Record<keyof ItemValidationErrors, TextInput | null>>>({});
+  const inputs = useRef<Partial<Record<keyof ItemValidationErrors, TextInputRef | null>>>({});
   // The name (trimmed, lower case) of an Add that got no answer in time: it may have been saved.
   const timedOutName = useRef<string | null>(null);
   // Which rate the new item gets: the standard rate, or the rates of another item (required when chosen).
@@ -311,7 +312,7 @@ type ItemTextFieldProps = Omit<TextInputProps, 'style'> & {
   error?: string;
   maxLength: number;
   value: string;
-  inputRef?: (node: TextInput | null) => void;
+  inputRef?: (node: TextInputRef | null) => void;
 };
 
 /** Labelled text field with focus, error and character count (style guide §13.2). */

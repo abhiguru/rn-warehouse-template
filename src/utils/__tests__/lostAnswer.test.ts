@@ -17,6 +17,7 @@ import {
   useIsDisconnected,
   waitForServer,
 } from '../lostAnswer';
+import { reportOutcome } from '../reportOutcome';
 
 type NetState = { isConnected: boolean | null };
 let mockState: NetState = { isConnected: true };
@@ -36,6 +37,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 const mockExecuteRPC = jest.fn();
 jest.mock('@/utils/serviceErrorHandler', () => ({ executeRPC: (...args: unknown[]) => mockExecuteRPC(...args) }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
+jest.mock('../reportOutcome', () => ({ reportOutcome: jest.fn() }));
 
 const flush = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
@@ -310,5 +312,25 @@ describe('checkSubmission', () => {
     controller.abort();
     expect(await state(result)).toBe('aborted');
     expect(mockExecuteRPC).not.toHaveBeenCalled();
+  });
+});
+
+describe('checkSubmission reports a settled lost answer', () => {
+  const sentLongAgo = () => Date.now() - LOST_ANSWER_MIN_WAIT_MS - 1;
+
+  beforeEach(() => (reportOutcome as jest.Mock).mockClear());
+
+  it('once, with the request code and nothing of the answer, when the server answers', async () => {
+    mockExecuteRPC.mockResolvedValue({ success: true, data: { found: true, response: { customer: 'Test Customer' } } });
+    await checkSubmission('key-settled', sentLongAgo());
+    expect(reportOutcome).toHaveBeenCalledTimes(1);
+    expect(reportOutcome).toHaveBeenCalledWith('lost_answer_settled', { requestKey: 'key-settled' });
+  });
+
+  it('not when the wait is aborted before the server answered', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(checkSubmission('key-aborted', Date.now(), controller.signal)).rejects.toBeDefined();
+    expect(reportOutcome).not.toHaveBeenCalled();
   });
 });

@@ -52,6 +52,7 @@ import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
 import type { FieldNode, FieldRegistry } from '@/features/item-pricing/components/fieldLink';
 import { RateStrip } from '@/features/item-pricing/components/RateStrip';
 import { RatesState } from '@/features/item-pricing/components/RatesState';
+import type { ScrollViewRef } from '@/types/nativeRefs';
 
 const ABOVE_KEYBOARD = space.xxl;
 
@@ -90,7 +91,7 @@ export default function StandardRateScreen() {
     return () => { alive.current = false; };
   }, []);
   const checked = useRef(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
   const nodes = useRef<Record<string, FieldNode | null>>({});
   const [barHeight, setBarHeight] = useState(0);
   const scrollY = useRef(0);

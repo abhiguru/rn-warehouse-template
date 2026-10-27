@@ -16,6 +16,7 @@ import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatNumber } from '@/utils/formatters';
 import { normalizeDigits, t as tr, localizeDigits } from '@/i18n';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 // ============================================================================
 // TYPES
@@ -63,8 +64,8 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
   ) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
-    const qtyInputRef = useRef<TextInput>(null);
-    const weightInputRef = useRef<TextInput>(null);
+    const qtyInputRef = useRef<TextInputRef>(null);
+    const weightInputRef = useRef<TextInputRef>(null);
     const [focusedField, setFocusedField] = useState<'qty' | 'weight' | null>(null);
 
     // Expose focus methods to parent

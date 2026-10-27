@@ -87,6 +87,17 @@ test('no workflow names a self-hosted runner; CI jobs take their runner from a r
   }
 });
 
+// The monthly SDK watch runs on the same runner variable as the CI jobs, and never names a self-hosted label.
+test('sdk-watch.yml takes its runner from CI_RUNNER and is not triggered by pull requests', () => {
+  const text = workflowText('sdk-watch.yml');
+  const runsOn = text.split('\n').filter(line => /^\s*runs-on:/.test(line));
+  assert.equal(runsOn.length, 1, 'one job');
+  assert.match(runsOn[0], /^ {4}runs-on: \$\{\{ fromJSON\(vars\.CI_RUNNER \|\| '"ubuntu-latest"'\) \}\}$/);
+  assert.doesNotMatch(runsOn[0], /self-hosted/);
+  assert.doesNotMatch(text, /^\s*pull_request/m, 'no fork clause is needed because no pull request starts it');
+  assert.match(text, /^ {2}schedule:\n/m);
+});
+
 // Review 2026-10-17, M03: the test files are excluded from `tsc --noEmit`, so a
 // type error in a test went unseen until `typecheck:tests` was run by hand.
 test('CI and the release both type-check the test files', () => {
