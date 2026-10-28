@@ -86,7 +86,9 @@ export default function DocumentNumberingScreen() {
           ? tr('numbering.edit.savedNext', { number: formatIdentifier(result.next_number) })
           : tr(result.reason === 'SERIES_FULL' ? 'numbering.edit.savedFull' : 'numbering.edit.savedTypeIt')
         : tr('numbering.edit.unchanged');
-      showToast(result.changed ? `${tr('numbering.edit.savedTitle')}. ${next}` : next);
+      // Numbers that do not follow the new rule are kept; the administrator is told how many.
+      const kept = result.changed && result.not_following > 0 ? ` ${tr('numbering.edit.savedNotFollowing', { count: result.not_following })}` : '';
+      showToast(result.changed ? `${tr('numbering.edit.savedTitle')}. ${next}${kept}` : next);
       void load();
     },
     [load]

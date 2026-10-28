@@ -18,6 +18,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr, type TranslationKey } from '@/i18n';
 import { setDocumentNumbering, type DocumentType, type NumberingRule, type NumberingScheme, type SetNumberingResult } from '@/services/documentNumberingService';
 import { radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { showAlert } from '@/utils/alert';
 import { transportText } from '@/utils/serverText';
 import {
   SCHEMES_BY_TYPE,
@@ -129,6 +130,24 @@ function Editor({ rule, onClose, onSaved, styles }: { rule: NumberingRule; onClo
     }
   };
 
+  // Closing the edit step with a change not yet saved asks once (style guide §13.9 and §14.4). The sheet is a modal, not a
+  // route, so useLeaveGuard does not apply: the Cancel button, the scrim and Android Back all come here.
+  const requestClose = () => {
+    if (!changed) {
+      onClose();
+      return;
+    }
+    showAlert(
+      tr('common.discardChangesTitle'),
+      tr('common.discardChangesMessage'),
+      [
+        { text: tr('common.keepEditing'), style: 'cancel' },
+        { text: tr('common.discard'), style: 'destructive', onPress: onClose },
+      ],
+      { cancelable: true },
+    );
+  };
+
   const title = tr(TITLE[type]);
   const schemeOptions = SCHEMES_BY_TYPE[type].map(scheme => ({ value: scheme, label: tr(SCHEME_LABEL(type, scheme)) }));
   const turnsCheckOn = hasCheck(type, draft.scheme) && draft.check && !rule.check && draft.scheme === rule.scheme;
@@ -153,6 +172,7 @@ function Editor({ rule, onClose, onSaved, styles }: { rule: NumberingRule; onClo
           <Text style={styles.confirmText}>
             {example ? tr('numbering.edit.confirmExample', { example: formatIdentifier(example) }) : tr('numbering.edit.confirmFree')}
           </Text>
+          {example && rule.existing_documents > 0 ? <Text style={styles.confirmText}>{tr('numbering.edit.previewNote')}</Text> : null}
           <Text style={styles.confirmText}>{tr('numbering.edit.confirmExisting', { count: rule.existing_documents })}</Text>
           {turnsCheckOn && rule.not_following > 0 ? (
             <Text style={styles.confirmText}>{tr('numbering.edit.confirmNotFollowing', { count: rule.not_following })}</Text>
@@ -168,7 +188,7 @@ function Editor({ rule, onClose, onSaved, styles }: { rule: NumberingRule; onClo
       visible
       tall
       title={title}
-      onClose={onClose}
+      onClose={requestClose}
       footer={
         <View style={styles.footer}>
           <Button type="primary" onPress={toConfirm} disabled={!changed} testID="numbering-save">
