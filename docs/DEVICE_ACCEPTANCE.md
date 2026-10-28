@@ -399,7 +399,7 @@ Document numbers > the row > the scheme and fields as they were).
     flagged; nothing was saved (check the GRN list). Put the suggested number back and Create GRN: it is saved.
 7.  Action: Document numbers > GRN > switch off "Refuse numbers outside this rule" > Save numbering > confirm. Create a GRN with the number A0500.
     Expected: it is saved. Switch the check on again: the confirm step says how many existing numbers do not follow the rule and that they are kept.
-8.  Action: Document numbers > GRN > "Typed by hand" > Save. Create GRN. Expected: the "GRN number" box is empty; type 14/B/2027 and the GRN saves
+8.  Action: Document numbers > GRN > "Typed by hand" > Save. Create GRN. Expected: the "GRN number" box is empty with no pattern in it and the line "No GRN number is offered. Type the GRN number." under it; type 14/B/2027 and the GRN saves
     (up to 20 characters). With the box empty, Review > Create GRN says "No GRN number is offered. Type the GRN number." and sends nothing.
 9.  Action: Dispatch tab, Create dispatch with the dispatch rule set to a financial-year rule with prefix D/. Expected: the "Dispatch number" box holds
     the suggested D/26-27/0001 in full (20 characters fit; check that it is not cut off) and the dispatch saves. Invoice: open Invoice in Document numbers:

@@ -2,6 +2,10 @@
 export const numbering = {
   // Review step of a GRN, when the facility's rule offers no number to fill in (free text, a full series).
   typeGrnNumber: 'No GRN number is offered. Type the GRN number.',
+  // Under the number box of a new dispatch whose rule offers no number.
+  typeDispatchNumber: 'No dispatch number is offered. Type the dispatch number.',
+  // Under the number box of a new GRN or dispatch whose series has no number left.
+  seriesFull: 'All numbers of this series are used. Type a number, or ask an administrator to change the numbering.',
   // A save refused because the number is outside the facility's rule (backend migration 127).
   refusal: {
     format: "This number does not follow this facility's numbering ({{pattern}}).",

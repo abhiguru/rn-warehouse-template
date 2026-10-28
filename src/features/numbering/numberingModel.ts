@@ -7,7 +7,7 @@ import { calculateFinancialYear } from '@/utils/invoiceCalculations';
 import { indiaDay } from '@/utils/formatters';
 import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
 import { formatIdentifier, t } from '@/i18n';
-import type { DocumentType, NumberingRule, NumberingRuleInput, NumberingScheme } from '@/services/documentNumberingService';
+import type { DocumentType, NumberSuggestion, NumberingRule, NumberingRuleInput, NumberingScheme } from '@/services/documentNumberingService';
 
 /** The schemes a type may use, in the order offered. An invoice number is a whole number: year or sequence only. */
 export const SCHEMES_BY_TYPE: Record<DocumentType, readonly NumberingScheme[]> = {
@@ -119,6 +119,25 @@ export function draftChanged(rule: NumberingRule, draft: NumberingDraft): boolea
   const current = ruleInputOfRule(rule);
   const keys = new Set([...Object.keys(next), ...Object.keys(current)]) as Set<keyof NumberingRuleInput>;
   return [...keys].some(key => next[key] !== current[key]);
+}
+
+/**
+ * What the number box of a new GRN or dispatch shows as its placeholder: the rule's pattern ("A####") when the server
+ * gave one, nothing when the rule is typed by hand (a pattern would mislead), else the box's own default.
+ */
+export function numberBoxPlaceholder(hint: string | null | undefined, reason: NumberSuggestion['reason'] | undefined, fallback: string): string {
+  if (reason === 'TYPE_IT') return '';
+  return hint || fallback;
+}
+
+/**
+ * The line under an empty number box when the rule offered no number: "type it" for a rule typed by hand, and, for a series
+ * with no number left, that an administrator can change the numbering. null when there is nothing to say.
+ */
+export function numberBoxNote(type: 'grn' | 'dispatch', reason: NumberSuggestion['reason'] | undefined): string | null {
+  if (reason === 'SERIES_FULL') return t('numbering.seriesFull');
+  if (reason === 'TYPE_IT') return t(type === 'grn' ? 'numbering.typeGrnNumber' : 'numbering.typeDispatchNumber');
+  return null;
 }
 
 const pad = (value: number, width: number): string => String(value).padStart(width, '0');

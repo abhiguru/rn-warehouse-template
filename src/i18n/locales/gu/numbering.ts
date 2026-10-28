@@ -4,6 +4,8 @@ import type { Translation } from '../../types';
 // Drafts for the owner's wording review (document numbering, 2026-10-28), from docs/GUJARATI_GLOSSARY.md.
 export const numbering: Translation<typeof source> = {
   typeGrnNumber: 'કોઈ આવક પાવતી નંબર સૂચવાયો નથી. આવક પાવતી નંબર લખો.',
+  typeDispatchNumber: 'કોઈ જાવક નંબર સૂચવાયો નથી. જાવક નંબર લખો.',
+  seriesFull: 'આ શ્રેણીના બધા નંબર વપરાઈ ગયા છે. નંબર લખો, અથવા એડમિનને નંબરિંગ બદલવા કહો.',
   refusal: {
     format: 'આ નંબર આ કોલ્ડ સ્ટોરેજના નંબરિંગ ({{pattern}}) પ્રમાણે નથી.',
     tooLong: 'આ નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે.',
