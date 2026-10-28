@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — Document numbers (WS-8, needs backend migration 127 for the new behaviour)
+
+Pairs with backend migration 127 (`suggest_document_number`, `get_document_numbering`, `set_document_numbering`, the `NUMBER_FORMAT`
+refusal; merge and deploy the backend first). The same build works on an older backend: it keeps the `get_next_*_number` functions
+(`backendFeatures.documentNumbering`, migration 127; a backend that does not say its `schemaHead` counts as older). Needs a new APK and iOS build.
+
+- **The number in a new GRN, dispatch or invoice comes from the facility's numbering rule.** The three forms ask
+  `suggest_document_number` (the invoice for 1 April of its financial year, so the rule answers for the form's year). The made-up `G0001`
+  and `D0001` fallbacks are gone: when the rule offers no number (free text, a full series) the box stays empty, and a GRN with no number is not
+  sent (the person is asked to type it).
+- **A number outside the rule is refused in words.** A GRN or dispatch save refused with `NUMBER_FORMAT` says "This number does not follow
+  this facility's numbering (A####)." (the pattern as the server wrote it), flags the number on step 1 and takes the person there; with no pattern
+  (a number over 20 characters) the server's sentence is shown. The forms no longer refuse numbers the server accepts: the GRN and dispatch
+  number boxes take 20 characters (they took 8), the dispatch number needs no minimum length, and it may hold `/` and `-` (a financial-year rule).
+- **Settings > Warehouse tools > Document numbers (administrators).** One row per document type with its rule in words, whether numbers outside it
+  are refused, and how many existing numbers do not follow it. A row opens a sheet: the schemes the backend allows (GRN and dispatch: letters, financial year,
+  plain sequence, typed by hand; invoice: restart every financial year, or keep counting), the fields of the scheme, an example of the first number,
+  the switch for refusing numbers outside the rule, and a confirm step that says existing documents keep their numbers. English and Gujarati drafts.
+
 ## Unreleased — The version gate and the upgrade answer (app 0.6.0)
 
 Pairs with the backend release that publishes `backendRelease`, `schemaHead` and the release's own `minimumClientVersion` in

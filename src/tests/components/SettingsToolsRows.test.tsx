@@ -77,6 +77,21 @@ describe('Warehouse tools rows (G-10)', () => {
   });
 });
 
+describe('Document numbers row (WS-8)', () => {
+  it('is under Warehouse tools for an administrator and opens its screen', async () => {
+    await render();
+    expect(byTestId('settings-feature-documentNumbering').props.accessibilityLabel).toBe('Document numbers, How GRN, dispatch and invoice numbers are written');
+    await act(async () => { byTestId('settings-feature-documentNumbering').props.onPress(); });
+    expect(router.push).toHaveBeenCalledWith('/document-numbering');
+  });
+
+  it.each(['supervisor', 'staff'])('is not offered to %s', async role => {
+    mockState = { ...mockState, auth: { userProfile: { id: 'u2', name: 'Fictional Person', role, mobile: '919000000002' } } };
+    await render();
+    expect(tree!.root.findAll(node => node.props.testID === 'settings-feature-documentNumbering')).toHaveLength(0);
+  });
+});
+
 describe('App colours (G-45)', () => {
   it('the Preferences row reads "App colours, GCSA navy"', async () => {
     await render();

@@ -275,11 +275,11 @@ describe('what each role is offered', () => {
   // The Sensors row also needs the facility's `sensors` capability (its public config).
   const FACILITY = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
   it.each([
-    ['admin', true, ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'sensors']],
+    ['admin', true, ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'sensors']],
     ['supervisor', true, ['customers', 'items', 'users', 'standardRate', 'sensors']],
     ['staff', true, ['sensors']],
     ['customer', true, []],
-    ['admin', false, ['customers', 'enrollmentReview', 'items', 'users', 'standardRate']],
+    ['admin', false, ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering']],
     ['staff', false, []],
   ])('Settings feature rows for %s, sensors capability %s: %j', async (role, sensors, rows) => {
     signedInAs(role);

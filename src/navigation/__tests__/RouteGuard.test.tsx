@@ -216,6 +216,9 @@ describe('signed in', () => {
     ['staff', 'users', ['users']],
     ['staff', 'reports/operations-dashboard', ['reports', 'operations-dashboard']],
     ['supervisor', 'enrollment-review', ['enrollment-review']],
+    ['supervisor', 'document-numbering', ['document-numbering']],
+    ['staff', 'document-numbering', ['document-numbering']],
+    ['customer', 'document-numbering', ['document-numbering']],
   ])('a %s who opens %s by link is sent home and the screen is not mounted', async (role, routeName, segments) => {
     mockAuth = profile(role);
     await render(routeName, segments);

@@ -13,6 +13,8 @@ export const settings = {
     usersSubtitle: 'People who can sign in, their role and customers',
     standardRate: 'Standard rate',
     standardRateSubtitle: 'The rate new items get',
+    documentNumbers: 'Document numbers',
+    documentNumbersSubtitle: 'How GRN, dispatch and invoice numbers are written',
     sensors: 'Temperature and humidity',
     sensorsSubtitle: 'Live readings and history',
   },

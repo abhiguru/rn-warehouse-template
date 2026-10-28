@@ -29,10 +29,14 @@ describe('GRN number rule', () => {
     expect(result.errors.gr_no).toBeTruthy();
   });
 
-  it('rejects a number longer than the eight characters the server stores', async () => {
-    const result = await validateStep1(header({ gr_no: 'A00100000' }));
+  it('rejects a number longer than the twenty characters the server stores', async () => {
+    const result = await validateStep1(header({ gr_no: 'GRN/26-27/00000000001' }));
     expect(result.isValid).toBe(false);
-    expect(result.errors.gr_no).toBeTruthy();
+    expect(result.errors.gr_no).toBe('GRN number must be at most 20 characters');
+  });
+
+  it.each(['A00100000', 'GRN/26-27/0042', '14/B/2027', 'GRN/26-27/000000001'])('accepts %s: the shape of a number is the facility rule, which the server checks', async (grNo) => {
+    expect((await validateStep1(header({ gr_no: grNo }))).isValid).toBe(true);
   });
 });
 

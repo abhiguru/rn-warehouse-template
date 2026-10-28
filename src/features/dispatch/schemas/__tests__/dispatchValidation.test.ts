@@ -23,11 +23,15 @@ describe('dispatch Step 1 generated-number contract', () => {
     },
   );
 
-  it('rejects a value beyond the database-supported numeric range', async () => {
-    const result = await validateStep1({ ...validHeader, disp_no: 'I10000000' });
+  it('rejects a value longer than the twenty characters the database holds', async () => {
+    const result = await validateStep1({ ...validHeader, disp_no: 'D'.repeat(21) });
 
     expect(result.isValid).toBe(false);
-    expect(result.errors.disp_no).toBe('Dispatch number must be at most 8 characters');
+    expect(result.errors.disp_no).toBe('Dispatch number must be at most 20 characters');
+  });
+
+  it.each(['I10000000', 'D/26-27/0001', '1001', 'G1234A'])('accepts %s: the shape of a number is the facility rule, which the server checks', async (disp_no) => {
+    await expect(validateStep1({ ...validHeader, disp_no })).resolves.toEqual({ isValid: true, errors: {} });
   });
 });
 

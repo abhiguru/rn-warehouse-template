@@ -111,6 +111,7 @@ import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 import { serverText } from '@/utils/serverText';
+import { isNumberFormatRefusal, numberFormatText } from '@/utils/numberFormatRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
 import type { ScrollViewRef } from '@/types/nativeRefs';
 
@@ -738,6 +739,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           return;
         }
         if (formLeft()) return;
+        // The facility's rule offers no number (free text, a full series): the person types one on step 1.
+        if (!grNo) {
+          triggerError();
+          showAlert(saveFailedTitle(), tr('numbering.typeGrnNumber'), [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
+          return;
+        }
         dispatch(updateHeader({ gr_no: grNo }));
         dispatch(setGrNoTyped(false));
       }
@@ -810,6 +817,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         showNumberMaybeSaved(result.numberTaken?.number ?? header.gr_no);
       } else if (result.numberTaken) {
         await handleNumberTakenAtCreate(result.numberTaken.number, formLeft);
+      } else if (isNumberFormatRefusal(result.refusal)) {
+        // The number does not follow the facility's numbering (migration 127): step 1 refuses it until it is changed.
+        triggerError();
+        const message = numberFormatText(result.refusal);
+        dispatch(setTakenNumberError(message));
+        showAlert(saveFailedTitle(), message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
       } else {
         triggerError();
         if (result.rateError) showRateRefusal(result.rateError, result.error);

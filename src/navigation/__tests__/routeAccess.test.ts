@@ -32,6 +32,7 @@ describe('signed out', () => {
     [['user-edit', 'user-1']],
     [['item-price-history']],
     [['standard-rate']],
+    [['document-numbering']],
     [['sensors']],
     [['list-filters']],
     [['settings']],
@@ -97,6 +98,8 @@ describe('signed in', () => {
     ['item-rates/stop', 'allow', 'allow', 'home', 'home'],
     ['item-price-history', 'allow', 'allow', 'home', 'home'],
     ['standard-rate', 'allow', 'allow', 'home', 'home'],
+    // How document numbers are written: administrators only (set_document_numbering, migration 127).
+    ['document-numbering', 'allow', 'home', 'home', 'home'],
     ['sensors', 'allow', 'allow', 'allow', 'home'],
     ['sensor-detail/[id]', 'allow', 'allow', 'allow', 'home'],
     // Editing a sensor is for administrators only.

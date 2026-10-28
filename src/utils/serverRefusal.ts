@@ -58,6 +58,12 @@ export const REFUSAL = {
    * checks), and a warning, never a block: the person can save anyway, which sends the same save with the flag false.
    */
   POSSIBLE_DUPLICATE: 'POSSIBLE_DUPLICATE',
+  // Backend migration 127 (document numbering).
+  /**
+   * A GRN or dispatch number outside the facility's numbering rule, while the rule's check is on (`number`, `document_type`,
+   * `pattern`); with the pattern null, a number of more than 20 characters. Nothing was saved.
+   */
+  NUMBER_FORMAT: 'NUMBER_FORMAT',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

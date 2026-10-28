@@ -23,6 +23,8 @@ export type BackendRelease = { backendRelease: string | null; schemaHead: string
 const INTRODUCED_BY_MIGRATION = {
   /** `p_expected_updated_at` on update_order_item_quantity and remove_item_from_order (owner decision D1). */
   orderLineVersion: 121,
+  /** `suggest_document_number`, `get_document_numbering` and `set_document_numbering`, and the `NUMBER_FORMAT` refusal (WS-8). */
+  documentNumbering: 127,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

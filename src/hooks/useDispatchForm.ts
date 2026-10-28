@@ -118,6 +118,7 @@ import { documentNumberState } from '@/utils/documentNumberCheck';
 import { linesFromOtherCustomers } from '@/features/dispatch/utils/lotOwnership';
 import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { REFUSAL, refusalString, type ServerRefusal } from '@/utils/serverRefusal';
+import { numberFormatText } from '@/utils/numberFormatRefusal';
 import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { convertOrderToDispatchData } from '@/utils/orderToDispatchConverter';
 
@@ -409,7 +410,8 @@ export function useDispatchForm({
           console.log('[useDispatchForm] Dispatch number generation cancelled - session changed from', currentSessionId, 'to', currentDispatchFormSession());
           return;
         }
-        dispatch(updateHeader({ disp_no }));
+        // '' is no suggestion (free text, a full series): the box stays empty for the person to type.
+        if (disp_no) dispatch(updateHeader({ disp_no }));
       } catch (error) {
         console.error('[useDispatchForm] Failed to generate dispatch number:', error);
         if (currentDispatchFormSession() === currentSessionId) {
@@ -920,6 +922,16 @@ export function useDispatchForm({
             source_order_updated_at: read.data.updated_at,
           }));
           return { success: false, orderChanged: { empty: store.getState().dispatchForm.items.length === 0 } };
+        }
+
+        case REFUSAL.NUMBER_FORMAT: {
+          // The number does not follow the facility's numbering (migration 127): the number field says so and step 1 refuses
+          // it until it is changed; the screen takes the person there (the same way as for a number that is taken).
+          const message = numberFormatText(refusal);
+          dispatch(setTakenNumberError(message));
+          setLocalValidationErrors((prev) => ({ ...prev, disp_no: message }));
+          report(t('dispatch.wizard.errorTitle'), message);
+          return { success: false, error: message, numberTaken: { message } };
         }
 
         default:

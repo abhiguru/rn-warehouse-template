@@ -16,6 +16,8 @@ export const settings: Translation<typeof source> = {
     usersSubtitle: 'લૉગિન કરી શકે તેવા લોકો, તેમનો હોદ્દો અને વેપારી',
     standardRate: 'પ્રમાણભૂત દર',
     standardRateSubtitle: 'નવી આઇટમને મળતો દર',
+    documentNumbers: 'દસ્તાવેજ નંબર',
+    documentNumbersSubtitle: 'આવક પાવતી, જાવક અને ઇન્વૉઇસ નંબર કેવી રીતે લખાય છે',
     sensors: 'તાપમાન અને ભેજ',
     sensorsSubtitle: 'હાલની નોંધ અને ઇતિહાસ',
   },

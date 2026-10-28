@@ -125,6 +125,12 @@ const SettingsScreen: React.FC = () => {
     items: { icon: 'cube-outline', label: t('common.items'), subtitle: t('settings.features.itemsSubtitle'), route: '/items' },
     users: { icon: 'account-circle-outline', label: t('users.list.title'), subtitle: t('settings.features.usersSubtitle'), route: '/users' },
     standardRate: { icon: 'tag-multiple-outline', label: t('settings.features.standardRate'), subtitle: t('settings.features.standardRateSubtitle'), route: '/standard-rate' },
+    documentNumbering: {
+      icon: 'numeric',
+      label: t('settings.features.documentNumbers'),
+      subtitle: t('settings.features.documentNumbersSubtitle'),
+      route: '/document-numbering',
+    },
     sensors: { icon: 'thermometer', label: t('settings.features.sensors'), subtitle: t('settings.features.sensorsSubtitle'), route: '/sensors' },
   };
   const featureRows = settingsFeatureRows(userProfile?.role, capabilities);

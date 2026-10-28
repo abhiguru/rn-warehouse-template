@@ -52,15 +52,16 @@ describe('role by screen', () => {
     'itemPriceHistory',
     'standardRate',
     'sensorWrite',
+    'documentNumbering',
   ];
   it.each([
-    ['admin', [true, true, true, true, true, true, true, true, true, true]],
-    ['supervisor', [true, true, true, true, true, false, true, true, true, false]],
+    ['admin', [true, true, true, true, true, true, true, true, true, true, true]],
+    ['supervisor', [true, true, true, true, true, false, true, true, true, false, false]],
     // Item pricing, its writing, the price history and the standard rate are for administrators and supervisors (owner, 2026-10-16; server migration 90).
     // Editing a sensor (its name, place, threshold and temperature limits) is for administrators only.
-    ['staff', [false, false, false, true, false, false, false, false, false, false]],
-    ['customer', [false, false, false, false, false, false, false, false, false, false]],
-    [null, [false, false, false, false, false, false, false, false, false, false]],
+    ['staff', [false, false, false, true, false, false, false, false, false, false, false]],
+    ['customer', [false, false, false, false, false, false, false, false, false, false, false]],
+    [null, [false, false, false, false, false, false, false, false, false, false, false]],
   ])('%s', (role, expected) => {
     expect(SCREENS.map((screen) => canOpenScreen(role, screen))).toEqual(expected);
   });
@@ -133,7 +134,7 @@ describe('report routing', () => {
 
 describe('settings feature rows', () => {
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'sensors']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'sensors']],
     ['supervisor', ['customers', 'items', 'users', 'standardRate', 'sensors']],
     ['staff', ['sensors']],
     ['customer', []],
@@ -143,7 +144,7 @@ describe('settings feature rows', () => {
   });
 
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering']],
     ['supervisor', ['customers', 'items', 'users', 'standardRate']],
     ['staff', []],
     ['customer', []],

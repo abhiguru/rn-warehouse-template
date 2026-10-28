@@ -248,7 +248,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
           console.log('[useGRNForm] GRN number generation cancelled - session changed from', currentSessionId, 'to', currentGrnFormSession());
           return;
         }
-        dispatch(updateHeader({ gr_no: grNumber }));
+        // '' is no suggestion (free text, a full series): the box stays empty for the person to type.
+        if (grNumber) dispatch(updateHeader({ gr_no: grNumber }));
       } catch (error) {
         console.error('[useGRNForm] Failed to generate GRN number:', error);
         if (currentGrnFormSession() === currentSessionId) {

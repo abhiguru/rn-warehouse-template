@@ -1,6 +1,7 @@
 import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { viaCurrentPath } from '@/config/lanTransport';
+import { nextDocumentNumber } from '@/services/documentNumberingService';
 import {
   GRNHeaderData,
   GRNItemData,
@@ -27,6 +28,7 @@ import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinis
 import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { t, formatIdentifier } from '@/i18n';
 import { refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
+import { isNumberFormatRefusal } from '@/utils/numberFormatRefusal';
 import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -244,27 +246,13 @@ export const checkGrnExists = async (
 // GET NEXT GRN NUMBER
 // ============================================================================
 
-// Generate next GRN number using optimized RPC
-// RPC handles all logic server-side for better performance
-// M3 Fix: Not migrated to executeRPC - throws errors and returns string directly,
+// The next GRN number under the facility's numbering rule (backend migration 127; an older backend keeps
+// get_next_grn_number): '' when the rule offers none (free text, a full series). Never a number the app made up.
+// M3 Fix: Not migrated to executeRPC - throws errors and returns the string directly,
 // different pattern from standard success/error response
 export const getNextGRNNumber = async (): Promise<string> => {
   try {
-
-    const authenticatedClient = await getAuthenticatedClient();
-
-    const { data, error } = await authenticatedClient.rpc('get_next_grn_number');
-
-    if (error) {
-      log.error('get_next_grn_number failed', loggableError(error));
-      throw new Error(serverText(error.message, t('grn.form.nextNumberFailed')));
-    }
-
-    if (!data) {
-      return 'G0001';
-    }
-
-    return data;
+    return await nextDocumentNumber('grn');
   } catch (error) {
     log.error('Error getting next GRN number', loggableError(error));
     throw error;
@@ -500,6 +488,12 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       // Another GRN holds the number (it was taken since the form got it): the screen offers the next free one. On a
       // RESEND it means the first send may have saved it: the attempt is unsettled (`lostAnswer`), the screen checks
       // again and, if that finds nothing and it is refused again, says to look in the list; no next number.
+      // The number does not follow the facility's numbering rule (migration 127): nothing was saved, and the screen words
+      // it from the pattern and takes the person to the number. It comes before the duplicate check, so it is no lost answer.
+      const formatRefusal = refusalOf(data);
+      if (isNumberFormatRefusal(formatRefusal)) {
+        throw new ServerRefusalError(formatRefusal, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }));
+      }
       if (isNumberTaken(data)) {
         if (payload.resend && sent.last) lostAnswer = sent.last;
         throw new NumberTakenRefusal(grNumber, serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));
@@ -559,6 +553,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       duplicate: error instanceof PossibleDuplicateRefusal ? error.duplicate : undefined,
       numberTaken: error instanceof NumberTakenRefusal ? { number: error.number } : undefined,
       rateError: error instanceof RateRefusal ? { code: error.code, data: error.data } : undefined,
+      refusal: error instanceof ServerRefusalError ? error.refusal : undefined,
     };
   } finally {
     finishMutation?.();
