@@ -36,6 +36,8 @@ jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => false }));
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => null }));
+// Document numbers is offered where the backend has migration 127.
+jest.mock('@/config/backendFeatures', () => ({ backendHasFeature: () => true }));
 // A facility whose public config turns sensors on: the Settings row of every role is shown.
 jest.mock('@/hooks/useCapability', () => ({
   useFacilityCapabilities: () => ({ printing: false, sensors: true, realtime: true, customerDocuments: false }),

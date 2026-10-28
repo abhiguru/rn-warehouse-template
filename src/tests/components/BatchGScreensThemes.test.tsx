@@ -160,6 +160,7 @@ import OwnProfileEditScreen from '../../../app/user/edit/[userId]';
 import HelpScreen from '../../../app/help';
 import { clearOperatorServer, saveOperatorServer } from '@/config/operatorServer';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
+import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatures';
 import CustomerPageScreen from '../../../app/customer/[id]';
 import CustomerFormScreen from '../../../app/customer-form';
 import CustomerEditScreen from '../../../app/customer-edit/[id]';
@@ -285,6 +286,8 @@ describe('what each role is offered', () => {
     signedInAs(role);
     await saveOperatorServer(FACILITY, false);
     setFacilityCapabilities(FACILITY, { sensors });
+    // Document numbers is offered where the backend has migration 127.
+    setFacilityRelease(FACILITY, { schemaHead: '00000000000127_document_numbering' });
     const tree = await renderScreen(<SettingsScreen />);
     const shown = tree.root
       .findAll(node => typeof node.type !== 'string' && String(node.props.testID ?? '').startsWith('settings-feature-'))
@@ -292,6 +295,7 @@ describe('what each role is offered', () => {
     expect([...new Set(shown)]).toEqual(rows);
     await act(async () => { tree.unmount(); });
     resetFacilityCapabilities();
+    resetFacilityRelease();
     await clearOperatorServer();
   });
 
