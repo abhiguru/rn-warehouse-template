@@ -298,7 +298,6 @@ export const dispatch: Translation<typeof source> = {
     checkItems: 'આઇટમ તપાસો અને ફરી પ્રયાસ કરો',
     dispNoRequired: 'જાવક નંબર જરૂરી છે',
     dispNoMax: 'જાવક નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોવો જોઈએ',
-    dispNoFormat: 'જાવક નંબરમાં અંગ્રેજી કેપિટલ અક્ષરો અને આંકડા વાપરો',
     dateRequired: 'જાવકની તારીખ જરૂરી છે',
     dateInvalid: 'તારીખ બરાબર નથી',
     // Draft for the owner's wording review (2026-10-20): now says today's date.

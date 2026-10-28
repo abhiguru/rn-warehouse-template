@@ -110,13 +110,17 @@ const NEXT_FAILED: Record<DocumentType, TranslationKey> = {
 
 const OLD_RPC: Record<'grn' | 'dispatch', string> = { grn: 'get_next_grn_number', dispatch: 'get_next_dispatch_number' };
 
+/** The day of a form's date as YYYY-MM-DD (the form keeps a plain day or a timestamp); undefined when it holds none. */
+const dayOf = (date: string | null | undefined): string | undefined => /^\d{4}-\d{2}-\d{2}/.exec(date ?? '')?.[0];
+
 /**
  * The next GRN or dispatch number as text, or '' when the rule offers none (free text, a full series) or an older
  * backend answered with nothing. Never a number the app made up: an empty box is typed by the person.
+ * `date` is the form's date: under a financial-year rule the number belongs to the year of that date.
  */
-export async function nextDocumentNumber(type: 'grn' | 'dispatch'): Promise<string> {
+export async function nextDocumentNumber(type: 'grn' | 'dispatch', date?: string | null): Promise<string> {
   if (backendHasFeature('documentNumbering')) {
-    return (await suggestDocumentNumber(type)).number ?? '';
+    return (await suggestDocumentNumber(type, dayOf(date))).number ?? '';
   }
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
@@ -127,6 +131,17 @@ export async function nextDocumentNumber(type: 'grn' | 'dispatch'): Promise<stri
     throw new Error(serverText(error.message, t(NEXT_FAILED[type])));
   }
   return typeof data === 'string' ? data : '';
+}
+
+/**
+ * The number a form should hold after its date moved to another financial year: only under a financial-year rule (the
+ * number then belonged to the year before), and only on a backend that has the rule. null: leave the number as it is.
+ * Throws like `nextDocumentNumber`.
+ */
+export async function numberForNewDate(type: 'grn' | 'dispatch', date: string | null | undefined): Promise<string | null> {
+  if (!backendHasFeature('documentNumbering')) return null;
+  const suggestion = await suggestDocumentNumber(type, dayOf(date));
+  return suggestion.scheme === 'year' ? suggestion.number ?? '' : null;
 }
 
 const asRule = (row: unknown): NumberingRule | null => {

@@ -665,7 +665,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     if (!grNoTyped) {
       let next: string | null = null;
       try {
-        next = await getNextGRNNumber();
+        next = await getNextGRNNumber(header.date);
       } catch (numberError) {
         log.error('Could not get the next GRN number', loggableError(numberError));
       }
@@ -730,7 +730,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       let grNo = carried?.grNo ?? header.gr_no;
       if (!grNo) {
         try {
-          grNo = await getNextGRNNumber();
+          grNo = await getNextGRNNumber(header.date);
         } catch (numberError) {
           if (formLeft()) return;
           triggerError();

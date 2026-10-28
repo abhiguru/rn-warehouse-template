@@ -40,7 +40,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { createLogger } from '@/utils/logger';
+import { createLogger, loggableError } from '@/utils/logger';
+import { numberForNewDate } from '@/services/documentNumberingService';
+import { calculateFinancialYear } from '@/utils/invoiceCalculations';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotos, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import {
   updateHeader,
@@ -62,6 +64,7 @@ import {
   selectGRNFormId,
   selectGRNTempId,
   selectGRNTakenNumberError,
+  selectGRNGrNoTyped,
   selectGRNFirstDispatchDate,
   selectGRNLoadedDate,
   setTakenNumberError,
@@ -242,7 +245,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       hasGeneratedGRN.current = true;
       setIsGeneratingNumber(true);
       try {
-        const grNumber = await getNextGRNNumber();
+        const grNumber = await getNextGRNNumber(header.date);
         // Check if session changed before updating state (prevents stale updates after navigation)
         if (currentGrnFormSession() !== currentSessionId) {
           console.log('[useGRNForm] GRN number generation cancelled - session changed from', currentSessionId, 'to', currentGrnFormSession());
@@ -295,20 +298,51 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     });
   }, []);
 
+  // The date and the typed-ness of the number as the last render saw them: a date change reads the date it replaces.
+  const grNoTyped = useAppSelector(selectGRNGrNoTyped);
+  const grNoTypedRef = useRef(grNoTyped);
+  grNoTypedRef.current = grNoTyped;
+  const headerDateRef = useRef(header.date);
+  headerDateRef.current = header.date;
+  const dateNumberRequest = useRef(0);
+
+  /**
+   * The date moved to another financial year (1 April): under a financial-year rule the number the form fetched belonged
+   * to the year before, so the suggestion is asked again for the new date. A number the person typed is never replaced,
+   * and under another rule nothing changes (the server says which rule it is).
+   */
+  const askNumberForDate = useCallback(async (newDate: unknown) => {
+    const previous = headerDateRef.current;
+    if (!isCreateMode || typeof newDate !== 'string' || !previous || !newDate) return;
+    if (calculateFinancialYear(previous) === calculateFinancialYear(newDate) || grNoTypedRef.current) return;
+    const request = ++dateNumberRequest.current;
+    const session = currentGrnFormSession();
+    try {
+      const number = await numberForNewDate('grn', newDate);
+      if (number === null || request !== dateNumberRequest.current || currentGrnFormSession() !== session || grNoTypedRef.current) return;
+      dispatch(updateHeader({ gr_no: number }));
+    } catch (error) {
+      // The number stays; the server checks it again when the GRN is saved.
+      log.error('Could not ask for the GRN number of the new date', loggableError(error));
+    }
+  }, [isCreateMode, dispatch]);
+
   // Header actions
   const updateHeaderField = useCallback((field: keyof GRNHeaderData, value: unknown) => {
+    if (field === 'date') void askNumberForDate(value);
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearValidationError(field));
     clearLocalErrors([field]);
-  }, [dispatch, clearLocalErrors]);
+  }, [dispatch, clearLocalErrors, askNumberForDate]);
 
   const updateHeaderFields = useCallback((updates: Partial<GRNHeaderData>) => {
+    if ('date' in updates) void askNumberForDate(updates.date);
     dispatch(updateHeader(updates));
     Object.keys(updates).forEach((field) => {
       dispatch(clearValidationError(field));
     });
     clearLocalErrors(Object.keys(updates));
-  }, [dispatch, clearLocalErrors]);
+  }, [dispatch, clearLocalErrors, askNumberForDate]);
 
   /**
    * Handle GRN number change

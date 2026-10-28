@@ -250,9 +250,9 @@ export const checkGrnExists = async (
 // get_next_grn_number): '' when the rule offers none (free text, a full series). Never a number the app made up.
 // M3 Fix: Not migrated to executeRPC - throws errors and returns the string directly,
 // different pattern from standard success/error response
-export const getNextGRNNumber = async (): Promise<string> => {
+export const getNextGRNNumber = async (date?: string | null): Promise<string> => {
   try {
-    return await nextDocumentNumber('grn');
+    return await nextDocumentNumber('grn', date);
   } catch (error) {
     log.error('Error getting next GRN number', loggableError(error));
     throw error;

@@ -282,10 +282,10 @@ async function sendUntilAnswered(
  * The next dispatch number under the facility's numbering rule (backend migration 127; an older backend keeps
  * get_next_dispatch_number): '' when the rule offers none (free text, a full series). Never a number the app made up.
  */
-export const getNextDispatchNumber = async (): Promise<string> => {
+export const getNextDispatchNumber = async (date?: string | null): Promise<string> => {
   try {
     log.debug('Requesting next dispatch number');
-    const next = await nextDocumentNumber('dispatch');
+    const next = await nextDocumentNumber('dispatch', date);
     log.debug('Next dispatch number received');
     return next;
   } catch (error) {

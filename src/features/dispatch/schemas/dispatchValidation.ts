@@ -27,10 +27,10 @@ export const step1Schema = yup.object().shape({
   disp_no: yup
     .string()
     .required(m('dispatch.validation.dispNoRequired'))
-    // The column holds twenty characters (migration 127). The shape of the number is the facility's rule, which only the
-    // server knows (a refusal says it): the characters are those a rule can make (capital letters, digits, / and -).
-    .max(DOCUMENT_NUMBER_MAX_LENGTH, m('dispatch.validation.dispNoMax'))
-    .matches(/^[A-Z0-9/-]+$/, m('dispatch.validation.dispNoFormat')),
+    // The column holds twenty characters (migration 127). What the number may look like is the facility's rule (and, with
+    // its check off or a free rule, anything): only the server knows, and a refusal says it. An imported dispatch keeps
+    // its own number whatever characters it holds.
+    .max(DOCUMENT_NUMBER_MAX_LENGTH, m('dispatch.validation.dispNoMax')),
 
   disp_date: yup
     .string()

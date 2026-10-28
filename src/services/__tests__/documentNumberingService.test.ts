@@ -6,6 +6,7 @@ import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatur
 import {
   getDocumentNumbering,
   nextDocumentNumber,
+  numberForNewDate,
   setDocumentNumbering,
   suggestDocumentNumber,
 } from '../documentNumberingService';
@@ -116,5 +117,40 @@ describe('the rules', () => {
   it('throws the server sentence of a refusal', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'The prefix can have up to 10 characters: capital letters, digits, / and -.' } });
     await expect(setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' })).rejects.toThrow('The prefix can have up to 10 characters');
+  });
+});
+
+describe('the form date', () => {
+  it('goes to a financial-year rule as the day only (a timestamp is cut to its day)', async () => {
+    withMigration(127);
+    mockRpc.mockResolvedValue(suggestion({ number: 'GRN/26-27/0042', scheme: 'year' }));
+    await nextDocumentNumber('grn', '2027-03-30');
+    expect(mockRpc).toHaveBeenLastCalledWith('suggest_document_number', { p_document_type: 'grn', p_date: '2027-03-30' });
+    await nextDocumentNumber('dispatch', '2027-03-30T00:00:00.000Z');
+    expect(mockRpc).toHaveBeenLastCalledWith('suggest_document_number', { p_document_type: 'dispatch', p_date: '2027-03-30' });
+  });
+
+  it('is left out when the form holds none', async () => {
+    withMigration(127);
+    mockRpc.mockResolvedValue(suggestion());
+    await nextDocumentNumber('grn', '');
+    expect(mockRpc).toHaveBeenLastCalledWith('suggest_document_number', { p_document_type: 'grn' });
+  });
+
+  it('gives the number of the new date under a financial-year rule only', async () => {
+    withMigration(127);
+    mockRpc.mockResolvedValueOnce(suggestion({ number: 'GRN/27-28/0001', scheme: 'year' }));
+    await expect(numberForNewDate('grn', '2027-04-02')).resolves.toBe('GRN/27-28/0001');
+    expect(mockRpc).toHaveBeenCalledWith('suggest_document_number', { p_document_type: 'grn', p_date: '2027-04-02' });
+    mockRpc.mockResolvedValueOnce(suggestion({ number: 'A0042', scheme: 'letters' }));
+    await expect(numberForNewDate('grn', '2027-04-02')).resolves.toBeNull();
+    mockRpc.mockResolvedValueOnce(suggestion({ number: 'I0042', scheme: 'sequence' }));
+    await expect(numberForNewDate('dispatch', '2027-04-02')).resolves.toBeNull();
+  });
+
+  it('asks nothing of an older backend', async () => {
+    withMigration(126);
+    await expect(numberForNewDate('grn', '2027-04-02')).resolves.toBeNull();
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 });

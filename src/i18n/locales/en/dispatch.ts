@@ -296,7 +296,6 @@ export const dispatch = {
     checkItems: 'Please check the items and try again',
     dispNoRequired: 'Dispatch number is required',
     dispNoMax: 'Dispatch number must be at most 20 characters',
-    dispNoFormat: 'Dispatch number must be alphanumeric (uppercase)',
     dateRequired: 'Dispatch date is required',
     dateInvalid: 'Invalid date format',
     dateFuture: "A dispatch can't be dated in the future. Today is {{today}}.",
