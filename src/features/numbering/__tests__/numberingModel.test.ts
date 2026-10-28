@@ -10,7 +10,9 @@ import {
   hasCheck,
   ruleInputOf,
   ruleInputOfRule,
+  describeRule,
 } from '../numberingModel';
+import { setLanguage } from '@/i18n';
 
 const rule = (over: Partial<NumberingRule> = {}): NumberingRule => ({
   document_type: 'grn', scheme: 'letters', prefix: '', width: 4, start: 1, first_letter: 'A', per_letter: 1000, check: true,
@@ -129,5 +131,21 @@ describe('the request', () => {
     expect(draftChanged(grn, { ...draftFor(grn), check: false })).toBe(true);
     expect(draftChanged(grn, draftFor(grn, 'free'))).toBe(true);
     expect(ruleInputOfRule(grn)).toEqual(ruleInputOf('grn', draftFor(grn)));
+  });
+});
+
+describe('describeRule for an invoice (a number is an identifier: 0-9, no grouping, also in Gujarati)', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('writes the first number as typed in English', () => {
+    expect(describeRule(rule({ document_type: 'invoice', scheme: 'sequence', start: 1001 }))).toContain('from 1001');
+  });
+
+  it('keeps 0-9 digits and no thousands separator in Gujarati', () => {
+    setLanguage('gu');
+    const text = describeRule(rule({ document_type: 'invoice', scheme: 'year', start: 12345 }));
+    expect(text).toContain('12345');
+    expect(text).not.toMatch(/[૦-૯]/);
+    expect(text).not.toContain('12,345');
   });
 });

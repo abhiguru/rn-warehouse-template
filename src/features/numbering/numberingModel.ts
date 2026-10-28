@@ -154,7 +154,7 @@ export function describeRule(rule: NumberingRule, today?: string): string {
   const draft = draftFor(rule);
   const example = formatIdentifier(exampleNumber(rule.document_type, draft, today) ?? '');
   if (rule.document_type === 'invoice') {
-    return t(rule.scheme === 'sequence' ? 'numbering.rule.invoiceSequence' : 'numbering.rule.invoiceYear', { start: rule.start });
+    return t(rule.scheme === 'sequence' ? 'numbering.rule.invoiceSequence' : 'numbering.rule.invoiceYear', { start: formatIdentifier(String(rule.start)) });
   }
   switch (rule.scheme) {
     case 'letters':
