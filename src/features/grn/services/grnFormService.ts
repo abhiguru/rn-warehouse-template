@@ -1,7 +1,7 @@
 import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { viaCurrentPath } from '@/config/lanTransport';
-import { nextDocumentNumber } from '@/services/documentNumberingService';
+import { nextDocumentNumber, type NumberOffer } from '@/services/documentNumberingService';
 import {
   GRNHeaderData,
   GRNItemData,
@@ -250,9 +250,9 @@ export const checkGrnExists = async (
 // get_next_grn_number): '' when the rule offers none (free text, a full series). Never a number the app made up.
 // M3 Fix: Not migrated to executeRPC - throws errors and returns the string directly,
 // different pattern from standard success/error response
-export const getNextGRNNumber = async (date?: string | null): Promise<string> => {
+export const getNextGRNNumber = async (date?: string | null, onOffer?: (offer: NumberOffer) => void): Promise<string> => {
   try {
-    return await nextDocumentNumber('grn', date);
+    return await nextDocumentNumber('grn', date, onOffer);
   } catch (error) {
     log.error('Error getting next GRN number', loggableError(error));
     throw error;

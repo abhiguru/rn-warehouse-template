@@ -13,7 +13,7 @@ import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabase
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
-import { nextDocumentNumber } from '@/services/documentNumberingService';
+import { nextDocumentNumber, type NumberOffer } from '@/services/documentNumberingService';
 import type {
   DispatchHeaderData,
   DispatchItemData,
@@ -282,10 +282,10 @@ async function sendUntilAnswered(
  * The next dispatch number under the facility's numbering rule (backend migration 127; an older backend keeps
  * get_next_dispatch_number): '' when the rule offers none (free text, a full series). Never a number the app made up.
  */
-export const getNextDispatchNumber = async (date?: string | null): Promise<string> => {
+export const getNextDispatchNumber = async (date?: string | null, onOffer?: (offer: NumberOffer) => void): Promise<string> => {
   try {
     log.debug('Requesting next dispatch number');
-    const next = await nextDocumentNumber('dispatch', date);
+    const next = await nextDocumentNumber('dispatch', date, onOffer);
     log.debug('Next dispatch number received');
     return next;
   } catch (error) {

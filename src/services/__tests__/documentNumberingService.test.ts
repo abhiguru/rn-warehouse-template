@@ -52,6 +52,21 @@ describe('a backend with migration 127', () => {
     await expect(nextDocumentNumber('dispatch')).resolves.toBe('');
   });
 
+  it('tells the caller the pattern, and why there is no number', async () => {
+    const offers: unknown[] = [];
+    mockRpc.mockResolvedValueOnce(suggestion({ number: 'A0042', hint: 'A####' }));
+    await nextDocumentNumber('grn', undefined, offer => offers.push(offer));
+    mockRpc.mockResolvedValueOnce(suggestion({ number: null, hint: null, scheme: 'free', reason: 'TYPE_IT' }));
+    await nextDocumentNumber('grn', undefined, offer => offers.push(offer));
+    mockRpc.mockResolvedValueOnce(suggestion({ number: null, hint: 'A####', reason: 'SERIES_FULL' }));
+    await nextDocumentNumber('dispatch', undefined, offer => offers.push(offer));
+    expect(offers).toEqual([
+      { hint: 'A####', reason: null },
+      { hint: null, reason: 'TYPE_IT' },
+      { hint: 'A####', reason: 'SERIES_FULL' },
+    ]);
+  });
+
   it('throws when the call fails, so the form shows its "could not load" text', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'Network request failed', code: '' } });
     await expect(nextDocumentNumber('grn')).rejects.toThrow();
@@ -65,6 +80,15 @@ describe('a backend with migration 127', () => {
 });
 
 describe('a backend older than migration 127, or one that does not say', () => {
+  it('has no rule to tell: the caller is not told anything', async () => {
+    withMigration(126);
+    mockRpc.mockResolvedValue({ data: 'A0042', error: null });
+    const told = jest.fn();
+    await nextDocumentNumber('grn', undefined, told);
+    await numberForNewDate('grn', '2027-04-02', told);
+    expect(told).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['grn', 'get_next_grn_number', 'A0042'],
     ['dispatch', 'get_next_dispatch_number', 'I0042'],
@@ -155,6 +179,14 @@ describe('the form date', () => {
     mockRpc.mockResolvedValue(suggestion());
     await nextDocumentNumber('grn', '');
     expect(mockRpc).toHaveBeenLastCalledWith('suggest_document_number', { p_document_type: 'grn' });
+  });
+
+  it('tells the caller the rule of the new date too', async () => {
+    withMigration(127);
+    mockRpc.mockResolvedValue(suggestion({ number: 'GRN/27-28/0001', hint: 'GRN/27-28/####', scheme: 'year' }));
+    const told = jest.fn();
+    await numberForNewDate('grn', '2027-04-02', told);
+    expect(told).toHaveBeenCalledWith({ hint: 'GRN/27-28/####', reason: null });
   });
 
   it('gives the number of the new date under a financial-year rule only', async () => {

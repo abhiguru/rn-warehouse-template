@@ -26,6 +26,12 @@ export interface NumberSuggestion {
   reason: 'TYPE_IT' | 'SERIES_FULL' | null;
 }
 
+/** What the rule says about the number box, besides the number itself: its pattern, and why no number was offered. */
+export interface NumberOffer {
+  hint: string | null;
+  reason: NumberSuggestion['reason'];
+}
+
 export type NumberingScheme = 'letters' | 'year' | 'sequence' | 'free';
 
 export interface NumberingRule {
@@ -118,9 +124,15 @@ const dayOf = (date: string | null | undefined): string | undefined => /^\d{4}-\
  * backend answered with nothing. Never a number the app made up: an empty box is typed by the person.
  * `date` is the form's date: under a financial-year rule the number belongs to the year of that date.
  */
-export async function nextDocumentNumber(type: 'grn' | 'dispatch', date?: string | null): Promise<string> {
+export async function nextDocumentNumber(
+  type: 'grn' | 'dispatch',
+  date?: string | null,
+  onOffer?: (offer: NumberOffer) => void
+): Promise<string> {
   if (backendHasFeature('documentNumbering')) {
-    return (await suggestDocumentNumber(type, dayOf(date))).number ?? '';
+    const suggestion = await suggestDocumentNumber(type, dayOf(date));
+    onOffer?.({ hint: suggestion.hint, reason: suggestion.reason });
+    return suggestion.number ?? '';
   }
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
@@ -138,9 +150,14 @@ export async function nextDocumentNumber(type: 'grn' | 'dispatch', date?: string
  * number then belonged to the year before), and only on a backend that has the rule. null: leave the number as it is.
  * Throws like `nextDocumentNumber`.
  */
-export async function numberForNewDate(type: 'grn' | 'dispatch', date: string | null | undefined): Promise<string | null> {
+export async function numberForNewDate(
+  type: 'grn' | 'dispatch',
+  date: string | null | undefined,
+  onOffer?: (offer: NumberOffer) => void
+): Promise<string | null> {
   if (!backendHasFeature('documentNumbering')) return null;
   const suggestion = await suggestDocumentNumber(type, dayOf(date));
+  onOffer?.({ hint: suggestion.hint, reason: suggestion.reason });
   return suggestion.scheme === 'year' ? suggestion.number ?? '' : null;
 }
 

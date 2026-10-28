@@ -111,7 +111,7 @@ import { currentDispatchFormSession, endDispatchFormSession } from '@/features/d
 
 import { showAlert } from '@/utils/alert';
 import { createLogger, loggableError } from '@/utils/logger';
-import { numberForNewDate } from '@/services/documentNumberingService';
+import { numberForNewDate, type NumberOffer } from '@/services/documentNumberingService';
 import { calculateFinancialYear } from '@/utils/invoiceCalculations';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotos, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { t, formatIdentifier } from '@/i18n';
@@ -220,6 +220,10 @@ export interface UseDispatchFormReturn {
   images: DispatchImageData[];
   dispatchId: string | null;
   isGeneratingNumber: boolean;
+  /** The pattern of the facility's numbering ("I####"), null when not known (older backend) or the rule is free text. */
+  numberHint: string | null;
+  /** Why the box was left empty: the rule is typed by hand (TYPE_IT) or the series is used up (SERIES_FULL); else null. */
+  numberReason: NumberOffer['reason'];
   isSaving: boolean;
   /**
    * A create or save got no answer and the app is asking the server what became of it (owner rule D22). The form is
@@ -356,6 +360,8 @@ export function useDispatchForm({
   );
 
   const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.disp_no);
+  // What the facility's rule said with the last number it gave (pattern, reason for no number).
+  const [numberOffer, setNumberOffer] = useState<NumberOffer | null>(null);
 
   // The dispatch is being read again after "Open it again" (`reloadDispatch`).
   const [isReloading, setIsReloading] = useState(false);
@@ -371,6 +377,14 @@ export function useDispatchForm({
       submitAbortRef.current?.abort();
     };
   }, []);
+
+  // The newest request for the number of the form: the first suggestion and every re-ask for a new date share one counter,
+  // so an answer that arrives after a newer request was made is dropped (a slow first suggestion never overwrites the
+  // number of a date chosen since).
+  const dateNumberRequest = useRef(0);
+  // The financial year the form's number was fetched for (or is being fetched for); null when it holds none. A form that
+  // starts with a number holds one for its date. A failed request puts the year back, so the next date change asks again.
+  const numberYear = useRef<string | null>(isCreateMode && header.disp_no && header.disp_date ? calculateFinancialYear(header.disp_date) : null);
 
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
@@ -406,17 +420,26 @@ export function useDispatchForm({
     if (!header.disp_no && !hasGeneratedDispNo.current) {
       hasGeneratedDispNo.current = true;
       setIsGeneratingNumber(true);
+      const request = ++dateNumberRequest.current;
+      const yearBefore = numberYear.current;
+      const fetchDate = store.getState().dispatchForm.header.disp_date;
+      if (fetchDate) numberYear.current = calculateFinancialYear(fetchDate);
+      const answered: { offer: NumberOffer | null } = { offer: null };
       try {
-        const disp_no = await getNextDispatchNumber(store.getState().dispatchForm.header.disp_date);
+        const disp_no = await getNextDispatchNumber(fetchDate, offer => { answered.offer = offer; });
         // Check if session changed before updating state (prevents stale updates after navigation)
         if (currentDispatchFormSession() !== currentSessionId) {
           console.log('[useDispatchForm] Dispatch number generation cancelled - session changed from', currentSessionId, 'to', currentDispatchFormSession());
           return;
         }
+        // The date was changed to another year meanwhile and its number was asked for: that answer is the newer one.
+        if (request !== dateNumberRequest.current) return;
+        setNumberOffer(answered.offer);
         // '' is no suggestion (free text, a full series): the box stays empty for the person to type.
         if (disp_no) dispatch(updateHeader({ disp_no }));
       } catch (error) {
         console.error('[useDispatchForm] Failed to generate dispatch number:', error);
+        if (request === dateNumberRequest.current) numberYear.current = yearBefore;
         if (currentDispatchFormSession() === currentSessionId) {
           showAlert(t('dispatch.wizard.errorTitle'), t('dispatch.wizard.numberFailed'));
         }
@@ -468,27 +491,32 @@ export function useDispatchForm({
   const dispNoTyped = useAppSelector(selectDispatchDispNoTyped);
   const dispNoTypedRef = useRef(dispNoTyped);
   dispNoTypedRef.current = dispNoTyped;
-  const dispDateRef = useRef(header.disp_date);
-  dispDateRef.current = header.disp_date;
-  const dateNumberRequest = useRef(0);
-
   /**
    * The date moved to another financial year (1 April): under a financial-year rule the number the form fetched belonged
    * to the year before, so the suggestion is asked again for the new date. A number the person typed is never replaced,
-   * and under another rule nothing changes (the server says which rule it is).
+   * and under another rule nothing changes (the server says which rule it is). The year compared with is the one the
+   * form's number was fetched for, not the previous date: a request that failed is asked again on the next change.
    */
   const askNumberForDate = useCallback(async (newDate: unknown) => {
-    const previous = dispDateRef.current;
-    if (!isCreateMode || typeof newDate !== 'string' || !previous || !newDate) return;
-    if (calculateFinancialYear(previous) === calculateFinancialYear(newDate) || dispNoTypedRef.current) return;
+    if (!isCreateMode || typeof newDate !== 'string' || !newDate || dispNoTypedRef.current) return;
+    const year = calculateFinancialYear(newDate);
+    // The number the form holds (or is fetching) was asked for this year already.
+    if (numberYear.current === year) return;
     const request = ++dateNumberRequest.current;
+    const yearBefore = numberYear.current;
+    numberYear.current = year;
     const session = currentDispatchFormSession();
+    const answered: { offer: NumberOffer | null } = { offer: null };
     try {
-      const number = await numberForNewDate('dispatch', newDate);
-      if (number === null || request !== dateNumberRequest.current || currentDispatchFormSession() !== session || dispNoTypedRef.current) return;
+      const number = await numberForNewDate('dispatch', newDate, offer => { answered.offer = offer; });
+      if (request !== dateNumberRequest.current || currentDispatchFormSession() !== session) return;
+      if (answered.offer) setNumberOffer(answered.offer);
+      if (number === null || dispNoTypedRef.current) return;
       dispatch(updateHeader({ disp_no: number }));
     } catch (error) {
-      // The number stays; the server checks it again when the dispatch is saved.
+      // The number stays; the server checks it again when the dispatch is saved. The year goes back, so that the next
+      // change of the date inside the new year asks again.
+      if (request === dateNumberRequest.current) numberYear.current = yearBefore;
       log.warn('Could not ask for the dispatch number of the new date', loggableError(error));
     }
   }, [isCreateMode, dispatch]);
@@ -1180,6 +1208,8 @@ export function useDispatchForm({
     images,
     dispatchId,
     isGeneratingNumber,
+    numberHint: numberOffer?.hint ?? null,
+    numberReason: numberOffer?.reason ?? null,
     isSaving: dispatchFormState.is_saving,
     isCheckingAnswer: dispatchFormState.checkingAnswer === true,
     heldBags: dispatchFormState.heldBags ?? NO_HELD_BAGS,
