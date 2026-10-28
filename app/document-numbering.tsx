@@ -94,9 +94,22 @@ export default function DocumentNumberingScreen() {
     [load]
   );
 
+  // The same header whether the screen opens or tells the person it is for administrators.
+  const header = (
+    <Stack.Screen
+      options={{
+        title: tr('numbering.screen.title'),
+        headerShown: true,
+        headerTitleAlign: 'center',
+        headerLeft: () => <HeaderBackButton />,
+      }}
+    />
+  );
+
   if (!allowed) {
     return (
       <View style={[styles.stateScreen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        {header}
         <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
         <Icon name="account-lock-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.stateTitle} accessibilityRole="header">{tr('numbering.screen.adminsOnlyTitle')}</Text>
@@ -110,14 +123,7 @@ export default function DocumentNumberingScreen() {
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen
-        options={{
-          title: tr('numbering.screen.title'),
-          headerShown: true,
-          headerTitleAlign: 'center',
-          headerLeft: () => <HeaderBackButton />,
-        }}
-      />
+      {header}
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }} showsVerticalScrollIndicator={false}>
         <Text style={styles.intro}>{tr('numbering.screen.intro')}</Text>

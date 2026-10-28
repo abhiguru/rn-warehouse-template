@@ -83,6 +83,14 @@ afterEach(async () => {
 });
 
 describe('who may open it', () => {
+  it('gives the administrators-only state the screen title in the header, as the screen has', async () => {
+    mockRole = 'staff';
+    const { Stack } = jest.requireMock('expo-router') as { Stack: { Screen: jest.Mock } };
+    Stack.Screen.mockClear();
+    await mount();
+    expect(Stack.Screen.mock.calls.some(([props]) => props.options?.title === 'Document numbers' && props.options?.headerShown === true)).toBe(true);
+  });
+
   it.each(['supervisor', 'staff', 'customer', undefined])('%s is told it is for administrators and nothing is read', async role => {
     mockRole = role;
     const screen = await mount();
