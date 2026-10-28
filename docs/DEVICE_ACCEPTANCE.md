@@ -405,8 +405,8 @@ Document numbers > the row > the scheme and fields as they were).
     the suggested D/26-27/0001 in full (20 characters fit; check that it is not cut off) and the dispatch saves. Invoice: open Invoice in Document numbers:
     only two choices ("Start again every financial year", "Keep counting across years"), the field First number, no refuse-numbers switch.
 10. Setup: Dev on a backend before migration 127 (or the app against a facility that has not upgraded). Action: create a GRN, a dispatch and an invoice.
-    Expected: the numbers are suggested as before (A0001-style, I0001-style, whole invoice number); the "Document numbers" row opens a screen that says the
-    numbering could not be loaded (the backend has no such call). Put Dev back on the current backend.
+    Expected: the numbers are suggested as before (A0001-style, I0001-style, whole invoice number); Settings shows no "Document numbers" row (the backend has no
+    such call, so the row is left out). Put Dev back on the current backend.
 11. Setup: language set to Gujarati. Action: open Document numbers and its sheet. Expected: Gujarati drafts; counts in Gujarati digits ("૩ હાલના નંબર ..."),
     the numbers and patterns (A0001, GRN/26-27/0001) in 0-9.
 12. Setup: each of the four themes (Orange and GCSA, light and dark) and the largest font size. Action: open the screen and a sheet. Expected: no cut-off text,
