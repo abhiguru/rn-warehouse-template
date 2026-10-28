@@ -739,6 +739,7 @@ const selectDispatchFormState = (state: { dispatchForm: DispatchFormState }) => 
 export const selectDispatchFormHeader = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.header;
 export const selectDispatchFormItems = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.items;
 export const selectDispatchFormImages = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.images;
+export const selectDispatchDispNoTyped = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.dispNoTyped === true;
 export const selectDispatchTakenNumberError = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.takenNumberError ?? null;
 export const selectDispatchFormValidationErrors = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.validationErrors;
 export const selectDispatchFormCurrentStep = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.current_step;

@@ -442,6 +442,61 @@ describe('when another dispatch holds the number', () => {
   });
 });
 
+describe('when the number does not follow the facility\'s numbering (migration 127)', () => {
+  const refusal = (pattern: string | null) => ({
+    reason: 'NUMBER_FORMAT',
+    fields: { number: 'DD0003', document_type: 'dispatch', pattern },
+    text: pattern ? "This number does not follow this facility's numbering (" + pattern + ')' : 'This number can have at most 20 characters',
+  });
+  const refused = (pattern: string | null) => ({ success: false, reason: 'NUMBER_FORMAT', refusal: refusal(pattern), error: 'x' });
+
+  it('names the format, keeps the number the form holds and flags it until it is changed', async () => {
+    const store = makeStore();
+    fill(store);
+    const { form, unmount } = await mount('create', store);
+    create_.mockResolvedValue(refused('I####') as never);
+
+    const result = await submit(form);
+
+    const message = "This number does not follow this facility's numbering (I####).";
+    expect(result).toMatchObject({ success: false, numberTaken: { message } });
+    expect(showAlert).toHaveBeenCalledWith('Error', message);
+    // No next number is fetched or put in: the number is the person's to change.
+    expect(getNextDispatchNumber).not.toHaveBeenCalled();
+    expect(store.getState().dispatchForm.header.disp_no).toBe('DD0003');
+    expect(store.getState().dispatchForm.takenNumberError).toBe(message);
+    let validation!: { isValid: boolean; errors: Record<string, string> };
+    await act(async () => { validation = await form().validateCurrentStep(1); });
+    expect(validation.errors.disp_no).toBe(message);
+    await unmount();
+  });
+
+  it('shows the server\'s sentence when the rule has no pattern (a number over 20 characters)', async () => {
+    const store = makeStore();
+    fill(store);
+    const { form, unmount } = await mount('create', store);
+    create_.mockResolvedValue(refused(null) as never);
+
+    const result = await submit(form);
+
+    expect(result.numberTaken?.message).toBe('This number can have at most 20 characters');
+    await unmount();
+  });
+
+  it('in an edit the number is flagged as well', async () => {
+    const store = makeStore();
+    fill(store);
+    const { form, unmount } = await mount('edit', store, OWN_ID);
+    update_.mockResolvedValue(refused('GRN/26-27/####') as never);
+
+    const result = await submit(form);
+
+    expect(result.numberTaken?.message).toBe("This number does not follow this facility's numbering (GRN/26-27/####).");
+    expect(store.getState().dispatchForm.takenNumberError).toMatch(/GRN\/26-27\/####/);
+    await unmount();
+  });
+});
+
 describe('a form that made its dispatch', () => {
   it('is emptied when its screen is left, however it is left', async () => {
     const store = makeStore();

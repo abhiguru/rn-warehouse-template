@@ -374,3 +374,45 @@ Unit tests that cover what a phone cannot show here: the typed refusal in both w
 `openFacility.test.ts`, `operatorBootstrap.test.ts`, `BootstrapCentral.test.tsx`, `OperatorServerSelection.test.tsx`), the 503 handling in the request layer
 (`upgradeAnswer.test.ts`, `functionUpgradingAnswer.test.ts`), the saves (`grnUpgradingAnswer.test.ts`, `dispatchUpgradingAnswer.test.ts`) and the release table
 (`backendFeatures.test.ts`, `orderLineVersion.test.ts`).
+
+## Document numbers (WS-8)
+
+Needs Dev on backend migration 127 or later (and, for step 10, Dev before it). Not run: for the owner's phone checks.
+Use a GRN, a dispatch and an invoice that exist only for these steps; put the rule back afterwards (Settings > Warehouse tools >
+Document numbers > the row > the scheme and fields as they were).
+
+1.  Setup: sign in at Dev as an administrator. Action: Reports tab, Profile and settings, Settings. Expected: under "Warehouse tools" a row
+    "Document numbers" with "How GRN, dispatch and invoice numbers are written". Evidence: a screenshot. A broken app would show no row.
+2.  Setup: sign in as a supervisor, then as a staff member. Action: open Settings. Expected: no "Document numbers" row for either.
+3.  Action: as the administrator, open "Document numbers". Expected: three rows, GRN, Dispatch and Invoice, each with its rule in words
+    (for example "Letter series from A, for example A0001"), "A number outside the rule is refused" or "... is saved (not checked)", and, where
+    there are some, "N existing numbers do not follow the rule". Evidence: a screenshot.
+4.  Action: open GRN. Expected: four choices (Letters and digits, Financial year, Plain sequence, Typed by hand) with the stored one chosen; the fields
+    First letter, Digits and Numbers per letter; "Example: The first number looks like A0001". Choose "Financial year", type the prefix GRN/.
+    Expected: fields Prefix, Digits and First number; the example becomes GRN/26-27/0001 (the two years follow today's date). Save numbering is off
+    until something changed. Type 9 in Digits and press Save numbering: "Enter a whole number from 1 to 7." and no confirm step.
+5.  Action: with the financial-year rule filled in, press Save numbering. Expected: a confirm step in the same sheet: "Change the numbering?",
+    "New numbers look like GRN/26-27/0001.", "N existing documents keep their numbers." Back returns to the fields with nothing sent. Press Change numbering.
+    Expected: the sheet closes, "Numbering saved. The next number is GRN/26-27/0001." and the GRN row now describes the new rule.
+6.  Action: GRN tab, Create GRN. Expected: the "GRN number" box holds GRN/26-27/0001 (not A0001). Type A0500 in its place and go to Review, then press
+    Create GRN while the GRN check is on. Expected: "This number does not follow this facility's numbering (GRN/26-27/####)." and step 1 with the number
+    flagged; nothing was saved (check the GRN list). Put the suggested number back and Create GRN: it is saved.
+7.  Action: Document numbers > GRN > switch off "Refuse numbers outside this rule" > Save numbering > confirm. Create a GRN with the number A0500.
+    Expected: it is saved. Switch the check on again: the confirm step says how many existing numbers do not follow the rule and that they are kept.
+8.  Action: Document numbers > GRN > "Typed by hand" > Save. Create GRN. Expected: the "GRN number" box is empty; type 14/B/2027 and the GRN saves
+    (up to 20 characters). With the box empty, Review > Create GRN says "No GRN number is offered. Type the GRN number." and sends nothing.
+9.  Action: Dispatch tab, Create dispatch with the dispatch rule set to a financial-year rule with prefix D/. Expected: the "Dispatch number" box holds
+    the suggested D/26-27/0001 in full (20 characters fit; check that it is not cut off) and the dispatch saves. Invoice: open Invoice in Document numbers:
+    only two choices ("Start again every financial year", "Keep counting across years"), the field First number, no refuse-numbers switch.
+10. Setup: Dev on a backend before migration 127 (or the app against a facility that has not upgraded). Action: create a GRN, a dispatch and an invoice.
+    Expected: the numbers are suggested as before (A0001-style, I0001-style, whole invoice number); the "Document numbers" row opens a screen that says the
+    numbering could not be loaded (the backend has no such call). Put Dev back on the current backend.
+11. Setup: language set to Gujarati. Action: open Document numbers and its sheet. Expected: Gujarati drafts; counts in Gujarati digits ("૩ હાલના નંબર ..."),
+    the numbers and patterns (A0001, GRN/26-27/0001) in 0-9.
+12. Setup: each of the four themes (Orange and GCSA, light and dark) and the largest font size. Action: open the screen and a sheet. Expected: no cut-off text,
+    every control at least 44 high, the pinned Save numbering button above the keyboard.
+
+Unit tests that cover what a phone cannot show here: `documentNumberingService.test.ts` (the suggestion and the older backend),
+`nextInvoiceNumberRule.test.ts`, `numberFormatRefusal.test.ts`, `grnNumberFormat.test.ts`, `dispatchNumberFormat.test.ts`,
+`GrnReviewStepNumberFormat.test.tsx`, `useDispatchFormSubmit.test.tsx`, `DispatchHeaderStepNumber.test.tsx`, `numberingModel.test.ts` and
+`DocumentNumberingScreen.test.tsx`.

@@ -1,4 +1,6 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { backendHasFeature } from '@/config/backendFeatures';
+import { suggestDocumentNumber } from '@/services/documentNumberingService';
 import {
   NextInvoiceNumberResponse,
   InvoiceableGrnsResponse,
@@ -257,9 +259,18 @@ export const getNextInvoiceNumber = async (
   finYear: string
 ): Promise<NextInvoiceNumberResponse> => {
   try {
-    const authenticatedClient = await getAuthenticatedClient();
     const startYear = financialYearStart(finYear);
 
+    // Backend migration 127: the facility's numbering rule answers, for the financial year of the form (1 April of
+    // its start year is inside it). A rule with no number left is a failure here: the form asks for the number to be typed.
+    if (backendHasFeature('documentNumbering')) {
+      const suggestion = await suggestDocumentNumber('invoice', startYear === null ? undefined : `${startYear}-04-01`);
+      const suggested = suggestion.number !== null && /^\d+$/.test(suggestion.number) ? Number(suggestion.number) : NaN;
+      if (!Number.isSafeInteger(suggested) || suggested < 1) throw new Error(t('invoice.service.nextNumberFailed'));
+      return { success: true, data: { next_invoice_number: suggested, financial_year: finYear } };
+    }
+
+    const authenticatedClient = await getAuthenticatedClient();
     let { data, error } =
       startYear === null
         ? await authenticatedClient.rpc('get_next_invoice_number')

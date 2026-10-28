@@ -493,7 +493,7 @@ export const grn: Translation<typeof source> = {
   },
 
   validation: {
-    numberMax: 'આવક પાવતી નંબર વધુમાં વધુ ૮ અક્ષરનો હોઈ શકે',
+    numberMax: 'આવક પાવતી નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે',
     numberNoSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ',
     registrationMax: 'વાહન નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે',
     dateRequired: 'તારીખ જરૂરી છે',

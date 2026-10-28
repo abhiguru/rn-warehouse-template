@@ -13,6 +13,7 @@ import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabase
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
+import { nextDocumentNumber } from '@/services/documentNumberingService';
 import type {
   DispatchHeaderData,
   DispatchItemData,
@@ -62,6 +63,8 @@ const WORDED_REFUSALS: ReadonlySet<string> = new Set([
   REFUSAL.ORDER_CHANGED,
   // Migration 124: a likely duplicate of a direct dispatch made in the last 30 minutes (a warning, nothing was saved).
   REFUSAL.POSSIBLE_DUPLICATE,
+  // Migration 127: the number does not follow the facility's numbering rule (nothing was saved).
+  REFUSAL.NUMBER_FORMAT,
 ]);
 
 /** The result for a refusal of the list above, or undefined when the answer is none of them. */
@@ -276,29 +279,15 @@ async function sendUntilAnswered(
 // ============================================================================
 
 /**
- * Generate next dispatch number using optimized RPC
- * RPC handles all logic server-side for better performance
+ * The next dispatch number under the facility's numbering rule (backend migration 127; an older backend keeps
+ * get_next_dispatch_number): '' when the rule offers none (free text, a full series). Never a number the app made up.
  */
-export const getNextDispatchNumber = async (): Promise<string> => {
+export const getNextDispatchNumber = async (date?: string | null): Promise<string> => {
   try {
     log.debug('Requesting next dispatch number');
-
-    const authenticatedClient = await getAuthenticatedClient();
-
-    const { data, error } = await authenticatedClient.rpc('get_next_dispatch_number');
-
-    if (error) {
-      log.error('get_next_dispatch_number failed', { code: errorCode(error) });
-      throw new Error(serverText(error.message, t('dispatch.service.nextNumberFailed')));
-    }
-
-    if (!data) {
-      log.warn('get_next_dispatch_number returned no data; using fallback D0001');
-      return 'D0001';
-    }
-
+    const next = await nextDocumentNumber('dispatch', date);
     log.debug('Next dispatch number received');
-    return data;
+    return next;
   } catch (error) {
     log.error('Next dispatch number request failed');
     throw error;

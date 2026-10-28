@@ -485,7 +485,7 @@ export const grn = {
   },
 
   validation: {
-    numberMax: 'GRN number must be at most 8 characters',
+    numberMax: 'GRN number must be at most 20 characters',
     numberNoSpaces: 'GRN number cannot contain spaces',
     registrationMax: 'Registration must be at most 20 characters',
     dateRequired: 'Date is required',

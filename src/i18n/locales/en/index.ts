@@ -13,6 +13,7 @@ import { lists } from './lists';
 import { pricing } from './pricing';
 import { reports } from './reports';
 import { settings } from './settings';
+import { numbering } from './numbering';
 import { users } from './users';
 import { sensors } from './sensors';
 import { errors } from './errors';
@@ -36,6 +37,7 @@ export const en = {
   pricing,
   reports,
   settings,
+  numbering,
   users,
   sensors,
   errors,

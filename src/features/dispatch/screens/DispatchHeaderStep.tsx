@@ -42,6 +42,7 @@ import { toLocalISODate, formatDate, toDate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 import { formatIdentifier, getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
 
 type DispatchHeaderStepProps = {
     mode: 'create' | 'edit';
@@ -409,7 +410,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                             placeholder="I####"
                                             placeholderTextColor={t.text.placeholder}
                                             autoCapitalize="characters"
-                                            maxLength={8}
+                                            maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
                                         />
                                     </View>
                                 )}

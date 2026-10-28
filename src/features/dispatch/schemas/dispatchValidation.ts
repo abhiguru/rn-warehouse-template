@@ -7,6 +7,7 @@ import * as yup from 'yup';
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { t, type TranslationKey, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
 
 /**
  * A yup message read when the error is raised, not when this file is loaded, so
@@ -26,9 +27,10 @@ export const step1Schema = yup.object().shape({
   disp_no: yup
     .string()
     .required(m('dispatch.validation.dispNoRequired'))
-    .min(5, m('dispatch.validation.dispNoMin'))
-    .max(8, m('dispatch.validation.dispNoMax'))
-    .matches(/^[A-Z0-9]+$/, m('dispatch.validation.dispNoFormat')),
+    // The column holds twenty characters (migration 127). What the number may look like is the facility's rule (and, with
+    // its check off or a free rule, anything): only the server knows, and a refusal says it. An imported dispatch keeps
+    // its own number whatever characters it holds.
+    .max(DOCUMENT_NUMBER_MAX_LENGTH, m('dispatch.validation.dispNoMax')),
 
   disp_date: yup
     .string()

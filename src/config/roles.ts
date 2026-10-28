@@ -72,6 +72,7 @@ export type RoleGatedScreen =
   | 'sensorWrite'
   | 'userManagement'
   | 'enrollmentReview'
+  | 'documentNumbering'
   | 'masterData';
 
 /**
@@ -104,6 +105,9 @@ export function canOpenScreen(
       return isManager(role);
     case 'enrollmentReview':
       return normalizeRole(role) === 'admin';
+    case 'documentNumbering':
+      // How GRN, dispatch and invoice numbers are written: administrators only (set_document_numbering, migration 127).
+      return normalizeRole(role) === 'admin';
   }
 }
 
@@ -112,7 +116,14 @@ export function canOpenScreen(
  * row of a capability the facility does not have (`capabilities`, as for canOpenScreen) is
  * left out.
  */
-export type SettingsFeature = 'customers' | 'enrollmentReview' | 'items' | 'users' | 'standardRate' | 'sensors';
+export type SettingsFeature =
+  | 'customers'
+  | 'enrollmentReview'
+  | 'items'
+  | 'users'
+  | 'standardRate'
+  | 'documentNumbering'
+  | 'sensors';
 
 export function settingsFeatureRows(
   role: string | null | undefined,
@@ -124,6 +135,7 @@ export function settingsFeatureRows(
   if (canOpenScreen(role, 'masterData')) rows.push('items');
   if (canOpenScreen(role, 'userManagement')) rows.push('users');
   if (canOpenScreen(role, 'standardRate')) rows.push('standardRate');
+  if (canOpenScreen(role, 'documentNumbering')) rows.push('documentNumbering');
   if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
   return rows;
 }

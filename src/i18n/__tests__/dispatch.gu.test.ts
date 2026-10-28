@@ -41,11 +41,11 @@ describe('dispatch validation follows the language', () => {
     expect(result.errors.registration).toBe('Registration must contain only uppercase letters, numbers, and spaces');
   });
 
-  it('asks for English letters and digits in Gujarati', async () => {
+  it('asks for English letters and digits in Gujarati (the vehicle; a dispatch number is the facility rule, which the server checks)', async () => {
     setLanguage('gu');
     const result = await validateStep1({ ...header, disp_no: 'જાવક૧૨', registration: 'ગજ ૦૧' });
     expect(result.isValid).toBe(false);
-    expect(result.errors.disp_no).toBe('જાવક નંબરમાં અંગ્રેજી કેપિટલ અક્ષરો અને આંકડા વાપરો');
+    expect(result.errors.disp_no).toBeUndefined();
     expect(result.errors.registration).toBe('વાહન નંબરમાં ફક્ત અંગ્રેજી કેપિટલ અક્ષરો, આંકડા અને ખાલી જગ્યા વાપરો');
   });
 

@@ -75,6 +75,7 @@ import {
   clearFieldError,
   setTakenNumberError,
   selectDispatchTakenNumberError,
+  selectDispatchDispNoTyped,
   setDateRefusal,
   setLoadedUpdatedAt,
   lockForInvoice,
@@ -109,7 +110,9 @@ import {
 import { currentDispatchFormSession, endDispatchFormSession } from '@/features/dispatch/utils/dispatchFormSession';
 
 import { showAlert } from '@/utils/alert';
-import { createLogger } from '@/utils/logger';
+import { createLogger, loggableError } from '@/utils/logger';
+import { numberForNewDate } from '@/services/documentNumberingService';
+import { calculateFinancialYear } from '@/utils/invoiceCalculations';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotos, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
@@ -118,6 +121,7 @@ import { documentNumberState } from '@/utils/documentNumberCheck';
 import { linesFromOtherCustomers } from '@/features/dispatch/utils/lotOwnership';
 import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { REFUSAL, refusalString, type ServerRefusal } from '@/utils/serverRefusal';
+import { numberFormatText } from '@/utils/numberFormatRefusal';
 import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { convertOrderToDispatchData } from '@/utils/orderToDispatchConverter';
 
@@ -403,13 +407,14 @@ export function useDispatchForm({
       hasGeneratedDispNo.current = true;
       setIsGeneratingNumber(true);
       try {
-        const disp_no = await getNextDispatchNumber();
+        const disp_no = await getNextDispatchNumber(store.getState().dispatchForm.header.disp_date);
         // Check if session changed before updating state (prevents stale updates after navigation)
         if (currentDispatchFormSession() !== currentSessionId) {
           console.log('[useDispatchForm] Dispatch number generation cancelled - session changed from', currentSessionId, 'to', currentDispatchFormSession());
           return;
         }
-        dispatch(updateHeader({ disp_no }));
+        // '' is no suggestion (free text, a full series): the box stays empty for the person to type.
+        if (disp_no) dispatch(updateHeader({ disp_no }));
       } catch (error) {
         console.error('[useDispatchForm] Failed to generate dispatch number:', error);
         if (currentDispatchFormSession() === currentSessionId) {
@@ -460,20 +465,50 @@ export function useDispatchForm({
     });
   }, []);
 
+  const dispNoTyped = useAppSelector(selectDispatchDispNoTyped);
+  const dispNoTypedRef = useRef(dispNoTyped);
+  dispNoTypedRef.current = dispNoTyped;
+  const dispDateRef = useRef(header.disp_date);
+  dispDateRef.current = header.disp_date;
+  const dateNumberRequest = useRef(0);
+
+  /**
+   * The date moved to another financial year (1 April): under a financial-year rule the number the form fetched belonged
+   * to the year before, so the suggestion is asked again for the new date. A number the person typed is never replaced,
+   * and under another rule nothing changes (the server says which rule it is).
+   */
+  const askNumberForDate = useCallback(async (newDate: unknown) => {
+    const previous = dispDateRef.current;
+    if (!isCreateMode || typeof newDate !== 'string' || !previous || !newDate) return;
+    if (calculateFinancialYear(previous) === calculateFinancialYear(newDate) || dispNoTypedRef.current) return;
+    const request = ++dateNumberRequest.current;
+    const session = currentDispatchFormSession();
+    try {
+      const number = await numberForNewDate('dispatch', newDate);
+      if (number === null || request !== dateNumberRequest.current || currentDispatchFormSession() !== session || dispNoTypedRef.current) return;
+      dispatch(updateHeader({ disp_no: number }));
+    } catch (error) {
+      // The number stays; the server checks it again when the dispatch is saved.
+      log.warn('Could not ask for the dispatch number of the new date', loggableError(error));
+    }
+  }, [isCreateMode, dispatch]);
+
   // Header actions
   const updateHeaderField = useCallback((field: keyof DispatchHeaderData, value: unknown) => {
+    if (field === 'disp_date') void askNumberForDate(value);
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearFieldError(field));
     clearLocalErrors([field]);
-  }, [dispatch, clearLocalErrors]);
+  }, [dispatch, clearLocalErrors, askNumberForDate]);
 
   const updateHeaderFields = useCallback((updates: Partial<DispatchHeaderData>) => {
+    if ('disp_date' in updates) void askNumberForDate(updates.disp_date);
     dispatch(updateHeader(updates));
     Object.keys(updates).forEach((field) => {
       dispatch(clearFieldError(field));
     });
     clearLocalErrors(Object.keys(updates));
-  }, [dispatch, clearLocalErrors]);
+  }, [dispatch, clearLocalErrors, askNumberForDate]);
 
   /**
    * Handle dispatch number change
@@ -826,7 +861,7 @@ export function useDispatchForm({
     const reportNumberTaken = async (takenNumber: string): Promise<DispatchSubmitResult> => {
       let next: string | null = null;
       try {
-        next = await getNextDispatchNumber();
+        next = await getNextDispatchNumber(header.disp_date);
       } catch {
         // The message then only asks for another number.
       }
@@ -920,6 +955,16 @@ export function useDispatchForm({
             source_order_updated_at: read.data.updated_at,
           }));
           return { success: false, orderChanged: { empty: store.getState().dispatchForm.items.length === 0 } };
+        }
+
+        case REFUSAL.NUMBER_FORMAT: {
+          // The number does not follow the facility's numbering (migration 127): the number field says so and step 1 refuses
+          // it until it is changed; the screen takes the person there (the same way as for a number that is taken).
+          const message = numberFormatText(refusal);
+          dispatch(setTakenNumberError(message));
+          setLocalValidationErrors((prev) => ({ ...prev, disp_no: message }));
+          report(t('dispatch.wizard.errorTitle'), message);
+          return { success: false, error: message, numberTaken: { message } };
         }
 
         default:
