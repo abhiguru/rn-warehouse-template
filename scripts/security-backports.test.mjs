@@ -419,6 +419,13 @@ const proof = merge => {
   results.nullPrototypeTargetDirect = merge(Object.assign(Object.create(null), { a: 1 }), sourceWithProto);
   return results;
 };
+// The branch that merges a key present on both sides (the second setProperty call site). The target is not mergeable, so its
+// keys are not copied first, and the merged value of the source's own __proto__ key is stored by that branch alone.
+const throughMergeFunction = merge => {
+  const target = JSON.parse('{"__proto__":{"a":1}}');
+  const source = JSON.parse('{"__proto__":{"isAdmin":true}}');
+  return merge(target, source, { isMergeableObject: value => value !== target && typeof value === 'object' && value !== null });
+};
 const deepmergeVariants = [
   ['dist/cjs.js (main)', () => require('deepmerge')],
   ['dist/umd.js', () => require(join(topDeepmerge, 'dist/umd.js'))],
@@ -434,6 +441,29 @@ for (const [name, load] of deepmergeVariants) {
     assert.equal(Object.getPrototypeOf(nested), Object.prototype);
     assert.equal(nested.isAdmin, undefined);
     assert.equal(({}).isAdmin, undefined, 'Object.prototype is untouched');
+  });
+
+  test(`patched deepmerge (${name}): a __proto__ key reached through the merge function (the second setProperty call site) never changes the prototype`, () => {
+    const merge = load();
+    const result = throughMergeFunction(merge);
+    assert.equal(Object.getPrototypeOf(result), Object.prototype);
+    assert.equal(result.isAdmin, undefined);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(result, '__proto__'), {
+      value: { a: 1, isAdmin: true },
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+    assert.equal(({}).isAdmin, undefined, 'Object.prototype is untouched');
+  });
+
+  test(`patched deepmerge (${name}): an own __proto__ key is kept as an own data property, not dropped`, () => {
+    const merge = load();
+    const ownData = (object, expected) =>
+      assert.deepEqual(Object.getOwnPropertyDescriptor(object, '__proto__'), { value: expected, writable: true, enumerable: true, configurable: true });
+    ownData(merge(Object.create(null), JSON.parse('{"__proto__":{"isAdmin":true}}')), { isAdmin: true });
+    ownData(merge(JSON.parse('{"__proto__":{"isAdmin":true}}'), {}), { isAdmin: true });
+    ownData(merge({ session: null }, JSON.parse('{"session":{"__proto__":{"isAdmin":true}}}')).session, { isAdmin: true });
   });
 
   test(`patched deepmerge (${name}): ordinary merges are unchanged`, () => {
@@ -456,15 +486,18 @@ for (const [name, load] of deepmergeVariants) {
   });
 }
 
-test('the same proof cases on the unpatched deepmerge 4.3.1 poison the returned object', () => {
+test('the same proof cases on the unpatched deepmerge 4.3.1 poison the returned object (both loadable files)', () => {
   const root = mkdtempSync(join(tmpdir(), 'warehouse-deepmerge-regression-'));
   try {
     cpSync(topDeepmerge, join(root, 'deepmerge'), { recursive: true });
     for (const spec of deepmergeFiles) writeFileSync(join(root, 'deepmerge', spec.file), originalSource(spec));
-    const merge = createRequire(join(root, 'x.cjs'))('./deepmerge');
-    const results = proof(merge);
-    assert.equal(results.nullPrototypeTarget.isAdmin, true);
-    assert.equal(results.ownProtoOnTarget.isAdmin, true);
-    assert.equal(results.nullPlaceholder.session.isAdmin, true);
+    for (const file of ['dist/cjs.js', 'dist/umd.js']) {
+      const merge = createRequire(join(root, 'x.cjs'))(`./deepmerge/${file}`);
+      const results = proof(merge);
+      assert.equal(results.nullPrototypeTarget.isAdmin, true, file);
+      assert.equal(results.ownProtoOnTarget.isAdmin, true, file);
+      assert.equal(results.nullPlaceholder.session.isAdmin, true, file);
+      assert.equal(throughMergeFunction(merge).isAdmin, true, `${file} (merge function call site)`);
+    }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
