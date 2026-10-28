@@ -122,6 +122,22 @@ describe('the gateway answers "upgrading"', () => {
     expect(isUpgrading()).toBe(true);
   });
 
+  test('a read that starts while the notice is already up does not wait: one request, the 503 is handed back at once', async () => {
+    noteDiscoveryUpgrading();
+    answers = [reply(503, UPGRADING, { 'Retry-After': '120' })];
+    const response = await createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    expect(calls).toEqual([`GET ${READ}`]);
+    expect(response.status).toBe(503);
+    expect(isUpgrading()).toBe(true);
+  });
+
+  test('a read that starts while the notice is up and finds the server back gets the server\'s answer', async () => {
+    noteDiscoveryUpgrading();
+    const response = await createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    expect(response.status).toBe(200);
+    expect(isUpgrading()).toBe(false);
+  });
+
   test('a write is never sent again silently: one request, the answer is handed back, the notice is up', async () => {
     answers = [reply(503, UPGRADING, { 'Retry-After': '120' })];
     const response = await createAuthenticatedFetch()(WRITE, { method: 'POST', body: '{}' });
