@@ -86,15 +86,30 @@ export default function DocumentNumberingScreen() {
           ? tr('numbering.edit.savedNext', { number: formatIdentifier(result.next_number) })
           : tr(result.reason === 'SERIES_FULL' ? 'numbering.edit.savedFull' : 'numbering.edit.savedTypeIt')
         : tr('numbering.edit.unchanged');
-      showToast(result.changed ? `${tr('numbering.edit.savedTitle')}. ${next}` : next);
+      // Numbers that do not follow the new rule are kept; the administrator is told how many.
+      const kept = result.changed && result.not_following > 0 ? ` ${tr('numbering.edit.savedNotFollowing', { count: result.not_following })}` : '';
+      showToast(result.changed ? `${tr('numbering.edit.savedTitle')}. ${next}${kept}` : next);
       void load();
     },
     [load]
   );
 
+  // The same header whether the screen opens or tells the person it is for administrators.
+  const header = (
+    <Stack.Screen
+      options={{
+        title: tr('numbering.screen.title'),
+        headerShown: true,
+        headerTitleAlign: 'center',
+        headerLeft: () => <HeaderBackButton />,
+      }}
+    />
+  );
+
   if (!allowed) {
     return (
       <View style={[styles.stateScreen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        {header}
         <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
         <Icon name="account-lock-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.stateTitle} accessibilityRole="header">{tr('numbering.screen.adminsOnlyTitle')}</Text>
@@ -108,14 +123,7 @@ export default function DocumentNumberingScreen() {
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen
-        options={{
-          title: tr('numbering.screen.title'),
-          headerShown: true,
-          headerTitleAlign: 'center',
-          headerLeft: () => <HeaderBackButton />,
-        }}
-      />
+      {header}
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }} showsVerticalScrollIndicator={false}>
         <Text style={styles.intro}>{tr('numbering.screen.intro')}</Text>

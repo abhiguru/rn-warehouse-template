@@ -2,6 +2,7 @@
  * The next GRN or dispatch number (WS-8, backend migration 127): `suggest_document_number` where the backend has it,
  * the earlier `get_next_*_number` where it does not (or does not say), and never a number the app made up.
  */
+import { setLanguage, t as tr } from '@/i18n';
 import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatures';
 import {
   getDocumentNumbering,
@@ -51,6 +52,21 @@ describe('a backend with migration 127', () => {
     await expect(nextDocumentNumber('dispatch')).resolves.toBe('');
   });
 
+  it('tells the caller the pattern, and why there is no number', async () => {
+    const offers: unknown[] = [];
+    mockRpc.mockResolvedValueOnce(suggestion({ number: 'A0042', hint: 'A####' }));
+    await nextDocumentNumber('grn', undefined, offer => offers.push(offer));
+    mockRpc.mockResolvedValueOnce(suggestion({ number: null, hint: null, scheme: 'free', reason: 'TYPE_IT' }));
+    await nextDocumentNumber('grn', undefined, offer => offers.push(offer));
+    mockRpc.mockResolvedValueOnce(suggestion({ number: null, hint: 'A####', reason: 'SERIES_FULL' }));
+    await nextDocumentNumber('dispatch', undefined, offer => offers.push(offer));
+    expect(offers).toEqual([
+      { hint: 'A####', reason: null },
+      { hint: null, reason: 'TYPE_IT' },
+      { hint: 'A####', reason: 'SERIES_FULL' },
+    ]);
+  });
+
   it('throws when the call fails, so the form shows its "could not load" text', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'Network request failed', code: '' } });
     await expect(nextDocumentNumber('grn')).rejects.toThrow();
@@ -64,6 +80,15 @@ describe('a backend with migration 127', () => {
 });
 
 describe('a backend older than migration 127, or one that does not say', () => {
+  it('has no rule to tell: the caller is not told anything', async () => {
+    withMigration(126);
+    mockRpc.mockResolvedValue({ data: 'A0042', error: null });
+    const told = jest.fn();
+    await nextDocumentNumber('grn', undefined, told);
+    await numberForNewDate('grn', '2027-04-02', told);
+    expect(told).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['grn', 'get_next_grn_number', 'A0042'],
     ['dispatch', 'get_next_dispatch_number', 'I0042'],
@@ -120,6 +145,25 @@ describe('the rules', () => {
   });
 });
 
+describe('a refusal of set_document_numbering in Gujarati', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('does not blame the connection for the server refusing the values (22023)', async () => {
+    setLanguage('gu');
+    mockRpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'The prefix can have up to 10 characters: capital letters, digits, / and -.' } });
+    const failure = await setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' }).catch((error: Error) => error);
+    expect((failure as Error).message).toBe(tr('numbering.edit.refused'));
+    expect((failure as Error).message).not.toBe(tr('numbering.edit.saveFailed'));
+  });
+
+  it('still says the numbering could not be saved when the failure has no refusal code', async () => {
+    setLanguage('gu');
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'something odd' } });
+    const failure = await setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' }).catch((error: Error) => error);
+    expect((failure as Error).message).toBe(tr('numbering.edit.saveFailed'));
+  });
+});
+
 describe('the form date', () => {
   it('goes to a financial-year rule as the day only (a timestamp is cut to its day)', async () => {
     withMigration(127);
@@ -135,6 +179,14 @@ describe('the form date', () => {
     mockRpc.mockResolvedValue(suggestion());
     await nextDocumentNumber('grn', '');
     expect(mockRpc).toHaveBeenLastCalledWith('suggest_document_number', { p_document_type: 'grn' });
+  });
+
+  it('tells the caller the rule of the new date too', async () => {
+    withMigration(127);
+    mockRpc.mockResolvedValue(suggestion({ number: 'GRN/27-28/0001', hint: 'GRN/27-28/####', scheme: 'year' }));
+    const told = jest.fn();
+    await numberForNewDate('grn', '2027-04-02', told);
+    expect(told).toHaveBeenCalledWith({ hint: 'GRN/27-28/####', reason: null });
   });
 
   it('gives the number of the new date under a financial-year rule only', async () => {

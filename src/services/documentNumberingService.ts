@@ -12,7 +12,7 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t, type TranslationKey } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { serverText } from '@/utils/serverText';
+import { errorCodeOf, serverText } from '@/utils/serverText';
 
 export type DocumentType = 'grn' | 'dispatch' | 'invoice';
 
@@ -24,6 +24,12 @@ export interface NumberSuggestion {
   scheme: string;
   /** `TYPE_IT`: the rule is free text. `SERIES_FULL`: no number is left. */
   reason: 'TYPE_IT' | 'SERIES_FULL' | null;
+}
+
+/** What the rule says about the number box, besides the number itself: its pattern, and why no number was offered. */
+export interface NumberOffer {
+  hint: string | null;
+  reason: NumberSuggestion['reason'];
 }
 
 export type NumberingScheme = 'letters' | 'year' | 'sequence' | 'free';
@@ -118,9 +124,15 @@ const dayOf = (date: string | null | undefined): string | undefined => /^\d{4}-\
  * backend answered with nothing. Never a number the app made up: an empty box is typed by the person.
  * `date` is the form's date: under a financial-year rule the number belongs to the year of that date.
  */
-export async function nextDocumentNumber(type: 'grn' | 'dispatch', date?: string | null): Promise<string> {
+export async function nextDocumentNumber(
+  type: 'grn' | 'dispatch',
+  date?: string | null,
+  onOffer?: (offer: NumberOffer) => void
+): Promise<string> {
   if (backendHasFeature('documentNumbering')) {
-    return (await suggestDocumentNumber(type, dayOf(date))).number ?? '';
+    const suggestion = await suggestDocumentNumber(type, dayOf(date));
+    onOffer?.({ hint: suggestion.hint, reason: suggestion.reason });
+    return suggestion.number ?? '';
   }
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
@@ -138,9 +150,14 @@ export async function nextDocumentNumber(type: 'grn' | 'dispatch', date?: string
  * number then belonged to the year before), and only on a backend that has the rule. null: leave the number as it is.
  * Throws like `nextDocumentNumber`.
  */
-export async function numberForNewDate(type: 'grn' | 'dispatch', date: string | null | undefined): Promise<string | null> {
+export async function numberForNewDate(
+  type: 'grn' | 'dispatch',
+  date: string | null | undefined,
+  onOffer?: (offer: NumberOffer) => void
+): Promise<string | null> {
   if (!backendHasFeature('documentNumbering')) return null;
   const suggestion = await suggestDocumentNumber(type, dayOf(date));
+  onOffer?.({ hint: suggestion.hint, reason: suggestion.reason });
   return suggestion.scheme === 'year' ? suggestion.number ?? '' : null;
 }
 
@@ -193,7 +210,10 @@ export async function setDocumentNumbering(type: DocumentType, rule: NumberingRu
   unchanged(generation);
   if (error) {
     handleGlobalAuthError(error);
-    throw new Error(serverText(error.message, t('numbering.edit.saveFailed'), { write: true, form: true }));
+    // 22023: the server read the request and refused the values. In English its sentence is shown; in another language
+    // the fallback must not blame the connection, which worked.
+    const refused = errorCodeOf(error) === '22023';
+    throw new Error(serverText(error.message, t(refused ? 'numbering.edit.refused' : 'numbering.edit.saveFailed'), { write: true, form: true }));
   }
   if (!isRecord(data) || data.success === false) throw new Error(t('numbering.edit.saveFailed'));
   const whole = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);

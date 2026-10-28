@@ -29,6 +29,8 @@ jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => moc
 jest.mock('@/hooks/useCapability', () => ({
   useFacilityCapabilities: () => ({ printing: false, sensors: true, realtime: true, customerDocuments: false }),
 }));
+let mockHasNumbering = true;
+jest.mock('@/config/backendFeatures', () => ({ backendHasFeature: () => mockHasNumbering }));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn() }));
 jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(), signOutEverywhere: jest.fn(), whileLeaving: (work: () => Promise<unknown>) => work() }));
 jest.mock('@/store/slices/authSlice', () => ({
@@ -45,6 +47,7 @@ const byTestId = (id: string): ReactTestInstance =>
 beforeEach(async () => {
   setLanguage('en');
   mockServer = null;
+  mockHasNumbering = true;
   mockState = {
     theme: { preference: 'dark', brand: 'gcsa', language: 'en' },
     auth: { userProfile: { id: 'u1', name: 'Asha Fictional', role: 'admin', mobile: '919000000001' } },
@@ -83,6 +86,13 @@ describe('Document numbers row (WS-8)', () => {
     expect(byTestId('settings-feature-documentNumbering').props.accessibilityLabel).toBe('Document numbers, How GRN, dispatch and invoice numbers are written');
     await act(async () => { byTestId('settings-feature-documentNumbering').props.onPress(); });
     expect(router.push).toHaveBeenCalledWith('/document-numbering');
+  });
+
+  it('is not offered while the backend is older than migration 127 (it would open to a failed load)', async () => {
+    mockHasNumbering = false;
+    await render();
+    expect(tree!.root.findAll(node => node.props.testID === 'settings-feature-documentNumbering')).toHaveLength(0);
+    expect(byTestId('settings-feature-items')).toBeDefined();
   });
 
   it.each(['supervisor', 'staff'])('is not offered to %s', async role => {

@@ -11,6 +11,7 @@ import { getDocumentNumbering, setDocumentNumbering, type NumberingRule } from '
 import { setLanguage } from '@/i18n';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { showToast } from '@/utils/toast';
+import { showAlert } from '@/utils/alert';
 
 let mockRole: string | undefined = 'admin';
 let mockTheme: { preference: string; brand: string } = { preference: 'light', brand: 'orange' };
@@ -27,6 +28,7 @@ jest.mock('expo-router', () => ({
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/services/documentNumberingService', () => ({
   getDocumentNumbering: jest.fn(),
   setDocumentNumbering: jest.fn(),
@@ -81,6 +83,14 @@ afterEach(async () => {
 });
 
 describe('who may open it', () => {
+  it('gives the administrators-only state the screen title in the header, as the screen has', async () => {
+    mockRole = 'staff';
+    const { Stack } = jest.requireMock('expo-router') as { Stack: { Screen: jest.Mock } };
+    Stack.Screen.mockClear();
+    await mount();
+    expect(Stack.Screen.mock.calls.some(([props]) => props.options?.title === 'Document numbers' && props.options?.headerShown === true)).toBe(true);
+  });
+
   it.each(['supervisor', 'staff', 'customer', undefined])('%s is told it is for administrators and nothing is read', async role => {
     mockRole = role;
     const screen = await mount();
@@ -282,6 +292,84 @@ describe('saving', () => {
     await press(screen, 'numbering-save');
     await press(screen, 'numbering-confirm');
     expect(showToast).toHaveBeenCalledWith('The numbering is as it was.');
+  });
+});
+
+describe('what the save tells the administrator', () => {
+  it('counts the existing numbers that do not follow the new rule, which are kept', async () => {
+    jest.mocked(setDocumentNumbering).mockResolvedValueOnce({
+      changed: true, document_type: 'grn', existing_documents: 12, not_following: 5, next_number: 'GRN/26-27/0001', hint: 'GRN/26-27/####', reason: null,
+    });
+    const screen = await mount();
+    await press(screen, 'numbering-row-grn');
+    await choose(screen, 'Financial year');
+    await press(screen, 'numbering-save');
+    await press(screen, 'numbering-confirm');
+    expect(showToast).toHaveBeenCalledWith('Numbering saved. The next number is GRN/26-27/0001. 5 existing numbers do not follow the rule. They are kept.');
+  });
+
+  it('says nothing about numbers outside the rule when there are none', async () => {
+    const screen = await mount();
+    await press(screen, 'numbering-row-grn');
+    await choose(screen, 'Financial year');
+    await press(screen, 'numbering-save');
+    await press(screen, 'numbering-confirm');
+    expect(showToast).toHaveBeenCalledWith('Numbering saved. The next number is GRN/26-27/0001.');
+  });
+
+  it('says on the confirm step that the next number continues after the numbers already issued', async () => {
+    const screen = await mount();
+    await press(screen, 'numbering-row-grn');
+    await choose(screen, 'Financial year');
+    await press(screen, 'numbering-save');
+    expect(texts(screen)).toContain('New numbers look like 26-27/0001.');
+    expect(texts(screen)).toContain('The next number continues after the numbers already issued in this format.');
+  });
+
+  it('does not say it when no document of the type exists yet', async () => {
+    jest.mocked(getDocumentNumbering).mockResolvedValue([rule({ existing_documents: 0 }), RULES[1], RULES[2]]);
+    const screen = await mount();
+    await press(screen, 'numbering-row-grn');
+    await choose(screen, 'Financial year');
+    await press(screen, 'numbering-save');
+    expect(texts(screen)).toContain('New numbers look like 26-27/0001.');
+    expect(texts(screen)).not.toContain('continues after');
+  });
+});
+
+describe('leaving the edit sheet', () => {
+  const closeButton = (screen: ReactTestRenderer) =>
+    screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Cancel')[0];
+  const lastAlertButtons = () => jest.mocked(showAlert).mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
+
+  it('closes at once when nothing was changed', async () => {
+    const screen = await mount();
+    await press(screen, 'numbering-row-grn');
+    await act(async () => { closeButton(screen).props.onPress(); });
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(hasId(screen, 'numbering-save')).toBe(false);
+  });
+
+  it('asks "Discard changes?" when something was changed, and keeps the sheet on Keep editing', async () => {
+    const screen = await mount();
+    await press(screen, 'numbering-row-grn');
+    await type(screen, 'numbering-field-perLetter', '500');
+    await act(async () => { closeButton(screen).props.onPress(); });
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Discard changes?');
+    expect(lastAlertButtons().map(button => button.text)).toEqual(['Keep editing', 'Discard']);
+    expect(hasId(screen, 'numbering-save')).toBe(true);
+    expect(byId(screen, 'numbering-field-perLetter').props.value).toBe('500');
+  });
+
+  it('closes the sheet and sends nothing when the changes are discarded', async () => {
+    const screen = await mount();
+    await press(screen, 'numbering-row-grn');
+    await type(screen, 'numbering-field-perLetter', '500');
+    await act(async () => { closeButton(screen).props.onPress(); });
+    await act(async () => { lastAlertButtons()[1].onPress?.(); });
+    expect(hasId(screen, 'numbering-save')).toBe(false);
+    expect(setDocumentNumbering).not.toHaveBeenCalled();
   });
 });
 

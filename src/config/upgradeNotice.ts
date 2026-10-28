@@ -4,8 +4,9 @@
  *
  * The request layer (`gatedFetch`, src/config/supabaseConfig.ts) reads that answer once, for every screen:
  *  - it raises this notice, which `UpgradingBanner` shows (a status, not an error: nothing was lost);
- *  - a READ waits `Retry-After` and is sent again, once; a WRITE is never sent again silently (the person sees the
- *    message and decides);
+ *  - a READ waits `Retry-After` and is sent again, once, unless the notice was already up when it started (an earlier
+ *    request has waited: it fails at once with the same answer); a WRITE is never sent again silently (the person sees
+ *    the message and decides);
  *  - any other answer from the server lowers the notice.
  * The session is not touched: a stale key is answered 503 during an upgrade too, so 503 never means "signed out".
  *

@@ -1,7 +1,7 @@
 import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { viaCurrentPath } from '@/config/lanTransport';
-import { nextDocumentNumber } from '@/services/documentNumberingService';
+import { nextDocumentNumber, type NumberOffer } from '@/services/documentNumberingService';
 import {
   GRNHeaderData,
   GRNItemData,
@@ -250,9 +250,9 @@ export const checkGrnExists = async (
 // get_next_grn_number): '' when the rule offers none (free text, a full series). Never a number the app made up.
 // M3 Fix: Not migrated to executeRPC - throws errors and returns the string directly,
 // different pattern from standard success/error response
-export const getNextGRNNumber = async (date?: string | null): Promise<string> => {
+export const getNextGRNNumber = async (date?: string | null, onOffer?: (offer: NumberOffer) => void): Promise<string> => {
   try {
-    return await nextDocumentNumber('grn', date);
+    return await nextDocumentNumber('grn', date, onOffer);
   } catch (error) {
     log.error('Error getting next GRN number', loggableError(error));
     throw error;
@@ -485,15 +485,15 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       // this request, also when the request is a RESEND after a lost answer: the attempt is settled.
       const duplicate = possibleDuplicateOf(data, 'grn');
       if (duplicate) throw new PossibleDuplicateRefusal(duplicate, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }));
-      // Another GRN holds the number (it was taken since the form got it): the screen offers the next free one. On a
-      // RESEND it means the first send may have saved it: the attempt is unsettled (`lostAnswer`), the screen checks
-      // again and, if that finds nothing and it is refused again, says to look in the list; no next number.
       // The number does not follow the facility's numbering rule (migration 127): nothing was saved, and the screen words
-      // it from the pattern and takes the person to the number. It comes before the duplicate check, so it is no lost answer.
+      // it from the pattern and takes the person to the number. It comes before the number-taken check, so it is no lost answer.
       const formatRefusal = refusalOf(data);
       if (isNumberFormatRefusal(formatRefusal)) {
         throw new ServerRefusalError(formatRefusal, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }));
       }
+      // Another GRN holds the number (it was taken since the form got it): the screen offers the next free one. On a
+      // RESEND it means the first send may have saved it: the attempt is unsettled (`lostAnswer`), the screen checks
+      // again and, if that finds nothing and it is refused again, says to look in the list; no next number.
       if (isNumberTaken(data)) {
         if (payload.resend && sent.last) lostAnswer = sent.last;
         throw new NumberTakenRefusal(grNumber, serverText(data?.message, t('grn.form.creationFailed'), { write: true, form: true }));

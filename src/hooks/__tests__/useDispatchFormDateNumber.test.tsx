@@ -6,23 +6,15 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
-import { router } from 'expo-router';
 import dispatchFormReducer, {
   loadDispatchData,
-  loadFromOrder,
-  updateItem,
   markDispNoTyped,
-  refreshDefaultDate,
   resetForm,
-  setIsSaving,
   updateHeader,
 } from '@/store/slices/dispatchFormSlice';
 import { createEmptyDispatchHeader, type DispatchItemData } from '@/types/dispatch.types';
 import { getNextDispatchNumber } from '@/features/dispatch/services/dispatchFormService';
 import { numberForNewDate } from '@/services/documentNumberingService';
-import { OrderService } from '@/services/order-service';
-import { showAlert } from '@/utils/alert';
-import { toLocalISODate } from '@/utils/formatters';
 import { useDispatchForm, type DispatchFormMode, type UseDispatchFormReturn } from '../useDispatchForm';
 
 // react-redux is not transformed for jest here, so the store is bound by hand.
@@ -54,7 +46,6 @@ jest.mock('@/utils/localPhotoFiles', () => ({
 }));
 
 const OWN_ID = '11111111-2222-4333-8444-555555555555';
-const OTHER_ID = '99999999-2222-4333-8444-555555555555';
 
 const header = {
   ...createEmptyDispatchHeader(),
@@ -88,9 +79,6 @@ function makeStore() {
     reducer: { dispatchForm: dispatchFormReducer, auth: () => ({ userProfile: null }) },
   });
 }
-const fill = (store: ReturnType<typeof makeStore>, id = OWN_ID) =>
-  store.dispatch(loadDispatchData({ dispatchId: id, header, items: [line] }));
-
 async function mount(mode: DispatchFormMode, store: ReturnType<typeof makeStore>, dispatchIdParam?: string) {
   const latest: { current: UseDispatchFormReturn | null } = { current: null };
   const Harness = () => {
@@ -102,13 +90,6 @@ async function mount(mode: DispatchFormMode, store: ReturnType<typeof makeStore>
   await act(async () => { tree = create(<Harness />); });
   return { form: () => latest.current!, unmount: () => act(async () => { tree.unmount(); }) };
 }
-async function submit(form: () => UseDispatchFormReturn) {
-  let result!: Awaited<ReturnType<UseDispatchFormReturn['submitForm']>>;
-  await act(async () => { result = await form().submitForm(); });
-  return result;
-}
-
-
 const newForm = (typed = false, mode: DispatchFormMode = 'create') => {
   const store = makeStore();
   store.dispatch(loadDispatchData({ dispatchId: OWN_ID, header: { ...header, disp_no: 'D/26-27/0042', disp_date: '2027-03-30' }, items: [line] }));
@@ -133,7 +114,7 @@ describe('under a financial-year rule', () => {
     const { form, unmount } = await mount('create', store);
     await setDate(form, '2027-04-02');
     expect(numberForNewDate).toHaveBeenCalledTimes(1);
-    expect(numberForNewDate).toHaveBeenCalledWith('dispatch', '2027-04-02');
+    expect(numberForNewDate).toHaveBeenCalledWith('dispatch', '2027-04-02', expect.any(Function));
     expect(store.getState().dispatchForm.header.disp_no).toBe('D/27-28/0001');
     await unmount();
   });
@@ -205,7 +186,188 @@ describe('the suggestion of a form with no number', () => {
     const store = makeStore();
     store.dispatch(updateHeader({ disp_no: '', disp_date: '2027-03-30' }));
     const { unmount } = await mount('create', store);
-    expect(getNextDispatchNumber).toHaveBeenCalledWith('2027-03-30');
+    expect(getNextDispatchNumber).toHaveBeenCalledWith('2027-03-30', expect.any(Function));
+    await unmount();
+  });
+});
+
+describe('answers that arrive late or fail', () => {
+  it('keeps the number of the newer date when the slow first suggestion arrives after it', async () => {
+    let first!: (value: string) => void;
+    jest.mocked(getNextDispatchNumber).mockReturnValueOnce(new Promise(resolve => { first = resolve; }));
+    const store = emptyHeaderStore();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/27-28/0001');
+    await act(async () => { first('D/26-27/0042'); });
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/27-28/0001');
+    await unmount();
+  });
+
+  it('asks again on the next change of the date inside the new year when the first re-ask failed', async () => {
+    jest.mocked(numberForNewDate).mockRejectedValueOnce(new Error('offline'));
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/26-27/0042');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(2);
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/27-28/0001');
+    await unmount();
+  });
+
+  it('does not ask again inside the new year once the number was fetched for it', async () => {
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('asks again when the first suggestion failed and the date then changes inside the same year', async () => {
+    jest.mocked(getNextDispatchNumber).mockRejectedValueOnce(new Error('offline'));
+    jest.mocked(numberForNewDate).mockResolvedValue('D/26-27/0042');
+    const store = emptyHeaderStore();
+    const { form, unmount } = await mount('create', store);
+    expect(store.getState().dispatchForm.header.disp_no).toBe('');
+    await setDate(form, '2027-03-31');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/26-27/0042');
+    await unmount();
+  });
+
+  it('keeps the answer of the newer of two quick date changes, whichever arrives first', async () => {
+    const answers: Array<(value: string | null) => void> = [];
+    jest.mocked(numberForNewDate).mockImplementation(() => new Promise(resolve => { answers.push(resolve); }));
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2026-03-30');
+    await setDate(form, '2027-04-05');
+    expect(answers).toHaveLength(3);
+    await act(async () => { answers[2]('D/27-28/0001'); });
+    await act(async () => { answers[1]('D/25-26/0300'); });
+    await act(async () => { answers[0]('D/27-28/0777'); });
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/27-28/0001');
+    await unmount();
+  });
+});
+
+describe('what the rule says about the box', () => {
+  it('gives the reason after a first suggestion with no number', async () => {
+    jest.mocked(getNextDispatchNumber).mockImplementationOnce(async (_date, onOffer) => {
+      onOffer?.({ hint: null, reason: 'SERIES_FULL' });
+      return '';
+    });
+    const { form, unmount } = await mount('create', emptyHeaderStore());
+    expect(form().numberReason).toBe('SERIES_FULL');
+    expect(form().numberHint).toBeNull();
+    await unmount();
+  });
+
+  it('gives the pattern after a first suggestion', async () => {
+    jest.mocked(getNextDispatchNumber).mockImplementationOnce(async (_date, onOffer) => {
+      onOffer?.({ hint: 'D/26-27/####', reason: null });
+      return 'D/26-27/0042';
+    });
+    const { form, unmount } = await mount('create', emptyHeaderStore());
+    expect(form().numberHint).toBe('D/26-27/####');
+    expect(form().numberReason).toBeNull();
+    await unmount();
+  });
+
+  it('is empty on a backend that does not say (older than migration 127)', async () => {
+    const { form, unmount } = await mount('create', emptyHeaderStore());
+    expect(form().numberHint).toBeNull();
+    expect(form().numberReason).toBeNull();
+    await unmount();
+  });
+
+  it('follows the rule again after the date moved to another year', async () => {
+    jest.mocked(numberForNewDate).mockImplementation(async (_type, _date, onOffer) => {
+      onOffer?.({ hint: 'D/27-28/####', reason: null });
+      return 'D/27-28/0001';
+    });
+    const { form, unmount } = await mount('create', newForm());
+    await setDate(form, '2027-04-02');
+    expect(form().numberHint).toBe('D/27-28/####');
+    await unmount();
+  });
+});
+
+function emptyHeaderStore() {
+  const store = makeStore();
+  store.dispatch(updateHeader({ disp_no: '', disp_date: '2027-03-30' }));
+  return store;
+}
+
+describe('a newer request that settles nothing', () => {
+  it('keeps the slow first suggestion when the date change got "leave the number" (another rule, or a backend before migration 127)', async () => {
+    let first!: (value: string) => void;
+    jest.mocked(getNextDispatchNumber).mockReturnValueOnce(new Promise(resolve => { first = resolve; }));
+    jest.mocked(numberForNewDate).mockResolvedValue(null);
+    const store = makeStore();
+    store.dispatch(updateHeader({ disp_no: '', disp_date: '2027-04-02' }));
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-03-30');
+    await act(async () => { first('I0099'); });
+    expect(store.getState().dispatchForm.header.disp_no).toBe('I0099');
+    await unmount();
+  });
+
+  it('keeps the slow first suggestion when the date change failed', async () => {
+    let first!: (value: string) => void;
+    jest.mocked(getNextDispatchNumber).mockReturnValueOnce(new Promise(resolve => { first = resolve; }));
+    jest.mocked(numberForNewDate).mockRejectedValue(new Error('offline'));
+    const store = makeStore();
+    store.dispatch(updateHeader({ disp_no: '', disp_date: '2027-04-02' }));
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-03-30');
+    await act(async () => { first('I0099'); });
+    expect(store.getState().dispatchForm.header.disp_no).toBe('I0099');
+    await unmount();
+  });
+});
+
+describe('the year of the number the form holds', () => {
+  it('is settled by an answer of "leave the number": a second change inside the new year asks nothing', async () => {
+    jest.mocked(numberForNewDate).mockResolvedValue(null);
+    const { form, unmount } = await mount('create', newForm());
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('is not lost when a quick change away and back is answered late: the held number stays and a later change asks again', async () => {
+    const answers: Array<(value: string | null) => void> = [];
+    jest.mocked(numberForNewDate).mockImplementation(() => new Promise(resolve => { answers.push(resolve); }));
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2027-03-30');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    await act(async () => { answers[0]('D/27-28/0001'); });
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/26-27/0042');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(2);
+    await act(async () => { answers[1]('D/27-28/0001'); });
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/27-28/0001');
+    await unmount();
+  });
+
+  it('is the year of the number actually put in the box, so a failed ask is repeated for the held number\'s year', async () => {
+    jest.mocked(numberForNewDate).mockRejectedValueOnce(new Error('offline')).mockResolvedValue('D/27-28/0001');
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2027-03-30');
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/26-27/0042');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(2);
+    expect(store.getState().dispatchForm.header.disp_no).toBe('D/27-28/0001');
     await unmount();
   });
 });

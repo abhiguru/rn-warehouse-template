@@ -43,6 +43,7 @@ import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 import { formatIdentifier, getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
+import { numberBoxNote, numberBoxPlaceholder } from '@/features/numbering/numberingModel';
 
 type DispatchHeaderStepProps = {
     mode: 'create' | 'edit';
@@ -233,6 +234,8 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         header,
         validationErrors,
         isGeneratingNumber,
+        numberHint,
+        numberReason,
         isCreateMode,
         invoicedNumber,
         updateHeaderField,
@@ -291,6 +294,8 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const dateAndNumberLocked = !isCreateMode && invoicedNumber !== null && invoicedNumber !== undefined;
     // Why they are locked: shown under them, and the hint a screen reader gives for each of the two locked fields.
     const lockedReason = dateAndNumberLocked ? tr('dispatch.refusal.invoiced', { invoice: formatIdentifier(invoicedNumber || '—') }) : undefined;
+    // Why the number box is empty, when the facility's numbering offered no number (typed by hand, or the series is used up).
+    const numberNote = isCreateMode && !isGeneratingNumber && !header.disp_no && !validationErrors.disp_no ? numberBoxNote('dispatch', numberReason) : null;
 
     const openDatePicker = () => {
         if (dateAndNumberLocked) return;
@@ -384,7 +389,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {/* Compact Row: Dispatch Number & Date */}
                         <View style={styles.compactRow}>
                             {/* Dispatch Number */}
-                            <View style={[styles.formGroup, styles.halfField, dateAndNumberLocked && styles.formGroupAboveHint]}>
+                            <View style={[styles.formGroup, styles.halfField, (dateAndNumberLocked || numberNote) && styles.formGroupAboveHint]}>
                                 <Text style={styles.label}>
                                     {tr('common.dispatchNumber')}<Text style={styles.required}> *</Text>
                                 </Text>
@@ -407,7 +412,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                             editable={!dateAndNumberLocked}
                                             value={header.disp_no}
                                             onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase())}
-                                            placeholder="I####"
+                                            placeholder={numberBoxPlaceholder(numberHint, numberReason, 'I####')}
                                             placeholderTextColor={t.text.placeholder}
                                             autoCapitalize="characters"
                                             maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
@@ -418,7 +423,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                             </View>
 
                             {/* Date */}
-                            <View style={[styles.formGroup, styles.halfField, styles.dateField, dateAndNumberLocked && styles.formGroupAboveHint]}>
+                            <View style={[styles.formGroup, styles.halfField, styles.dateField, (dateAndNumberLocked || numberNote) && styles.formGroupAboveHint]}>
                                 <Text style={styles.label}>
                                     {tr('common.date')}<Text style={styles.required}> *</Text>
                                 </Text>
@@ -452,6 +457,11 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {dateAndNumberLocked ? (
                             <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="dispatch-header-invoiced-hint">
                                 {lockedReason}
+                            </Text>
+                        ) : null}
+                        {numberNote ? (
+                            <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="dispatch-header-number-note">
+                                {numberNote}
                             </Text>
                         ) : null}
 

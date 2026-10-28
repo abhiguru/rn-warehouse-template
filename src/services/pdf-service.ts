@@ -601,6 +601,9 @@ export async function generateReportPDF(request: ReportPdfRequest): Promise<Repo
   const data = await readReportPdfAnswer(response);
 
   if (!isFunctionEnvelope(data)) {
+    // The gateway's own answer while the server is being updated (HTTP 503, code "upgrading"): not a busy server. The
+    // banner is raised by the request layer; the sentence here says the same thing.
+    if (upgradingBody(data)) return reportFailure('server-unavailable', t('components.upgrading.message'));
     const code = typeof data === 'object' && data !== null ? (data as { code?: unknown }).code : undefined;
     if (response.status === 404 || code === 'PGRST202') {
       return reportFailure('server-outdated', t('reports.export.serverNeedsUpdate'));

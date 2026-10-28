@@ -90,11 +90,11 @@ advisory, and the 5 moderate ones were not looked at, so a new moderate
 advisory in a shipped package could not fail a build. It now works from one
 list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
 
-| Advisory            | Package and range    | Why it is accepted                                             | Review by  |
-| ------------------- | -------------------- | -------------------------------------------------------------- | ---------- |
-| GHSA-vfj7-8cjw-p6xm | braces `<=3.0.3`     | Repaired locally (depth bound); no patched release             | 2027-01-10 |
-| GHSA-hp3w-g68c-fv3c | sprintf-js `<=1.1.3` | Repaired locally (precision bound); no patched release         | 2027-01-10 |
-| GHSA-mrhx-c7xc-m3w5 | zod `<4.6.6`         | Repaired locally in zod 3.25.76 (size gate); v3 has no fix     | 2027-01-24 |
+| Advisory            | Package and range           | Why it is accepted                                                                        | Review by  |
+| ------------------- | --------------------------- | ----------------------------------------------------------------------------------------- | ---------- |
+| GHSA-vfj7-8cjw-p6xm | braces `<=3.0.3`            | Repaired locally (depth bound); no patched release                                        | 2027-01-10 |
+| GHSA-hp3w-g68c-fv3c | sprintf-js `<=1.1.3`        | Repaired locally (precision bound); no patched release                                    | 2027-01-10 |
+| GHSA-mrhx-c7xc-m3w5 | zod `<4.6.6`                | Repaired locally in zod 3.25.76 (size gate); v3 has no fix                                | 2027-01-24 |
 | GHSA-gcqx-w48m-w2h4 | deepmerge `>=4.2.0 <=4.3.1` | Repaired locally in 4.3.1 (own `__proto__` key defined, not assigned); no patched release | 2027-01-28 |
 
 - Every entry of the npm report at **moderate, high or critical** must resolve

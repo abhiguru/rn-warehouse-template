@@ -27,7 +27,7 @@ import { localizeDigits, t } from '@/i18n';
 import { isUpgradingAnswer, serverText, UPGRADING_CODE, upgradingBody } from '@/utils/serverText';
 import { DISCARD_BODY, discardBody } from './discardBody';
 import { isGatewayKeyRejection } from './gatewayRejection';
-import { noteServerAnswered, noteUpgradeAnswer, waitForRetry } from './upgradeNotice';
+import { isUpgrading, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from './upgradeNotice';
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 
 const authLogger = createLogger('Auth');
@@ -204,6 +204,9 @@ async function gatedFetch(
   if (!operatorResumeGate.isVerified()) await awaitIdentityGate(generation);
   const invalidated = () => (honorSwitch && operatorSwitching) || generation !== getSessionGeneration();
   if (invalidated()) throw new Error('Session changed');
+  // Whether the "server is being updated" banner was already up when this request started: an earlier request has waited
+  // for this upgrade, so this one does not wait again (each new screen would show a 30 s spinner for the same answer).
+  const noticeWasUp = isUpgrading();
   const controller = new AbortController();
   const request = { controller, mutation };
   const abort = () => controller.abort();
@@ -273,7 +276,7 @@ async function gatedFetch(
       throw error;
     }
   }
-  if (upgrade.upgrading && !mutation && !afterUpgradeWait) {
+  if (upgrade.upgrading && !mutation && !afterUpgradeWait && !noticeWasUp) {
     controller.abort();
     release();
     // Never longer than the limit a read has anyway: the caller's own time limits (a form's 15 s, a pricing read's 30 s)

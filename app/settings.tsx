@@ -45,6 +45,7 @@ import {
   type PreferenceSheetId,
 } from '@/features/settings/preferenceSheetMemory';
 import { roleLabel as roleName } from '@/utils/roleLabel';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { settingsFeatureRows, type SettingsFeature } from '@/config/roles';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { countPendingEnrollments } from '@/services/enrollmentReviewService';
@@ -133,7 +134,11 @@ const SettingsScreen: React.FC = () => {
     },
     sensors: { icon: 'thermometer', label: t('settings.features.sensors'), subtitle: t('settings.features.sensorsSubtitle'), route: '/sensors' },
   };
-  const featureRows = settingsFeatureRows(userProfile?.role, capabilities);
+  // Document numbers needs the backend's numbering calls (migration 127): on an older backend the row would open to a
+  // "could not load" screen, so it is left out until the facility has upgraded.
+  const featureRows = settingsFeatureRows(userProfile?.role, capabilities).filter(
+    feature => feature !== 'documentNumbering' || backendHasFeature('documentNumbering')
+  );
   const showsRequests = featureRows.includes('enrollmentReview');
   useFocusEffect(useCallback(() => {
     if (!showsRequests) { setWaitingRequests(null); return undefined; }

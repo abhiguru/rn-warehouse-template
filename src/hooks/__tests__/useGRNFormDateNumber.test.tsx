@@ -69,7 +69,7 @@ describe('a financial-year rule', () => {
     const { form, unmount } = await mount('create', store);
     await setDate(form, '2027-04-02');
     expect(numberForNewDate).toHaveBeenCalledTimes(1);
-    expect(numberForNewDate).toHaveBeenCalledWith('grn', '2027-04-02');
+    expect(numberForNewDate).toHaveBeenCalledWith('grn', '2027-04-02', expect.any(Function));
     expect(store.getState().grnForm.header.gr_no).toBe('GRN/27-28/0001');
     expect(store.getState().grnForm.header.date).toBe('2027-04-02');
     await unmount();
@@ -150,7 +150,183 @@ describe('the first suggestion', () => {
     const store = makeStore();
     store.dispatch(updateHeader({ gr_no: '', date: '2027-03-30' }));
     const { unmount } = await mount('create', store);
-    expect(getNextGRNNumber).toHaveBeenCalledWith('2027-03-30');
+    expect(getNextGRNNumber).toHaveBeenCalledWith('2027-03-30', expect.any(Function));
+    await unmount();
+  });
+});
+
+describe('answers that arrive late or fail', () => {
+  const emptyForm = () => {
+    const store = makeStore();
+    store.dispatch(updateHeader({ gr_no: '', date: '2027-03-30' }));
+    return store;
+  };
+
+  it('keeps the number of the newer date when the slow first suggestion arrives after it', async () => {
+    let first!: (value: string) => void;
+    jest.mocked(getNextGRNNumber).mockReturnValueOnce(new Promise(resolve => { first = resolve; }));
+    jest.mocked(numberForNewDate).mockResolvedValue('GRN/27-28/0001');
+    const store = emptyForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/27-28/0001');
+    await act(async () => { first('GRN/26-27/0042'); });
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/27-28/0001');
+    await unmount();
+  });
+
+  it('asks again on the next change of the date inside the new year when the first re-ask failed', async () => {
+    jest.mocked(numberForNewDate).mockRejectedValueOnce(new Error('offline')).mockResolvedValue('GRN/27-28/0001');
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/26-27/0042');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(2);
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/27-28/0001');
+    await unmount();
+  });
+
+  it('does not ask again inside the new year once the number was fetched for it', async () => {
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('asks again when the first suggestion failed and the date then changes inside the same year', async () => {
+    jest.mocked(getNextGRNNumber).mockRejectedValueOnce(new Error('offline'));
+    jest.mocked(numberForNewDate).mockResolvedValue('GRN/26-27/0042');
+    const store = emptyForm();
+    const { form, unmount } = await mount('create', store);
+    expect(store.getState().grnForm.header.gr_no).toBe('');
+    await setDate(form, '2027-03-31');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/26-27/0042');
+    await unmount();
+  });
+
+  it('keeps the answer of the newer of two quick date changes, whichever arrives first', async () => {
+    const answers: Array<(value: string | null) => void> = [];
+    jest.mocked(numberForNewDate).mockImplementation(() => new Promise(resolve => { answers.push(resolve); }));
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2026-03-30');
+    await setDate(form, '2027-04-05');
+    expect(answers).toHaveLength(3);
+    await act(async () => { answers[2]('GRN/27-28/0001'); });
+    await act(async () => { answers[1]('GRN/25-26/0300'); });
+    await act(async () => { answers[0]('GRN/27-28/0777'); });
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/27-28/0001');
+    await unmount();
+  });
+});
+
+describe('what the rule says about the box', () => {
+  it('gives the pattern after the first suggestion and, with no number, the reason', async () => {
+    jest.mocked(getNextGRNNumber).mockImplementationOnce(async (_date, onOffer) => {
+      onOffer?.({ hint: null, reason: 'TYPE_IT' });
+      return '';
+    });
+    const store = makeStore();
+    store.dispatch(updateHeader({ gr_no: '', date: '2027-03-30' }));
+    const { form, unmount } = await mount('create', store);
+    expect(form().numberReason).toBe('TYPE_IT');
+    expect(form().numberHint).toBeNull();
+    await unmount();
+  });
+
+  it('is empty on a backend that does not say (older than migration 127)', async () => {
+    const store = makeStore();
+    store.dispatch(updateHeader({ gr_no: '', date: '2027-03-30' }));
+    const { form, unmount } = await mount('create', store);
+    expect(form().numberReason).toBeNull();
+    expect(form().numberHint).toBeNull();
+    await unmount();
+  });
+
+  it('follows the rule again after the date moved to another year', async () => {
+    jest.mocked(numberForNewDate).mockImplementation(async (_type, _date, onOffer) => {
+      onOffer?.({ hint: 'GRN/27-28/####', reason: null });
+      return 'GRN/27-28/0001';
+    });
+    const { form, unmount } = await mount('create', newForm());
+    await setDate(form, '2027-04-02');
+    expect(form().numberHint).toBe('GRN/27-28/####');
+    await unmount();
+  });
+});
+
+describe('a newer request that settles nothing', () => {
+  it('keeps the slow first suggestion when the date change got "leave the number" (another rule, or a backend before migration 127)', async () => {
+    let first!: (value: string) => void;
+    jest.mocked(getNextGRNNumber).mockReturnValueOnce(new Promise(resolve => { first = resolve; }));
+    jest.mocked(numberForNewDate).mockResolvedValue(null);
+    const store = makeStore();
+    store.dispatch(updateHeader({ gr_no: '', date: '2027-04-02' }));
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-03-30');
+    await act(async () => { first('A0099'); });
+    expect(store.getState().grnForm.header.gr_no).toBe('A0099');
+    await unmount();
+  });
+
+  it('keeps the slow first suggestion when the date change failed', async () => {
+    let first!: (value: string) => void;
+    jest.mocked(getNextGRNNumber).mockReturnValueOnce(new Promise(resolve => { first = resolve; }));
+    jest.mocked(numberForNewDate).mockRejectedValue(new Error('offline'));
+    const store = makeStore();
+    store.dispatch(updateHeader({ gr_no: '', date: '2027-04-02' }));
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-03-30');
+    await act(async () => { first('A0099'); });
+    expect(store.getState().grnForm.header.gr_no).toBe('A0099');
+    await unmount();
+  });
+});
+
+describe('the year of the number the form holds', () => {
+  it('is settled by an answer of "leave the number": a second change inside the new year asks nothing', async () => {
+    jest.mocked(numberForNewDate).mockResolvedValue(null);
+    const { form, unmount } = await mount('create', newForm());
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('is not lost when a quick change away and back is answered late: the held number stays and a later change asks again', async () => {
+    const answers: Array<(value: string | null) => void> = [];
+    jest.mocked(numberForNewDate).mockImplementation(() => new Promise(resolve => { answers.push(resolve); }));
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    // Back to the year of the number held: nothing to ask, and the answer still on its way is out of date.
+    await setDate(form, '2027-03-30');
+    expect(numberForNewDate).toHaveBeenCalledTimes(1);
+    await act(async () => { answers[0]('GRN/27-28/0001'); });
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/26-27/0042');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(2);
+    await act(async () => { answers[1]('GRN/27-28/0001'); });
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/27-28/0001');
+    await unmount();
+  });
+
+  it('is the year of the number actually put in the box, so a failed ask is repeated for the held number\'s year', async () => {
+    jest.mocked(numberForNewDate).mockRejectedValueOnce(new Error('offline')).mockResolvedValue('GRN/27-28/0001');
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-04-02');
+    await setDate(form, '2027-03-30');
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/26-27/0042');
+    await setDate(form, '2027-04-03');
+    expect(numberForNewDate).toHaveBeenCalledTimes(2);
+    expect(store.getState().grnForm.header.gr_no).toBe('GRN/27-28/0001');
     await unmount();
   });
 });

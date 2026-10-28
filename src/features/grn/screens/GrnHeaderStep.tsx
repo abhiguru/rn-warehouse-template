@@ -37,6 +37,7 @@ import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 
 import { showAlert } from '@/utils/alert';
 import { StatusTag } from '@/components/ui';
+import { numberBoxNote, numberBoxPlaceholder } from '@/features/numbering/numberingModel';
 import { getLanguage, normalizeDigits, t as tr } from '@/i18n';
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
@@ -53,6 +54,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const {
     header,
     isGeneratingNumber,
+    numberHint,
+    numberReason,
     validationErrors,
     isCreateMode,
     updateHeaderField,
@@ -73,6 +76,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // The date the GRN was opened with: kept pickable when it is already after the first dispatch (older data).
   const loadedDate = useAppSelector(selectGRNLoadedDate);
   const dateLocked = !isCreateMode && editInvoice !== null;
+  // Why the box is empty, when the facility's numbering offered no number (typed by hand, or the series is used up).
+  const numberNote = isCreateMode && !isGeneratingNumber && !header.gr_no && !validationErrors.gr_no ? numberBoxNote('grn', numberReason) : null;
 
   // Local UI state (not form data)
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -310,7 +315,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                       if (!isCreateMode) return;
                       handleGrNoChange(normalizeDigits(text).toUpperCase());
                     }}
-                    placeholder={tr('grn.header.numberPlaceholder')}
+                    placeholder={numberBoxPlaceholder(numberHint, numberReason, tr('grn.header.numberPlaceholder'))}
                     placeholderTextColor={t.text.placeholder}
                     autoCapitalize="characters"
                     returnKeyType="next"
@@ -320,6 +325,11 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                 </View>
               )}
               {renderError(validationErrors.gr_no)}
+              {numberNote ? (
+                <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="grn-header-number-note">
+                  {numberNote}
+                </Text>
+              ) : null}
               {!isCreateMode ? <Text style={styles.lockHint}>{tr('grn.refusal.numberLocked')}</Text> : null}
             </View>
 

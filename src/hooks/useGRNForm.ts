@@ -41,7 +41,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { createLogger, loggableError } from '@/utils/logger';
-import { numberForNewDate } from '@/services/documentNumberingService';
+import { numberForNewDate, type NumberOffer } from '@/services/documentNumberingService';
 import { calculateFinancialYear } from '@/utils/invoiceCalculations';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotos, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import {
@@ -120,6 +120,10 @@ export interface UseGRNFormReturn {
   grnId: string | null;
   tempGrnId: string | null;
   isGeneratingNumber: boolean;
+  /** The pattern of the facility's numbering ("A####"), null when not known (older backend) or the rule is free text. */
+  numberHint: string | null;
+  /** Why the box was left empty: the rule is typed by hand (TYPE_IT) or the series is used up (SERIES_FULL); else null. */
+  numberReason: NumberOffer['reason'];
   isSaving: boolean;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
@@ -191,6 +195,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     (): Record<string, string> => (takenNumberError ? { gr_no: takenNumberError } : {})
   );
   const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.gr_no);
+  // What the facility's rule said with the last number it gave (pattern, reason for no number).
+  const [numberOffer, setNumberOffer] = useState<NumberOffer | null>(null);
 
   // AbortController for cancelling pending GRN number change operations
   const grNoChangeAbortRef = useRef<AbortController | null>(null);
@@ -210,6 +216,17 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   useEffect(() => {
     formPhotosRef.current = { header, items };
   }, [header, items]);
+
+  // Requests for the number of the form: the first suggestion and every re-ask for a new date are numbered in one sequence.
+  // An answer is dropped when a newer request already put a number in the box (`appliedRequest`), or when the date went back
+  // to the year of the number the form holds (`supersededUpTo`: what was still on its way is out of date). A newer request
+  // that has not answered, or answered "leave the number" (null), drops nothing.
+  const dateNumberRequest = useRef(0);
+  const appliedRequest = useRef(0);
+  const supersededUpTo = useRef(0);
+  // The financial year of the number the form holds (not of one being fetched); null when no request has settled it. A form
+  // that starts with a number holds one for its date. A request that fails leaves it, so the next date change asks again.
+  const numberYear = useRef<string | null>(isCreateMode && header.gr_no && header.date ? calculateFinancialYear(header.date) : null);
 
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
@@ -244,15 +261,24 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     if (!header.gr_no && !hasGeneratedGRN.current) {
       hasGeneratedGRN.current = true;
       setIsGeneratingNumber(true);
+      const request = ++dateNumberRequest.current;
+      const answered: { offer: NumberOffer | null } = { offer: null };
       try {
-        const grNumber = await getNextGRNNumber(header.date);
+        const grNumber = await getNextGRNNumber(header.date, offer => { answered.offer = offer; });
         // Check if session changed before updating state (prevents stale updates after navigation)
         if (currentGrnFormSession() !== currentSessionId) {
           console.log('[useGRNForm] GRN number generation cancelled - session changed from', currentSessionId, 'to', currentGrnFormSession());
           return;
         }
+        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held.
+        if (request <= appliedRequest.current || request <= supersededUpTo.current) return;
+        setNumberOffer(answered.offer);
+        if (header.date) numberYear.current = calculateFinancialYear(header.date);
         // '' is no suggestion (free text, a full series): the box stays empty for the person to type.
-        if (grNumber) dispatch(updateHeader({ gr_no: grNumber }));
+        if (grNumber) {
+          dispatch(updateHeader({ gr_no: grNumber }));
+          appliedRequest.current = request;
+        }
       } catch (error) {
         console.error('[useGRNForm] Failed to generate GRN number:', error);
         if (currentGrnFormSession() === currentSessionId) {
@@ -298,31 +324,44 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     });
   }, []);
 
-  // The date and the typed-ness of the number as the last render saw them: a date change reads the date it replaces.
+  // Whether the number was typed by the person, as the last render saw it.
   const grNoTyped = useAppSelector(selectGRNGrNoTyped);
   const grNoTypedRef = useRef(grNoTyped);
   grNoTypedRef.current = grNoTyped;
-  const headerDateRef = useRef(header.date);
-  headerDateRef.current = header.date;
-  const dateNumberRequest = useRef(0);
 
   /**
    * The date moved to another financial year (1 April): under a financial-year rule the number the form fetched belonged
    * to the year before, so the suggestion is asked again for the new date. A number the person typed is never replaced,
-   * and under another rule nothing changes (the server says which rule it is).
+   * and under another rule nothing changes (the server says which rule it is). The year compared with is the one the
+   * form's number was fetched for, not the previous date: a request that failed is asked again on the next change.
    */
   const askNumberForDate = useCallback(async (newDate: unknown) => {
-    const previous = headerDateRef.current;
-    if (!isCreateMode || typeof newDate !== 'string' || !previous || !newDate) return;
-    if (calculateFinancialYear(previous) === calculateFinancialYear(newDate) || grNoTypedRef.current) return;
+    if (!isCreateMode || typeof newDate !== 'string' || !newDate || grNoTypedRef.current) return;
+    const year = calculateFinancialYear(newDate);
+    if (numberYear.current === year) {
+      // The number the form holds is right for this date: an answer still on its way for another year is out of date.
+      supersededUpTo.current = dateNumberRequest.current;
+      return;
+    }
     const request = ++dateNumberRequest.current;
     const session = currentGrnFormSession();
+    const answered: { offer: NumberOffer | null } = { offer: null };
     try {
-      const number = await numberForNewDate('grn', newDate);
-      if (number === null || request !== dateNumberRequest.current || currentGrnFormSession() !== session || grNoTypedRef.current) return;
+      const number = await numberForNewDate('grn', newDate, offer => { answered.offer = offer; });
+      if (currentGrnFormSession() !== session || request <= appliedRequest.current || request <= supersededUpTo.current) return;
+      if (answered.offer) setNumberOffer(answered.offer);
+      if (grNoTypedRef.current) return;
+      if (number === null) {
+        // Another rule, or a backend without it: the number held fits any date. Only the newest request says so.
+        if (request === dateNumberRequest.current) numberYear.current = year;
+        return;
+      }
       dispatch(updateHeader({ gr_no: number }));
+      appliedRequest.current = request;
+      numberYear.current = year;
     } catch (error) {
-      // The number stays; the server checks it again when the GRN is saved.
+      // The number stays, and so does its year: the next change of the date asks again. The server checks the number
+      // when the GRN is saved.
       log.error('Could not ask for the GRN number of the new date', loggableError(error));
     }
   }, [isCreateMode, dispatch]);
@@ -611,6 +650,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     grnId,
     tempGrnId,
     isGeneratingNumber,
+    numberHint: numberOffer?.hint ?? null,
+    numberReason: numberOffer?.reason ?? null,
     isSaving: grnFormState.isSaving,
     validationErrors,
     isCreateMode,

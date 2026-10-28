@@ -169,6 +169,25 @@ describe('the answer', () => {
     nothingLogged();
   });
 
+  it('says the server is being updated, not busy, when the gateway answers "upgrading"', async () => {
+    jest.mocked(fetch).mockResolvedValue(answer(503, { code: 'upgrading', message: 'The server is being updated.' }));
+    expect(await generateReportPDF(periodRequest)).toEqual({
+      success: false,
+      reason: 'server-unavailable',
+      error: "The facility's server is being updated. Try again in a few minutes.",
+    });
+    nothingLogged();
+  });
+
+  it('still says busy for another 503 that is not JSON of the gateway\'s upgrading answer', async () => {
+    jest.mocked(fetch).mockResolvedValue(answer(503, { code: 'something_else' }));
+    expect(await generateReportPDF(periodRequest)).toEqual({
+      success: false,
+      reason: 'server-unavailable',
+      error: "The server couldn't make the PDF right now. Try again in a moment.",
+    });
+  });
+
   it('gives the Gujarati text in Gujarati', async () => {
     setLanguage('gu');
     jest.mocked(fetch).mockResolvedValue(answer(400, { success: false, error: 'The period must not be longer than 450 days' }));
