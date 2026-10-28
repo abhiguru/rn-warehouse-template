@@ -85,6 +85,8 @@ export const numbering = {
     },
     unchanged: 'The numbering is as it was.',
     saveFailed: "Couldn't save the numbering. Check your connection and try again.",
+    // The server answered and refused the values (SQLSTATE 22023): the connection is fine, so it is not blamed.
+    refused: "The numbering wasn't saved because the server did not accept these values. Check them and try again.",
     errors: {
       firstLetter: 'Enter one capital letter.',
       width: 'Enter a whole number from 1 to 7.',

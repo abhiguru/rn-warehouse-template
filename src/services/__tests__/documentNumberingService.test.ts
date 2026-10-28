@@ -2,6 +2,7 @@
  * The next GRN or dispatch number (WS-8, backend migration 127): `suggest_document_number` where the backend has it,
  * the earlier `get_next_*_number` where it does not (or does not say), and never a number the app made up.
  */
+import { setLanguage, t as tr } from '@/i18n';
 import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatures';
 import {
   getDocumentNumbering,
@@ -117,6 +118,25 @@ describe('the rules', () => {
   it('throws the server sentence of a refusal', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'The prefix can have up to 10 characters: capital letters, digits, / and -.' } });
     await expect(setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' })).rejects.toThrow('The prefix can have up to 10 characters');
+  });
+});
+
+describe('a refusal of set_document_numbering in Gujarati', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('does not blame the connection for the server refusing the values (22023)', async () => {
+    setLanguage('gu');
+    mockRpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'The prefix can have up to 10 characters: capital letters, digits, / and -.' } });
+    const failure = await setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' }).catch((error: Error) => error);
+    expect((failure as Error).message).toBe(tr('numbering.edit.refused'));
+    expect((failure as Error).message).not.toBe(tr('numbering.edit.saveFailed'));
+  });
+
+  it('still says the numbering could not be saved when the failure has no refusal code', async () => {
+    setLanguage('gu');
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'something odd' } });
+    const failure = await setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' }).catch((error: Error) => error);
+    expect((failure as Error).message).toBe(tr('numbering.edit.saveFailed'));
   });
 });
 

@@ -12,7 +12,7 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t, type TranslationKey } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { serverText } from '@/utils/serverText';
+import { errorCodeOf, serverText } from '@/utils/serverText';
 
 export type DocumentType = 'grn' | 'dispatch' | 'invoice';
 
@@ -193,7 +193,10 @@ export async function setDocumentNumbering(type: DocumentType, rule: NumberingRu
   unchanged(generation);
   if (error) {
     handleGlobalAuthError(error);
-    throw new Error(serverText(error.message, t('numbering.edit.saveFailed'), { write: true, form: true }));
+    // 22023: the server read the request and refused the values. In English its sentence is shown; in another language
+    // the fallback must not blame the connection, which worked.
+    const refused = errorCodeOf(error) === '22023';
+    throw new Error(serverText(error.message, t(refused ? 'numbering.edit.refused' : 'numbering.edit.saveFailed'), { write: true, form: true }));
   }
   if (!isRecord(data) || data.success === false) throw new Error(t('numbering.edit.saveFailed'));
   const whole = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
