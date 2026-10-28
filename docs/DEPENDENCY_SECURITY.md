@@ -1,5 +1,26 @@
 # Dependency security review — 2026-09-14
 
+## deepmerge 4.3.1 — 2026-10-28
+
+- **What failed.** `npm run audit:dependencies` reported `FAIL_UNREPAIRED_DEPENDENCIES`: `expo` and `@expo/cli` also carried
+  GHSA-gcqx-w48m-w2h4 (deepmerge `>=4.2.0 <=4.3.1`, low, CVSS 5.3, "mergeObject() allows prototype poisoning of returned
+  objects"), which has no patched release. deepmerge 4.3.1 comes in through `expo` > `@expo/config` and `jest-config` (one
+  copy at `node_modules/deepmerge`); `react-native-paper` brings a separate 3.3.0 copy, which is below the affected range.
+- **The repair is a local copy of the upstream approach (PR 277, open, unmerged).** `mergeObject` copied keys into a new
+  object with plain assignment, so an own `__proto__` key (what `JSON.parse` produces) invoked the legacy setter and made the
+  returned object inherit an attacker-chosen prototype whenever the target was a null-prototype object, held a `null`
+  placeholder, or carried its own `__proto__`. `scripts/security-backports.json` patches `dist/cjs.js` (the package `main`)
+  and `dist/umd.js` with a `setProperty` helper that defines the `__proto__` key as an ordinary own data property and assigns
+  every other key as before; both copy loops use it. No key is dropped, so every other merge result is identical.
+  (`index.js` is source that requires `is-mergeable-object`, which is not installed; nothing loads it.)
+- The installer repairs exactly 4.3.1, treats a copy older than 4.2.0 (the 3.3.0 under `react-native-paper`) as unaffected
+  (`beforeVersion` in the manifest) and refuses any other deepmerge version it has no entry for.
+- `acceptedAdvisories` lists GHSA-gcqx-w48m-w2h4 with the advisory's own range (`>=4.2.0 <=4.3.1`), review date
+  **2027-01-28**. At that date check whether deepmerge has released a fix (and whether `expo`/`jest-config` take it), and if
+  so delete the entry and its backport. Like the other build tools here, deepmerge runs in the Expo CLI and in tests, not in
+  the app bundle.
+- `npm run audit:dependencies` is `PASS_WITH_VERIFIED_BACKPORTS` again.
+
 ## node-forge 1.4.1 — 2026-10-27
 
 - **What moved.** `package.json` `overrides` pins `node-forge` to 1.4.1. Both consumers (`@expo/cli` through `expo`, and
@@ -68,6 +89,7 @@ list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
 | GHSA-vfj7-8cjw-p6xm | braces `<=3.0.3`     | Repaired locally (depth bound); no patched release             | 2027-01-10 |
 | GHSA-hp3w-g68c-fv3c | sprintf-js `<=1.1.3` | Repaired locally (precision bound); no patched release         | 2027-01-10 |
 | GHSA-mrhx-c7xc-m3w5 | zod `<4.6.6`         | Repaired locally in zod 3.25.76 (size gate); v3 has no fix     | 2027-01-24 |
+| GHSA-gcqx-w48m-w2h4 | deepmerge `>=4.2.0 <=4.3.1` | Repaired locally in 4.3.1 (own `__proto__` key defined, not assigned); no patched release | 2027-01-28 |
 
 - Every entry of the npm report at **moderate, high or critical** must resolve
   to advisories on this list, with the same package and affected range, and

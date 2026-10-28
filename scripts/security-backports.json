@@ -20,6 +20,13 @@
       "commit": "a0ebf970f2d752e5f58527cd2942ff48be4f46bd",
       "upstreamStatus": "fixed in zod 4.6.6 for the v4 code only (v4 reference); the zod 3.25.76 copy under expo/@expo/cli has no upstream fix",
       "implementation": "Local gate in the zod v3 code that @expo/cli loads (v3 has no upstream fix): ZodArray (exactLength, maxLength) and ZodSet (maxSize) return INVALID before parsing any element once the input is over its upper bound, after the existing size issues are recorded unchanged; min checks and in-bound behaviour are identical. Mirrors the intent of the 4.6.6 change (an upper size bound fails before any element is parsed); not an upstream release"
+    },
+    "deepmerge": {
+      "advisory": "GHSA-gcqx-w48m-w2h4",
+      "upstreamReport": "https://github.com/TehShrike/deepmerge/issues/273",
+      "upstreamPR": "https://github.com/TehShrike/deepmerge/pull/277",
+      "upstreamStatus": "open and unmerged; no patched release (affected >=4.2.0 <=4.3.1)",
+      "implementation": "Local copy of the upstream PR 277 approach: a setProperty helper defines an own enumerable __proto__ key as a data property with Object.defineProperty (so the legacy __proto__ setter never changes the returned object prototype) and uses ordinary assignment for every other key; both mergeObject copy loops use it. No key is dropped, so every other merge result is unchanged; not an upstream release"
     }
   },
   "files": [
@@ -155,6 +162,64 @@
           "count": 1
         }
       ]
+    },
+    {
+      "package": "deepmerge",
+      "version": "4.3.1",
+      "file": "dist/cjs.js",
+      "originalSHA256": "2e5160f84a1141bd927264afe4d15766f1e6cf07daef182b37ff53fea121de7d",
+      "patchedSHA256": "7903d56efb46f6242638fef42cd0b5a3b1200200c3481965f6bc5998252aa8ed",
+      "edits": [
+        {
+          "before": "function propertyIsOnObject(object, property) {",
+          "after": "// Local fix for GHSA-gcqx-w48m-w2h4 (upstream PR 277): an own __proto__ key is defined as a data\n// property, never assigned, so it cannot change the prototype of the returned object.\nfunction setProperty(target, property, value) {\n\tif (property === '__proto__') {\n\t\tObject.defineProperty(target, property, {\n\t\t\tvalue: value,\n\t\t\twritable: true,\n\t\t\tenumerable: true,\n\t\t\tconfigurable: true\n\t\t});\n\t} else {\n\t\ttarget[property] = value;\n\t}\n}\n\nfunction propertyIsOnObject(object, property) {",
+          "count": 1
+        },
+        {
+          "before": "destination[key] = cloneUnlessOtherwiseSpecified(target[key], options)",
+          "after": "setProperty(destination, key, cloneUnlessOtherwiseSpecified(target[key], options))",
+          "count": 1
+        },
+        {
+          "before": "destination[key] = getMergeFunction(key, options)(target[key], source[key], options)",
+          "after": "setProperty(destination, key, getMergeFunction(key, options)(target[key], source[key], options))",
+          "count": 1
+        },
+        {
+          "before": "destination[key] = cloneUnlessOtherwiseSpecified(source[key], options)",
+          "after": "setProperty(destination, key, cloneUnlessOtherwiseSpecified(source[key], options))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "deepmerge",
+      "version": "4.3.1",
+      "file": "dist/umd.js",
+      "originalSHA256": "f33e6596482d1fb5c7c427f8ef92f2aa849eea9223acd974176b2fb27ddbf73a",
+      "patchedSHA256": "fefbed89fa7c19387cf5cc89de1805b4dc102173ea5b8f60254fda94309e32a5",
+      "edits": [
+        {
+          "before": "\tfunction propertyIsOnObject(object, property) {",
+          "after": "\t// Local fix for GHSA-gcqx-w48m-w2h4 (upstream PR 277): an own __proto__ key is defined as a data\n\t// property, never assigned, so it cannot change the prototype of the returned object.\n\tfunction setProperty(target, property, value) {\n\t\tif (property === '__proto__') {\n\t\t\tObject.defineProperty(target, property, {\n\t\t\t\tvalue: value,\n\t\t\t\twritable: true,\n\t\t\t\tenumerable: true,\n\t\t\t\tconfigurable: true\n\t\t\t});\n\t\t} else {\n\t\t\ttarget[property] = value;\n\t\t}\n\t}\n\n\tfunction propertyIsOnObject(object, property) {",
+          "count": 1
+        },
+        {
+          "before": "destination[key] = cloneUnlessOtherwiseSpecified(target[key], options)",
+          "after": "setProperty(destination, key, cloneUnlessOtherwiseSpecified(target[key], options))",
+          "count": 1
+        },
+        {
+          "before": "destination[key] = getMergeFunction(key, options)(target[key], source[key], options)",
+          "after": "setProperty(destination, key, getMergeFunction(key, options)(target[key], source[key], options))",
+          "count": 1
+        },
+        {
+          "before": "destination[key] = cloneUnlessOtherwiseSpecified(source[key], options)",
+          "after": "setProperty(destination, key, cloneUnlessOtherwiseSpecified(source[key], options))",
+          "count": 1
+        }
+      ]
     }
   ],
   "unaffected": [
@@ -167,6 +232,11 @@
       "package": "zod",
       "fromVersion": "4.6.6",
       "reason": "GHSA-mrhx-c7xc-m3w5 is fixed in zod 4.6.6; only copies below it need the gate"
+    },
+    {
+      "package": "deepmerge",
+      "beforeVersion": "4.2.0",
+      "reason": "GHSA-gcqx-w48m-w2h4 affects >=4.2.0 <=4.3.1; the deepmerge 3.3.0 copy under react-native-paper is below the range"
     }
   ]
 }

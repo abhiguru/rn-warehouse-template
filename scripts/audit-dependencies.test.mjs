@@ -140,3 +140,29 @@ test('the accepted list is exactly the advisories with a local backport, each wi
     assert.ok(entry.range && entry.reason);
   }
 });
+
+const deepmerge = { name: 'deepmerge', url: 'https://github.com/advisories/GHSA-gcqx-w48m-w2h4', range: '>=4.2.0 <=4.3.1', severity: 'low' };
+const deepmergeProof = ['node_modules/deepmerge'].map(installedPath => ({ package: 'deepmerge', installedPath }));
+const withDeepmerge = (advisoryEntry = deepmerge) => {
+  const input = report({ deepmerge: { severity: 'low', nodes: ['node_modules/deepmerge'], via: [advisoryEntry] } });
+  input.vulnerabilities.expo.via.push('deepmerge');
+  return input;
+};
+
+test('audit accepts the deepmerge advisory (low, via expo) only with the installed repair verified', () => {
+  const result = assess(withDeepmerge(), [...verified, ...deepmergeProof]);
+  assert.equal(result.status, 'PASS_WITH_VERIFIED_BACKPORTS');
+  assert.deepEqual(result.covered.find(entry => entry.package === 'expo').advisories, ['GHSA-gcqx-w48m-w2h4', 'GHSA-vfj7-8cjw-p6xm']);
+  assert.equal(result.belowThreshold.find(entry => entry.package === 'deepmerge').severity, 'low');
+  assert.throws(() => assess(withDeepmerge(), verified), /every verified/);
+  assert.equal(acceptedAdvisories['GHSA-gcqx-w48m-w2h4'].reviewBy, '2027-01-28');
+});
+
+test('audit refuses a changed deepmerge range and an overdue review', () => {
+  const widened = assess(withDeepmerge({ ...deepmerge, range: '>=4.2.0 <=4.3.2' }), [...verified, ...deepmergeProof]);
+  assert.equal(widened.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
+  assert.ok(widened.unresolved.some(entry => entry.package === 'expo' && entry.reasons.includes(`UNREPAIRED:${deepmerge.url}`)));
+  const late = assess(withDeepmerge(), [...verified, ...deepmergeProof], on('2027-01-29'));
+  assert.equal(late.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
+  assert.ok(late.unresolved.some(entry => entry.reasons.includes('REVIEW_OVERDUE:GHSA-gcqx-w48m-w2h4')));
+});
