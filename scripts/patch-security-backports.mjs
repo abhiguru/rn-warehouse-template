@@ -17,8 +17,10 @@ const atLeast = (version, floor) => {
   return true;
 };
 // A copy with no entry for its exact version is accepted only when the manifest
-// declares that version range unaffected (a release that already has the fix).
-const unaffected = (name, version) => (manifest.unaffected ?? []).some(entry => entry.package === name && atLeast(version, entry.fromVersion));
+// exempts it: a release that already has the fix (`fromVersion`) or one exact
+// version that is reviewed and deliberately left unrepaired (`version`).
+const unaffected = (name, version) => (manifest.unaffected ?? []).some(entry => entry.package === name
+  && (entry.version ? entry.version === version : atLeast(version, entry.fromVersion)));
 
 export function backportSource(source, version, spec) {
   if (version !== spec.version) throw new Error(`Unreviewed ${spec.package} version`);
