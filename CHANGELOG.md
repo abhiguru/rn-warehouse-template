@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — deepmerge repair for the dependency gate
+
+- **deepmerge 4.3.1 repaired locally.** `npm run audit:dependencies` failed on GHSA-gcqx-w48m-w2h4 (deepmerge `>=4.2.0 <=4.3.1`,
+  prototype poisoning of the object `mergeObject()` returns; no patched release) for the copy that `expo` and `jest-config` load.
+  `scripts/security-backports.json` now defines an own `__proto__` key as a data property in `dist/cjs.js` and `dist/umd.js`
+  (the upstream PR 277 approach; every other merge result is unchanged), with an `acceptedAdvisories` entry reviewed by
+  2027-01-28 and tests that run the advisory's proof cases. The installer exempts exactly deepmerge 3.3.0 (under `react-native-paper`'s theme provider, in the app; it is outside the
+  advisory range but its older `mergeObject` has no prototype guard, and it merges only app-defined theme objects, so it is
+  exempted by exact version, not repaired) and refuses any other version it has no entry for. The gate is `PASS_WITH_VERIFIED_BACKPORTS`
+  again. No app code changed.
+
 ## Unreleased — Document numbers (WS-8, needs backend migration 127 for the new behaviour)
 
 Pairs with backend migration 127 (`suggest_document_number`, `get_document_numbering`, `set_document_numbering`, the `NUMBER_FORMAT`

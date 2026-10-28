@@ -342,3 +342,129 @@ test('the same oversized array on the unpatched zod 3.25.76 produces one issue p
     assert.equal(z.set(z.string()).max(2).safeParse(new Set(big(2000).map((_, i) => i))).error.issues.length, 2001);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// ---- deepmerge 4.3.1 (expo -> @expo/config, jest-config), GHSA-gcqx-w48m-w2h4 ----
+const deepmergeFiles = manifest.files.filter(file => file.package === 'deepmerge');
+const topDeepmerge = installedDirectory(deepmergeFiles[0]);
+
+test('deepmerge entries cover both loadable files (index.js is source that needs the uninstalled is-mergeable-object), cite the advisory and upstream PR 277', () => {
+  assert.deepEqual(deepmergeFiles.map(file => file.file).sort(), ['dist/cjs.js', 'dist/umd.js']);
+  assert.ok(deepmergeFiles.every(file => file.version === '4.3.1'));
+  assert.equal(topDeepmerge, resolve('node_modules/deepmerge'));
+  const pkg = JSON.parse(readFileSync(join(topDeepmerge, 'package.json'), 'utf8'));
+  assert.equal(pkg.main, 'dist/cjs.js');
+  assert.equal(pkg.module, undefined);
+  assert.equal(pkg.exports, undefined);
+  assert.match(readFileSync(join(topDeepmerge, 'index.js'), 'utf8'), /require\('is-mergeable-object'\)/);
+  assert.throws(() => require.resolve('is-mergeable-object'));
+  assert.equal(manifest.references.deepmerge.advisory, 'GHSA-gcqx-w48m-w2h4');
+  assert.equal(manifest.references.deepmerge.upstreamReport, 'https://github.com/TehShrike/deepmerge/issues/273');
+  assert.equal(manifest.references.deepmerge.upstreamPR, 'https://github.com/TehShrike/deepmerge/pull/277');
+});
+
+test('installed deepmerge files carry the repair exactly', () => {
+  for (const spec of deepmergeFiles) {
+    const source = readFileSync(join(topDeepmerge, spec.file), 'utf8');
+    assert.match(source, /GHSA-gcqx-w48m-w2h4/);
+    assert.equal(backportSource(source, spec.version, spec), source);
+  }
+});
+
+test('installer patches deepmerge 4.3.1, exempts only the exact 3.3.0 copy and refuses any other version', () => {
+  const root = mkdtempSync(join(tmpdir(), 'warehouse-deepmerge-backport-'));
+  const nested = 'node_modules/@callstack/react-theme-provider/node_modules/deepmerge';
+  const packages = {};
+  const place = (path, name, version, files) => {
+    packages[path] = { version };
+    mkdirSync(join(root, path), { recursive: true });
+    writeFileSync(join(root, path, 'package.json'), JSON.stringify({ name, version }));
+    for (const [file, text] of Object.entries(files)) { mkdirSync(dirname(join(root, path, file)), { recursive: true }); writeFileSync(join(root, path, file), text); }
+  };
+  const lay = (version, nestedVersion = '3.3.0') => {
+    for (const spec of manifest.files) {
+      place(`node_modules/${spec.package}`, spec.package, spec.package === 'deepmerge' ? version : spec.version, { [spec.file]: originalSource(spec) });
+    }
+    place(nested, 'deepmerge', nestedVersion, { 'dist/umd.js': 'older copy, unchanged' });
+    writeFileSync(join(root, 'package-lock.json'), JSON.stringify({ packages }));
+  };
+  try {
+    lay('4.3.1');
+    const done = securityBackports(root).filter(change => change.package === 'deepmerge');
+    assert.deepEqual(done.map(change => change.installedPath), ['node_modules/deepmerge', 'node_modules/deepmerge']);
+    assert.equal(readFileSync(join(root, nested, 'dist/umd.js'), 'utf8'), 'older copy, unchanged');
+    assert.equal(securityBackports(root, { verifyOnly: true }).filter(change => change.package === 'deepmerge').length, 2);
+    for (const version of ['4.2.0', '4.3.0', '4.3.2', '5.0.0']) {
+      lay(version);
+      assert.throws(() => securityBackports(root), /Unreviewed deepmerge version/);
+    }
+    for (const nestedVersion of ['2.2.1', '4.1.2', '3.3.1', '4.2.0', '4.3.2']) {
+      lay('4.3.1', nestedVersion);
+      assert.throws(() => securityBackports(root), /Unreviewed deepmerge version/);
+    }
+    for (const nestedVersion of ['3.3.0']) {
+      lay('4.3.1', nestedVersion);
+      assert.equal(securityBackports(root).filter(change => change.package === 'deepmerge').length, 2);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// The advisory's proof cases: the object returned by merge() must keep Object.prototype.
+const proof = merge => {
+  const results = {
+    nullPrototypeTarget: merge(Object.create(null), JSON.parse('{"__proto__":{"isAdmin":true}}')),
+    nullPlaceholder: merge({ session: null }, JSON.parse('{"session":{"__proto__":{"isAdmin":true}}}')),
+    ownProtoOnTarget: merge(JSON.parse('{"__proto__":{"isAdmin":true}}'), {}),
+  };
+  const sourceWithProto = JSON.parse('{"__proto__":{"isAdmin":true}}');
+  results.nullPrototypeTargetDirect = merge(Object.assign(Object.create(null), { a: 1 }), sourceWithProto);
+  return results;
+};
+const deepmergeVariants = [
+  ['dist/cjs.js (main)', () => require('deepmerge')],
+  ['dist/umd.js', () => require(join(topDeepmerge, 'dist/umd.js'))],
+];
+for (const [name, load] of deepmergeVariants) {
+  test(`patched deepmerge (${name}): a __proto__ key never changes the prototype of the returned object`, () => {
+    const merge = load();
+    for (const [shape, result] of Object.entries(proof(merge))) {
+      assert.equal(Object.getPrototypeOf(result), Object.prototype, shape);
+      assert.equal(result.isAdmin, undefined, shape);
+    }
+    const nested = proof(merge).nullPlaceholder.session;
+    assert.equal(Object.getPrototypeOf(nested), Object.prototype);
+    assert.equal(nested.isAdmin, undefined);
+    assert.equal(({}).isAdmin, undefined, 'Object.prototype is untouched');
+  });
+
+  test(`patched deepmerge (${name}): ordinary merges are unchanged`, () => {
+    const merge = load();
+    assert.deepEqual(merge({ a: 1, b: { c: 1, d: [1] } }, { b: { c: 2, d: [2] }, e: 3 }), { a: 1, b: { c: 2, d: [1, 2] }, e: 3 });
+    assert.deepEqual(merge([1, { a: 1 }], [{ b: 2 }]), [1, { a: 1 }, { b: 2 }]);
+    assert.deepEqual(merge({ a: [1, 2] }, { a: [3] }, { arrayMerge: (target, source) => source }), { a: [3] });
+    assert.deepEqual(merge({ a: { b: 1 } }, { a: { c: 2 } }, { customMerge: key => (key === 'a' ? (x, y) => ({ ...x, ...y, custom: true }) : undefined) }), { a: { b: 1, c: 2, custom: true } });
+    assert.deepEqual(merge({ a: 1 }, { a: 2 }, { isMergeableObject: () => false }), { a: 2 });
+    assert.deepEqual(merge.all([{ a: 1 }, { b: 2 }, { a: 3 }]), { a: 3, b: 2 });
+    const shared = { x: 1 };
+    assert.notEqual(merge({}, { s: shared }).s, shared, 'clones by default');
+    assert.equal(merge({}, { s: shared }, { clone: false }).s, shared);
+    const symbol = Symbol('k');
+    assert.equal(merge({}, { [symbol]: 1 })[symbol], 1);
+    assert.deepEqual(merge({ constructor: 1, prototype: 2 }, { constructor: 3 }), { constructor: 3, prototype: 2 });
+    assert.throws(() => merge.all('not an array'), /first argument should be an array/);
+    const own = Object.getOwnPropertyDescriptor(merge({}, JSON.parse('{"__proto__":{"a":1}}')), '__proto__');
+    assert.equal(own, undefined, 'an inherited-guarded __proto__ on a plain target is still skipped, as before');
+  });
+}
+
+test('the same proof cases on the unpatched deepmerge 4.3.1 poison the returned object', () => {
+  const root = mkdtempSync(join(tmpdir(), 'warehouse-deepmerge-regression-'));
+  try {
+    cpSync(topDeepmerge, join(root, 'deepmerge'), { recursive: true });
+    for (const spec of deepmergeFiles) writeFileSync(join(root, 'deepmerge', spec.file), originalSource(spec));
+    const merge = createRequire(join(root, 'x.cjs'))('./deepmerge');
+    const results = proof(merge);
+    assert.equal(results.nullPrototypeTarget.isAdmin, true);
+    assert.equal(results.ownProtoOnTarget.isAdmin, true);
+    assert.equal(results.nullPlaceholder.session.isAdmin, true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
