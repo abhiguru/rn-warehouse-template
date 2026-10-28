@@ -5,7 +5,7 @@
 - **What failed.** `npm run audit:dependencies` reported `FAIL_UNREPAIRED_DEPENDENCIES`: `expo` and `@expo/cli` also carried
   GHSA-gcqx-w48m-w2h4 (deepmerge `>=4.2.0 <=4.3.1`, low, CVSS 5.3, "mergeObject() allows prototype poisoning of returned
   objects"), which has no patched release. deepmerge 4.3.1 comes in through `expo` > `@expo/config` and `jest-config` (one
-  copy at `node_modules/deepmerge`); `react-native-paper` brings a separate 3.3.0 copy, which is below the affected range.
+  copy at `node_modules/deepmerge`); `react-native-paper` brings a separate 3.3.0 copy (see below).
 - **The repair is a local copy of the upstream approach (PR 277, open, unmerged).** `mergeObject` copied keys into a new
   object with plain assignment, so an own `__proto__` key (what `JSON.parse` produces) invoked the legacy setter and made the
   returned object inherit an attacker-chosen prototype whenever the target was a null-prototype object, held a `null`
@@ -13,12 +13,18 @@
   and `dist/umd.js` with a `setProperty` helper that defines the `__proto__` key as an ordinary own data property and assigns
   every other key as before; both copy loops use it. No key is dropped, so every other merge result is identical.
   (`index.js` is source that requires `is-mergeable-object`, which is not installed; nothing loads it.)
-- The installer repairs exactly 4.3.1, treats a copy older than 4.2.0 (the 3.3.0 under `react-native-paper`) as unaffected
-  (`beforeVersion` in the manifest) and refuses any other deepmerge version it has no entry for.
+- The installer repairs exactly 4.3.1, exempts exactly 3.3.0 (the copy under `react-native-paper`) and refuses any other
+  deepmerge version it has no entry for.
+- **deepmerge 3.3.0 is exempted, not repaired.** It is outside the advisory's range (`>=4.2.0 <=4.3.1`), but only because 4.2.0
+  introduced the guard the advisory bypasses: the 3.3.0 `mergeObject` has no prototype guard at all and is open to the same
+  kind of poisoning. It ships in the app through `react-native-paper`'s theme provider
+  (`@callstack/react-theme-provider`), which merges only app-defined theme objects, never untrusted input. The manifest
+  names it by exact version (`unaffected` entry with `version`); a different old copy is refused until reviewed. Whether to
+  patch it too is an owner decision.
 - `acceptedAdvisories` lists GHSA-gcqx-w48m-w2h4 with the advisory's own range (`>=4.2.0 <=4.3.1`), review date
   **2027-01-28**. At that date check whether deepmerge has released a fix (and whether `expo`/`jest-config` take it), and if
-  so delete the entry and its backport. Like the other build tools here, deepmerge runs in the Expo CLI and in tests, not in
-  the app bundle.
+  so delete the entry and its backport. The 4.3.1 copy runs in the Expo CLI and in tests; the 3.3.0 copy is in the app
+  bundle (see above).
 - `npm run audit:dependencies` is `PASS_WITH_VERIFIED_BACKPORTS` again.
 
 ## node-forge 1.4.1 — 2026-10-27

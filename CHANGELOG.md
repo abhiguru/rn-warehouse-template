@@ -6,8 +6,9 @@
   prototype poisoning of the object `mergeObject()` returns; no patched release) for the copy that `expo` and `jest-config` load.
   `scripts/security-backports.json` now defines an own `__proto__` key as a data property in `dist/cjs.js` and `dist/umd.js`
   (the upstream PR 277 approach; every other merge result is unchanged), with an `acceptedAdvisories` entry reviewed by
-  2027-01-28 and tests that run the advisory's proof cases. The installer accepts a deepmerge older than 4.2.0 (the 3.3.0 under
-  `react-native-paper`) as unaffected and refuses any other version it has no entry for. The gate is `PASS_WITH_VERIFIED_BACKPORTS`
+  2027-01-28 and tests that run the advisory's proof cases. The installer exempts exactly deepmerge 3.3.0 (under `react-native-paper`'s theme provider, in the app; it is outside the
+  advisory range but its older `mergeObject` has no prototype guard, and it merges only app-defined theme objects, so it is
+  exempted by exact version, not repaired) and refuses any other version it has no entry for. The gate is `PASS_WITH_VERIFIED_BACKPORTS`
   again. No app code changed.
 
 ## Unreleased — The version gate and the upgrade answer (app 0.6.0)

@@ -235,8 +235,8 @@
     },
     {
       "package": "deepmerge",
-      "beforeVersion": "4.2.0",
-      "reason": "GHSA-gcqx-w48m-w2h4 affects >=4.2.0 <=4.3.1; the deepmerge 3.3.0 copy under react-native-paper is below the range"
+      "version": "3.3.0",
+      "reason": "exempted by exact version, not repaired: 3.3.0 is outside the advisory range (>=4.2.0 <=4.3.1) but its older mergeObject has no prototype guard at all and is open to the same kind of poisoning; it ships in the app through react-native-paper theme provider (@callstack/react-theme-provider), where it merges only app-defined theme objects, never untrusted input"
     }
   ]
 }

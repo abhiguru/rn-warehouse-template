@@ -370,7 +370,7 @@ test('installed deepmerge files carry the repair exactly', () => {
   }
 });
 
-test('installer patches deepmerge 4.3.1, leaves the 3.3.0 copy alone and refuses any other version', () => {
+test('installer patches deepmerge 4.3.1, exempts only the exact 3.3.0 copy and refuses any other version', () => {
   const root = mkdtempSync(join(tmpdir(), 'warehouse-deepmerge-backport-'));
   const nested = 'node_modules/@callstack/react-theme-provider/node_modules/deepmerge';
   const packages = {};
@@ -397,11 +397,11 @@ test('installer patches deepmerge 4.3.1, leaves the 3.3.0 copy alone and refuses
       lay(version);
       assert.throws(() => securityBackports(root), /Unreviewed deepmerge version/);
     }
-    for (const nestedVersion of ['4.2.0', '4.3.2']) {
+    for (const nestedVersion of ['2.2.1', '4.1.2', '3.3.1', '4.2.0', '4.3.2']) {
       lay('4.3.1', nestedVersion);
       assert.throws(() => securityBackports(root), /Unreviewed deepmerge version/);
     }
-    for (const nestedVersion of ['3.3.0', '2.2.1', '4.1.2']) {
+    for (const nestedVersion of ['3.3.0']) {
       lay('4.3.1', nestedVersion);
       assert.equal(securityBackports(root).filter(change => change.package === 'deepmerge').length, 2);
     }
