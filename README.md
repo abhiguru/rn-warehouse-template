@@ -10,7 +10,7 @@ through that installation's canonical HTTPS origin. MIT licensed.
 Prerequisites:
 
 - Node.js **22.18+** and npm.
-- JDK 17 (Temurin) and an Android SDK with exactly the packages CI pins:
+- For native builds only (not needed for [Expo Go](#try-the-app-on-a-phone-with-expo-go)): JDK 17 (Temurin) and an Android SDK with exactly the packages CI pins:
   `platform-tools`, `platforms;android-36`, `build-tools;36.0.0`,
   `build-tools;35.0.0`, `ndk;27.1.12297006`, `ndk;27.0.12077973` and
   `cmake;3.22.1`. Set `ANDROID_HOME` to the SDK root;
@@ -45,6 +45,40 @@ the public bootstrap configuration and detects wrong URLs, missing configuration
 and accidental service-role keys; it does not prove that login or warehouse APIs
 work. The app itself uses the server chosen on its first screen, and no keys are
 copied into the app: it fetches its public anon key dynamically.
+
+## Try the app on a phone with Expo Go
+
+The quickest look needs only Node.js 22.18+ and npm: no JDK and no Android SDK. It also needs an installed backend and its HTTPS origin.
+
+```bash
+git clone https://github.com/abhiguru/rn-warehouse-template.git
+cd rn-warehouse-template
+npm ci                       # keep npm scripts on: the three postinstall patches are needed
+node scripts/create-env.mjs  # creates .env only if it is absent
+# in .env set EXPO_PUBLIC_CONFIG_API_URL=https://warehouse.example.com (the backend origin), then:
+npm run check:backend        # read-only check of that backend (no JDK or Android SDK needed)
+npm start -- --lan --clear
+```
+
+- Set `EXPO_PUBLIC_CENTRAL_ORIGIN` in `.env` only if the facility was set up with central sign-in (see `.env.example`).
+- The phone must be on the same Wi-Fi as the Metro host (a NAT'd virtual machine is not reachable: bridge its adapter); with `ufw`, allow port 8081 from the LAN only (the rule needs `sudo`: an agent gives the operator the command).
+- An agent keeps Metro running in `tmux` (or in the background) and gives the operator the `exp://<LAN IP>:8081` address to enter in Expo Go. Do not use `--tunnel` or any public tunnel without the operator's say-so.
+- Scan the QR code with Expo Go, whose SDK (Settings in Expo Go) must match `expo` in `package.json`. On the first screen enter the backend's HTTPS origin and sign in (SMS code, or the central sign-in when it is set).
+- Limits: Expo Go never applies the config plugins in `app.config.js` and `plugins/` and uses its own permission strings, and it may not support this SDK. Native builds
+  ([below](#native-builds)) are the baseline. Errors: [Running Metro for a phone](docs/DEVICE_ACCEPTANCE.md#running-metro-for-a-phone).
+
+## Install with an AI agent
+
+Point an AI coding agent at this repository and tell it to set the app up. These are its instructions.
+**First ask the operator, one question at a time:**
+
+1. A quick look in Expo Go, or a native build on a device (`npm run android`, which needs the JDK and Android SDK from the Quickstart)?
+2. Is a backend installed already? If so, its HTTPS origin. If not, install it first on the facility host with the backend's
+   [Install with an AI agent](https://github.com/abhiguru/supabase-warehouse-template#install-with-an-ai-agent) section.
+3. Was the facility set up with central sign-in? If so, the association's issuer (the same https origin the backend has as `--central-issuer`) for `EXPO_PUBLIC_CENTRAL_ORIGIN`. `EXPO_PUBLIC_CENTRAL_ISSUER` defaults to that origin; set it only if the operator says the issuer name differs.
+
+Then follow the matching section: [Try the app on a phone with Expo Go](#try-the-app-on-a-phone-with-expo-go), or the [Quickstart](#quickstart)
+and [Native builds](#native-builds). Never ask for a secret value in chat. Stop and ask when an input is missing or a step fails the same way twice.
 
 ## How the app connects
 
@@ -84,11 +118,7 @@ writes the network security config (see [RELEASE_PREPARATION.md](docs/RELEASE_PR
 Expo generates the ignored native directories as needed; use `npm start` for
 later Metro sessions. Native builds are the baseline: Expo Go may not support
 this SDK and does not validate native plugins, permissions or build settings.
-Expo Go (the store app, whose SDK must match `expo` in `package.json`) loads the bundle for a quick look, but it
-never applies the config plugins in `app.config.js` and `plugins/`, and uses its own permission strings. A phone on another network than
-the Metro host cannot use `--lan`; `expo start --tunnel` (ngrok) may fail to start, and a public tunnel puts an
-unauthenticated development server on the internet, so stop it when you are done. Network, tunnel and
-Expo Go errors are covered in [Running Metro for a phone](docs/DEVICE_ACCEPTANCE.md#running-metro-for-a-phone).
+Expo Go limits and network errors: [Try the app on a phone with Expo Go](#try-the-app-on-a-phone-with-expo-go).
 For a bundle-only check run `npx expo export --platform android`. Cloud builds
 need your own EAS project and signing credentials; no signing assets or project
 ownership are included.
