@@ -2,6 +2,8 @@
 
 Guidance for Claude Code (and other contributors) working in this repository.
 
+To set the app up from scratch (an agent doing it for an operator), follow the README's [Install with an AI agent](README.md#install-with-an-ai-agent).
+
 ## What this app is for
 
 One mobile app that a cold-storage **owner**, their **staff** and their **clients** all use
