@@ -281,3 +281,54 @@ describe('a deliberate way out goes through without a question', () => {
     expect(routeNames()).toEqual(['index']);
   });
 });
+
+describe('a save is running (blocked)', () => {
+  it('header Back and the Android Back key neither ask nor leave', async () => {
+    await openB({ hasChanges: true, blocked: true });
+
+    await act(async () => { router.back(); });
+    await settle();
+    let taken = false;
+    await act(async () => { taken = backKey.press(); });
+    await settle();
+
+    expect(taken).toBe(true);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(pathname()).toBe('/b');
+    expect(routeNames()).toEqual(['index', 'b']);
+  });
+
+  it('holds Back even when nothing differs from what was saved', async () => {
+    await openB({ hasChanges: false, blocked: true });
+
+    await act(async () => { router.back(); });
+    await settle();
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(pathname()).toBe('/b');
+  });
+
+  it('a deliberate way out (replace) still leaves during the save', async () => {
+    await openB({ hasChanges: true, blocked: true });
+
+    await act(async () => { router.replace('/'); });
+    await settle();
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(pathname()).toBe('/');
+    expect(routeNames()).not.toContain('b');
+  });
+
+  it('when the save ends and nothing differs, Back leaves without a question', async () => {
+    await openB({ hasChanges: true, blocked: true });
+    options = { hasChanges: false, blocked: false };
+    await act(async () => { router.setParams({ edit: 'saved' }); });
+    await settle();
+
+    await act(async () => { router.back(); });
+    await settle();
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(pathname()).toBe('/');
+  });
+});
