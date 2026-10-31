@@ -10,7 +10,7 @@
 import * as Crypto from 'expo-crypto';
 import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
-import { executeRPC } from '@/utils/serviceErrorHandler';
+import { executeRPC, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { createLogger } from '@/utils/logger';
 import { formatIdentifier, t } from '@/i18n';
 import { grnNumbersOfOtherCustomerRefusal } from '@/features/dispatch/utils/lotOwnership';
@@ -481,6 +481,7 @@ export const createDispatch = async (payload: {
 
     if (error) {
       log.error('create_dispatch_with_stock_check failed', { code: errorCode(error) });
+      handleGlobalAuthError(error);
       if (isNumberTakenAnswer(error)) {
         return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
       }
@@ -490,6 +491,7 @@ export const createDispatch = async (payload: {
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
       log.error('create_dispatch_with_stock_check returned failure', { reason: typeof data.reason === 'string' ? data.reason : undefined });
+      handleGlobalAuthError(data);
       if (isNumberTakenAnswer(data)) {
         return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
       }
@@ -662,6 +664,7 @@ export const updateDispatch = async (
 
     if (error) {
       log.error('update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
+      handleGlobalAuthError(error);
       if (isNumberTakenAnswer(error)) {
         return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
       }
@@ -670,6 +673,7 @@ export const updateDispatch = async (
 
     if (data && data.success === false) {
       log.error('update_dispatch_smart returned failure', { dispatchId, reason: typeof data.reason === 'string' ? data.reason : undefined });
+      handleGlobalAuthError(data);
       if (isNumberTakenAnswer(data)) {
         return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
       }

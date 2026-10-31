@@ -8,7 +8,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: async () => ({ rpc: mockRpc }),
 }));
 jest.mock('@/utils/submissionIdempotency', () => ({ submissionIdempotencyKey: async () => 'warehouse-dispatch-fictional-key' }));
-jest.mock('@/utils/serviceErrorHandler', () => ({ executeRPC: jest.fn(), createErrorResponse: jest.fn() }));
+jest.mock('@/utils/serviceErrorHandler', () => ({ executeRPC: jest.fn(), createErrorResponse: jest.fn(), handleGlobalAuthError: jest.fn() }));
 jest.mock('../dispatchImageService', () => ({ uploadDeferredDispatchImages: jest.fn() }));
 
 const marker = 'Fictional private dispatch sentinel';

@@ -15,6 +15,7 @@ import { t } from '@/i18n';
 
 import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
+import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
 import { markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
@@ -208,12 +209,15 @@ async function sendSave(
   const sentAt = Date.now();
   try {
     const { data, error, status } = await client.rpc(name, args);
+    // An ended session ends the sign-in here too, with its reason (create and update both come through here).
+    handleGlobalAuthError(error ?? (data?.success === false ? data : null));
     if (error && typeof status === 'number') {
       const { message, code, details, hint } = error as { message?: string; code?: string; details?: string; hint?: string };
       return { data, error: { message, code, details, hint, status }, sentAt };
     }
     return { data, error, sentAt };
   } catch (thrown) {
+    handleGlobalAuthError(thrown);
     return { data: null, error: thrown, sentAt };
   }
 }

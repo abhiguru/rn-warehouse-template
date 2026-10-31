@@ -22,7 +22,7 @@ import { isTemporaryGRNImageId } from './imageId';
 // M3 Fix: Import executeRPC for potential future refactoring
 // Note: Current RPC methods have custom error handling (E5 fix) or extensive debug logging
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { isLostAnswer } from '@/utils/lostAnswer';
 import { reportSaveError } from '@/utils/reportOutcome';
 import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
@@ -467,6 +467,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 
       if (error) {
         log.error('save_grn failed', loggableError(error));
+        // An ended session ends the sign-in here too, with its reason (the same as on a list read).
+        handleGlobalAuthError(error);
         if (payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
         // Sent and not answered (a dropped connection, the 60 s timeout, a gateway's 502 / 504): the GRN may be saved.
         // A statement timeout is an answer: nothing was saved. The HTTP status goes with the error, so a gateway's
@@ -482,6 +484,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 
     if (!data || !data.success) {
       log.error('save_grn returned failure', { errorCode: data?.error_code });
+      handleGlobalAuthError(data);
       const refusalCode = data?.error_code;
       if (isRateRefusalCode(refusalCode)) throw new RateRefusal(refusalCode, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }), data?.data);
       // A likely duplicate (migration 124): a warning the person answers; nothing was saved. It is the server's answer to
@@ -823,6 +826,7 @@ export const updateGRN = async (
 
       if (error) {
         log.error('update_grn failed', loggableError(error));
+        handleGlobalAuthError(error);
         // Sent and not answered (a dropped connection, the 60 s timeout, a gateway's 502 / 504): the save may be
         // applied. A statement timeout is an answer: nothing was saved. The HTTP status goes with the error, so a
         // gateway's answer is told from the server's own refusals. A RESEND is settled only by the server's answer:
@@ -846,6 +850,7 @@ export const updateGRN = async (
 
     if (!rpcResult || !rpcResult.success) {
       log.error('update_grn returned failure', { errorCode: rpcResult?.error_code });
+      handleGlobalAuthError(rpcResult);
 
       // Handle stock protection from RPC response
       if (rpcResult?.error_code === 'STOCK_PROTECTED') {
