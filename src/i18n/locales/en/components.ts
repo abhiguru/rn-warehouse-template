@@ -171,6 +171,11 @@ export const components = {
     orderUpdated: 'Order updated',
     statusChanged: 'Order status changed',
     dispatchCreated: 'Dispatch created: {{number}}',
+    // Built from the entry's action code, not from the server's English title.
+    lineAdded: 'Added: {{item}}',
+    lineRemoved: 'Removed: {{item}}',
+    dispatchTook: 'Dispatch {{number}} took {{bags}} from {{item}}',
+    dispatchDeletedGaveBack: 'Dispatch {{number}} deleted: {{bags}} given back to {{item}}',
     availableStock: 'Available stock: {{stock}}',
     availableStockWas: 'Available stock: {{stock}} (was {{previous}})',
     by: 'by {{name}}',

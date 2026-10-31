@@ -15,7 +15,7 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 import { isWarehouseUser } from '@/config/roles';
 
 export default function CustomerOrderScreen() {
@@ -50,6 +50,8 @@ export default function CustomerOrderScreen() {
   const [deactivatedFor, setDeactivatedFor] = useState<string | undefined>(undefined);
   const businessDeactivated = deactivatedFor !== undefined && deactivatedFor === customerId;
   const [showItemCatalog, setShowItemCatalog] = useState(false);
+  // The number of the open order, once it is read (an order that does not exist yet has none).
+  const [orderNo, setOrderNo] = useState<string | undefined>(undefined);
 
   // Changelog state
   const [changelogVisible, setChangelogVisible] = useState(false);
@@ -163,6 +165,7 @@ export default function CustomerOrderScreen() {
     setChangelogOffset(0);
     setChangelogError(undefined);
     setCustomerName('');
+    setOrderNo(undefined);
   }, [customerId]);
 
   useEffect(() => {
@@ -209,6 +212,11 @@ export default function CustomerOrderScreen() {
               <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="middle" accessibilityRole="header">
                 {tr('orders.screen.title', { name: customerName })}
               </Text>
+              {orderNo ? (
+                <Text style={styles.headerSubtitle} numberOfLines={1} testID="order-screen-number">
+                  {tr('orders.screen.orderNumber', { number: formatIdentifier(orderNo) })}
+                </Text>
+              ) : null}
             </View>
             <Pressable
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
@@ -242,6 +250,7 @@ export default function CustomerOrderScreen() {
             businessDeactivated={businessDeactivated}
             businessRecordUnread={businessRecordUnread}
             onBusinessDeleted={() => setRefusedFor(customerId)}
+            onOrderNumber={setOrderNo}
           />
         </View>
 
@@ -259,6 +268,7 @@ export default function CustomerOrderScreen() {
           entries={changelogEntries}
           loading={changelogLoading}
           analytics={changelogAnalytics}
+          orderNumber={orderNo}
           onLoadMore={handleLoadMoreChangelog}
           hasMore={changelogHasMore}
           error={changelogError}
@@ -308,6 +318,10 @@ const makeStyles = (t: ThemeTokens) => ({
   headerTitle: {
     ...typography.headline,
     color: t.text.primary,
+  },
+  headerSubtitle: {
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   // Custom back button (same on every headerless screen): platform glyph,
   // brand.tint, the word "Back", at least touchTarget in size (§8)
