@@ -33,7 +33,7 @@ import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { setStandardRate } from '@/services/item-pricing-service';
-import type { SetStandardRateResult } from '@/types/item-pricing.types';
+import type { SetStandardRateResult, StandardTier } from '@/types/item-pricing.types';
 import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { askAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
@@ -43,6 +43,8 @@ import {
   fieldForRefusal,
   standardContext,
   standardDraft,
+  tierFigures,
+  tiersDiffer,
   tiersOf,
   validateStandard,
 } from '@/features/item-pricing/standardRate';
@@ -66,6 +68,8 @@ interface Form {
    * the server refuses when someone else saved meanwhile. Not changed by a background refresh.
    */
   version: string | null;
+  /** The tiers the draft was built from (the old figures the change question names). */
+  saved: StandardTier[];
 }
 
 export default function StandardRateScreen() {
@@ -118,7 +122,7 @@ export default function StandardRateScreen() {
     if (!rate || form || fresh !== 'ok') return;
     const today = todayDay();
     const draft = standardDraft(rate.tiers, today);
-    setForm({ draft, initial: draft, ctx: standardContext(today), version: rate.updatedAt ?? (rate.tiers.length === 0 ? '-infinity' : null) });
+    setForm({ draft, initial: draft, ctx: standardContext(today), version: rate.updatedAt ?? (rate.tiers.length === 0 ? '-infinity' : null), saved: rate.tiers });
   }, [rate, form, fresh]);
 
   const changed = !!form && hasChanges(form.draft, form.initial);
@@ -212,6 +216,20 @@ export default function StandardRateScreen() {
       if (!dry.success) {
         showRefusal(dry);
         return;
+      }
+      // A standard rate already saved is never replaced without asking: the old and the new figures are named.
+      const saved = form.saved;
+      if (saved.length > 0 && tiersDiffer(saved, tiersToSend)) {
+        const change = await askAlert(
+          t('pricing.standard.changeTitle'),
+          t('pricing.standard.changeMessage', { old: tierFigures(saved), new: tierFigures(tiersToSend) }),
+          [
+            { text: t('common.back'), style: 'cancel', value: false },
+            { text: t('pricing.standard.changeConfirm'), value: true },
+          ],
+          false,
+        );
+        if (!change || !alive.current) return;
       }
       if ((dry.itemsPriced ?? 0) > 0) {
         const go = await askAlert(

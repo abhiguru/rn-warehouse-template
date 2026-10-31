@@ -184,6 +184,11 @@ export const pricing: Translation<typeof source> = {
     },
     giveMessage: 'તેમની પહેલી આવક પાવતીથી આવેલા જથ્થા પર તે લાગશે.',
     giveConfirm: 'સાચવો અને આપો',
+    // Draft for the owner's wording review (Standard rate change question, 2026-10-31).
+    changeTitle: 'પ્રમાણભૂત દર બદલવો છે?',
+    changeMessage: 'હાલ:\n{{old}}\n\nનવો:\n{{new}}',
+    changeConfirm: 'ફેરફાર સાચવો',
+    changeTier: '{{band}}: ભાડું {{rent}}, મજૂરી {{labour}}, ટેક્સ {{tax}}%',
     reload: 'ફરી લોડ કરો',
     lastTierHint: '{{kg}} કિલોથી વધુ વજનના નંગ પર પ્રમાણભૂત દર લાગતો નથી.',
     loading: 'પ્રમાણભૂત દર લોડ થઈ રહ્યો છે',

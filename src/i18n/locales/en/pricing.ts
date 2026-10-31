@@ -183,6 +183,11 @@ export const pricing = {
     },
     giveMessage: 'They are charged it for lots received from their first GRN.',
     giveConfirm: 'Save and give it',
+    // Save on a facility that already has a standard rate first asks this, naming the old and the new figures.
+    changeTitle: 'Change the standard rate?',
+    changeMessage: 'Now:\n{{old}}\n\nNew:\n{{new}}',
+    changeConfirm: 'Save the change',
+    changeTier: '{{band}}: rent {{rent}}, labour {{labour}}, tax {{tax}}%',
     reload: 'Reload',
     lastTierHint: 'Bags heavier than {{kg}} kg get no standard rate.',
     loading: 'Loading the standard rate',

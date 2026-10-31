@@ -286,6 +286,42 @@ describe('Standard rate', () => {
     expect(setStandardRate).toHaveBeenCalledTimes(2);
   });
 
+  it('asks before changing a saved standard rate, naming the old and the new figures', async () => {
+    const t = await open([tier(0, 50, 4, 1, 5)]);
+    await type(t, 'Rent per bag, per month', 0, '4.50');
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [tier(0, 50, 4.5, 1, 5)], itemsPriced: 0 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(askAlert).toHaveBeenCalledWith(
+      'Change the standard rate?',
+      'Now:\n0\u201350 kg: rent \u20b94.00, labour \u20b91.00, tax 5%\n\nNew:\n0\u201350 kg: rent \u20b94.50, labour \u20b91.00, tax 5%',
+      expect.any(Array),
+      false,
+    );
+    expect(setStandardRate).toHaveBeenCalledTimes(2);
+  });
+
+  it('saves nothing more than the dry run when the change question is answered Back', async () => {
+    const t = await open([tier(0, 50, 4, 1, 5)]);
+    await type(t, 'Rent per bag, per month', 0, '4.50');
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
+    jest.mocked(askAlert).mockResolvedValue(false as never);
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(setStandardRate).toHaveBeenCalledTimes(1);
+    expect(router.back).not.toHaveBeenCalled();
+  });
+
+  it('asks the change question in Gujarati digits', async () => {
+    setLanguage('gu');
+    const t = await open([tier(0, 50, 4, 1, 5)]);
+    await act(async () => { t.root.findAllByType(TextInput).find(n => n.props.value === '૪.૦૦')!.props.onChangeText('4.50'); });
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    const [title, message] = jest.mocked(askAlert).mock.calls[0];
+    expect(title).toBe('પ્રમાણભૂત દર બદલવો છે?');
+    expect(String(message)).toContain('ભાડું');
+    expect(/[0-9]/.test(String(message))).toBe(false);
+  });
+
   it('shows a stale answer as the Reload strip and saves nothing', async () => {
     const t = await open(FOUR);
     jest.mocked(setStandardRate).mockResolvedValue({ success: false, errorCode: 'STALE_STANDARD_RATE', message: 'x' });
