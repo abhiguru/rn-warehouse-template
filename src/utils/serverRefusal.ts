@@ -71,6 +71,8 @@ export const REFUSAL = {
   GRN_PHOTO_REQUIRED: 'GRN_PHOTO_REQUIRED',
   /** A GRN number with a space in it (`gr_no`). */
   GRN_NUMBER_SPACES: 'GRN_NUMBER_SPACES',
+  /** A dispatch number with a space in it (`number`). Nothing was saved. */
+  DISPATCH_NUMBER_SPACES: 'DISPATCH_NUMBER_SPACES',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

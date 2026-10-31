@@ -1009,6 +1009,15 @@ export function useDispatchForm({
           return { success: false, error: message, numberTaken: { message } };
         }
 
+        case REFUSAL.DISPATCH_NUMBER_SPACES: {
+          // The number field already removes spaces while typing; an older form state or a pasted value can still get here.
+          const message = t('dispatch.validation.dispNoSpaces');
+          dispatch(setTakenNumberError(message));
+          setLocalValidationErrors((prev) => ({ ...prev, disp_no: message }));
+          report(t('dispatch.wizard.errorTitle'), message);
+          return { success: false, error: message, numberTaken: { message } };
+        }
+
         default:
           return undefined;
       }

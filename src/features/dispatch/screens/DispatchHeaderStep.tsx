@@ -411,7 +411,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                             accessibilityHint={lockedReason}
                                             editable={!dateAndNumberLocked}
                                             value={header.disp_no}
-                                            onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase())}
+                                            onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase().replace(/\s+/g, ''))}
                                             placeholder={numberBoxPlaceholder(numberHint, numberReason, 'I####')}
                                             placeholderTextColor={t.text.placeholder}
                                             autoCapitalize="characters"
@@ -504,7 +504,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 suggestionContext={header.customer_id}
                                 placeholder={tr('dispatch.form.vehicleRegistration')}
                                 autoCapitalize="characters"
-                                maxLength={30}
+                                maxLength={20}
                                 icon="car"
                                 hasError={!!validationErrors.registration}
                             />

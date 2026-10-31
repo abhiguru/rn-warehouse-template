@@ -66,6 +66,8 @@ const WORDED_REFUSALS: ReadonlySet<string> = new Set([
   REFUSAL.POSSIBLE_DUPLICATE,
   // Migration 127: the number does not follow the facility's numbering rule (nothing was saved).
   REFUSAL.NUMBER_FORMAT,
+  // Migration 130: the number has a space in it (nothing was saved).
+  REFUSAL.DISPATCH_NUMBER_SPACES,
 ]);
 
 /** The result for a refusal of the list above, or undefined when the answer is none of them. */
@@ -75,6 +77,11 @@ function wordedRefusal(answer: unknown, fallback: string): DispatchApiResponse |
   const text = serverText(refusal.text, fallback, { write: true, form: true });
   reportOutcome('save_refused', { code: refusal.reason });
   return { success: false, reason: refusal.reason, refusal, error: text, message: text };
+}
+
+/** The vehicle number is longer than the column holds (migration 130: `error_code: 'registration_too_long'`, limit 20). */
+function isRegistrationTooLong(answer: unknown): boolean {
+  return (answer as { error_code?: unknown } | null)?.error_code === 'registration_too_long';
 }
 
 /** The number a refusal is about: the one the server names, else the number that was sent. */
@@ -476,6 +483,7 @@ export const createDispatch = async (payload: {
       // Wave B: the date rules (D3) and the order that moved (D5) are worded by the screen, from the reason and the fields.
       const worded = wordedRefusal(data, t('dispatch.service.createFailed'));
       if (worded) return worded;
+      if (isRegistrationTooLong(data)) throw new Error(t('dispatch.validation.registrationMax'));
       throw markRefusal(new Error(serverText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
     }
 
@@ -656,6 +664,7 @@ export const updateDispatch = async (
       // worded by the screen, from the reason and the fields.
       const worded = wordedRefusal(data, t('dispatch.service.updateFailed'));
       if (worded) return worded;
+      if (isRegistrationTooLong(data)) throw new Error(t('dispatch.validation.registrationMax'));
       throw markRefusal(new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
     }
 

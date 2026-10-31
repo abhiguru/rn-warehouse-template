@@ -53,7 +53,7 @@ export const step1Schema = yup.object().shape({
   registration: yup
     .string()
     .required(m('dispatch.validation.registrationRequired'))
-    .max(30, m('dispatch.validation.registrationMax'))
+    .max(20, m('dispatch.validation.registrationMax'))
     .matches(/^[A-Z0-9 ]+$/, m('dispatch.validation.registrationFormat')),
 
   customer_id: yup

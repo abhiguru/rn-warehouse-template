@@ -42,3 +42,15 @@ it('an edit that changes the number is refused the same way', async () => {
   const result = await updateDispatch('d1', payload);
   expect(result).toMatchObject({ success: false, reason: 'NUMBER_FORMAT', refusal: { fields: { pattern: 'I####' } } });
 });
+
+it('a number with a space comes back as a worded refusal', async () => {
+  mockRpc.mockResolvedValue({ data: { success: false, error_code: 'WH409', reason: 'DISPATCH_NUMBER_SPACES', number: 'I 1', error: "A dispatch number can't contain spaces.", message: "A dispatch number can't contain spaces." }, error: null });
+  const result = await createDispatch({ ...payload, submissionNonce: 'form-b' });
+  expect(result).toMatchObject({ success: false, reason: 'DISPATCH_NUMBER_SPACES', refusal: { fields: { number: 'I 1' } } });
+});
+
+it('a vehicle number over 20 characters is worded by the app, in the app language', async () => {
+  mockRpc.mockResolvedValue({ data: { success: false, error_code: 'registration_too_long', error: 'x', message: 'x', data: { limit: 20 } }, error: null });
+  const result = await updateDispatch('d1', payload);
+  expect(result).toMatchObject({ success: false, error: 'Registration must be at most 20 characters' });
+});

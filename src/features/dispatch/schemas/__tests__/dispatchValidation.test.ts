@@ -56,6 +56,13 @@ describe('dispatch Step 1 messages for empty fields', () => {
     expect(result.errors.registration).toBe(t('dispatch.validation.registrationFormat'));
   });
 
+  it('takes a vehicle number of 20 characters and refuses 21', async () => {
+    const ok = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: 'A'.repeat(20) });
+    expect(ok.errors.registration).toBeUndefined();
+    const long = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: 'A'.repeat(21) });
+    expect(long.errors.registration).toBe(t('dispatch.validation.registrationMax'));
+  });
+
   it('lists a missing customer once in the summary, although two fields fail', async () => {
     const result = await validateStep1({ ...validHeader, disp_no: 'I0001', customer_id: '', customer_name: '' });
 
