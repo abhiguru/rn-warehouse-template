@@ -4,8 +4,8 @@
  * service. Only what the invoice screens reach outside the app is stood in for: the facility's `rpc`
  * (invoiceFlowServer), the invoice details page (a button that opens the edit), and the modules each test file mocks.
  *
- * The test file starts the app with `startFlowApp({ location, advance })`, where `advance` runs the pending fake
- * timers (`() => jest.runAllTimersAsync()`), and keeps its `jest.mock` lines for the modules named in
+ * The test file starts the app with `startFlowApp({ location, advance, pendingTimers })`, where `advance` runs the pending fake
+ * timers (`() => jest.runAllTimersAsync()`) and `pendingTimers` counts them (`() => jest.getTimerCount()`), and keeps its `jest.mock` lines for the modules named in
  * `docs`-style at the top of each flow test. No jest globals here.
  */
 import React from 'react';
@@ -129,9 +129,11 @@ export interface StartOptions {
   location: string;
   /** Runs the pending fake timers: `() => jest.runAllTimersAsync()`. */
   advance: () => Promise<void>;
+  /** How many fake timers are still pending (`() => jest.getTimerCount()`). */
+  pendingTimers: () => number;
 }
 
-export async function startFlowApp({ location, advance }: StartOptions): Promise<FlowApp> {
+export async function startFlowApp({ location, advance, pendingTimers }: StartOptions): Promise<FlowApp> {
   process.env.EXPO_ROUTER_IMPORT_MODE = 'sync';
   const backKey = installHardwareBack();
   const context = getMockContext({
@@ -185,7 +187,7 @@ export async function startFlowApp({ location, advance }: StartOptions): Promise
   const settle = async () => {
     for (let round = 0; round < 10; round += 1) {
       await act(async () => { await advance(); });
-      if (jest.getTimerCount() === 0) break;
+      if (pendingTimers() === 0) break;
     }
     await openClosedLines();
   };

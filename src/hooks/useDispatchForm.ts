@@ -296,6 +296,9 @@ export interface UseDispatchFormReturn {
    */
   reloadDispatch: () => Promise<boolean>;
 
+  /** Edit: the server's updated_at of the dispatch as loaded (null when none), for the stale-edit check. */
+  getLoadedUpdatedAt: () => string | null;
+
   // Reset
   resetFormState: () => void;
 }

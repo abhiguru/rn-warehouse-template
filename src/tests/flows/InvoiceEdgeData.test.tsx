@@ -69,7 +69,7 @@ const estimatedTotal = () => app.byTestID('invoice-summary-total').props.accessi
 /** A new invoice for a GRN with these lines, on step 2. */
 async function openOnItems(lines: InvoiceItemData[]) {
   server.addGrn(IDS.grn, 'A0010', lines);
-  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync() });
+  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
   await openNewInvoice(app);
   await pickGrn(app, 'A0010');
   await app.tap('Next: items');

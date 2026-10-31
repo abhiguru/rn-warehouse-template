@@ -60,7 +60,7 @@ afterEach(async () => {
 });
 
 const open = async () => {
-  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync() });
+  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
 };
 const form = () => app.store.getState().invoiceForm;
 const saves = () => server.callsOf('save_invoice');
