@@ -1287,7 +1287,12 @@ export const breakGlassSignIn = async (phone: string, code: string): Promise<Bre
     }
     const completed = await completeOperatorSignIn(result.data, generation).catch(() => null);
     if (!completed?.success) {
-      if (generation === getSessionGeneration()) await SecureStore.deleteItemAsync(SESSION_ENDS_AT_KEY).catch(() => {});
+      // The tokens may already be stored (a later step failed). Remove them, and the stored end with them, and end the
+      // session on the server, so a sign-in that was reported as failed leaves no session behind.
+      if (generation === getSessionGeneration()) {
+        await clearStoredTokens().catch(() => {});
+        if (typeof refreshToken === 'string') await revokeSession(refreshToken);
+      }
       return { success: false, reason: generation !== getSessionGeneration() ? 'session_changed' : 'failed' };
     }
     return completed as AuthSuccessResult;

@@ -188,3 +188,17 @@ describe('the end of the session', () => {
     expect(await explainEndedSession('Session rejected')).toBe('Session rejected');
   });
 });
+
+it('removes the tokens and revokes the session when sign-in fails after they were stored', async () => {
+  jest.mocked(global.fetch).mockResolvedValue(answer({ success: true, data: loginData() }));
+  // A failure after the tokens are written: the pending enrollment token cannot be deleted.
+  jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async key => {
+    if (key.includes('enrollment')) throw new Error('secure store error');
+    secure.delete(key);
+  });
+  const result = await breakGlassSignIn('+919000000002', '482913');
+  expect(result.success).toBe(false);
+  expect(rpc).toHaveBeenCalledWith('logout_session', expect.objectContaining({ p_refresh_token: 'e'.repeat(64) }));
+  expect((await getStoredToken()).isValid).toBe(false);
+  expect(secure.has(SESSION_ENDS_AT_KEY)).toBe(false);
+});
