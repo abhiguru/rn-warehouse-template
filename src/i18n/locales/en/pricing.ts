@@ -22,7 +22,7 @@ export const pricing = {
   row: {
     labour: 'Labour {{amount}}',
     tax: 'Tax {{percent}}%',
-    a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, labour {{labour}} per bag, tax {{percent}}%',
+    a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, labour {{labour}} per {{pack}}, tax {{percent}}%',
     a11yOneTime: '{{item}}, {{amount}} {{unit}}, {{band}}, tax {{percent}}%',
   },
   otherDay: {
@@ -92,7 +92,7 @@ export const pricing = {
     discard: 'Discard',
     locked: 'Save or discard the other change first.',
     unitRupees: 'rupees {{unit}}',
-    unitLabour: 'rupees per bag',
+    unitLabour: 'rupees per {{unit}}',
     unitKg: 'kilograms',
     unitPercent: 'percent',
     bandLine: 'Weight band {{range}}',

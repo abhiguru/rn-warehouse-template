@@ -24,7 +24,7 @@ export const pricing: Translation<typeof source> = {
   row: {
     labour: 'મજૂરી {{amount}}',
     tax: 'ટેક્સ {{percent}}%',
-    a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, નંગ દીઠ મજૂરી {{labour}}, ટેક્સ {{percent}}%',
+    a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, {{pack}} દીઠ મજૂરી {{labour}}, ટેક્સ {{percent}}%',
     a11yOneTime: '{{item}}, {{amount}} {{unit}}, {{band}}, ટેક્સ {{percent}}%',
   },
   otherDay: {
@@ -91,7 +91,7 @@ export const pricing: Translation<typeof source> = {
     discard: 'ફેરફાર છોડી દો',
     locked: 'પહેલાં બીજો ફેરફાર સાચવો અથવા છોડી દો.',
     unitRupees: 'રૂપિયા, {{unit}}',
-    unitLabour: 'રૂપિયા, નંગ દીઠ',
+    unitLabour: 'રૂપિયા, {{unit}} દીઠ',
     unitKg: 'કિલો',
     unitPercent: 'ટકા',
     // Drafts for the owner's wording review (rate box laid out like the GRN rate form, 2026-10-20); datesFrom is the GRN rate sheet's wording.

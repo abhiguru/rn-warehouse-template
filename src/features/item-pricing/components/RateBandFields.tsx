@@ -29,6 +29,7 @@ import {
 } from '../editModel';
 import { figuresStack } from '../figureRow';
 import { bandText, unitText } from '../rateText';
+import { packageUnit } from '@/utils/packagingWord';
 import type { TierTag } from '../standardRate';
 import { TierTagView } from './BandList';
 import { BandsFooter } from './BandsFooter';
@@ -47,6 +48,8 @@ interface Props {
   tags?: TierTag[] | null;
   /** The fields cannot be typed in (a box that waits for the other one, or a read-only one). */
   readOnly?: boolean;
+  /** The item's packaging (Bag, Box, Crate), for "per box" in the field labels; "bag" when unknown. */
+  packaging?: string | null;
   testID?: string;
 }
 
@@ -72,7 +75,7 @@ const CARD_CHROME = space.md + 1;
 /** The first refusal among the keys (a row shows one message). */
 const firstError = (errors: Record<string, string>, keys: string[]): string | undefined => keys.map(key => errors[key]).find(Boolean);
 
-export function RateBandFields({ draft, ctx, errors, onChange, order, fields, tags, readOnly = false, testID = 'bands' }: Props) {
+export function RateBandFields({ draft, ctx, errors, onChange, order, fields, tags, readOnly = false, packaging, testID = 'bands' }: Props) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const { width, fontScale } = useWindowDimensions();
@@ -109,8 +112,8 @@ export function RateBandFields({ draft, ctx, errors, onChange, order, fields, ta
   };
   const unit = {
     kg: t('pricing.box.unitKg'),
-    rent: t('pricing.box.unitRupees', { unit: unitText(oneTime ? 'one_time' : 'monthly') }),
-    labour: t('pricing.box.unitLabour'),
+    rent: t('pricing.box.unitRupees', { unit: unitText(oneTime ? 'one_time' : 'monthly', packaging) }),
+    labour: t('pricing.box.unitLabour', { unit: packageUnit(packaging) }),
     percent: t('pricing.box.unitPercent'),
   };
   const spoken = (field: string, band: string, unitText: string) => t('pricing.box.cellA11y', { field, band, unit: unitText });

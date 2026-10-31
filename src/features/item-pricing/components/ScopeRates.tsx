@@ -78,7 +78,7 @@ interface BoxReport {
 }
 
 interface Shared {
-  item: { id: string; name: string };
+  item: { id: string; name: string; packaging?: string | null };
   customerId: string;
   customerName?: string;
   rows: ItemStoragePrice[];
@@ -268,6 +268,7 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, showUnit = true, loc
             showUnit={showUnit}
             startSignal={startAsk}
             locked={locked}
+            packaging={shared.item.packaging}
             testID={`rate-box-${id}`}
           />
           {adding ? (
