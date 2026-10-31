@@ -253,10 +253,13 @@ describe('a deliberate way out goes through without a question', () => {
   it('a reset of the whole stack (session ended)', async () => {
     await openB({ hasChanges: true });
 
+    // React Navigation 8 no longer completes a partial RESET payload: it needs the whole state.
+    const stack = routerStore.state?.routes[0]?.state;
+    const first = stack?.routes[0];
     await act(async () => {
       routerStore.navigationRef.dispatch({
         type: 'RESET',
-        payload: { index: 0, routes: [{ name: 'index' }] },
+        payload: { ...stack, index: 0, routes: [first] },
       } as never);
     });
     await settle();
