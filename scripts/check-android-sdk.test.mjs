@@ -9,7 +9,7 @@ function fixture(t) {
   const file=(p,text='',mode=0o600)=>{mkdirSync(dirname(join(root,p)),{recursive:true});writeFileSync(join(root,p),text,{mode});};
   for(const v of ['27.1.12297006','27.0.12077973']) {file(`ndk/${v}/source.properties`,`Pkg.Revision = ${v}\n`);file(`ndk/${v}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang`,'',0o700);}
   for(const v of ['37.0.0','35.0.0']) {file(`build-tools/${v}/source.properties`,`Pkg.Revision=${v}`);file(`build-tools/${v}/aapt2`,'',0o700);}
-  file('platforms/android-37/source.properties','AndroidVersion.ApiLevel=37');file('platforms/android-37/android.jar');
+  file('platforms/android-37.0/source.properties','AndroidVersion.ApiLevel=37.0');file('platforms/android-37.0/android.jar');
   file('cmake/3.22.1/source.properties','Pkg.Revision=3.22.1');file('cmake/3.22.1/bin/cmake','',0o700);file('platform-tools/adb','',0o700);
   return root;
 }
@@ -40,7 +40,7 @@ test('the pins match React Native\'s own toolchain versions (the installed react
 });
 test('a pin that differs from React Native fails with both values named', t=>{
   for (const [override, pinned, rn] of [
-    [{compileSdk:'38'}, '37', '38'],
+    [{compileSdk:'38'}, '37.0', '38'],
     [{buildTools:'38.0.0'}, '37.0.0 and 35.0.0', '38.0.0'],
     [{ndkVersion:'28.0.1'}, '27.1.12297006 and 27.0.12077973', '28.0.1'],
   ]) {

@@ -3,7 +3,7 @@ import { accessSync, constants, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const sdkPackages = ['platform-tools', 'platforms;android-37', 'build-tools;37.0.0',
+export const sdkPackages = ['platform-tools', 'platforms;android-37.0', 'build-tools;37.0.0',
   'build-tools;35.0.0', 'ndk;27.1.12297006', 'ndk;27.0.12077973', 'cmake;3.22.1'];
 
 // The toolchain versions React Native itself builds with. A pin that CI installs but React Native does not use
@@ -32,12 +32,13 @@ export function readReactNativeVersions(file = reactNativeVersionsFile) {
 export function checkReactNativePins(file = reactNativeVersionsFile) {
   const rn = readReactNativeVersions(file);
   const pinned = name => sdkPackages.filter(entry => entry.startsWith(name)).map(entry => entry.slice(name.length));
-  const compare = (label, rnValue, pins) => {
-    if (!pins.includes(rnValue)) {
+  // Google publishes API 37 as `platforms;android-37.0` (there is no `android-37`), while React Native writes compileSdk = "37".
+  const compare = (label, rnValue, pins, normalize = value => value) => {
+    if (!pins.map(normalize).includes(normalize(rnValue))) {
       throw new PinMismatchError(`CI pins ${label} ${pins.join(' and ')} but React Native uses ${rnValue} (libs.versions.toml); update sdkPackages in scripts/check-android-sdk.mjs and the CI/Gradle pins together.`);
     }
   };
-  compare('platforms;android-', rn.compileSdk, pinned('platforms;android-'));
+  compare('platforms;android-', rn.compileSdk, pinned('platforms;android-'), value => value.replace(/\.0$/, ''));
   compare('build-tools;', rn.buildTools, pinned('build-tools;'));
   compare('ndk;', rn.ndkVersion, pinned('ndk;'));
 }
@@ -49,7 +50,8 @@ export function checkAndroidSDK(root, { reactNativeVersions = reactNativeVersion
     const values = Object.fromEntries(text.split(/\r?\n/).filter(line => line.includes('=')).map(line => {
       const at = line.indexOf('='); return [line.slice(0, at).trim(), line.slice(at+1).trim()];
     }));
-    assert.equal(values[name], expected, `SDK revision mismatch: ${dir}`);
+    const accepted = Array.isArray(expected) ? expected : [expected];
+    assert.ok(accepted.includes(values[name]), `SDK revision mismatch: ${dir}`);
   };
   for (const v of ['27.1.12297006','27.0.12077973']) {
     property('ndk/'+v, 'Pkg.Revision', v);
@@ -59,8 +61,8 @@ export function checkAndroidSDK(root, { reactNativeVersions = reactNativeVersion
     property('build-tools/'+v,'Pkg.Revision',v);
     accessSync(resolve(root,'build-tools',v,'aapt2'), constants.X_OK);
   }
-  property('platforms/android-37','AndroidVersion.ApiLevel','37');
-  accessSync(resolve(root,'platforms/android-37/android.jar'), constants.R_OK);
+  property('platforms/android-37.0','AndroidVersion.ApiLevel',['37','37.0']);
+  accessSync(resolve(root,'platforms/android-37.0/android.jar'), constants.R_OK);
   property('cmake/3.22.1','Pkg.Revision','3.22.1');
   accessSync(resolve(root,'cmake/3.22.1/bin/cmake'), constants.X_OK);
   accessSync(resolve(root,'platform-tools/adb'), constants.X_OK);
