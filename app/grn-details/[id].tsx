@@ -586,7 +586,8 @@ function GRNDetailScreen() {
               }
 
               if (result.success) {
-                const message = serverText(result.message, grNumber ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(grNumber) }) : tr('grn.details.deleted'));
+                // The app's own sentence in the app's language, never the server's English.
+                const message = grNumber ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(grNumber) }) : tr('grn.details.deleted');
                 const details = result.deleted_counts
                   ? tr('grn.details.removedCounts', {
                       items: formatCount(result.deleted_counts.grn_items, 'item'),
