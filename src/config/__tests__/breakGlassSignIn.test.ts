@@ -141,6 +141,20 @@ it('removes the end together with the tokens', async () => {
   expect(secure.has(SESSION_ENDS_AT_KEY)).toBe(false);
 });
 
+it('writes the end before the tokens, and when it cannot be written revokes the session on the server and keeps no tokens', async () => {
+  jest.mocked(global.fetch).mockResolvedValue(answer({ success: true, data: loginData() }));
+  const writes: string[] = [];
+  jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+    writes.push(key);
+    if (key === SESSION_ENDS_AT_KEY) throw new Error('secure store full');
+    secure.set(key, value);
+  });
+  expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason: 'failed' });
+  expect(writes).toEqual([SESSION_ENDS_AT_KEY]);
+  expect(rpc).toHaveBeenCalledWith('logout_session', expect.objectContaining({ p_refresh_token: 'e'.repeat(64) }));
+  expect((await getStoredToken()).isValid).toBe(false);
+});
+
 describe('the end of the session', () => {
   afterEach(() => jest.useRealTimers());
 

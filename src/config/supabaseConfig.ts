@@ -1276,13 +1276,19 @@ export const breakGlassSignIn = async (phone: string, code: string): Promise<Bre
       if (typeof refresh === 'string') void revokeSession(refresh);
       return { success: false, reason: 'failed' };
     }
-    const completed = await completeOperatorSignIn(result.data, generation).catch(() => null);
-    if (!completed?.success) return { success: false, reason: generation !== getSessionGeneration() ? 'session_changed' : 'failed' };
+    // The end is written before the tokens, so a session that is stored always has its end. If it cannot be written
+    // the session is revoked on the server (it was made, but nothing here would sign it out).
+    const refreshToken = (result.data.session as { refresh_token?: unknown } | undefined)?.refresh_token;
     try {
       await storeSessionEnd(endsAt);
     } catch {
-      await clearStoredTokens();
+      if (typeof refreshToken === 'string') await revokeSession(refreshToken);
       return { success: false, reason: 'failed' };
+    }
+    const completed = await completeOperatorSignIn(result.data, generation).catch(() => null);
+    if (!completed?.success) {
+      if (generation === getSessionGeneration()) await SecureStore.deleteItemAsync(SESSION_ENDS_AT_KEY).catch(() => {});
+      return { success: false, reason: generation !== getSessionGeneration() ? 'session_changed' : 'failed' };
     }
     return completed as AuthSuccessResult;
   } catch (error) {
