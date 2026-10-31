@@ -73,6 +73,8 @@ export interface MemoizedDispatchItemProps {
   onToggle?: (dispatchId: string) => void;
   /** Lower-cased search words to show in bold (see `searchWords`). */
   words?: string[];
+  /** Open a GRN (its id) from the GRN cell of a line; without it, or for a line without a GRN id, the cell is plain text. */
+  onViewGRN?: (grnId: string) => void;
 }
 
 // ============================================================================
@@ -249,17 +251,30 @@ function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
 // THE LINES OF AN OPEN CARD (nested table, style guide 13.7)
 // ============================================================================
 
-type DispatchLine = NonNullable<Dispatch['items']>[number];
+/** One line of an open card's table: a dispatch of the list or a recently dispatched order (older backends send no `grn_id`/`grn_qty`). */
+export interface DispatchLine {
+  item_name?: string | null;
+  disp_qty: number;
+  weight?: number | null;
+  package_mark?: string | null;
+  rack?: string | null;
+  gr_no?: string | null;
+  grn_qty?: number | null;
+  grn_item_id?: string;
+  grn_id?: string | null;
+}
 const lineHelper = createAppColumnHelper<DispatchLine>();
 /** Number columns at font scale 1, grown with the text and the widest value (`numberColumnWidth`). */
-/** 72: room for the Gujarati heading "દરેકના kg" on one line (2026-10-14, e8d3fe9). */
-export const KG_WIDTH = 72;
-const GRN_WIDTH = 72;
-const QTY_WIDTH = 48;
+/** The Kg each column is as wide as its figures (a floor of 40): the heading wraps onto two lines when it is wider. */
+export const KG_WIDTH = 40;
+const GRN_WIDTH = 56;
+const QTY_WIDTH = 36;
 
 /** Whole kilograms of one bag, as the column shows them. */
 const kgEachOf = (item: DispatchLine) => Math.round(Number(item.weight) || 0);
-const grnText = (item: DispatchLine) => `${item.gr_no ?? ''}/${formatNumber(item.grn_qty)}`;
+/** "RV15001/5": the GRN number and what was received; just the number when the backend sent no received quantity. */
+const grnText = (item: DispatchLine) =>
+  item.grn_qty === null || item.grn_qty === undefined ? (item.gr_no ?? '') : `${item.gr_no ?? ''}/${formatNumber(item.grn_qty)}`;
 
 /**
  * The GRN text: on one line in its own column (sized for it), and under the item allowed to wrap, because that
@@ -269,13 +284,40 @@ const GrnLineText: React.FC<{ item: DispatchLine; words: string[]; style: React.
     {matchesAnyWord(item.gr_no, words) ? (
       <>
         <HighlightedText text={item.gr_no ?? ''} words={words} />
-        {`/${formatNumber(item.grn_qty)}`}
+        {item.grn_qty === null || item.grn_qty === undefined ? '' : `/${formatNumber(item.grn_qty)}`}
       </>
     ) : (
       grnText(item)
     )}
   </Text>
 );
+
+/**
+ * The GRN cell of a line. A line that knows its GRN opens it with a tap (a link, as on Dispatch -> Items); the row offers the
+ * same as an "Open GRN" action, so the cell itself is hidden from a screen reader. Without a GRN id or a way to open it, plain text.
+ */
+const GrnLineCell: React.FC<{
+  item: DispatchLine;
+  words: string[];
+  plain: React.ComponentProps<typeof Text>['style'];
+  wrap?: boolean;
+  onViewGRN?: (grnId: string) => void;
+}> = ({ item, words, plain, wrap, onViewGRN }) => {
+  const table = useThemedStyles(makeTableStyles);
+  const grnId = item.grn_id;
+  if (!grnId || !onViewGRN) return <GrnLineText style={plain} item={item} words={words} wrap={wrap} />;
+  return (
+    <Pressable
+      onPress={() => onViewGRN(grnId)}
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+      style={({ pressed }) => [table.linkTarget, pressed && table.linkPressed]}
+      testID={`dispatch-line-grn-${grnId}`}
+    >
+      <GrnLineText style={[table.link, wrap ? { marginTop: space.xxs } : null]} item={item} words={words} wrap={wrap} />
+    </Pressable>
+  );
+};
 
 /** What a screen reader says for one line, with the package mark in full (the card cuts it); a lot without a weight is read without one. */
 function lineLabel(item: DispatchLine): string {
@@ -313,8 +355,8 @@ export function dispatchLinesLayout(
   return { stacked, qtyUnder: stacked && lastColumnAlone(row, qtyWidth, screen.scale) };
 }
 
-const DispatchLinesTable = React.memo<{ items: DispatchLine[]; words: string[]; rowKey: string; testID?: string }>(
-  ({ items, words, rowKey, testID }) => {
+export const DispatchLinesTable = React.memo<{ items: DispatchLine[]; words: string[]; rowKey: string; testID?: string; onViewGRN?: (grnId: string) => void }>(
+  ({ items, words, rowKey, testID, onViewGRN }) => {
     const table = useThemedStyles(makeTableStyles);
     const styles = useThemedStyles(makeStyles);
     const screen = useTableLayout();
@@ -340,11 +382,11 @@ const DispatchLinesTable = React.memo<{ items: DispatchLine[]; words: string[]; 
               return (
                 <>
                   <HighlightedText style={table.primary} numberOfLines={2} ellipsizeMode="tail" text={item.item_name ?? ''} words={words} />
-                  {item.rack ? <Text style={table.secondary}>({item.rack})</Text> : null}
-                  {/* Only the mark was searched: the weight under it stays plain (§14.6). A long mark is cut at the normal size (§13.7). */}
+                  {/* Only the mark was searched: the weight under it stays plain (§14.6). A long mark is cut at the normal size (§13.7). The mark comes first, then the rack. */}
                   {mark ? <HighlightedText style={table.secondary} {...CUT_LINE} text={nb(mark)} words={words} /> : null}
+                  {item.rack ? <Text style={table.secondary}>({item.rack})</Text> : null}
                   {weight ? <Text style={table.secondary}>{nb(weight)}</Text> : null}
-                  {stacked ? <GrnLineText style={[table.secondary, styles.stackedGrn]} item={item} words={words} wrap /> : null}
+                  {stacked ? <GrnLineCell plain={[table.secondary, styles.stackedGrn]} item={item} words={words} wrap onViewGRN={onViewGRN} /> : null}
                   {qtyUnder ? <Text style={table.numberStrong} numberOfLines={1}>{formatNumber(item.disp_qty)}</Text> : null}
                 </>
               );
@@ -362,9 +404,9 @@ const DispatchLinesTable = React.memo<{ items: DispatchLine[]; words: string[]; 
                 // Text, so left-aligned like the same figure on Dispatch -> Items (§13.7).
                 lineHelper.display({
                   id: 'grn',
-                  header: translate('lists.card.colGrn'),
+                  header: translate('lists.card.colGrnReceived'),
                   meta: { width: grnWidth + space.xs },
-                  cell: ({ row }) => <GrnLineText style={table.primary} item={row.original} words={words} />,
+                  cell: ({ row }) => <GrnLineCell plain={table.primary} item={row.original} words={words} onViewGRN={onViewGRN} />,
                 }),
               ]),
           lineHelper.display({
@@ -376,9 +418,9 @@ const DispatchLinesTable = React.memo<{ items: DispatchLine[]; words: string[]; 
           }),
         ]),
       // kgText reads only its argument.
-      [stacked, qtyUnder, kgWidth, grnWidth, qtyWidth, table, styles, words]
+      [stacked, qtyUnder, kgWidth, grnWidth, qtyWidth, table, styles, words, onViewGRN]
     );
-    const grid = useAppTable({ data: items, columns, getRowId: (item, index) => `${rowKey}-item-${item.grn_item_id}-${index}` });
+    const grid = useAppTable({ data: items, columns, getRowId: (item, index) => `${rowKey}-item-${item.grn_item_id ?? item.gr_no ?? 'line'}-${index}` });
 
     return (
       <DataTable
@@ -387,6 +429,14 @@ const DispatchLinesTable = React.memo<{ items: DispatchLine[]; words: string[]; 
         headerOneLine={false}
         rowStyle={styles.lineCompact}
         rowLabel={(row) => lineLabel(row.original)}
+        rowActions={(row) =>
+          row.original.grn_id && onViewGRN
+            ? [{ name: 'openGrn', label: translate('dispatch.details.table.openGrnAction', { number: formatIdentifier(row.original.gr_no ?? '') }) }]
+            : undefined
+        }
+        onRowAction={(row, actionName) => {
+          if (actionName === 'openGrn' && row.original.grn_id) onViewGRN?.(row.original.grn_id);
+        }}
         rowTestID={(row) => row.id}
         testID={testID}
       />
@@ -406,6 +456,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   expanded = false,
   onToggle,
   words = NO_WORDS,
+  onViewGRN,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -503,7 +554,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
       {/* Expanded Items Table - SAP Fiori Data Table */}
       {isExpanded && hasItems && (
         <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
-          <DispatchLinesTable items={dispatch.items!} words={words} rowKey={String(dispatchId)} testID={`dispatch-lines-${dispatchId}`} />
+          <DispatchLinesTable items={dispatch.items!} words={words} rowKey={String(dispatchId)} testID={`dispatch-lines-${dispatchId}`} onViewGRN={onViewGRN} />
         </Animated.View>
       )}
 
@@ -558,7 +609,8 @@ const areEqual = (
     // Open or closed, and who is told when it is toggled
     prevProps.expanded === nextProps.expanded &&
     prevProps.onToggle === nextProps.onToggle &&
-    prevProps.words === nextProps.words
+    prevProps.words === nextProps.words &&
+    prevProps.onViewGRN === nextProps.onViewGRN
   );
 };
 

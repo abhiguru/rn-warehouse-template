@@ -335,6 +335,11 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     router.push(`/dispatch-details/${dispatch.dispatch_id}`);
   }, []);
 
+  // A GRN cell of a line opens that GRN's details.
+  const handleViewGRN = useCallback((grnId: string) => {
+    router.push(`/grn-details/${grnId}`);
+  }, []);
+
   // Resets the form first (a new dispatch never carries what an earlier form left) and ignores a second tap.
   const handleCreateDispatch = useOpenNewDispatchForm();
 
@@ -411,9 +416,10 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         expanded={isOpen(open, item.key)}
         onToggle={handleCardToggle}
         words={words}
+        onViewGRN={handleViewGRN}
       />
     );
-  }, [handleDispatchPress, canPrint, open, handleCardToggle, words, offlineUpdatedAt]);
+  }, [handleDispatchPress, handleViewGRN, canPrint, open, handleCardToggle, words, offlineUpdatedAt]);
 
   const ListFooter = useMemo(() => {
     if (loadMoreFailed && !isLoadingMore) {

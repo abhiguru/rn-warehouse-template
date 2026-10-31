@@ -511,6 +511,9 @@ export interface RecentDispatchedOrderItem {
   package_mark: string | null;
   gr_no: string;
   weight: number;
+  /** What the GRN received, and the GRN's id (backend 0.7.x and newer); absent from an older backend. */
+  grn_qty?: number;
+  grn_id?: string | null;
 }
 
 /**

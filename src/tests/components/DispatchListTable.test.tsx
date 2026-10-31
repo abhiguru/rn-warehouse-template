@@ -71,7 +71,7 @@ describe('Dispatch list table at large text', () => {
   it('has Item, Kg each, GRN and Qty at font scale 1 (411 dp: on 392 dp the drawn margin stacks them, R6-2)', () => {
     mockWidth = 411;
     const { header, cells } = openCard(5);
-    expect(header).toEqual(['Item', 'Kg each', 'GRN', 'Qty']);
+    expect(header).toEqual(['Item', 'Kg each', 'GRN/Received', 'Qty']);
     expect(cells).toEqual(['Potato', '50', 'RV15001/5', '5']);
   });
 
@@ -151,8 +151,8 @@ describe('Dispatch list table: the item column keeps its room', () => {
             const grn = `RV15001/${qty === 9999 ? '9,999' : qty}`;
             const size = { scale, numberWidth: (b: number) => Math.ceil(b * scale) };
             const kgW = numberColumnWidth(size, KG_WIDTH, [language === 'gu' ? '૫૦' : '50']) + space.xs;
-            const grnW = numberColumnWidth(size, 72, [grn]) + space.xs;
-            const qtyW = numberColumnWidth(size, 48, [qty === 9999 ? '9,999' : String(qty)]) + space.xs;
+            const grnW = numberColumnWidth(size, 56, [grn]) + space.xs;
+            const qtyW = numberColumnWidth(size, 36, [qty === 9999 ? '9,999' : String(qty)]) + space.xs;
             const nested = nestedRowWidth({ width });
             const full = scale < 1.5 && !crowded(nested, [kgW, grnW, qtyW], 0, scale);
             const under = !full && lastColumnAlone(nested, qtyW, scale);
@@ -167,7 +167,7 @@ describe('Dispatch list table: the item column keeps its room', () => {
 
   it('shows the whole layout for ordinary data at font scale 1 on 411 dp and stacks 9,999 bags at 2.0 on 360 dp', () => {
     mockWidth = 411;
-    expect(openCard(5).header).toEqual(['Item', 'Kg each', 'GRN', 'Qty']);
+    expect(openCard(5).header).toEqual(['Item', 'Kg each', 'GRN/Received', 'Qty']);
     act(() => tree?.unmount());
     mockFontScale = 2;
     mockWidth = 360;
@@ -185,18 +185,70 @@ describe('Dispatch list table: the item column keeps its room', () => {
     expect(cells).toEqual(['Potato', nb('50 kg each'), 'RV15001/99,99,999', '99,99,999']);
   });
 
-  it('gives "Kg each" 72 dp at font scale 1, room for the Gujarati heading on one line (e8d3fe9)', () => {
-    setLanguage('gu');
-    for (const width of [411]) {
-      mockWidth = width;
-      const { row, header } = openCard(5);
-      expect(header[1]).toBe('દરેકના kg');
-      expect(drawn(row, width).widths[0]).toBeGreaterThanOrEqual(72);
-      act(() => tree?.unmount());
-    }
-    // At 1.3 the phone stacks the column away; its width still grows with the text.
+  it('narrows "Kg each" to its figures: no wider than needed at font scale 1, growing with the text', () => {
+    mockWidth = 411;
+    const { row } = openCard(5);
+    expect(drawn(row, 411).widths[0]).toBeLessThan(72);
     const scale = 1.3;
-    expect(numberColumnWidth({ scale, numberWidth: (b) => Math.ceil(b * scale) }, KG_WIDTH, ['૫૦'])).toBeGreaterThanOrEqual(Math.ceil(72 * scale));
+    expect(numberColumnWidth({ scale, numberWidth: (b) => Math.ceil(b * scale) }, KG_WIDTH, ['50'])).toBeGreaterThanOrEqual(Math.ceil(KG_WIDTH * scale));
+  });
+});
+
+describe('Dispatch list table: four columns on an ordinary phone (390 dp)', () => {
+  for (const scale of [1, 1.15]) {
+    it(`keeps Item, Kg each, GRN/Received and Qty at font scale ${scale}`, () => {
+      mockWidth = 390;
+      mockFontScale = scale;
+      expect(openCard(5).header).toEqual(['Item', 'Kg each', 'GRN/Received', 'Qty']);
+    });
+  }
+
+  it('stacks Kg each and the GRN text under the item from font scale 1.5', () => {
+    mockWidth = 390;
+    mockFontScale = 1.5;
+    expect(openCard(5).header).toEqual(['Item', 'Qty']);
+  });
+
+  it('writes the heading in Gujarati as આવક પાવતી/આવક', () => {
+    setLanguage('gu');
+    mockWidth = 390;
+    expect(openCard(5).header).toContain('આવક પાવતી/આવક');
+  });
+
+  it('puts the package mark first and the rack under it', () => {
+    mockWidth = 390;
+    const { cells } = openCard(5, { package_mark: 'PM', rack: 'B-14' });
+    expect(cells.slice(0, 3)).toEqual(['Potato', 'PM', '(B-14)']);
+  });
+});
+
+describe('Dispatch list table: the GRN cell opens the GRN', () => {
+  const open = (extra: Record<string, unknown>, onViewGRN?: (id: string) => void) => {
+    mockWidth = 411;
+    act(() => {
+      tree = create(<MemoizedDispatchItem dispatch={dispatchOf(5, extra)} onPress={jest.fn()} expanded onViewGRN={onViewGRN} />);
+    });
+    return tree!.root;
+  };
+  const link = (root: ReactTestInstance) => root.findAll((node) => typeof node.props.testID === 'string' && node.props.testID.startsWith('dispatch-line-grn-'));
+
+  it('is a tap that opens the GRN by its id, and offers "Open GRN" to a screen reader', () => {
+    const onViewGRN = jest.fn();
+    const root = open({ grn_id: 'grn-77' }, onViewGRN);
+    const targets = link(root).filter((node) => typeof node.props.onPress === 'function');
+    expect(targets).toHaveLength(1);
+    act(() => targets[0].props.onPress());
+    expect(onViewGRN).toHaveBeenCalledWith('grn-77');
+    const row = root.find((node) => typeof node.type === 'string' && node.props.testID === 'd1-item-g1-0');
+    expect(row.props.accessibilityActions).toEqual([{ name: 'openGrn', label: 'Open GRN RV15001' }]);
+    act(() => row.props.onAccessibilityAction({ nativeEvent: { actionName: 'openGrn' } }));
+    expect(onViewGRN).toHaveBeenCalledTimes(2);
+  });
+
+  it('is plain text for a line without a GRN id (an older backend) or without a way to open it', () => {
+    expect(link(open({ grn_id: undefined }, jest.fn()))).toHaveLength(0);
+    act(() => tree?.unmount());
+    expect(link(open({ grn_id: 'grn-77' }, undefined))).toHaveLength(0);
   });
 });
 
@@ -227,7 +279,7 @@ describe('Dispatch card lines: figures and long marks (phone run GL, 2026-10-18)
     // Four columns (411 dp, font scale 1): Kg each, GRN and Qty are cells.
     mockWidth = 411;
     const four = openCard(5);
-    expect(four.header).toEqual(['Item', 'Kg each', 'GRN', 'Qty']);
+    expect(four.header).toEqual(['Item', 'Kg each', 'GRN/Received', 'Qty']);
     for (const value of ['50', 'RV15001/5', '5']) {
       const found = four.grid.findAll((node) => isText(node) && textOf(node) === value);
       expect(found).toHaveLength(1);

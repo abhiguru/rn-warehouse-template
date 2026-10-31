@@ -208,6 +208,11 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
     setIsExpanded(prev => !prev);
   }, []);
 
+  // A GRN cell of a line opens that GRN's details
+  const handleViewGRN = useCallback((grnId: string) => {
+    router.push(`/grn-details/${grnId}`);
+  }, []);
+
   // Navigate to dispatch details on card press
   const handleDispatchPress = useCallback((dispatch: RecentDispatchedOrder) => {
     if (__DEV__) {
@@ -288,6 +293,7 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
               key={dispatch.dispatch_id}
               dispatch={dispatch}
               onPress={handleDispatchPress}
+              onViewGRN={handleViewGRN}
             />
           ))}
           {/* More dispatches than the newest `limit` listed: the full list is one tap away */}

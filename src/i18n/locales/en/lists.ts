@@ -17,7 +17,7 @@ export const lists = {
     grnRef: 'GRN {{number}}',
     colKgEach: 'Kg each',
     colQty: 'Qty',
-    colGrn: 'GRN',
+    colGrnReceived: 'GRN/Received',
   },
   // Defaults of the empty state
   empty: {

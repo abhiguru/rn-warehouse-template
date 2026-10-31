@@ -19,7 +19,7 @@ export const lists: Translation<typeof source> = {
     grnRef: 'આવક પાવતી {{number}}',
     colKgEach: 'દરેકના kg',
     colQty: 'નંગ',
-    colGrn: 'આવક',
+    colGrnReceived: 'આવક પાવતી/આવક',
   },
   empty: {
     title: 'હજુ કોઈ આઇટમ નથી',
