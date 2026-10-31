@@ -39,6 +39,12 @@ export async function readSessionEnd(): Promise<number | null> {
   }
 }
 
+/** The stored end has come, or is so near that a refusal now is that end (a session of an ordinary sign-in has none: false). */
+export async function sessionEndReached(now: number = Date.now()): Promise<boolean> {
+  const endsAt = await readSessionEnd();
+  return endsAt !== null && now >= endsAt - END_TOLERANCE_MS;
+}
+
 export const sessionEndedReason = (): string => t('auth.facilityCode.sessionEnded');
 
 /**

@@ -14,6 +14,7 @@ import { getAppErrorCode } from './appError';
 import { t, type TranslationKey } from '@/i18n';
 import { expiredSessionText, isLostAnswer, isNetworkError, isTimeoutError, serverText, transportText } from '@/utils/serverText';
 import { refusalOf } from '@/utils/serverRefusal';
+import { sessionEndedReason, sessionEndReached } from '@/config/sessionEnd';
 
 const logger = createLogger('ServiceErrorHandler');
 
@@ -40,6 +41,11 @@ const getForceLogoutAction = () => {
  * Called automatically by createErrorResponse and executeRPC
  */
 export function handleGlobalAuthError(error: unknown): void {
+  // A session started with a code from the facility ends at a time the facility named. A refusal (42501) at or just
+  // before that end is that end, whatever the phone's clock says: sign out, with the reason of the ended session.
+  if (typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '42501') {
+    void signOutIfCodeSessionEnded();
+  }
   if (isJWTSignatureError(error) || isSessionInvalidationError(error)) {
     console.warn('[ServiceErrorHandler] Auth error detected globally - forcing logout');
     try {
@@ -51,6 +57,17 @@ export function handleGlobalAuthError(error: unknown): void {
     } catch (e) {
       console.error('[ServiceErrorHandler] Failed to dispatch logout:', e);
     }
+  }
+}
+
+async function signOutIfCodeSessionEnded(): Promise<void> {
+  try {
+    if (!(await sessionEndReached())) return;
+    const store = getStore();
+    const forceLogout = getForceLogoutAction();
+    if (store && forceLogout) store.dispatch(forceLogout(sessionEndedReason()));
+  } catch (e) {
+    console.error('[ServiceErrorHandler] Failed to check the end of the session:', e);
   }
 }
 
