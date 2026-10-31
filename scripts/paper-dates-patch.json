@@ -1,0 +1,54 @@
+[
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "src/Date/DatePickerModalContentHeader.tsx",
+    "originalSHA256": "e0798669d88b5d3f9a6a592d973070f99e6fbb765c86334a95fd87f8a2514983",
+    "patchedSHA256": "8e96c079aae1f5a40be0a103e603ad4b7e78f28086cee21af6d52a4fd448c434",
+    "edits": [
+      {
+        "before": "  const formatter = useMemo(() => {\n    return new Intl.DateTimeFormat(locale, {\n      month: 'short',\n      day: 'numeric',\n    })\n  }, [locale])\n",
+        "after": "  const formatter = useMemo(() => dayMonthYearFormatter(locale, true), [locale])\n",
+        "count": 3
+      },
+      {
+        "before": "import type { DisableWeekDaysType } from './dateUtils'\n",
+        "after": "import { dayMonthYearFormatter } from './dateUtils'\nimport type { DisableWeekDaysType } from './dateUtils'\n",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "src/Date/dateUtils.tsx",
+    "originalSHA256": "bdbf739cac2e5e9292b52008c6cd7c2091296d108417164f413b9532f4771134",
+    "patchedSHA256": "7e41e050d18a4a852a71cc0bf37a01b9242e16ff266e6b7f50539a0f9e541a3a",
+    "edits": [
+      {
+        "before": "export function useInputFormatter({ locale }: { locale: string | undefined }) {\n  return useMemo(() => {\n    return new Intl.DateTimeFormat(locale, {\n      month: '2-digit',\n      day: '2-digit',\n      year: 'numeric',\n    })\n  }, [locale])\n}\n",
+        "after": "const gujaratiDigits = '૦૧૨૩૪૫૬૭૮૯'\n\n// Day/month/two-digit year, \"09/10/26\", as the app writes every date. With\n// `localDigits` a Gujarati calendar shows Gujarati digits; the typed field keeps\n// ASCII digits because its mask only knows those.\nexport function dayMonthYearFormatter(\n  locale: string | undefined,\n  localDigits: boolean\n): { format: (date: Date) => string } {\n  const two = (n: number) => String(n).padStart(2, '0')\n  const gujarati = localDigits && !!locale && locale.startsWith('gu')\n  return {\n    format: (date: Date) => {\n      const text = `${two(date.getDate())}/${two(date.getMonth() + 1)}/${two(\n        date.getFullYear() % 100\n      )}`\n      return gujarati\n        ? text.replace(/\\d/g, (digit) => gujaratiDigits[Number(digit)])\n        : text\n    },\n  }\n}\n\nexport function useInputFormatter({ locale }: { locale: string | undefined }) {\n  return useMemo(() => dayMonthYearFormatter(locale, false), [locale])\n}\n",
+        "count": 1
+      },
+      {
+        "before": "export function useInputFormat({\n  formatter,\n  locale,\n}: {\n  formatter: Intl.DateTimeFormat\n  locale: string | undefined\n}) {\n  return useMemo(() => {\n    // TODO: something cleaner and more universal?\n    const inputDate = formatter.format(new Date(2020, 10 - 1, 1))\n\n    if (inputDate.includes('٢٠٢٠')) {\n      return inputDate\n        .replace('٢٠٢٠', 'YYYY')\n        .replace('١٠', 'MM')\n        .replace('٠١', 'DD')\n    }\n    return inputDate\n      .replace('2020', locale === 'pt' ? 'AAAA' : 'YYYY')\n      .replace('10', 'MM')\n      .replace('01', 'DD')\n  }, [formatter, locale])\n}\n",
+        "after": "export function useInputFormat(_: {\n  formatter: { format: (date: Date) => string }\n  locale: string | undefined\n}) {\n  return 'DD/MM/YY'\n}\n",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "src/Date/inputUtils.ts",
+    "originalSHA256": "482e8edd1fd058130936d0f13e780be22f4fc6fdf46d2c325cd228a6b0eaab35",
+    "patchedSHA256": "e7a9a13875e7db4b668bbad7562b62cfc0c2a7e2a952a55105de07f52eee58b8",
+    "edits": [
+      {
+        "before": "    const yearIndex =\n      locale === 'pt'\n        ? inputFormat.indexOf('AAAA')\n        : inputFormat.indexOf('YYYY')\n    const day = Number(date.slice(dayIndex, dayIndex + 2))\n    const year = Number(date.slice(yearIndex, yearIndex + 4))\n",
+        "after": "    const yearIndex = inputFormat.indexOf('YY')\n    const day = Number(date.slice(dayIndex, dayIndex + 2))\n    const year = 2000 + Number(date.slice(yearIndex, yearIndex + 2))\n",
+        "count": 1
+      }
+    ]
+  }
+]
