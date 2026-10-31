@@ -788,7 +788,9 @@ const authSlice = createSlice({
         state.user = action.payload.user;
       })
       .addCase(refreshAuthToken.rejected, state => {
-        // Don't clear auth on refresh failure - user may still be able to use app
+        // A refresh that failed for a reason that may pass (no connection, a timeout, a busy server) keeps the
+        // session: the person may still use the app. A refresh the server definitively rejected has already ended
+        // the session inside refreshCustomJWT (forceLogoutOnInvalidToken, with its reason); nothing is cleared here.
         authSliceLogger.warn(
           'Token refresh rejected, keeping current auth state'
         );
