@@ -116,8 +116,8 @@ invoice and stock list prefixes in `cacheConfig.ts` are cleared too, but no list
 ## Commands
 
 ```bash
-npm ci                      # runs the three postinstall patches (not with --ignore-scripts)
-node scripts/check-install.mjs   # all three patches are in place; also runs before start, android, ios, web, test
+npm ci                      # runs the two postinstall patches (not with --ignore-scripts)
+node scripts/check-install.mjs   # both patches are in place; also runs before start, android, ios, web, test
 npm run verify:backports    # re-checks scripts/security-backports.json against node_modules
 npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
 npm run audit:dependencies -- --report-dir /tmp/dependency-security-report

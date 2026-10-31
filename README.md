@@ -23,7 +23,7 @@ Prerequisites:
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
-npm ci                       # runs the three postinstall patches
+npm ci                       # runs the two postinstall patches
 node scripts/create-env.mjs  # creates .env only if it is absent
 npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
 npm run doctor               # read-only check against an installed backend
@@ -53,7 +53,7 @@ The quickest look needs only Node.js 22.18+ and npm: no JDK and no Android SDK. 
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
-npm ci                       # keep npm scripts on: the three postinstall patches are needed
+npm ci                       # keep npm scripts on: the two postinstall patches are needed
 node scripts/create-env.mjs  # creates .env only if it is absent
 # in .env set EXPO_PUBLIC_CONFIG_API_URL=https://warehouse.example.com (the backend origin), then:
 npm run check:backend        # read-only check of that backend (no JDK or Android SDK needed)

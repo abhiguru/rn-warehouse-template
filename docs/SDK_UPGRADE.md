@@ -36,10 +36,9 @@ Still open at the step: `Sentry` 8, Jest 30 / jest-expo 58, any `StatusBar`, `Mo
 2. **Branch**, then `npx expo install expo@^<n>.0.0 --fix`, then `npx expo install --check` until it reports nothing.
 3. **expo-doctor**: bump the exact version in `package.json` (`expo-doctor` is pinned; `scripts/workflows.test.mjs`
    checks the lockfile agrees) and run `npx --no-install expo-doctor`.
-4. **Three postinstall scripts pin hashes** of files inside `node_modules` and fail closed on any change. For each, read
+4. **Two postinstall scripts pin hashes** of files inside `node_modules` and fail closed on any change. For each, read
    the upstream diff, then update the reviewed version and hash with the review in the commit message:
    - `scripts/patch-expo-metro.mjs` (`@expo/cli` `runServer-fork.js`; moved four times in nine days on SDK 57),
-   - `scripts/patch-navigation-decoder.mjs` (see the table; remove it when it says it is obsolete),
    - `scripts/patch-security-backports.mjs` with `scripts/security-backports.json`.
    Run `npm run test:setup` and `npm run verify:backports`.
 5. **Jest and jest-expo**: check that `react-test-renderer` is still installed and that `npm test` starts; move to

@@ -6,8 +6,8 @@ const folder = '../node_modules/expo/node_modules/@expo/cli/build/src/start/serv
 
 test('USB Metro binding adapter is explicit loopback, idempotent, and version checked', () => {
   const source = readFileSync(new URL(folder + 'runServer-fork.js', import.meta.url), 'utf8');
-  assert.equal(adaptBinding(source, '58.1.17'), source);
+  assert.equal(adaptBinding(source, '58.1.18'), source);
   assert.ok(source.includes("process.env.WAREHOUSE_USB_METRO === '1' ? '127.0.0.1' : host"));
   assert.throws(() => adaptBinding(source, '59.0.0'), /Unreviewed/);
-  assert.throws(() => adaptBinding(source + '\n', '58.1.17'), /Unreviewed/);
+  assert.throws(() => adaptBinding(source + '\n', '58.1.18'), /Unreviewed/);
 });
