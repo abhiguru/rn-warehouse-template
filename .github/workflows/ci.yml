@@ -111,7 +111,13 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
       - name: Assemble debug APK
-        run: ./gradlew assembleDebug
+        # Some self-hosted runners have IPv6 routes that cannot connect; the Gradle wrapper
+        # download then times out after 10 s. Prefer IPv4 and give the wrapper more time.
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true
+        run: |
+          sed -i 's/^networkTimeout=.*/networkTimeout=60000/' gradle/wrapper/gradle-wrapper.properties
+          ./gradlew assembleDebug
         working-directory: android
       - name: Audit picker React Native ABI compile options
         shell: bash
