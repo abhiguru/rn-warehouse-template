@@ -958,9 +958,11 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     showsVerticalScrollIndicator={false}
                     enableOnAndroid={true}
                     enableAutomaticScroll={true}
-                    extraScrollHeight={Platform.OS === 'android' ? 350 : 250}
+                    // The library scrolls the focused field to this far above the keyboard: about 88 pt, room for the
+                    // "Enter N bags or fewer" line under it. (250/350 pt put the field behind the header.)
+                    extraScrollHeight={space.lg}
                     keyboardOpeningTime={0}
-                    extraHeight={300}
+                    extraHeight={72}
                 >
                     {/* A saved item is being corrected, in a new dispatch or an edited one: the
                         strip names it and holds the one control that gives the correction up */}
@@ -1201,11 +1203,6 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                     placeholderTextColor={t.text.placeholder}
                                     keyboardType="numeric"
                                     editable={!!currentItem.grnItems_id}
-                                    onFocus={() => {
-                                        setTimeout(() => {
-                                            scrollViewRef.current?.scrollToFocusedInput(quantityInputRef.current);
-                                        }, 100);
-                                    }}
                                 />
                             </View>
                             <View style={styles.quickButtons}>
