@@ -4,6 +4,8 @@ export const orders = {
   screen: {
     title: 'Order for {{name}}',
     viewHistory: 'View order history',
+    // Under "Order for …": the order's number (an identifier, 0-9).
+    orderNumber: 'Order {{number}}',
     addItemsToOrder: 'Add items to order',
     historyError: "Couldn't load the order history. Check your connection and try again.",
   },
@@ -33,6 +35,7 @@ export const orders = {
     loading: 'Loading order…',
     loadingLabel: 'Loading order',
     couldNotOpenTitle: "Couldn't open the order",
+    couldNotOpenMessage: "Couldn't open the order. Check your connection and try again.",
     businessInactive: 'This business is no longer active. Ask your cold storage.',
     businessDeactivatedStaff: 'This business is deactivated. Turn it on in Customers to take orders.',
     deactivatedTitle: 'Deactivated at the cold storage',

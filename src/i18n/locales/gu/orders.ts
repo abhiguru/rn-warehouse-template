@@ -7,6 +7,8 @@ export const orders: Translation<typeof source> = {
   screen: {
     title: 'ઑર્ડર: {{name}}',
     viewHistory: 'ઑર્ડરનો ઇતિહાસ જુઓ',
+    // Under "Order for …": the order's number (an identifier, 0-9).
+    orderNumber: 'ઑર્ડર {{number}}',
     addItemsToOrder: 'ઑર્ડરમાં આઇટમ ઉમેરો',
     historyError: 'ઑર્ડરનો ઇતિહાસ લોડ કરી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
   },
@@ -31,6 +33,7 @@ export const orders: Translation<typeof source> = {
     loading: 'ઑર્ડર લોડ થઈ રહ્યો છે…',
     loadingLabel: 'ઑર્ડર લોડ થઈ રહ્યો છે',
     couldNotOpenTitle: 'ઑર્ડર ખોલી શકાયો નથી',
+    couldNotOpenMessage: "ઑર્ડર ખોલી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.",
     businessInactive: 'આ વેપારી હવે સક્રિય નથી. તમારા કોલ્ડ સ્ટોરેજને પૂછો.',
     businessDeactivatedStaff: 'આ વેપારી નિષ્ક્રિય છે. ઑર્ડર લેવા માટે વેપારીઓમાં તેને ચાલુ કરો.',
     deactivatedTitle: 'કોલ્ડ સ્ટોરેજમાં નિષ્ક્રિય',

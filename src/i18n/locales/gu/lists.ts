@@ -118,7 +118,6 @@ export const lists: Translation<typeof source> = {
   order: {
     title: 'ઑર્ડર',
     activeSection: 'ચાલુ ઑર્ડર',
-    emptySection: 'ખાલી ઑર્ડર',
     statusOpen: 'બાકી',
     statusEmpty: 'ખાલી',
     statusDeactivated: 'નિષ્ક્રિય',

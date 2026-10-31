@@ -50,6 +50,7 @@ jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConn
 jest.mock('@/services/order-service', () => ({
   OrderService: {
     getOrCreateOrder: jest.fn(),
+    getCustomerOrder: jest.fn(),
     getOrderWithItems: jest.fn(),
     updateOrderItemQuantity: jest.fn(),
     removeItemFromOrder: jest.fn(),
@@ -113,6 +114,8 @@ const reads = () => service.getOrderWithItems.mock.calls.length;
 
 beforeEach(() => {
   mockCards.byId = {};
+  // These tests are about an older facility's way of opening an order (get_or_create_cart); the new way is in OrderManagementOpen.
+  service.getCustomerOrder.mockReset().mockResolvedValue({ success: false, message: '', notAvailable: true } as never);
   service.getOrCreateOrder.mockReset().mockResolvedValue({ success: true, data: { cart_id: ORDER_ID } } as never);
   service.getOrderWithItems.mockReset().mockImplementation(async () => ({ success: true, data: copy(makeOrder()) }) as never);
   service.updateOrderItemQuantity.mockReset().mockResolvedValue(saved);

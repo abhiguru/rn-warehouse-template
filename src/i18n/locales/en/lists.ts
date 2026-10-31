@@ -113,7 +113,6 @@ export const lists = {
   order: {
     title: 'Orders',
     activeSection: 'Active orders',
-    emptySection: 'Empty orders',
     statusOpen: 'Open',
     statusEmpty: 'Empty',
     statusDeactivated: 'Deactivated',

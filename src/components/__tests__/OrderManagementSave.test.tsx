@@ -68,6 +68,7 @@ jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConn
 jest.mock('@/services/order-service', () => ({
   OrderService: {
     getOrCreateOrder: jest.fn(),
+    getCustomerOrder: jest.fn(),
     getOrderWithItems: jest.fn(),
     updateOrderItemQuantity: jest.fn(),
     removeItemFromOrder: jest.fn(),
@@ -167,6 +168,8 @@ beforeEach(() => {
   mockNetwork.isConnected = true;
   mockNetwork.type = 'wifi';
   server = makeOrder();
+  // These tests are about an older facility's way of opening an order (get_or_create_cart); the new way is in OrderManagementOpen.
+  service.getCustomerOrder.mockReset().mockResolvedValue({ success: false, message: '', notAvailable: true } as never);
   service.getOrCreateOrder.mockReset().mockResolvedValue({ success: true, data: { cart_id: ORDER_ID } } as never);
   service.getOrderWithItems.mockReset().mockImplementation(async () => ({ success: true, data: copy(server) }) as never);
   service.addItemToOrder.mockReset().mockResolvedValue(saved);
@@ -1007,10 +1010,116 @@ describe('a business that is deleted or deactivated', () => {
     expect(text()).not.toContain('Deactivated');
   });
 
-  it('keeps the current handling for any other error', async () => {
-    service.getOrCreateOrder.mockResolvedValue({ success: false, message: "Couldn't open the order.", error: 'permission denied' } as never);
+  it('shows the error state with Try again for any other error, never "No items in this order"', async () => {
+    service.getOrCreateOrder.mockResolvedValue({ success: false, message: "Couldn't open the order. Check your connection and try again.", error: 'permission denied' } as never);
     await act(async () => { renderer = create(editor()); });
     expect(text()).not.toContain('no longer active');
-    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(text()).not.toContain('No items in this order');
+    expect(text()).toContain("Couldn't open the order. Check your connection and try again.");
+    expect(showAlert).not.toHaveBeenCalled();
+
+    // Try again runs the open again.
+    service.getOrCreateOrder.mockResolvedValue({ success: true, data: { cart_id: ORDER_ID } } as never);
+    service.getOrderWithItems.mockResolvedValue({ success: true, data: copy(server) } as never);
+    const retry = renderer!.root.find(node => node.props.testID === 'order-open-retry' && typeof node.props.onPress === 'function');
+    await act(async () => { retry.props.onPress(); });
+    expect(service.getOrCreateOrder).toHaveBeenCalledTimes(2);
+    expect(renderer!.root.findAll(node => node.props.testID === 'order-open-error')).toHaveLength(0);
+  });
+});
+
+// An order is made by its first line (migration 128): opening one only reads.
+describe('an order that is made by its first line', () => {
+  const NEW_ORDER_ID = 'order-fictional-new';
+  const none = { success: true, message: '', data: { order_id: null, order_no: null, item_count: 0 } } as never;
+  const existing = { success: true, message: '', data: { order_id: ORDER_ID, order_no: 'ORD-7', item_count: 3 } } as never;
+  const created = { success: true, message: '', data: { data: { order_id: NEW_ORDER_ID, order_created: true } } } as never;
+  const text = () => renderer!.root.findAll(node => node.type === 'Text' as never).map(node => [node.props.children].flat().join('')).join(' | ');
+  const newServerOrder = (...lots: Array<[string, number]>): Order => ({
+    ...makeOrder(), id: NEW_ORDER_ID, items: lots.map(([lot, quantity]) => line(lot, quantity)),
+  });
+
+  it('opens an existing order by reading it, and never asks for one to be made', async () => {
+    service.getCustomerOrder.mockResolvedValue(existing);
+    await act(async () => { renderer = create(editor()); });
+    expect(service.getCustomerOrder).toHaveBeenCalledWith('customer-fictional-1');
+    expect(service.getOrCreateOrder).not.toHaveBeenCalled();
+    expect(service.getOrderWithItems).toHaveBeenCalledWith(ORDER_ID);
+  });
+
+  it('opens a business with no order as an empty screen: nothing is read, nothing is made', async () => {
+    service.getCustomerOrder.mockResolvedValue(none);
+    await act(async () => { renderer = create(editor()); });
+    expect(service.getOrCreateOrder).not.toHaveBeenCalled();
+    expect(service.getOrderWithItems).not.toHaveBeenCalled();
+    expect(text()).toContain('No items in this order');
+    expect(text()).not.toContain("Couldn't open the order");
+    // The picker is offered all the same: its first Add makes the order.
+    expect(mockPicker.props).toBeDefined();
+  });
+
+  it('makes the order with the first Add (p_customer_id), then adds the other lots to it', async () => {
+    service.getCustomerOrder.mockResolvedValue(none);
+    service.addItemToOrder.mockResolvedValueOnce(created);
+    server = newServerOrder(['lot-a', 3]);
+    await openPicker();
+
+    const results = await send([{ grnItemId: 'lot-a', quantity: 3 }, { grnItemId: 'lot-b', quantity: 2 }]);
+
+    expect(service.addItemToOrder.mock.calls).toEqual([
+      [null, 'lot-a', 3, 'customer-fictional-1'],
+      [NEW_ORDER_ID, 'lot-b', 2],
+    ]);
+    expect(results).toEqual([{ grnItemId: 'lot-a', ok: true }, { grnItemId: 'lot-b', ok: true }]);
+    expect(service.getOrderWithItems).toHaveBeenCalledWith(NEW_ORDER_ID);
+    expect(service.getOrCreateOrder).not.toHaveBeenCalled();
+  });
+
+  it('answers a refused first lot with its reason and tries the next lot to make the order', async () => {
+    service.getCustomerOrder.mockResolvedValue(none);
+    service.addItemToOrder
+      .mockResolvedValueOnce(refusal('Insufficient stock. Available: 1'))
+      .mockResolvedValueOnce(created);
+    server = newServerOrder(['lot-b', 2]);
+    await openPicker();
+
+    const results = await send([{ grnItemId: 'lot-a', quantity: 3 }, { grnItemId: 'lot-b', quantity: 2 }]);
+
+    expect(service.addItemToOrder.mock.calls.map(call => call.slice(0, 2))).toEqual([[null, 'lot-a'], [null, 'lot-b']]);
+    expect(results[0]).toMatchObject({ grnItemId: 'lot-a', ok: false });
+    expect(results[1]).toEqual({ grnItemId: 'lot-b', ok: true });
+  });
+
+  it('checks a lost answer of the first Add by asking for the business\'s order, and sends nothing again', async () => {
+    service.getCustomerOrder.mockResolvedValueOnce(none).mockResolvedValue({ success: true, message: '', data: { order_id: NEW_ORDER_ID, order_no: null, item_count: 1 } } as never);
+    service.addItemToOrder.mockResolvedValueOnce(timedOut);
+    server = newServerOrder(['lot-a', 3]);
+    await openPicker();
+
+    const results = await send([{ grnItemId: 'lot-a', quantity: 3 }]);
+
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(waitForServer).toHaveBeenCalled();
+    expect(results).toEqual([{ grnItemId: 'lot-a', ok: true }]);
+  });
+
+  it('says a lost first Add was not saved when the business still has no order', async () => {
+    service.getCustomerOrder.mockResolvedValue(none);
+    service.addItemToOrder.mockResolvedValueOnce(timedOut);
+    await openPicker();
+
+    const results = await send([{ grnItemId: 'lot-a', quantity: 3 }]);
+
+    expect(service.addItemToOrder).toHaveBeenCalledTimes(1);
+    expect(results[0]).toMatchObject({ grnItemId: 'lot-a', ok: false, savedQuantity: 0 });
+    expect(results[0].reason).toMatch(/^Checked: it was not saved/);
+  });
+
+  it('reads a business\'s order on a pull to refresh when it had none', async () => {
+    service.getCustomerOrder.mockResolvedValueOnce(none);
+    await act(async () => { renderer = create(editor()); });
+    service.getCustomerOrder.mockResolvedValue(existing);
+    await act(async () => { await mockLive.refresh?.(); });
+    expect(service.getOrderWithItems).toHaveBeenCalledWith(ORDER_ID);
   });
 });

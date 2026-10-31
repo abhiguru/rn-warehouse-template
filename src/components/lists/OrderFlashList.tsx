@@ -429,15 +429,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       return orderStatus !== 'DISPATCHED';
     });
 
-    // Group orders by status: Active (with items) vs Empty
-    const activeOrders = nonDispatchedOrders.filter(order => {
-      const itemCount = order.item_count ?? order.total_items ?? 0;
-      return itemCount > 0;
-    });
-    const emptyOrders = nonDispatchedOrders.filter(order => {
-      const itemCount = order.item_count ?? order.total_items ?? 0;
-      return itemCount === 0;
-    });
+    // An order exists only while it has a line (an order with none is never listed, and an older facility's empty
+    // ones are left out): one section, the orders with items.
+    const activeOrders = nonDispatchedOrders.filter(order => (order.item_count ?? order.total_items ?? 0) > 0);
 
     const sections: SectionData<Order>[] = [];
 
@@ -448,15 +442,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       });
     }
 
-    if (emptyOrders.length > 0 && !showWithItemsOnly) {
-      sections.push({
-        title: translate('lists.order.emptySection'),
-        data: emptyOrders,
-      });
-    }
-
     return flattenSections(sections, (order) => order.id);
-  }, [orders, showWithItemsOnly]);
+  }, [orders]);
 
   // ============================================================================
   // FLASHLIST KEY EXTRACTOR (stable, not inline)
