@@ -126,6 +126,14 @@ describe.each(THEMES)('status tag in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
+  it('shows the value and lets a screen reader say the word (accessibilityLabel)', () => {
+    const tree = render(brand, mode, <StatusTag status="neutral" label="15AB/F3" accessibilityLabel="Rack 15AB/F3" icon="view-grid-outline" />);
+    const box = tree.root.find(node => typeof node.type === 'string' && node.props.accessible === true);
+    expect(box.props.accessibilityLabel).toBe('Rack 15AB/F3');
+    expect(hosts(tree.root, 'Text')[0].props.children).toBe('15AB/F3');
+    act(() => tree.unmount());
+  });
+
   it('shrinks the label to fit in Gujarati, as before, and keeps its flexShrink', () => {
     setLanguage('gu');
     const tree = render(brand, mode, <StatusTag status="neutral" label="બાકી" />);

@@ -1684,9 +1684,9 @@ const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightTe
       {item.packaging ? <Text style={table.secondary} numberOfLines={1}>{item.packaging}</Text> : null}
       <View style={styles.itemTags}>
         {weightText !== null && <StatusTag wrap status="neutral" label={weightText} icon="weight-kilogram" />}
-        {rack ? <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
-        {packageMark ? <StatusTag wrap status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
-        {imageCount > 0 && <StatusTag wrap status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />}
+        {rack ? <StatusTag wrap status="neutral" label={rack} accessibilityLabel={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
+        {packageMark ? <StatusTag wrap status="neutral" label={packageMark} accessibilityLabel={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
+        {imageCount > 0 && <StatusTag wrap status="neutral" label={formatNumber(imageCount)} accessibilityLabel={formatCount(imageCount, 'photo')} icon="camera-outline" />}
         {lock !== null && <StatusTag wrap status="critical" label={LOCK_TAG[lock]()} icon="lock-outline" />}
       </View>
     </>

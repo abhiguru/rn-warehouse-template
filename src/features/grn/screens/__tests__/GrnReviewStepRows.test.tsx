@@ -173,7 +173,7 @@ describe('GRN review step weights', () => {
     expect(texts(tree).filter((text) => /kg/i.test(text))).toEqual([]);
     expect(cells(tree)).toEqual(['Item 1, Fictional item 1, Bag, quantity 100, rack R1, mark M1']);
     // The line's other tags are still drawn.
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Rack R1', 'Mark M1']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['R1', 'M1']));
     await act(async () => { tree.unmount(); });
   });
 });

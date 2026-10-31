@@ -179,7 +179,7 @@ describe('an edited dispatch', () => {
     // Not the stored 40, not the half that was read: no stock tag at all.
     expect(all().some((text) => /in stock|left|Checking stock/.test(text))).toBe(false);
     // Everything else on the lines is still there.
-    expect(all()).toEqual(expect.arrayContaining(['Fictional item 1', 'A101/100', 'Rack R3']));
+    expect(all()).toEqual(expect.arrayContaining(['Fictional item 1', 'A101/100', 'R3']));
   });
 
   it('a read that throws is a failed read', async () => {

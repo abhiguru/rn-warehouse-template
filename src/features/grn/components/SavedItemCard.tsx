@@ -105,9 +105,9 @@ export const SavedItemCard: React.FC<SavedItemCardProps> = ({
       {(hasWeight || !!rack || !!packageMark || imageCount > 0) && (
         <View style={styles.detailsRow}>
           {weightText !== null && <StatusTag status="neutral" label={weightText} icon="weight-kilogram" />}
-          {!!rack && <StatusTag status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" />}
-          {!!packageMark && <StatusTag status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" />}
-          {imageCount > 0 && <StatusTag status="neutral" label={photosText} icon="camera-outline" />}
+          {!!rack && <StatusTag status="neutral" label={rack} accessibilityLabel={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" />}
+          {!!packageMark && <StatusTag status="neutral" label={packageMark} accessibilityLabel={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" />}
+          {imageCount > 0 && <StatusTag status="neutral" label={formatNumber(imageCount)} accessibilityLabel={photosText} icon="camera-outline" />}
         </View>
       )}
     </View>

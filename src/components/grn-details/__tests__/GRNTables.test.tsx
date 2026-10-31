@@ -87,7 +87,7 @@ describe('GRN Items table', () => {
 
     expect(has('grn-item-details-p')).toBe(false);
     press('grn-item-row-p');
-    expect(textOf(byTestId('grn-item-details-p'))).toBe('Dispatched 20 bags|Rack B-14|Packaging Jute bag|View dispatches');
+    expect(textOf(byTestId('grn-item-details-p'))).toBe('Dispatched 20 bags|B-14|Packaging Jute bag|View dispatches');
     expect(byTestId('grn-item-row-p').props.accessibilityState).toEqual({ expanded: true });
     press('grn-item-dispatches-p');
     expect(onViewItemDispatches).toHaveBeenCalledWith(potatoes);
@@ -97,7 +97,7 @@ describe('GRN Items table', () => {
     render(<GRNItemsTab items={[lot({ id: 'x', stock: 100, dispatch_summary: { total_dispatched: 0 } }), lot({ id: 'y', stock: 70, dispatch_summary: { total_dispatched: 25 } })]} onViewItemDispatches={jest.fn()} />);
 
     press('grn-item-row-x');
-    expect(textOf(byTestId('grn-item-details-x'))).toBe('Dispatched 0 bags|Rack B-14|Packaging Jute bag');
+    expect(textOf(byTestId('grn-item-details-x'))).toBe('Dispatched 0 bags|B-14|Packaging Jute bag');
     press('grn-item-row-y');
     expect(textOf(byTestId('grn-item-details-y'))).toMatch(/^Dispatched 25 bags\|/);
   });

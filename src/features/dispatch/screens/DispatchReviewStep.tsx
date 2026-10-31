@@ -1065,7 +1065,7 @@ const DispatchReviewItemCell = React.memo(function DispatchReviewItemCell({ item
             {mark ? <Text style={table.secondary} numberOfLines={MARK_LINES} ellipsizeMode="tail">{mark}</Text> : null}
             <View style={styles.itemTags}>
                 {weightText !== null && <StatusTag wrap status="neutral" label={weightText} icon="weight-kilogram" />}
-                <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack: rack || EMPTY })} icon="view-grid-outline" />
+                <StatusTag wrap status="neutral" label={rack || EMPTY} accessibilityLabel={tr('grn.item.rackWithValue', { rack: rack || EMPTY })} icon="view-grid-outline" />
                 {stockText !== null && <StatusTag wrap status="neutral" label={stockText} icon="warehouse" />}
             </View>
             {source !== null ? <Text style={[table.secondary, styles.stackedGrn]}>{source}</Text> : null}
