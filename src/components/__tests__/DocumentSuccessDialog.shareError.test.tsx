@@ -45,3 +45,19 @@ it('draws nothing without an error', () => {
   renderWith(null);
   expect(tree.root.findAll((n) => n.props.testID === 'document-success-share-error')).toHaveLength(0);
 });
+
+it('shows the total quantity after Items, and nothing when it is not given', () => {
+  const texts = () => tree.root.findAllByType(require('react-native').Text).map((n: any) => [n.props.children].flat(Infinity).join(''));
+  act(() => {
+    tree = create(
+      <DocumentSuccessDialog isVisible entity="grn" documentData={{ ...DATA, totalQuantity: 1250 }} onCreateAnother={jest.fn()} onViewList={jest.fn()} onSharePDF={jest.fn()} />,
+    );
+  });
+  const all = texts();
+  expect(all).toContain('Total quantity');
+  expect(all).toContain('1,250');
+  expect(all.indexOf('Total quantity')).toBeGreaterThan(all.indexOf('Items'));
+  act(() => tree.unmount());
+  renderWith(null);
+  expect(texts()).not.toContain('Total quantity');
+});

@@ -401,6 +401,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 customerName: header.customer_name || tr('dispatch.review.noCustomer'),
                 date: formatDisplayDate(header.disp_date),
                 itemCount: items.length,
+                totalQuantity: totals.totalQuantity,
                 orderNotes: orderEffectLines(result.orderEffects),
             });
 

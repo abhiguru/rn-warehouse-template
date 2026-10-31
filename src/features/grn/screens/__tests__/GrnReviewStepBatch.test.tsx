@@ -173,6 +173,15 @@ describe('staff and an item with no rate (owner decision D11)', () => {
   });
 });
 
+describe('the success dialog', () => {
+  it('carries the total quantity saved (created)', async () => {
+    (createGRN as jest.Mock).mockResolvedValueOnce({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { failed: [], removalFailures: 0 } } });
+    const tree = await render();
+    await save(tree);
+    expect(successData(tree)).toMatchObject({ itemCount: 1, totalQuantity: 10 });
+  });
+});
+
 describe('the section the step opens on', () => {
   // No Rates section here: the fixture's role cannot set rates.
   const SECTIONS = ['details', 'photos', 'items'] as const;

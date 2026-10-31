@@ -833,6 +833,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           customerName: header.customer_name || tr('common.unknown'),
           date: formatReviewDate(header.date),
           itemCount: items.length,
+          totalQuantity: totalQty,
         });
         finishSave(result.data.id, result.data.photos);
       } else if (result.duplicate) {
@@ -1088,6 +1089,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           customerName: header.customer_name || tr('common.unknown'),
           date: formatReviewDate(header.date),
           itemCount: items.length,
+          totalQuantity: totalQty,
           orderNotes: orderEffectLines(result.data?.orderEffects),
         });
         const savedPhotos = result.data?.photos;

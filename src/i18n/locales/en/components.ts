@@ -185,6 +185,7 @@ export const components = {
     dialogLabel: '{{title}}, {{noun}} {{number}}',
     financialYear: 'Financial year',
     totalAmount: 'Total amount',
+    totalQuantity: 'Total quantity',
     grn: {
       createdTitle: 'GRN created',
       updatedTitle: 'GRN updated',

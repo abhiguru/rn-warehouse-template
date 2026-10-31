@@ -188,6 +188,7 @@ export const components: Translation<typeof source> = {
     dialogLabel: '{{title}}, {{noun}} {{number}}',
     financialYear: 'નાણાકીય વર્ષ',
     totalAmount: 'કુલ રકમ',
+    totalQuantity: 'કુલ નંગ',
     grn: {
       createdTitle: 'આવક પાવતી બની ગઈ',
       updatedTitle: 'આવક પાવતી અપડેટ થઈ',

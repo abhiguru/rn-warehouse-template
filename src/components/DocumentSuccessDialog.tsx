@@ -30,7 +30,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCurrency, formatFinancialYear } from '@/utils/formatters';
+import { formatCurrency, formatFinancialYear, formatNumber } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import type { DocumentEntity } from '@/i18n/entities';
 
@@ -43,6 +43,8 @@ export interface DocumentData {
   totalAmount?: number;
   finYear?: string;
   itemCount?: number;
+  /** The quantity in all the lines (GRN created or updated, dispatch created); drawn after Items. */
+  totalQuantity?: number;
   /** The order lines this save changed (orders.effect texts); drawn under the message when there are any. */
   orderNotes?: string[];
   /** Plain notices drawn under the message as one warning strip (a GRN saved by staff: items without a rate yet). */
@@ -307,6 +309,13 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>{tr('common.items')}</Text>
                   <Text style={styles.detailValue}>{localizeDigits(String(documentData.itemCount))}</Text>
+                </View>
+              )}
+
+              {documentData.totalQuantity !== undefined && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>{tr('components.documentSuccess.totalQuantity')}</Text>
+                  <Text style={styles.detailValue}>{formatNumber(documentData.totalQuantity)}</Text>
                 </View>
               )}
 
