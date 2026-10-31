@@ -31,6 +31,7 @@ import { isUpgrading, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
+import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
 
 const authLogger = createLogger('Auth');
 
@@ -1211,6 +1212,77 @@ export const exchangeCentralIdentity = async (
   }
 };
 
+/** Why a sign-in with a code from the facility did not happen. */
+export type BreakGlassFailure =
+  /** The code is wrong, used, expired or locked (the facility does not say which). */
+  | 'refused'
+  /** A customer: facility codes are for facility staff. */
+  | 'customer'
+  | 'rate_limited'
+  /** The facility is not in operator mode, or its database is down (503), or it does not know the function. */
+  | 'unavailable'
+  /** No answer from the facility. */
+  | 'network'
+  /** The session was replaced while the answer was on its way. */
+  | 'session_changed'
+  | 'failed';
+
+export type BreakGlassResult = AuthSuccessResult | { success: false; reason: BreakGlassFailure };
+
+const BREAK_GLASS_REFUSALS: readonly string[] = ['invalid_code', 'code_used', 'code_expired', 'code_locked'];
+
+/**
+ * Signs in with a code the facility's operator made on the facility's own server (`POST
+ * operator-otp/break-glass`, backend migration 132): no session is needed, and the call goes over the warehouse
+ * network when the public address does not answer (src/config/lanTransport.ts). The answer is the shape of
+ * `operator-otp/verify` plus `session_ends_at`, which is stored with the session and ends it (src/config/sessionEnd.ts).
+ * A session whose end cannot be stored is not kept: it would not end.
+ */
+export const breakGlassSignIn = async (phone: string, code: string): Promise<BreakGlassResult> => {
+  const generation = await startNewSession();
+  try {
+    const { response, result } = await operatorFunctionPost(
+      'operator-otp/break-glass',
+      { phone_number: formatPhoneNumber(phone), code },
+      { mutation: true, honorSwitch: true },
+      generation
+    );
+    if (generation !== getSessionGeneration()) {
+      const refresh = (result?.data?.session as { refresh_token?: unknown } | undefined)?.refresh_token;
+      if (typeof refresh === 'string') await revokeSession(refresh);
+      return { success: false, reason: 'session_changed' };
+    }
+    if (!response.ok || result?.success !== true || !result.data) {
+      const failureCode = typeof result?.code === 'string' ? result.code : '';
+      if (response.status === 429) return { success: false, reason: 'rate_limited' };
+      if (response.status === 503 || response.status === 404) return { success: false, reason: 'unavailable' };
+      if (failureCode === 'customer_not_allowed') return { success: false, reason: 'customer' };
+      if (BREAK_GLASS_REFUSALS.includes(failureCode)) return { success: false, reason: 'refused' };
+      return { success: false, reason: 'failed' };
+    }
+    const session = result.data.session as { session_ends_at?: unknown } | undefined;
+    const endsAt = parseSessionEnd(session?.session_ends_at);
+    // A code session without an end is not one the facility made: nothing here would sign it out.
+    if (result.data.action !== 'login' || endsAt === null) {
+      const refresh = (result.data.session as { refresh_token?: unknown } | undefined)?.refresh_token;
+      if (typeof refresh === 'string') void revokeSession(refresh);
+      return { success: false, reason: 'failed' };
+    }
+    const completed = await completeOperatorSignIn(result.data, generation).catch(() => null);
+    if (!completed?.success) return { success: false, reason: generation !== getSessionGeneration() ? 'session_changed' : 'failed' };
+    try {
+      await storeSessionEnd(endsAt);
+    } catch {
+      await clearStoredTokens();
+      return { success: false, reason: 'failed' };
+    }
+    return completed as AuthSuccessResult;
+  } catch (error) {
+    if (isGateSignal(error) || getAppErrorCode(error) === 'SESSION_CHANGED') return { success: false, reason: 'session_changed' };
+    return { success: false, reason: 'network' };
+  }
+};
+
 // Sign out helper - clear stored tokens and Supabase session
 export const signOut = async (options?: { localOnly?: boolean }) => {
   // Queue the read before invalidating pending work; preserve the credential for
@@ -1901,6 +1973,8 @@ const clearStoredTokensRaw = async (): Promise<boolean> => {
     SECURE_KEYS.REFRESH_TOKEN,
     SECURE_KEYS.TOKEN_EXPIRES,
     SECURE_KEYS.OPERATOR_IDENTITY,
+    // The end of a session started with a code from the facility (src/config/sessionEnd.ts).
+    SESSION_ENDS_AT_KEY,
     // Obsolete alternate helper used this expiry spelling.
     'secure_token_expires_at',
     'cached_user_profile',

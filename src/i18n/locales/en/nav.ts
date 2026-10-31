@@ -18,6 +18,7 @@ export const nav = {
   screens: {
     signIn: 'Sign in',
     enterCode: 'Enter code',
+    facilityCode: 'Facility code',
     waitingForApproval: 'Waiting for approval',
     facility: 'Facility',
     enrollmentReview: 'Access requests',

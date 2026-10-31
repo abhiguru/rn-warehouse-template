@@ -39,6 +39,7 @@ import { clearSessionScopedState } from '../sessionScopedState';
 import { AppError } from '@/utils/appError';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { explainEndedSession } from '@/config/sessionEnd';
 
 const authSliceLogger = createLogger('AuthSlice');
 
@@ -473,7 +474,9 @@ export const deleteAccount = createAsyncThunk<void, void, { rejectValue: DeleteA
  */
 export const forceLogoutOnInvalidToken = createAsyncThunk(
   'auth/forceLogoutOnInvalidToken',
-  async (reason: string, { dispatch }) => {
+  async (requestedReason: string, { dispatch }) => {
+    // A session started with a code from the facility has an end; once it has come, that is the reason (sessionEnd.ts).
+    const reason = await explainEndedSession(requestedReason);
     authSliceLogger.warn('Force logout triggered:', reason);
 
     // Clear user context from crash reporting
