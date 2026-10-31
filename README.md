@@ -26,6 +26,7 @@ cd rn-warehouse-template
 npm ci                       # runs the two postinstall patches
 node scripts/create-env.mjs  # creates .env only if it is absent
 npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
+# in .env set EXPO_PUBLIC_CONFIG_API_URL=https://… (the backend origin), then:
 npm run doctor               # read-only check against an installed backend
 npm run android              # native debug build on a device or emulator
 ```
@@ -62,7 +63,9 @@ npm start -- --lan --clear
 
 - Set `EXPO_PUBLIC_CENTRAL_ORIGIN` in `.env` only if the facility was set up with central sign-in (see `.env.example`).
 - The phone must be on the same Wi-Fi as the Metro host (a NAT'd virtual machine is not reachable: bridge its adapter); with `ufw`, allow port 8081 from the LAN only (the rule needs `sudo`: an agent gives the operator the command).
-- An agent keeps Metro running in `tmux` (or in the background) and gives the operator the `exp://<LAN IP>:8081` address to enter in Expo Go. Do not use `--tunnel` or any public tunnel without the operator's say-so.
+- An agent keeps Metro running in `tmux` and gives the operator the `exp://<LAN IP>:8081` address to enter in Expo Go. Do not use `--tunnel` or any public tunnel without the operator's say-so.
+- Do not pipe Metro through `tee` or any other command: Metro then sees no terminal and prints no QR code. Start it in `tmux` and keep a log with `tmux pipe-pane -o -t <session> 'cat >> metro.log'`.
+- Expo Go signs in to an Expo account. On the Metro host run `BROWSER=none npx expo login` with the Expo account that is signed in on the phone; `BROWSER=none` stops it from trying to open a browser on a host that has none.
 - Scan the QR code with Expo Go, whose SDK (Settings in Expo Go) must match `expo` in `package.json`. On the first screen enter the backend's HTTPS origin and sign in (SMS code, or the central sign-in when it is set).
 - Limits: Expo Go never applies the config plugins in `app.config.js` and `plugins/` and uses its own permission strings, and it may not support this SDK. Native builds
   ([below](#native-builds)) are the baseline. Errors: [Running Metro for a phone](docs/DEVICE_ACCEPTANCE.md#running-metro-for-a-phone).
