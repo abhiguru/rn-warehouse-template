@@ -29,6 +29,7 @@ import { DISCARD_BODY, discardBody } from './discardBody';
 import { isGatewayKeyRejection } from './gatewayRejection';
 import { isUpgrading, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from './upgradeNotice';
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
+import { noteExpiredTokenRenewal } from './sessionRenewal';
 
 const authLogger = createLogger('Auth');
 
@@ -411,6 +412,8 @@ async function sessionFetch(
   const refused = bearerOf(init);
   if (!refused || !(await isExpiredTokenResponse(response))) return response;
   const renewed = await accessTokenAfterExpiry(refused, generation);
+  // A change is not sent again: whether its error may say "sign-in renewed" depends on this outcome (serverText).
+  noteExpiredTokenRenewal(renewed !== null);
   if (!renewed || mutation) return response;
   // The refused answer is set aside: its request ends now, not at its limit.
   discardBody(response);

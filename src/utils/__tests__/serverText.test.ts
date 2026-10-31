@@ -2,6 +2,7 @@ import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
 import { TimeoutError } from '../rpcClient';
 import { AppError } from '../appError';
+import { noteExpiredTokenRenewal, resetSessionRenewalForTests } from '@/config/sessionRenewal';
 import {
   errorCodeOf,
   failureText,
@@ -492,6 +493,7 @@ describe('an expired sign-in (contract item 9)', () => {
     ['JWT expired'],
   ])('%j reads as an expired sign-in', failure => {
     expect(isSessionExpiredError(failure)).toBe(true);
+    noteExpiredTokenRenewal(true);
     for (const language of ['en', 'gu'] as const) {
       setLanguage(language);
       // A read, or a change refused with PGRST301: sign in again.
@@ -500,6 +502,24 @@ describe('an expired sign-in (contract item 9)', () => {
       const rejected = typeof failure === 'object' && failure.code === 'PGRST301';
       expect(serverText(failure, 'x', { write: true, form: true })).toBe(t(rejected ? 'errors.code.sessionExpired' : 'errors.code.signInRenewed'));
       expect(serverText(failure, 'x', { delete: true })).toBe(t(rejected ? 'errors.code.sessionExpired' : 'errors.code.signInRenewedDelete'));
+    }
+  });
+
+  it('a change is told "renewed" only when the session really was renewed; otherwise the session ended', () => {
+    const failure = { message: 'JWT expired', code: 'PGRST303' };
+    noteExpiredTokenRenewal(false);
+    expect(serverText(failure, 'x', { write: true, form: true })).toBe(t('errors.code.sessionExpired'));
+    expect(serverText(failure, 'x', { delete: true })).toBe(t('errors.code.sessionExpired'));
+    resetSessionRenewalForTests();
+    expect(serverText(failure, 'x', { write: true })).toBe(t('errors.code.sessionExpired'));
+    noteExpiredTokenRenewal(true);
+    expect(serverText(failure, 'x', { write: true })).toBe(t('errors.code.signInRenewed'));
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 31 * 1000);
+    try {
+      expect(serverText(failure, 'x', { write: true })).toBe(t('errors.code.sessionExpired'));
+    } finally {
+      clock.mockRestore();
     }
   });
 

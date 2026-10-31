@@ -10,6 +10,7 @@
 import { t, type TranslationKey } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 import { getAppErrorCode } from '@/utils/appError';
+import { sessionWasJustRenewed } from '@/config/sessionRenewal';
 
 /** Reasons the server gives, by the words it uses for them. The first match wins. */
 const REASONS: [RegExp, TranslationKey][] = [
@@ -398,14 +399,16 @@ export function isSessionExpiredError(error: unknown, code?: string): boolean {
  *
  * The app renews the session by itself, but a request that was refused for an expired token is not sent
  * again. For a change (`write` or `delete`) that was refused with PGRST303 or the bare text "JWT expired"
- * the session is already renewed, so the person is told to press the button again. PGRST301 and a read
+ * the session is renewed meanwhile (`sessionRenewal.ts`), so the person is told to press the button again;
+ * when it could not be renewed the text is the session-ended one. PGRST301 and a read
  * keep the "session expired, sign in again" text; a session that could not be renewed at all ends in the
  * sign-in screen, not here.
  */
 export function expiredSessionText(error: unknown, options: ServerTextOptions = {}): string | undefined {
   if (!isSessionExpiredError(error, options.code)) return undefined;
   const code = options.code ?? errorCodeOf(error);
-  if ((options.write || options.delete) && code !== 'PGRST301') {
+  // "Renewed" only when the session really was; otherwise it is the session-ended text.
+  if ((options.write || options.delete) && code !== 'PGRST301' && sessionWasJustRenewed()) {
     return t(options.delete ? 'errors.code.signInRenewedDelete' : 'errors.code.signInRenewed');
   }
   return t('errors.code.sessionExpired');
