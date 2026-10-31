@@ -30,6 +30,6 @@ it('says "from" for a removed rate that had begun and "planned from" for one tha
     );
   });
   const texts = tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-  expect(texts).toEqual(expect.arrayContaining(['Removed: 0–50 kg, ₹10.00, from 15 Sep 2026', 'Removed: 0–50 kg, ₹12.00, planned from 1 Dec 2026']));
+  expect(texts).toEqual(expect.arrayContaining(['Removed: 0–50 kg, ₹10.00, from 15/09/26', 'Removed: 0–50 kg, ₹12.00, planned from 01/12/26']));
   await act(async () => { tree.unmount(); });
 });

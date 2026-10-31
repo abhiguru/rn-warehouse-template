@@ -543,7 +543,7 @@ function GRNDetailScreen() {
     if (askingDeleteRef.current || deleteRunningRef.current) return;
     askingDeleteRef.current = true;
     setCheckingOrders(true);
-    let orderEffects: Awaited<ReturnType<typeof previewDeleteGrn>> = null;
+    let orderEffects: Awaited<ReturnType<typeof previewDeleteGrn>>;
     try {
       orderEffects = id ? await previewDeleteGrn(id) : null;
     } finally {
