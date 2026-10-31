@@ -66,7 +66,7 @@ export const pricingEdit = {
       fromOverlap: 'The band before ends at {{kg}} kg. Start at {{next}} kg or more.',
       gapDefault: 'A default rate cannot have a gap: every weight needs a rate.',
       afterStart: 'Must be more than {{kg}} kg; this band starts at {{start}} kg.',
-      labour: 'Enter a labour rate of 0 or more.',
+      labour: 'Enter a labour rate from 0 to 999999.',
       tax: 'Enter a tax rate from 0 to 100.',
       taxRequired: 'Enter the tax rate for this item.',
       moreThanZero: 'Enter a weight of 1 kg or more.',

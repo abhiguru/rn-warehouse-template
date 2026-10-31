@@ -91,13 +91,24 @@ describe('Add rate', () => {
     mockFontScale = 2;
   });
 
+  it('refuses a labour above 999999 and takes 999999', async () => {
+    open([], 12);
+    await type('Rent ₹/month', '3'); await type('Tax', '5');
+    await type('Labour ₹', '1000000');
+    await save();
+    expect(input('Labour ₹')!.props.error).toBe('Enter a labour rate from 0 to 999999.');
+    await type('Labour ₹', '999999');
+    await save();
+    expect(input('Labour ₹')!.props.error).toBeUndefined();
+  });
+
   it('refuses blank figures, a band that does not hold the weight and shows nothing saved', async () => {
     open([], 12);
     await type('From (kg)', '20'); await type('Up to (kg)', '30');
     await save();
     expect(onSave).not.toHaveBeenCalled();
     expect(input('Rent ₹/month')!.props.error).toBe('Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.');
-    expect(input('Labour ₹')!.props.error).toBe('Enter a labour rate of 0 or more.');
+    expect(input('Labour ₹')!.props.error).toBe('Enter a labour rate from 0 to 999999.');
     expect(input('Tax')!.props.error).toBe('Enter the tax rate for this item.');
     await type('Rent ₹/month', '3'); await type('Labour ₹', '1'); await type('Tax', '5');
     await save();

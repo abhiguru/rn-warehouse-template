@@ -23,7 +23,7 @@ import { wholeKg } from '@/features/item-pricing/editModel';
 import { figuresStack } from '@/features/item-pricing/figureRow';
 import { addDays, bandText, dateText, money } from '@/features/item-pricing/rateText';
 import { RateChangeDialog, rateChangeSummary } from './RateChangeDialog';
-import { acceptRentText, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
+import { acceptRentText, labourNumber, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { showAlert } from '@/utils/alert';
 import { formatIdentifier, localizeDigits, t } from '@/i18n';
@@ -286,7 +286,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     const max = wholeKg(upTo);
     const unit = rentNumber(rent);
     if (unit === null) next.rent = t('pricing.edit.err.rent');
-    const labourRate = oneTime ? 0 : priceNumber(labour, 2);
+    const labourRate = oneTime ? 0 : labourNumber(labour);
     if (labourRate === null) next.labour = t('pricing.edit.err.labour');
     const taxPercent = priceNumber(tax, 2);
     if (taxPercent === null || taxPercent > 100) next.tax = tax.trim() === '' ? t('pricing.edit.err.taxRequired') : t('pricing.edit.err.tax');

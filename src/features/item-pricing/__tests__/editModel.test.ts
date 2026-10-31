@@ -254,12 +254,22 @@ describe('validate', () => {
     expect(validate({ ...filled, tax: '5' }, context).ok).toBe(true);
   });
 
+  it('accepts a labour of 999999 and refuses 1000000, shared or per band', () => {
+    const { draft, context } = open('add', { item_id: 'item-new', price_type: 'monthly' }, []);
+    const base = { ...draft, bands: [{ upTo: '100', rent: '4' }], tax: '5' };
+    expect(validate({ ...base, labour: '999999' }, context).errors.labour).toBeUndefined();
+    expect(validate({ ...base, labour: '1000000' }, context).errors.labour).toBe('Enter a labour rate from 0 to 999999.');
+    const perBand = (labour: string) => ({ ...base, bands: [{ upTo: '100', rent: '4', labour, tax: '5' }] });
+    expect(validate(perBand('999999.99'), context).errors['band.0.labour']).toBe('Enter a labour rate from 0 to 999999.');
+    expect(validate(perBand('999999'), context).errors['band.0.labour']).toBeUndefined();
+  });
+
   it('rejects a tax above 100 and a missing labour (monthly only)', () => {
     const { draft, context } = open('add', { item_id: 'item-new', price_type: 'monthly' }, []);
     const bad = { ...draft, bands: [{ upTo: '100', rent: '4' }], tax: '101', labour: '' };
     const { errors } = validate(bad, context);
     expect(errors.tax).toBe('Enter a tax rate from 0 to 100.');
-    expect(errors.labour).toBe('Enter a labour rate of 0 or more.');
+    expect(errors.labour).toBe('Enter a labour rate from 0 to 999999.');
     const oneTime = validate({ ...bad, priceType: 'one_time', tax: '5' }, context);
     expect(oneTime.errors.labour).toBeUndefined();
   });

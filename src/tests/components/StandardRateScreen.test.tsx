@@ -100,7 +100,7 @@ describe('Standard rate', () => {
     await act(async () => { saveButton(t).props.onPress(); });
     expect(setStandardRate).not.toHaveBeenCalled();
     expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.error).toBe(RENT_ERROR);
-    expect(inputsWithLabel(t, 'Labour per bag')[3].props.error).toBe('Enter a labour rate of 0 or more.');
+    expect(inputsWithLabel(t, 'Labour per bag')[3].props.error).toBe('Enter a labour rate from 0 to 999999.');
     expect(inputsWithLabel(t, 'Tax')[2].props.error).toBe('Enter a tax rate from 0 to 100.');
   });
 
