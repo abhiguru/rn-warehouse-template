@@ -8,8 +8,8 @@ import React from 'react';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { MemoizedDispatchItem } from '@/components/list-items/MemoizedDispatchItem';
 import { StyleSheet } from 'react-native';
-import { FIRST_COLUMN_EM, FIRST_COLUMN_SHARE, crowded, lastColumnAlone, nb, nestedRowWidth, numberColumnWidth } from '@/components/common/DetailTable';
-import { KG_WIDTH } from '@/components/list-items/MemoizedDispatchItem';
+import { crowded, lastColumnAlone, nb, nestedRowWidth, numberColumnWidth } from '@/components/common/DetailTable';
+import { DISPATCH_LINES_FIRST_COLUMN, KG_WIDTH } from '@/components/list-items/MemoizedDispatchItem';
 import { space, typography } from '@/theme/tokens';
 import { setLanguage } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
@@ -130,13 +130,13 @@ function drawn(row: ReactTestInstance, width: number) {
 }
 
 describe('Dispatch list table: the item column keeps its room', () => {
-  const emOf = (scale: number) => FIRST_COLUMN_EM * (typography.subhead.fontSize ?? 15) * scale;
+  const emOf = (scale: number) => DISPATCH_LINES_FIRST_COLUMN.em * (typography.subhead.fontSize ?? 15) * scale;
 
   for (const language of ['en', 'gu'] as const) {
     for (const width of [360, 392, 411]) {
       for (const scale of [1, 1.3, 1.5, 2]) {
         for (const qty of [5, 9999]) {
-          it(`${language}, ${width} dp, font scale ${scale}, ${qty} bags: at least 5 em and 25 % for the item, or no column beside it`, () => {
+          it(`${language}, ${width} dp, font scale ${scale}, ${qty} bags: at least 3 em and 20 % for the item, or no column beside it`, () => {
             setLanguage(language);
             mockWidth = width;
             mockFontScale = scale;
@@ -145,7 +145,7 @@ describe('Dispatch list table: the item column keeps its room', () => {
             // The item column as drawn (the figure columns carry the margin the layout counts).
             if (widths.length > 0) {
               expect(item).toBeGreaterThanOrEqual(emOf(scale));
-              expect(item).toBeGreaterThanOrEqual(nestedRowWidth({ width }) * FIRST_COLUMN_SHARE);
+              expect(item).toBeGreaterThanOrEqual(nestedRowWidth({ width }) * DISPATCH_LINES_FIRST_COLUMN.share);
             }
             // The same layout, worked out here from the sizing functions.
             const grn = `RV15001/${qty === 9999 ? '9,999' : qty}`;
@@ -154,8 +154,8 @@ describe('Dispatch list table: the item column keeps its room', () => {
             const grnW = numberColumnWidth(size, 56, [grn]) + space.xs;
             const qtyW = numberColumnWidth(size, 36, [qty === 9999 ? '9,999' : String(qty)]) + space.xs;
             const nested = nestedRowWidth({ width });
-            const full = scale < 1.5 && !crowded(nested, [kgW, grnW, qtyW], 0, scale);
-            const under = !full && lastColumnAlone(nested, qtyW, scale);
+            const full = scale < 1.5 && !crowded(nested, [kgW, grnW, qtyW], 0, scale, DISPATCH_LINES_FIRST_COLUMN);
+            const under = !full && lastColumnAlone(nested, qtyW, scale, DISPATCH_LINES_FIRST_COLUMN);
             expect(header[0]).toBe(language === 'gu' ? 'આઇટમ' : 'Item');
             expect(header).toHaveLength(full ? 4 : 2);
             expect(widths).toEqual(full ? [kgW, grnW, qtyW] : under ? [] : [qtyW]);
@@ -181,7 +181,7 @@ describe('Dispatch list table: the item column keeps its room', () => {
     // A one-column row: the heading stays over the end of the row, the figure is under the item.
     expect(header).toEqual(['Item', 'Qty']);
     expect(drawn(row, 360).widths).toEqual([]);
-    expect(drawn(row, 360).item).toBeGreaterThanOrEqual(FIRST_COLUMN_EM * 15 * 2);
+    expect(drawn(row, 360).item).toBeGreaterThanOrEqual(DISPATCH_LINES_FIRST_COLUMN.em * 15 * 2);
     expect(cells).toEqual(['Potato', nb('50 kg each'), 'RV15001/99,99,999', '99,99,999']);
   });
 
@@ -195,13 +195,21 @@ describe('Dispatch list table: the item column keeps its room', () => {
 });
 
 describe('Dispatch list table: four columns on an ordinary phone (390 dp)', () => {
-  for (const scale of [1, 1.15]) {
+  for (const scale of [1, 1.15, 1.3]) {
     it(`keeps Item, Kg each, GRN/Received and Qty at font scale ${scale}`, () => {
       mockWidth = 390;
       mockFontScale = scale;
       expect(openCard(5).header).toEqual(['Item', 'Kg each', 'GRN/Received', 'Qty']);
     });
   }
+
+  it('keeps four columns at font scale 1.3 on 411 dp too, and stacks 9,999 bags there', () => {
+    mockWidth = 411;
+    mockFontScale = 1.3;
+    expect(openCard(5).header).toEqual(['Item', 'Kg each', 'GRN/Received', 'Qty']);
+    act(() => tree?.unmount());
+    expect(openCard(9999).header).toEqual(['Item', 'Qty']);
+  });
 
   it('stacks Kg each and the GRN text under the item from font scale 1.5', () => {
     mockWidth = 390;

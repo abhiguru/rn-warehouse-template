@@ -38,6 +38,7 @@ import { DataTable } from '@/components/table/DataTable';
 import {
   CUT_LINE,
   crowded,
+  type FirstColumnRule,
   lastColumnAlone,
   makeTableStyles,
   nb,
@@ -340,6 +341,12 @@ function lineLabel(item: DispatchLine): string {
 }
 
 /**
+ * This table keeps less for the item than the shared rule (a fifth of the row, 3 em): with the shared 25 % or
+ * 5 em it stacked at font scale 1.3 on a 390 or 411 dp phone. It shows four columns at 1.3 there and stacks from 1.5.
+ */
+export const DISPATCH_LINES_FIRST_COLUMN: FirstColumnRule = { share: 0.2, em: 3 };
+
+/**
  * The columns of an open card's lines table (§13.7): Item | Kg each | GRN | Qty; when they would crowd the
  * item (or from font scale 1.5) "Kg each" and the GRN text move under it, leaving Item | Qty; and a Qty that
  * would still crowd it, or take too much of the row, goes under the item as well, right-aligned.
@@ -351,8 +358,8 @@ export function dispatchLinesLayout(
   qtyWidth: number
 ): { stacked: boolean; qtyUnder: boolean } {
   const row = nestedRowWidth(screen);
-  const stacked = screen.stacked || crowded(row, [kgWidth, grnWidth, qtyWidth], 0, screen.scale);
-  return { stacked, qtyUnder: stacked && lastColumnAlone(row, qtyWidth, screen.scale) };
+  const stacked = screen.stacked || crowded(row, [kgWidth, grnWidth, qtyWidth], 0, screen.scale, DISPATCH_LINES_FIRST_COLUMN);
+  return { stacked, qtyUnder: stacked && lastColumnAlone(row, qtyWidth, screen.scale, DISPATCH_LINES_FIRST_COLUMN) };
 }
 
 export const DispatchLinesTable = React.memo<{ items: DispatchLine[]; words: string[]; rowKey: string; testID?: string; onViewGRN?: (grnId: string) => void }>(
