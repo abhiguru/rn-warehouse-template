@@ -43,6 +43,8 @@ export const searchGRNNumbers = async (
       .from('goodsreceived')
       .select('id, gr_no, date, customer_name')
       .ilike('gr_no', containsPattern(query))
+      // Like the default list: only GRNs that still have stock to dispatch.
+      .eq('out_of_stock', false)
       .order('gr_no', { ascending: false })
       .limit(50);
 
