@@ -7,7 +7,7 @@
  * - Empty state when no images, with "Add photo" when uploads are allowed
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -58,16 +58,46 @@ interface DispatchImagesTabProps {
 /** The photo on the address the phone reaches the server by now: it follows a change of path (WS-L review L6). */
 const DispatchPhoto: React.FC<{ url: string; style: React.ComponentProps<typeof Image>['style'] }> = ({ url, style }) => {
   const uri = useViaCurrentPath(url);
+  const t = useTokens();
+  const [missing, setMissing] = useState(false);
   return (
-    <Image
-      source={{ uri }}
-      style={style}
-      contentFit="cover"
-      // A signed URL is new on every load, so a disk copy is never reused and
-      // would only leave the private photo on the device.
-      cachePolicy="memory"
-      transition={150}
-    />
+    <>
+      <Image
+        source={{ uri }}
+        style={style}
+        contentFit="cover"
+        // A signed URL is new on every load, so a disk copy is never reused and
+        // would only leave the private photo on the device.
+        cachePolicy="memory"
+        transition={150}
+        onLoadStart={() => setMissing(false)}
+        onError={() => setMissing(true)}
+      />
+      {missing ? (
+        // A photo whose file is gone says so, instead of an empty tile.
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: t.surface.cardActive,
+          }}
+        >
+          <Icon name="image-broken-variant" size={iconSize.lg} color={t.icon.secondary} />
+          <Text
+            style={{ ...typography.caption2, color: t.text.secondary, textAlign: 'center', marginTop: space.xs }}
+            maxFontSizeMultiplier={1.4}
+            testID="photo-missing"
+          >
+            {tr('common.photoMissing')}
+          </Text>
+        </View>
+      ) : null}
+    </>
   );
 };
 

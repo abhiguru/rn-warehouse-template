@@ -30,3 +30,14 @@ it('offers Add Photo on an empty or filled dispatch only when the screen allows 
   expect(inHeader.props.disabled).toBe(true);
   await act(async () => { tree.unmount(); });
 });
+
+it('says "Photo missing" on a tile whose file fails to load', async () => {
+  const images = [{ id: 'photo-1', image_url: 'https://example.invalid/photo-1.jpg' }];
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<DispatchImagesTab images={images} />); });
+  const missing = () => tree.root.findAll(node => node.props.testID === 'photo-missing' && node.props.children === 'Photo missing');
+  expect(missing()).toHaveLength(0);
+  await act(async () => { tree.root.findByType('Image' as never).props.onError({}); });
+  expect(missing().length).toBeGreaterThan(0);
+  await act(async () => { tree.unmount(); });
+});
