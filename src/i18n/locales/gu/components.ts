@@ -46,6 +46,7 @@ export const components: Translation<typeof source> = {
     retryLabel: 'સેટિંગ ફરી લોડ કરો',
     changeServer: 'સર્વર બદલો',
     changeServerLabel: 'કોલ્ડ સ્ટોરેજનું સર્વર બદલો',
+    backToFacilitiesLabel: 'મારાં કોલ્ડ સ્ટોરેજ પર પાછા જાઓ',
     footer: 'આવું વારંવાર થાય તો તમારા કોલ્ડ સ્ટોરેજનો સંપર્ક કરો.',
   },
   errorBoundary: {

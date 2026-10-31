@@ -29,6 +29,8 @@ export interface ConfigErrorScreenProps {
    * untouched until the operator confirms a change there.
    */
   onChangeServer?: () => void;
+  /** Central login: the second button leads to My facilities, not to server selection. */
+  toFacilities?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -76,6 +78,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
   error,
   onRetry,
   onChangeServer,
+  toFacilities = false,
 }) => {
   const [isRetrying, setIsRetrying] = useState(false);
   const styles = useThemedStyles(makeStyles);
@@ -145,11 +148,11 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
               <StateActionButton
                 fullWidth
                 variant="secondary"
-                icon="server"
-                label={tr('components.configError.changeServer')}
+                icon={toFacilities ? 'arrow-left' : 'server'}
+                label={toFacilities ? tr('nav.myFacilities') : tr('components.configError.changeServer')}
                 onPress={onChangeServer}
                 disabled={isRetrying}
-                accessibilityLabel={tr('components.configError.changeServerLabel')}
+                accessibilityLabel={toFacilities ? tr('components.configError.backToFacilitiesLabel') : tr('components.configError.changeServerLabel')}
               />
             )}
           </View>

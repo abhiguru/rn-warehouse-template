@@ -720,6 +720,7 @@ function BootstrapApp() {
       <ConfigErrorScreen
         error={configError}
         onRetry={bootstrapApp}
+        toFacilities={centralLogin}
         onChangeServer={
           centralLogin
             ? // Central login: leave the facility that cannot be reached for My facilities.

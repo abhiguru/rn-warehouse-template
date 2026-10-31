@@ -73,3 +73,13 @@ describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => 
     });
   }
 );
+
+it('with central login the second button reads My facilities and goes there', async () => {
+  const onChangeServer = jest.fn();
+  await act(async () => { renderer = create(<ConfigErrorScreen onRetry={jest.fn()} onChangeServer={onChangeServer} toFacilities />); });
+  expect(byLabel('Change warehouse server')).toHaveLength(0);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('My facilities');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Change server');
+  await act(async () => { byLabel('Back to My facilities')[0].props.onPress(); });
+  expect(onChangeServer).toHaveBeenCalledTimes(1);
+});

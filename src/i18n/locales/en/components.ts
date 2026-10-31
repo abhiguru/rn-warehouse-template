@@ -43,6 +43,7 @@ export const components = {
     retryLabel: 'Retry loading configuration',
     changeServer: 'Change server',
     changeServerLabel: 'Change warehouse server',
+    backToFacilitiesLabel: 'Back to My facilities',
     footer: 'If this keeps happening, contact your facility.',
   },
   errorBoundary: {
