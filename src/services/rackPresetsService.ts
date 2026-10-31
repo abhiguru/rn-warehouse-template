@@ -5,6 +5,7 @@
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
@@ -52,6 +53,7 @@ let cached: { generation: number; answer: RackPresetsAnswer | null } | null = nu
 export function resetRackPresetsCache(): void {
   cached = null;
 }
+registerSessionScoped('rack-presets', () => resetRackPresetsCache(), { onGenerationChange: true });
 
 /**
  * The lists of this facility; null when the backend has no such setting. A failure other than that throws, and
