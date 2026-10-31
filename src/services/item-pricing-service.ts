@@ -710,6 +710,10 @@ export interface SetStandardRateOptions {
   expectedUpdatedAt?: string | null;
   /** Check everything and count the items that would be priced; nothing is written. */
   dryRun?: boolean;
+  /** The request key of the save (kept by the screen across presses until the server's definite answer). */
+  requestKey?: string;
+  /** Aborted when the person leaves the screen: a lost answer is then no longer asked about. */
+  signal?: AbortSignal;
 }
 
 /** The standard-rate save as the server answered it (live, or as stored under its request key). */
