@@ -400,7 +400,7 @@ export const errors = {
     fetchListFailed: 'Failed to fetch invoice list',
     fetchDetailsFailed: 'Failed to fetch invoice details',
     fetchItemsFailed: 'Failed to fetch invoice items',
-    deleteFailed: 'Failed to delete invoice',
+    deleteFailed: "Couldn't delete the invoice. Try again.",
     listRetrieved: 'Invoice list retrieved successfully',
     detailsFetched: 'Invoice details fetched successfully',
     itemsFetched: 'Invoice items fetched successfully',

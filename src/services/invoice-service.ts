@@ -969,7 +969,8 @@ export const deleteInvoice = async (invoiceId: string, options: { resend?: boole
     // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.
     const transportFailure = !isStatementTimeout(result) && (isTimeoutError(result) || isNetworkError(result));
     const refusal = transportFailure ? undefined : serverReason(result.error ?? '');
-    return { success: false, message: refusal ?? result.message, error: result.error };
+    // Any other failure says "Couldn't delete the invoice. Try again.": a server sentence the app has no wording for stays hidden.
+    return { success: false, message: refusal ?? (transportFailure ? result.message : t('errors.invoice.deleteFailed')), error: result.error };
   }
 
   // A report left open under the invoice must not keep listing it (SR-10, as for every other write).

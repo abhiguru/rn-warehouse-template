@@ -406,7 +406,7 @@ export const errors: Translation<typeof source> = {
     fetchListFailed: 'ઇન્વૉઇસની યાદી લોડ કરી શકાઈ નથી',
     fetchDetailsFailed: 'ઇન્વૉઇસની વિગતો લોડ કરી શકાઈ નથી',
     fetchItemsFailed: 'ઇન્વૉઇસની આઇટમ લોડ કરી શકાઈ નથી',
-    deleteFailed: 'ઇન્વૉઇસ ડિલીટ કરી શકાયું નથી',
+    deleteFailed: 'ઇન્વૉઇસ ડિલીટ કરી શકાયું નથી. ફરી પ્રયાસ કરો.',
     listRetrieved: 'ઇન્વૉઇસની યાદી લોડ થઈ',
     detailsFetched: 'ઇન્વૉઇસની વિગતો લોડ થઈ',
     itemsFetched: 'ઇન્વૉઇસની આઇટમ લોડ થઈ',
