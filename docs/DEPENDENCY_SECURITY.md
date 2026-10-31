@@ -1,5 +1,28 @@
 # Dependency security review — 2026-09-14
 
+## Expo SDK 58 — 2026-10-31
+
+- **What moved.** Expo SDK 57 to 58 (React Native 0.86.3 to 0.88.1, React 19.2.3 to 19.3.0, Expo Router 58 with React
+  Navigation 8 inside it, Jest 30 with jest-expo 58). `react-test-renderer` follows React at 19.3.0. No advisory was accepted
+  or suppressed by this step.
+- **One postinstall patch less.** Expo Router 58 no longer depends on `query-string`, so the query-string decoder adapter
+  (`scripts/patch-navigation-decoder.mjs`) was removed. `decode-uri-component` is no longer installed either, so its
+  `overrides` pin, its `transformIgnorePatterns` entry and the Dependabot ignore for `query-string` were removed. Postinstall now
+  runs the USB loopback patch of `@expo/cli` and the security backports. The sections below that speak of two adapters,
+  query-string or decode-uri-component describe SDK 57.
+- **zod backport removed.** See the section after this one.
+- **Node range.** `engines.node` is `^22.18.0 || ^24.3.0 || >=26.0.0`: the repository's own minimum of 22.18 intersected with what
+  React Native 0.88, Metro and Expo 58 support (`^22.13 || ^24.3 || >=26`). Node 23 and 25 are no longer admitted.
+- **Android toolchain.** React Native 0.88 builds with compile SDK 37, build tools 37.0.0, NDK 27.1.12297006 and Android Gradle
+  Plugin 9.2.1. Google publishes API 37 as `platforms;android-37.0`; there is no `platforms;android-37`. Target SDK stays 36.
+- **Open at this date.** `npm run audit:dependencies` fails with `FAIL_UNREPAIRED_DEPENDENCIES` on two moderate advisories published on
+  2026-10-30: GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `<11.0.1`,
+  denial of service, fixed in 11.0.1). Both are pulled in by build and test tooling (Expo CLI and config packages, Sentry bundler plugins, Jest, ESLint, Babel
+  plugins); no bundle map was checked in this step. They are not accepted. A fix needs `glob` 14 and `minimatch` 11, but the dependents
+  ask for `glob` ^7, ^9, ^10 and ^13 and `minimatch` ^3, ^8, ^9 and ^10, so no lockfile update reaches them and an `overrides` pin
+  across those majors would break callers that use the old APIs. They stay open until the dependents release versions that take the
+  fixed ones.
+
 ## deepmerge 4.3.1 — 2026-10-28
 
 - **What failed.** `npm run audit:dependencies` reported `FAIL_UNREPAIRED_DEPENDENCIES`: `expo` and `@expo/cli` also carried
@@ -107,12 +130,12 @@ list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
   backport manifest.
 - Review the `overrides` in `package.json` on the same date. They are exact
   pins that Dependabot does not edit, so a later fix release of `postcss`,
-  `decode-uri-component`, `compression`, `source-map-js` or
+  `compression`, `source-map-js` or
   `shell-quote` is adopted only by hand. (The `uuid` pin under `xcode` was
   removed with expo 57.0.31: xcode 4 no longer depends on `uuid`.) A new
   advisory against a pinned version at moderate or above now fails this gate.
 
-**Installs with scripts turned off.** The two adapters and the backports are
+**Installs with scripts turned off.** The USB loopback binding and the backports are
 applied by the npm `postinstall` script and by nothing else. `npm ci
 --ignore-scripts`, or `ignore-scripts=true` in a developer's own `.npmrc`,
 leaves `node_modules` as published and prints nothing. `npm start`, `npm run
@@ -175,7 +198,7 @@ Jest stays on 29 and Babel on 7 because SDK 57's `jest-expo` and
   (58 entries, 53 high), and `npm run audit:dependencies` reports no unresolved
   findings.
 
-The remaining overrides (PostCSS, UUID under `xcode`, decode-uri-component,
+The remaining overrides (PostCSS, UUID under `xcode`, decode-uri-component (removed in the SDK 58 step),
 compression, source-map-js, shell-quote) are unchanged; each pins a version at
 or above what SDK 57 resolves.
 
@@ -279,7 +302,8 @@ regression checks. Expo SDK 54 and React Native 0.81.5 are unchanged.
 ## Decoder and Metro compatibility
 
 The upstream [decoder advisory](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr)
-identifies 0.5.0 as patched. The lockfile overrides to that version.
+identifies `decode-uri-component` 0.5.0 as patched. Up to SDK 57 the lockfile overrode it to that version; SDK 58 no
+longer installs the package, so the override was removed.
 Up to SDK 57, `query-string` 7.1.3 (pulled in by expo-router) expected a callable
 CommonJS export, and a postinstall adapter selected the upstream default export.
 SDK 58's expo-router no longer depends on `query-string`, so that adapter was
@@ -287,14 +311,14 @@ removed in the SDK 58 step. No advisory is suppressed.
 
 Under SDK 54, `scripts/patch-expo-metro.mjs` also adapted Expo's watcher to the
 pinned Metro 0.83.8. SDK 57 ships a matching Metro, so the script now applies
-only the USB loopback binding. Both adapters run on postinstall; keep package.json CommonJS because
+only the USB loopback binding. That patch and the backports run on postinstall; keep package.json CommonJS because
 Babel/Jest rely on it. ESLint's own configuration is `eslint.config.mjs`.
 
 ## Verification
 
 - Released mobile: 100 Jest tests across nine suites, including actual navigation
   consumers, malformed input, logout/refresh races and configuration TTLs.
-- Setup regressions cover bootstrap, dependency consumers, both checked adapters
+- Setup regressions cover bootstrap, dependency consumers, the checked patches
   and safe environment-file creation.
 - Online SDK compatibility passes in mobile main CI 34825877719; offline local
   compatibility checks are weaker evidence and are recorded as such.

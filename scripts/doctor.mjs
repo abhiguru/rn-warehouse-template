@@ -5,7 +5,7 @@ import { probe, readEnv, root, supportedNode } from './doctor-common.mjs';
 import { httpOrigin, validatePublicConfig } from '../src/config/bootstrapValidation.ts';
 
 export async function doctor({ backendOnly = false } = {}) {
-  if (!supportedNode()) throw new Error('Node.js 22.18+ required.');
+  if (!supportedNode()) throw new Error('Node.js 22.18+, 24.3+ or 26+ required.');
   if (!probe('npm', ['--version']).ok) throw new Error('npm is unavailable.');
   if (!existsSync(resolve(root, 'node_modules/expo/package.json'))) throw new Error('Dependencies missing; run npm ci.');
   const env = readEnv(resolve(root, '.env'));

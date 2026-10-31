@@ -138,7 +138,7 @@ in one SDK upgrade with `npx expo install --fix`.
 
 `.github/workflows/ci.yml` runs `Lint & Type Check` (expo doctor from the lockfile with `--no-install`, lint with a
 `--max-warnings` limit, typecheck, test-file typecheck, jest, setup tests, Android bundle and its `audit:artifact -- dist`),
-`Android debug artifact audit` (pinned JDK 17 / SDK 36 build and APK audit),
+`Android debug artifact audit` (pinned JDK 17 / compile SDK 37 (target SDK 36) build and APK audit),
 `dependencies` (backport verification and the dependency audit report) and `secrets` (history scan).
 `release.yml` validates any semantic `v*` tag (`scripts/check-release.sh`) with the same gates plus
 `expo export`; publishing a GitHub release stays a manual step after the validation run passes.

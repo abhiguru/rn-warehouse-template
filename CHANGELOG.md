@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Expo SDK 58
+
+- **The app is on Expo SDK 58** (React Native 0.88, React 19.3, Expo Router 58 with React Navigation 8, Jest 30). Compile SDK is 37 (build tools 37.0.0,
+  `platforms;android-37.0`); target SDK stays 36. `react-test-renderer` is 19.3.0. Needs a new APK and iOS build.
+- **Fewer install patches.** The navigation decoder adapter and the zod backport are gone (their packages are no longer installed), together with the
+  `decode-uri-component` override. Postinstall runs the USB loopback patch and the security backports.
+- **Node.js 22.18+, 24.3+ or 26+** (`engines.node`); Node 23 and 25 are not supported by React Native 0.88.
+- **Leaving the code screens.** The central code step and the facility code step note that they are being left as soon as Back is pressed
+  (header, leave control or hardware key), not only when React Navigation reports the removal, so a code check answered in between cannot
+  act for a screen that is going away.
+- **Route guard and leave guard** act on the navigator's real state under React Navigation 8.
+
 ## Unreleased — deepmerge repair for the dependency gate
 
 - **deepmerge 4.3.1 repaired locally.** `npm run audit:dependencies` failed on GHSA-gcqx-w48m-w2h4 (deepmerge `>=4.2.0 <=4.3.1`,

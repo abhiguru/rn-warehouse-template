@@ -9,7 +9,7 @@ through that installation's canonical HTTPS origin. MIT licensed.
 
 Prerequisites:
 
-- Node.js **22.18+** and npm.
+- Node.js **22.18+, 24.3+ or 26+** (not 23 or 25) and npm.
 - For native builds only (not needed for [Expo Go](#try-the-app-on-a-phone-with-expo-go)): JDK 17 (Temurin) and an Android SDK with exactly the packages CI pins:
   `platform-tools`, `platforms;android-37.0`, `build-tools;37.0.0`,
   `build-tools;35.0.0`, `ndk;27.1.12297006`, `ndk;27.0.12077973` and
@@ -48,7 +48,7 @@ copied into the app: it fetches its public anon key dynamically.
 
 ## Try the app on a phone with Expo Go
 
-The quickest look needs only Node.js 22.18+ and npm: no JDK and no Android SDK. It also needs an installed backend and its HTTPS origin.
+The quickest look needs only Node.js (22.18+, 24.3+ or 26+) and npm: no JDK and no Android SDK. It also needs an installed backend and its HTTPS origin.
 
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
@@ -156,7 +156,7 @@ unless the build sets `EXPO_PUBLIC_CENTRAL_ORIGIN`; see
 GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs expo-doctor (a locked
 devDependency), lint (it fails above a fixed warning count), typecheck, the
 test-file typecheck, Jest, the setup tests and an Android bundle export with an
-audit of the exported directory, a pinned JDK 17 / SDK 36 debug build with an
+audit of the exported directory, a pinned JDK 17 / compile SDK 37 (target SDK 36) debug build with an
 APK audit, the dependency gate and a secrets scan on pushes and pull requests to
 `main`. There are no git hooks; CI enforces lint and typecheck.
 [release.yml](.github/workflows/release.yml) validates any semantic `v*` tag

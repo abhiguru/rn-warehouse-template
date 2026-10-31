@@ -3,7 +3,7 @@
   "version": "0.6.0",
   "private": true,
   "engines": {
-    "node": ">=22.18.0"
+    "node": "^22.18.0 || ^24.3.0 || >=26.0.0"
   },
   "license": "MIT",
   "repository": {
@@ -111,13 +111,12 @@
     "jest": "~30.5.2",
     "jest-expo": "~58.0.13",
     "prettier": "^3.9.10",
-    "react-test-renderer": "19.2.3",
+    "react-test-renderer": "19.3.0",
     "typescript": "~6.0.3"
   },
   "overrides": {
     "node-forge": "1.4.1",
     "postcss": "8.5.28",
-    "decode-uri-component": "0.5.0",
     "compression": "1.8.2",
     "source-map-js": "1.2.2",
     "shell-quote": "1.11.0"
@@ -141,7 +140,7 @@
       "<rootDir>/\\.claude/"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@gorhom/.*|@reduxjs/toolkit|immer|@sentry/.*|@shopify/flash-list|react-navigation|@react-navigation/.*|react-native-svg|standard-navigation|decode-uri-component|@tanstack/(react-table|table-core|store|react-store)))"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@gorhom/.*|@reduxjs/toolkit|immer|@sentry/.*|@shopify/flash-list|react-navigation|@react-navigation/.*|react-native-svg|standard-navigation|@tanstack/(react-table|table-core|store|react-store)))"
     ]
   },
   "expo": {
