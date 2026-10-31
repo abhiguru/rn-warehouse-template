@@ -1,5 +1,6 @@
 /** G-57: Edit item has a Delete item button that asks through the same flow as the Items swipe. */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Text } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import ItemFormScreen from '../../../app/item-form';
@@ -94,7 +95,7 @@ describe('Delete item', () => {
 
   it('is the same flow the Items swipe uses', async () => {
     jest.mocked(itemService.getItemList).mockResolvedValue({ success: true, message: '', data: [{ ...GARLIC, id: 'i2', name: 'Review Item 03' }], pagination: { total_count: 1 } } as never);
-    await act(async () => { tree = create(<ItemsScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     await act(async () => { rowFor('Review Item 03').props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } }); });
     expect(deleteItemFlow).toHaveBeenCalledWith(expect.objectContaining({ id: 'i2', name: 'Review Item 03' }), expect.any(Object));
   });

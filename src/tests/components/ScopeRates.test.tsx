@@ -307,7 +307,8 @@ describe('saving', () => {
       price_type: 'monthly',
       starts_on: '2026-11-01',
       bands: [{ weight_min: 0, weight_max: 100, unit_price: 12.5, labour_rate: 3, tax_percent: 5 }],
-    });
+      request_key: expect.stringMatching(/^warehouse-rate-replace-/),
+    }, { signal: expect.anything() });
     expect(notifyRatesChanged).toHaveBeenCalledWith('cumin');
     expect(showToast).toHaveBeenCalledWith('New rate saved. Starts 1 Nov 2026.');
     // Saved: the bar goes and the page is not dirty, before the rows even come back.
@@ -340,7 +341,7 @@ describe('saving', () => {
     await press('rate-correct');
     await type('band-0-rent', '11.25');
     await act(async () => { lastBar()!.save.onPress(); });
-    expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ mode: 'correct', starts_on: '2026-04-01' }));
+    expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ mode: 'correct', starts_on: '2026-04-01' }), { signal: expect.anything() });
     expect(showToast).toHaveBeenCalledWith('Correction saved.');
     const corrected = CUMIN.map(r => (r.unit_price === 11 ? { ...r, unit_price: 11.25 } : r));
     await rerender(baseProps(corrected));

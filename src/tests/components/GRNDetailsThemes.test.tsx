@@ -1,4 +1,5 @@
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
@@ -59,7 +60,7 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
 
   it('renders an item row with tokens and a status word', () => {
     const tree = render(
-      <GRNItemsTab items={[{ id: 'l1', item_name: 'Potato', qty: 120, stock: 0, weight: 1250.5, rack: 'B-14', package_mark: 'PT' }]} />,
+      <GestureHandlerRootView><GRNItemsTab items={[{ id: 'l1', item_name: 'Potato', qty: 120, stock: 0, weight: 1250.5, rack: 'B-14', package_mark: 'PT' }]} /></GestureHandlerRootView>,
       brand,
       mode
     );
@@ -72,7 +73,9 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
     expect(all.some(text => /1,250\.5 kg$/.test(text))).toBe(false);
     act(() => tree.root.findAll(n => n.props.testID === 'grn-item-row-l1' && typeof n.props.onPress === 'function')[0].props.onPress());
     all = texts(tree);
-    expect(all).toContain('Rack B-14');
+    // The tag shows the value alone (icon and value); the screen reader keeps the word.
+    expect(all).toContain('B-14');
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Rack B-14').length).toBeGreaterThan(0);
     // The open row's accent bar is the one brand-coloured fill (table.accent); no row or card is.
     expect(tree.root.findAll(n => typeof n.type === 'string' && n.props.testID === 'table-open-bar').length).toBe(1);
     const backgrounds = tree.root

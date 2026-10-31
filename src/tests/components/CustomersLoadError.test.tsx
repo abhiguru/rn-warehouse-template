@@ -1,4 +1,5 @@
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Text } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import CustomersScreen from '../../../app/customers';
@@ -38,7 +39,7 @@ it('shows a retryable error, not the empty state, when the list fails to load', 
     .mockResolvedValueOnce({ success: false, message: 'Failed to fetch customers', data: [] } as never)
     .mockResolvedValueOnce({ success: true, data: [], pagination: { total_count: 0 } } as never);
   let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<CustomersScreen />); });
+  await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
   expect(shownText(tree)).toContain("Couldn't load customers");
   expect(shownText(tree)).not.toContain('No customers yet');
   const retry = tree.root.findAll(node => node.props.accessibilityRole === 'button' &&
@@ -63,7 +64,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
       pagination: { total_count: 2 },
     } as never);
     let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<CustomersScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
     const text = shownText(tree);
     expect(text).toContain('Patel Traders');
     expect(text).toContain('+91 98765 43210');
@@ -100,7 +101,7 @@ describe('customer active toggle', () => {
 
   it('asks before deactivating, and only deactivates on confirm', async () => {
     let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<CustomersScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
     const row = rowFor(tree, 'Patel Traders');
     expect(row.props.accessibilityActions).toEqual([{ name: 'toggleActive', label: 'Deactivate' }]);
     await act(async () => { row.props.onAccessibilityAction({ nativeEvent: { actionName: 'toggleActive' } }); });
@@ -116,7 +117,7 @@ describe('customer active toggle', () => {
 
   it('activates an inactive customer without asking', async () => {
     let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<CustomersScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
     const row = rowFor(tree, 'Shah Cold Store');
     expect(row.props.accessibilityActions).toEqual([{ name: 'toggleActive', label: 'Activate' }]);
     await act(async () => { row.props.onAccessibilityAction({ nativeEvent: { actionName: 'toggleActive' } }); });
