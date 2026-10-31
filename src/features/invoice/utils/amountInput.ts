@@ -44,10 +44,16 @@ const rangeMessage = (field: RateField): string =>
       ? t('invoice.validation.labourRateRange')
       : t('invoice.validation.taxRange');
 
-/** A line rate as typed. An empty field is 0, which the server allows. */
+/** The range message of a line field: what an emptied or refused Charge, Labour or Tax says. */
+export const rateRangeMessage = rangeMessage;
+
+/**
+ * A line rate as typed. An empty field has no figure (it is not 0: a 0 must be typed): value null, and no message while it
+ * is being typed; Next and leaving the field refuse it with the range message (`settle`).
+ */
 export function parseRateInput(field: RateField, typed: string): ParsedAmount {
   const text = normalizeDigits(typed).trim();
-  if (text === '') return { text, value: 0, error: null };
+  if (text === '') return { text, value: null, error: null };
   if (text === '.') return { text, value: null, error: null };
   // A minus sign followed by a number (or nothing yet): the number is below the range.
   if (/^-(\d+\.?\d*|\.\d*)?$/.test(text)) return { text, value: null, error: rangeMessage(field) };

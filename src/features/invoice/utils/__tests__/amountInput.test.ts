@@ -21,8 +21,9 @@ describe('a line rate as typed', () => {
     expect(parseRateInput('charge', '0.5').value).toBe(0.5);
   });
 
-  it('reads an empty field as zero, which the server allows', () => {
-    expect(parseRateInput('labour_rate', '')).toEqual({ text: '', value: 0, error: null });
+  it('reads an empty field as no figure, not as zero: a 0 must be typed', () => {
+    expect(parseRateInput('labour_rate', '')).toEqual({ text: '', value: null, error: null });
+    expect(parseRateInput('charge', '  ')).toEqual({ text: '', value: null, error: null });
   });
 
   it('reads digits typed in Gujarati', () => {

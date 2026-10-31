@@ -568,7 +568,13 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         if (record.mixed && parsed.text === '') {
           // A shared field that showed "Mixed" (or the average) and is emptied again has no figure: the lines are put
           // back and nothing is committed (an empty field would otherwise be 0 on every line without its own figure).
-          setFields((prev) => ({ ...prev, [key]: { text: '', error: null, shown: false } }));
+          // The field shows its placeholder again: no text is kept (an empty text would be refused as an emptied field).
+          setFields((prev) => {
+            if (!(key in prev)) return prev;
+            const rest = { ...prev };
+            delete rest[key];
+            return rest;
+          });
           if (record.sent) {
             record.sent = false;
             revert(key, record);
