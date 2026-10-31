@@ -170,6 +170,7 @@ export const dispatch = {
     noMatchMessage: 'Try fewer digits or another prefix.',
     noCustomerTitle: 'No customer chosen',
     noCustomerMessage: 'Search by GRN number, or choose a customer in the first step.',
+    loadFailed: "Couldn't load the GRNs. Check your connection and try again.",
     noStockTitle: 'No GRNs with stock',
     noStockMessage: 'This customer has no GRNs with stock left to dispatch.',
     close: 'Close GRN list',

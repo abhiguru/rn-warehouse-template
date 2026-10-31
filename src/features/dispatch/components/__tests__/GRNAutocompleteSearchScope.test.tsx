@@ -4,7 +4,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { GRNAutocompleteBottomSheet } from '../GRNAutocompleteBottomSheet';
-import { searchGRNNumbers } from '../../services/grnDetailService';
+import { searchGRNNumbers, getCustomerGRNsWithStock, getGRNPrefixesWithStock } from '../../services/grnDetailService';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -74,6 +74,45 @@ describe('GRN picker search', () => {
     await tapKey(tree, 'Enter GRN digit 7');
 
     expect(searchGRNNumbers).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  const texts = (tree: ReactTestRenderer) =>
+    tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
+  const pressRetry = async (tree: ReactTestRenderer) => {
+    const retry = tree.root.find((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Try again');
+    await act(async () => { retry.props.onPress(); });
+  };
+
+  it('says the GRNs could not be loaded, not that there is no stock, and reads both again on "Try again"', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.mocked(getCustomerGRNsWithStock).mockRejectedValueOnce(new Error('500'));
+    jest.mocked(getGRNPrefixesWithStock).mockRejectedValueOnce(new Error('500'));
+    const tree = await open(CUSTOMER_A);
+
+    expect(texts(tree)).toContain("Couldn't load the GRNs. Check your connection and try again.");
+    expect(texts(tree)).not.toContain('No GRNs with stock');
+
+    jest.mocked(getCustomerGRNsWithStock).mockResolvedValueOnce([]);
+    await pressRetry(tree);
+
+    expect(getCustomerGRNsWithStock).toHaveBeenCalledTimes(2);
+    expect(getGRNPrefixesWithStock).toHaveBeenCalledTimes(2);
+    expect(texts(tree)).toContain('No GRNs with stock');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('says so when the search fails, and searches again on "Try again"', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.mocked(searchGRNNumbers).mockRejectedValueOnce(new Error('500'));
+    const tree = await open(CUSTOMER_A);
+
+    await tapKey(tree, 'Enter GRN digit 7');
+    expect(texts(tree)).toContain("Couldn't load the GRNs. Check your connection and try again.");
+    expect(texts(tree)).not.toContain('No GRNs match');
+
+    await pressRetry(tree);
+    expect(searchGRNNumbers).toHaveBeenCalledTimes(2);
     await act(async () => { tree.unmount(); });
   });
 });

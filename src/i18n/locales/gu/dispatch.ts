@@ -172,6 +172,7 @@ export const dispatch: Translation<typeof source> = {
     noMatchMessage: 'ઓછા આંકડા લખો અથવા બીજો શરૂઆતનો અક્ષર અજમાવો.',
     noCustomerTitle: 'વેપારી પસંદ કરેલ નથી',
     noCustomerMessage: 'આવક પાવતી નંબરથી શોધો, અથવા પહેલા પગલામાં વેપારી પસંદ કરો.',
+    loadFailed: 'આવક પાવતીઓ લોડ થઈ શકી નથી. ઇન્ટરનેટ તપાસો અને ફરી પ્રયાસ કરો.',
     noStockTitle: 'સ્ટોકવાળી કોઈ આવક પાવતી નથી',
     noStockMessage: 'આ વેપારીની કોઈ આવક પાવતીમાં જાવક માટે સ્ટોક બાકી નથી.',
     close: 'આવક પાવતીની યાદી બંધ કરો',
