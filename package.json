@@ -125,6 +125,9 @@
     "preset": "jest-expo",
     "resolver": "react-native-reanimated/jest/resolver",
     "globalSetup": "<rootDir>/jest.global-setup.js",
+    "setupFiles": [
+      "<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js"
+    ],
     "setupFilesAfterEnv": [
       "<rootDir>/jest.setup.js"
     ],
