@@ -88,6 +88,16 @@ describe('the discount field', () => {
     expect(onDiscountChange).not.toHaveBeenCalled();
   });
 
+  it('refuses a discount that takes the total to ₹0 under Discount, before any question', async () => {
+    const { tree, onDiscountChange, onDiscountErrorChange } = await render();
+
+    await type(tree, FIELD, '735');
+
+    expect(onDiscountChange).not.toHaveBeenCalled();
+    expect(shownErrors(tree)).toEqual([t('invoice.summary.discountTotalZero')]);
+    expect(onDiscountErrorChange).toHaveBeenLastCalledWith(t('invoice.summary.discountTotalZero'));
+  });
+
   it('shows a finished number with two decimals once the field is left', async () => {
     const { tree } = await render();
     await type(tree, FIELD, '12.5');

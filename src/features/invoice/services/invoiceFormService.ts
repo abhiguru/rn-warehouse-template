@@ -101,6 +101,17 @@ function zeroChargeHeader(payload: CreateInvoicePayload): { zero_charge_reason?:
 }
 
 /**
+ * The figures the rates lookup gave a line and the fields the person typed (D12, backend migration 129): sent only when the
+ * line has them, so an older server (which ignores unknown keys of a line) and an invoice read for editing are unchanged.
+ */
+function lookedUpFields(item: CreateInvoicePayload['items'][number]): Pick<CreateInvoicePayload['items'][number], 'looked_up' | 'typed'> {
+  return {
+    ...(item.looked_up ? { looked_up: item.looked_up } : {}),
+    ...(item.typed && item.typed.length > 0 ? { typed: item.typed } : {}),
+  };
+}
+
+/**
  * An invoice number outside 1 to 99999999 (backend migration 73, SQLSTATE
  * WH422). The three-argument save_invoice sends it as the error's code,
  * update_invoice as `error_code` in its answer, save_invoice(jsonb) inside its
@@ -164,7 +175,16 @@ class NumberTakenError extends Error {
  * request code is replayed, so a resend of this same save (same payload, same code) is answered with the stored answer
  * and never refused as STALE_RECORD or TOTAL_CHANGED because of its own first send.
  */
-const ACTED_ON_REASONS: ReadonlySet<string> = new Set([REFUSAL.STALE_RECORD, REFUSAL.GRN_HAS_STOCK, REFUSAL.TOTAL_CHANGED]);
+const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
+  REFUSAL.STALE_RECORD,
+  REFUSAL.GRN_HAS_STOCK,
+  REFUSAL.TOTAL_CHANGED,
+  // Migration 129: the date, the discount and the looked-up rates are worded by the form from the fields.
+  REFUSAL.INVOICE_DATE_FUTURE,
+  REFUSAL.INVOICE_BEFORE_DISPATCH,
+  REFUSAL.DISCOUNT_TOTAL_ZERO,
+  REFUSAL.RATES_CHANGED,
+]);
 function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
   const refusal = refusalOf(answer);
   return refusal && ACTED_ON_REASONS.has(refusal.reason) ? refusal : undefined;
@@ -800,6 +820,7 @@ const sendCreateInvoice = async (
         tax: item.tax || 0, // Tax percentage (e.g., 18 for 18%)
         duration: item.duration, // Duration in months
         no_of_days: item.no_of_days, // Number of days
+        ...lookedUpFields(item),
       };
     });
 
@@ -1141,6 +1162,7 @@ export const updateInvoice = async (
       charge: item.charge,
       tax: item.tax,
       labour_rate: item.labour_rate,
+      ...lookedUpFields(item),
     }));
 
     // Call update_invoice RPC

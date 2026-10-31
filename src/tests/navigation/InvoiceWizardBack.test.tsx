@@ -230,7 +230,7 @@ describe('Back on step 2 of a new invoice', () => {
     await tap('Next: items');
 
     expect(pathname()).toBe('/invoice-form/step1');
-    expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining('Cannot select a future date'));
+    expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining("An invoice can't be dated in the future"));
     expect(stack()).toEqual(['(tabs)', ['step1']]);
 
     // Corrected, it goes on again.

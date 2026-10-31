@@ -41,7 +41,7 @@ jest.mock('@/features/invoice/services/invoiceFormService', () => ({
   updateInvoice: jest.fn(),
   checkGrnStillInvoiceable: jest.fn(),
 }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn(), askAlert: jest.fn(async () => true) }));
 
 const nextNumber = jest.mocked(getNextInvoiceNumber);
 const answer = (number: number, finYear: string) =>
@@ -264,7 +264,7 @@ describe('the financial year of an edit', () => {
   const prepare = (store: InvoiceStore) =>
     openForEdit(store, [invoiceLine()], invoiceHeader({ inv_date: '2026-10-05', inv_no: 42 }));
 
-  it('asks for the next number of the other year when the date moves there, and shows the wait', async () => {
+  it('asks for the next number of the other year first; the date stays as it was until the number is known and the move is confirmed', async () => {
     const forLastYear = deferred<ReturnType<typeof answer>>();
     nextNumber.mockReturnValueOnce(forLastYear.promise as never);
     const { form, header, unmount } = await mount('edit', 1, prepare);
@@ -272,11 +272,10 @@ describe('the financial year of an edit', () => {
     await act(async () => { form().updateHeaderField('inv_date', '2026-03-31'); });
 
     expect(nextNumber.mock.calls).toEqual([['2025-26']]);
-    // The saved number leaves the field at once: until the answer it is not this year's number.
-    expect(header()).toMatchObject({ inv_fin_year: '2025-26', inv_no: 0 });
-    expect(form().isGettingNextNumber).toBe(true);
+    // Nothing changes while the number is on its way: the saved date, year and number stay.
+    expect(header()).toMatchObject({ inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 42 });
     await act(async () => { forLastYear.resolve(answer(1210, '2025-26')); });
-    expect(header()).toMatchObject({ inv_no: 1210 });
+    expect(header()).toMatchObject({ inv_date: '2026-03-31', inv_fin_year: '2025-26', inv_no: 1210 });
     expect(form().isGettingNextNumber).toBe(false);
     await unmount();
   });
@@ -305,7 +304,7 @@ describe('the financial year of an edit', () => {
   });
 
   it('asks for a typed number when the other year has none to give', async () => {
-    nextNumber.mockResolvedValueOnce({ success: false, message: 'none' } as never);
+    nextNumber.mockResolvedValue({ success: false, message: 'none' } as never);
     const { form, header, unmount } = await mount('edit', 1, prepare);
 
     await act(async () => { form().updateHeaderField('inv_date', '2026-03-31'); });
@@ -321,7 +320,8 @@ describe('the financial year of an edit', () => {
 
   it('holds Next while the number of the other year is on its way', async () => {
     const forLastYear = deferred<ReturnType<typeof answer>>();
-    nextNumber.mockReturnValueOnce(forLastYear.promise as never);
+    // The question's own lookup fails, so "Move invoice" asks for the number as before, and that answer is slow.
+    nextNumber.mockResolvedValueOnce({ success: false, message: 'none' } as never).mockReturnValueOnce(forLastYear.promise as never);
     const { form, unmount } = await mount('edit', 1, prepare);
     await act(async () => { form().updateHeaderField('inv_date', '2026-03-31'); });
 

@@ -2,6 +2,7 @@ import * as yup from 'yup';
 import { createStepValidator, type ValidationResult } from '@/utils/validationHelpers';
 import { t, type TranslationKey, type TranslationParams } from '@/i18n';
 import { isZeroChargeLine } from '@/utils/invoiceCalculations';
+import { formatDate } from '@/utils/formatters';
 
 /**
  * A message that is read when validation fails, not when this file is loaded,
@@ -48,7 +49,7 @@ export const step1Schema = yup.object().shape({
   inv_date: yup
     .date()
     .required(msg('invoice.validation.invoiceDateRequired'))
-    .test('not-future', msg('invoice.validation.futureDate'), (value) => {
+    .test('not-future', () => t('invoice.validation.futureDate', { today: formatDate(new Date()) }), (value) => {
       if (!value) return true;
       const endOfToday = new Date();
       endOfToday.setHours(23, 59, 59, 999);

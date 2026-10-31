@@ -134,6 +134,12 @@ export type InvoiceFormSliceState = InvoiceFormState & {
   numberRequestId: number;
   /** Set when an invoice is loaded for editing; null in a new invoice. */
   baseline: InvoiceBaseline | null;
+  /**
+   * The charge, labour rate and tax the rates lookup gave each line when its GRN was read, by the line's dispatch id (D12).
+   * Sent with the save as `looked_up`, so the server can tell that a rate changed since the form opened. Empty for an
+   * invoice read from the server for editing (its figures are the saved ones, not looked up).
+   */
+  lookedUp: Record<string, { charge: number; labour_rate: number; tax: number }>;
 };
 
 // Initial state. The steps are 1-based: a new form is on step 1.
@@ -156,6 +162,7 @@ const createInitialState = (formSession = 0): InvoiceFormSliceState => ({
   numberStatus: 'idle',
   numberRequestId: 0,
   baseline: null,
+  lookedUp: {},
 });
 
 const invoiceFormSlice = createSlice({
@@ -457,6 +464,10 @@ const invoiceFormSlice = createSlice({
       state.editedItems = {};
       state.itemOverrides = {};
       state.bulkPricing = {};
+      // What the lookup gave, to tell the server which figures were looked up (D12).
+      state.lookedUp = Object.fromEntries(
+        items.map((item) => [item.disp_trl_id, { charge: item.charge, labour_rate: item.labour_rate, tax: item.tax }])
+      );
 
       // Calculate initial totals with proper rounding
       Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
@@ -503,6 +514,8 @@ const invoiceFormSlice = createSlice({
 
       // Reset editing state (fresh start for edit mode)
       state.editedItems = {};
+      // The figures of a saved invoice were not looked up: nothing for the server to compare.
+      state.lookedUp = {};
       // Saved figures that differ from the strict majority of their item and bag weight are the lines' own (see savedLineOverrides).
       state.itemOverrides = savedLineOverrides(action.payload.items);
 
@@ -539,6 +552,34 @@ const invoiceFormSlice = createSlice({
       Object.assign(state.header, calculateHeaderTotals(next, state.header.discount));
     },
 
+    // The server refused a save with RATES_CHANGED (D12): the rates it looks up now go on the lines it names, for the fields
+    // it names (the ones the person did not type), and they become the figures looked up, so the next save compares
+    // against them. Amounts and the header's totals are worked out again.
+    applyCurrentRates: (
+      state,
+      action: PayloadAction<Array<{ disp_trl_id: string; fields: Array<'charge' | 'labour_rate' | 'tax'>; current: Partial<Record<'charge' | 'labour_rate' | 'tax', number>> }>>
+    ) => {
+      const lines = plainLines(state.items);
+      const next = lines.map((line) => {
+        const named = action.payload.filter((entry) => entry.disp_trl_id === line.disp_trl_id);
+        if (named.length === 0) return line;
+        const values: Partial<EditedItemValues> = {};
+        named.forEach((entry) => {
+          entry.fields.forEach((field) => {
+            const value = entry.current[field];
+            if (typeof value === 'number' && Number.isFinite(value)) values[field] = value;
+          });
+        });
+        if (Object.keys(values).length === 0) return line;
+        state.lookedUp[line.disp_trl_id] = { ...(state.lookedUp[line.disp_trl_id] ?? { charge: line.charge, labour_rate: line.labour_rate, tax: line.tax }), ...values } as { charge: number; labour_rate: number; tax: number };
+        const group = state.bulkPricing[`${line.item_id}:::${line.package_mark}`];
+        (Object.keys(values) as Array<'charge' | 'labour_rate' | 'tax'>).forEach((field) => { if (group) delete group[field]; });
+        return recalculateItemWithEdits(line, values);
+      });
+      state.items = next;
+      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount));
+    },
+
     // An edit that moved to another GRN goes back to the GRN it was saved with: the saved lines, discount and
     // reasons return. The number, date and financial year the person set meanwhile are kept.
     restoreSavedGrn: (state) => {
@@ -553,6 +594,7 @@ const invoiceFormSlice = createSlice({
       };
       state.items = saved.items.map((item) => ({ ...item }));
       state.selected_gr_id = saved.gr_id;
+      state.lookedUp = {};
       state.editedItems = {};
       state.itemOverrides = savedLineOverrides(saved.items);
       state.bulkPricing = {};
@@ -616,6 +658,7 @@ export const {
   loadInvoiceFormData,
   loadInvoiceEditData,
   applyServerDurations,
+  applyCurrentRates,
   restoreSavedGrn,
   resetForm,
   numberRequested,

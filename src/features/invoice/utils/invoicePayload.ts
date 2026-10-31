@@ -45,3 +45,33 @@ export const transformFormDataToPayload = (
     })),
   };
 };
+
+type RateField = 'charge' | 'labour_rate' | 'tax';
+const RATE_FIELDS: readonly RateField[] = ['charge', 'labour_rate', 'tax'];
+
+/**
+ * Tells the server which figures of each line were looked up and which the person typed (owner decision D12), so that it can
+ * refuse the save when a looked-up rate changed since the form opened (RATES_CHANGED). `looked_up` is what the lookup gave
+ * when the lines were read; `typed` lists the fields whose figure the person set by hand (a figure typed equal to the looked-up
+ * one is not told apart). A line with no looked-up figures (an invoice read from the server for editing) carries neither, and
+ * an invoice with no such line sends none: the server then makes no check.
+ */
+export const withLookedUpFigures = (
+  payload: CreateInvoicePayload,
+  formItems: readonly InvoiceItemData[],
+  lookedUp: Record<string, { charge: number; labour_rate: number; tax: number }>,
+  editedItems: Record<string, Partial<Record<RateField, number>>>
+): CreateInvoicePayload => {
+  const byDispatch = new Map(formItems.map((item) => [item.disp_trl_id, item] as const));
+  return {
+    ...payload,
+    items: payload.items.map((line) => {
+      const looked = lookedUp[line.disp_trl_id];
+      const form = byDispatch.get(line.disp_trl_id);
+      if (!looked || !form) return line;
+      const edits = editedItems[form.temp_id] ?? {};
+      const typed = RATE_FIELDS.filter((field) => edits[field] !== undefined && edits[field] !== looked[field]);
+      return { ...line, looked_up: { charge: looked.charge, labour_rate: looked.labour_rate, tax: looked.tax }, ...(typed.length > 0 ? { typed } : {}) };
+    }),
+  };
+};

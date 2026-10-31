@@ -31,6 +31,7 @@ import {
   loadInvoiceFormData,
   loadInvoiceEditData,
   applyServerDurations,
+  applyCurrentRates,
   resetForm,
   numberRequested,
   numberAnswered,
@@ -67,7 +68,8 @@ import {
   invoiceFromStoredAnswer,
   checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
-import { transformFormDataToPayload } from '@/features/invoice/utils/invoicePayload';
+import { transformFormDataToPayload, withLookedUpFigures } from '@/features/invoice/utils/invoicePayload';
+import { dispatchAfterInvoiceDate } from '@/features/invoice/utils/invoiceDates';
 import { forgetUnfinishedSave, releaseUnfinishedSave } from '@/services/unfinishedSaves';
 import { createRequestKeyKeeper } from '@/utils/requestKeyKeeper';
 import { newInvoiceRequestKey } from '@/features/invoice/utils/requestKey';
@@ -75,13 +77,13 @@ import { sendUntilAnswered } from '@/features/invoice/utils/lostAnswerSubmit';
 import { InvoiceRouteIdContext } from '@/features/invoice/utils/invoiceRouteId';
 
 import { describeValidationErrors } from '@/features/invoice/utils/validationMessages';
-import { showAlert } from '@/utils/alert';
+import { askAlert, showAlert } from '@/utils/alert';
 import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 import { REFUSAL, refusalNumber, refusalString } from '@/utils/serverRefusal';
-import { formatCount } from '@/utils/formatters';
-import { calculateFinancialYear, formatInvoiceAmount, serverLineDurations } from '@/utils/invoiceCalculations';
+import { formatCount, formatDate, formatFinancialYear, toCalendarDay } from '@/utils/formatters';
+import { calculateFinancialYear, formatInvoiceAmount, serverLineDurations, serverLineRates } from '@/utils/invoiceCalculations';
 
 const log = createLogger('useInvoiceForm');
 
@@ -134,6 +136,10 @@ export interface SubmitFailureInfo {
   totalChanged?: boolean;
   /** The GRN still has stock (GRN_HAS_STOCK, D9): a new invoice goes back to step 1, where the GRN field is marked. */
   grnHasStock?: boolean;
+  /** The server refused the invoice date (INVOICE_DATE_FUTURE, INVOICE_BEFORE_DISPATCH): step 1, where the date field says why. */
+  dateRefused?: boolean;
+  /** A looked-up rate changed since the form opened (RATES_CHANGED, D12): the lines now show the new figures; the Items step is shown. */
+  ratesChanged?: boolean;
 }
 /** `busy`: a save is already on its way; this call did nothing. */
 export type SubmitResult = SubmitSuccess | SubmitFailure | 'busy';
@@ -452,8 +458,52 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     }
   }, [dispatch, isCreateMode, header.gr_id, header.gr_no]);
 
+  // The question "Move to financial year …?" is open: another date change waits for its answer (D9).
+  const moveYearAsked = useRef(false);
+
   // Header actions
   const updateHeaderFields = useCallback((updates: Partial<InvoiceHeaderData>) => {
+    // An edit whose date moves into another financial year (not back to the one it was saved in) renumbers the invoice:
+    // the person is asked first, with the new number, and the date stays as it was until "Move invoice" (D9).
+    if (!isCreateMode && updates.inv_date && !('inv_no' in updates) && !header.inv_no_typed) {
+      const toYear = calculateFinancialYear(updates.inv_date);
+      if (toYear !== header.inv_fin_year && !(baseline && toYear === baseline.inv_fin_year)) {
+        if (moveYearAsked.current) return;
+        moveYearAsked.current = true;
+        void (async () => {
+          try {
+            let next: number | null = null;
+            try {
+              const answer = await withTimeout(getNextInvoiceNumber(toYear), NUMBER_REQUEST_TIMEOUT_MS);
+              if (answer.success && answer.data && answer.data.next_invoice_number > 0) next = answer.data.next_invoice_number;
+            } catch (error) {
+              log.warn('Could not read the next invoice number for the question about a financial year:', error);
+            }
+            const move = await askAlert(
+              t('invoice.form.moveYearTitle', { year: formatFinancialYear(toYear) }),
+              next ? t('invoice.form.moveYearMessage', { old: formatIdentifier(header.inv_no), new: formatIdentifier(next) }) : t('invoice.form.moveYearMessageNoNumber'),
+              [
+                { text: t('invoice.form.moveYearKeep'), style: 'cancel', value: false },
+                { text: t('invoice.form.moveYearConfirm'), value: true },
+              ],
+              false
+            );
+            if (!move) return;
+            // The form was left, reset or edited meanwhile: the answer belongs to a date that is no longer asked about.
+            if (store.getState().invoiceForm.header.inv_fin_year !== header.inv_fin_year) return;
+            dropNumberRequest();
+            dispatch(numberCancelled());
+            dispatch(updateHeader({ ...updates, inv_no: next ?? 0, inv_no_typed: false }));
+            Object.keys(updates).forEach((field) => dispatch(clearValidationError(field)));
+            // No number came with the question: it is asked for as before.
+            if (!next) void requestNextNumber(toYear);
+          } finally {
+            moveYearAsked.current = false;
+          }
+        })();
+        return;
+      }
+    }
     const changes: Partial<InvoiceHeaderData> = { ...updates };
     if ('inv_no' in changes) {
       // A number typed into the field is the user's own and is never replaced
@@ -489,7 +539,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         }
       }
     }
-  }, [dispatch, dropNumberRequest, isCreateMode, baseline, header.inv_fin_year, header.inv_no_typed, requestNextNumber]);
+  }, [dispatch, dropNumberRequest, isCreateMode, baseline, header.inv_fin_year, header.inv_no, header.inv_no_typed, requestNextNumber, store]);
 
   /**
    * A new invoice whose number field is empty gets the suggestion of its
@@ -539,7 +589,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
   const numberChanged = !isCreateMode && baseline !== null && header.inv_no !== baseline.inv_no;
 
   /** Step 1 (`details`) or the whole invoice (`full`), with the rules of a new invoice or of an edit. */
-  const runSchema = useCallback(async (kind: 'details' | 'full') => {
+  const runBaseSchema = useCallback(async (kind: 'details' | 'full') => {
     const { header, items } = store.getState().invoiceForm;
     const data = { header, items };
     if (isCreateMode) {
@@ -553,6 +603,29 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     if (Object.keys(extra).length === 0 || Object.keys(numberErrors(result.errors)).length > 0) return result;
     return { isValid: false, errors: { ...result.errors, ...extra } };
   }, [store, isCreateMode, numberChanged]);
+
+  /**
+   * The same, and the invoice date checked against the dispatches of the lines once they are known (the date field says
+   * "The invoice date … is before dispatch … (…)"). An edit that keeps its date and its GRN is not judged, as the server
+   * judges an update only when the date or the lines change.
+   */
+  const runSchema = useCallback(async (kind: 'details' | 'full') => {
+    const result = await runBaseSchema(kind);
+    const { header, items } = store.getState().invoiceForm;
+    const unchanged = !isCreateMode && baseline !== null
+      && toCalendarDay(header.inv_date) === toCalendarDay(baseline.header.inv_date) && header.gr_id === baseline.gr_id;
+    if (unchanged) return result;
+    const late = dispatchAfterInvoiceDate(header.inv_date, items);
+    if (!late) return result;
+    const key = kind === 'details' ? 'inv_date' : 'header.inv_date';
+    if (result.errors[key]) return result;
+    const message = t('invoice.validation.beforeDispatch', {
+      date: formatDate(toCalendarDay(header.inv_date)),
+      number: formatIdentifier(late.dispatchNo),
+      dispatchDate: formatDate(late.dispatchDate),
+    });
+    return { isValid: false, errors: { ...result.errors, [key]: message } };
+  }, [store, runBaseSchema, isCreateMode, baseline]);
 
   /**
    * Validate a specific step (1 Details, 2 Items, 3 the whole invoice) and
@@ -742,14 +815,20 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       // send of this save, a resend after a lost answer too, is the identical request. The total is the figure of the save
       // question the person confirmed (D18). An edit also sends the version it was loaded from (D1), when it holds one.
       const loadedUpdatedAt = isCreateMode ? null : store.getState().invoiceForm.loadedUpdatedAt;
-      const payload: CreateInvoicePayload = {
-        ...base,
-        header: {
-          ...base.header,
-          expected_total: header.total,
-          ...(loadedUpdatedAt ? { expected_updated_at: loadedUpdatedAt } : {}),
+      const formState = store.getState().invoiceForm;
+      const payload: CreateInvoicePayload = withLookedUpFigures(
+        {
+          ...base,
+          header: {
+            ...base.header,
+            expected_total: header.total,
+            ...(loadedUpdatedAt ? { expected_updated_at: loadedUpdatedAt } : {}),
+          },
         },
-      };
+        items,
+        formState.lookedUp,
+        formState.editedItems
+      );
       // Kept across Save presses until the server answers definitively or the form changes (see requestKeyKeeper).
       const requestKey = requestKeys.current.keyFor(JSON.stringify([isCreateMode, invoiceId ?? null, payload]));
       const controller = new AbortController();
@@ -813,6 +892,40 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         });
         if (isCreateMode) dispatch(setValidationError({ field: 'gr_id', message }));
         report(t(failedTitleKey), message, isCreateMode ? { grnHasStock: true } : undefined);
+        return { success: false, error: message };
+      }
+      if (refusal?.reason === REFUSAL.INVOICE_DATE_FUTURE) {
+        const message = t('invoice.validation.futureDate', { today: formatDate(refusalString(refusal, 'today') ?? new Date()) });
+        dispatch(setValidationError({ field: 'inv_date', message }));
+        report(t(failedTitleKey), message, { dateRefused: true });
+        return { success: false, error: message };
+      }
+      if (refusal?.reason === REFUSAL.INVOICE_BEFORE_DISPATCH) {
+        const dispatchNo = refusalString(refusal, 'dispatch_no');
+        const dispatchDate = refusalString(refusal, 'dispatch_date');
+        const message = dispatchNo && dispatchDate
+          ? t('invoice.validation.beforeDispatch', {
+              date: formatDate(refusalString(refusal, 'invoice_date') ?? header.inv_date),
+              number: formatIdentifier(dispatchNo),
+              dispatchDate: formatDate(dispatchDate),
+            })
+          : t('invoice.form.checkInvoiceTitle');
+        dispatch(setValidationError({ field: 'inv_date', message }));
+        report(t(failedTitleKey), message, { dateRefused: true });
+        return { success: false, error: message };
+      }
+      if (refusal?.reason === REFUSAL.DISCOUNT_TOTAL_ZERO) {
+        // D8: the server refuses a discount that takes the total to 0; nothing was saved.
+        const message = t('invoice.summary.discountTotalZero');
+        report(t(failedTitleKey), message);
+        return { success: false, error: message };
+      }
+      if (refusal?.reason === REFUSAL.RATES_CHANGED) {
+        // D12: a rate that was looked up changed since the form opened. The lines the server names get the new figures
+        // (the ones the person typed are not listed and stay), and the person checks them before saving again.
+        dispatch(applyCurrentRates(serverLineRates(refusal.fields.lines)));
+        const message = t('invoice.refusal.ratesChanged');
+        report(t(failedTitleKey), message, { ratesChanged: true });
         return { success: false, error: message };
       }
       const currentTotal = refusal?.reason === REFUSAL.TOTAL_CHANGED ? refusalNumber(refusal, 'current_total') : undefined;

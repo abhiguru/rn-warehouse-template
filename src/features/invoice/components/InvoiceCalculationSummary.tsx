@@ -381,7 +381,12 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
   // Rounding works on the total as it stands, after the typed discount, and keeps that discount: only its paise
   // change. With no discount typed, the discount becomes the paise of the amount.
   const handleRoundUp = () => setDiscount(clampDiscount(roundMoney(base - Math.ceil(roundMoney(base - header.discount))), base));
-  const handleRoundDown = () => setDiscount(clampDiscount(roundMoney(base - Math.floor(roundMoney(base - header.discount))), base));
+  const handleRoundDown = () => {
+    const discount = clampDiscount(roundMoney(base - Math.floor(roundMoney(base - header.discount))), base);
+    // Rounding down must not take a total under 1 to exactly 0 (a discount may not do that): the total stays as it is.
+    if (base > 0 && roundMoney(base - discount) <= 0) return;
+    setDiscount(discount);
+  };
 
   const closeFinalAmount = () => {
     setFinalAmountOpen(false);
