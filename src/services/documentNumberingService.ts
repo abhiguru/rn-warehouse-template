@@ -12,7 +12,7 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t, type TranslationKey } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { emptyAnswerAsError, errorCodeOf, isLostAnswer, serverText, withHttpStatus } from '@/utils/serverText';
+import { emptyAnswerAsError, errorCodeOf, isLostAnswer, serverText, transportText, withHttpStatus } from '@/utils/serverText';
 import { NumberingUnconfirmedError } from './documentNumberingUnconfirmed';
 
 export type DocumentType = 'grn' | 'dispatch' | 'invoice';
@@ -196,14 +196,15 @@ export async function getDocumentNumbering(): Promise<NumberingRule[]> {
   unchanged(generation);
   if (error) {
     handleGlobalAuthError(error);
-    throw new Error(serverText(error.message, t('numbering.screen.loadFailed')));
+    // The app's own words, never the server's sentence.
+    throw new Error(transportText(error) ?? t('numbering.screen.loadFailed'));
   }
   const rules = isRecord(data) && Array.isArray(data.rules) ? data.rules.map(asRule).filter((rule): rule is NumberingRule => rule !== null) : [];
   if (rules.length === 0) throw new Error(t('numbering.screen.loadFailed'));
   return rules;
 }
 
-/** Changes the rule of one document type. A refusal (SQLSTATE 22023, "Administrator required") is thrown with the server's sentence. */
+/** Changes the rule of one document type. A refusal (SQLSTATE 22023, "Administrator required") is thrown in the app's own words. */
 export async function setDocumentNumbering(type: DocumentType, rule: NumberingRuleInput): Promise<SetNumberingResult> {
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
@@ -219,10 +220,10 @@ export async function setDocumentNumbering(type: DocumentType, rule: NumberingRu
       throw new NumberingUnconfirmedError(t('numbering.edit.unconfirmed'));
     }
     handleGlobalAuthError(error);
-    // 22023: the server read the request and refused the values. In English its sentence is shown; in another language
-    // the fallback must not blame the connection, which worked.
+    // 22023: the server read the request and refused the values; the fallback must not blame the connection, which worked.
+    // The text is always the app's own, in the app's language.
     const refused = errorCodeOf(error) === '22023';
-    throw new Error(serverText(error.message, t(refused ? 'numbering.edit.refused' : 'numbering.edit.saveFailed'), { write: true, form: true }));
+    throw new Error(transportText(error, { write: true, form: true }) ?? t(refused ? 'numbering.edit.refused' : 'numbering.edit.saveFailed'));
   }
   if (!isRecord(data) || data.success === false) throw new Error(t('numbering.edit.saveFailed'));
   const whole = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);

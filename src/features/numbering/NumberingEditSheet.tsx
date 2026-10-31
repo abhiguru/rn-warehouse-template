@@ -65,6 +65,8 @@ export interface NumberingEditSheetProps {
    * the change went through (the screen closes the sheet and says "Saved."); otherwise the sheet stays open.
    */
   onRefreshed: (rules: NumberingRule[], saved: boolean) => void;
+  /** A save went unanswered: the server may hold the new rule, so the screen reads the rules again. */
+  onUnconfirmed: () => void;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -86,16 +88,16 @@ const makeStyles = (t: ThemeTokens) => ({
   stripActions: { flexDirection: 'row' as const, gap: space.sm },
 });
 
-export function NumberingEditSheet({ rule, onClose, onSaved, onRefreshed }: NumberingEditSheetProps) {
+export function NumberingEditSheet({ rule, onClose, onSaved, onRefreshed, onUnconfirmed }: NumberingEditSheetProps) {
   const styles = useThemedStyles(makeStyles);
   // The sheet is remounted for each document type (key), so the draft starts from the rule it was opened on. The rule
   // being replaced by a read (Refresh) does not remount it: the person's values stay.
-  return rule ? <Editor key={rule.document_type} rule={rule} onClose={onClose} onSaved={onSaved} onRefreshed={onRefreshed} styles={styles} /> : null;
+  return rule ? <Editor key={rule.document_type} rule={rule} onClose={onClose} onSaved={onSaved} onRefreshed={onRefreshed} onUnconfirmed={onUnconfirmed} styles={styles} /> : null;
 }
 
 type Styles = ReturnType<typeof makeStyles>;
 
-function Editor({ rule, onClose, onSaved, onRefreshed, styles }: { rule: NumberingRule; onClose: () => void; onSaved: NumberingEditSheetProps['onSaved']; onRefreshed: NumberingEditSheetProps['onRefreshed']; styles: Styles }) {
+function Editor({ rule, onClose, onSaved, onRefreshed, onUnconfirmed, styles }: { rule: NumberingRule; onClose: () => void; onSaved: NumberingEditSheetProps['onSaved']; onRefreshed: NumberingEditSheetProps['onRefreshed']; onUnconfirmed: NumberingEditSheetProps['onUnconfirmed']; styles: Styles }) {
   const type = rule.document_type;
   const [draft, setDraft] = useState<NumberingDraft>(() => draftFor(rule));
   const [step, setStep] = useState<'edit' | 'confirm'>('edit');
@@ -155,6 +157,7 @@ function Editor({ rule, onClose, onSaved, onRefreshed, styles }: { rule: Numberi
         // The row keeps the previous setting and the edit stays open with the person's values.
         setUnconfirmed(true);
         setSaving(false);
+        onUnconfirmed();
         return;
       }
       // A refusal is the server's sentence (English) or the app's own; no connection says so.

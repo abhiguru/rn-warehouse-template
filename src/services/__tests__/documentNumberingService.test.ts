@@ -140,9 +140,19 @@ describe('the rules', () => {
     expect(result).toMatchObject({ changed: true, next_number: 'GRN/26-27/0001', not_following: 2, existing_documents: 12 });
   });
 
-  it('throws the server sentence of a refusal', async () => {
+  it('words a refusal in the app\'s own text, never the server\'s sentence', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'The prefix can have up to 10 characters: capital letters, digits, / and -.' } });
-    await expect(setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' })).rejects.toThrow('The prefix can have up to 10 characters');
+    const failure = await setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' }).catch((error: Error) => error);
+    expect((failure as Error).message).toBe(tr('numbering.edit.refused'));
+  });
+
+  it('words any other failure of a save, and of a read, in the app\'s own text', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'duplicate key value violates unique constraint "x"' }, status: 409 });
+    const save = await setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' }).catch((error: Error) => error);
+    expect((save as Error).message).toBe(tr('numbering.edit.saveFailed'));
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'relation "numbering" does not exist' } });
+    const read = await getDocumentNumbering().catch((error: Error) => error);
+    expect((read as Error).message).toBe(tr('numbering.screen.loadFailed'));
   });
 });
 

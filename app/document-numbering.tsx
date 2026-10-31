@@ -101,11 +101,13 @@ export default function DocumentNumberingScreen() {
     setRules(next);
     setError(null);
     setBusy(false);
+    // The rows are also read again, so they show what the server holds now and not only what this one answer said.
+    void load();
     if (savedNow) {
       setEditing(null);
       showToast(tr('numbering.edit.savedNow'));
     }
-  }, []);
+  }, [load]);
 
   // The same header whether the screen opens or tells the person it is for administrators.
   const header = (
@@ -179,7 +181,7 @@ export default function DocumentNumberingScreen() {
         ) : null}
         {rules && error ? <Text style={styles.staleNote}>{error}</Text> : null}
       </ScrollView>
-      <NumberingEditSheet rule={editingRule} onClose={() => setEditing(null)} onSaved={saved} onRefreshed={refreshed} />
+      <NumberingEditSheet rule={editingRule} onClose={() => setEditing(null)} onSaved={saved} onRefreshed={refreshed} onUnconfirmed={() => void load()} />
     </View>
   );
 }

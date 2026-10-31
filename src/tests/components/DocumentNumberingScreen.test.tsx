@@ -442,6 +442,15 @@ describe('a save whose answer did not come through', () => {
     expect(hasId(screen, 'numbering-try-again')).toBe(true);
   });
 
+  it('reads the rows again from the server after the unconfirmed save, and after Refresh', async () => {
+    const screen = await toConfirm();
+    // The server holds the new rule although the answer was lost: the row must show it without leaving the screen.
+    expect(getDocumentNumbering).toHaveBeenCalledTimes(2);
+    jest.mocked(getDocumentNumbering).mockResolvedValue([rule({ prefix: 'Z', hint: 'ZA####', updated_at: '2026-10-28T06:00:00Z' }), RULES[1], RULES[2]]);
+    await press(screen, 'numbering-refresh');
+    expect(getDocumentNumbering).toHaveBeenCalledTimes(4);
+  });
+
   it('Try again sends the same rule again', async () => {
     const screen = await toConfirm();
     const first = jest.mocked(setDocumentNumbering).mock.calls[0];
