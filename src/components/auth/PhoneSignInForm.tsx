@@ -89,6 +89,12 @@ export interface PhoneSignInFormProps {
   terms?: { accepted: boolean; onToggle: () => void; error?: boolean; onBlocked?: () => void };
   onOpenTerms: () => void;
   onOpenPrivacy: () => void;
+  /** A link under the button, for another way to sign in (central sign-in: a code from the facility). */
+  alternative?: { label: string; hint: string; onPress: () => void; testID?: string };
+  /** Replaces the sentence under the title ("Enter your mobile number to get a one-time code."). */
+  subtitle?: string;
+  /** Replaces "Send code" on the button, with the label for the busy state. */
+  submitLabel?: { label: string; busy: string; hint: string };
 }
 
 export function PhoneSignInForm({
@@ -103,6 +109,9 @@ export function PhoneSignInForm({
   terms,
   onOpenTerms,
   onOpenPrivacy,
+  alternative,
+  subtitle,
+  submitLabel,
 }: PhoneSignInFormProps) {
   const insets = useSafeAreaInsets();
   const t = useTokens();
@@ -179,7 +188,7 @@ export function PhoneSignInForm({
               <Text style={styles.appName}>{APP_NAME}</Text>
               <Text style={styles.welcomeTitle}>{tr('auth.signIn')}</Text>
               <Text style={styles.welcomeSubtitle}>
-                {tr('auth.login.subtitle')}
+                {subtitle ?? tr('auth.login.subtitle')}
               </Text>
               {note ? <Text style={[styles.welcomeSubtitle, styles.note]}>{note}</Text> : null}
             </View>
@@ -267,20 +276,34 @@ export function PhoneSignInForm({
                 onPress={submit}
                 disabled={busy || rateLimit.isRateLimited}
                 loading={busy}
-                loadingText={tr('auth.login.sendingCode')}
+                loadingText={submitLabel?.busy ?? tr('auth.login.sendingCode')}
                 accessibilityLabel={
                   rateLimit.isRateLimited
                     ? tr('auth.login.waitBeforeSending', { time: countdown })
-                    : tr('auth.login.sendCode')
+                    : (submitLabel?.label ?? tr('auth.login.sendCode'))
                 }
-                accessibilityHint={termsMissing ? tr('central.signIn.acceptFirst') : tr('auth.login.sendCodeHint')}
+                accessibilityHint={termsMissing ? tr('central.signIn.acceptFirst') : (submitLabel?.hint ?? tr('auth.login.sendCodeHint'))}
                 accessibilityState={{
                   disabled: busy || rateLimit.isRateLimited,
                   busy: busy,
                 }}
               >
-                {rateLimit.isRateLimited ? tr('auth.rateLimit.wait', { time: countdown }) : tr('auth.login.sendCode')}
+                {rateLimit.isRateLimited ? tr('auth.rateLimit.wait', { time: countdown }) : (submitLabel?.label ?? tr('auth.login.sendCode'))}
               </Button>
+              {alternative ? (
+                <Button
+                  type="tertiary"
+                  variant="tint"
+                  size="fullWidth"
+                  onPress={alternative.onPress}
+                  disabled={busy}
+                  accessibilityLabel={alternative.label}
+                  accessibilityHint={alternative.hint}
+                  testID={alternative.testID}
+                >
+                  {alternative.label}
+                </Button>
+              ) : null}
             </View>
 
             {/* F. Footer Section */}
@@ -532,6 +555,7 @@ const makeStyles = (t: ThemeTokens) => ({
 
   buttonSection: {
     marginBottom: space.xxl,
+    gap: space.sm,
   },
 
   footerSection: {

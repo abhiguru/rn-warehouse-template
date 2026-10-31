@@ -13,6 +13,7 @@ import { setCentralState } from '@/config/centralState';
 import { requestCentralCode } from '@/config/centralSession';
 import { getCentralLoginConfig } from '@/config/envConfig';
 import { hasAcceptedTerms } from '@/config/centralTerms';
+import { SignOutReasonStrip } from '@/components/central/SignOutReasonStrip';
 import { showAlert } from '@/utils/alert';
 import { getLanguage, localizeDigits, t as tr } from '@/i18n';
 import { clearSignInDraft, readSignInDraft, saveSignInDraft } from '@/utils/signInDraft';
@@ -115,6 +116,13 @@ export default function CentralLoginScreen() {
       } : undefined}
       onOpenTerms={() => router.push('/terms-of-service')}
       onOpenPrivacy={() => router.push('/privacy-policy')}
+      banner={<SignOutReasonStrip />}
+      alternative={{
+        label: tr('auth.facilityCode.link'),
+        hint: tr('auth.facilityCode.linkHint'),
+        onPress: () => router.push('/facility-code'),
+        testID: 'sign-in-with-facility-code',
+      }}
     />
   );
 }

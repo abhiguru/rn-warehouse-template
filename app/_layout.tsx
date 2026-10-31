@@ -354,6 +354,7 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
       {/* Central login (docs/CENTRAL_LOGIN.md): reachable only in a build that names the central origin */}
       <Stack.Screen name="central-login" options={{ title: translate('nav.screens.signIn') }} />
       <Stack.Screen name="central-otp" options={{ title: translate('nav.screens.enterCode') }} />
+      <Stack.Screen name="facility-code" options={{ title: translate('nav.screens.facilityCode') }} />
       <Stack.Screen name="facilities" options={{ title: translate('nav.screens.myFacilities') }} />
       <Stack.Screen name="facility-catalogue" options={{ title: translate('nav.screens.addFacility') }} />
       <Stack.Screen name="facility-address" options={{ title: translate('nav.screens.facilityAddress') }} />

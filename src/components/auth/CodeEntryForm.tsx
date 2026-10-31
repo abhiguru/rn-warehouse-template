@@ -61,6 +61,11 @@ export interface CodeEntryFormProps {
   /** Ask for another code. True when one was sent: the timers start again and the boxes empty. */
   onResend: () => Promise<boolean>;
   onBack: () => void;
+  /**
+   * A code made by the facility, not sent to the phone: nothing can be sent again and no countdown applies, so the
+   * expiry line and the resend section are not drawn.
+   */
+  facilityMade?: boolean;
   /** The link under the form; "Wrong number?" when not given. */
   leave?: { label: string; accessibilityLabel: string; accessibilityHint: string };
 }
@@ -75,6 +80,7 @@ export function CodeEntryForm({
   onVerify,
   onResend,
   onBack,
+  facilityMade,
   leave,
 }: CodeEntryFormProps) {
   const [otpCode, setOtpCode] = useState('');
@@ -257,9 +263,11 @@ export function CodeEntryForm({
               </Pressable>
 
               {/* Helper text */}
-              <Text style={styles.helperText}>
-                {tr('auth.otp.expiresIn', { time: formatTimer(expiryTimer) })}
-              </Text>
+              {facilityMade ? null : (
+                <Text style={styles.helperText}>
+                  {tr('auth.otp.expiresIn', { time: formatTimer(expiryTimer) })}
+                </Text>
+              )}
             </View>
 
             {/* C. Rate Limit Warning (Fiori critical message strip) */}
@@ -302,48 +310,50 @@ export function CodeEntryForm({
             </View>
 
             {/* E. Resend Section */}
-            <View style={styles.resendSection}>
-              <View style={styles.divider} />
+            {facilityMade ? null : (
+              <View style={styles.resendSection}>
+                <View style={styles.divider} />
 
-              <Text style={styles.resendLabel}>
-                {tr('auth.otp.notReceived')}
-              </Text>
-
-              {resendTimer > 0 || rateLimit.isRateLimited ? (
-                <Text
-                  style={styles.resendTimer}
-                  accessible={true}
-                  accessibilityRole="timer"
-                  accessibilityLabel={
-                    rateLimit.isRateLimited
-                      ? tr('auth.otp.waitBeforeResending', { time: countdown })
-                      : tr('auth.otp.resendAvailableIn', { time: formatTimer(resendTimer) })
-                  }
-                  accessibilityLiveRegion="polite"
-                >
-                  {rateLimit.isRateLimited
-                    ? tr('auth.rateLimit.wait', { time: countdown })
-                    : tr('auth.otp.resendIn', { time: formatTimer(resendTimer) })}
+                <Text style={styles.resendLabel}>
+                  {tr('auth.otp.notReceived')}
                 </Text>
-              ) : (
-                <Button
-                  type="tertiary"
-                  variant="tint"
-                  size="auto"
-                  onPress={() => void resend()}
-                  disabled={resending}
-                  loading={resending}
-                  accessibilityLabel={tr('auth.otp.resend')}
-                  accessibilityHint={tr('auth.otp.resendHint', { phone: displayPhone })}
-                  accessibilityState={{
-                    disabled: resending,
-                    busy: resending,
-                  }}
-                >
-                  {tr('auth.otp.resend')}
-                </Button>
-              )}
-            </View>
+
+                {resendTimer > 0 || rateLimit.isRateLimited ? (
+                  <Text
+                    style={styles.resendTimer}
+                    accessible={true}
+                    accessibilityRole="timer"
+                    accessibilityLabel={
+                      rateLimit.isRateLimited
+                        ? tr('auth.otp.waitBeforeResending', { time: countdown })
+                        : tr('auth.otp.resendAvailableIn', { time: formatTimer(resendTimer) })
+                    }
+                    accessibilityLiveRegion="polite"
+                  >
+                    {rateLimit.isRateLimited
+                      ? tr('auth.rateLimit.wait', { time: countdown })
+                      : tr('auth.otp.resendIn', { time: formatTimer(resendTimer) })}
+                  </Text>
+                ) : (
+                  <Button
+                    type="tertiary"
+                    variant="tint"
+                    size="auto"
+                    onPress={() => void resend()}
+                    disabled={resending}
+                    loading={resending}
+                    accessibilityLabel={tr('auth.otp.resend')}
+                    accessibilityHint={tr('auth.otp.resendHint', { phone: displayPhone })}
+                    accessibilityState={{
+                      disabled: resending,
+                      busy: resending,
+                    }}
+                  >
+                    {tr('auth.otp.resend')}
+                  </Button>
+                )}
+              </View>
+            )}
 
             {/* F. Wrong number: back to sign-in */}
             <View style={styles.changeNumberSection}>

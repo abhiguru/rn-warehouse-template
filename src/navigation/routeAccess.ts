@@ -54,7 +54,7 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
  * The two sign-in routes are open to a person who is not signed in centrally;
  * the others need the central session and no facility session.
  */
-export const CENTRAL_SIGN_IN_ROUTES: readonly string[] = ['central-login', 'central-otp'];
+export const CENTRAL_SIGN_IN_ROUTES: readonly string[] = ['central-login', 'central-otp', 'facility-code'];
 export const CENTRAL_ROUTES: readonly string[] = [
   'facilities',
   'facility-catalogue',

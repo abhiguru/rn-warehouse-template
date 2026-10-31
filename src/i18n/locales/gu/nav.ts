@@ -19,7 +19,7 @@ export const nav: Translation<typeof source> = {
   screens: {
     signIn: 'લૉગિન કરો',
     enterCode: 'OTP લખો',
-    facilityCode: 'કોલ્ડ સ્ટોરેજનો કોડ',
+    facilityCode: 'કોલ્ડ સ્ટોરેજના કોડથી લૉગિન',
     waitingForApproval: 'મંજૂરીની રાહ જોવાય છે',
     facility: 'કોલ્ડ સ્ટોરેજ',
     enrollmentReview: 'મંજૂરીની અરજીઓ',

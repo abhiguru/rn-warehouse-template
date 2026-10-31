@@ -111,6 +111,23 @@ export async function loadMyFacilities(userId: string): Promise<MyFacility[]> {
 }
 
 /**
+ * The facilities of every person's list on this phone, each once, in the order of `sortMyFacilities`. For the sign-in
+ * with a code from the facility (src/config/breakGlass.ts), where nobody is signed in with the association and so no
+ * single person's list can be named. A list holds only an address, a name and a city (see above).
+ */
+export async function loadAllMyFacilities(): Promise<MyFacility[]> {
+  let keys: readonly string[];
+  try {
+    keys = (await AsyncStorage.getAllKeys()).filter(key => key.startsWith(CENTRAL_FACILITIES_PREFIX));
+  } catch {
+    return [];
+  }
+  const lists = await serialize(() => Promise.all(keys.map(key => read(key.slice(CENTRAL_FACILITIES_PREFIX.length)))));
+  const seen = new Set<string>();
+  return sortMyFacilities(lists.flat().filter(entry => !seen.has(entry.origin) && seen.add(entry.origin)));
+}
+
+/**
  * Adds a facility, or updates the name and city of one already on the list.
  * A new entry starts as `unavailable`: nothing is known about it until it has
  * been opened once.
