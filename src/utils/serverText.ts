@@ -576,7 +576,11 @@ export function serverText(text: unknown, fallback: string, options: ServerTextO
   if (APP_OWN_TEXT.some(key => bare.trim() === t(key))) return bare;
   // A dispatch edit that touches a line another person put on an invoice: the app's sentence, naming the items.
   const invoicedItems = INVOICED_ITEMS.exec(unwrapDatabaseError(bare).trim());
-  if (invoicedItems) return t('errors.parsed.invoicedItems', { items: invoicedItems[1].trim() });
+  if (invoicedItems) {
+    const items = invoicedItems[1].trim();
+    // The names are separated by ", "; a name that has a comma itself makes the count a best guess.
+    return t('errors.parsed.invoicedItems', { items, count: items.split(', ').length });
+  }
   const code = options.code ?? errorCodeOf(text);
   const byCode = code ? REASON_BY_CODE[code] : undefined;
   if (byCode) return t(byCode);

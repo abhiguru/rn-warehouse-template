@@ -58,8 +58,12 @@ describe('the refusal "Cannot modify invoiced items"', () => {
   const server = 'Cannot modify invoiced items: Potatoes, Onions';
 
   it('is the app\'s sentence naming the items, never the server English', () => {
-    expect(serverText(server, 'x', { write: true, form: true })).toBe('Potatoes, Onions is on an invoice. Delete or edit the invoice first.');
-    expect(serverText(`Database error: ${server} (SQLState: WH409)`, 'x')).toBe('Potatoes, Onions is on an invoice. Delete or edit the invoice first.');
+    expect(serverText(server, 'x', { write: true, form: true })).toBe('Potatoes, Onions are on invoices. Delete or edit those invoices first.');
+    expect(serverText(`Database error: ${server} (SQLState: WH409)`, 'x')).toBe('Potatoes, Onions are on invoices. Delete or edit those invoices first.');
+  });
+
+  it('is in the singular for one item', () => {
+    expect(serverText('Cannot modify invoiced items: Potatoes', 'x', { write: true, form: true })).toBe('Potatoes is on an invoice. Delete or edit the invoice first.');
   });
 
   it('is Gujarati in Gujarati, with the names kept', () => {
