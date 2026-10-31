@@ -15,6 +15,7 @@ import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
 import { routerStore } from '@/tests/helpers/routerStore';
 import { router, Stack, Tabs } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
@@ -134,8 +135,21 @@ export async function startFlowApp({ location, advance }: StartOptions): Promise
   process.env.EXPO_ROUTER_IMPORT_MODE = 'sync';
   const backKey = installHardwareBack();
   const context = getMockContext({
-    _layout: () => <Stack screenOptions={{ headerShown: false }} />,
-    '(tabs)/_layout': () => <Tabs screenOptions={{ headerShown: false }} />,
+    // The app's root layout wraps everything in GestureHandlerRootView, which gesture-handler 3 requires.
+    _layout: () => (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </GestureHandlerRootView>
+    ),
+    // expo-router 58 shows only the screens a layout declares.
+    '(tabs)/_layout': () => (
+      <Tabs screenOptions={{ headerShown: false }}>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="grn" />
+        <Tabs.Screen name="invoices" />
+        <Tabs.Screen name="dispatch" />
+      </Tabs>
+    ),
     '(tabs)/index': () => null,
     '(tabs)/invoices': InvoicesTab,
     'invoice-details/[id]': DetailsPage,
