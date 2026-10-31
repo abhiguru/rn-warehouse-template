@@ -47,6 +47,17 @@ it.each(['grn', 'dispatch'] as const)(
     expect(remove).toHaveBeenCalledWith(['authorized/photo.webp']);
   }
 );
+it('words the refusal to delete a GRN\'s last photo in the app\'s own text', async () => {
+  rpc.mockResolvedValue({
+    data: { success: false, error_code: 'WH409', reason: 'GRN_PHOTO_REQUIRED', error: 'Some server English', gr_no: 'A1' },
+    error: null,
+  });
+  expect(await deleteWarehouseImage('grn', 'image-id')).toEqual({
+    success: false,
+    error: 'A GRN needs at least one photo. Add another before deleting this one.',
+  });
+  expect(remove).not.toHaveBeenCalled();
+});
 it('does not delete bytes after a business authorization rejection', async () => {
   rpc.mockResolvedValue({ data: { success: false }, error: null });
   expect(await deleteWarehouseImage('grn', 'image-id')).toEqual({

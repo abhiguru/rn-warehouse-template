@@ -240,8 +240,11 @@ function GRNDetailScreen() {
       setIsUploadingImage(true);
       const result = await uploadGRNImage(picked.assets[0], id, 'header');
       if (!result.success) {
-        setSnackbarMessage(serverText(result.error, tr('grn.details.imageUploadFailed'), { write: true, photo: true }));
+        const failure = serverText(result.error, tr('grn.details.imageUploadFailed'), { write: true, photo: true });
+        setSnackbarMessage(failure);
         setSnackbarVisible(true);
+        // "No answer ... may have gone through": the photos are read again, so the tab shows what the server holds.
+        if (failure === tr('errors.parsed.timeoutWritePhoto')) await fetchGRNDetails();
         return;
       }
       await fetchGRNDetails();
@@ -258,6 +261,14 @@ function GRNDetailScreen() {
 
   const handleDeleteImage = (image: GRNImageData) => {
     if (imageMutationRef.current || deleteRunningRef.current) return;
+    // A GRN keeps at least one GRN photo (the Edit form asks for one too): the only one is not offered for deletion.
+    // The server refuses it as well; this saves the question and the trip.
+    const grnPhotoCount = ((data?.grn as any)?.processed_header_images || []).length;
+    if (image.category === 'header' && grnPhotoCount <= 1) {
+      setSnackbarMessage(tr('grn.refusal.lastPhoto'));
+      setSnackbarVisible(true);
+      return;
+    }
     imageMutationRef.current = true;
     showAlert(tr('grn.details.deleteImageTitle'), tr('grn.details.deleteImageMessage'), [
       { text: tr('common.cancel'), style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
@@ -272,7 +283,9 @@ function GRNDetailScreen() {
               await fetchGRNDetails();
               setSnackbarMessage(result.partial ? serverText(result.error, tr('grn.details.imageRemoved'), { write: true, photo: true }) : tr('grn.details.imageDeleted'));
             } else {
-              setSnackbarMessage(serverText(result.error, tr('grn.details.imageDeleteFailed'), { write: true, photo: true }));
+              const failure = serverText(result.error, tr('grn.details.imageDeleteFailed'), { write: true, photo: true });
+              setSnackbarMessage(failure);
+              if (failure === tr('errors.parsed.timeoutWritePhoto')) await fetchGRNDetails();
             }
           } catch {
             setSnackbarMessage(tr('grn.details.imageDeleteFailed'));
