@@ -28,7 +28,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
-import { store as routerStore } from 'expo-router/build/global-state/router-store';
+import { routerStore } from '@/tests/helpers/routerStore';
 import { router, Stack, Tabs } from 'expo-router';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import invoiceFormReducer, { setItems, updateHeader } from '@/store/slices/invoiceFormSlice';

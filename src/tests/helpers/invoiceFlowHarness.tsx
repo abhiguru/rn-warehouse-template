@@ -13,7 +13,7 @@ import { Pressable, Text, TextInput } from 'react-native';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
-import { store as routerStore } from 'expo-router/build/global-state/router-store';
+import { routerStore } from '@/tests/helpers/routerStore';
 import { router, Stack, Tabs } from 'expo-router';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
