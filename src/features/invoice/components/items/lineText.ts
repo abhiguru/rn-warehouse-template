@@ -35,7 +35,7 @@ export const lineMonths = (item: InvoiceItemData, oneTime: boolean): string => m
 export const lineDays = (item: InvoiceItemData): string => countText(item.no_of_days);
 export const lineQty = (item: InvoiceItemData): string => countText(item.qty);
 
-/** "09/10/26 · 1.6 months · 48 days", or "9 Oct · One-time". */
+/** "09/10/26 · 1.6 months · 48 days", or "09/10/26 · One-time". */
 export const lineMeta = (item: InvoiceItemData, oneTime: boolean): string => {
   const date = lineDate(item);
   if (oneTime) return nb(`${date} · ${tr('invoice.items.oneTime')}`);
