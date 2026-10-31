@@ -12,6 +12,7 @@ import { setLanguage } from '@/i18n';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
+import { NumberingUnconfirmedError } from '@/services/documentNumberingUnconfirmed';
 
 let mockRole: string | undefined = 'admin';
 let mockTheme: { preference: string; brand: string } = { preference: 'light', brand: 'orange' };
@@ -398,5 +399,64 @@ describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => 
     await press(screen, 'numbering-row-grn');
     expect(colours(screen)).toContain(tokens.surface.sheet.toLowerCase());
     expect(texts(screen)).toContain('GRN numbers');
+  });
+});
+
+describe('a save whose answer did not come through', () => {
+  const UNCONFIRMED = "We couldn't confirm the change. Refresh to see the setting the server holds before you try again.";
+  const toConfirm = async () => {
+    const screen = await mount();
+    await press(screen, 'numbering-row-grn');
+    await type(screen, 'numbering-field-perLetter', '500');
+    await press(screen, 'numbering-save');
+    jest.mocked(setDocumentNumbering).mockRejectedValueOnce(new NumberingUnconfirmedError(UNCONFIRMED));
+    await press(screen, 'numbering-confirm');
+    return screen;
+  };
+
+  it('keeps the edit open with the values, the row on the previous setting, and offers Refresh and Try again', async () => {
+    const screen = await toConfirm();
+    expect(texts(screen)).toContain(UNCONFIRMED);
+    expect(hasId(screen, 'numbering-refresh')).toBe(true);
+    expect(hasId(screen, 'numbering-try-again')).toBe(true);
+    // The sheet did not close and nothing was said to be saved.
+    expect(hasId(screen, 'numbering-confirm')).toBe(true);
+    expect(showToast).not.toHaveBeenCalled();
+    expect(rowLabel(screen, 'grn')).toContain('A0001');
+  });
+
+  it('Refresh: the server holds the rule that was sent, so it says "Saved." and closes', async () => {
+    const screen = await toConfirm();
+    jest.mocked(getDocumentNumbering).mockResolvedValue([rule({ per_letter: 500, updated_at: '2026-10-28T06:00:00Z' }), RULES[1], RULES[2]]);
+    await press(screen, 'numbering-refresh');
+    expect(showToast).toHaveBeenCalledWith('Saved.');
+    expect(hasId(screen, 'numbering-confirm')).toBe(false);
+  });
+
+  it('Refresh: the server holds another rule, so it says "Not saved." and the edit stays', async () => {
+    const screen = await toConfirm();
+    await press(screen, 'numbering-refresh');
+    expect(texts(screen)).toContain('Not saved.');
+    expect(showToast).not.toHaveBeenCalled();
+    expect(hasId(screen, 'numbering-confirm')).toBe(true);
+    expect(hasId(screen, 'numbering-try-again')).toBe(true);
+  });
+
+  it('Try again sends the same rule again', async () => {
+    const screen = await toConfirm();
+    const first = jest.mocked(setDocumentNumbering).mock.calls[0];
+    await press(screen, 'numbering-try-again');
+    expect(setDocumentNumbering).toHaveBeenCalledTimes(2);
+    expect(jest.mocked(setDocumentNumbering).mock.calls[1]).toEqual(first);
+    expect(showToast).toHaveBeenCalled();
+  });
+});
+
+describe('pull to refresh', () => {
+  it('reads the rules again', async () => {
+    const screen = await mount();
+    const control = screen.root.findAll(node => typeof node.props.onRefresh === 'function')[0];
+    await act(async () => { control.props.onRefresh(); });
+    expect(getDocumentNumbering).toHaveBeenCalledTimes(2);
   });
 });

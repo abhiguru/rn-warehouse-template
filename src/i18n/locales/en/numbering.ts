@@ -88,6 +88,12 @@ export const numbering = {
       other: '{{count}} existing numbers do not follow the rule. They are kept.',
     },
     unchanged: 'The numbering is as it was.',
+    // The request was sent and its answer did not come through: the server may or may not hold the new rule.
+    unconfirmed: "We couldn't confirm the change. Refresh to see the setting the server holds before you try again.",
+    refresh: 'Refresh',
+    tryAgain: 'Try again',
+    savedNow: 'Saved.',
+    notSaved: 'Not saved.',
     saveFailed: "Couldn't save the numbering. Check your connection and try again.",
     // The server answered and refused the values (SQLSTATE 22023): the connection is fine, so it is not blamed.
     refused: "The numbering wasn't saved because the server did not accept these values. Check them and try again.",

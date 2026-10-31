@@ -12,7 +12,8 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t, type TranslationKey } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { errorCodeOf, serverText } from '@/utils/serverText';
+import { emptyAnswerAsError, errorCodeOf, isLostAnswer, serverText, withHttpStatus } from '@/utils/serverText';
+import { NumberingUnconfirmedError } from './documentNumberingUnconfirmed';
 
 export type DocumentType = 'grn' | 'dispatch' | 'invoice';
 
@@ -206,9 +207,17 @@ export async function getDocumentNumbering(): Promise<NumberingRule[]> {
 export async function setDocumentNumbering(type: DocumentType, rule: NumberingRuleInput): Promise<SetNumberingResult> {
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
-  const { data, error } = await client.rpc('set_document_numbering', { p_document_type: type, p_rule: rule });
+  const answered = await client.rpc('set_document_numbering', { p_document_type: type, p_rule: rule });
+  const { data, status } = answered;
+  // An empty HTTP 200 is no answer of the server's.
+  const error = answered.error ?? emptyAnswerAsError(answered);
   unchanged(generation);
   if (error) {
+    // Sent and not answered (a dropped connection, a timeout, a gateway's 5xx, an empty or unreadable 200): the server may
+    // hold the new rule. Nothing is worded as a failure; the screen offers to read what the server holds.
+    if (isLostAnswer(withHttpStatus(error, status)) || (typeof status === 'number' && status >= 500)) {
+      throw new NumberingUnconfirmedError(t('numbering.edit.unconfirmed'));
+    }
     handleGlobalAuthError(error);
     // 22023: the server read the request and refused the values. In English its sentence is shown; in another language
     // the fallback must not blame the connection, which worked.
