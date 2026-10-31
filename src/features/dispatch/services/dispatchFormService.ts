@@ -831,6 +831,8 @@ export const loadDispatchData = async (
           grnItems_weight: item.grn_item_details?.weight || 0,
           disp_quantity: item.disp_qty || 0,
           original_disp_quantity: item.disp_qty || 0,
+          // The live invoice this line is on, if any: the line is then read only in the edit.
+          ...(item.invoice_details ? { invoice_no: String(item.invoice_details.invoice_no ?? '') } : {}),
         };
       });
 

@@ -57,6 +57,7 @@ import { isOtherCustomersStock } from '@/features/dispatch/utils/lotOwnership';
 import { readDispatchQuantityInput } from '@/features/dispatch/utils/dispatchQuantityInput';
 
 import { showAlert } from '@/utils/alert';
+import { invoicedLineText } from '@/features/dispatch/components/ItemsSummaryBottomSheet';
 import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { formatPackages, packNounCapital } from '@/utils/packagingWord';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
@@ -544,6 +545,12 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     // Handle edit item
     const handleEditItem = useCallback(
         async (item: DispatchItemData) => {
+            // A line on a live invoice is read only: its bags cannot change here (the server would refuse the save).
+            const onInvoice = invoicedLineText(item);
+            if (onInvoice) {
+                showAlert(tr('dispatch.refusal.lineInvoicedTitle'), onInvoice);
+                return;
+            }
             console.log('[DispatchItemsStep] Editing item:', item.unique_id);
 
             setEditingItemId(item.unique_id);

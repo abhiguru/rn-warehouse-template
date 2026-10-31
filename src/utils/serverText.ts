@@ -12,6 +12,9 @@ import { getLanguage } from '@/i18n/language';
 import { getAppErrorCode } from '@/utils/appError';
 import { sessionWasJustRenewed } from '@/config/sessionRenewal';
 
+/** "Cannot modify invoiced items: Potatoes, Onions" (a dispatch edit, migration 41): the names are kept. */
+const INVOICED_ITEMS = /^cannot modify invoiced items:\s*(.+)$/i;
+
 /** Reasons the server gives, by the words it uses for them. The first match wins. */
 const REASONS: [RegExp, TranslationKey][] = [
   // "X not found or access denied": the record is missing as far as this person can tell.
@@ -571,6 +574,9 @@ export function serverText(text: unknown, fallback: string, options: ServerTextO
   if (writtenInGujarati(bare)) return bare;
   // The app's own English sentences that pass through twice (a service result shown by a screen) stay as they are.
   if (APP_OWN_TEXT.some(key => bare.trim() === t(key))) return bare;
+  // A dispatch edit that touches a line another person put on an invoice: the app's sentence, naming the items.
+  const invoicedItems = INVOICED_ITEMS.exec(unwrapDatabaseError(bare).trim());
+  if (invoicedItems) return t('errors.parsed.invoicedItems', { items: invoicedItems[1].trim() });
   const code = options.code ?? errorCodeOf(text);
   const byCode = code ? REASON_BY_CODE[code] : undefined;
   if (byCode) return t(byCode);

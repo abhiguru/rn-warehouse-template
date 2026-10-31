@@ -347,6 +347,7 @@ export const dispatch: Translation<typeof source> = {
   // What the server refuses on a dispatch (wave B, owner decisions D1 to D5); the screens word these from the reason and the fields
   refusal: {
     // Draft for the owner's wording review (2026-10-20): the date and the number are locked while the dispatch is on an invoice.
+    lineInvoicedTitle: 'આ લાઇનમાં ફેરફાર થઈ શકતો નથી',
     invoiced: 'ઇન્વૉઇસ {{invoice}} પર છે. પહેલાં ઇન્વૉઇસ ડિલીટ કરો અથવા તેમાં ફેરફાર કરો.',
     // Draft for the owner's wording review (2026-10-20).
     dispatchInvoiced: 'જાવક {{dispatch}} ઇન્વૉઇસ {{invoice}} પર છે. તેની તારીખ અને નંબર બદલી શકાતા નથી. પહેલાં ઇન્વૉઇસ ડિલીટ કરો અથવા તેમાં ફેરફાર કરો.',

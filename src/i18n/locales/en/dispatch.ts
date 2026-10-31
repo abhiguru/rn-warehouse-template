@@ -347,6 +347,7 @@ export const dispatch = {
   refusal: {
     // Edit: the date and the number are locked while the dispatch is on an invoice (D2)
     invoiced: 'On invoice {{invoice}}. Delete or edit the invoice first.',
+    lineInvoicedTitle: "This line can't be changed",
     dispatchInvoiced: "Dispatch {{dispatch}} is on invoice {{invoice}}. Its date and number can't be changed. Delete or edit the invoice first.",
     // A new dispatch from an order that changed after the form was opened (D5)
     orderChangedTitle: 'This order changed after you opened it',

@@ -78,6 +78,8 @@ export interface DispatchItemData {
   // Dispatch quantity
   disp_quantity: number;        // User-entered dispatch quantity
   original_disp_quantity?: number; // Previous dispatch quantity (for edit mode validation)
+  /** The number of the live invoice this line was on when the dispatch was read; absent when it is on none. The line is read only. */
+  invoice_no?: string;
 }
 
 /**

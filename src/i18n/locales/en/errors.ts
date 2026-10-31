@@ -148,6 +148,7 @@ export const errors = {
     duplicate: 'This entry already exists. Please use a different value.',
     checkInput: 'Please check your input and try again.',
     serverError: 'A server error occurred. Please try again later.',
+    invoicedItems: '{{items}} is on an invoice. Delete or edit the invoice first.',
     inUse: 'Other records depend on this one, so it cannot be changed.',
     otherCustomer: 'This stock belongs to another customer.',
     grnCustomerLocked: 'The customer of this GRN cannot be changed because it already has dispatches, invoices or order items.',
