@@ -91,19 +91,19 @@ jest.mock('@/utils/localPhotoFiles', () => ({
   releaseLocalPhotos: jest.fn(async () => 0),
 }));
 
-async function render() {
+async function render(mode: 'create' | 'edit' = 'create', header: Record<string, unknown> = mockHeader) {
   mockForm = {
-    header: mockHeader,
+    header,
     items: mockItems,
-    grnId: null,
-    tempGrnId: 'temp_grn_fixture',
+    grnId: mode === 'edit' ? GRN_ID : null,
+    tempGrnId: mode === 'edit' ? null : 'temp_grn_fixture',
     isSaving: false,
-    isCreateMode: true,
+    isCreateMode: mode === 'create',
     resetFormState: jest.fn(),
   };
   let tree!: ReactTestRenderer;
   await act(async () => {
-    tree = create(<GrnReviewStep mode="create" />);
+    tree = create(<GrnReviewStep mode={mode} />);
   });
   return tree;
 }
@@ -170,5 +170,23 @@ describe('staff and an item with no rate (owner decision D11)', () => {
     tree = await render();
     await save(tree);
     expect(successData(tree).notices).toBeUndefined();
+  });
+});
+
+describe('the section the step opens on', () => {
+  // No Rates section here: the fixture's role cannot set rates.
+  const SECTIONS = ['details', 'photos', 'items'] as const;
+  const body = (tree: ReactTestRenderer, section: string) => tree.root.find((n) => n.props.testID === `grn-review-body-${section}` && typeof n.type === 'string');
+  const openOnes = (tree: ReactTestRenderer) =>
+    SECTIONS.filter((section) => [body(tree, section).props.style].flat(Infinity).every((st: any) => st?.display !== 'none'));
+  const noPhotos = { ...mockHeader, gr_images: [] };
+
+  it('is the GRN photos on a new GRN that has no photo yet', async () => {
+    expect(openOnes(await render('create', noPhotos))).toEqual(['photos']);
+  });
+
+  it('is the items once a photo is attached, and on an edit', async () => {
+    expect(openOnes(await render('create'))).toEqual(['items']);
+    expect(openOnes(await render('edit', noPhotos))).toEqual(['items']);
   });
 });

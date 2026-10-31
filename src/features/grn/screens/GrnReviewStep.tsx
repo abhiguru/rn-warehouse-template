@@ -223,8 +223,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // Scroll to Rates each time the block moves while the GRN loads, until the person scrolls or opens a section.
   const ratesFocusPending = useRef(openedOnRates);
   // The sections fold, one open at a time (owner, 2026-10-17): ITEMS when the step opens, RATES when it was
-  // opened from the GRN's Rates. A closed section shows a one-line summary under its heading.
-  const { open: openSection, toggle, show } = useReviewSections<ReviewSectionId>(openedOnRates ? 'rates' : 'items');
+  // opened from the GRN's Rates, and on a new GRN with no GRN photo yet, the GRN PHOTOS (a photo is required).
+  // A closed section shows a one-line summary under its heading. Read once, when the step mounts.
+  const startSection: ReviewSectionId = openedOnRates ? 'rates' : isCreateMode && !header.gr_images?.length ? 'photos' : 'items';
+  const { open: openSection, toggle, show } = useReviewSections<ReviewSectionId>(startSection);
   const toggleSection = (section: string) => {
     ratesFocusPending.current = false;
     toggle(section as ReviewSectionId);
