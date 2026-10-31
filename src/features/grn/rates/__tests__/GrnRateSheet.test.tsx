@@ -8,6 +8,7 @@ import { Modal, ScrollView, StyleSheet, Text } from 'react-native';
 import { Input } from '@/components/ui/Input';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { showAlert } from '@/utils/alert';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { GrnRateSheet } from '../GrnRateSheet';
 import { contextKey, priceRows, type RateContext } from '../grnRateModel';
 import type { GrnRate, RateChange } from '../types';
@@ -667,34 +668,49 @@ describe('Save and leaving (owner, 2026-10-17)', () => {
     expect(saveButton().props.disabled).toBeFalsy();
   });
 
-  it('✕ with changes asks "Discard changes?"; Keep editing stays, Discard closes', async () => {
+  // The question is drawn inside the rate screen (a Modal opened from outside it is not shown on iPhone).
+  const discard = () => tree!.root.findByType(ConfirmDialog);
+
+  it('✕ with changes asks "Discard changes?" inside the screen; Keep editing stays, Discard closes', async () => {
     open(rates, 12);
+    expect(discard().props.visible).toBe(false);
     await type('Rent ₹/month', '5');
     await closeX();
     expect(onClose).not.toHaveBeenCalled();
-    expect(showAlert).toHaveBeenCalledTimes(1);
-    const [title, message, buttons, options] = (showAlert as jest.Mock).mock.calls[0];
-    expect(title).toBe('Discard changes?');
-    expect(message).toBe('Your changes have not been saved.');
-    expect(buttons.map((b: { text: string; style?: string }) => [b.text, b.style])).toEqual([['Keep editing', 'cancel'], ['Discard', 'destructive']]);
-    expect(buttons[0].onPress).toBeUndefined();
-    expect(options).toEqual({ cancelable: true });
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(discard().props).toMatchObject({
+      visible: true,
+      title: 'Discard changes?',
+      message: 'Your changes have not been saved.',
+      cancelText: 'Keep editing',
+      confirmText: 'Discard',
+      testID: 'rate-discard',
+    });
+    expect(modalNode().findAll(n => n.type === ConfirmDialog)).toHaveLength(1);
+    await act(async () => { discard().props.onCancel(); });
+    expect(discard().props.visible).toBe(false);
     expect(onClose).not.toHaveBeenCalled();
-    buttons[1].onPress();
+    await closeX();
+    await act(async () => { discard().props.onConfirm(); });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('Android Back (the Modal\'s onRequestClose) asks the same, and closes at once when nothing changed', async () => {
     open(rates, 12);
     await act(async () => { modalNode().props.onRequestClose(); });
-    expect(showAlert).not.toHaveBeenCalled();
+    expect(discard().props.visible).toBe(false);
     expect(onClose).toHaveBeenCalledTimes(1);
     jest.clearAllMocks();
     await type('Tax', '6');
     await act(async () => { modalNode().props.onRequestClose(); });
     expect(onClose).not.toHaveBeenCalled();
-    expect(showAlert).toHaveBeenCalledTimes(1);
-    expect((showAlert as jest.Mock).mock.calls[0][0]).toBe('Discard changes?');
+    expect(discard().props.visible).toBe(true);
+    expect(discard().props.title).toBe('Discard changes?');
+  });
+
+  it('the "Change the rate?" question is inside the rate screen too', async () => {
+    open(rates, 12);
+    expect(modalNode().findAll(n => typeof n.props.onOnlyGrn === 'function').length).toBeGreaterThan(0);
   });
 
   it('✕ without changes closes at once, without a question', async () => {

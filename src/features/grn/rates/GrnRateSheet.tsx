@@ -25,7 +25,7 @@ import { addDays, bandText, dateText, money } from '@/features/item-pricing/rate
 import { RateChangeDialog, rateChangeSummary } from './RateChangeDialog';
 import { acceptRentText, labourNumber, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { showAlert } from '@/utils/alert';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatIdentifier, localizeDigits, t } from '@/i18n';
 import { ONE_LINE, makeTableStyles } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
@@ -247,6 +247,9 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
   const [facts, setFacts] = useState<{ facts: ChangeFacts; entry: SheetEntry } | null>(null);
   const [explainOpen, setExplainOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  // "Discard changes?" is drawn inside the rate screen: on iPhone a Modal opened from outside (the root alert host) is
+  // refused while this full-screen Modal is up, so ✕ would do nothing.
+  const [discardOpen, setDiscardOpen] = useState(false);
   // Where the dates, the weights and the figures sit in the scroll, to bring the first wrong one into view when a save
   // is refused (style guide §14.4).
   const scrollRef = useRef<ScrollViewRef>(null);
@@ -268,6 +271,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     setFacts(null);
     setExplainOpen(false);
     setReferenceOpen(false);
+    setDiscardOpen(false);
   }, [preload, visible]);
 
   if (!row || !preload) return null;
@@ -332,15 +336,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
       onClose();
       return;
     }
-    showAlert(
-      t('common.discardChangesTitle'),
-      t('common.discardChangesMessage'),
-      [
-        { text: t('common.keepEditing'), style: 'cancel' },
-        { text: t('common.discard'), style: 'destructive', onPress: onClose },
-      ],
-      { cancelable: true },
-    );
+    setDiscardOpen(true);
   };
 
   const weightEach = row.weight > 0 ? formatWeightEach(row.weight) : t('grn.rates.noWeightTag');
@@ -622,17 +618,29 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
               </Button>
             </View>
           </KeyboardAvoidingView>
+
+          {/* Both questions are inside this screen's Modal: a Modal opened from outside it is not shown on iPhone. */}
+          <RateChangeDialog
+            summary={summary}
+            scope={facts?.facts.scope ?? 'everyone'}
+            onChangeRate={() => { if (facts) onSave(facts.entry); setFacts(null); }}
+            onOnlyGrn={() => { if (facts) onSave({ ...facts.entry, scope: 'grn', to: null }); setFacts(null); }}
+            onBack={() => setFacts(null)}
+            testID="rate-confirm"
+          />
+          <ConfirmDialog
+            visible={discardOpen}
+            title={t('common.discardChangesTitle')}
+            message={t('common.discardChangesMessage')}
+            confirmText={t('common.discard')}
+            cancelText={t('common.keepEditing')}
+            variant="danger"
+            onConfirm={() => { setDiscardOpen(false); onClose(); }}
+            onCancel={() => setDiscardOpen(false)}
+            testID="rate-discard"
+          />
         </View>
       </Modal>
-
-      <RateChangeDialog
-        summary={summary}
-        scope={facts?.facts.scope ?? 'everyone'}
-        onChangeRate={() => { if (facts) onSave(facts.entry); setFacts(null); }}
-        onOnlyGrn={() => { if (facts) onSave({ ...facts.entry, scope: 'grn', to: null }); setFacts(null); }}
-        onBack={() => setFacts(null)}
-        testID="rate-confirm"
-      />
     </>
   );
 }
