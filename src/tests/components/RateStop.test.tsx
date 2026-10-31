@@ -104,7 +104,7 @@ it('Stop rate with Today sends the day after as the start of nothing, then toast
   replace.mockResolvedValue({ success: true });
   await act(async () => { stopButton(t).props.onPress(); });
   expect(replace).toHaveBeenCalledTimes(1);
-  expect(replace).toHaveBeenCalledWith({ item_id: 'onion', customer_id: 'cust-b', price_type: 'monthly', starts_on: '2026-10-15', bands: [], seen_rows: expect.any(Array) });
+  expect(replace).toHaveBeenCalledWith({ item_id: 'onion', customer_id: 'cust-b', price_type: 'monthly', starts_on: '2026-10-15', bands: [], seen_rows: expect.any(Array), request_key: expect.stringMatching(/^warehouse-rate-stop-/) }, { signal: expect.anything() });
   expect(showToast).toHaveBeenCalledWith('Rate stopped. Last day 14 Oct 2026.');
   expect(told).toEqual(['onion']);
   expect(router.back).toHaveBeenCalledTimes(1);

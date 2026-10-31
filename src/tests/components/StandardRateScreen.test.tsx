@@ -113,7 +113,7 @@ describe('Standard rate', () => {
     // A dry run first (writes nothing), then the real save, both with the version the form was built from.
     expect(setStandardRate).toHaveBeenCalledTimes(2);
     expect(setStandardRate).toHaveBeenNthCalledWith(1, [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)], { expectedUpdatedAt: '-infinity', dryRun: true });
-    expect(setStandardRate).toHaveBeenNthCalledWith(2, [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)], { expectedUpdatedAt: '-infinity' });
+    expect(setStandardRate).toHaveBeenNthCalledWith(2, [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)], { expectedUpdatedAt: '-infinity', requestKey: expect.stringMatching(/^warehouse-rate-standard-/), signal: expect.anything() });
     expect(askAlert).toHaveBeenCalledWith('Give this rate to 55 items that have never had a rate?', 'They are charged it for lots received from their first GRN.', expect.any(Array), false);
     expect(showToast).toHaveBeenCalledWith('Standard rate saved. 55 items got it.');
     expect(router.back).toHaveBeenCalledTimes(1);
@@ -339,7 +339,7 @@ describe('Standard rate', () => {
     expect(shown.some(v => /[0-9]/.test(String(v)))).toBe(false);
     jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
     await act(async () => { saveButton(t).props.onPress(); });
-    expect(setStandardRate).toHaveBeenLastCalledWith([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)], { expectedUpdatedAt: null });
+    expect(setStandardRate).toHaveBeenLastCalledWith([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)], { expectedUpdatedAt: null, requestKey: expect.any(String), signal: expect.anything() });
   });
 
   // Review A5: an error above the fold scrolls to the field by its place in the content, not its place on the window.

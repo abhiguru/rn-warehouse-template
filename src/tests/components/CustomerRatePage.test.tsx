@@ -129,7 +129,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
       price_type: 'monthly',
       starts_on: '2026-10-14',
       bands: [{ weight_min: 0, weight_max: 100, unit_price: 3.25, labour_rate: 1.5, tax_percent: 5 }],
-    }));
+    }), expect.anything());
   });
 
   it('Discard puts the saved figure back and the bar goes', async () => {

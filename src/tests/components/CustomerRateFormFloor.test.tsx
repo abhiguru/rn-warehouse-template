@@ -119,7 +119,7 @@ it('the oldest GRN day itself is accepted', async () => {
   jest.mocked(replaceItemRates).mockResolvedValue({ success: true });
   await act(async () => { save(t).props.onPress(); });
   expect(replaceItemRates).toHaveBeenCalledTimes(1);
-  expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ starts_on: '2022-01-01' }));
+  expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ starts_on: '2022-01-01' }), expect.anything());
   expect(textsOf(t)).not.toContain('Choose a start date on or after 1 Jan 2022.');
 });
 

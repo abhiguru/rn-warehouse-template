@@ -100,6 +100,7 @@ it('sends one replace_item_rates call with the draft, then toasts and calls onSa
     price_type: 'monthly',
     starts_on: '2027-01-01',
     bands: [{ weight_min: 0, weight_max: 100, unit_price: 12, labour_rate: 3, tax_percent: 5 }],
+    request_key: expect.stringMatching(/^warehouse-rate-replace-/),
   });
   expect(showToast).toHaveBeenCalledTimes(1);
   expect(onSaved).toHaveBeenCalledTimes(1);
@@ -130,7 +131,9 @@ it('LATER_RATES_EXIST opens the question; Yes sends the same save again with rep
   replace.mockResolvedValueOnce({ success: true });
   await act(async () => { await latest.submit(true); });
   expect(replace).toHaveBeenCalledTimes(2);
-  expect(replace.mock.calls[1][0]).toEqual({ ...replace.mock.calls[0][0], replace_later: true });
+  // A changed request (replace_later) is a different save: it gets its own key.
+  expect(replace.mock.calls[1][0]).toEqual({ ...replace.mock.calls[0][0], replace_later: true, request_key: expect.any(String) });
+  expect(replace.mock.calls[1][0].request_key).not.toBe(replace.mock.calls[0][0].request_key);
   expect(latest.later).toBeNull();
   expect(onSaved).toHaveBeenCalledTimes(1);
 });
@@ -348,7 +351,8 @@ describe('a one-time rate beside a monthly one', () => {
       starts_on: TODAY,
       seen_rows: expect.any(Array),
       bands: [{ weight_min: 0, weight_max: 100, unit_price: 20, labour_rate: 0, tax_percent: 5 }],
-    });
+      request_key: expect.any(String),
+    }, expect.anything());
   });
 
   it('an item with no rate: a labour of 3 typed under Monthly and then One-time still sends labour 0', async () => {
@@ -476,7 +480,7 @@ describe('the earliest day a rate may start (the day of the oldest GRN)', () => 
     act(() => latest.setStartsOn('other', '2022-01-01'));
     replace.mockResolvedValueOnce({ success: true });
     await act(async () => { await latest.submit(); });
-    expect(replace).toHaveBeenCalledWith(expect.objectContaining({ starts_on: '2022-01-01' }));
+    expect(replace).toHaveBeenCalledWith(expect.objectContaining({ starts_on: '2022-01-01' }), expect.anything());
   });
 
   it("the server's INVALID_DATE shows the same text at the field and moves the floor", async () => {
@@ -523,4 +527,17 @@ it('"Keep it" closes the question and sends nothing more', async () => {
 
 it('the hook uses no other service call to write (create, update or delete)', () => {
   expect(Object.keys(jest.requireMock('@/services/item-pricing-service'))).toEqual(['replaceItemRates', 'listItemRates']);
+});
+
+describe('the request key of a save', () => {
+  it('is kept for an unchanged form after a lost answer', async () => {
+    await mount();
+    act(() => latest.setStartsOn('other', '2027-01-01'));
+    act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '12')));
+    replace.mockResolvedValueOnce({ success: false, errorCode: 'UNKNOWN', outcomeUnknown: true, message: 'x' });
+    await act(async () => { await latest.submit(); });
+    replace.mockResolvedValueOnce({ success: true });
+    await act(async () => { await latest.submit(); });
+    expect(replace.mock.calls[1][0].request_key).toBe(replace.mock.calls[0][0].request_key);
+  });
 });

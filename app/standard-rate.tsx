@@ -7,6 +7,7 @@
  * tier starting where the one before ends), with a labour and tax on every tier. The server checks the
  * same rules again and names the tier and field it refuses.
  */
+import { useRateSaveKey } from '@/features/item-pricing/useRateSaveKey';
 import { markItemRatesStale } from '@/features/item-pricing/useItemRates';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -88,6 +89,7 @@ export default function StandardRateScreen() {
   // The save was sent and no answer came: nothing may be saved again until the screen has read the standard rate anew.
   const [unconfirmed, setUnconfirmed] = useState(false);
   const savingRef = useRef(false);
+  const saveKey = useRateSaveKey('standard');
   // False once the screen is gone: a dry run or a question that finishes later must not save or ask over the previous screen.
   const alive = useRef(true);
   useEffect(() => {
@@ -243,7 +245,12 @@ export default function StandardRateScreen() {
         );
         if (!go || !alive.current) return;
       }
-      const result = await setStandardRate(tiersToSend, { expectedUpdatedAt: form.version });
+      const result = await setStandardRate(tiersToSend, {
+        expectedUpdatedAt: form.version,
+        requestKey: saveKey.keyFor(JSON.stringify({ tiersToSend, version: form.version })),
+        signal: saveKey.signal(),
+      });
+      if (!result.outcomeUnknown) saveKey.settle();
       if (result.success) {
         const tiers = result.tiers && result.tiers.length > 0 ? result.tiers : tiersToSend;
         // The version is the server's own string (never a Date made here).

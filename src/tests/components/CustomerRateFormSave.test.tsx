@@ -106,8 +106,9 @@ describe('a new customer rate', () => {
       price_type: 'monthly',
       starts_on: '2026-10-14',
       seen_rows: expect.any(Array),
+      request_key: expect.stringMatching(/^warehouse-rate-replace-/),
       bands: [{ weight_min: 0, weight_max: 100, unit_price: 3.2, labour_rate: 1.5, tax_percent: 5 }],
-    });
+    }, { signal: expect.anything() });
     expect(showToast).toHaveBeenCalledWith('Customer rate saved.');
     expect(showAlert).not.toHaveBeenCalled();
     expect(told).toEqual(['onion']);
