@@ -219,6 +219,20 @@ describe('the `item` link', () => {
   });
 });
 
+describe('an item that is deactivated', () => {
+  it('lists the customer\'s rate tagged Deactivated, read only (no press target), and is not the empty state', async () => {
+    const gone = row({ item_id: 'gone', item_name: 'Review Gone Seed', weight_min: 0, weight_max: 100, unit_price: 12.5, effective_from: '2026-09-01', ...ORCHARD_B });
+    jest.mocked(useItemRates).mockReturnValue(result({ rates: [gone] }));
+    await mount();
+    expect(host(tree, 'customer-pricing-empty')).toHaveLength(0);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Review Gone Seed', 'Deactivated']));
+    const rowNode = host(tree, 'customer-item-row-gone')[0];
+    expect(rowNode.props.onPress).toBeUndefined();
+    expect(rowNode.props.accessibilityLabel).toContain('Deactivated');
+    expect(tree.root.findAll(n => n.props.testID === 'customer-item-row-gone' && typeof n.props.onPress === 'function')).toHaveLength(0);
+  });
+});
+
 describe('a deactivated customer', () => {
   it('shows the rows and the strip, but no + Add item, and the row link says deactivated', async () => {
     await mount('orchard-b', 'Review Orchard B', { deactivated: true });

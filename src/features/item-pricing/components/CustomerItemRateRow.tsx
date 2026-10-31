@@ -58,6 +58,7 @@ export function defaultLine(entry: CustomerItemEntry): string | null {
 
 function tagTexts(entry: CustomerItemEntry): { label: string; informative: boolean }[] {
   const tags: { label: string; informative: boolean }[] = [];
+  if (entry.deactivated) tags.push({ label: t('common.deactivated'), informative: false });
   if (entry.newRateFrom) tags.push({ label: t('pricing.tag.newRate', { date: dateText(entry.newRateFrom) }), informative: true });
   if (entry.rateEnds) tags.push({ label: t('pricing.tag.rateEnds', { date: dateText(entry.rateEnds) }), informative: false });
   return tags;
@@ -72,6 +73,33 @@ function CustomerItemRateRowBase({ entry, onPress, testID }: CustomerItemRateRow
   const tags = tagTexts(entry);
   const spokenSince = entry.since ? t('pricing.customerTab.since', { date: spokenDateText(entry.since) }) : null;
   const spoken = [entry.name, spokenSince, ...lines, compare, ...tags.map(tag => tag.label)].filter(Boolean).join(', ');
+  const content = (
+    <>
+      <View style={styles.body}>
+        <Text style={styles.name} numberOfLines={2}>{entry.name}</Text>
+        {since ? <Text style={styles.line}>{since}</Text> : null}
+        {lines.map((line, index) => <Text key={entry.bands[index].id} style={styles.line}>{line}</Text>)}
+        {compare ? <Text style={styles.line} testID="default-is">{compare}</Text> : null}
+        {tags.length > 0 ? (
+          <View style={styles.tags}>
+            {tags.map(tag => (
+              <StatusTag key={tag.label} status={tag.informative ? 'informative' : 'neutral'} icon={tag.informative ? undefined : null} label={tag.label} />
+            ))}
+          </View>
+        ) : null}
+      </View>
+      {entry.deactivated ? null : <Icon name="chevron-right" size={iconSize.md} color={th.icon.secondary} />}
+    </>
+  );
+  // A deactivated item's rate is for reading only: no press target, no chevron.
+  if (entry.deactivated) {
+    return (
+      <View>
+        <View style={styles.row} accessible accessibilityLabel={spoken} testID={testID ?? `customer-item-row-${entry.itemId}`}>{content}</View>
+        <View style={styles.divider} />
+      </View>
+    );
+  }
   return (
     <View>
       <Pressable
@@ -81,20 +109,7 @@ function CustomerItemRateRowBase({ entry, onPress, testID }: CustomerItemRateRow
         accessibilityLabel={spoken}
         testID={testID ?? `customer-item-row-${entry.itemId}`}
       >
-        <View style={styles.body}>
-          <Text style={styles.name} numberOfLines={2}>{entry.name}</Text>
-          {since ? <Text style={styles.line}>{since}</Text> : null}
-          {lines.map((line, index) => <Text key={entry.bands[index].id} style={styles.line}>{line}</Text>)}
-          {compare ? <Text style={styles.line} testID="default-is">{compare}</Text> : null}
-          {tags.length > 0 ? (
-            <View style={styles.tags}>
-              {tags.map(tag => (
-                <StatusTag key={tag.label} status={tag.informative ? 'informative' : 'neutral'} icon={tag.informative ? undefined : null} label={tag.label} />
-              ))}
-            </View>
-          ) : null}
-        </View>
-        <Icon name="chevron-right" size={iconSize.md} color={th.icon.secondary} />
+        {content}
       </Pressable>
       <View style={styles.divider} />
     </View>
