@@ -9,7 +9,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
-import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -107,15 +107,6 @@ export default function TabsLayout() {
       {/* StatusBar explicitly set for tab screens */}
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <View style={{ flex: 1 }}>
-        {/* Decorative tiled logo behind the tabs (ImageBackground is deprecated in React Native 0.88) */}
-        <Image
-          source={require('../../assets/logo.png')}
-          style={StyleSheet.absoluteFill}
-          resizeMode="repeat"
-          accessible={false}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        />
         {/* SafeAreaView with theme background covers status bar area */}
         <SafeAreaView
           style={{ flex: 1, backgroundColor: screenBg }}
