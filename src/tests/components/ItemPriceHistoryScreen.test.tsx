@@ -197,7 +197,9 @@ afterEach(() => setLanguage('en'));
 describe('price history entries', () => {
   // 09:15 UTC in India (jest.global-setup.js runs the suite in Asia/Kolkata): written out,
   // not computed with the formatter this checks.
-  const WHEN = '11 Oct 2026, 2:45 pm';
+  const WHEN = '11/10/26, 2:45 pm';
+  // The same moment as a screen reader is given it.
+  const WHEN_SPOKEN = '11 Oct 2026, 2:45 pm';
 
   it('runs in the time zone the expected times are written for', () => {
     expect(new Date(UPDATE.changed_at).getTimezoneOffset()).toBe(-330);
@@ -228,7 +230,7 @@ describe('price history entries', () => {
       'Meera Joshi (Staff)',
     ]);
     expect(cardLabel(tree, 14)).toBe(
-      `Price changed, Example Chillies, Default price, Monthly price: ₹5.00 changed to ₹6.00, ${WHEN}, Meera Joshi (Staff)`
+      `Price changed, Example Chillies, Default price, Monthly price: ₹5.00 changed to ₹6.00, ${WHEN_SPOKEN}, Meera Joshi (Staff)`
     );
     await unmount(tree);
   });
@@ -252,8 +254,8 @@ describe('price history entries', () => {
       'Weight range', '0–100 kg',
       'Labour rate', '₹2.00',
       'Tax', '5%',
-      'Start date', '1 Jan 2026',
-      'End date', '31 Dec 2026',
+      'Start date', '01/01/26',
+      'End date', '31/12/26',
       WHEN,
       'Kiran Shah (Supervisor)',
     ]);
@@ -272,7 +274,7 @@ describe('price history entries', () => {
       'Weight range', '0–100 kg',
       'Labour rate', '₹2.00',
       'Tax', '5%',
-      'Start date', '1 Jan 2026',
+      'Start date', '01/01/26',
       'End date', 'No end date',
       WHEN,
       'Meera Joshi (Admin)',
@@ -307,7 +309,7 @@ describe('price history entries', () => {
       'Weight range', '0–100 kg',
       'Labour rate', '₹2.00',
       'Tax', '5%',
-      'Start date', '1 Jan 2026',
+      'Start date', '01/01/26',
       'End date', 'No end date',
       WHEN,
       'Meera Joshi (Staff)',
@@ -330,7 +332,7 @@ describe('price history entries', () => {
       'Meera Joshi (Staff)',
     ]);
     expect(cardLabel(tree, 32)).toBe(
-      `Price changed, Example Chillies, Default price, Price type: Monthly changed to One-time, Monthly price, ₹5.00, One-time price, ₹7.00, ${WHEN}, Meera Joshi (Staff)`
+      `Price changed, Example Chillies, Default price, Price type: Monthly changed to One-time, Monthly price, ₹5.00, One-time price, ₹7.00, ${WHEN_SPOKEN}, Meera Joshi (Staff)`
     );
     await unmount(tree);
   });
@@ -353,7 +355,7 @@ describe('price history entries', () => {
       'Weight range', '0–100 kg',
       'Labour rate', '₹2.00',
       'Tax', '5%',
-      'Start date', '1 Jan 2026',
+      'Start date', '01/01/26',
       'End date', 'No end date',
       WHEN,
       'Meera Joshi (Staff)',
@@ -386,7 +388,7 @@ describe('price history entries', () => {
       'માસિક દર',
       '₹૫.૦૦',
       '₹૬.૦૦',
-      '૧૧ ઑક્ટો ૨૦૨૬, ૨:૪૫ PM',
+      '૧૧/૧૦/૨૬, ૨:૪૫ PM',
       'Meera Joshi (સ્ટાફ)',
     ]);
     expect(card(tree, 11).slice(0, 2)).toEqual(['બધા દર કાઢી નખાયા', '૧૨ દર કાઢી નખાયા']);
@@ -665,7 +667,7 @@ describe('Changes of one item', () => {
     new_values: price(11, { effective_from: '2026-04-01', effective_to: '2026-12-31' }),
   });
   const ADDED = cumin(23, { action: 'insert', new_values: price(12, { effective_from: '2027-01-01' }) });
-  const WHEN_JOB = '14 Oct 2026, 10:30 am';
+  const WHEN_JOB = '14/10/26, 10:30 am';
 
   it('asks the server for that item only, and names it in the title', async () => {
     mockParams = { item_id: 'item-cumin', item_name: 'Review Cumin Bold' };
@@ -695,7 +697,7 @@ describe('Changes of one item', () => {
     expect(cardIds(tree)).toEqual([]);
     const texts = group.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
     expect(texts).toEqual([
-      'Rate changed from 1 Jan 2027',
+      'Rate changed from 01/01/27',
       'Review Cumin Bold',
       'Default price',
       'Monthly price',
@@ -711,7 +713,7 @@ describe('Changes of one item', () => {
     history.mockResolvedValue(page([ENDED, cumin(21, { action: 'update', old_values: price(9, { effective_from: '2026-04-01' }), new_values: price(9, { effective_from: '2026-04-01', effective_to: '2026-12-31' }) })]));
     const tree = await render(<ItemPriceHistoryScreen />);
     const group = tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === 'price-history-group-22')[0];
-    expect(group.findAllByType(Text).map((node) => [node.props.children].flat().join('')).slice(0, 1)).toEqual(['Rate stopped after 31 Dec 2026']);
+    expect(group.findAllByType(Text).map((node) => [node.props.children].flat().join('')).slice(0, 1)).toEqual(['Rate stopped after 31/12/26']);
     await unmount(tree);
   });
 
@@ -743,7 +745,7 @@ describe('Changes of one item', () => {
     expect(shown(tree)).toContain('ફેરફારો: Review Cumin Bold');
     const group = tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === 'price-history-group-23')[0];
     const texts = group.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
-    expect(texts[0]).toBe('૧ જાન્યુ ૨૦૨૭ થી દર બદલાયો');
+    expect(texts[0]).toBe('૦૧/૦૧/૨૭ થી દર બદલાયો');
     expect(texts).toContain('₹૧૧.૦૦ → ₹૧૨.૦૦');
     await unmount(tree);
   });

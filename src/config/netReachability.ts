@@ -89,6 +89,26 @@ export function applyNetReachability(): void {
   bumpNetInfoGeneration();
 }
 
+/** The shortest time between two re-checks started by failing requests: a screen that fails ten reads asks once. */
+export const RECHECK_MIN_INTERVAL_MS = 5000;
+let lastRecheckAt = 0;
+
+/**
+ * A request failed with a network failure (no answer at all): ask NetInfo to check reachability now, so the offline
+ * banner follows within seconds instead of at the next scheduled check. Debounced; never throws and never waits.
+ */
+export function noteRequestNetworkFailure(now: number = Date.now()): void {
+  // Only once the reachability probe is installed (bootstrapApp): before that NetInfo has nothing to re-check.
+  if (applied === undefined) return;
+  if (now - lastRecheckAt < RECHECK_MIN_INTERVAL_MS) return;
+  lastRecheckAt = now;
+  try {
+    Promise.resolve(NetInfo.refresh()).catch(() => {});
+  } catch {
+    // The re-check is an improvement; without it the banner follows at NetInfo's next check.
+  }
+}
+
 /** Called once from `bootstrapApp`; safe to call again. */
 export function installNetReachability(): void {
   if (!stopServerListener) stopServerListener = onOperatorServerChange(applyNetReachability);
@@ -102,4 +122,5 @@ export function resetNetReachability(): void {
   stopNetInfoListener?.();
   stopNetInfoListener = undefined;
   applied = undefined;
+  lastRecheckAt = 0;
 }

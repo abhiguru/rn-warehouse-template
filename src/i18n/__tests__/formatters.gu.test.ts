@@ -27,8 +27,7 @@ describe('formatters in English (unchanged)', () => {
     expect(formatCount(2, 'dispatch', 'dispatches')).toBe('2 dispatches');
   });
   it('formats dates and times', () => {
-    expect(formatDate(new Date(2021, 9, 7), 'short')).toBe('7 Oct 2021');
-    expect(formatDate(new Date(2021, 9, 7), 'long')).toBe('7 October 2021');
+    expect(formatDate(new Date(2021, 9, 7))).toBe('07/10/21');
     expect(formatTime(new Date(2021, 9, 7, 16, 5))).toBe('4:05 pm');
     expect(formatSectionDate(new Date().toISOString())).toBe('Today');
   });
@@ -66,29 +65,28 @@ describe('formatters in Gujarati', () => {
   it('keeps an unknown noun in English rather than dropping it', () => {
     expect(formatCount(2, 'widget')).toBe('૨ widgets');
   });
-  it('writes dates with Gujarati month names and digits', () => {
-    expect(formatDate(new Date(2021, 9, 7), 'short')).toBe('૭ ઑક્ટો ૨૦૨૧');
-    expect(formatDate(new Date(2021, 9, 7), 'long')).toBe('૭ ઑક્ટોબર ૨૦૨૧');
-    expect(formatDate(new Date(2021, 7, 15), 'medium')).toBe('૧૫ ઑગસ્ટ ૨૦૨૧');
+  it('writes dates as DD/MM/YY in Gujarati digits', () => {
+    expect(formatDate(new Date(2021, 9, 7))).toBe('૦૭/૧૦/૨૧');
+    expect(formatDate(new Date(2021, 7, 15))).toBe('૧૫/૦૮/૨૧');
     expect(formatMonth(new Date(2021, 0, 1), 'long')).toBe('જાન્યુઆરી ૨૦૨૧');
     expect(formatMonth(new Date(2021, 0, 1), 'narrow')).toBe('જાન્યુ');
   });
-  it('leaves the year out of a short date in the current year, as in English', () => {
+  it('writes the year in the current year too', () => {
     const today = new Date();
-    const text = formatDate(new Date(today.getFullYear(), 0, 5), 'short');
-    expect(text).toBe('૫ જાન્યુ');
+    const text = formatDate(new Date(today.getFullYear(), 0, 5));
+    expect(text).toBe(`૦૫/૦૧/${String(today.getFullYear()).slice(-2).replace(/\d/g, digit => '૦૧૨૩૪૫૬૭૮૯'[Number(digit)])}`);
   });
   it('writes times with Gujarati digits and AM/PM', () => {
     expect(formatTime(new Date(2021, 9, 7, 16, 5))).toBe('૪:૦૫ PM');
     expect(formatTime(new Date(2021, 9, 7, 0, 30))).toBe('૧૨:૩૦ AM');
   });
-  it('says today, yesterday and weekday names in Gujarati', () => {
+  it('says today and yesterday in Gujarati, and writes other days as dates', () => {
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
     expect(formatSectionDate(now.toISOString())).toBe('આજે');
     expect(formatSectionDate(yesterday.toISOString())).toBe('ગઈકાલે');
-    expect(formatSectionDate('2021-10-07')).toBe('ગુરુ, ૭ ઑક્ટો ૨૦૨૧');
+    expect(formatSectionDate('2021-10-07')).toBe('૦૭/૧૦/૨૧');
   });
   it('says how long ago in Gujarati', () => {
     expect(formatRelativeTime(new Date(Date.now() - 10_000).toISOString())).toBe('હમણાં જ');

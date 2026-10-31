@@ -6,6 +6,7 @@
  */
 import type { ItemStoragePrice, SetStandardRateResult, StandardTier } from '@/types/item-pricing.types';
 import { toReplaceInput, validate, type BandDraft, type Draft, type EditorContext } from './editModel';
+import { t } from '@/i18n';
 import { bandText, money } from './rateText';
 
 /** The "Up to" of the four tiers an empty standard rate starts with: 0–10, 11–20, 21–30, 31–50 kg. */
@@ -109,3 +110,28 @@ export function tierSummary(tiers: StandardTier[]): string {
   return tiers.map(tier => `${bandText(tier.weight_min, tier.weight_max)} ${money(tier.unit_price)}`).join(' · ');
 }
 
+
+/** One line per tier with rent, labour and tax: "0–50 kg: rent ₹4.00, labour ₹1.00, tax 5%". */
+export function tierFigures(tiers: StandardTier[]): string {
+  return tiers
+    .map(tier =>
+      t('pricing.standard.changeTier', {
+        band: bandText(tier.weight_min, tier.weight_max),
+        rent: money(tier.unit_price),
+        labour: money(tier.labour_rate),
+        tax: Number(tier.tax_percent),
+      }),
+    )
+    .join('\n');
+}
+
+/** True when two lists of tiers differ in any weight, rent, labour or tax. */
+export function tiersDiffer(a: StandardTier[], b: StandardTier[]): boolean {
+  if (a.length !== b.length) return true;
+  return a.some((x, i) =>
+    x.weight_min !== b[i].weight_min ||
+    x.weight_max !== b[i].weight_max ||
+    Number(x.unit_price) !== Number(b[i].unit_price) ||
+    Number(x.labour_rate) !== Number(b[i].labour_rate) ||
+    Number(x.tax_percent) !== Number(b[i].tax_percent));
+}

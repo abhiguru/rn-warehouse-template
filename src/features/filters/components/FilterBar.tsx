@@ -100,6 +100,7 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
           ) : null}
           {required.map(field => {
             const value = describeValue(field, values[field.key]);
+            const spokenValue = describeValue(field, values[field.key], true);
             return (
               <FilterBarChip
                 key={field.key}
@@ -108,12 +109,13 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
                 label={value}
                 chevron
                 onPress={() => press(field)}
-                accessibilityLabel={translate('filters.bar.activeChip', { label: field.label, value })}
+                accessibilityLabel={translate('filters.bar.activeChip', { label: field.label, value: spokenValue })}
               />
             );
           })}
           {active.map(field => {
             const value = describeValue(field, values[field.key]);
+            const spokenValue = describeValue(field, values[field.key], true);
             return (
               <FilterBarChip
                 key={field.key}
@@ -124,12 +126,12 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
                 // A switch has no value to name: "With items, on", not "With items: With items".
                 accessibilityLabel={
                   opensSheet(field)
-                    ? translate('filters.bar.activeChip', { label: field.label, value })
+                    ? translate('filters.bar.activeChip', { label: field.label, value: spokenValue })
                     : translate('filters.bar.toggleOn', { label: field.label })
                 }
                 removeAccessibilityLabel={
                   opensSheet(field)
-                    ? translate('filters.bar.removeFilterValue', { label: field.label, value })
+                    ? translate('filters.bar.removeFilterValue', { label: field.label, value: spokenValue })
                     : translate('filters.bar.removeFilter', { name: field.label })
                 }
               />
@@ -142,8 +144,8 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               label={describeDateRange(recognised.date)}
               onPress={filters.searchAsText}
               onRemove={filters.searchAsText}
-              accessibilityLabel={translate('filters.bar.searchDate', { date: describeDateRange(recognised.date) })}
-              removeAccessibilityLabel={translate('filters.bar.removeSearchDate', { date: describeDateRange(recognised.date) })}
+              accessibilityLabel={translate('filters.bar.searchDate', { date: describeDateRange(recognised.date, true) })}
+              removeAccessibilityLabel={translate('filters.bar.removeSearchDate', { date: describeDateRange(recognised.date, true) })}
             />
           ) : null}
           {recognised.range ? (

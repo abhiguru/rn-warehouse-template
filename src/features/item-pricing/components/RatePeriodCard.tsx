@@ -12,7 +12,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { RatePeriod } from '../ratePeriods';
-import { dateText, money, percentRange, unitText } from '../rateText';
+import { dateText, money, percentRange, unitText, labourText } from '../rateText';
 import type { TierTag } from '../standardRate';
 import { BandList } from './BandList';
 import type { RateStripAction } from './RateStrip';
@@ -23,6 +23,8 @@ export interface RatePeriodCardProps {
   tags?: TierTag[] | null;
   /** Buttons under the figures: Change and Cancel, or Correct this rate and Stop this rate. */
   actions?: RateStripAction[];
+  /** The item's packaging (Bag, Box, Crate): the rate and the labour are per bag, box or crate. */
+  packaging?: string | null;
   /** Under the figures, above the buttons (the strip of a rate that stops). */
   children?: React.ReactNode;
 }
@@ -41,7 +43,7 @@ const makeStyles = (th: ThemeTokens) => ({
   actions: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, gap: space.sm },
 });
 
-export function RatePeriodCard({ period, tags, actions, children }: RatePeriodCardProps) {
+export function RatePeriodCard({ period, tags, actions, packaging, children }: RatePeriodCardProps) {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const stackedLayout = fontScale >= 1.3 ? 'stacked' : 'inline';
@@ -68,11 +70,11 @@ export function RatePeriodCard({ period, tags, actions, children }: RatePeriodCa
         {tag}
         <Text style={styles.days}>{days}</Text>
       </View>
-      <Text style={styles.unit}>{unitText(priceType)}</Text>
+      <Text style={styles.unit}>{unitText(priceType, packaging)}</Text>
       <BandList bands={rows} priceType={priceType} tags={tags} />
       <View>
         {oneTime || !sameLabour ? null : (
-          <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourValue', { amount: money(rows[0].labour_rate) })} showDivider={sameTax} />
+          <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={labourText(money(rows[0].labour_rate), packaging)} showDivider={sameTax} />
         )}
         {sameTax ? (
           <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.tax')} value={t('pricing.item.taxValue', { percent: percentRange(rows[0].tax_percent, rows[0].tax_percent) })} />

@@ -22,6 +22,7 @@ import { rateAfterCustomerStop, seenRowIds } from '@/features/item-pricing/editM
 import { laterDialogText, plannedOnDay } from '@/features/item-pricing/laterRates';
 import { addDays, dateText, money, todayDay, unitText } from '@/features/item-pricing/rateText';
 import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
+import { useRateSaveKey } from '@/features/item-pricing/useRateSaveKey';
 import { StopRateForm, type StopChoice } from '@/features/item-pricing/components/StopRateForm';
 
 type Loaded = { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; rows: ItemStoragePrice[] };
@@ -41,6 +42,7 @@ const RateStopScreen: React.FC = () => {
   const [day, setDay] = useState(today);
   const [strip, setStrip] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const saveKey = useRateSaveKey('stop');
   const [later, setLater] = useState<NonNullable<ReplaceRatesResult['later']> | null>(null);
 
   useEffect(() => {
@@ -74,7 +76,7 @@ const RateStopScreen: React.FC = () => {
       setSaving(true);
       setStrip(null);
       try {
-        const result = await replaceItemRates({
+        const input = {
           item_id: params.item_id,
           customer_id: customerId,
           price_type: priceType,
@@ -82,7 +84,9 @@ const RateStopScreen: React.FC = () => {
           bands: [],
           seen_rows: seenRowIds(loaded.rows, customerId, priceType),
           ...(replaceLater ? { replace_later: true } : {}),
-        });
+        };
+        const result = await replaceItemRates({ ...input, request_key: saveKey.keyFor(JSON.stringify(input)) }, { signal: saveKey.signal() });
+        if (!result.outcomeUnknown) saveKey.settle();
         if (result.success) {
           setLater(null);
           notifyRatesChanged(params.item_id);
@@ -102,7 +106,7 @@ const RateStopScreen: React.FC = () => {
         setSaving(false);
       }
     },
-    [saving, loaded, today, params.item_id, customerId, priceType, day]
+    [saving, loaded, today, params.item_id, customerId, priceType, day, saveKey]
   );
 
   const header = (

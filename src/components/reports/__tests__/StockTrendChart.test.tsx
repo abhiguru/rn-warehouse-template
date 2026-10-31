@@ -186,7 +186,7 @@ describe('stock trend, the month in progress', () => {
     return { texts, labels, line, maxValue, cardLabel, tableTexts };
   }
 
-  // As a phone showed it on 12 Oct 2026: the Stock tile said 4,460, the server's figure for October
+  // As a phone showed it on 12/10/26: the Stock tile said 4,460, the server's figure for October
   // was 4,360, and the highest month end was 4,444, so "Highest" stood below the tile.
   const TO_OCTOBER = [point('2026-08', 949), point('2026-09', 4444), point('2026-10', 4360)];
   const STOCK_NOW = 4460;
@@ -197,12 +197,12 @@ describe('stock trend, the month in progress', () => {
     expect(line).toEqual([949, 4444, 4460]);
     expect(maxValue).toBe(6000);
     // September is over and has a month end; October has none yet: its figure is the stock as of today.
-    const summary = 'Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,460 as of 12 Oct. Highest 4,460.';
+    const summary = 'Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,460 as of 12/10/26. Highest 4,460.';
     expect(texts).toContain(summary);
     expect(cardLabel).toBe(`Stock level trend. ${summary}`);
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,460', 'Highest 4,460', 'Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct, 4,460']));
+    expect(labels).toEqual(expect.arrayContaining(['Latest 4,460', 'Highest 4,460', 'Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460']));
     // The column says "Stock at month end": October's row says it is not one, and the note under the table too.
-    expect(tableTexts).toEqual(expect.arrayContaining(['Stock at month end', 'as of 12 Oct', 'Oct 2026: as of 12 Oct']));
+    expect(tableTexts).toEqual(expect.arrayContaining(['Stock at month end', 'as of 12/10/26', 'Oct 2026: as of 12/10/26']));
     expect(labels).not.toContain('Oct 2026, 4,460');
     // The server's other figure for the stock now is nowhere: not on the card, not in the table.
     expect([...texts, ...labels].filter(words => words.includes('4,360'))).toEqual([]);
@@ -222,7 +222,7 @@ describe('stock trend, the month in progress', () => {
     expect(host('stock-trend-table')).toHaveLength(1);
     const rows = host(id => id.startsWith('stock-trend-row-'));
     expect(rows.map(row => row.props.testID)).toEqual(['stock-trend-row-2026-08', 'stock-trend-row-2026-09', 'stock-trend-row-2026-10']);
-    expect(rows.map(row => row.props.accessibilityLabel)).toEqual(['Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct, 4,460']);
+    expect(rows.map(row => row.props.accessibilityLabel)).toEqual(['Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460']);
     // The month and the stock columns, and no heading that sorts.
     expect(host(id => id.startsWith('stock-trend-table-sort-'))).toHaveLength(0);
     act(() => tree.unmount());
@@ -232,8 +232,8 @@ describe('stock trend, the month in progress', () => {
     onThe(new Date(2026, 9, 12, 10, 0));
     const { texts, labels, line } = draw(TO_OCTOBER, 4300);
     expect(line).toEqual([949, 4444, 4300]);
-    expect(texts).toContain('Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,300 as of 12 Oct. Highest 4,444.');
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,300', 'Highest 4,444', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct, 4,300']));
+    expect(texts).toContain('Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,300 as of 12/10/26. Highest 4,444.');
+    expect(labels).toEqual(expect.arrayContaining(['Latest 4,300', 'Highest 4,444', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,300']));
   });
 
   it('changes nothing in a period that ended before this month: its last month has a month end', () => {
@@ -250,8 +250,8 @@ describe('stock trend, the month in progress', () => {
     onThe(new Date(2026, 9, 12, 10, 0));
     const { texts, labels, line } = draw(TO_OCTOBER);
     expect(line).toEqual([949, 4444, 4360]);
-    expect(texts).toContain('Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,360 as of 12 Oct. Highest 4,444.');
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,360', 'Highest 4,444', 'Oct 2026, as of 12 Oct, 4,360']));
+    expect(texts).toContain('Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,360 as of 12/10/26. Highest 4,444.');
+    expect(labels).toEqual(expect.arrayContaining(['Latest 4,360', 'Highest 4,444', 'Oct 2026, as of 12 Oct 2026, 4,360']));
   });
 
   it('a period inside this month has one point, the stock now', () => {
@@ -259,10 +259,10 @@ describe('stock trend, the month in progress', () => {
     const { texts, labels, line, cardLabel } = draw([point('2026-10', 4360)], STOCK_NOW);
     expect(line).toEqual([4460]);
     // Not "Stock at the end of Oct 2026": October has not ended.
-    expect(texts).toContain('Stock as of 12 Oct: 4,460.');
+    expect(texts).toContain('Stock as of 12/10/26: 4,460.');
     expect(texts).not.toContain('Stock at the end of Oct 2026: 4,460.');
-    expect(cardLabel).toBe('Stock level trend. Stock as of 12 Oct: 4,460.');
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,460', 'Highest 4,460', 'Oct 2026, as of 12 Oct, 4,460']));
+    expect(cardLabel).toBe('Stock level trend. Stock as of 12/10/26: 4,460.');
+    expect(labels).toEqual(expect.arrayContaining(['Latest 4,460', 'Highest 4,460', 'Oct 2026, as of 12 Oct 2026, 4,460']));
   });
 
   it('draws no month after this one: a financial year to March shows September and October, not today\'s stock again for the months to come', () => {
@@ -270,17 +270,17 @@ describe('stock trend, the month in progress', () => {
     const year = [point('2026-09', 4444), point('2026-10', 4360), point('2026-11', 4360), point('2027-03', 4360)];
     const { texts, labels, line, tableTexts } = draw(year, STOCK_NOW);
     expect(line).toEqual([4444, 4460]);
-    expect(texts).toContain('Stock was 4,444 at the end of Sep 2026, and 4,460 as of 12 Oct.');
-    expect(labels).toEqual(expect.arrayContaining(['Period 2 months', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct, 4,460']));
+    expect(texts).toContain('Stock was 4,444 at the end of Sep 2026, and 4,460 as of 12/10/26.');
+    expect(labels).toEqual(expect.arrayContaining(['Period 2 months', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460']));
     expect([...texts, ...labels, ...tableTexts].filter(words => /Nov 2026|Mar 2027/.test(words))).toEqual([]);
   });
 
   it('takes the month from the calendar in India, whatever the zone of the phone', () => {
-    // 20:00 UTC on 30 Sep is 01:30 on 1 Oct in India: September is over, October is in progress.
+    // 20:00 UTC on 30/09/26 is 01:30 on 01/10/26 in India: September is over, October is in progress.
     onThe(new Date('2026-09-30T20:00:00Z'));
     expect(draw(TO_OCTOBER, STOCK_NOW).line).toEqual([949, 4444, 4460]);
     jest.useRealTimers();
-    // 18:00 UTC on 30 Sep is 23:30 that day in India: September is still in progress, and October,
+    // 18:00 UTC on 30/09/26 is 23:30 that day in India: September is still in progress, and October,
     // which has not begun there, is not drawn.
     onThe(new Date('2026-09-30T18:00:00Z'));
     expect(draw(TO_OCTOBER, STOCK_NOW).line).toEqual([949, 4460]);

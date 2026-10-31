@@ -59,7 +59,7 @@ beforeEach(async () => {
   server.setInvoice(flowLines.grnA(), {
     labour: 450, tax_amount: 70, total: 1620, discount: 100, discount_reason: 'Damaged bags',
   });
-  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync() });
+  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
 });
 
 afterEach(async () => {

@@ -165,12 +165,12 @@ describe('the total row', () => {
 });
 
 describe('empty values', () => {
-  it('a line without a rack shows "Rack —"; one with a rack shows it', async () => {
+  it('a line without a rack shows "—" as its rack tag; one with a rack shows the rack', async () => {
     await render([reviewLine(1, { rack: '' }), reviewLine(2, { rack: 'R2' })]);
 
-    expect(textOf(row(1))).toContain('Rack —');
-    expect(textOf(row(2))).toContain('Rack R2');
-    expect(textOf(row(2))).not.toContain('Rack —');
+    expect(textOf(row(1))).toContain('—');
+    expect(textOf(row(2))).toContain('R2');
+    expect(textOf(row(2))).not.toContain('—');
   });
 
   it('the details show "—" for a missing vehicle, address, mobile number and note', async () => {

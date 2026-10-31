@@ -209,6 +209,13 @@ export interface CreateInvoicePayload {
     tax: number;
     duration: number;
     no_of_days: number;
+    /**
+     * The figures the rates lookup gave this line when the form read it (D12). Sent so the server can refuse the save when
+     * a looked-up rate changed since (RATES_CHANGED). Absent for a line that was not looked up (an invoice being edited).
+     */
+    looked_up?: { charge: number; labour_rate: number; tax: number };
+    /** The fields of this line the person typed (not looked up): the server does not compare those. */
+    typed?: Array<'charge' | 'labour_rate' | 'tax'>;
   }[];
 }
 

@@ -1,4 +1,4 @@
-import { isOtherCustomersStock, linesFromOtherCustomers } from '../lotOwnership';
+import { grnNumbersOfOtherCustomerRefusal, isOtherCustomersStock, linesFromOtherCustomers } from '../lotOwnership';
 
 const CUSTOMER_A = '33333333-2222-4333-8444-555555555555';
 const CUSTOMER_B = '88888888-2222-4333-8444-555555555555';
@@ -28,5 +28,19 @@ describe('linesFromOtherCustomers', () => {
 
     expect(linesFromOtherCustomers(CUSTOMER_A, [own, other, unknown])).toEqual([other]);
     expect(linesFromOtherCustomers(CUSTOMER_A, [own, unknown])).toEqual([]);
+  });
+});
+
+describe('grnNumbersOfOtherCustomerRefusal', () => {
+  it('reads the GRN numbers out of both server sentences', () => {
+    expect(grnNumbersOfOtherCustomerRefusal('Item belongs to another customer: Tamarind (G1), Rice (G2)')).toEqual(['G1', 'G2']);
+    expect(
+      grnNumbersOfOtherCustomerRefusal('Cannot change the dispatch customer: items belong to another customer: Tamarind (G1)')
+    ).toEqual(['G1']);
+  });
+
+  it('is null for any other text', () => {
+    expect(grnNumbersOfOtherCustomerRefusal('Insufficient stock')).toBeNull();
+    expect(grnNumbersOfOtherCustomerRefusal('Item belongs to another customer: Tamarind')).toBeNull();
   });
 });

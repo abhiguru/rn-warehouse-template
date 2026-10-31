@@ -168,6 +168,8 @@ export interface DispatchItemDetail {
   package_mark: string | null;
   grn_qty: number;
   rack?: string | null;
+  /** The GRN the line was taken from (backend 0.7.x and newer); absent from an older backend. */
+  grn_id?: string | null;
 }
 
 /**

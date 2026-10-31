@@ -1,5 +1,6 @@
 /** G-51: deactivating a customer says what it does. */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
@@ -60,7 +61,7 @@ afterEach(async () => {
   tree = undefined;
 });
 const mount = async () => {
-  await act(async () => { tree = create(<CustomersScreen />); });
+  await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
   return tree as ReactTestRenderer;
 };
 

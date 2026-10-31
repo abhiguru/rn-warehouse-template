@@ -87,7 +87,7 @@ describe('GRN Items table', () => {
 
     expect(has('grn-item-details-p')).toBe(false);
     press('grn-item-row-p');
-    expect(textOf(byTestId('grn-item-details-p'))).toBe('Dispatched 20 bags|Rack B-14|Packaging Jute bag|View dispatches');
+    expect(textOf(byTestId('grn-item-details-p'))).toBe('Dispatched 20 bags|B-14|Packaging Jute bag|View dispatches');
     expect(byTestId('grn-item-row-p').props.accessibilityState).toEqual({ expanded: true });
     press('grn-item-dispatches-p');
     expect(onViewItemDispatches).toHaveBeenCalledWith(potatoes);
@@ -97,7 +97,7 @@ describe('GRN Items table', () => {
     render(<GRNItemsTab items={[lot({ id: 'x', stock: 100, dispatch_summary: { total_dispatched: 0 } }), lot({ id: 'y', stock: 70, dispatch_summary: { total_dispatched: 25 } })]} onViewItemDispatches={jest.fn()} />);
 
     press('grn-item-row-x');
-    expect(textOf(byTestId('grn-item-details-x'))).toBe('Dispatched 0 bags|Rack B-14|Packaging Jute bag');
+    expect(textOf(byTestId('grn-item-details-x'))).toBe('Dispatched 0 bags|B-14|Packaging Jute bag');
     press('grn-item-row-y');
     expect(textOf(byTestId('grn-item-details-y'))).toMatch(/^Dispatched 25 bags\|/);
   });
@@ -149,7 +149,7 @@ describe('GRN Dispatches table', () => {
     expect(textOf(byTestId('grn-dispatch-row-o'))).toBe('Onions|60 received · 0 dispatches|0');
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
     expect(textOf(byTestId('grn-dispatch-row-g'))).toBe('Garlic|G1|10 received · 1 dispatch|10');
-    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Date|Bags|DD0041|9 Oct|12|DD0042|11 Oct|8');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Date|Bags|DD0041|09/10/26|12|DD0042|11/10/26|8');
     expect(has('grn-dispatch-lines-g')).toBe(false);
   });
 
@@ -157,6 +157,14 @@ describe('GRN Dispatches table', () => {
     render(<GRNDispatchesTab items={[onions, potatoes]} dispatchesByItem={byItem} />);
     expect(byTestId('grn-dispatch-row-o').props.disabled).toBe(true);
     expect(byTestId('grn-dispatch-row-o').props.accessibilityState).toBeUndefined();
+  });
+
+  it('reads the dispatch date in words for a screen reader', () => {
+    render(<GRNDispatchesTab items={[potatoes, garlic]} dispatchesByItem={byItem} />);
+    press('grn-dispatch-row-g');
+    const label = byTestId('grn-dispatch-line-r3').props.accessibilityLabel as string;
+    expect(label).toMatch(/\d{1,2} [A-Z][a-z]{2} 20\d\d/);
+    expect(label).not.toMatch(/\d\d\/\d\d\/\d\d/);
   });
 
   it('opens and closes rows on tap and opens a dispatch by its id', () => {
@@ -184,7 +192,7 @@ describe('GRN Dispatches table', () => {
 
     expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Bags dispatched\|/);
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
-    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Bags|DD0041|9 Oct|12|DD0042|11 Oct|8');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Bags|DD0041|09/10/26|12|DD0042|11/10/26|8');
   });
 
   it('keeps the loading, failure and empty states', () => {
@@ -278,7 +286,7 @@ describe('GRN Items table, sorting', () => {
 });
 
 describe('GRN Invoices table, sorting', () => {
-  // Drawn in this order: A (no. 9, 10 Oct, ₹900), B (no. 10, 5 Oct, ₹100), C (no. 2, 20 Oct, ₹500).
+  // Drawn in this order: A (no. 9, 10/10/26, ₹900), B (no. 10, 05/10/26, ₹100), C (no. 2, 20/10/26, ₹500).
   const invoices: InvoiceTable = {
     detailed: true,
     count: 3,

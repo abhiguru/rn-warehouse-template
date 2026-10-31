@@ -96,7 +96,7 @@ describe('Add customer rate (Orchard A has none)', () => {
   it('asks after another start day was chosen, though no field was typed', async () => {
     const t = await openCustomer();
     expect(mockGuard.hasChanges).toBe(false);
-    await act(async () => { chip(t, '1 Nov 2026').props.onPress(); });
+    await act(async () => { chip(t, '01/11/26').props.onPress(); });
     expect(mockGuard.hasChanges).toBe(true);
     await act(async () => { chip(t, 'Today').props.onPress(); });
     expect(mockGuard.hasChanges).toBe(false);

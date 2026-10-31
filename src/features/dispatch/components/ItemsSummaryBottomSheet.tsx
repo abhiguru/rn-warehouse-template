@@ -132,6 +132,10 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
+/** A line on a live invoice is read only in the edit: the sentence the dispatch's header uses; undefined for any other line. */
+export const invoicedLineText = (item: DispatchItemData): string | undefined =>
+  item.invoice_no === undefined ? undefined : tr('dispatch.refusal.invoiced', { invoice: formatIdentifier(item.invoice_no || '—') });
+
 /** Dispatch item card renderer */
 const DispatchItemCard: React.FC<{
   item: DispatchItemData;
@@ -141,12 +145,13 @@ const DispatchItemCard: React.FC<{
   /** "Order asks for 40 bags"; undefined when the line's lot is not on the order the form was made from. */
   orderAsks?: string;
 }> = ({ item, index, isLast, isEditing, orderAsks }) => {
+  const onInvoice = invoicedLineText(item);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const bags = formatCount(item.disp_quantity, 'bag');
   // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
   const weightEach = formatWeightEach(item.grnItems_weight);
-  const hasDetails = !!item.grnItems_package_mark || !!item.grnItems_rack || weightEach !== null || !!orderAsks;
+  const hasDetails = !!item.grnItems_package_mark || !!item.grnItems_rack || weightEach !== null || !!orderAsks || !!onInvoice;
 
   return (
     <View
@@ -160,6 +165,7 @@ const DispatchItemCard: React.FC<{
           bags,
         }),
         orderAsks,
+        onInvoice,
       ].filter(Boolean).join(', ')}
     >
       <View style={styles.itemHeader}>
@@ -219,6 +225,12 @@ const DispatchItemCard: React.FC<{
             <View style={styles.detailRow}>
               <Icon name="clipboard-text-outline" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={styles.detailText}>{orderAsks}</Text>
+            </View>
+          ) : null}
+          {onInvoice ? (
+            <View style={styles.detailRow}>
+              <Icon name="lock-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.detailText}>{onInvoice}</Text>
             </View>
           ) : null}
         </View>
@@ -293,6 +305,7 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
       renderItem={renderItem}
       getTotals={getTotals}
       onDeleteItem={onDeleteItem}
+      getProtectedMessage={invoicedLineText}
       onEditItem={onEditItem}
       editingItemKey={editingItemId}
       entity="item"

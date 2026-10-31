@@ -18,6 +18,7 @@ import { parseReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 import { useTokens } from '@/hooks/useTheme';
 import { formatNumber } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import type { LineLock } from '@/features/grn/utils/lineLock';
 
 
 /** Form data for a GRN item */
@@ -45,11 +46,11 @@ export interface ItemsSummaryBottomSheetProps {
   editingItemId?: string;
   /** Called once the sheet is fully gone (iOS only; Android has no such event). */
   onDismissed?: () => void;
-  /** Item IDs whose quantity is locked (they have dispatches): they get the "Quantity locked" tag. */
-  dispatchedItemIds?: Set<string>;
+  /** What locks each stored line (by item ID), shown as the lock tag of the review step; a line not listed has none. */
+  lineLocks?: Map<string, LineLock>;
   /**
    * Item IDs that can't be removed, each with the reason in the app's words (dispatched before, or on the customer's
-   * order). The swipe shows the lock and the reason is what the person is told. Not the same set as `dispatchedItemIds`.
+   * order). The swipe shows the lock and the reason is what the person is told. Not the same set as `lineLocks`.
    */
   removeBlockedReasons?: Map<string, string>;
 }
@@ -62,7 +63,7 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
   onEditItem,
   editingItemId,
   onDismissed,
-  dispatchedItemIds,
+  lineLocks,
   removeBlockedReasons,
 }) => {
   const t = useTokens();
@@ -121,11 +122,11 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
         }}
         isLast={index === items.length - 1}
         isEditing={isEditing}
-        // The "Quantity locked" tag follows the quantity lock only, not whether the line can be removed.
-        isProtected={dispatchedItemIds?.has(item.grn_trl_id) ?? false}
+        // The lock tag follows the line's locks only, not whether the line can be removed.
+        lock={lineLocks?.get(item.grn_trl_id) ?? null}
       />
     ),
-    [items.length, dispatchedItemIds]
+    [items.length, lineLocks]
   );
 
   return (

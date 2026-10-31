@@ -20,7 +20,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
-import { store as routerStore } from 'expo-router/build/global-state/router-store';
+import { routerStore } from '@/tests/helpers/routerStore';
 import { router, Stack, Tabs } from 'expo-router';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { updateDiscount, updateHeader } from '@/store/slices/invoiceFormSlice';
@@ -120,7 +120,13 @@ beforeEach(async () => {
   backKey = installHardwareBack();
   const context = getMockContext({
     _layout: () => <Stack screenOptions={{ headerShown: false }} />,
-    '(tabs)/_layout': () => <Tabs screenOptions={{ headerShown: false }} />,
+    // expo-router 58 tabs show only the screens their layout declares (this context has these two tabs only).
+    '(tabs)/_layout': () => (
+      <Tabs screenOptions={{ headerShown: false }}>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="invoices" />
+      </Tabs>
+    ),
     '(tabs)/index': () => null,
     '(tabs)/invoices': InvoicesTab,
     'invoice-details/[id]': DetailsPage,
@@ -224,7 +230,7 @@ describe('Back on step 2 of a new invoice', () => {
     await tap('Next: items');
 
     expect(pathname()).toBe('/invoice-form/step1');
-    expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining('Cannot select a future date'));
+    expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining("An invoice can't be dated in the future"));
     expect(stack()).toEqual(['(tabs)', ['step1']]);
 
     // Corrected, it goes on again.

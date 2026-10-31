@@ -140,8 +140,8 @@ describe('Settings order', () => {
   });
 
   it.each([
-    ['admin', 7],
-    ['supervisor', 5],
+    ['admin', 8],
+    ['supervisor', 6],
     ['staff', 1],
     ['customer', 0],
   ])('keeps the tool rows of the role (%s: %d)', async (role, count) => {

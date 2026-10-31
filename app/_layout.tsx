@@ -98,6 +98,7 @@ import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/cen
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { showAlert } from '@/utils/alert';
+import { isNetworkError, isUpgradingAnswer } from '@/utils/serverText';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
 import { startDailyLanCheck } from '@/config/lanCheck';
@@ -353,6 +354,7 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
       {/* Central login (docs/CENTRAL_LOGIN.md): reachable only in a build that names the central origin */}
       <Stack.Screen name="central-login" options={{ title: translate('nav.screens.signIn') }} />
       <Stack.Screen name="central-otp" options={{ title: translate('nav.screens.enterCode') }} />
+      <Stack.Screen name="facility-code" options={{ title: translate('nav.screens.facilityCode') }} />
       <Stack.Screen name="facilities" options={{ title: translate('nav.screens.myFacilities') }} />
       <Stack.Screen name="facility-catalogue" options={{ title: translate('nav.screens.addFacility') }} />
       <Stack.Screen name="facility-address" options={{ title: translate('nav.screens.facilityAddress') }} />
@@ -527,6 +529,8 @@ function BootstrapApp() {
   const [isReady, setIsReady] = useState(false);
   const [needsSelection, setNeedsSelection] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  // The facility answered the cold start with `upgrading`: its own full-screen state, not a load error.
+  const [serverUpgrading, setServerUpgrading] = useState(false);
   // The selected facility needs a newer app: its own screen, not a connection error. Set by the facility check
   // (src/config/operatorBootstrap.ts) at the start and on every return to the foreground, so a phone resumed after an upgrade is told too.
   const appTooOld = useSyncExternalStore(subscribeAppTooOld, getAppTooOld, getAppTooOld);
@@ -590,6 +594,7 @@ function BootstrapApp() {
     // A retry must leave the prior error state before starting. Otherwise a
     // successful refresh completes behind the still-mounted error screen.
     setConfigError(null);
+    setServerUpgrading(false);
     clearAppTooOld();
     setIsReady(false);
     setNeedsSelection(false);
@@ -628,7 +633,8 @@ function BootstrapApp() {
           version: publicConfig.version,
         });
       } catch (error: any) {
-        console.error('[Bootstrap] Config fetch failed:', error);
+        // A server that does not answer is a handled state with its own screen, not a fault.
+        (isNetworkError(error) || isAppTooOld(error) ? console.log : console.error)('[Bootstrap] Config fetch failed:', error);
         setConfigError(
           translate('nav.bootstrap.unreachable')
         );
@@ -661,7 +667,15 @@ function BootstrapApp() {
 
       if (run === bootstrapRun.current) { setConfigError(null); setIsReady(true); }
     } catch (error: any) {
-      console.error('[Bootstrap] Unexpected bootstrap error:', error);
+      // The facility is being updated: an expected answer, shown on its own screen and not logged as an error.
+      if (run === bootstrapRun.current && isUpgradingAnswer(error)) {
+        setServerUpgrading(true);
+        setConfigError(translate('components.upgrading.message'));
+        setIsReady(true);
+        return;
+      }
+      // An unreachable server and a too-old app each have their own screen: only the unexpected is an error.
+      (isNetworkError(error) || isAppTooOld(error) ? console.log : console.error)('[Bootstrap] Unexpected bootstrap error:', error);
       if (run === bootstrapRun.current && isAppTooOld(error)) {
         reportAppTooOld(error);
         setIsReady(true);
@@ -719,7 +733,9 @@ function BootstrapApp() {
     return (
       <ConfigErrorScreen
         error={configError}
+        upgrading={serverUpgrading}
         onRetry={bootstrapApp}
+        toFacilities={centralLogin}
         onChangeServer={
           centralLogin
             ? // Central login: leave the facility that cannot be reached for My facilities.

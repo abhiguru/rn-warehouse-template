@@ -228,3 +228,11 @@ describe('the lines check with many lines (each distinct value is checked once)'
     expect(result.errors['header.total']).toBe('Total must be positive');
   });
 });
+
+describe('the financial year', () => {
+  it('is computed from the date, so the header has no format rule of its own', async () => {
+    const result = await validateStep1(header({ inv_fin_year: '2026-27' }));
+    expect(result.errors.inv_fin_year).toBeUndefined();
+    expect((await validateStep1(header({ inv_fin_year: '' }))).errors.inv_fin_year).toBeTruthy();
+  });
+});

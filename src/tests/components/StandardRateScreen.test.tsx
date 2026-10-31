@@ -100,7 +100,7 @@ describe('Standard rate', () => {
     await act(async () => { saveButton(t).props.onPress(); });
     expect(setStandardRate).not.toHaveBeenCalled();
     expect(inputsWithLabel(t, 'Rent per bag, per month')[0].props.error).toBe(RENT_ERROR);
-    expect(inputsWithLabel(t, 'Labour per bag')[3].props.error).toBe('Enter a labour rate of 0 or more.');
+    expect(inputsWithLabel(t, 'Labour per bag')[3].props.error).toBe('Enter a labour rate from 0 to 999999.');
     expect(inputsWithLabel(t, 'Tax')[2].props.error).toBe('Enter a tax rate from 0 to 100.');
   });
 
@@ -113,7 +113,7 @@ describe('Standard rate', () => {
     // A dry run first (writes nothing), then the real save, both with the version the form was built from.
     expect(setStandardRate).toHaveBeenCalledTimes(2);
     expect(setStandardRate).toHaveBeenNthCalledWith(1, [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)], { expectedUpdatedAt: '-infinity', dryRun: true });
-    expect(setStandardRate).toHaveBeenNthCalledWith(2, [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)], { expectedUpdatedAt: '-infinity' });
+    expect(setStandardRate).toHaveBeenNthCalledWith(2, [tier(0, 10, 3), tier(11, 20, 4), tier(21, 30, 5), tier(31, 50, 6)], { expectedUpdatedAt: '-infinity', requestKey: expect.stringMatching(/^warehouse-rate-standard-/), signal: expect.anything() });
     expect(askAlert).toHaveBeenCalledWith('Give this rate to 55 items that have never had a rate?', 'They are charged it for lots received from their first GRN.', expect.any(Array), false);
     expect(showToast).toHaveBeenCalledWith('Standard rate saved. 55 items got it.');
     expect(router.back).toHaveBeenCalledTimes(1);
@@ -286,6 +286,42 @@ describe('Standard rate', () => {
     expect(setStandardRate).toHaveBeenCalledTimes(2);
   });
 
+  it('asks before changing a saved standard rate, naming the old and the new figures', async () => {
+    const t = await open([tier(0, 50, 4, 1, 5)]);
+    await type(t, 'Rent per bag, per month', 0, '4.50');
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [tier(0, 50, 4.5, 1, 5)], itemsPriced: 0 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(askAlert).toHaveBeenCalledWith(
+      'Change the standard rate?',
+      'Now:\n0\u201350 kg: rent \u20b94.00, labour \u20b91.00, tax 5%\n\nNew:\n0\u201350 kg: rent \u20b94.50, labour \u20b91.00, tax 5%',
+      expect.any(Array),
+      false,
+    );
+    expect(setStandardRate).toHaveBeenCalledTimes(2);
+  });
+
+  it('saves nothing more than the dry run when the change question is answered Back', async () => {
+    const t = await open([tier(0, 50, 4, 1, 5)]);
+    await type(t, 'Rent per bag, per month', 0, '4.50');
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
+    jest.mocked(askAlert).mockResolvedValue(false as never);
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(setStandardRate).toHaveBeenCalledTimes(1);
+    expect(router.back).not.toHaveBeenCalled();
+  });
+
+  it('asks the change question in Gujarati digits', async () => {
+    setLanguage('gu');
+    const t = await open([tier(0, 50, 4, 1, 5)]);
+    await act(async () => { t.root.findAllByType(TextInput).find(n => n.props.value === '૪.૦૦')!.props.onChangeText('4.50'); });
+    jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
+    await act(async () => { saveButton(t).props.onPress(); });
+    const [title, message] = jest.mocked(askAlert).mock.calls[0];
+    expect(title).toBe('પ્રમાણભૂત દર બદલવો છે?');
+    expect(String(message)).toContain('ભાડું');
+    expect(/[0-9]/.test(String(message))).toBe(false);
+  });
+
   it('shows a stale answer as the Reload strip and saves nothing', async () => {
     const t = await open(FOUR);
     jest.mocked(setStandardRate).mockResolvedValue({ success: false, errorCode: 'STALE_STANDARD_RATE', message: 'x' });
@@ -303,7 +339,7 @@ describe('Standard rate', () => {
     expect(shown.some(v => /[0-9]/.test(String(v)))).toBe(false);
     jest.mocked(setStandardRate).mockResolvedValue({ success: true, tiers: [], itemsPriced: 0 });
     await act(async () => { saveButton(t).props.onPress(); });
-    expect(setStandardRate).toHaveBeenLastCalledWith([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)], { expectedUpdatedAt: null });
+    expect(setStandardRate).toHaveBeenLastCalledWith([tier(0, 10, 3.5, 1.5, 5), tier(11, 50, 4, 2, 12)], { expectedUpdatedAt: null, requestKey: expect.any(String), signal: expect.anything() });
   });
 
   // Review A5: an error above the fold scrolls to the field by its place in the content, not its place on the window.

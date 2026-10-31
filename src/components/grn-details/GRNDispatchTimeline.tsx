@@ -26,7 +26,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, formatNumber, toDate, formatMonth } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatSpokenDate, toDate, formatMonth } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
 export interface DispatchRecord {
@@ -347,7 +347,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
               <View style={styles.dispatchesContainer}>
                 {group.dispatches.map((dispatch, dispatchIndex) => {
                   const isLast = dispatchIndex === group.dispatches.length - 1;
-                  const dateLabel = formatDate(dispatch.dispDate, 'short');
+                  const dateLabel = formatDate(dispatch.dispDate);
 
                   return (
                     <View key={dispatch.id} style={styles.dispatchWrapper}>
@@ -362,7 +362,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
                         style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
                         onPress={() => handleDispatchPress(dispatch.dispatchId)}
                         accessibilityRole="button"
-                        accessibilityLabel={tr('grn.dispatches.rowLabel', { number: formatIdentifier(dispatch.dispNo), bags: bagsLabel(dispatch.dispQuantity), date: dateLabel })}
+                        accessibilityLabel={tr('grn.dispatches.rowLabel', { number: formatIdentifier(dispatch.dispNo), bags: bagsLabel(dispatch.dispQuantity), date: formatSpokenDate(dispatch.dispDate) })}
                         accessibilityHint={tr('grn.dispatches.openHint')}
                       >
                         <View style={styles.cardContent}>

@@ -24,7 +24,7 @@ export const pricing: Translation<typeof source> = {
   row: {
     labour: 'મજૂરી {{amount}}',
     tax: 'ટેક્સ {{percent}}%',
-    a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, નંગ દીઠ મજૂરી {{labour}}, ટેક્સ {{percent}}%',
+    a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, {{pack}} દીઠ મજૂરી {{labour}}, ટેક્સ {{percent}}%',
     a11yOneTime: '{{item}}, {{amount}} {{unit}}, {{band}}, ટેક્સ {{percent}}%',
   },
   otherDay: {
@@ -36,8 +36,8 @@ export const pricing: Translation<typeof source> = {
     rateEnds: 'દર {{date}} એ પૂરો થાય છે',
   },
   unit: {
-    monthly: 'નંગ દીઠ, માસિક',
-    oneTime: 'નંગ દીઠ, એક વખત',
+    monthly: '{{unit}} દીઠ, માસિક',
+    oneTime: '{{unit}} દીઠ, એક વખત',
   },
   band: {
     weightEach: 'દરેકનું વજન',
@@ -47,7 +47,7 @@ export const pricing: Translation<typeof source> = {
   item: {
     status: '{{date}} ના રોજ આવેલા જથ્થાના દર',
     labour: 'મજૂરી',
-    labourValue: 'નંગ દીઠ {{amount}}, માલ મોકલતી વખતે એક વાર લેવાય છે',
+    labourValue: '{{unit}} દીઠ {{amount}}, માલ મોકલતી વખતે એક વાર લેવાય છે',
     labourShort: 'નંગ દીઠ {{amount}}',
     taxShort: '{{percent}}%',
     tax: 'ટેક્સ',
@@ -91,7 +91,7 @@ export const pricing: Translation<typeof source> = {
     discard: 'ફેરફાર છોડી દો',
     locked: 'પહેલાં બીજો ફેરફાર સાચવો અથવા છોડી દો.',
     unitRupees: 'રૂપિયા, {{unit}}',
-    unitLabour: 'રૂપિયા, નંગ દીઠ',
+    unitLabour: 'રૂપિયા, {{unit}} દીઠ',
     unitKg: 'કિલો',
     unitPercent: 'ટકા',
     // Drafts for the owner's wording review (rate box laid out like the GRN rate form, 2026-10-20); datesFrom is the GRN rate sheet's wording.
@@ -106,6 +106,9 @@ export const pricing: Translation<typeof source> = {
   },
   how: {
     title: 'ઇન્વૉઇસ કયો દર પસંદ કરે છે',
+    // Draft for the owner's wording review (2026-10-31).
+    l0a: 'સાચવેલો ઇન્વૉઇસ પોતાના આંકડા જ રાખે છે.',
+    l0b: 'ફક્ત તે આવક પાવતી માટે નક્કી કરેલો દર વેપારીના દર કરતાં પહેલાં લાગે છે.',
     l1: 'વેપારીનો પોતાનો દર, જો તે નંગના વજન માટે હોય.',
     l2: 'નહીં તો મૂળ દર.',
     l3: 'એક નંગનું વજન જેમાં આવે તે સૌથી સાંકડી વજન મર્યાદા.',
@@ -184,6 +187,11 @@ export const pricing: Translation<typeof source> = {
     },
     giveMessage: 'તેમની પહેલી આવક પાવતીથી આવેલા જથ્થા પર તે લાગશે.',
     giveConfirm: 'સાચવો અને આપો',
+    // Draft for the owner's wording review (Standard rate change question, 2026-10-31).
+    changeTitle: 'પ્રમાણભૂત દર બદલવો છે?',
+    changeMessage: 'હાલ:\n{{old}}\n\nનવો:\n{{new}}',
+    changeConfirm: 'ફેરફાર સાચવો',
+    changeTier: '{{band}}: ભાડું {{rent}}, મજૂરી {{labour}}, ટેક્સ {{tax}}%',
     reload: 'ફરી લોડ કરો',
     lastTierHint: '{{kg}} કિલોથી વધુ વજનના નંગ પર પ્રમાણભૂત દર લાગતો નથી.',
     loading: 'પ્રમાણભૂત દર લોડ થઈ રહ્યો છે',
@@ -253,6 +261,7 @@ export const pricing: Translation<typeof source> = {
   error: {
     generic: 'દર સચવાયો નથી. ફરી પ્રયાસ કરો.',
     unconfirmed: 'દર સચવાયો કે નહીં તે ખાતરી થઈ શકી નથી. આ સ્ક્રીન બંધ કરો અને ફરી પ્રયાસ કરતા પહેલાં આઇટમ પેજ જુઓ.',
+    undoUnconfirmed: 'ફેરફારની ખાતરી થઈ શકી નથી. ફરી પ્રયાસ કરતા પહેલાં આ પેજ પરના દર તપાસો.',
     invalidDate: '{{date}} અથવા તે પછીની શરૂઆતની તારીખ પસંદ કરો.',
     invalidDateWindow: 'આજથી ત્રણ વર્ષ પહેલાં અને બે વર્ષ પછી સુધીની શરૂઆતની તારીખ પસંદ કરો.',
     startTooFar: 'આજથી બે વર્ષની અંદરની શરૂઆતની તારીખ પસંદ કરો.',

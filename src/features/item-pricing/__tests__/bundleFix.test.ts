@@ -86,9 +86,9 @@ describe('F11 / F12: the replace question names every planned rate, and a rate o
   it('F12: two planned rates are both named', () => {
     const later = planned.map(r => ({ effective_from: r.effective_from, weight_min: r.weight_min, weight_max: r.weight_max, unit_price: r.unit_price }));
     const text = laterDialogText(later, '2026-10-14', TODAY);
-    expect(text.title).toBe('Replace 2 planned rates?');
-    expect(text.message).toContain('1 Nov 2026 (₹7.00)');
-    expect(text.message).toContain('1 Apr 2027 (₹8.00)');
+    expect(text.title).toBe('Replace 2 later rates?');
+    expect(text.message).toContain('01/11/26 (₹7.00)');
+    expect(text.message).toContain('01/04/27 (₹8.00)');
   });
 
   it('F12: a multi-band planned rate shows its range of rents, one planned rate keeps the old wording', () => {
@@ -96,8 +96,8 @@ describe('F11 / F12: the replace question names every planned rate, and a rate o
       { effective_from: '2026-11-01', weight_min: 0, weight_max: 40, unit_price: 6 },
       { effective_from: '2026-11-01', weight_min: 41, weight_max: 100, unit_price: 9.5 },
     ];
-    expect(laterDialogText(bands, '2026-10-14', TODAY).message).toBe('A rate from 1 Nov 2026 (₹6.00–₹9.50) comes after this date. Saving removes it.');
-    expect(laterDialogText(bands, '2026-11-01', TODAY).message).toBe('Saving removes the rate planned from 1 Nov 2026 (₹6.00–₹9.50).');
+    expect(laterDialogText(bands, '2026-10-14', TODAY).message).toBe('A rate from 01/11/26 (₹6.00–₹9.50) comes after this date. Saving removes it.');
+    expect(laterDialogText(bands, '2026-11-01', TODAY).message).toBe('Saving removes the rate planned from 01/11/26 (₹6.00–₹9.50).');
   });
 });
 
@@ -124,12 +124,12 @@ describe('F16: Cancel new rate when the current rate stops earlier', () => {
     stopsAfter: to,
   });
   it('says the rate continues when it ends the day before', () => {
-    expect(cancelMessage(scope('2027-05-31'), '₹11.00', '₹12.00')).toContain('continues after 31 May 2027');
+    expect(cancelMessage(scope('2027-05-31'), '₹11.00', '₹12.00')).toContain('continues after 31/05/27');
   });
   it('says there is no rate after the stop when there is a gap', () => {
     const text = cancelMessage(scope('2027-03-31'), '₹11.00', '₹12.00');
     expect(text).not.toContain('continues');
-    expect(text).toContain('stops after 31 Mar 2027');
+    expect(text).toContain('stops after 31/03/27');
   });
 });
 
@@ -166,14 +166,14 @@ describe('F19: the start window is the server window in days', () => {
     const { draft, context } = open('change', { price_type: 'monthly' }, [row(null, 0, 100, 11, '2026-04-01', null)]);
     expect(validate(setStartsOn(draft, 'other', '2028-10-14'), context).errors.startsOn).toBe('Choose a start date within two years after today.');
     // A day before the floor names the floor when the server sent one; without one (an older server) the old window is described.
-    expect(validate(setStartsOn(draft, 'other', '2021-12-31'), { ...context, earliestStart: '2022-01-01' }).errors.startsOn).toBe('Choose a start date on or after 1 Jan 2022.');
+    expect(validate(setStartsOn(draft, 'other', '2021-12-31'), { ...context, earliestStart: '2022-01-01' }).errors.startsOn).toBe('Choose a start date on or after 01/01/22.');
     expect(validate(setStartsOn(draft, 'other', '2023-10-14'), context).errors.startsOn).toBe('Choose a start date within three years before today and two years after.');
   });
 });
 
 describe('F20: today is the India day', () => {
   it('a phone on another day still gets the India day', () => {
-    // 2026-10-14 20:00 UTC is 01:30 IST on 15 Oct whatever the phone zone is.
+    // 2026-10-14 20:00 UTC is 01:30 IST on 15/10/26 whatever the phone zone is.
     expect(todayDay(new Date(Date.UTC(2026, 9, 14, 20, 0, 0)))).toBe('2026-10-15');
     expect(todayDay(new Date(Date.UTC(2026, 9, 14, 17, 0, 0)))).toBe('2026-10-14');
   });
@@ -299,7 +299,16 @@ describe('F23: rows a save deleted are listed in the history card', () => {
       entry(1, 'delete', price(12, '2026-12-01', null), null),
     ]);
     expect(view.kind).toBe('changed');
-    expect(view.removed).toEqual([{ band: { min: 0, max: 100 }, field: 'monthlyPrice', price: 12, from: '2026-12-01' }]);
+    expect(view.removed).toEqual([{ band: { min: 0, max: 100 }, field: 'monthlyPrice', price: 12, from: '2026-12-01', begun: false }]);
+  });
+  it('a removed rate that had already begun on the save day is marked begun', () => {
+    // The save is on 2026-10-14 (India); the removed rate began on 2026-09-15.
+    const view = groupChanges([
+      entry(3, 'insert', null, price(11, '2026-10-05', null)),
+      entry(2, 'delete', price(10, '2026-09-15', null, 101, 150), null),
+      entry(1, 'delete', price(12, '2026-10-14', null, 151, 200), null),
+    ]);
+    expect(view.removed.map(r => [r.from, r.begun])).toEqual([['2026-09-15', true], ['2026-10-14', true]]);
   });
   it('bands a correction dropped are listed', () => {
     const view = groupChanges([

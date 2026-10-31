@@ -141,13 +141,13 @@ export const grn: Translation<typeof source> = {
     a11yRack: 'રેક {{rack}}',
     a11yMark: 'માર્કો {{mark}}',
     a11yEditing: 'ફેરફાર ચાલુ છે',
-    a11yQuantityLocked: 'નંગ લૉક છે',
     totalQuantityLabel: 'કુલ નંગ:',
     summaryEmptyTitle: 'હજુ કોઈ આઇટમ ઉમેરી નથી',
     summaryEmptySubtitle: 'આઇટમની વિગતો ભરો અને અહીં સાચવવા માટે ખરાની નિશાની પર ટૅપ કરો.',
   },
 
   itemsStep: {
+    backToDetails: 'આવક પાવતીની વિગતો પર પાછા જાઓ',
     qtyLockedTitle: 'નંગ બદલી શકાશે નહીં',
     qtyLockedMessage: 'આ આઇટમની જાવક થઈ ગઈ છે, તેથી સ્ટોક સાચો રહે તે માટે તેના નંગ લૉક છે.',
     itemsWillBeLost: { one: '{{count}} આઇટમ જતી રહેશે.', other: '{{count}} આઇટમ જતી રહેશે.' },
@@ -179,6 +179,9 @@ export const grn: Translation<typeof source> = {
     addPhotos: 'ફોટો ઉમેરો',
     addPhotoTitle: 'ફોટો ઉમેરો',
     addPhotoMessage: 'નવો ફોટો પાડો અથવા ગૅલેરીમાંથી પસંદ કરો.',
+    scanDocument: 'દસ્તાવેજ સ્કેન કરો',
+    addPhotoMessageScan: 'દસ્તાવેજ સ્કેન કરો, નવો ફોટો પાડો અથવા ગૅલેરીમાંથી પસંદ કરો.',
+    scanPagesSkipped: '{{count}} માંથી ફક્ત {{added}} પાનાં ઉમેર્યાં (વધુમાં વધુ {{max}} ફોટો).',
     takePhoto: 'ફોટો પાડો',
     chooseFromLibrary: 'ગૅલેરીમાંથી પસંદ કરો',
     chooseFromGallery: 'ગૅલેરીમાંથી પસંદ કરો',
@@ -238,6 +241,7 @@ export const grn: Translation<typeof source> = {
   },
 
   review: {
+    noRateYet: '{{items}} માટે હજુ દર નથી. ઇન્વૉઇસ બનાવતા પહેલાં એડમિન દર ઉમેરશે.',
     stockProtectedMessage: 'જે આઇટમની જાવક થઈ ગઈ છે તેના નંગ કે સ્ટોક બદલી શકાતા નથી. બીજી વિગતો બદલી શકાય છે.',
     saveFailedTitle: 'આવક પાવતી સાચવી શકાઈ નથી',
     discardCreateMessage: {
@@ -494,7 +498,6 @@ export const grn: Translation<typeof source> = {
 
   validation: {
     numberMax: 'આવક પાવતી નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે',
-    numberNoSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ',
     registrationMax: 'વાહન નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે',
     dateRequired: 'તારીખ જરૂરી છે',
     dateFuture: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
@@ -540,8 +543,11 @@ export const grn: Translation<typeof source> = {
 
   // Draft for the owner's wording review (2026-10-20): every text of this group.
   refusal: {
+    numberSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ.',
     numberLocked: 'નંબર બદલી શકાતો નથી. સુધારવા માટે આ આવક પાવતી કાઢી નાખીને ફરી દાખલ કરો.',
     dateInvoiced: 'આ આવક પાવતીનું ઇન્વૉઇસ બનેલું છે. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
+    dateFuture: 'આવક પાવતી આજ પછીની તારીખની ન હોઈ શકે. આજની તારીખ {{date}} છે.',
+    lastPhoto: 'આવક પાવતી માટે ઓછામાં ઓછો એક ફોટો જોઈએ. આ કાઢતા પહેલાં બીજો ઉમેરો.',
     lockedTitle: 'આ બદલી શકાતું નથી',
     lineTitle: 'આઇટમ {{position}} સાચવી શકાતી નથી',
     removeTitle: 'આ જથ્થો કાઢી શકાતો નથી',
@@ -569,7 +575,7 @@ export const grn: Translation<typeof source> = {
     dispatchHistoryFailed: 'જાવકની વિગતો લોડ થઈ શકી નથી. ફરી પ્રયાસ કરો.',
     dispatchHistoryFailedConnection: 'જાવકની વિગતો લોડ થઈ શકી નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     photoAccessNeeded: 'ફોટો ઉમેરવા માટે સેટિંગમાં ફોટો જોવાની પરવાનગી આપો.',
-    imageUploadFailed: 'ફોટો અપલોડ થઈ શક્યો નથી. ફરી પ્રયાસ કરો.',
+    imageUploadFailed: 'ફોટો અપલોડ કરી શકાયો નથી. ફરી પ્રયાસ કરો.',
     imageAdded: 'ફોટો ઉમેરાયો.',
     deleteImageTitle: 'આ ફોટો ડિલીટ કરવો છે?',
     deleteImageMessage: 'ફોટો આવક પાવતીમાંથી કાયમ માટે નીકળી જશે.',
@@ -592,13 +598,13 @@ export const grn: Translation<typeof source> = {
     deleteFailed: 'આવક પાવતી ડિલીટ થઈ શકી નથી. ફરી પ્રયાસ કરો.',
     // Gujarati draft for the owner's wording review (2026-10-20).
     leaveWhileCheckingTitle: 'આ સ્ક્રીન છોડવી છે?',
-    dispatchItemsInvoiced: {
-      one: '{{count}} જાવક આઇટમનું ઇન્વૉઇસ બની ગયું છે.',
-      other: '{{count}} જાવક આઇટમનું ઇન્વૉઇસ બની ગયું છે.',
+    deleteBlockedInvoiced: {
+      one: 'આવક પાવતી {{number}} ની {{count}} જાવક લાઇન ઇન્વૉઇસમાં છે. પહેલાં તે ઇન્વૉઇસ ડિલીટ કરો, પછી જાવક ડિલીટ કરો.',
+      other: 'આવક પાવતી {{number}} ની {{count}} જાવક લાઇન ઇન્વૉઇસમાં છે. પહેલાં તે ઇન્વૉઇસ ડિલીટ કરો, પછી જાવક ડિલીટ કરો.',
     },
-    dispatchItemsRecorded: {
-      one: '{{count}} જાવક આઇટમ નોંધાયેલી છે.',
-      other: '{{count}} જાવક આઇટમ નોંધાયેલી છે.',
+    deleteBlockedDispatches: {
+      one: 'આવક પાવતી {{number}} ની {{count}} જાવક લાઇન છે. પહેલાં તે જાવક ડિલીટ કરો.',
+      other: 'આવક પાવતી {{number}} ની {{count}} જાવક લાઇન છે. પહેલાં તે જાવક ડિલીટ કરો.',
     },
     pdfCreateFailedTitle: 'PDF બનાવી શકાઈ નથી',
     pdfShareFailedTitle: 'PDF શેર કરી શકાઈ નથી',

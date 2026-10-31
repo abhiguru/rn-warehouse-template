@@ -52,6 +52,7 @@ export const common = {
   notSet: 'Not set',
   none: 'None',
   all: 'All',
+  photoMissing: 'Photo missing',
   any: 'Any',
   unknown: 'Unknown',
   active: 'Active',

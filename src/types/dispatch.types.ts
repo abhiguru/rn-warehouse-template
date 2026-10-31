@@ -7,6 +7,7 @@
 // DISPATCH IMAGE
 // ============================================================================
 
+import type { OrderEffect } from '@/services/orderEffects';
 import { toLocalISODate } from '@/utils/formatters';
 import type { ServerRefusal } from '@/utils/serverRefusal';
 
@@ -69,12 +70,16 @@ export interface DispatchItemData {
   grnItems_quantity: number;   // Original GRN quantity
   grnItems_stock: number;      // Available stock for this lot
   grnItems_package_mark: string;
+  /** The item's packaging (Bag, Box, Crate ...): what the lot is counted in. Absent for a line read before this was known. */
+  grnItems_packaging?: string;
   grnItems_rack: string;
   grnItems_weight: number;
 
   // Dispatch quantity
   disp_quantity: number;        // User-entered dispatch quantity
   original_disp_quantity?: number; // Previous dispatch quantity (for edit mode validation)
+  /** The number of the live invoice this line was on when the dispatch was read; absent when it is on none. The line is read only. */
+  invoice_no?: string;
 }
 
 /**
@@ -218,6 +223,8 @@ export interface DispatchApiResponse {
   source_order_id?: string;        // The order ID that was cleared
   /** Create only (server migration 120): lines of the source order still open after this dispatch; null for a dispatch without an order; absent on an older server. */
   order_lines_left?: number | null;
+  /** Migration 128: the order lines the save changed ([] when none). Absent on an older server. */
+  order_effects?: OrderEffect[];
   /** The server's reason for a refusal: 'NUMBER_TAKEN' (or the unique-key error of an older server), or one of wave B's (see `refusal`). */
   reason?: string;
   /** Wave B: the refusal the server sent (STALE_RECORD, DISPATCH_INVOICED, DISPATCH_DATE_FUTURE, POSSIBLE_DUPLICATE, ...), for the screen to word. */
@@ -269,6 +276,8 @@ export interface GRNDetailItem {
   quantity: number;            // Original GRN quantity
   stock: number;               // Available stock
   package_mark: string;
+  /** The item's packaging (Bag, Box, Crate ...). */
+  packaging?: string;
   rack: string;
   weight: number;
 }
@@ -504,6 +513,9 @@ export interface RecentDispatchedOrderItem {
   package_mark: string | null;
   gr_no: string;
   weight: number;
+  /** What the GRN received, and the GRN's id (backend 0.7.x and newer); absent from an older backend. */
+  grn_qty?: number;
+  grn_id?: string | null;
 }
 
 /**

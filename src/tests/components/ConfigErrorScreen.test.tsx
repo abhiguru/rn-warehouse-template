@@ -73,3 +73,32 @@ describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => 
     });
   }
 );
+
+it('with central login the second button reads My facilities and goes there', async () => {
+  const onChangeServer = jest.fn();
+  await act(async () => { renderer = create(<ConfigErrorScreen onRetry={jest.fn()} onChangeServer={onChangeServer} toFacilities />); });
+  expect(byLabel('Change warehouse server')).toHaveLength(0);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('My facilities');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Change server');
+  await act(async () => { byLabel('Back to My facilities')[0].props.onPress(); });
+  expect(onChangeServer).toHaveBeenCalledTimes(1);
+});
+
+it('while the server is being updated it has its own title and text, Try again, and My facilities with central login', async () => {
+  const onRetry = jest.fn();
+  const onChangeServer = jest.fn();
+  await act(async () => {
+    renderer = create(<ConfigErrorScreen error="technical detail" upgrading onRetry={onRetry} onChangeServer={onChangeServer} toFacilities />);
+  });
+  const shown = JSON.stringify(renderer!.toJSON());
+  expect(shown).toContain('Server being updated');
+  expect(shown).toContain("The facility's server is being updated. Try again in a few minutes.");
+  expect(shown).not.toContain("Couldn't load app settings");
+  expect(shown).not.toContain('technical detail');
+  expect(shown).toContain('Try again');
+  expect(shown).toContain('My facilities');
+  await act(async () => { byLabel('Retry loading configuration')[0].props.onPress(); });
+  expect(onRetry).toHaveBeenCalledTimes(1);
+  await act(async () => { byLabel('Back to My facilities')[0].props.onPress(); });
+  expect(onChangeServer).toHaveBeenCalledTimes(1);
+});

@@ -6,6 +6,7 @@
  * Refactored to use useDispatchForm hook for consolidated form logic.
  */
 
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import React, { useState, useRef } from 'react';
 import {
     View,
@@ -38,7 +39,7 @@ import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepI
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
-import { toLocalISODate, formatDate, toDate } from '@/utils/formatters';
+import { toLocalISODate, formatDate, formatSpokenDate, toDate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 import { formatIdentifier, getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
@@ -332,7 +333,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         updateHeaderField('note', text);
     };
 
-    // Guide 12.3: "9 Oct 2026"
+    // Guide 12.3: "09/10/26"; a screen reader is given "9 Oct 2026"
     const formatDisplayDate = (isoDate: string) => {
         return toDate(isoDate) ? formatDate(isoDate) : '';
     };
@@ -411,7 +412,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                             accessibilityHint={lockedReason}
                                             editable={!dateAndNumberLocked}
                                             value={header.disp_no}
-                                            onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase())}
+                                            onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase().replace(/\s+/g, ''))}
                                             placeholder={numberBoxPlaceholder(numberHint, numberReason, 'I####')}
                                             placeholderTextColor={t.text.placeholder}
                                             autoCapitalize="characters"
@@ -439,7 +440,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                     accessibilityState={{ disabled: dateAndNumberLocked }}
                                     accessibilityHint={lockedReason}
                                     accessibilityRole="button"
-                                    accessibilityLabel={displayDate ? tr('dispatch.form.dispatchDateLabel', { date: displayDate }) : tr('dispatch.form.chooseDispatchDate')}
+                                    accessibilityLabel={displayDate ? tr('dispatch.form.dispatchDateLabel', { date: formatSpokenDate(header.disp_date) }) : tr('dispatch.form.chooseDispatchDate')}
                                 >
                                     <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                                     <Text
@@ -504,7 +505,11 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 suggestionContext={header.customer_id}
                                 placeholder={tr('dispatch.form.vehicleRegistration')}
                                 autoCapitalize="characters"
-                                maxLength={30}
+                                maxLength={20}
+                                onBlur={() => {
+                                    const clean = normalizeVehicle(header.registration);
+                                    if (clean !== header.registration) updateHeaderField('registration', clean);
+                                }}
                                 icon="car"
                                 hasError={!!validationErrors.registration}
                             />

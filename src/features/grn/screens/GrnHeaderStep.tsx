@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import {
   View,
   Text,
@@ -29,7 +30,7 @@ import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/compo
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { formatDate, formatNumber, toCalendarDay, toLocalISODate } from '@/utils/formatters';
+import { formatDate, formatNumber, formatSpokenDate, toCalendarDay, toLocalISODate } from '@/utils/formatters';
 import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
@@ -39,6 +40,7 @@ import { showAlert } from '@/utils/alert';
 import { StatusTag } from '@/components/ui';
 import { numberBoxNote, numberBoxPlaceholder } from '@/features/numbering/numberingModel';
 import { getLanguage, normalizeDigits, t as tr } from '@/i18n';
+import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
@@ -317,6 +319,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                     }}
                     placeholder={numberBoxPlaceholder(numberHint, numberReason, tr('grn.header.numberPlaceholder'))}
                     placeholderTextColor={t.text.placeholder}
+                    maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
                     autoCapitalize="characters"
                     returnKeyType="next"
                     onFocus={() => setFocusedField('gr_no')}
@@ -347,7 +350,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                 disabled={dateLocked}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: dateLocked }}
-                accessibilityLabel={tr('grn.header.dateLabel', { date: formatHeaderDate(header.date) })}
+                accessibilityLabel={tr('grn.header.dateLabel', { date: formatSpokenDate(header.date || new Date()) })}
                 accessibilityHint={dateLocked ? tr('grn.refusal.dateInvoiced') : tr('grn.header.dateHint')}
               >
                 <Icon name={dateLocked ? 'lock-outline' : 'calendar-outline'} size={iconSize.md} color={t.icon.secondary} />
@@ -399,7 +402,11 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
               icon="car"
               isFocused={focusedField === 'registration'}
               onFocus={() => setFocusedField('registration')}
-              onBlur={() => setFocusedField(null)}
+              onBlur={() => {
+                setFocusedField(null);
+                const clean = normalizeVehicle(header.registration);
+                if (clean !== header.registration) updateHeaderField('registration', clean);
+              }}
             />
           </View>
         </View>
@@ -560,7 +567,7 @@ function latestPickableDate(firstDispatchDate: string | null, loadedDate: string
   return limit < today ? limit : today;
 }
 
-/** "9 Oct 2026" (§12.3); today when no date is set yet. */
+/** "09/10/26" (§12.3); today when no date is set yet. */
 function formatHeaderDate(value: string | undefined): string {
   return formatDate(value || new Date());
 }

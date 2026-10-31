@@ -3,6 +3,7 @@
  * rates, opening to its dispatch lines; totals that add the rows; links; large text; states.
  */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AccessibilityInfo, StyleSheet } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
@@ -52,7 +53,7 @@ const pepper = line({ id: '03', item_name: 'Black Pepper', grn_item_id: 'lot-pep
 let tree: ReactTestRenderer;
 const render = (element: React.ReactElement) => {
   act(() => {
-    tree = create(element);
+    tree = create(<GestureHandlerRootView>{element}</GestureHandlerRootView>);
   });
   return tree;
 };
@@ -164,7 +165,7 @@ describe('invoice Items table', () => {
 
   it('with a screen reader on, a line without a dispatch id is an accessible view, not a disabled link', async () => {
     jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
-    await act(async () => { tree = create(<InvoiceLineItemsTab items={[line({ id: '09', dispatch_id: undefined })]} on_view_dispatch={jest.fn()} />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><InvoiceLineItemsTab items={[line({ id: '09', dispatch_id: undefined })]} on_view_dispatch={jest.fn()} /></GestureHandlerRootView>); });
     const overlay = byTestId('invoice-line-overlay-09');
     expect(overlay.props.accessible).toBe(true);
     expect(overlay.props.accessibilityLabel).toContain('BDG009');
@@ -187,7 +188,7 @@ describe('invoice Items table', () => {
   it('with a screen reader on, puts a Pressable link over each line that opens the dispatch', async () => {
     jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
     const onDispatch = jest.fn();
-    await act(async () => { tree = create(<InvoiceLineItemsTab items={[cumin1, cumin2]} on_view_dispatch={onDispatch} />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><InvoiceLineItemsTab items={[cumin1, cumin2]} on_view_dispatch={onDispatch} /></GestureHandlerRootView>); });
 
     const overlay = byTestId('invoice-line-overlay-02');
     expect(overlay.props.accessibilityRole).toBe('link');

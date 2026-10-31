@@ -12,7 +12,7 @@ import { layout, radius, space, typography, type ThemeTokens } from '@/theme/tok
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 import type { UpcomingGroup } from '../rateModel';
 import { applicableRate } from '../rateModel';
-import { bandText, dateText, money, percentRange, rentRange, unitText } from '../rateText';
+import { bandText, dateText, money, percentRange, rentRange, unitText, labourText } from '../rateText';
 import type { TierTag } from '../standardRate';
 import { BandList, TierTagView } from './BandList';
 import { RateStrip } from './RateStrip';
@@ -29,6 +29,8 @@ export interface RateCardProps {
   day: string;
   /** One tag per band in force ('Standard' or 'This item'): a default monthly rate only, and only when the standard rate is known. */
   tags?: TierTag[] | null;
+  /** The item's packaging (Bag, Box, Crate): the rate and the labour are per bag, box or crate. */
+  packaging?: string | null;
 }
 
 const TABULAR = ['tabular-nums' as const];
@@ -72,12 +74,12 @@ export function RateCard(props: RateCardProps) {
           {bands.length === 1 ? (
             <>
               <Text style={styles.figure} accessibilityRole="header">{money(bands[0].unit_price)}</Text>
-              <Text style={styles.unit}>{unitText(priceType)}</Text>
+              <Text style={styles.unit}>{unitText(priceType, props.packaging)}</Text>
               {props.tags?.[0] ? <TierTagView tag={props.tags[0]} testID="band-tag-0" /> : null}
               <View>
                 <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.band.weightEach')} value={bandText(bands[0].weight_min, bands[0].weight_max)} showDivider />
                 {oneTime ? null : (
-                  <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourValue', { amount: money(bands[0].labour_rate) })} showDivider />
+                  <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={labourText(money(bands[0].labour_rate), props.packaging)} showDivider />
                 )}
                 <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.tax')} value={t('pricing.item.taxValue', { percent: percentRange(Math.min(...bands.map(b => b.tax_percent)), Math.max(...bands.map(b => b.tax_percent))) })} showDivider />
                 <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.inForce')} value={inForceText(bands)} />
@@ -85,11 +87,11 @@ export function RateCard(props: RateCardProps) {
             </>
           ) : (
             <>
-              <Text style={styles.unit}>{unitText(priceType)}</Text>
+              <Text style={styles.unit}>{unitText(priceType, props.packaging)}</Text>
               <BandList bands={bands} priceType={priceType} tags={props.tags} />
               <View>
                 {oneTime || new Set(bands.map(b => b.labour_rate)).size > 1 ? null : (
-                  <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourValue', { amount: money(bands[0].labour_rate) })} showDivider />
+                  <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.labour')} value={labourText(money(bands[0].labour_rate), props.packaging)} showDivider />
                 )}
                 <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.tax')} value={t('pricing.item.taxValue', { percent: percentRange(Math.min(...bands.map(b => b.tax_percent)), Math.max(...bands.map(b => b.tax_percent))) })} showDivider />
                 <KeyValueCell layout={stackedLayout} keyLabel={t('pricing.item.inForce')} value={inForceText(bands)} />
@@ -111,7 +113,7 @@ export function RateCard(props: RateCardProps) {
       {upcoming ? (
         <RateStrip
           variant="info"
-          message={t('pricing.item.upcoming', { date: dateText(upcoming.startsOn), amount: upcomingAmount, unit: unitText(priceType) })}
+          message={t('pricing.item.upcoming', { date: dateText(upcoming.startsOn), amount: upcomingAmount, unit: unitText(priceType, props.packaging) })}
         />
       ) : null}
 

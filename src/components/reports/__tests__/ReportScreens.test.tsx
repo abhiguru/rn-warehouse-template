@@ -457,7 +457,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     const tree = await render(brand, mode, <InvoiceHistoryScreen />);
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     expect(texts(tree)).toEqual(
-      expect.arrayContaining(['Invoice history', 'All customers', 'Invoices', 'Amount', '₹4,500', 'Fictional Traders', '2 invoices · Latest 1 Oct'])
+      expect.arrayContaining(['Invoice history', 'All customers', 'Invoices', 'Amount', '₹4,500', 'Fictional Traders', '2 invoices · Latest 01/10/26'])
     );
     act(() => tree.unmount());
   });

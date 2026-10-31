@@ -1,10 +1,10 @@
 import {
   calculateItemAmounts, calculateHeaderTotals, calculateInvoiceBreakdown, savedInvoiceAmounts, roundMoney,
-  formatInvoiceAmount, formatInvoiceDeduction,
+  formatInvoiceAmount, formatInvoiceDeduction, serverLineRates,
 } from '../invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import reducer, {
-  loadInvoiceFormData, updateDiscount,
+  loadInvoiceFormData, updateDiscount, applyCurrentRates,
   updateEditedItem, bulkUpdateItemGroupPricing,
 } from '@/store/slices/invoiceFormSlice';
 
@@ -156,5 +156,43 @@ describe('invoice money formatting', () => {
     expect(formatInvoiceDeduction(250)).toBe('−₹250.00');
     expect(formatInvoiceDeduction(-250)).toBe('−₹250.00');
     expect(formatInvoiceDeduction(0)).toBe('₹0.00');
+  });
+});
+
+describe('the looked-up figures (D12)', () => {
+  it('are kept per dispatch line when a GRN is read, and left empty for a saved invoice', () => {
+    const state = loaded();
+    expect(state.lookedUp).toEqual({
+      first: { charge: 5, labour_rate: 2, tax: 5 },
+      partial: { charge: 5, labour_rate: 2, tax: 5 },
+      final: { charge: 5, labour_rate: 2, tax: 5 },
+    });
+  });
+
+  it('applyCurrentRates puts the new figure on the named line only, works its amounts out again and makes it the looked-up one', () => {
+    const state = reducer(loaded(), applyCurrentRates([{ disp_trl_id: 'partial', fields: ['charge'], current: { charge: 6 } }]));
+    expect(state.items.find((i) => i.temp_id === 'partial')).toMatchObject({ charge: 6, labour_rate: 2, tax: 5, amount: 6 * 2 * 6.5 });
+    expect(state.items.find((i) => i.temp_id === 'first')).toMatchObject({ charge: 5 });
+    expect(state.lookedUp.partial).toEqual({ charge: 6, labour_rate: 2, tax: 5 });
+    expect(state.lookedUp.first.charge).toBe(5);
+  });
+});
+
+describe('serverLineRates (the lines of RATES_CHANGED)', () => {
+  it('reads the named fields and their current figures, as numbers or numeric text', () => {
+    expect(serverLineRates([
+      { disp_trl_id: 'a', fields: ['charge', 'tax'], looked_up: { charge: 5 }, current: { charge: '6.50', labour_rate: 9, tax: 12 } },
+    ])).toEqual([{ disp_trl_id: 'a', fields: ['charge', 'tax'], current: { charge: 6.5, tax: 12 } }]);
+  });
+
+  it('takes all three fields when none are named, and leaves out what it cannot read', () => {
+    expect(serverLineRates([
+      { disp_trl_id: 'a', current: { charge: 1, labour_rate: 2, tax: 3 } },
+      { disp_trl_id: '', current: { charge: 1 } },
+      { disp_trl_id: 'b', fields: ['charge'], current: { charge: 'x' } },
+      null,
+      { disp_trl_id: 'c' },
+    ])).toEqual([{ disp_trl_id: 'a', fields: ['charge', 'labour_rate', 'tax'], current: { charge: 1, labour_rate: 2, tax: 3 } }]);
+    expect(serverLineRates('nothing')).toEqual([]);
   });
 });

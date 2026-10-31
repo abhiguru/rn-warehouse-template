@@ -52,7 +52,7 @@ beforeEach(async () => {
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc: server.rpc } as never);
   server.addGrn(IDS.grn, 'A0010', flowLines.grnA());
   server.setInvoice(flowLines.grnA(), { labour: 450, tax_amount: 70, total: 1720 });
-  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync() });
+  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
 });
 
 afterEach(async () => {
@@ -166,13 +166,14 @@ describe('Next on step 1 after Back', () => {
     await app.tap('Next: items');
 
     expect(app.pathname()).toBe('/invoice-form/step1');
-    expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining('Cannot select a future date'));
-    expect(form().validationErrors.inv_date).toBe('Cannot select a future date');
-    expect(app.texts()).toContain('Cannot select a future date');
+    const future = expect.stringMatching(/^An invoice can't be dated in the future\. Today is /);
+    expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining("An invoice can't be dated in the future."));
+    expect(form().validationErrors.inv_date).toEqual(future);
+    expect(app.texts().some((text) => /^An invoice can't be dated in the future\. Today is /.test(text))).toBe(true);
     expect(app.stack()).toEqual(['(tabs)', ['step1']]);
 
     await app.chooseDate(new Date(2026, 9, 5));
-    expect(app.texts()).not.toContain('Cannot select a future date');
+    expect(app.texts().some((text) => /^An invoice can't be dated in the future/.test(text))).toBe(false);
     await app.tap('Next: items');
 
     expect(app.pathname()).toBe('/invoice-form/step2');

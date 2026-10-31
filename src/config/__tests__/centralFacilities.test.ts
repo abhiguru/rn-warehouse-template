@@ -5,6 +5,7 @@ import {
   CENTRAL_FACILITIES_PREFIX,
   deleteMyFacilities,
   loadMyFacilities,
+  noteCatalogueRead,
   noteFacilitySmsSignIn,
   onMyFacilitiesChange,
   removeMyFacility,
@@ -56,6 +57,8 @@ it('stores the address, instance, name, city, status and last opening, and no to
       city: 'Rajkot',
       status: 'approved',
       lastOpenedAt: '2026-10-12T06:00:00.000Z',
+      source: null,
+      gone: false,
       addedAt: '2026-10-12T06:00:00.000Z',
     },
   ]);
@@ -186,5 +189,75 @@ describe("a facility's own SMS sign-in while central login is on", () => {
     mockCentralOn = false;
     await noteFacilitySmsSignIn('approved');
     expect(await loadMyFacilities('asha')).toMatchObject([{ status: 'unavailable' }]);
+  });
+});
+
+describe('a facility the association no longer lists', () => {
+  const listedNorth = [NORTH.origin];
+
+  it('is marked gone after a read that lacks it, is never the sole facility to open, and comes back when listed again', async () => {
+    await addMyFacility('asha', { ...NORTH, source: 'catalogue' });
+    await updateMyFacility('asha', NORTH.origin, { status: 'approved' });
+    expect(soleApprovedFacility(await loadMyFacilities('asha'))?.origin).toBe(NORTH.origin);
+    await noteCatalogueRead('asha', [SOUTH.origin]);
+    const gone = await loadMyFacilities('asha');
+    expect(gone[0]).toMatchObject({ gone: true, status: 'approved' });
+    expect(soleApprovedFacility(gone)).toBeNull();
+    await noteCatalogueRead('asha', listedNorth);
+    expect((await loadMyFacilities('asha'))[0].gone).toBe(false);
+  });
+
+  it('counts an entry without an address in the catalogue as not listed', async () => {
+    await addMyFacility('asha', { ...NORTH, source: 'catalogue' });
+    await noteCatalogueRead('asha', [null]);
+    expect((await loadMyFacilities('asha'))[0].gone).toBe(true);
+  });
+
+  it('leaves a facility added by typed address alone', async () => {
+    await addMyFacility('asha', { ...NORTH, source: 'address' });
+    await noteCatalogueRead('asha', []);
+    expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: 'address' });
+  });
+
+  it('notes where an entry saved before the source was recorded came from once the catalogue lists it', async () => {
+    await addMyFacility('asha', NORTH);
+    await noteCatalogueRead('asha', listedNorth);
+    expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: 'catalogue' });
+  });
+
+  it('never marks an entry of unknown source as gone, listed or not (a working facility added by typed address stays)', async () => {
+    await addMyFacility('asha', SOUTH);
+    await noteCatalogueRead('asha', listedNorth);
+    expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: null });
+    await noteCatalogueRead('asha', []);
+    expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: null });
+  });
+
+  it('clears a gone mark that an earlier build put on an entry of unknown source', async () => {
+    await addMyFacility('asha', SOUTH);
+    const raw = JSON.parse((await AsyncStorage.getItem((await AsyncStorage.getAllKeys()).find(key => key.includes('asha')) as string)) as string);
+    raw[0].gone = true;
+    await AsyncStorage.setItem((await AsyncStorage.getAllKeys()).find(key => key.includes('asha')) as string, JSON.stringify(raw));
+    expect((await loadMyFacilities('asha'))[0].gone).toBe(true);
+    await noteCatalogueRead('asha', []);
+    expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: null });
+  });
+
+  it('adding it again from the catalogue clears the mark', async () => {
+    await addMyFacility('asha', NORTH);
+    await noteCatalogueRead('asha', []);
+    await addMyFacility('asha', { ...NORTH, source: 'catalogue' });
+    expect((await loadMyFacilities('asha'))[0].gone).toBe(false);
+  });
+
+  it('tells listeners only when something changed', async () => {
+    await addMyFacility('asha', { ...NORTH, source: 'catalogue' });
+    const listener = jest.fn();
+    const off = onMyFacilitiesChange(listener);
+    await noteCatalogueRead('asha', listedNorth);
+    expect(listener).not.toHaveBeenCalled();
+    await noteCatalogueRead('asha', []);
+    expect(listener).toHaveBeenCalledTimes(1);
+    off();
   });
 });

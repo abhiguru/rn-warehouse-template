@@ -2,6 +2,7 @@ import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
 import { TimeoutError } from '../rpcClient';
 import { AppError } from '../appError';
+import { noteExpiredTokenRenewal, resetSessionRenewalForTests } from '@/config/sessionRenewal';
 import {
   errorCodeOf,
   failureText,
@@ -492,6 +493,7 @@ describe('an expired sign-in (contract item 9)', () => {
     ['JWT expired'],
   ])('%j reads as an expired sign-in', failure => {
     expect(isSessionExpiredError(failure)).toBe(true);
+    noteExpiredTokenRenewal(true);
     for (const language of ['en', 'gu'] as const) {
       setLanguage(language);
       // A read, or a change refused with PGRST301: sign in again.
@@ -503,8 +505,45 @@ describe('an expired sign-in (contract item 9)', () => {
     }
   });
 
+  it('a change is told "renewed" only when the session really was renewed; otherwise the session ended', () => {
+    const failure = { message: 'JWT expired', code: 'PGRST303' };
+    noteExpiredTokenRenewal(false);
+    expect(serverText(failure, 'x', { write: true, form: true })).toBe(t('errors.code.sessionExpired'));
+    expect(serverText(failure, 'x', { delete: true })).toBe(t('errors.code.sessionExpired'));
+    resetSessionRenewalForTests();
+    expect(serverText(failure, 'x', { write: true })).toBe(t('errors.code.sessionExpired'));
+    noteExpiredTokenRenewal(true);
+    expect(serverText(failure, 'x', { write: true })).toBe(t('errors.code.signInRenewed'));
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 31 * 1000);
+    try {
+      expect(serverText(failure, 'x', { write: true })).toBe(t('errors.code.sessionExpired'));
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('is not claimed by another failure', () => {
     expect(isSessionExpiredError({ message: 'permission denied for function f', code: '42501' })).toBe(false);
     expect(isSessionExpiredError(undefined)).toBe(false);
+  });
+});
+
+describe('an HTTP 200 that did not come through', () => {
+  const { isLostAnswer, isUnsettledFailure, emptyAnswerAsError } = jest.requireActual('../serverText');
+
+  it('a non-JSON body (no code) is a lost answer; an error with a code is the server\'s own answer', () => {
+    expect(isLostAnswer({ message: '<html>Maintenance</html>', status: 200 })).toBe(true);
+    expect(isUnsettledFailure({ message: '<html>Maintenance</html>', status: 200 })).toBe(true);
+    expect(isLostAnswer({ message: 'duplicate key', code: '23505', status: 200 })).toBe(false);
+    expect(isLostAnswer({ message: 'bad request', code: '', status: 400 })).toBe(false);
+  });
+
+  it('an empty 200 stands for an error; nothing else does', () => {
+    expect(emptyAnswerAsError({ data: null, error: null, status: 200 })).toMatchObject({ status: 200, code: '' });
+    expect(isLostAnswer(emptyAnswerAsError({ data: undefined, error: null, status: 200 }))).toBe(true);
+    expect(emptyAnswerAsError({ data: { success: true }, error: null, status: 200 })).toBeNull();
+    expect(emptyAnswerAsError({ data: null, error: { message: 'x' }, status: 200 })).toBeNull();
+    expect(emptyAnswerAsError({ data: null, error: null, status: 204 })).toBeNull();
   });
 });

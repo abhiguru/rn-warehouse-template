@@ -219,7 +219,7 @@ export default function ItemPage() {
         <ItemOverviewTab item={shown} busy={busy} onToggleActive={onToggleActive} onDelete={onDelete} />
       )}
 
-      {shown && activeTab === 'pricing' && <ItemPricingTab itemId={shown.id} itemName={shown.name} active={shown.active} />}
+      {shown && activeTab === 'pricing' && <ItemPricingTab itemId={shown.id} itemName={shown.name} packaging={shown.packaging} active={shown.active} />}
     </View>
   );
 }

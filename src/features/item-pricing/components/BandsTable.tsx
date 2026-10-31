@@ -30,7 +30,8 @@ import {
   type Draft,
   type EditorContext,
 } from '../editModel';
-import { bandText } from '../rateText';
+import { bandText, unitText } from '../rateText';
+import { packageUnit } from '@/utils/packagingWord';
 import type { TierTag } from '../standardRate';
 import { TierTagView } from './BandList';
 import { BandsEditor } from './BandsEditor';
@@ -47,6 +48,8 @@ interface Props {
   tags?: TierTag[] | null;
   /** The cells cannot be typed in (a box that waits for the other one to be saved or discarded). */
   readOnly?: boolean;
+  /** The item's packaging (Bag, Box, Crate), for "per box" in the field labels; "bag" when unknown. */
+  packaging?: string | null;
   testID?: string;
 }
 
@@ -170,7 +173,7 @@ function Cell({ fieldKey, value, onChangeText, label, error, keyboardType, retur
   );
 }
 
-export function BandsTable({ draft, ctx, errors, onChange, fields, tags, readOnly = false, testID = 'bands-table' }: Props) {
+export function BandsTable({ draft, ctx, errors, onChange, fields, tags, readOnly = false, packaging, testID = 'bands-table' }: Props) {
   const styles = useThemedStyles(makeStyles);
   const table = useTableLayout();
   const { fontScale } = useWindowDimensions();
@@ -241,8 +244,8 @@ export function BandsTable({ draft, ctx, errors, onChange, fields, tags, readOnl
 
   const unit = {
     kg: t('pricing.box.unitKg'),
-    rent: t('pricing.box.unitRupees', { unit: oneTime ? t('pricing.unit.oneTime') : t('pricing.unit.monthly') }),
-    labour: t('pricing.box.unitLabour'),
+    rent: t('pricing.box.unitRupees', { unit: unitText(oneTime ? 'one_time' : 'monthly', packaging) }),
+    labour: t('pricing.box.unitLabour', { unit: packageUnit(packaging) }),
     percent: t('pricing.box.unitPercent'),
   };
   const name = {

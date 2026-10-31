@@ -357,4 +357,33 @@ describe('P2a-5: Next with refused figures', () => {
     expect(announce).toHaveBeenCalledWith('Fix the 2 highlighted figures, then continue.');
     expect(second.focus).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ['charge', 'Enter a charge from 0 to 9999.99.'],
+    ['labour_rate', 'Enter a labour rate from 0 to 999999.'],
+    ['tax', 'Enter a tax from 0 to 100.'],
+  ])('an emptied %s stays empty, says the range once left, and blocks Next; a typed 0 is fine', async (field, message) => {
+    const ref = React.createRef<InvoiceItemsEditorHandle>();
+    const tree = await render(groupLines(2), ref);
+    // Tax is typed in the shared "(all lines)" field; Charge and Labour in the line.
+    const key = field === 'tax' ? TAX_ALL : `cell|edit_0_0|${field}`;
+    const before = (state().items[0] as unknown as Record<string, number>)[field];
+    await focus(tree, key);
+    await change(tree, key, '');
+    // Not 0: the field stays empty and the form still holds the figure it had.
+    expect(inputOf(tree, key).props.value).toBe('');
+    expect((state().items[0] as unknown as Record<string, number>)[field]).toBe(before);
+    await blur(tree, key);
+    expect(inputOf(tree, key).props.value).toBe('');
+    expect(hasText(tree, message)).toBe(true);
+    let count = 0;
+    await act(async () => { count = ref.current!.checkAll(); });
+    expect(count).toBe(1);
+    await focus(tree, key);
+    await change(tree, key, '0');
+    await blur(tree, key);
+    expect((state().items[0] as unknown as Record<string, number>)[field]).toBe(0);
+    await act(async () => { count = ref.current!.checkAll(); });
+    expect(count).toBe(0);
+  });
 });

@@ -133,7 +133,7 @@ describe('document numbers on the list cards in Gujarati', () => {
     expect(label).toContain('આવક પાવતી 12');
     // Amounts and the date stay in Gujarati digits.
     expect(label).toContain('₹૨૦૦.૦૦');
-    expect(texts(tree)).toContain('૧૦ ઑક્ટો');
+    expect(texts(tree)).toContain('૧૦/૧૦/૨૬');
   });
 
   it('the invoice card shows the financial year in Gujarati digits', () => {

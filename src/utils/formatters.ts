@@ -131,6 +131,13 @@ export const formatQuantity = (
   return unit ? `${formatted} ${unit}` : formatted;
 };
 
+/** The noun alone, as `formatCount` writes it after a count: "box" or "boxes" (English), the translated word otherwise. */
+export const countNoun = (count: number | null | undefined, singular: string, plural: string = `${singular}s`): string => {
+  const n = count === null || count === undefined || isNaN(count) ? 0 : count;
+  const translated = words().nouns[singular];
+  return translated ? translated[n === 1 ? 0 : 1] : n === 1 ? singular : plural;
+};
+
 /**
  * A count with its noun, singular when 1 (§12.3): "1 item", "12 items",
  * "1 bag", "1,200 bags". Pass the plural when it is not noun + "s".
@@ -159,8 +166,6 @@ export const toDate = (date: string | Date | null | undefined): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
-type DateFormat = 'short' | 'medium' | 'long' | 'compact';
-
 /** The numbers of a calendar day. The month counts from 0, as a Date's does. */
 interface CalendarDay {
   year: number;
@@ -168,52 +173,38 @@ interface CalendarDay {
   day: number;
 }
 
-/** A calendar day as `formatDate` writes it. `thisYear` is the year that `short` leaves out. */
-const writeDate = ({ year, month, day }: CalendarDay, format: DateFormat, thisYear: number): string => {
-  const dayText = localizeDigits(String(day));
-  const yearText = localizeDigits(String(year));
-  if (format === 'long') return `${dayText} ${words().monthsLong[month]} ${yearText}`;
-  const monthText = words().monthsShort[month];
-  if ((format === 'short' || format === 'compact') && year === thisYear) return `${dayText} ${monthText}`;
-  return `${dayText} ${monthText} ${yearText}`;
-};
+const twoDigits = (n: number): string => String(n).padStart(2, '0');
+
+/** A calendar day as the screen writes it: day/month/two-digit year, "09/10/26", in the language's digits. */
+const writeDate = ({ year, month, day }: CalendarDay): string =>
+  localizeDigits(`${twoDigits(day)}/${twoDigits(month + 1)}/${twoDigits(year % 100)}`);
+
+/** A calendar day as a screen reader is given it, in words: "9 Oct 2026" (the year always, even in the current one). */
+const writeSpokenDate = ({ year, month, day }: CalendarDay): string =>
+  `${localizeDigits(String(day))} ${words().monthsShort[month]} ${localizeDigits(String(year))}`;
 
 /**
- * Format a date for display (style guide §12.3). Month names are spelled out
- * here rather than taken from the device locale, so every phone shows the same
- * text (some engines print "Sept" for en-IN).
+ * Format a date for display (style guide §12.3): day/month/two-digit year,
+ * "09/10/26", always the full form, in the language's digits ("૦૯/૧૦/૨૬").
+ * Nothing about the date depends on the device locale, so every phone shows the
+ * same text. A screen reader is given words instead: `formatSpokenDate`.
  *
- * - `medium` (default): "9 Oct 2026"
- * - `short`: "9 Oct" in the current year, otherwise "9 Oct 2026" (list rows)
- * - `long`: "9 October 2026"
- * - `compact`: same as `short`; kept for older callers
- *
- * The current year is India's: the facility's year turns over at midnight
- * there, whatever the clock zone of the phone. The day itself is read as
- * before: a plain day as it is written, an instant in the phone's zone. A
+ * A plain day is read as it is written, an instant in the phone's zone. A
  * report prints an instant with `formatIndiaDate` instead.
  *
  * Returns "—" when the date is missing or invalid.
  */
-export const formatDate = (
-  date: string | Date | null | undefined,
-  format: DateFormat = 'medium'
-): string => {
+export const formatDate = (date: string | Date | null | undefined): string => {
   const d = toDate(date);
   if (!d) return '—';
-  return writeDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() }, format, indiaYear());
+  return writeDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() });
 };
 
-/**
- * A date as day/month/year with two digits each, "01/06/23", in the language's digits. For the invoice items table only
- * (owner, 2026-10-19), where a column of dates must line up and a month name would not; the app's other dates stay
- * `formatDate`. Returns "—" when the date is missing or invalid.
- */
-export const formatDateShort = (date: string | Date | null | undefined): string => {
+/** The date for a screen reader (accessibilityLabel, Hint, Value): "9 Oct 2026". Returns "—" when missing or invalid. */
+export const formatSpokenDate = (date: string | Date | null | undefined): string => {
   const d = toDate(date);
   if (!d) return '—';
-  const two = (n: number) => String(n).padStart(2, '0');
-  return localizeDigits(`${two(d.getDate())}/${two(d.getMonth() + 1)}/${two(d.getFullYear() % 100)}`);
+  return writeSpokenDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() });
 };
 
 /** Month titles (§12.3): "October 2026" (long, timelines), "Oct 2026" (short, report rows), "Oct" (narrow, chart axes). */
@@ -238,11 +229,18 @@ export const formatTime = (date: string | Date | null | undefined): string => {
   return `${localizeDigits(`${h % 12 === 0 ? 12 : h % 12}:${m}`)} ${h < 12 ? words().am : words().pm}`;
 };
 
-/** "9 Oct 2026, 4:05 pm" (§12.3). */
+/** "09/10/26, 4:05 pm" (§12.3). */
 export const formatDateTime = (date: string | Date | null | undefined): string => {
   const d = toDate(date);
   if (!d) return '—';
   return `${formatDate(d)}, ${formatTime(d)}`;
+};
+
+/** The date and time for a screen reader: "9 Oct 2026, 4:05 pm". */
+export const formatSpokenDateTime = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  if (!d) return '—';
+  return `${formatSpokenDate(d)}, ${formatTime(d)}`;
 };
 
 /**
@@ -371,19 +369,16 @@ export const indiaDay = (value: string | Date | null | undefined): string => {
   return `${pad(india.getUTCFullYear(), 4)}-${pad(india.getUTCMonth() + 1)}-${pad(india.getUTCDate())}`;
 };
 
-/** The year it is in India at a moment: the year `formatDate` leaves out of a short date. */
-const indiaYear = (now: Date = new Date()): number => Number(indiaDay(now).slice(0, 4));
-
 /**
  * The numbers of a plain day ("2026-10-12"), taken from its text and from UTC
  * arithmetic only, so the zone of the phone has no part in them. A day past the
  * end of its month runs on into the next, as `new Date(year, month, day)` does.
  */
-const calendarDay = (day: string): (CalendarDay & { weekday: number }) | null => {
+const calendarDay = (day: string): CalendarDay | null => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
   if (!match) return null;
   const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  return { year: utc.getUTCFullYear(), month: utc.getUTCMonth(), day: utc.getUTCDate(), weekday: utc.getUTCDay() };
+  return { year: utc.getUTCFullYear(), month: utc.getUTCMonth(), day: utc.getUTCDate() };
 };
 
 /**
@@ -391,18 +386,19 @@ const calendarDay = (day: string): (CalendarDay & { weekday: number }) | null =>
  * calendar. A plain day is printed as it is; an instant (the timestamptz of an
  * invoice or a GRN) is printed as the day it fell on in India (`indiaDay`), not
  * in the zone of the phone, so a card names the same day as the heading above
- * it and as the facility's books. `short` leaves out India's current year.
+ * it and as the facility's books.
  *
- * `now` is the moment the current year is read at; a test passes its own.
  * Returns "—" when the date is missing or unreadable.
  */
-export const formatIndiaDate = (
-  value: string | Date | null | undefined,
-  format: DateFormat = 'medium',
-  now: Date = new Date()
-): string => {
+export const formatIndiaDate = (value: string | Date | null | undefined): string => {
   const day = calendarDay(indiaDay(value));
-  return day ? writeDate(day, format, indiaYear(now)) : '—';
+  return day ? writeDate(day) : '—';
+};
+
+/** `formatIndiaDate` in words for a screen reader: "9 Oct 2026". */
+export const formatIndiaSpokenDate = (value: string | Date | null | undefined): string => {
+  const day = calendarDay(indiaDay(value));
+  return day ? writeSpokenDate(day) : '—';
 };
 
 /**
@@ -441,7 +437,7 @@ export const parseLocalISODate = (dateString: string): Date => {
 
 /**
  * Section header for date-grouped lists (§12.3): "Today", "Yesterday",
- * "Tue, 6 Oct", or "Tue, 6 Oct 2025" outside the current year.
+ * or the date, "06/10/26" (no weekday).
  *
  * "Today" is the phone's own today, as it is in the requests of the GRN,
  * dispatch and invoice lists, which count their "Today" and "Yesterday" filters
@@ -461,14 +457,14 @@ export const formatSectionDate = (dateString: string): string => {
   if (date.toDateString() === yesterday.toDateString()) {
     return words().yesterday;
   }
-  return `${words().weekdaysShort[date.getDay()]}, ${formatDate(date, 'short')}`;
+  return formatDate(date);
 };
 
 const DAY_MS = 24 * 60 * 60_000;
 
 /**
  * Section header over a day of a report, on India's calendar: "Today",
- * "Yesterday", "Tue, 6 Oct", or "Tue, 6 Oct 2025" outside India's current year.
+ * "Yesterday", or the date, "06/10/26" (no weekday).
  *
  * The day is `indiaDay(value)` and today is the day it is in India at `now`, as
  * the report's own request counts it (`todayInIST`): both sides of the
@@ -481,7 +477,7 @@ export const formatIndiaSectionDate = (value: string | Date | null | undefined, 
   if (!date) return '—';
   if (day === indiaDay(now)) return words().today;
   if (day === indiaDay(new Date(now.getTime() - DAY_MS))) return words().yesterday;
-  return `${words().weekdaysShort[date.weekday]}, ${writeDate(date, 'short', indiaYear(now))}`;
+  return writeDate(date);
 };
 
 /**
@@ -495,7 +491,7 @@ export const formatIndiaSectionDate = (value: string | Date | null | undefined, 
  */
 export const formatRelativeTime = (
   dateString: string,
-  older: (date: Date) => string = date => formatDate(date, 'short'),
+  older: (date: Date) => string = date => formatDate(date),
   now: Date = new Date()
 ): string => {
   // Handle undefined/null/empty input

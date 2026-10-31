@@ -167,7 +167,7 @@ async function reopenRowOne(tree: ReactTestRenderer) {
 }
 
 const pressNext = (tree: ReactTestRenderer) =>
-  act(async () => { await control(tree, (label) => label === 'Next').props.onPress(); });
+  act(async () => { await control(tree, (label) => label === 'Review').props.onPress(); });
 
 const alerts = () => jest.mocked(Alert.alert).mock.calls;
 /** Presses a button of the dialog shown last. */
@@ -218,6 +218,21 @@ describe.each([
     expect(sentToReview()).toEqual(ROWS);
     expect(mockActions.filter((action) => action.type === updateItem.type)).toEqual([]);
     expect(mockStore.getState().grnForm.items).toEqual(before);
+  });
+
+  it('Add item and the check mark stay pressable with an empty line; a tap says what is missing and stores nothing', async () => {
+    const tree = await render(mode);
+    const before = mockStore.getState().grnForm.items;
+
+    for (const label of ['Add item', 'Save receipt item']) {
+      const target = control(tree, (name) => name === label);
+      expect(target.props.disabled).not.toBe(true);
+      alerts().length = 0;
+      await act(async () => { await target.props.onPress(); });
+      expect(alerts().at(-1)?.[0]).toBe('Check the item details');
+    }
+    expect(mockStore.getState().grnForm.items).toEqual(before);
+    expect(router.push).not.toHaveBeenCalled();
   });
 
   it('a different quantity typed into the Quantity field is asked about: Next goes nowhere', async () => {

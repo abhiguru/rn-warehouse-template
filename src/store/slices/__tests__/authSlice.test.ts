@@ -59,9 +59,8 @@ import authReducer, {
   setOtpSent,
   setAuthenticating,
   setVerifyingOTP,
-  setTokenExpiryWarning,
-  setTokenExpired,
-  clearTokenExpiryStates,
+  clearSignOutReason,
+  setUserProfile,
   deleteAccount,
   forceLogoutOnInvalidToken,
   logout,
@@ -80,9 +79,7 @@ describe('authSlice', () => {
     phoneNumber: '',
     otpSent: false,
     error: null,
-    tokenExpiryWarning: false,
-    tokenExpired: false,
-    configFetchFailed: false,
+    signOutReason: null,
   };
 
   describe('reducers', () => {
@@ -110,25 +107,30 @@ describe('authSlice', () => {
       expect(actual.isVerifyingOTP).toBe(true);
     });
 
-    it('should handle setTokenExpiryWarning', () => {
-      const actual = authReducer(initialState, setTokenExpiryWarning(true));
-      expect(actual.tokenExpiryWarning).toBe(true);
+    it('keeps the reason of a forced sign-out until it is dismissed or a profile is set', () => {
+      let state = authReducer(initialState, { type: 'auth/forceLogoutOnInvalidToken/pending', meta: { requestId: 'a' } });
+      state = authReducer(state, { type: 'auth/forceLogoutOnInvalidToken/fulfilled', meta: { requestId: 'a' }, payload: { reason: 'Keys changed' } });
+      expect(state.signOutReason).toBe('Keys changed');
+      expect(authReducer(state, clearSignOutReason()).signOutReason).toBeNull();
+      expect(authReducer(state, setUserProfile({ id: 'u' } as never)).signOutReason).toBeNull();
     });
 
-    it('should handle setTokenExpired', () => {
-      const actual = authReducer(initialState, setTokenExpired(true));
-      expect(actual.tokenExpired).toBe(true);
+    it('keeps the reason through the leave-facility cleanup (its logout), so My facilities can show it', () => {
+      let state = authReducer(initialState, { type: 'auth/forceLogoutOnInvalidToken/pending', meta: { requestId: 'a' } });
+      state = authReducer(state, { type: 'auth/forceLogoutOnInvalidToken/fulfilled', meta: { requestId: 'a' }, payload: { reason: 'Keys changed' } });
+      // leaveFacility dispatches logout(), then clears the session-scoped state; neither touches the reason.
+      state = authReducer(state, { type: 'auth/logout/pending', meta: { requestId: 'b' } });
+      expect(state.signOutReason).toBe('Keys changed');
+      state = authReducer(state, { type: 'auth/logout/fulfilled', meta: { requestId: 'b' }, payload: { localCleared: true } });
+      expect(state.signOutReason).toBe('Keys changed');
+      state = authReducer(state, { type: 'auth/logout/rejected', meta: { requestId: 'c' } });
+      expect(state.signOutReason).toBe('Keys changed');
     });
 
-    it('should handle clearTokenExpiryStates', () => {
-      const stateWithExpiry = {
-        ...initialState,
-        tokenExpiryWarning: true,
-        tokenExpired: true,
-      };
-      const actual = authReducer(stateWithExpiry, clearTokenExpiryStates());
-      expect(actual.tokenExpiryWarning).toBe(false);
-      expect(actual.tokenExpired).toBe(false);
+    it('also keeps the reason when the teardown failed', () => {
+      let state = authReducer(initialState, { type: 'auth/forceLogoutOnInvalidToken/pending', meta: { requestId: 'a' } });
+      state = authReducer(state, { type: 'auth/forceLogoutOnInvalidToken/rejected', meta: { requestId: 'a', arg: 'Session ended' } });
+      expect(state.signOutReason).toBe('Session ended');
     });
   });
 
@@ -141,20 +143,6 @@ describe('authSlice', () => {
       expect(state.phoneNumber).toBe('9876543210');
       expect(state.otpSent).toBe(true);
       expect(state.isVerifyingOTP).toBe(true);
-    });
-
-    it('should handle token expiry flow', () => {
-      let state = authReducer(initialState, setTokenExpiryWarning(true));
-      expect(state.tokenExpiryWarning).toBe(true);
-      expect(state.tokenExpired).toBe(false);
-
-      state = authReducer(state, setTokenExpired(true));
-      expect(state.tokenExpiryWarning).toBe(true);
-      expect(state.tokenExpired).toBe(true);
-
-      state = authReducer(state, clearTokenExpiryStates());
-      expect(state.tokenExpiryWarning).toBe(false);
-      expect(state.tokenExpired).toBe(false);
     });
   });
 });
@@ -281,7 +269,6 @@ describe('the stored custom session', () => {
       expect(result).toEqual({ warning: false, expired: false, refreshAttempted: true });
     }
     expect(ensureValidTokens).toHaveBeenCalledTimes(2);
-    expect(store.getState().auth).toMatchObject({ tokenExpiryWarning: false, tokenExpired: false });
   });
 
   it('leaves a token with more than five minutes left, and a signed-out device, alone', async () => {

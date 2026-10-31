@@ -106,8 +106,9 @@ describe('a new customer rate', () => {
       price_type: 'monthly',
       starts_on: '2026-10-14',
       seen_rows: expect.any(Array),
+      request_key: expect.stringMatching(/^warehouse-rate-replace-/),
       bands: [{ weight_min: 0, weight_max: 100, unit_price: 3.2, labour_rate: 1.5, tax_percent: 5 }],
-    });
+    }, { signal: expect.anything() });
     expect(showToast).toHaveBeenCalledWith('Customer rate saved.');
     expect(showAlert).not.toHaveBeenCalled();
     expect(told).toEqual(['onion']);
@@ -151,8 +152,8 @@ describe('a new customer rate', () => {
     await act(async () => { save(t).props.onPress(); });
     const dialog = t.root.findAllByType(ConfirmDialog).find(d => d.props.confirmText === 'Replace it')!;
     expect(dialog.props.visible).toBe(true);
-    expect(dialog.props.title).toBe('Replace the rate from 1 Apr 2027?');
-    expect(dialog.props.message).toBe('A rate from 1 Apr 2027 (₹12.50) comes after this date. Saving removes it.');
+    expect(dialog.props.title).toBe('Replace the rate from 01/04/27?');
+    expect(dialog.props.message).toBe('A rate from 01/04/27 (₹12.50) comes after this date. Saving removes it.');
     expect(dialog.props.cancelText).toBe('Keep it');
 
     replace.mockResolvedValueOnce({ success: true });
@@ -260,6 +261,6 @@ describe("the item's default rate (RateForm)", () => {
     await type(t, 'Rent ₹/month', '3.6');
     replace.mockResolvedValueOnce({ success: true, keptEnd: '2027-03-31' });
     await act(async () => { save(t).props.onPress(); });
-    expect(showToast).toHaveBeenCalledWith('Correction saved. This rate still stops after 31 Mar 2027.');
+    expect(showToast).toHaveBeenCalledWith('Correction saved. This rate still stops after 31/03/27.');
   });
 });

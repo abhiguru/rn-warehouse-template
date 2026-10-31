@@ -60,6 +60,12 @@ export const invoice = {
   },
   // Step 1: details
   form: {
+    // D9: an edit moves the invoice date into another financial year; {{old}} and {{new}} are invoice numbers.
+    moveYearTitle: 'Move to financial year {{year}}?',
+    moveYearMessage: 'Invoice {{old}} becomes Invoice {{new}}.',
+    moveYearMessageNoNumber: 'The invoice gets the next number of that year.',
+    moveYearConfirm: 'Move invoice',
+    moveYearKeep: 'Keep date',
     invoiceDate: 'Invoice date',
     invoiceDateA11y: 'Invoice date, {{date}}',
     invoiceDateNotSetA11y: 'Invoice date, not set',
@@ -211,6 +217,8 @@ export const invoice = {
     discountA11y: 'Invoice discount',
     discountNotNumber: 'Enter the discount as a number, for example 250.50.',
     discountTooLarge: "The discount can't be more than {{amount}}.",
+    // D8: a discount that takes a charged invoice to exactly 0 (under Discount, and the server's DISCOUNT_TOTAL_ZERO).
+    discountTotalZero: "A discount can't take the total to ₹0. To charge nothing, set the charge to 0 and give a reason.",
     surchargeTooLarge: "The extra charge can't be more than {{amount}}.",
     discountReasonRequired: 'Discount reason (required)',
     discountReasonPlaceholder: 'Why is this discount given?',
@@ -294,6 +302,8 @@ export const invoice = {
     totalChanged: 'The total is now {{current}}, not {{expected}}. Review the figures and save again.',
     // D18, when the form cannot work out the server's total from the server's durations.
     totalUnmatched: "The server's total is {{current}}. Open the invoice again to see its figures.",
+    // D12: a looked-up rate changed since the form opened; the figures on the lines are now the new ones.
+    ratesChanged: 'The rates changed since you opened this invoice. Check the new figures.',
   },
   // The dialog after an invoice is saved
   success: {
@@ -333,6 +343,8 @@ export const invoice = {
   details: {
     titleNumber: 'Invoice {{number}}',
     subtitleWithGrn: '{{date}} · GRN {{number}}',
+    // Under a discount or zero-charge reason: who set it and when.
+    setBy: 'Set by {{name}}, {{date}}',
     notFoundTitle: 'Invoice not found',
     notFoundMessage: 'This invoice may have been deleted, or you may not have access to it.',
     loadFailedTitle: "Couldn't load invoice",
@@ -408,9 +420,10 @@ export const invoice = {
   // Field messages of the create and edit steps
   validation: {
     invoiceDateRequired: 'Invoice date is required',
-    futureDate: 'Cannot select a future date',
+    futureDate: "An invoice can't be dated in the future. Today is {{today}}.",
+    // The invoice date is before the latest dispatch of its lines (the same day is fine). The numbers are identifiers.
+    beforeDispatch: 'The invoice date {{date}} is before dispatch {{number}} ({{dispatchDate}}).',
     financialYearRequired: 'Financial year is required',
-    financialYearFormat: 'Enter the financial year as YYYY-YY, for example {{example}}.',
     invoiceNumberRequired: 'Invoice number is required',
     invoiceNumberPositive: 'Invoice number must be positive',
     invoiceNumberWhole: 'Invoice number must be a whole number',

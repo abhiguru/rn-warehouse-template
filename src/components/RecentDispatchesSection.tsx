@@ -187,6 +187,11 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
     setIsExpanded(prev => !prev);
   }, []);
 
+  // A GRN cell of a line opens that GRN's details
+  const handleViewGRN = useCallback((grnId: string) => {
+    router.push(`/grn-details/${grnId}`);
+  }, []);
+
   // Navigate to dispatch details on card press
   const handleDispatchPress = useCallback((dispatch: Dispatch) => {
     if (__DEV__) {
@@ -258,6 +263,7 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
               onPress={handleDispatchPress}
               expanded={openIds.has(dispatch.dispatch_id)}
               onToggle={handleToggleOpen}
+              onViewGRN={handleViewGRN}
             />
           ))}
         </View>

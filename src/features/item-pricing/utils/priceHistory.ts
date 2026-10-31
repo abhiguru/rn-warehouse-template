@@ -3,6 +3,7 @@
  * get_item_price_history). No text is built here: the screen names and formats the
  * fields (see priceHistoryLabels.ts).
  */
+import { indiaDay } from '@/utils/formatters';
 import type { ItemPriceHistoryAction, ItemPriceHistoryEntry, ItemPriceHistoryValues } from '@/types/item-pricing.types';
 
 /** The fields a person sees, in the order shown. */
@@ -214,6 +215,8 @@ export interface RemovedBand {
   price: number | null;
   /** The day the removed rate was to start. */
   from: string | null;
+  /** The rate had already begun on the day of the save (its start is that day or earlier). */
+  begun: boolean;
 }
 
 const SHOWN_FIELDS: PriceHistoryField[] = ['monthlyPrice', 'oneTimePrice', 'weightBand', 'labourRate', 'tax'];
@@ -270,11 +273,12 @@ export function groupChanges(entries: ItemPriceHistoryEntry[]): GroupView {
     })
     .sort((a, b) => (a.band.min ?? 0) - (b.band.min ?? 0));
   // Deleted rows no inserted band took over were removed by this save: say so.
+  const saveDay = entries.length > 0 ? indiaDay(entries[0].changed_at) : '';
   const removed: RemovedBand[] = pool
     .filter(old => deletedValues.has(old))
     .map(old => {
       const r = read(old);
-      return { band: r.weightBand as WeightBand, field: r.priceField, price: r.price, from: r.effectiveFrom as string | null };
+      return { band: r.weightBand as WeightBand, field: r.priceField, price: r.price, from: r.effectiveFrom as string | null, begun: !!r.effectiveFrom && !!saveDay && (r.effectiveFrom as string) <= saveDay };
     })
     .sort((a, b) => (a.from ?? '').localeCompare(b.from ?? '') || (a.band.min ?? 0) - (b.band.min ?? 0));
   const day = inserts.map(e => textOf(valuesOf(e, 'new')?.effective_from)).filter((d): d is string => !!d).sort()[0] ?? null;

@@ -14,7 +14,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
-import { store as routerStore } from 'expo-router/build/global-state/router-store';
+import { routerStore } from '@/tests/helpers/routerStore';
 import { Stack } from 'expo-router';
 import { adminUserService } from '@/services/admin-user-service';
 import UsersScreen from '../../../app/users';

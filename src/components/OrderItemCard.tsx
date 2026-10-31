@@ -514,7 +514,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           </View>
           {item.grn_item.grn_date && (
             <Text style={styles.grnDate}>
-              {formatDate(item.grn_item.grn_date, 'short')}
+              {formatDate(item.grn_item.grn_date)}
             </Text>
           )}
         </View>

@@ -47,8 +47,8 @@ describe('central login on, signed in nowhere', () => {
     expect(decideRoute(['(tabs)', 'reports'], nowhere)).toBe('centralLogin');
   });
 
-  it('the central sign-in and its code step are open', () => {
-    expect(CENTRAL_SIGN_IN_ROUTES.map((route) => decideRoute(route, nowhere))).toEqual(['allow', 'allow']);
+  it('the central sign-in, its code step and the facility code sign-in are open', () => {
+    expect(CENTRAL_SIGN_IN_ROUTES.map((route) => decideRoute(route, nowhere))).toEqual(['allow', 'allow', 'allow']);
   });
 
   it('My facilities, the catalogue, the address entry, the linking step and the account need the central sign-in', () => {

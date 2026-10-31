@@ -53,7 +53,7 @@ export function StopRateForm({ body, today, choice, day, onChange, strip, busy, 
   const options = [
     ...chips.map(c => ({
       value: c.id as StopChoice,
-      label: c.id === 'today' ? t('pricing.stop.today', { date: formatDate(c.day, 'short') }) : dateText(c.day),
+      label: c.id === 'today' ? t('pricing.stop.today', { date: formatDate(c.day) }) : dateText(c.day),
     })),
     { value: 'other' as StopChoice, label: t('pricing.edit.otherDate') },
   ];

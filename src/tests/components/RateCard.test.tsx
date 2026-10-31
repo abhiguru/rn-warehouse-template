@@ -31,7 +31,7 @@ describe('RateCard', () => {
   it('a monthly rate: ₹11.00 per bag, per month, with labour and tax in words (P-20)', () => {
     render(props({ bands: [one] }));
     const s = texts();
-    expect(s).toEqual(expect.arrayContaining(['₹11.00', 'per bag, per month', 'Weight each', '0–100 kg', 'Labour', '₹3.00 per bag, charged once at dispatch', 'Tax', '5% on rent and labour', 'In force', 'Lots received since 1 Apr 2026']));
+    expect(s).toEqual(expect.arrayContaining(['₹11.00', 'per bag, per month', 'Weight each', '0–100 kg', 'Labour', '₹3.00 per bag, charged once at dispatch', 'Tax', '5% on rent and labour', 'In force', 'Lots received since 01/04/26']));
   });
 
   it('a one-time rate says per bag, once and has no Labour row (owner decision)', () => {
@@ -51,14 +51,14 @@ describe('RateCard', () => {
 
   it('a rate with an end date reads as a range of received dates', () => {
     render(props({ bands: [{ ...one, effective_to: '2026-12-31' }] }));
-    expect(texts()).toContain('Lots received 1 Apr 2026 – 31 Dec 2026');
+    expect(texts()).toContain('Lots received 01/04/26 – 31/12/26');
   });
 
   it('has no action button: it only shows the rate, the later rate and the stop', () => {
     const stopped = { ...one, effective_to: '2026-12-31' };
     const next = { startsOn: '2027-01-01', rows: [{ ...one, unit_price: 12, effective_from: '2027-01-01', effective_to: null }] };
     render(props({ bands: [stopped], stopsAfter: '2026-12-31', upcoming: next }));
-    expect(texts()).toEqual(expect.arrayContaining(['From 1 Jan 2027: ₹12.00 per bag, per month', 'This rate stops after 31 Dec 2026.']));
+    expect(texts()).toEqual(expect.arrayContaining(['From 01/01/27: ₹12.00 per bag, per month', 'This rate stops after 31/12/26.']));
     expect(tree.root.findAll(n => ['rate-change', 'rate-correct', 'rate-stop', 'undo-stop', 'edit-upcoming', 'cancel-upcoming'].includes(n.props.testID))).toHaveLength(0);
     expect(tree.root.findAll(n => n.props.accessibilityRole === 'button')).toHaveLength(0);
   });
@@ -69,7 +69,7 @@ describe('RateCard', () => {
     const s = texts();
     expect(s).toContain('₹૧૧.૦૦');
     expect(s).toContain('નંગ દીઠ, માસિક');
-    expect(s).toContain('૧ એપ્રિલ ૨૦૨૬ થી આવેલા જથ્થા માટે');
+    expect(s).toContain('૦૧/૦૪/૨૬ થી આવેલા જથ્થા માટે');
     expect(s.join(' ')).not.toContain('મુદત');
   });
 });

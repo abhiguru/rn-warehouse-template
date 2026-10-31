@@ -1,3 +1,4 @@
+import { sessionWasJustRenewed, resetSessionRenewalForTests } from '../sessionRenewal';
 import { operatorResumeGate } from '../operatorResume';
 import { advanceSessionGeneration, getSessionGeneration, renewAheadMs } from '../sessionLifecycle';
 import { configureStore } from '@reduxjs/toolkit';
@@ -81,6 +82,7 @@ const jwt = (expires = Math.floor(Date.now() / 1000) + 3600) =>
   `${btoa(JSON.stringify({ alg: 'HS256' }))}.${btoa(JSON.stringify({ sub: 'test-user', session_id: 'test-session', exp: expires, role: 'authenticated' }))}.test-signature`;
 
 beforeEach(async () => {
+  resetSessionRenewalForTests();
   jest.clearAllMocks();
   secure.clear();
   rpc.mockReset();
@@ -647,6 +649,18 @@ test('a definitive refresh rejection clears credentials and ends the Redux sessi
   expect(typeof jest.mocked(appStore.dispatch).mock.calls[0][0]).toBe('function');
 });
 
+test('a definitive refresh rejection signs the person out WITH the reason (shown on My facilities)', async () => {
+  const slice = require('@/store/slices/authSlice') as typeof import('@/store/slices/authSlice');
+  const forceLogout = jest.spyOn(slice, 'forceLogoutOnInvalidToken').mockReturnValue({ type: 'test/forceLogout' } as never);
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  rpc.mockResolvedValue({ data: { success: false, message: 'Invalid refresh token' }, error: null });
+  expect(await refreshCustomJWT()).toBeNull();
+  expect(forceLogout).toHaveBeenCalledTimes(1);
+  expect(forceLogout.mock.calls[0][0]).toEqual(expect.any(String));
+  expect(forceLogout.mock.calls[0][0].length).toBeGreaterThan(0);
+  forceLogout.mockRestore();
+});
+
 test('the P0001 "Session expired" exception is a definitive rejection', async () => {
   await storeTokens(jwt(1), 'a'.repeat(64), 1000);
   rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'Session expired' } });
@@ -1143,8 +1157,22 @@ describe('an access token the server refuses as expired', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(refreshCalls()).toHaveLength(1);
     expect(secure.get('secure_auth_token')).toBe(renewed);
+    expect(sessionWasJustRenewed()).toBe(true);
     // Read, as the PostgREST client does: until then the write holds a server switch back.
     await response.json();
+  });
+
+  test('a write refused again with the token just issued is not a renewed session', async () => {
+    const clientFetch = await authenticatedClientFetch();
+    jest.mocked(global.fetch).mockResolvedValue(refusedAs(401, { code: 'PGRST303', message: 'JWT expired' }));
+    const write = (token: string) => clientFetch('http://localhost:18000/rest/v1/rpc/save_invoice', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: '{}',
+    });
+    await (await write(old)).json();
+    expect(sessionWasJustRenewed()).toBe(true);
+    await (await write(renewed)).json();
+    expect(refreshCalls()).toHaveLength(1);
+    expect(sessionWasJustRenewed()).toBe(false);
   });
 
   test('a read that is refused again after the renewal is not repeated further', async () => {

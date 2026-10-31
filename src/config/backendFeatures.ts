@@ -25,6 +25,8 @@ const INTRODUCED_BY_MIGRATION = {
   orderLineVersion: 121,
   /** `suggest_document_number`, `get_document_numbering` and `set_document_numbering`, and the `NUMBER_FORMAT` refusal (WS-8). */
   documentNumbering: 127,
+  /** `get_rack_presets` and `set_rack_presets`: the facility's Floor and Chamber buttons for a rack. */
+  rackPresets: 131,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

@@ -84,6 +84,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  // The queue's size as the server counts it (all pages), not only the cards loaded so far.
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   // Rows received from the server so far; the next page starts here.
   const loadedCountRef = useRef(0);
 
@@ -176,6 +178,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         setLoadMoreFailed(false);
         setLoadedAt(Date.now());
         setHasMore(result.metadata?.has_more ?? false);
+        if (typeof result.metadata?.total_count === 'number') setTotalCount(result.metadata.total_count);
       } else {
         setError(result.message || 'Failed to load orders');
       }
@@ -233,6 +236,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
           return fresh.length > 0 ? [...prev, ...fresh] : prev;
         });
         setHasMore(result.metadata?.has_more ?? false);
+        if (typeof result.metadata?.total_count === 'number') setTotalCount(result.metadata.total_count);
       } else {
         setLoadMoreFailed(true);
       }
@@ -396,7 +400,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // RENDER STATES
   // ============================================================================
 
-  const queueCount = orders.length;
+  const queueCount = totalCount ?? orders.length;
 
   // The header and search field are shown in every state, so the search can
   // always be changed or cleared.
@@ -425,8 +429,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   );
 
   let content: React.ReactNode;
-  if (!hasLoaded && isLoading) {
-    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+  if (isLoading && (!hasLoaded || orders.length === 0)) {
+    // First load, or a new search with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
+    // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} />;
   } else if (orders.length > 0) {
     content = (

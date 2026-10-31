@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { TextInput } from 'react-native';
+import type { TextInputRef } from '@/types/nativeRefs';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { EditableNumberCell } from '../EditableNumberCell';
 
@@ -14,7 +15,7 @@ jest.mock('@/store/hooks', () => ({
 
 async function render(props: Partial<React.ComponentProps<typeof EditableNumberCell>> = {}) {
   let tree!: ReactTestRenderer;
-  const ref = React.createRef<TextInput>();
+  const ref = React.createRef<TextInputRef>();
   await act(async () => {
     tree = create(<EditableNumberCell ref={ref} value="5.00" onChangeText={() => {}} label="Charge, dispatch I0001" width={92} testID="cell" {...props} />);
   });

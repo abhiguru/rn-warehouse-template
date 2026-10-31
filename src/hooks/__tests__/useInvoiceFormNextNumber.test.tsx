@@ -10,7 +10,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import invoiceFormReducer, { loadInvoiceEditData, loadInvoiceFormData, updateHeader } from '@/store/slices/invoiceFormSlice';
 import { getNextInvoiceNumber } from '@/features/invoice/services/invoiceFormService';
 import { router } from 'expo-router';
-import { showAlert } from '@/utils/alert';
+import { askAlert, showAlert } from '@/utils/alert';
 import { NUMBER_REQUEST_TIMEOUT_MS, useInvoiceForm, type InvoiceFormMode, type UseInvoiceFormReturn } from '../useInvoiceForm';
 
 // react-redux is not transformed for jest here, so the store is bound by hand.
@@ -36,7 +36,7 @@ jest.mock('@/features/invoice/services/invoiceFormService', () => ({
   updateInvoice: jest.fn(),
   checkGrnStillInvoiceable: jest.fn(),
 }));
-jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn(), askAlert: jest.fn(async () => true) }));
 
 const INVOICE = '11111111-2222-4333-8444-555555555555';
 const nextNumber = jest.mocked(getNextInvoiceNumber);
@@ -507,25 +507,73 @@ describe('an invoice that is being edited', () => {
     await unmount();
   });
 
-  it('is asked for the next number of the other year when its date moves there, and gets its own back when the date returns', async () => {
-    const { header, pickDate, unmount } = await mount('edit', (store) => {
-      store.dispatch(loadInvoiceEditData({
-        invoiceId: INVOICE,
-        grId: 'g1',
-        header: { inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 12, customer_id: 'c1', customer_name: 'Example Traders', gr_id: 'g1', gr_no: 'A0010', one_time_charge: false, discount: 0, labour: 0, tax_amount: 0, total: 0 },
-        items: [],
-      }));
-    });
+  const savedInvoice = (store: ReturnType<typeof makeStore>) => {
+    store.dispatch(loadInvoiceEditData({
+      invoiceId: INVOICE,
+      grId: 'g1',
+      header: { inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 12, customer_id: 'c1', customer_name: 'Example Traders', gr_id: 'g1', gr_no: 'A0010', one_time_charge: false, discount: 0, labour: 0, tax_amount: 0, total: 0 },
+      items: [],
+    }));
+  };
+
+  it('asks before moving into another financial year, naming the new number; "Move invoice" moves it, and the date returning brings its own number back', async () => {
+    const { header, pickDate, unmount } = await mount('edit', savedInvoice);
 
     await pickDate('2026-03-31');
 
     expect(nextNumber.mock.calls).toEqual([['2025-26']]);
-    expect(header()).toMatchObject({ inv_fin_year: '2025-26', inv_no: 1210 });
+    expect(askAlert).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(askAlert).mock.calls[0].slice(0, 2)).toEqual(['Move to financial year 2025-26?', 'Invoice 12 becomes Invoice 1210.']);
+    expect(jest.mocked(askAlert).mock.calls[0][2].map((choice) => choice.text)).toEqual(['Keep date', 'Move invoice']);
+    expect(header()).toMatchObject({ inv_date: '2026-03-31', inv_fin_year: '2025-26', inv_no: 1210 });
 
     await pickDate('2026-10-05');
-    // Back in the year it was saved in: the saved number returns, nothing more is asked.
+    // Back in the year it was saved in: the saved number returns, nothing is asked.
     expect(nextNumber).toHaveBeenCalledTimes(1);
+    expect(askAlert).toHaveBeenCalledTimes(1);
     expect(header()).toMatchObject({ inv_fin_year: '2026-27', inv_no: 12 });
+    await unmount();
+  });
+
+  it('"Keep date" leaves the date, the year and the number exactly as they were', async () => {
+    jest.mocked(askAlert).mockResolvedValueOnce(false);
+    const { header, pickDate, unmount } = await mount('edit', savedInvoice);
+
+    await pickDate('2026-03-31');
+
+    expect(header()).toMatchObject({ inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 12 });
+    await unmount();
+  });
+
+  it('a date inside the same financial year is not asked about', async () => {
+    const { header, pickDate, unmount } = await mount('edit', savedInvoice);
+
+    await pickDate('2026-11-20');
+
+    expect(askAlert).not.toHaveBeenCalled();
+    expect(header()).toMatchObject({ inv_date: '2026-11-20', inv_no: 12 });
+    await unmount();
+  });
+
+  it('with no number from the server the question still asks, and a "Move invoice" asks for the number as before', async () => {
+    nextNumber.mockResolvedValueOnce(refusal('2025-26') as never).mockImplementation(async (finYear: string) => answer(SERVER[finYear], finYear));
+    const { header, pickDate, unmount } = await mount('edit', savedInvoice);
+
+    await pickDate('2026-03-31');
+
+    expect(jest.mocked(askAlert).mock.calls[0][1]).toBe('The invoice gets the next number of that year.');
+    expect(header()).toMatchObject({ inv_date: '2026-03-31', inv_fin_year: '2025-26', inv_no: 1210 });
+    await unmount();
+  });
+
+  it('a number the person typed is theirs: moving the date does not ask', async () => {
+    const { header, pickDate, typeNumber, unmount } = await mount('edit', savedInvoice);
+    await typeNumber(99);
+
+    await pickDate('2026-03-31');
+
+    expect(askAlert).not.toHaveBeenCalled();
+    expect(header()).toMatchObject({ inv_date: '2026-03-31', inv_no: 99 });
     await unmount();
   });
 });

@@ -265,13 +265,13 @@ describe('GRN activity, every customer', () => {
     const screen = await open(makeStore());
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')]]);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
 
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')], [days('2026-02-15')]]);
     expect(screen.has('Period: Last 240 days. Change')).toBe(true);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.customers()).toEqual([...DEFAULT_ORDER, 'Old Mill Stores']);
     expect(customerActivity).not.toHaveBeenCalled();
   });
@@ -302,7 +302,7 @@ describe('GRN activity, every customer', () => {
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Hillside Produce Co', 'Riverbank Produce']);
     expect(screen.bold()).toEqual(['Produce', 'Produce']);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Showing 2 of 5 · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Showing 2 of 5 · Last updated 10:00 am');
 
     await screen.press('Clear all filters and the search');
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Old Mill Stores', 'Riverbank Produce', 'Sunrise Agro Foods']);
@@ -325,7 +325,7 @@ describe('GRN activity, every customer', () => {
     expect(screen.customers()).toEqual(byGrns);
     expect(screen.texts()).not.toContain('Last opened');
 
-    await screen.press('Riverbank Produce, 9 GRNs · Latest 11 Aug, 80 bags');
+    await screen.press('Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 bags');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
 
@@ -363,26 +363,26 @@ describe('GRN activity, one customer', () => {
     const screen = await open(makeStore());
     expect(customerActivity.mock.calls).toEqual([[{ customerId: 'c2', ...days('2026-06-15') }]]);
     expect(allActivity).not.toHaveBeenCalled();
-    expect(screen.grnRows()).toEqual(['Today', 'GRN A0010', 'Yesterday', 'GRN A0009', 'GRN A0100', 'Sun, 20 Sep', 'GRN A0050']);
+    expect(screen.grnRows()).toEqual(['Today', 'GRN A0010', 'Yesterday', 'GRN A0009', 'GRN A0100', '20/09/26', 'GRN A0050']);
 
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('Bags');
     await screen.press('Done');
     expect(screen.grnRows()).toEqual(['GRN A0009', 'GRN A0100', 'GRN A0010', 'GRN A0050']);
     // With no heading above it, each card gives its own date.
-    expect(screen.texts()).toEqual(expect.arrayContaining(['11 Oct', '12 Oct', '20 Sep']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['11/10/26', '12/10/26', '20/09/26']));
 
     await screen.press('Sorted by Bags, highest first. Change sort');
     await screen.press('Date');
     await screen.press('Oldest first');
     await screen.press('Done');
-    expect(screen.grnRows()).toEqual(['Sun, 20 Sep', 'GRN A0050', 'Yesterday', 'GRN A0009', 'GRN A0100', 'Today', 'GRN A0010']);
+    expect(screen.grnRows()).toEqual(['20/09/26', 'GRN A0050', 'Yesterday', 'GRN A0009', 'GRN A0100', 'Today', 'GRN A0010']);
   });
 
   it('puts a GRN under the day it fell on in India, one heading per day, when the date is an instant', async () => {
     mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
-    // A timestamptz comes in UTC: the first two are both 12 Oct in India (09:30 and 01:30), the third is
-    // 11 Oct 01:30. By the first ten characters the second would be 11 Oct, and by the whole string every
+    // A timestamptz comes in UTC: the first two are both 12/10/26 in India (09:30 and 01:30), the third is
+    // 11/10/26 01:30. By the first ten characters the second would be 11/10/26, and by the whole string every
     // GRN would have a heading of its own.
     const instants = [
       grn('g5', 'A0120', '2026-10-12T04:00:00+00:00', 10, 10, false),
@@ -399,13 +399,13 @@ describe('GRN activity, one customer', () => {
     const screen = await open(makeStore());
     await screen.press('Filter by invoicing');
     await screen.press('Not invoiced');
-    expect(screen.grnRows()).toEqual(['Yesterday', 'GRN A0009', 'Sun, 20 Sep', 'GRN A0050']);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 4 · Last updated 10:00 am');
+    expect(screen.grnRows()).toEqual(['Yesterday', 'GRN A0009', '20/09/26', 'GRN A0050']);
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 2 of 4 · Last updated 10:00 am');
     // The figures are the whole period's.
     expect(screen.texts()).toContain('2 of 4');
 
     await screen.press('Clear all filters and the search');
-    expect(screen.grnRows()).toEqual(['Today', 'GRN A0010', 'Yesterday', 'GRN A0009', 'GRN A0100', 'Sun, 20 Sep', 'GRN A0050']);
+    expect(screen.grnRows()).toEqual(['Today', 'GRN A0010', 'Yesterday', 'GRN A0009', 'GRN A0100', '20/09/26', 'GRN A0050']);
   });
 
   it('asks nothing for a customer account whose route names a customer it is not assigned', async () => {
@@ -568,7 +568,7 @@ describe('GRN activity, the report PDF of what the screen shows', () => {
 
     await screen.press('Filter by invoicing');
     await screen.press('Not invoiced');
-    expect(screen.grnRows()).toEqual(['Yesterday', 'GRN A0009', 'Sun, 20 Sep', 'GRN A0050']);
+    expect(screen.grnRows()).toEqual(['Yesterday', 'GRN A0009', '20/09/26', 'GRN A0050']);
     makePdf.mockClear();
     await screen.press('Share PDF');
     // A broken screen sends no choice, and the PDF lists all four GRNs of the period.
@@ -592,7 +592,7 @@ describe('GRN activity, the report PDF of what the screen shows', () => {
     await screen.press('Not invoiced');
     await screen.search('A0009');
     // One GRN left on screen (its number is drawn with the search in bold, so it is counted by the status line).
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 1 of 4 · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 1 of 4 · Last updated 10:00 am');
 
     await screen.press('Share PDF');
     // A broken screen asks for the PDF at once, without a word about the search.
@@ -631,13 +631,13 @@ describe('GRN activity, nothing in the period', () => {
     const screen = await open(makeStore());
     expect(screen.customers()).toEqual([]);
     expect(screen.texts()).toEqual(expect.arrayContaining(['No GRNs in this period', 'Choose a longer period to see more GRNs.']));
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.has('Show last 420 days')).toBe(true);
 
     await screen.press('Show last 420 days');
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')], [days('2025-08-19')]]);
     expect(screen.has('Period: Last 420 days. Change')).toBe(true);
-    expect(screen.status()).toBe('19 Aug 2025 – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('19/08/25 – 12/10/26 · Last updated 10:00 am');
     // The longest period has nothing longer to offer: no button, and no "Choose a longer period".
     expect(screen.texts()).toContain('No GRNs in this period');
     expect(screen.texts()).not.toContain('Choose a longer period to see more GRNs.');

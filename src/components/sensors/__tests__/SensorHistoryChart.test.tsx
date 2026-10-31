@@ -169,7 +169,7 @@ describe('temperature axis and missing readings', () => {
     expect(chart.props.secondaryData[0].value).toBe(70);
     expect(chart.props.secondaryYAxis.maxValue).toBeGreaterThanOrEqual(75);
     expect(chart.props.formatYLabel('-20')).toBe('\u221220');
-    expect(chart.props.data[0].label).toBe('1 Oct');
+    expect(chart.props.data[0].label).toBe('01/10/26');
     act(() => tree.unmount());
   });
 });

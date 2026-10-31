@@ -376,6 +376,40 @@ export function serverLineDurations(value: unknown): ServerLineDuration[] {
   return lines;
 }
 
+/** One line of a RATES_CHANGED refusal: the fields whose looked-up rate changed and the rates the server looks up now. */
+export interface ServerLineRates {
+  disp_trl_id: string;
+  fields: Array<'charge' | 'labour_rate' | 'tax'>;
+  current: Partial<Record<'charge' | 'labour_rate' | 'tax', number>>;
+}
+
+const RATE_FIELD_NAMES = ['charge', 'labour_rate', 'tax'] as const;
+
+/**
+ * The lines of a RATES_CHANGED refusal (`lines`: disp_trl_id, fields, looked_up, current) that the app can read: a dispatch
+ * line id, the changed fields it names (all three when it names none) and a finite current figure for each. Anything else is
+ * left out, so a line the app cannot read keeps its own figures.
+ */
+export function serverLineRates(value: unknown): ServerLineRates[] {
+  if (!Array.isArray(value)) return [];
+  const lines: ServerLineRates[] = [];
+  value.forEach((entry) => {
+    if (typeof entry !== 'object' || entry === null) return;
+    const { disp_trl_id, fields, current } = entry as Record<string, unknown>;
+    if (typeof disp_trl_id !== 'string' || disp_trl_id === '' || typeof current !== 'object' || current === null) return;
+    const named = Array.isArray(fields) ? RATE_FIELD_NAMES.filter((name) => fields.includes(name)) : [...RATE_FIELD_NAMES];
+    const rates: ServerLineRates['current'] = {};
+    named.forEach((name) => {
+      const figure = (current as Record<string, unknown>)[name];
+      const number = typeof figure === 'string' && figure.trim() !== '' ? Number(figure) : figure;
+      if (typeof number === 'number' && Number.isFinite(number)) rates[name] = number;
+    });
+    const usable = named.filter((name) => rates[name] !== undefined);
+    if (usable.length > 0) lines.push({ disp_trl_id, fields: usable, current: rates });
+  });
+  return lines;
+}
+
 /**
  * The lines with the server's own duration and days on every line it names (matched by dispatch line), and their
  * amounts worked out again. Rates, discount and everything else the person typed are not touched. Returns the same

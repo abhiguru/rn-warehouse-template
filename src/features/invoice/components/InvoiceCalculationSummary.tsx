@@ -360,13 +360,15 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
     if (value !== header.discount) onDiscountChange(value);
   };
 
-  // Leaving the field: the text becomes the discount the invoice really has, with two decimals.
+  // Leaving the field: a complete number becomes the discount the invoice has, with two decimals. Text that was refused
+  // stays as typed, with its message (style guide 13.7); the invoice keeps the discount the field had when it was
+  // entered, and the Review refuses Update and Save until the text is fixed.
   const handleDiscountBlur = () => {
     editing.current = false;
+    if (discountError) return;
     const parsed = parseDiscountInput(discountText, base, formatInvoiceAmount);
-    const shown = parsed.value !== null && !discountError ? parsed.value : header.discount;
+    const shown = parsed.value !== null ? parsed.value : header.discount;
     setDiscountText(discountFieldText(shown));
-    setDiscountError(null);
   };
 
   const setDiscount = (value: number) => {
@@ -379,7 +381,12 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
   // Rounding works on the total as it stands, after the typed discount, and keeps that discount: only its paise
   // change. With no discount typed, the discount becomes the paise of the amount.
   const handleRoundUp = () => setDiscount(clampDiscount(roundMoney(base - Math.ceil(roundMoney(base - header.discount))), base));
-  const handleRoundDown = () => setDiscount(clampDiscount(roundMoney(base - Math.floor(roundMoney(base - header.discount))), base));
+  const handleRoundDown = () => {
+    const discount = clampDiscount(roundMoney(base - Math.floor(roundMoney(base - header.discount))), base);
+    // Rounding down must not take a total under 1 to exactly 0 (a discount may not do that): the total stays as it is.
+    if (base > 0 && roundMoney(base - discount) <= 0) return;
+    setDiscount(discount);
+  };
 
   const closeFinalAmount = () => {
     setFinalAmountOpen(false);

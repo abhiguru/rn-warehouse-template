@@ -1,4 +1,5 @@
 import { setLanguage, t } from '@/i18n';
+import { noteExpiredTokenRenewal } from '@/config/sessionRenewal';
 import { AppError } from '../appError';
 import {
   categorizeError,
@@ -166,6 +167,7 @@ describe('executeRPC wording of a failed call', () => {
   it('a change refused for an expired token (PGRST303) says the sign-in was renewed; PGRST301 still says to sign in again', async () => {
     for (const language of ['en', 'gu'] as const) {
       setLanguage(language);
+      noteExpiredTokenRenewal(true);
       const saved = await call(failing('JWT expired', 'PGRST303'), { write: true, errorMessage: 'Failed to update' });
       expect(saved.message).toBe(t('errors.code.signInRenewed'));
       const deleted = await call(failing('JWT expired', 'PGRST303'), { delete: true });

@@ -63,6 +63,8 @@ export interface OrderItem {
 
 export interface Order {
   id: string;  // Maps to backend cart_id
+  /** The order's number (get_order_with_items.order_data.order_no); absent from an older server. */
+  order_no?: string;
   customer_id: string;
   customer?: Customer;
   items?: OrderItem[];
@@ -146,6 +148,8 @@ export interface AddToOrderResponse {
   message: string;
   new_quantity: number;
   item_id: string;
+  /** Migration 128: the order the line went to, and whether this line made it (answered when no order id was sent). */
+  data?: { order_id?: string; order_created?: boolean };
 }
 
 // Filter types
@@ -303,6 +307,8 @@ export interface ChangeLogEntry {
       qty?: number;
     };
     quantity_change?: {
+      /** added | removed | increased | decreased | changed */
+      change_type?: string;
       previous_quantity: number;
       new_quantity: number;
       change_amount: number;

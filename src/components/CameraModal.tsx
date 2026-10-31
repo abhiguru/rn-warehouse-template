@@ -276,58 +276,58 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                     style={styles.camera}
                     facing={facing}
                     flash={flashMode}
-                >
-                    {/* Top Controls */}
-                    <View style={[styles.topControls, { paddingTop: insets.top + space.sm }]}>
-                        <Pressable
-                            style={({ pressed }) => [styles.roundButton, pressed && styles.overlayButtonPressed]}
-                            onPress={handleClose}
-                            accessibilityRole="button"
-                            accessibilityLabel={tr('components.camera.close')}
-                        >
-                            <Icon name="close" size={iconSize.lg} color={t.overlay.onImage} />
-                        </Pressable>
+                />
+                {/* The controls are siblings drawn over the preview: expo-camera 58 does not support children in CameraView. */}
+                {/* Top Controls */}
+                <View style={[styles.topControls, { paddingTop: insets.top + space.sm }]} pointerEvents="box-none">
+                    <Pressable
+                        style={({ pressed }) => [styles.roundButton, pressed && styles.overlayButtonPressed]}
+                        onPress={handleClose}
+                        accessibilityRole="button"
+                        accessibilityLabel={tr('components.camera.close')}
+                    >
+                        <Icon name="close" size={iconSize.lg} color={t.overlay.onImage} />
+                    </Pressable>
 
-                        <Pressable
-                            style={({ pressed }) => [styles.flashButton, pressed && styles.overlayButtonPressed]}
-                            onPress={toggleFlash}
-                            accessibilityRole="button"
-                            accessibilityLabel={getFlashAccessibilityLabel()}
-                            accessibilityHint={tr('components.camera.flashHint')}
-                        >
-                            <Icon name={getFlashIcon()} size={iconSize.lg} color={t.overlay.onImage} />
-                            <Text style={styles.flashLabel}>{getFlashLabel()}</Text>
-                        </Pressable>
+                    <Pressable
+                        style={({ pressed }) => [styles.flashButton, pressed && styles.overlayButtonPressed]}
+                        onPress={toggleFlash}
+                        accessibilityRole="button"
+                        accessibilityLabel={getFlashAccessibilityLabel()}
+                        accessibilityHint={tr('components.camera.flashHint')}
+                    >
+                        <Icon name={getFlashIcon()} size={iconSize.lg} color={t.overlay.onImage} />
+                        <Text style={styles.flashLabel}>{getFlashLabel()}</Text>
+                    </Pressable>
 
+                    <Pressable
+                        style={({ pressed }) => [styles.roundButton, pressed && styles.overlayButtonPressed]}
+                        onPress={toggleCameraFacing}
+                        accessibilityRole="button"
+                        accessibilityLabel={tr('components.camera.switchCamera')}
+                    >
+                        <Icon name="camera-flip-outline" size={iconSize.lg} color={t.overlay.onImage} />
+                    </Pressable>
+                </View>
+
+                {/* Bottom Controls */}
+                <View style={[styles.bottomControls, { paddingBottom: insets.bottom + space.xxl }]} pointerEvents="box-none">
+                    <View style={styles.captureButtonOuter}>
                         <Pressable
-                            style={({ pressed }) => [styles.roundButton, pressed && styles.overlayButtonPressed]}
-                            onPress={toggleCameraFacing}
+                            style={({ pressed }) => [
+                                styles.captureButton,
+                                (pressed || isCapturing) && styles.captureButtonBusy,
+                            ]}
+                            onPress={handleCapture}
+                            disabled={isCapturing}
                             accessibilityRole="button"
-                            accessibilityLabel={tr('components.camera.switchCamera')}
+                            accessibilityLabel={tr('components.camera.takePhoto')}
+                            accessibilityState={{ disabled: isCapturing, busy: isCapturing }}
                         >
-                            <Icon name="camera-flip-outline" size={iconSize.lg} color={t.overlay.onImage} />
+                            {isCapturing && <ActivityIndicator size="small" color={t.overlay.imageBackdrop} />}
                         </Pressable>
                     </View>
-
-                    {/* Bottom Controls */}
-                    <View style={[styles.bottomControls, { paddingBottom: insets.bottom + space.xxl }]}>
-                        <View style={styles.captureButtonOuter}>
-                            <Pressable
-                                style={({ pressed }) => [
-                                    styles.captureButton,
-                                    (pressed || isCapturing) && styles.captureButtonBusy,
-                                ]}
-                                onPress={handleCapture}
-                                disabled={isCapturing}
-                                accessibilityRole="button"
-                                accessibilityLabel={tr('components.camera.takePhoto')}
-                                accessibilityState={{ disabled: isCapturing, busy: isCapturing }}
-                            >
-                                {isCapturing && <ActivityIndicator size="small" color={t.overlay.imageBackdrop} />}
-                            </Pressable>
-                        </View>
-                    </View>
-                </CameraView>
+                </View>
             </View>
         </Modal>
     );
@@ -401,6 +401,10 @@ const makeStyles = (t: ThemeTokens) => ({
         color: t.brand.tint,
     },
     topControls: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
         flexDirection: 'row' as const,
         justifyContent: 'space-between' as const,
         alignItems: 'center' as const,

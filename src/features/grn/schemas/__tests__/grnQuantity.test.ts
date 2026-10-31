@@ -117,6 +117,26 @@ describe('receipt quantity admission and validation', () => {
     expect(garbled.errors['items[0].weight']).toBe('Weight must be a whole number');
   });
 
+  it.each(['1000000000', '9999999999', '12345678901234567890', '99999999999999999999999999999999999999'])(
+    'says a quantity of %p is at most 999,999,999, not that it is not whole',
+    async value => {
+      const result = await validateStep2({ items: [item(value, { stock: '1' })] });
+      expect(result.errors['items[0].qty']).toBe('Quantity must be at most 999,999,999');
+    }
+  );
+
+  it('says a weight of ten or more digits is at most 999,999,999', async () => {
+    const result = await validateStep2({ items: [item('3', { weight: '1000000000' })] });
+    expect(result.errors['items[0].weight']).toBe('Weight must be at most 999,999,999');
+    const gujarati = await validateStep2({ items: [item('3', { weight: '૧૦૦૦૦૦૦૦૦૦' })] });
+    expect(gujarati.errors['items[0].weight']).toBe('Weight must be at most 999,999,999');
+  });
+
+  it('still reports garbled text as not whole', async () => {
+    const result = await validateStep2({ items: [item('3', { weight: '10000000000x' })] });
+    expect(result.errors['items[0].weight']).toBe('Weight must be a whole number');
+  });
+
   it('rejects stock above the received quantity', async () => {
     const result = await validateStep2({ items: [item('3', { stock: '4' })] });
     expect(result.isValid).toBe(false);

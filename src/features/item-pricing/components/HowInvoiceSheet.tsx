@@ -1,4 +1,4 @@
-/** "How an invoice picks a rate": five numbered lines in a sheet. */
+/** "How an invoice picks a rate": seven numbered lines in a sheet. */
 import React from 'react';
 import { Text, View } from 'react-native';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
@@ -15,7 +15,7 @@ const makeStyles = (th: ThemeTokens) => ({
 
 export function HowInvoiceSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const styles = useThemedStyles(makeStyles);
-  const lines = ['l1', 'l2', 'l3', 'l4', 'l5'] as const;
+  const lines = ['l0a', 'l0b', 'l1', 'l2', 'l3', 'l4', 'l5'] as const;
   return (
     <SheetFrame visible={visible} title={t('pricing.how.title')} onClose={onClose} closeLabel={t('pricing.how.close')}>
       <View style={styles.list}>

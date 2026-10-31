@@ -21,7 +21,6 @@ test('symlinked CLI checks and postinstall adapters execute instead of silently 
       ['doctor.mjs', /npm is unavailable/],
       ['check-backend.mjs', /Backend check failed/],
       ['patch-expo-metro.mjs', /Cannot find module/],
-      ['patch-navigation-decoder.mjs', /ENOENT/],
     ]) {
       const result = spawnSync(process.execPath, [join(alias, 'scripts', script)], {
         encoding: 'utf8',
@@ -31,7 +30,7 @@ test('symlinked CLI checks and postinstall adapters execute instead of silently 
       assert.match(result.stderr, reason);
     }
     const imported = spawnSync(process.execPath, ['--input-type=module', '-e',
-      "await import('./scripts/doctor.mjs'); await import('./scripts/check-backend.mjs'); await import('./scripts/patch-expo-metro.mjs'); await import('./scripts/patch-navigation-decoder.mjs');"], {
+      "await import('./scripts/doctor.mjs'); await import('./scripts/check-backend.mjs'); await import('./scripts/patch-expo-metro.mjs');"], {
       cwd: alias, encoding: 'utf8',
     });
     assert.equal(imported.status, 0, imported.stderr);

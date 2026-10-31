@@ -73,6 +73,7 @@ export type RoleGatedScreen =
   | 'userManagement'
   | 'enrollmentReview'
   | 'documentNumbering'
+  | 'rackPresets'
   | 'masterData';
 
 /**
@@ -105,6 +106,10 @@ export function canOpenScreen(
       return isManager(role);
     case 'enrollmentReview':
       return normalizeRole(role) === 'admin';
+    case 'rackPresets':
+      // The Floor and Chamber buttons of the GRN item form: administrators and supervisors change them
+      // (set_rack_presets); staff only use them and the server refuses their call.
+      return isManager(role);
     case 'documentNumbering':
       // How GRN, dispatch and invoice numbers are written: administrators only (set_document_numbering, migration 127).
       return normalizeRole(role) === 'admin';
@@ -123,6 +128,7 @@ export type SettingsFeature =
   | 'users'
   | 'standardRate'
   | 'documentNumbering'
+  | 'rackPresets'
   | 'sensors';
 
 export function settingsFeatureRows(
@@ -136,6 +142,7 @@ export function settingsFeatureRows(
   if (canOpenScreen(role, 'userManagement')) rows.push('users');
   if (canOpenScreen(role, 'standardRate')) rows.push('standardRate');
   if (canOpenScreen(role, 'documentNumbering')) rows.push('documentNumbering');
+  if (canOpenScreen(role, 'rackPresets')) rows.push('rackPresets');
   if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
   return rows;
 }

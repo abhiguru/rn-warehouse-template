@@ -137,7 +137,6 @@ export const grn = {
     a11yRack: 'rack {{rack}}',
     a11yMark: 'mark {{mark}}',
     a11yEditing: 'editing',
-    a11yQuantityLocked: 'quantity locked',
     totalQuantityLabel: 'Total quantity:',
     summaryEmptyTitle: 'No items added yet',
     summaryEmptySubtitle: 'Fill in the item form and tap the check mark to save it here.',
@@ -145,6 +144,7 @@ export const grn = {
 
   // Step 2: alerts
   itemsStep: {
+    backToDetails: 'Back to GRN details',
     qtyLockedTitle: "Quantity can't be changed",
     qtyLockedMessage: 'This item has already been dispatched, so its quantity is locked to keep stock correct.',
     itemsWillBeLost: { one: '{{count}} item will be lost.', other: '{{count}} items will be lost.' },
@@ -176,6 +176,9 @@ export const grn = {
     addPhotos: 'Add photos',
     addPhotoTitle: 'Add photo',
     addPhotoMessage: 'Take a new photo or choose one from your library.',
+    scanDocument: 'Scan document',
+    addPhotoMessageScan: 'Scan the document, take a new photo or choose one from your library.',
+    scanPagesSkipped: 'Only {{added}} of {{count}} pages were added (limit {{max}} photos).',
     takePhoto: 'Take photo',
     chooseFromLibrary: 'Choose from library',
     chooseFromGallery: 'Choose from gallery',
@@ -236,6 +239,7 @@ export const grn = {
 
   // Step 3: review
   review: {
+    noRateYet: 'No rate yet for {{items}}. An administrator adds it before invoicing.',
     stockProtectedMessage:
       "You can't change the quantity or stock of dispatched items. You can still change other details.",
     saveFailedTitle: "Couldn't save the GRN",
@@ -486,7 +490,6 @@ export const grn = {
 
   validation: {
     numberMax: 'GRN number must be at most 20 characters',
-    numberNoSpaces: 'GRN number cannot contain spaces',
     registrationMax: 'Registration must be at most 20 characters',
     dateRequired: 'Date is required',
     dateFuture: 'Cannot select a future date',
@@ -534,8 +537,11 @@ export const grn = {
   // the refusal's reason and fields, never from the server's English.
   refusal: {
     // Read-only fields of a saved GRN
+    numberSpaces: "A GRN number can't contain spaces.",
     numberLocked: "The number can't be changed. To correct it, delete this GRN and enter it again.",
     dateInvoiced: 'This GRN is invoiced. Delete or edit the invoice first.',
+    dateFuture: "A GRN can't be dated in the future. Today is {{date}}.",
+    lastPhoto: 'A GRN needs at least one photo. Add another before deleting this one.',
     // Lines that are locked or can't be removed
     lockedTitle: "This can't be changed",
     lineTitle: "Item {{position}} can't be saved",
@@ -567,7 +573,7 @@ export const grn = {
     dispatchHistoryFailed: "Couldn't load the dispatch history. Try again.",
     dispatchHistoryFailedConnection: "Couldn't load the dispatch history. Check your connection and try again.",
     photoAccessNeeded: 'Allow photo access in Settings to add an image.',
-    imageUploadFailed: "Couldn't upload the image. Try again.",
+    imageUploadFailed: "Couldn't upload the photo. Try again.",
     imageAdded: 'Image added.',
     deleteImageTitle: 'Delete this image?',
     deleteImageMessage: 'The image is removed from the GRN permanently.',
@@ -589,13 +595,13 @@ export const grn = {
     deleteFailedTitle: "Couldn't delete the GRN",
     deleteFailed: "Couldn't delete the GRN. Try again.",
     leaveWhileCheckingTitle: 'Leave this screen?',
-    dispatchItemsInvoiced: {
-      one: '{{count}} dispatch item invoiced.',
-      other: '{{count}} dispatch items invoiced.',
+    deleteBlockedInvoiced: {
+      one: 'GRN {{number}} has {{count}} dispatch line on an invoice. Delete that invoice first, then the dispatch.',
+      other: 'GRN {{number}} has {{count}} dispatch lines on invoices. Delete those invoices first, then the dispatches.',
     },
-    dispatchItemsRecorded: {
-      one: '{{count}} dispatch item recorded.',
-      other: '{{count}} dispatch items recorded.',
+    deleteBlockedDispatches: {
+      one: 'GRN {{number}} has {{count}} dispatch line. Delete that dispatch first.',
+      other: 'GRN {{number}} has {{count}} dispatch lines. Delete those dispatches first.',
     },
     pdfCreateFailedTitle: "Couldn't create the PDF",
     pdfShareFailedTitle: "Couldn't share the PDF",

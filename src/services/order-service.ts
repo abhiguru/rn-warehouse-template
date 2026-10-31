@@ -127,70 +127,31 @@ export class OrderService {
         };
       }
 
-      // Check for JWT tokens using centralized utility
-
-      const authResult = await getAuthToken();
-      const refreshToken = await getRefreshToken();
-
-      if (!authResult.token) {
-        console.error('[OrderService] ERROR: No access token found');
-        return {
-          success: false,
-          message: t('errors.auth.requiredNoToken'),
-          error: t('errors.auth.noJwtInStorage'),
-        };
-      }
-
-      // Get authenticated client (will handle JWT token from AsyncStorage)
-
-      const authenticatedClient = await getAuthenticatedClient();
-
-      // Make RPC call
-
-      const { data, error } = await authenticatedClient.rpc(
+      // The sign-in is checked by the client itself (executeRPC): no session is a failure before the request leaves.
+      const result = await executeRPC<string>(
+        getAuthenticatedClient,
         'get_or_create_cart',
+        { p_customer_id: customerId },
         {
-          p_customer_id: customerId,
+          context: 'OrderService.getOrCreateOrder',
+          // It makes an open order when the customer has none, so a lost answer reads as one that may have gone through.
+          write: true,
+          errorMessage: t('errors.order.getOrCreateFailed'),
+          // The RPC answers just the cart id.
+          unwrapNested: false,
         }
       );
 
-      if (error) {
-        console.error('[OrderService] ❌ RPC ERROR OCCURRED');
-        console.error('[OrderService] Error Message:', error.message);
-        console.error('[OrderService] Error Code:', error.code);
-        console.error('[OrderService] Error Details:', error.details);
-        console.error('[OrderService] Error Hint:', error.hint);
-        console.error(
-          '[OrderService] Full Error Object:',
-          JSON.stringify(error)
-        );
+      if (!result.success) {
         return {
           success: false,
-          message: t('errors.order.getOrCreateFailed'),
-          error: error.message,
+          message: result.message,
+          error: result.error,
+          serverMessage: result.serverMessage,
+          ...(result.lostAnswer ? { lostAnswer: true } : {}),
         };
       }
 
-      // Check if the RPC returned an error in the data itself
-      if (
-        data &&
-        typeof data === 'object' &&
-        'success' in data &&
-        !data.success
-      ) {
-        console.error('[OrderService] ❌ RPC RETURNED ERROR IN DATA');
-        console.error('[OrderService] Data Message:', data.message);
-        console.error('[OrderService] Data Error:', data.error);
-        console.error('[OrderService] Full Data Object:', JSON.stringify(data));
-        return {
-          success: false,
-          message: serverText(data.message, t('errors.order.getOrCreateFailed')),
-          error: serverText(data.error, t('errors.general.rpcReturnedError')),
-        };
-      }
-
-      // The RPC returns just the cart_id as a string
-      const cartId = data;
       // It makes an open order when the customer has none: Operations counts them (Pending orders).
       void invalidateReportQueries();
 
@@ -198,7 +159,7 @@ export class OrderService {
         success: true,
         message: t('errors.order.retrieved'),
         data: {
-          cart_id: cartId,
+          cart_id: result.data as unknown as string,
           is_new: false, // We can't determine this from the current response
         },
       };
@@ -218,14 +179,53 @@ export class OrderService {
     }
   }
 
+  // The order a customer has right now, if any. Never creates one: an order exists from its first line (migration 128).
+  // `order_id` is null when there is none. `notAvailable` is true when this server has no such function (an older
+  // release): the caller then opens the order the way that release does (getOrCreateOrder).
+  static async getCustomerOrder(
+    customerId: string
+  ): Promise<OrderServiceResponse<{ order_id: string | null; order_no: string | null; item_count: number }> & { notAvailable?: boolean }> {
+    if (!customerId) {
+      return { success: false, message: t('errors.customer.idRequired'), error: t('errors.general.missingParameter') };
+    }
+    const result = await executeRPC<{ exists?: boolean; order_id?: string | null; order_no?: string | null; item_count?: number }>(
+      getAuthenticatedClient,
+      'get_customer_order',
+      { p_customer_id: customerId },
+      { context: 'OrderService.getCustomerOrder', errorMessage: t('orders.manage.couldNotOpenMessage') }
+    );
+    if (!result.success) {
+      const missing = result.errorCode === 'PGRST202' || /could not find the function/i.test(result.error ?? '');
+      return {
+        success: false,
+        message: result.message,
+        error: result.error,
+        serverMessage: result.serverMessage,
+        ...(result.lostAnswer ? { lostAnswer: true } : {}),
+        ...(missing ? { notAvailable: true } : {}),
+      };
+    }
+    const data = result.data;
+    const orderId = data?.exists === true && typeof data.order_id === 'string' ? data.order_id : null;
+    return {
+      success: true,
+      message: result.message,
+      data: { order_id: orderId, order_no: orderId ? data?.order_no ?? null : null, item_count: orderId ? Number(data?.item_count) || 0 : 0 },
+    };
+  }
+
   // Add item to order
   // M3 Fix: Using executeRPC wrapper
+  //
+  // With no order yet (`orderId` null) the customer's id makes the order with this first line (migration 128); the
+  // answer's `data.order_id` is the order, `data.order_created` says whether this line made it.
   static async addItemToOrder(
-    orderId: string,
+    orderId: string | null,
     grnItemId: string,
-    quantity: number
+    quantity: number,
+    customerId?: string
   ): Promise<OrderServiceResponse<AddToOrderResponse>> {
-    if (!orderId || !grnItemId || quantity <= 0) {
+    if ((!orderId && !customerId) || !grnItemId || quantity <= 0) {
       return {
         success: false,
         message: t('errors.general.invalidParameters'),
@@ -236,11 +236,9 @@ export class OrderService {
     const result = await executeRPC<AddToOrderResponse>(
       getAuthenticatedClient,
       'add_item_to_order',
-      {
-        p_grn_item_id: grnItemId,
-        p_order_id: orderId,
-        p_quantity: quantity,
-      },
+      orderId
+        ? { p_grn_item_id: grnItemId, p_order_id: orderId, p_quantity: quantity }
+        : { p_grn_item_id: grnItemId, p_customer_id: customerId, p_quantity: quantity },
       {
         context: 'OrderService.addItemToOrder',
         write: true,
@@ -497,6 +495,7 @@ export class OrderService {
 
       const finalOrderData = {
         id: orderData.id,
+        order_no: orderData.order_no ?? undefined,
         customer_id: orderData.customer_id,
         customer: customer,
         items: mappedItems,

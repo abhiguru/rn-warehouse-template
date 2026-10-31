@@ -4,8 +4,8 @@
  * service. Only what the invoice screens reach outside the app is stood in for: the facility's `rpc`
  * (invoiceFlowServer), the invoice details page (a button that opens the edit), and the modules each test file mocks.
  *
- * The test file starts the app with `startFlowApp({ location, advance })`, where `advance` runs the pending fake
- * timers (`() => jest.runAllTimersAsync()`), and keeps its `jest.mock` lines for the modules named in
+ * The test file starts the app with `startFlowApp({ location, advance, pendingTimers })`, where `advance` runs the pending fake
+ * timers (`() => jest.runAllTimersAsync()`) and `pendingTimers` counts them (`() => jest.getTimerCount()`), and keeps its `jest.mock` lines for the modules named in
  * `docs`-style at the top of each flow test. No jest globals here.
  */
 import React from 'react';
@@ -13,8 +13,9 @@ import { Pressable, Text, TextInput } from 'react-native';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
-import { store as routerStore } from 'expo-router/build/global-state/router-store';
+import { routerStore } from '@/tests/helpers/routerStore';
 import { router, Stack, Tabs } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
@@ -128,14 +129,27 @@ export interface StartOptions {
   location: string;
   /** Runs the pending fake timers: `() => jest.runAllTimersAsync()`. */
   advance: () => Promise<void>;
+  /** How many fake timers are still pending (`() => jest.getTimerCount()`). */
+  pendingTimers: () => number;
 }
 
-export async function startFlowApp({ location, advance }: StartOptions): Promise<FlowApp> {
+export async function startFlowApp({ location, advance, pendingTimers }: StartOptions): Promise<FlowApp> {
   process.env.EXPO_ROUTER_IMPORT_MODE = 'sync';
   const backKey = installHardwareBack();
   const context = getMockContext({
-    _layout: () => <Stack screenOptions={{ headerShown: false }} />,
-    '(tabs)/_layout': () => <Tabs screenOptions={{ headerShown: false }} />,
+    // The app's root layout wraps everything in GestureHandlerRootView, which gesture-handler 3 requires.
+    _layout: () => (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </GestureHandlerRootView>
+    ),
+    // expo-router 58 tabs show only the screens their layout declares (this context has these two tabs only).
+    '(tabs)/_layout': () => (
+      <Tabs screenOptions={{ headerShown: false }}>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="invoices" />
+      </Tabs>
+    ),
     '(tabs)/index': () => null,
     '(tabs)/invoices': InvoicesTab,
     'invoice-details/[id]': DetailsPage,
@@ -168,8 +182,13 @@ export async function startFlowApp({ location, advance }: StartOptions): Promise
     );
     if (closed.length > 0) await act(async () => { closed.forEach((toggle) => toggle.props.onPress()); });
   };
+  // A step circle navigates from a timer, so the screen it opens mounts at the end of the act that ran that timer
+  // and its effects schedule new timers of their own. Run rounds until none is pending (bounded).
   const settle = async () => {
-    await act(async () => { await advance(); });
+    for (let round = 0; round < 10; round += 1) {
+      await act(async () => { await advance(); });
+      if (pendingTimers() === 0) break;
+    }
     await openClosedLines();
   };
   const matches = (node: ReactTestInstance, id: Id) =>

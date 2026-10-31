@@ -6,7 +6,7 @@
  * it: what changes, and that existing documents keep their numbers. Save calls `set_document_numbering`; a refusal is
  * worded under the buttons and nothing is closed.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { InlineValidation } from '@/components/fiori';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +16,8 @@ import { Switch } from '@/components/ui/Switch';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr, type TranslationKey } from '@/i18n';
-import { setDocumentNumbering, type DocumentType, type NumberingRule, type NumberingScheme, type SetNumberingResult } from '@/services/documentNumberingService';
+import { getDocumentNumbering, setDocumentNumbering, type DocumentType, type NumberingRule, type NumberingScheme, type SetNumberingResult } from '@/services/documentNumberingService';
+import { NumberingUnconfirmedError } from '@/services/documentNumberingUnconfirmed';
 import { radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
 import { transportText } from '@/utils/serverText';
@@ -28,6 +29,7 @@ import {
   exampleNumber,
   fieldsOf,
   hasCheck,
+  ruleEqualsInput,
   ruleInputOf,
   type NumberingDraft,
 } from './numberingModel';
@@ -58,6 +60,13 @@ export interface NumberingEditSheetProps {
   onClose: () => void;
   /** The rule was saved (or was already as chosen); the screen reads the rules again. */
   onSaved: (result: SetNumberingResult) => void;
+  /**
+   * "Refresh" after an unconfirmed save read the rules the server holds. `saved`: the rule is the one that was sent, so
+   * the change went through (the screen closes the sheet and says "Saved."); otherwise the sheet stays open.
+   */
+  onRefreshed: (rules: NumberingRule[], saved: boolean) => void;
+  /** A save went unanswered: the server may hold the new rule, so the screen reads the rules again. */
+  onUnconfirmed: () => void;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -76,22 +85,32 @@ const makeStyles = (t: ThemeTokens) => ({
   previewNote: { ...typography.footnote, color: t.text.secondary },
   confirmText: { ...typography.body, color: t.text.primary },
   footer: { gap: space.sm, paddingBottom: space.xs },
+  stripActions: { flexDirection: 'row' as const, gap: space.sm },
 });
 
-export function NumberingEditSheet({ rule, onClose, onSaved }: NumberingEditSheetProps) {
+export function NumberingEditSheet({ rule, onClose, onSaved, onRefreshed, onUnconfirmed }: NumberingEditSheetProps) {
   const styles = useThemedStyles(makeStyles);
-  // The sheet is remounted for each rule (key), so the draft starts from the rule it was opened on.
-  return rule ? <Editor key={`${rule.document_type}-${rule.updated_at ?? ''}`} rule={rule} onClose={onClose} onSaved={onSaved} styles={styles} /> : null;
+  // The sheet is remounted for each document type (key), so the draft starts from the rule it was opened on. The rule
+  // being replaced by a read (Refresh) does not remount it: the person's values stay.
+  return rule ? <Editor key={rule.document_type} rule={rule} onClose={onClose} onSaved={onSaved} onRefreshed={onRefreshed} onUnconfirmed={onUnconfirmed} styles={styles} /> : null;
 }
 
 type Styles = ReturnType<typeof makeStyles>;
 
-function Editor({ rule, onClose, onSaved, styles }: { rule: NumberingRule; onClose: () => void; onSaved: NumberingEditSheetProps['onSaved']; styles: Styles }) {
+function Editor({ rule, onClose, onSaved, onRefreshed, onUnconfirmed, styles }: { rule: NumberingRule; onClose: () => void; onSaved: NumberingEditSheetProps['onSaved']; onRefreshed: NumberingEditSheetProps['onRefreshed']; onUnconfirmed: NumberingEditSheetProps['onUnconfirmed']; styles: Styles }) {
   const type = rule.document_type;
   const [draft, setDraft] = useState<NumberingDraft>(() => draftFor(rule));
   const [step, setStep] = useState<'edit' | 'confirm'>('edit');
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // The save was sent and its answer did not come through: the strip with Refresh and Try again. `verdict` is what the
+  // last Refresh found ('notSaved'), `refreshFailure` why a Refresh could not read.
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const [verdict, setVerdict] = useState<'notSaved' | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailure, setRefreshFailure] = useState<string | null>(null);
+  // The request that went unanswered: Try again sends this very rule (it sets an absolute value, so it is safe to repeat).
+  const lastSent = useRef<ReturnType<typeof ruleInputOf> | null>(null);
   // Errors are shown from the first press of Save, not while a field is half typed (§13.2).
   const [showErrors, setShowErrors] = useState(false);
 
@@ -103,6 +122,10 @@ function Editor({ rule, onClose, onSaved, styles }: { rule: NumberingRule; onClo
 
   const update = useCallback((patch: Partial<NumberingDraft>) => {
     setFailure(null);
+    // Other values are another change: what was left unconfirmed no longer applies.
+    setUnconfirmed(false);
+    setVerdict(null);
+    setRefreshFailure(null);
     setDraft(current => ({ ...current, ...patch }));
   }, []);
 
@@ -116,19 +139,67 @@ function Editor({ rule, onClose, onSaved, styles }: { rule: NumberingRule; onClo
     setStep('confirm');
   };
 
-  const save = async () => {
-    if (saving) return;
+  const save = async (resend?: boolean) => {
+    if (saving || refreshing) return;
     setSaving(true);
     setFailure(null);
+    setVerdict(null);
+    setRefreshFailure(null);
+    // Try again repeats the request that went unanswered, not whatever the fields hold now.
+    const input = resend && lastSent.current ? lastSent.current : ruleInputOf(type, draft);
+    lastSent.current = input;
     try {
-      const result = await setDocumentNumbering(type, ruleInputOf(type, draft));
+      const result = await setDocumentNumbering(type, input);
+      setUnconfirmed(false);
       onSaved(result);
     } catch (error) {
+      if (error instanceof NumberingUnconfirmedError) {
+        // The row keeps the previous setting and the edit stays open with the person's values.
+        setUnconfirmed(true);
+        setSaving(false);
+        onUnconfirmed();
+        return;
+      }
       // A refusal is the server's sentence (English) or the app's own; no connection says so.
       setFailure(transportText(error, { write: true, form: true }) ?? (error instanceof Error && error.message ? error.message : tr('numbering.edit.saveFailed')));
       setSaving(false);
     }
   };
+
+  // Refresh: read the rule the server holds. The rule equals the one sent: the change went through. Otherwise it did not.
+  const refresh = async () => {
+    if (saving || refreshing || !lastSent.current) return;
+    setRefreshing(true);
+    setRefreshFailure(null);
+    try {
+      const rules = await getDocumentNumbering();
+      const held = rules.find(item => item.document_type === type);
+      const saved = !!held && ruleEqualsInput(held, lastSent.current);
+      if (!saved) setVerdict('notSaved');
+      onRefreshed(rules, saved);
+    } catch (error) {
+      setRefreshFailure(transportText(error) ?? tr('numbering.screen.loadFailed'));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const strip = unconfirmed ? (
+    <View style={styles.footer} testID="numbering-unconfirmed">
+      <InlineValidation
+        variant={verdict === 'notSaved' ? 'error' : 'warning'}
+        message={refreshFailure ?? tr(verdict === 'notSaved' ? 'numbering.edit.notSaved' : 'numbering.edit.unconfirmed')}
+      />
+      <View style={styles.stripActions}>
+        <Button type="secondary" onPress={() => void refresh()} loading={refreshing} disabled={saving || refreshing} testID="numbering-refresh">
+          {tr('numbering.edit.refresh')}
+        </Button>
+        <Button type="primary" onPress={() => void save(true)} loading={saving} disabled={saving || refreshing} testID="numbering-try-again">
+          {tr('numbering.edit.tryAgain')}
+        </Button>
+      </View>
+    </View>
+  ) : null;
 
   // Closing the edit step with a change not yet saved asks once (style guide §13.9 and §14.4). The sheet is a modal, not a
   // route, so useLeaveGuard does not apply: the Cancel button, the scrim and Android Back all come here.
@@ -161,7 +232,8 @@ function Editor({ rule, onClose, onSaved, styles }: { rule: NumberingRule; onClo
         closeLabel={tr('common.back')}
         footer={
           <View style={styles.footer}>
-            <Button type="primary" onPress={save} loading={saving} disabled={saving} testID="numbering-confirm">
+            {strip}
+            <Button type="primary" onPress={() => void save()} loading={saving} disabled={saving || refreshing} testID="numbering-confirm">
               {tr('numbering.edit.confirmAction')}
             </Button>
           </View>
@@ -191,6 +263,7 @@ function Editor({ rule, onClose, onSaved, styles }: { rule: NumberingRule; onClo
       onClose={requestClose}
       footer={
         <View style={styles.footer}>
+          {strip}
           <Button type="primary" onPress={toConfirm} disabled={!changed} testID="numbering-save">
             {tr('numbering.edit.save')}
           </Button>

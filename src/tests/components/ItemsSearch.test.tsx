@@ -1,5 +1,6 @@
 /** G-29: Items can be searched on the server, shows its count in the field's line, and says when a refresh failed. */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Text } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import ItemsScreen from '../../../app/items';
@@ -72,7 +73,7 @@ afterEach(() => { jest.useRealTimers(); });
 describe('Items search', () => {
   it('has a search field (labelled by its placeholder) and a count line under it, not in the header', async () => {
     jest.mocked(itemService.getItemList).mockResolvedValue(answer(ROWS(['Dry Red Chillies', 'Garlic', 'Onions']), 91) as never);
-    await act(async () => { tree = create(<ItemsScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     expect(tree!.root.findAll(n => n.props.accessibilityLabel === 'Search by name, packaging or description').length).toBeGreaterThan(0);
     expect(shownText()).toContain('91 items');
   });
@@ -80,7 +81,7 @@ describe('Items search', () => {
   it('asks the server for the search from the first row and shows the count of the answer', async () => {
     jest.mocked(itemService.getItemList).mockImplementation((async (filters: { search?: string }) =>
       filters.search === 'pot' ? answer(ROWS(['Potatoes']), 1) : answer(ROWS(['Dry Red Chillies', 'Garlic', 'Onions']), 91)) as never);
-    await act(async () => { tree = create(<ItemsScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     await type('pot');
 
     const last = jest.mocked(itemService.getItemList).mock.calls.at(-1)!;
@@ -98,7 +99,7 @@ describe('Items search', () => {
       if (filters.search === 'pot') return Promise.resolve(answer(ROWS(['Potatoes']), 1));
       return Promise.resolve(answer(ROWS(['Garlic']), 91));
     }) as never);
-    await act(async () => { tree = create(<ItemsScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     await type('po');
     await type('pot');
     expect(shownText()).toContain('Potatoes');
@@ -111,7 +112,7 @@ describe('Items search', () => {
   it('says nothing matches and offers Clear search', async () => {
     jest.mocked(itemService.getItemList).mockImplementation((async (filters: { search?: string }) =>
       filters.search === 'zzzz' ? answer([], 0) : answer(ROWS(['Garlic']), 91)) as never);
-    await act(async () => { tree = create(<ItemsScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     await type('zzzz');
     expect(shownText()).toContain('No items match "zzzz". Try fewer letters.');
     expect(shownText()).not.toContain('No items yet');
@@ -123,7 +124,7 @@ describe('Items search', () => {
 
   it('keeps the rows and says the list is older when a refresh fails', async () => {
     jest.mocked(itemService.getItemList).mockResolvedValueOnce(answer(ROWS(['Garlic']), 91) as never);
-    await act(async () => { tree = create(<ItemsScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     jest.mocked(itemService.getItemList).mockResolvedValueOnce({ success: false, message: 'offline', data: [] } as never);
     const list = tree!.root.find(node => typeof node.props.refreshControl === 'object' && node.props.refreshControl !== null && 'props' in node.props.refreshControl);
     await act(async () => { list.props.refreshControl.props.onRefresh(); });

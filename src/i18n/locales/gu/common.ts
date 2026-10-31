@@ -56,6 +56,7 @@ export const common: Translation<typeof source> = {
   notSet: 'સેટ નથી',
   none: 'કોઈ નહીં',
   all: 'બધા',
+  photoMissing: 'ફોટો ખૂટે છે',
   any: 'કોઈ પણ',
   unknown: 'અજ્ઞાત',
   active: 'સક્રિય',

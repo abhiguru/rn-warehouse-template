@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import GRNListFiori from '@/components/GRNListFiori';
+import { grnListElement } from '../helpers/grnListElement';
 import { getAllGRNItems } from '@/services/grn-service';
 
 // The screen's focus callback is kept, and the test calls it (focus) and its cleanup (blur) as the navigator would.
@@ -104,7 +104,7 @@ const reads = () => jest.mocked(getAllGRNItems).mock.calls.map(([params]) => par
 
 async function mount(loaded: number) {
   jest.mocked(getAllGRNItems).mockResolvedValue(answer(loaded));
-  await act(async () => { tree = create(<GRNListFiori />); });
+  await act(async () => { tree = create(grnListElement()); });
   await focus();
 }
 
@@ -149,7 +149,7 @@ describe('the GRN list on return', () => {
     await mount(45);
     await blur();
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'in_stock' } } };
-    await act(async () => { tree.update(<GRNListFiori />); });
+    await act(async () => { tree.update(grnListElement()); });
     // The change itself read the first page of the new filter.
     expect(getAllGRNItems).toHaveBeenCalledTimes(2);
     expect(reads()[1]).toMatchObject({ p_limit: 20, p_offset: 0, p_filters: expect.objectContaining({ stock_status: 'in_stock' }) });

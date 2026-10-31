@@ -6,6 +6,7 @@
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { AccessibilityInfo } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
@@ -71,6 +72,8 @@ jest.mock('@/config/centralSession', () => ({
   fetchCentralProfile: jest.fn(async () => ({ ok: true })),
   updateCentralName: jest.fn(),
 }));
+// The test renderer has no native node to name: the box gets a handle, so the focus move can be seen.
+jest.mock('react-native/Libraries/ReactNative/RendererProxy', () => ({ ...jest.requireActual('react-native/Libraries/ReactNative/RendererProxy'), findNodeHandle: jest.fn(() => 7) }));
 jest.mock('@/config/centralFacilities', () => ({
   ...jest.requireActual('@/config/centralFacilities'),
   loadMyFacilities: jest.fn(),
@@ -134,6 +137,8 @@ const facility = (name: string, status: MyFacility['status'], city = 'Rajkot'): 
   status,
   lastOpenedAt: null,
   addedAt: '',
+  source: 'catalogue',
+  gone: false,
 });
 /** A catalogue entry as centralSession.ts reads it; `online: null` is a catalogue from before central 0.8.0. */
 const entry = (id: string, name: string, town: string, extra: Partial<CatalogueFacility> = {}): CatalogueFacility => ({
@@ -287,18 +292,25 @@ describe('central sign-in', () => {
   const tick = () => press(tree!.root.find(node => node.props.testID === 'accept-terms' && typeof node.props.onPress === 'function'));
   const checked = () => tree!.root.find(node => node.props.testID === 'accept-terms' && typeof node.props.onPress === 'function').props.accessibilityState.checked;
 
-  it('on a first sign-in "Send code" is disabled until the terms are ticked, and sends nothing before', async () => {
+  const termsError = () => tree!.root.findAll(node => node.props.testID === 'accept-terms-error');
+
+  it('on a first sign-in "Send code" stays pressable; unticked, a tap sends nothing and says to tick the box', async () => {
     jest.mocked(requestCentralCode).mockResolvedValue({ ok: true, resendAfterSeconds: 60, expiresAt: null });
     await render(<CentralLoginScreen />);
     await type('9000000001');
     expect(checked()).toBe(false);
-    expect(button('Send code').props.disabled).toBe(true);
-    // Even a press that reaches the handler (the keyboard's send key) sends nothing.
+    expect(button('Send code').props.disabled).toBe(false);
+    expect(termsError()).toHaveLength(0);
+    const setFocus = jest.spyOn(AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
     await press(button('Send code'));
     expect(requestCentralCode).not.toHaveBeenCalled();
+    expect(JSON.stringify(termsError()[0].props.children)).toContain('Tick the box above to continue');
+    // The focus goes to the box.
+    expect(setFocus).toHaveBeenCalledWith(7);
 
     await tick();
     expect(checked()).toBe(true);
+    expect(termsError()).toHaveLength(0);
     expect(button('Send code').props.disabled).toBe(false);
     await press(button('Send code'));
     expect(requestCentralCode).toHaveBeenCalledTimes(1);
@@ -306,9 +318,12 @@ describe('central sign-in', () => {
     expect(getCentralState().signInPhone).toBe('+919000000001');
     expect(router.push).toHaveBeenCalledWith('/central-otp');
 
-    // Unticking disables it again.
+    // Unticking makes a tap say so again, without sending.
     await tick();
-    expect(button('Send code').props.disabled).toBe(true);
+    jest.mocked(requestCentralCode).mockClear();
+    await press(button('Send code'));
+    expect(requestCentralCode).not.toHaveBeenCalled();
+    expect(termsError().length).toBeGreaterThan(0);
   });
 
   const tickShown = () => tree!.root.findAll(node => node.props.testID === 'accept-terms').length > 0;
@@ -324,7 +339,6 @@ describe('central sign-in', () => {
     // Bhavin types his number on the same phone: the terms are asked of him.
     await type('9000000002');
     expect(tickShown()).toBe(true);
-    expect(button('Send code').props.disabled).toBe(true);
     jest.mocked(requestCentralCode).mockResolvedValue({ ok: true, resendAfterSeconds: 60, expiresAt: null });
     await press(button('Send code'));
     expect(requestCentralCode).not.toHaveBeenCalled();
@@ -347,7 +361,6 @@ describe('central sign-in', () => {
     jest.mocked(AsyncStorage.getItem).mockImplementationOnce(() => new Promise(() => undefined));
     await type('9000000002');
     expect(tickShown()).toBe(true);
-    expect(button('Send code').props.disabled).toBe(true);
     jest.mocked(requestCentralCode).mockResolvedValue({ ok: true, resendAfterSeconds: 60, expiresAt: null });
     await press(button('Send code'));
     expect(requestCentralCode).not.toHaveBeenCalled();
@@ -723,7 +736,7 @@ describe('Add facility', () => {
     });
     await render(<FacilityCatalogueScreen />);
     await press(byTestID('catalogue-gondal-agro'));
-    expect(addMyFacility).toHaveBeenCalledWith('asha', { origin: 'https://gondal-agro.example.test', name: 'Gondal Agro Cold Storage', city: 'Gondal' });
+    expect(addMyFacility).toHaveBeenCalledWith('asha', { origin: 'https://gondal-agro.example.test', name: 'Gondal Agro Cold Storage', city: 'Gondal', source: 'catalogue' });
     expect(router.back).toHaveBeenCalledTimes(1);
     expect(openFacility).toHaveBeenCalledWith('https://gondal-agro.example.test', 'Gondal Agro Cold Storage');
   });

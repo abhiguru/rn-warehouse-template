@@ -5,7 +5,7 @@
  * their numbers. docs/STYLE_GUIDE.md §14.12 and §13.9.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -94,6 +94,21 @@ export default function DocumentNumberingScreen() {
     [load]
   );
 
+  // "Refresh" in the edit sheet read the rules the server holds: show them. The rule equals the one that was sent: the
+  // change went through, the sheet closes. Otherwise the sheet stays open with the person's values.
+  const refreshed = useCallback((next: NumberingRule[], savedNow: boolean) => {
+    requestRef.current += 1;
+    setRules(next);
+    setError(null);
+    setBusy(false);
+    // The rows are also read again, so they show what the server holds now and not only what this one answer said.
+    void load();
+    if (savedNow) {
+      setEditing(null);
+      showToast(tr('numbering.edit.savedNow'));
+    }
+  }, [load]);
+
   // The same header whether the screen opens or tells the person it is for administrators.
   const header = (
     <Stack.Screen
@@ -125,7 +140,20 @@ export default function DocumentNumberingScreen() {
     <View style={styles.screen}>
       {header}
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            // Pull to refresh reads the rules again; the spinner of the first load is the screen's own.
+            refreshing={busy && rules !== null}
+            onRefresh={() => void load()}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
+            progressBackgroundColor={t.surface.card}
+          />
+        }
+      >
         <Text style={styles.intro}>{tr('numbering.screen.intro')}</Text>
         {rules === null && busy ? (
           <ActivityIndicator style={styles.loading} color={t.brand.tint} accessibilityLabel={tr('common.loading')} />
@@ -153,7 +181,7 @@ export default function DocumentNumberingScreen() {
         ) : null}
         {rules && error ? <Text style={styles.staleNote}>{error}</Text> : null}
       </ScrollView>
-      <NumberingEditSheet rule={editingRule} onClose={() => setEditing(null)} onSaved={saved} />
+      <NumberingEditSheet rule={editingRule} onClose={() => setEditing(null)} onSaved={saved} onRefreshed={refreshed} onUnconfirmed={() => void load()} />
     </View>
   );
 }

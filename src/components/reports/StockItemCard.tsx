@@ -52,7 +52,7 @@ import {
 import { EXPAND_ANIMATION, animateExpand } from '@/utils/layoutMotion';
 import { StatusTag } from '@/components/ui';
 import { Button } from '@/components/ui/Button';
-import { formatCount, formatIndiaDate, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatIndiaSpokenDate, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { FactLines, joinFacts } from './FactLines';
@@ -372,8 +372,8 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
   const isNavigable = !!grnId && !!onOpen;
 
   const title = tr('reports.shared.grnNumber', { number: formatIdentifier(grn.grNo) });
-  const received = grn.receivedDate ? tr('reports.shared.receivedOn', { date: formatIndiaDate(grn.receivedDate, 'short') }) : null;
-  const emptied = grn.emptiedDate ? tr('reports.stockSummary.emptiedOn', { date: formatIndiaDate(grn.emptiedDate, 'short') }) : null;
+  const received = grn.receivedDate ? tr('reports.shared.receivedOn', { date: formatIndiaDate(grn.receivedDate) }) : null;
+  const emptied = grn.emptiedDate ? tr('reports.stockSummary.emptiedOn', { date: formatIndiaDate(grn.emptiedDate) }) : null;
   // The mark is an identifier: a fact of the footnote line, which wraps rather than cuts it (§4).
   const facts = [
     grn.packageMark ? tr('reports.stockSummary.packageMark', { mark: grn.packageMark }) : null,
@@ -390,8 +390,8 @@ const GRNRowView: React.FC<StockGRNRowProps & { styles: Styles; t: ThemeTokens }
     title,
     grn.packageMark ? tr('reports.shared.markA11y', { mark: grn.packageMark }) : null,
     grn.customerName || null,
-    received,
-    emptied,
+    grn.receivedDate ? tr('reports.shared.receivedOn', { date: formatIndiaSpokenDate(grn.receivedDate) }) : null,
+    grn.emptiedDate ? tr('reports.stockSummary.emptiedOn', { date: formatIndiaSpokenDate(grn.emptiedDate) }) : null,
     joinFacts(facts.slice(1)) || null,
     stockPhrase(grn.stock, grn.total),
     weightEach,

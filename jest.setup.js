@@ -1,3 +1,9 @@
+// A phone has navigator.product === 'ReactNative'; Node has none. React Navigation's useLatestCallback
+// refreshes its reference at a different point without it (a passive effect instead of an insertion
+// effect), so tests would run the route guard on a navigator state one commit old, which never happens
+// on a phone.
+Object.defineProperty(globalThis.navigator, 'product', { value: 'ReactNative', configurable: true });
+
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );

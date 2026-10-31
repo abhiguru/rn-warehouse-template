@@ -4,7 +4,7 @@
  * and wording cannot drift apart between screens.
  */
 import { formatIdentifier, localizeDigits, normalizeDigits, t } from '@/i18n';
-import { formatDate, formatNumber as formatQuantity, parseLocalISODate } from '@/utils/formatters';
+import { formatDate, formatNumber as formatQuantity, formatSpokenDate, parseLocalISODate } from '@/utils/formatters';
 import { presetLabel, resolveDateRange } from './datePresets';
 import { parseQuickSearch, type QuickSearchResult } from './parseQuickSearch';
 import {
@@ -138,21 +138,22 @@ export const financialYearLabel = (startYear: number) =>
 /** The financial year (April to March) a date falls in, as its starting year. */
 export const financialYearOf = (date: Date) => (date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1);
 
-const dateText = (iso?: string) => (iso ? formatDate(parseLocalISODate(iso), 'short') : '');
+const dateText = (iso?: string, spoken = false) => (iso ? (spoken ? formatSpokenDate : formatDate)(parseLocalISODate(iso)) : '');
 
-export function describeDateRange(range: { from?: string; to?: string }): string {
+/** `spoken` words the dates ("9 Oct 2026") for a screen reader's label; the default is the visible DD/MM/YY. */
+export function describeDateRange(range: { from?: string; to?: string }, spoken = false): string {
   if (range.from && range.to) {
     return range.from === range.to
-      ? dateText(range.from)
-      : t('filters.chip.dateBetween', { from: dateText(range.from), to: dateText(range.to) });
+      ? dateText(range.from, spoken)
+      : t('filters.chip.dateBetween', { from: dateText(range.from, spoken), to: dateText(range.to, spoken) });
   }
-  if (range.from) return t('filters.chip.dateFrom', { date: dateText(range.from) });
-  if (range.to) return t('filters.chip.dateUntil', { date: dateText(range.to) });
+  if (range.from) return t('filters.chip.dateFrom', { date: dateText(range.from, spoken) });
+  if (range.to) return t('filters.chip.dateUntil', { date: dateText(range.to, spoken) });
   return '';
 }
 
 /** Chip text for an active value: the value itself, short. */
-export function describeValue(field: FilterFieldDef, value: FilterValue | undefined): string {
+export function describeValue(field: FilterFieldDef, value: FilterValue | undefined, spoken = false): string {
   if (!isFieldActive(field, value)) return field.label;
   switch (field.kind) {
     case 'choice':
@@ -168,7 +169,7 @@ export function describeValue(field: FilterFieldDef, value: FilterValue | undefi
     case 'dateRange': {
       const range = value as DateRangeValue;
       if (range.preset) return presetLabel(range.preset) ?? field.label;
-      return describeDateRange(resolveDateRange(range));
+      return describeDateRange(resolveDateRange(range), spoken);
     }
     case 'numberRange': {
       const { min, max } = value as NumberRangeValue;

@@ -43,6 +43,7 @@ export const components = {
     retryLabel: 'Retry loading configuration',
     changeServer: 'Change server',
     changeServerLabel: 'Change warehouse server',
+    backToFacilitiesLabel: 'Back to My facilities',
     footer: 'If this keeps happening, contact your facility.',
   },
   errorBoundary: {
@@ -97,6 +98,7 @@ export const components = {
     noLink: 'Ask the facility where to get the new version.',
   },
   upgrading: {
+    title: 'Server being updated',
     message: "The facility's server is being updated. Try again in a few minutes.",
   },
   invalidRoute: {
@@ -146,6 +148,9 @@ export const components = {
   },
   wizard: {
     createGrn: 'Create GRN',
+    review: 'Review',
+    addItem: 'Add item',
+    saveChanges: 'Save changes',
   },
   sharePdf: 'Share PDF',
   preparingPdf: 'Preparing PDF…',
@@ -171,6 +176,11 @@ export const components = {
     orderUpdated: 'Order updated',
     statusChanged: 'Order status changed',
     dispatchCreated: 'Dispatch created: {{number}}',
+    // Built from the entry's action code, not from the server's English title.
+    lineAdded: 'Added: {{item}}',
+    lineRemoved: 'Removed: {{item}}',
+    dispatchTook: 'Dispatch {{number}} took {{bags}} from {{item}}',
+    dispatchDeletedGaveBack: 'Dispatch {{number}} deleted: {{bags}} given back to {{item}}',
     availableStock: 'Available stock: {{stock}}',
     availableStockWas: 'Available stock: {{stock}} (was {{previous}})',
     by: 'by {{name}}',
@@ -180,6 +190,7 @@ export const components = {
     dialogLabel: '{{title}}, {{noun}} {{number}}',
     financialYear: 'Financial year',
     totalAmount: 'Total amount',
+    totalQuantity: 'Total quantity',
     grn: {
       createdTitle: 'GRN created',
       updatedTitle: 'GRN updated',

@@ -17,16 +17,17 @@ const manifest = JSON.parse(readFileSync(new URL('./security-backports.json', im
 const lock = JSON.parse(readFileSync(resolve(project, 'package-lock.json'), 'utf8'));
 const cliDirectory = dirname(createRequire(resolve(project, 'node_modules/expo/package.json')).resolve('@expo/cli/package.json'));
 const serverFile = join(relative(project, cliDirectory), 'build/src/start/server/metro/runServer-fork.js');
+const paperDates = JSON.parse(readFileSync(new URL('./paper-dates-patch.json', import.meta.url)));
 const named = name => Object.keys(lock.packages).filter(path => path === `node_modules/${name}` || path.endsWith(`/node_modules/${name}`));
 
 // A copy of the installed files the check reads, as this checkout has them.
 function installedCopy() {
   const root = mkdtempSync(join(tmpdir(), 'warehouse-check-install-'));
   cpSync(resolve(project, 'package-lock.json'), join(root, 'package-lock.json'));
-  for (const name of ['query-string', 'decode-uri-component', ...new Set([...manifest.files, ...(manifest.unaffected ?? [])].map(entry => entry.package))]) {
+  for (const name of [...new Set([...manifest.files, ...(manifest.unaffected ?? [])].map(entry => entry.package))]) {
     for (const path of named(name)) cpSync(resolve(project, path), join(root, path), { recursive: true });
   }
-  for (const file of ['node_modules/expo/package.json', join(relative(project, cliDirectory), 'package.json'), serverFile]) {
+  for (const file of ['node_modules/react-native-paper-dates/package.json', ...paperDates.map(spec => `node_modules/react-native-paper-dates/${spec.file}`), 'node_modules/expo/package.json', join(relative(project, cliDirectory), 'package.json'), serverFile]) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     cpSync(resolve(project, file), join(root, file));
   }
@@ -35,9 +36,11 @@ function installedCopy() {
 // What each postinstall step adds, taken out again: the file as published.
 const published = {
   'Expo CLI USB loopback adapter': () => [serverFile, source => source.replace("process.env.WAREHOUSE_USB_METRO === '1' ? '127.0.0.1' : host", 'host')],
-  'query-string decoder adapter': () => [join(named('query-string')[0], 'index.js'), source => source.replace(
-    "const decodeComponentModule = require('decode-uri-component');\nconst decodeComponent = typeof decodeComponentModule === 'function' ? decodeComponentModule : decodeComponentModule.default;",
-    "const decodeComponent = require('decode-uri-component');")],
+  'calendar date patch': () => [`node_modules/react-native-paper-dates/${paperDates[1].file}`, source => {
+    const original = paperDates[1].edits.reduceRight((text, edit) => text.replaceAll(edit.after, edit.before), source);
+    assert.equal(createHash('sha256').update(original).digest('hex'), paperDates[1].originalSHA256, 'the fixture is the published file');
+    return original;
+  }],
   'security backport': () => {
     const spec = manifest.files.find(file => file.package === 'braces');
     return [join(named('braces')[0], spec.file), source => {
@@ -80,5 +83,5 @@ test('start, android, ios, web and test run the check first; install still appli
   for (const name of ['start', 'android', 'ios', 'web', 'test']) {
     assert.equal(scripts[`pre${name}`], 'node scripts/check-install.mjs', `pre${name}`);
   }
-  assert.match(scripts.postinstall, /patch-expo-metro\.mjs && node scripts\/patch-navigation-decoder\.mjs && node scripts\/patch-security-backports\.mjs$/);
+  assert.match(scripts.postinstall, /patch-expo-metro\.mjs && node scripts\/patch-security-backports\.mjs && node scripts\/patch-paper-dates\.mjs$/);
 });

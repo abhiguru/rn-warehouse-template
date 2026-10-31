@@ -20,7 +20,7 @@ export default function FacilityAddressScreen() {
         if (!userId) return;
         const name = facilityNameOf(server);
         void (async () => {
-          await addMyFacility(userId, { origin: server.origin, name, instanceId: server.instanceId });
+          await addMyFacility(userId, { origin: server.origin, name, instanceId: server.instanceId, source: 'address' });
           router.dismissTo('/facilities');
           await openFacility(server.origin, name);
         })();

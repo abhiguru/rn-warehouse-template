@@ -1,5 +1,6 @@
 /** Items search that matches nothing: the message and Clear search show (not a blank list). */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet, Text } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import ItemsScreen from '../../../app/items';
@@ -73,7 +74,7 @@ describe('Items search with no match', () => {
   it('says nothing matches and offers Clear search', async () => {
     jest.mocked(itemService.getItemList).mockImplementation((async (filters: { search?: string }) =>
       filters.search === 'zzzz' ? listOf([]) : listOf(ITEMS)) as never);
-    await act(async () => { tree = create(<ItemsScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     expect(shownText()).toContain('Garlic');
     await type('zzzz');
     expect(shownText()).toContain('No items match "zzzz". Try fewer letters.');

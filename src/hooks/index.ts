@@ -5,7 +5,6 @@
  * Import from '@/hooks' for cleaner imports.
  */
 
-export { useTokenExpiryCheck } from './useTokenExpiryCheck';
 export { useAuthGuard } from './useAuthGuard';
 export { useDeepLinkGuard, validateGrnAccess, validateDispatchAccess, validateInvoiceAccess } from './useDeepLinkGuard';
 export type { ResourceType } from './useDeepLinkGuard';

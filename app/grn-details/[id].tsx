@@ -54,6 +54,7 @@ import {
 } from '@/components/grn-details';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { parseOrderEffects, previewDeleteGrn, withOrderEffects } from '@/services/orderEffects';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
@@ -63,6 +64,7 @@ import { showAlert } from '@/utils/alert';
 import { formatCount } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText, failureText } from '@/utils/serverText';
+import { deleteBlockedText } from '@/features/grn/utils/deleteRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
 import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
 import { invoiceTableFrom } from '@/components/common/invoiceTable';
@@ -239,8 +241,11 @@ function GRNDetailScreen() {
       setIsUploadingImage(true);
       const result = await uploadGRNImage(picked.assets[0], id, 'header');
       if (!result.success) {
-        setSnackbarMessage(serverText(result.error, tr('grn.details.imageUploadFailed'), { write: true, photo: true }));
+        const failure = serverText(result.error, tr('grn.details.imageUploadFailed'), { write: true, photo: true });
+        setSnackbarMessage(failure);
         setSnackbarVisible(true);
+        // "No answer ... may have gone through": the photos are read again, so the tab shows what the server holds.
+        if (failure === tr('errors.parsed.timeoutWritePhoto')) await fetchGRNDetails();
         return;
       }
       await fetchGRNDetails();
@@ -257,6 +262,14 @@ function GRNDetailScreen() {
 
   const handleDeleteImage = (image: GRNImageData) => {
     if (imageMutationRef.current || deleteRunningRef.current) return;
+    // A GRN keeps at least one GRN photo (the Edit form asks for one too): the only one is not offered for deletion.
+    // The server refuses it as well; this saves the question and the trip.
+    const grnPhotoCount = ((data?.grn as any)?.processed_header_images || []).length;
+    if (image.category === 'header' && grnPhotoCount <= 1) {
+      setSnackbarMessage(tr('grn.refusal.lastPhoto'));
+      setSnackbarVisible(true);
+      return;
+    }
     imageMutationRef.current = true;
     showAlert(tr('grn.details.deleteImageTitle'), tr('grn.details.deleteImageMessage'), [
       { text: tr('common.cancel'), style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
@@ -271,7 +284,9 @@ function GRNDetailScreen() {
               await fetchGRNDetails();
               setSnackbarMessage(result.partial ? serverText(result.error, tr('grn.details.imageRemoved'), { write: true, photo: true }) : tr('grn.details.imageDeleted'));
             } else {
-              setSnackbarMessage(serverText(result.error, tr('grn.details.imageDeleteFailed'), { write: true, photo: true }));
+              const failure = serverText(result.error, tr('grn.details.imageDeleteFailed'), { write: true, photo: true });
+              setSnackbarMessage(failure);
+              if (failure === tr('errors.parsed.timeoutWritePhoto')) await fetchGRNDetails();
             }
           } catch {
             setSnackbarMessage(tr('grn.details.imageDeleteFailed'));
@@ -521,12 +536,26 @@ function GRNDetailScreen() {
   };
 
   // Handle delete GRN
-  const handleDeleteGRN = () => {
+  const askingDeleteRef = useRef(false);
+  // Delete was tapped and the orders it would change are being read: the button says so (the read is capped).
+  const [checkingOrders, setCheckingOrders] = useState(false);
+  const handleDeleteGRN = async () => {
+    // The question names the orders that lose lines (migration 128); an older server has no preview and it is asked as before.
+    if (askingDeleteRef.current || deleteRunningRef.current) return;
+    askingDeleteRef.current = true;
+    setCheckingOrders(true);
+    let orderEffects: Awaited<ReturnType<typeof previewDeleteGrn>>;
+    try {
+      orderEffects = id ? await previewDeleteGrn(id) : null;
+    } finally {
+      askingDeleteRef.current = false;
+      setCheckingOrders(false);
+    }
     showAlert(
       data?.grn?.gr_no
         ? tr('grn.details.deleteTitle', { number: formatIdentifier(data.grn.gr_no) })
         : tr('grn.details.deleteTitleNoNumber'),
-      tr('grn.details.deleteMessage'),
+      withOrderEffects(tr('grn.details.deleteMessage'), orderEffects),
       [
         { text: tr('common.cancel'), style: 'cancel' },
         {
@@ -579,7 +608,8 @@ function GRNDetailScreen() {
               }
 
               if (result.success) {
-                const message = serverText(result.message, grNumber ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(grNumber) }) : tr('grn.details.deleted'));
+                // The app's own sentence in the app's language, never the server's English.
+                const message = grNumber ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(grNumber) }) : tr('grn.details.deleted');
                 const details = result.deleted_counts
                   ? tr('grn.details.removedCounts', {
                       items: formatCount(result.deleted_counts.grn_items, 'item'),
@@ -589,22 +619,12 @@ function GRNDetailScreen() {
                     })
                   : '';
 
-                showDeleted(message + details);
+                showDeleted(withOrderEffects(message + details, parseOrderEffects(result.order_effects), 'doneLead'));
               } else {
-                let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true, delete: true });
-
-                if (result.blocking_dependencies) {
-                  const deps = result.blocking_dependencies;
-                  if (deps.invoiced_dispatches) {
-                    errorMessage += `\n\n${tr('grn.details.dispatchItemsInvoiced', { count: deps.invoiced_dispatches })}`;
-                  } else if (deps.dispatches) {
-                    errorMessage += `\n\n${tr('grn.details.dispatchItemsRecorded', { count: deps.dispatches })}`;
-                  }
-
-                  if (result.instructions) {
-                    errorMessage += `\n\n${result.instructions}`;
-                  }
-                }
+                // Dispatch lines in the way: one sentence in the app's words, not the server's English as well.
+                const errorMessage =
+                  deleteBlockedText(grNumber, result.blocking_dependencies) ??
+                  serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true, delete: true });
 
                 showAlert(tr('grn.details.deleteFailedTitle'), errorMessage);
               }
@@ -866,6 +886,7 @@ function GRNDetailScreen() {
               can_edit={canEdit}
               can_delete={canDelete}
               is_deleting={isDeleting}
+              is_checking_orders={checkingOrders}
               onEdit={handleEditGRN}
               onDelete={handleDeleteGRN}
               onSharePDF={handleSharePDF}

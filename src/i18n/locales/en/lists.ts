@@ -17,7 +17,7 @@ export const lists = {
     grnRef: 'GRN {{number}}',
     colKgEach: 'Kg each',
     colQty: 'Qty',
-    colGrn: 'GRN',
+    colGrnReceived: 'GRN/Received',
   },
   // Defaults of the empty state
   empty: {
@@ -113,7 +113,6 @@ export const lists = {
   order: {
     title: 'Orders',
     activeSection: 'Active orders',
-    emptySection: 'Empty orders',
     statusOpen: 'Open',
     statusEmpty: 'Empty',
     statusDeactivated: 'Deactivated',
