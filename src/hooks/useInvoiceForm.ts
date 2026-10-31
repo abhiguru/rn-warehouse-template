@@ -68,6 +68,7 @@ import {
   checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
 import { transformFormDataToPayload } from '@/features/invoice/utils/invoicePayload';
+import { forgetUnfinishedSave, releaseUnfinishedSave } from '@/services/unfinishedSaves';
 import { createRequestKeyKeeper } from '@/utils/requestKeyKeeper';
 import { newInvoiceRequestKey } from '@/features/invoice/utils/requestKey';
 import { sendUntilAnswered } from '@/features/invoice/utils/lostAnswerSubmit';
@@ -765,8 +766,14 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         onLocked: setLostAnswer,
       });
       // The person left the form while the server was asked: there is nobody to tell.
-      if (outcome === 'left') return { success: false, left: true };
+      if (outcome === 'left') {
+        // Still in doubt when the answer was lost: the screen no longer owns the note, the next start may settle it.
+        if (isCreateMode) releaseUnfinishedSave(requestKey);
+        return { success: false, left: true };
+      }
       const result = outcome;
+      // The attempt is settled (the server's answer, or the answer it stored): nothing is left for the start-up check.
+      if (isCreateMode) void forgetUnfinishedSave(requestKey);
       // The server answered: this save is settled, the next one is a new request.
       requestKeys.current.settle();
 

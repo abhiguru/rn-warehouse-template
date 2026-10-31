@@ -567,7 +567,9 @@ export const errors = {
     title: 'Earlier save',
     grnSaved: 'GRN {{number}} for {{customer}} was saved.',
     dispatchSaved: 'Dispatch {{number}} for {{customer}} was saved.',
+    invoiceSaved: 'Invoice {{number}} for {{customer}} was saved.',
     grnNotFound: 'No saved GRN {{number}} for {{customer}} was found. Enter it again if you still need it.',
     dispatchNotFound: 'No saved dispatch {{number}} for {{customer}} was found. Enter it again if you still need it.',
+    invoiceNotFound: 'No saved invoice {{number}} for {{customer}} was found. Enter it again if you still need it.',
   },
 };

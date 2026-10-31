@@ -87,6 +87,29 @@ describe('a create the server saved', () => {
     expect(await keys()).toEqual([]);
   });
 
+  it('an invoice: the same, with the invoice wording and its id', async () => {
+    const invoice = { kind: 'invoice' as const, requestKey: 'warehouse-invoice-create-1', number: '12', customerName: 'Green Valley Traders' };
+    await fromEarlierRun(invoice);
+    ask.mockResolvedValue({ found: true, response: { success: true, invoice_id: 'inv-id-1' } });
+
+    await checkUnfinishedSaves({ ask, open });
+
+    expect(alerts()[0][1]).toBe('Invoice 12 for Green Valley Traders was saved.');
+    alerts()[0][2]?.[1].onPress?.();
+    expect(open).toHaveBeenCalledWith('invoice', 'inv-id-1');
+    expect(await keys()).toEqual([]);
+  });
+
+  it('an invoice that was not found says so', async () => {
+    const invoice = { kind: 'invoice' as const, requestKey: 'warehouse-invoice-create-2', number: '12', customerName: 'Green Valley Traders' };
+    await fromEarlierRun(invoice);
+    ask.mockResolvedValue({ found: false });
+
+    await checkUnfinishedSaves({ ask, open });
+
+    expect(alerts()[0][1]).toBe('No saved invoice 12 for Green Valley Traders was found. Enter it again if you still need it.');
+  });
+
   it('an answer without the document id has OK alone', async () => {
     await fromEarlierRun(grn);
     ask.mockResolvedValue({ found: true, response: { success: true } });

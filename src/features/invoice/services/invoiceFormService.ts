@@ -18,6 +18,7 @@ import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculat
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
+import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 import { isServerRefusal, markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
 import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { createLogger } from '@/utils/logger';
@@ -704,6 +705,29 @@ export const invoiceFromStoredAnswer = async (
  * and asks the server, and sends this same save again only if the server holds no answer for the code.
  */
 export const createInvoice = async (
+  payload: CreateInvoicePayload,
+  requestKey?: string,
+  options: InvoiceSaveOptions = {}
+): Promise<CreateInvoiceResponse> => {
+  // Written down before the request goes out: if the app dies with the answer still lost, the next start asks the
+  // server about this code (src/services/unfinishedSaves.ts), as for a GRN and a dispatch.
+  if (requestKey && !options.resend) {
+    await rememberUnfinishedSave({
+      kind: 'invoice',
+      requestKey,
+      number: String(payload.header.inv_no),
+      customerName: payload.header.customer_name,
+    });
+  }
+  const result = await sendCreateInvoice(payload, requestKey, options);
+  // The server's own answer (saved or refused), or a failure before the request left: nothing is left in doubt. A lost
+  // answer keeps its note, and so does a number refused on a resend (the first send may have saved it): the caller's
+  // check settles those.
+  if (requestKey && !result.lostAnswer && !(options.resend && result.numberTaken)) await forgetUnfinishedSave(requestKey);
+  return result;
+};
+
+const sendCreateInvoice = async (
   payload: CreateInvoicePayload,
   requestKey?: string,
   options: InvoiceSaveOptions = {}

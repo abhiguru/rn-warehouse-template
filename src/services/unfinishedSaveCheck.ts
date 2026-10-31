@@ -39,8 +39,11 @@ export const ASK_AFTER_MS = LOST_ANSWER_MIN_WAIT_MS + 20_000;
 /** The id of the saved document in the answer the server stored under the code; undefined when it holds none. */
 export function savedIdOf(kind: UnfinishedSaveKind, response: unknown): string | undefined {
   if (typeof response !== 'object' || response === null) return undefined;
-  const body = response as { dispatch_id?: unknown; data?: { grn_id?: unknown; dispatch_id?: unknown } | null };
-  const id = kind === 'grn' ? body.data?.grn_id : (body.dispatch_id ?? body.data?.dispatch_id);
+  const body = response as { dispatch_id?: unknown; invoice_id?: unknown; data?: { grn_id?: unknown; dispatch_id?: unknown; invoice_id?: unknown } | null };
+  const id =
+    kind === 'grn' ? body.data?.grn_id
+    : kind === 'invoice' ? (body.invoice_id ?? body.data?.invoice_id)
+    : (body.dispatch_id ?? body.data?.dispatch_id);
   return typeof id === 'string' && id !== '' ? id : undefined;
 }
 
@@ -125,12 +128,23 @@ async function run(options: UnfinishedSaveCheckOptions, generation: number): Pro
   }
 }
 
+const SAVED_TEXT = {
+  grn: 'errors.unfinished.grnSaved',
+  dispatch: 'errors.unfinished.dispatchSaved',
+  invoice: 'errors.unfinished.invoiceSaved',
+} as const;
+const NOT_FOUND_TEXT = {
+  grn: 'errors.unfinished.grnNotFound',
+  dispatch: 'errors.unfinished.dispatchNotFound',
+  invoice: 'errors.unfinished.invoiceNotFound',
+} as const;
+
 function tell(entry: UnfinishedSave, answer: SubmissionResult, open: UnfinishedSaveCheckOptions['open']): void {
   const params = { number: formatIdentifier(entry.number), customer: entry.customerName };
   if (!answer.found) {
     showAlert(
       t('errors.unfinished.title'),
-      t(entry.kind === 'grn' ? 'errors.unfinished.grnNotFound' : 'errors.unfinished.dispatchNotFound', params),
+      t(NOT_FOUND_TEXT[entry.kind], params),
       [{ text: t('common.ok') }]
     );
     return;
@@ -138,7 +152,7 @@ function tell(entry: UnfinishedSave, answer: SubmissionResult, open: UnfinishedS
   const id = savedIdOf(entry.kind, answer.response);
   showAlert(
     t('errors.unfinished.title'),
-    t(entry.kind === 'grn' ? 'errors.unfinished.grnSaved' : 'errors.unfinished.dispatchSaved', params),
+    t(SAVED_TEXT[entry.kind], params),
     // OK is the secondary button and Open the main action, on the right (docs/STYLE_GUIDE.md §13.9).
     id
       ? [{ text: t('common.ok'), style: 'cancel' }, { text: t('common.open'), onPress: () => open(entry.kind, id) }]

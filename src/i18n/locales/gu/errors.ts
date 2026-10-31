@@ -572,7 +572,9 @@ export const errors: Translation<typeof source> = {
     title: 'અગાઉ સાચવેલું',
     grnSaved: '{{customer}} માટેની આવક પાવતી {{number}} સચવાઈ ગઈ.',
     dispatchSaved: '{{customer}} માટેની જાવક {{number}} સચવાઈ ગઈ.',
+    invoiceSaved: '{{customer}} માટેનું ઇન્વૉઇસ {{number}} સચવાઈ ગયું.',
     grnNotFound: '{{customer}} માટેની સચવાયેલી આવક પાવતી {{number}} મળી નથી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
     dispatchNotFound: '{{customer}} માટેની સચવાયેલી જાવક {{number}} મળી નથી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
+    invoiceNotFound: '{{customer}} માટેનું સચવાયેલું ઇન્વૉઇસ {{number}} મળ્યું નથી. હજુ જરૂર હોય તો ફરી દાખલ કરો.',
   },
 };
