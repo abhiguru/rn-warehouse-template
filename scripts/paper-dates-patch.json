@@ -50,5 +50,114 @@
         "count": 1
       }
     ]
+  },
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "lib/module/Date/DatePickerModalContentHeader.js",
+    "originalSHA256": "237b53dc08d7bf98aef9b48e1eadad5d04c85af475f4e125ca237215ce95efd4",
+    "patchedSHA256": "f4dcf03452441745093acebf3d7ca75a25335d031c366e1cb090082dcd741c84",
+    "edits": [
+      {
+        "before": "  const formatter = useMemo(() => {\n    return new Intl.DateTimeFormat(locale, {\n      month: 'short',\n      day: 'numeric'\n    });\n  }, [locale]);\n",
+        "after": "  const formatter = useMemo(() => dayMonthYearFormatter(locale, true), [locale]);\n",
+        "count": 3
+      },
+      {
+        "before": "import { useMemo } from 'react';\n",
+        "after": "import { useMemo } from 'react';\nimport { dayMonthYearFormatter } from './dateUtils';\n",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "lib/commonjs/Date/DatePickerModalContentHeader.js",
+    "originalSHA256": "d6dde5a8813ef1796f9258f587359f50a8ae7cfa525624a1a71df25497a1d638",
+    "patchedSHA256": "946286ac66b45adfc1c3a9f719f24f7d8e99ed7a9822cbce0ed86a7ce805feae",
+    "edits": [
+      {
+        "before": "  const formatter = (0, _react.useMemo)(() => {\n    return new Intl.DateTimeFormat(locale, {\n      month: 'short',\n      day: 'numeric'\n    });\n  }, [locale]);\n",
+        "after": "  const formatter = (0, _react.useMemo)(() => (0, _dateUtils.dayMonthYearFormatter)(locale, true), [locale]);\n",
+        "count": 3
+      },
+      {
+        "before": "var _jsxRuntime = require(\"react/jsx-runtime\");\n",
+        "after": "var _dateUtils = require(\"./dateUtils\");\nvar _jsxRuntime = require(\"react/jsx-runtime\");\n",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "lib/module/Date/dateUtils.js",
+    "originalSHA256": "18eea8c45114fb98579e705de32098b2648e2510bb2fe4718eba0a9103326652",
+    "patchedSHA256": "eaa13479f7182f9f028f27b5a4e3eb82da4fb7982acd830b7c31308048ab1069",
+    "edits": [
+      {
+        "before": "export function useInputFormatter({\n  locale\n}) {\n  return useMemo(() => {\n    return new Intl.DateTimeFormat(locale, {\n      month: '2-digit',\n      day: '2-digit',\n      year: 'numeric'\n    });\n  }, [locale]);\n}\n",
+        "after": "const gujaratiDigits = '૦૧૨૩૪૫૬૭૮૯';\n\n// Day/month/two-digit year, \"09/10/26\", as the app writes every date. With\n// `localDigits` a Gujarati calendar shows Gujarati digits; the typed field keeps\n// ASCII digits because its mask only knows those.\nexport function dayMonthYearFormatter(locale, localDigits) {\n  const two = n => String(n).padStart(2, '0');\n  const gujarati = localDigits && !!locale && locale.startsWith('gu');\n  return {\n    format: date => {\n      const text = `${two(date.getDate())}/${two(date.getMonth() + 1)}/${two(date.getFullYear() % 100)}`;\n      return gujarati ? text.replace(/\\d/g, digit => gujaratiDigits[Number(digit)]) : text;\n    }\n  };\n}\n\nexport function useInputFormatter({\n  locale\n}) {\n  return useMemo(() => dayMonthYearFormatter(locale, false), [locale]);\n}\n",
+        "count": 1
+      },
+      {
+        "before": "export function useInputFormat({\n  formatter,\n  locale\n}) {\n  return useMemo(() => {\n    // TODO: something cleaner and more universal?\n    const inputDate = formatter.format(new Date(2020, 10 - 1, 1));\n    if (inputDate.includes('٢٠٢٠')) {\n      return inputDate.replace('٢٠٢٠', 'YYYY').replace('١٠', 'MM').replace('٠١', 'DD');\n    }\n    return inputDate.replace('2020', locale === 'pt' ? 'AAAA' : 'YYYY').replace('10', 'MM').replace('01', 'DD');\n  }, [formatter, locale]);\n}\n",
+        "after": "export function useInputFormat(_) {\n  return 'DD/MM/YY';\n}\n",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "lib/module/Date/inputUtils.js",
+    "originalSHA256": "95c5e57f043bbc36adf7ef3ad346078375da4f10ad394aef1e0f2408dcd17044",
+    "patchedSHA256": "c0ebea10a00b54a6f1fda37980c9e307ecba92bc6ca25db9c3f130e1ea53ccf7",
+    "edits": [
+      {
+        "before": "    const yearIndex = locale === 'pt' ? inputFormat.indexOf('AAAA') : inputFormat.indexOf('YYYY');\n    const day = Number(date.slice(dayIndex, dayIndex + 2));\n    const year = Number(date.slice(yearIndex, yearIndex + 4));\n",
+        "after": "    const yearIndex = inputFormat.indexOf('YY');\n    const day = Number(date.slice(dayIndex, dayIndex + 2));\n    const year = 2000 + Number(date.slice(yearIndex, yearIndex + 2));\n",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "lib/commonjs/Date/dateUtils.js",
+    "originalSHA256": "f3e8a492725f82746289dc6d72f62fb90bc4717cfe57f0ef97efb946736e6862",
+    "patchedSHA256": "a9d50d6900817347ce45256c4920d48627aacbb0960dd9319f7419f25ef1c4cd",
+    "edits": [
+      {
+        "before": "function useInputFormatter({\n  locale\n}) {\n  return (0, _react.useMemo)(() => {\n    return new Intl.DateTimeFormat(locale, {\n      month: '2-digit',\n      day: '2-digit',\n      year: 'numeric'\n    });\n  }, [locale]);\n}\n",
+        "after": "const gujaratiDigits = '૦૧૨૩૪૫૬૭૮૯';\n\n// Day/month/two-digit year, \"09/10/26\", as the app writes every date. With\n// `localDigits` a Gujarati calendar shows Gujarati digits; the typed field keeps\n// ASCII digits because its mask only knows those.\nfunction dayMonthYearFormatter(locale, localDigits) {\n  const two = n => String(n).padStart(2, '0');\n  const gujarati = localDigits && !!locale && locale.startsWith('gu');\n  return {\n    format: date => {\n      const text = `${two(date.getDate())}/${two(date.getMonth() + 1)}/${two(date.getFullYear() % 100)}`;\n      return gujarati ? text.replace(/\\d/g, digit => gujaratiDigits[Number(digit)]) : text;\n    }\n  };\n}\n\nfunction useInputFormatter({\n  locale\n}) {\n  return (0, _react.useMemo)(() => dayMonthYearFormatter(locale, false), [locale]);\n}\n",
+        "count": 1
+      },
+      {
+        "before": "function useInputFormat({\n  formatter,\n  locale\n}) {\n  return (0, _react.useMemo)(() => {\n    // TODO: something cleaner and more universal?\n    const inputDate = formatter.format(new Date(2020, 10 - 1, 1));\n    if (inputDate.includes('٢٠٢٠')) {\n      return inputDate.replace('٢٠٢٠', 'YYYY').replace('١٠', 'MM').replace('٠١', 'DD');\n    }\n    return inputDate.replace('2020', locale === 'pt' ? 'AAAA' : 'YYYY').replace('10', 'MM').replace('01', 'DD');\n  }, [formatter, locale]);\n}\n",
+        "after": "function useInputFormat(_) {\n  return 'DD/MM/YY';\n}\n",
+        "count": 1
+      },
+      {
+        "before": "exports.differenceInMonths = differenceInMonths;\n",
+        "after": "exports.dayMonthYearFormatter = dayMonthYearFormatter;\nexports.differenceInMonths = differenceInMonths;\n",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "package": "react-native-paper-dates",
+    "version": "0.24.1",
+    "file": "lib/commonjs/Date/inputUtils.js",
+    "originalSHA256": "a762f6fffd47d21c15cc4eddfb09dacfab18ec7c31189452c99cbee5e58a821f",
+    "patchedSHA256": "b3154b3bac76de4e0eb86dbe743961c82bdc072ff28467f70c436ed6b0b81e48",
+    "edits": [
+      {
+        "before": "    const yearIndex = locale === 'pt' ? inputFormat.indexOf('AAAA') : inputFormat.indexOf('YYYY');\n    const day = Number(date.slice(dayIndex, dayIndex + 2));\n    const year = Number(date.slice(yearIndex, yearIndex + 4));\n",
+        "after": "    const yearIndex = inputFormat.indexOf('YY');\n    const day = Number(date.slice(dayIndex, dayIndex + 2));\n    const year = 2000 + Number(date.slice(yearIndex, yearIndex + 2));\n",
+        "count": 1
+      }
+    ]
   }
 ]
