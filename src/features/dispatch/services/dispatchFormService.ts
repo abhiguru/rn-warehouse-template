@@ -24,7 +24,7 @@ import type {
   StockCheckResponse,
 } from '@/types/dispatch.types';
 import { uploadDeferredDispatchImages } from './dispatchImageService';
-import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
+import { emptyAnswerAsError, isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
 import { createRequestKeyKeeper } from '@/utils/requestKeyKeeper';
 import { isServerRefusal, markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
@@ -261,7 +261,10 @@ async function sendUntilAnswered(
   let takenOnResend = false;
   for (;;) {
     const sentAt = Date.now();
-    const { data, error, status } = await send(resent);
+    const sentAnswer = await send(resent);
+    const { data, status } = sentAnswer;
+    // An empty HTTP 200 is no answer of the server's: a lost answer (checked by the request key).
+    const error = sentAnswer.error ?? emptyAnswerAsError(sentAnswer);
     const left = options.signal?.aborted === true;
     // The HTTP status goes with the error: a gateway's 502 / 504 is told from the server's own refusals.
     const failure = error ? withHttpStatus(error, status) : null;

@@ -59,6 +59,16 @@ describe('createInvoice and the unfinished-save note', () => {
     expect(forgetUnfinishedSave).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['empty', { data: null, error: null, status: 200 }],
+    ['not JSON', { data: null, error: { message: '<html>Maintenance</html>' }, status: 200 }],
+  ])('an %s HTTP 200 is a lost answer: the note stays', async (_name, answer) => {
+    answers(answer);
+    const result = await createInvoice(payload, KEY);
+    expect(result.lostAnswer).toBeDefined();
+    expect(forgetUnfinishedSave).not.toHaveBeenCalled();
+  });
+
   it('does not write the note again for a resend of the same save', async () => {
     answers({ data: { success: true, invoice_id: 'inv-1', invoice_no: 12 }, error: null });
     await createInvoice(payload, KEY, { resend: true });

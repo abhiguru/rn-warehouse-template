@@ -30,7 +30,7 @@ import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDup
 import { t, formatIdentifier } from '@/i18n';
 import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { isNumberFormatRefusal } from '@/utils/numberFormatRefusal';
-import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
+import { emptyAnswerAsError, isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -465,6 +465,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         }
       }
 
+      // An empty HTTP 200 is no answer of the server's: a lost answer (checked by the request key).
+      error ??= emptyAnswerAsError({ data: answer, error, status });
       if (error) {
         log.error('save_grn failed', loggableError(error));
         // An ended session ends the sign-in here too, with its reason (the same as on a list read).
@@ -827,6 +829,7 @@ export const updateGRN = async (
       // With rates set, a server that still refuses the call has no p_rates (migration 86 missing).
       if (error && payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
 
+      error ??= emptyAnswerAsError({ data: answer, error, status });
       if (error) {
         log.error('update_grn failed', loggableError(error));
         handleGlobalAuthError(error);

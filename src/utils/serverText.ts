@@ -341,7 +341,28 @@ export function requestMayHaveBeenSent(error: unknown, code?: string): boolean {
  * and ask here. Nothing else re-classifies a failure from its text.
  */
 export function isLostAnswer(error: unknown, code?: string): boolean {
-  return requestMayHaveBeenSent(error, code);
+  return requestMayHaveBeenSent(error, code) || isUnreadableAnswer(error);
+}
+
+/**
+ * True for an HTTP 200 whose body the app could not read: not JSON (postgrest-js hands the text back as the error's
+ * message, with no code) or empty (see `emptyAnswerAsError`). The server may have applied the write and the answer that
+ * came back is no answer of the server's: a LOST ANSWER, checked by its request key like a timeout. An error that has a
+ * code is the server's own refusal, never this.
+ */
+export function isUnreadableAnswer(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { status, code } = error as { status?: unknown; code?: unknown };
+  return status === 200 && (code === undefined || code === null || code === '');
+}
+
+/**
+ * The error that stands for an empty HTTP 200 to a write (no body at all: `data` and `error` are both null). Every write
+ * of these services answers with a JSON document, so an empty one is an answer that did not come through.
+ */
+export function emptyAnswerAsError(answer: { data?: unknown; error?: unknown; status?: number }): { message: string; code: string; status: number } | null {
+  if (answer.error || answer.status !== 200 || (answer.data !== null && answer.data !== undefined)) return null;
+  return { message: 'Empty answer from the server', code: '', status: 200 };
 }
 
 /**
@@ -380,6 +401,7 @@ export function isUnsettledFailure(error: unknown, code?: string): boolean {
   if (isUpgradingAnswer(error)) return true;
   if (isStatementTimeout(error, code)) return true;
   if (isTimeoutError(error) || isNetworkError(error)) return true;
+  if (isUnreadableAnswer(error)) return true;
   if (isSessionExpiredError(error, code)) return true;
   return textsOf(error).some(text => NOT_SENT_TEXT.test(text));
 }

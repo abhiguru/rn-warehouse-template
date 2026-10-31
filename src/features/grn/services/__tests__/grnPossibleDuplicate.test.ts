@@ -179,6 +179,21 @@ describe('a possible duplicate', () => {
   });
 });
 
+describe('an empty or non-JSON HTTP 200', () => {
+  it.each([
+    ['empty', { data: null, error: null, status: 200 }],
+    ['not JSON', { data: null, error: { message: '<html>Maintenance</html>' }, status: 200 }],
+  ])('%s: a lost answer, so the screen checks by the request key', async (_name, answer) => {
+    mockRpc.mockResolvedValueOnce(answer);
+    const result = await createGRN({ header, items });
+    expect(result.success).toBe(false);
+    expect(result.lostAnswer).toBeDefined();
+    expect(result.lostAnswer!.key).toBe(bodies()[0].p_idempotency_key);
+    // Kept: the answer is still to be found out.
+    expect(forgetUnfinishedSave).not.toHaveBeenCalled();
+  });
+});
+
 describe('a server without migration 124', () => {
   it('gets the save again without p_warn_duplicate, and the GRN is created', async () => {
     mockRpc.mockResolvedValueOnce(unknownSignature).mockResolvedValueOnce(saved);

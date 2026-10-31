@@ -16,7 +16,7 @@ import { t } from '@/i18n';
 import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
+import { emptyAnswerAsError, expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
 import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 import { isServerRefusal, markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
@@ -209,7 +209,10 @@ async function sendSave(
 ): Promise<{ data: any; error: any; sentAt: number }> {
   const sentAt = Date.now();
   try {
-    const { data, error, status } = await client.rpc(name, args);
+    const answered = await client.rpc(name, args);
+    const { data, status } = answered;
+    // An empty HTTP 200 is no answer of the server's: a lost answer (checked by the request key).
+    const error = answered.error ?? emptyAnswerAsError(answered);
     // An ended session ends the sign-in here too, with its reason (create and update both come through here).
     handleGlobalAuthError(error ?? (data?.success === false ? data : null));
     if (error && typeof status === 'number') {

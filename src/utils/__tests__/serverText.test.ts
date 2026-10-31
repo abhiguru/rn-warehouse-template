@@ -528,3 +528,22 @@ describe('an expired sign-in (contract item 9)', () => {
     expect(isSessionExpiredError(undefined)).toBe(false);
   });
 });
+
+describe('an HTTP 200 that did not come through', () => {
+  const { isLostAnswer, isUnsettledFailure, emptyAnswerAsError } = jest.requireActual('../serverText');
+
+  it('a non-JSON body (no code) is a lost answer; an error with a code is the server\'s own answer', () => {
+    expect(isLostAnswer({ message: '<html>Maintenance</html>', status: 200 })).toBe(true);
+    expect(isUnsettledFailure({ message: '<html>Maintenance</html>', status: 200 })).toBe(true);
+    expect(isLostAnswer({ message: 'duplicate key', code: '23505', status: 200 })).toBe(false);
+    expect(isLostAnswer({ message: 'bad request', code: '', status: 400 })).toBe(false);
+  });
+
+  it('an empty 200 stands for an error; nothing else does', () => {
+    expect(emptyAnswerAsError({ data: null, error: null, status: 200 })).toMatchObject({ status: 200, code: '' });
+    expect(isLostAnswer(emptyAnswerAsError({ data: undefined, error: null, status: 200 }))).toBe(true);
+    expect(emptyAnswerAsError({ data: { success: true }, error: null, status: 200 })).toBeNull();
+    expect(emptyAnswerAsError({ data: null, error: { message: 'x' }, status: 200 })).toBeNull();
+    expect(emptyAnswerAsError({ data: null, error: null, status: 204 })).toBeNull();
+  });
+});

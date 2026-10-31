@@ -32,6 +32,26 @@ beforeEach(() => {
 });
 afterEach(() => logs.forEach(l => l.mockRestore()));
 
+describe('replaceItemRates and an answer that did not come through', () => {
+  it('an empty HTTP 200 is outcome unknown, not a failure', async () => {
+    rpc.mockResolvedValue({ data: null, error: null, status: 200 });
+    expect(await replaceItemRates(input)).toMatchObject({ success: false, outcomeUnknown: true, message: t('pricing.error.unconfirmed') });
+  });
+
+  it('a non-JSON HTTP 200 is outcome unknown too', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: '<html>Maintenance</html>' }, status: 200 });
+    expect(await replaceItemRates(input)).toMatchObject({ success: false, outcomeUnknown: true });
+  });
+
+  it('sends a request key only when one is given', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: {} }, error: null });
+    await replaceItemRates(input);
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_request_key');
+    await replaceItemRates({ ...input, request_key: 'k-1' });
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_request_key: 'k-1' });
+  });
+});
+
 describe('replaceItemRates', () => {
   it('calls replace_item_rates with the p_ parameters and replace_later false by default', async () => {
     rpc.mockResolvedValue({ data: { success: true, data: {} }, error: null });

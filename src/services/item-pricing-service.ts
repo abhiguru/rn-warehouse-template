@@ -37,7 +37,7 @@ import type { RpcGrnItemRate, RpcGrnItemRates } from '@/types/rpc-canonical.type
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
-import { failureText, serverText, transportText } from '@/utils/serverText';
+import { emptyAnswerAsError, failureText, serverText, transportText } from '@/utils/serverText';
 
 import { rememberRateStartFloor } from './rateStartFloor';
 
@@ -353,7 +353,7 @@ const rateFailure = (errorCode: RateErrorCode, message: string | undefined, extr
 export const replaceItemRates = async (input: ReplaceRatesInput): Promise<ReplaceRatesResult> => {
   try {
     const client = await getAuthenticatedClient();
-    const { data, error } = await withTimeout(
+    const { data, error, status } = await withTimeout(
       Promise.resolve(client.rpc('replace_item_rates', {
         p_item_id: input.item_id,
         p_customer_id: input.customer_id,
@@ -365,6 +365,8 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
         p_move_from: input.move_from ?? null,
         // The rows the editor loaded: the server refuses (STALE_RATES) when it would change one that is not listed.
         ...(input.seen_rows ? { p_seen_rows: input.seen_rows } : {}),
+        // Ready for a request key (the server contract is not out yet): sent only when a caller gives one.
+        ...(input.request_key ? { p_request_key: input.request_key } : {}),
       })),
       RPC_TIMEOUT_MS,
       'Rate change'
@@ -378,6 +380,9 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
       if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return outcomeUnknown();
       return rateFailure(mapped.code, mapped.message);
     }
+
+    // An empty HTTP 200 is no answer of the server's: the rate may be saved (a lost answer, like a timeout).
+    if (emptyAnswerAsError({ data, error, status })) return outcomeUnknown();
 
     const response = unwrapArrayResponse(data) as
       | {
@@ -628,7 +633,7 @@ export const setStandardRate = async (tiers: StandardTier[], options: SetStandar
   const unconfirmed = (): SetStandardRateResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.standard.error.unconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
-    const { data, error } = await withTimeout(
+    const { data, error, status } = await withTimeout(
       Promise.resolve(client.rpc('set_standard_rate', {
         p_tiers: tiers,
         // The version the draft was built from, as the exact string the server sent (never through a Date: it would cut the microseconds).
@@ -648,6 +653,9 @@ export const setStandardRate = async (tiers: StandardTier[], options: SetStandar
       if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return options.dryRun ? { success: false, errorCode: 'UNKNOWN', message: transportText(error, { write: false }) ?? t('pricing.error.generic') } : unconfirmed();
       return { success: false, errorCode: mapped.code, message: mapped.message };
     }
+
+    // An empty HTTP 200 is no answer of the server's: the rate may be saved (a dry run writes nothing).
+    if (!options.dryRun && emptyAnswerAsError({ data, error, status })) return unconfirmed();
 
     const response = unwrapArrayResponse(data) as
       | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown; updated_at?: unknown } | null }

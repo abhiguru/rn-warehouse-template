@@ -185,6 +185,8 @@ export interface ReplaceRatesInput {
   replace_later?: boolean;
   /** Ids of the rows of this scope the screen loaded; the server answers STALE_RATES when it would change another. */
   seen_rows?: string[];
+  /** A request key for the save (the server contract is not out yet): sent as p_request_key only when given. */
+  request_key?: string;
   /**
    * 'change' (default): rates from starts_on on. 'correct': starts_on must be the start of the rate
    * in force; only the rows starting that day are replaced and later rates are never touched.
