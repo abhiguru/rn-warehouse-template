@@ -37,7 +37,7 @@ import type { RpcGrnItemRate, RpcGrnItemRates } from '@/types/rpc-canonical.type
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
-import { emptyAnswerAsError, failureText, serverText, transportText } from '@/utils/serverText';
+import { emptyAnswerAsError, failureText, isLostAnswer, serverText, transportText } from '@/utils/serverText';
 
 import { rememberRateStartFloor } from './rateStartFloor';
 
@@ -446,9 +446,11 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
  */
 export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
   const failure = (errorCode: RateErrorCode, message: string): UndoRateChangeResult => ({ success: false, errorCode, message });
+  // The request may have reached the server and its answer did not come back: the rates are read again by the caller.
+  const unknown = (): UndoRateChangeResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.error.undoUnconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
-    const { data, error } = await withTimeout(
+    const { data, error, status } = await withTimeout(
       Promise.resolve(client.rpc('undo_rate_change', {
         p_item_id: input.itemId,
         p_customer_id: input.customerId,
@@ -465,8 +467,13 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
       itemPricingLogger.error('undo_rate_change RPC error:', error);
       handleGlobalAuthError(error);
       const mapped = mapRateError(error, 'undo_rate_change');
+      // An error with no database code is the connection failing (or a gateway's page): the change may have gone through.
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return unknown();
       return failure(mapped.code, mapped.message);
     }
+
+    // An empty HTTP 200 is no answer of the server's either.
+    if (emptyAnswerAsError({ data, error, status })) return unknown();
 
     const response = unwrapArrayResponse(data) as
       | { success?: unknown; error_code?: unknown; data?: { removed?: unknown; reopened?: unknown; earliest?: unknown } | null }
@@ -495,6 +502,8 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
     if (isMissingFunction(err as { code?: unknown } | null)) {
       return failure('SERVER_NEEDS_UPDATE', t('pricing.error.serverNeedsUpdate'));
     }
+    // The limit ran out, or the connection dropped after the request left: the change may have gone through.
+    if (isLostAnswer(err)) return unknown();
     return failure('UNKNOWN', t('pricing.error.generic'));
   }
 };

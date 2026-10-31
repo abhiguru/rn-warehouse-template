@@ -211,6 +211,8 @@ export interface UndoRateChangeResult {
   errorCode?: RateErrorCode;
   /** Text for the screen, in the app's language, already mapped. */
   message?: string;
+  /** The request left the phone and its answer did not come back: the change may or may not have been made. */
+  outcomeUnknown?: boolean;
   removed?: { id: string; effective_from: string }[];
   reopened?: { id: string; effective_from: string; effective_to: string | null }[];
 }

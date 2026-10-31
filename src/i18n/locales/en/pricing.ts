@@ -259,6 +259,8 @@ export const pricing = {
   error: {
     generic: "Couldn't save the rate. Try again.",
     unconfirmed: "We couldn't confirm that the rate was saved. Close this screen and check the item page before you try again.",
+    // Cancel new rate / Undo stop: the rates on the page are read again after every undo.
+    undoUnconfirmed: "We couldn't confirm the change. Check the rates on this page before you try again.",
     invalidDate: 'Choose a start date on or after {{date}}.',
     invalidDateWindow: 'Choose a start date within three years before today and two years after.',
     startTooFar: 'Choose a start date within two years after today.',
