@@ -333,7 +333,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     to !== preload.to;
   // A row whose rate is a pending Everyone / This customer change: "This GRN" with the same figures is a change
   // of that (it turns the pending change into a rate for this GRN only), so Save rate is on for it.
-  const pendingBroad = !adding && !!row.rate?.entry && 'scope' in row.rate.entry && row.rate.entry.scope !== 'grn';
+  const pendingBroad = !adding && !!row.rate?.entry && 'scope' in row.rate.entry;
   const canSave = adding || dirty || (pendingBroad && scope === 'grn');
   const requestClose = () => {
     if (!dirty) {
