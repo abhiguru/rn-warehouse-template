@@ -86,7 +86,7 @@ describe('F11 / F12: the replace question names every planned rate, and a rate o
   it('F12: two planned rates are both named', () => {
     const later = planned.map(r => ({ effective_from: r.effective_from, weight_min: r.weight_min, weight_max: r.weight_max, unit_price: r.unit_price }));
     const text = laterDialogText(later, '2026-10-14', TODAY);
-    expect(text.title).toBe('Replace 2 planned rates?');
+    expect(text.title).toBe('Replace 2 later rates?');
     expect(text.message).toContain('1 Nov 2026 (₹7.00)');
     expect(text.message).toContain('1 Apr 2027 (₹8.00)');
   });
