@@ -18,9 +18,9 @@ jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
 jest.mock('react-native-paper', () => ({ ActivityIndicator: 'ActivityIndicator' }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
+jest.mock('@/components/skeletons', () => ({ ListSkeleton: 'ListSkeleton' }));
 jest.mock('@/components/list-items', () => ({ MemoizedInvoiceItem: () => null }));
-jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: () => null }));
+jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: 'ListEmptyState' }));
 jest.mock('@/components/ErrorBoundary', () => ({ ErrorStateView: () => null }));
 jest.mock('@/features/filters/configs', () => ({ INVOICE_FILTERS: { listKey: 'invoice-list' } }));
 jest.mock('@/features/filters/filterModel', () => ({ readSearch: () => ({ text: '' }) }));
@@ -131,4 +131,24 @@ describe.each([
     expect(calls()[2]).toEqual({ search: 'garlic', sort: 'inv_date', ...fresh(true) });
     await act(async () => { renderer.unmount(); });
   });
+});
+
+it('shows the skeleton, not the empty state, while a new search with no rows on screen is pending', async () => {
+  mockAccess.canManageOrders = false;
+  const empty = { success: true, message: '', data: { invoices: [], pagination: { has_more: false } } };
+  jest.mocked(getAssignedCustomerInvoices).mockResolvedValue(empty as never);
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<InvoiceFlashList />); });
+  const count = (name: string) => renderer.root.findAllByType(name as unknown as React.ElementType).length;
+  expect(count('ListEmptyState')).toBe(1);
+
+  let finish!: (value: never) => void;
+  jest.mocked(getAssignedCustomerInvoices).mockImplementationOnce(() => new Promise(resolve => { finish = resolve as (value: never) => void; }));
+  mockFilters.request = { ...mockFilters.request, p_search: 'onion' };
+  await act(async () => { renderer.update(<InvoiceFlashList />); });
+  expect(count('ListSkeleton')).toBe(1);
+  expect(count('ListEmptyState')).toBe(0);
+  await act(async () => { finish(empty as never); });
+  expect(count('ListEmptyState')).toBe(1);
+  await act(async () => { renderer.unmount(); });
 });

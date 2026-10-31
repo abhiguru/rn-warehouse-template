@@ -145,7 +145,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // List state
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [hasLoaded, setHasLoaded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -237,7 +236,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     } finally {
       if (isMountedRef.current && requestId === latestRequest.current) {
         setIsLoading(false);
-        setHasLoaded(true);
         setIsRefreshing(false);
         setIsLoadingMore(false);
       }
@@ -418,8 +416,9 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // ============================================================================
 
   let content: React.ReactNode;
-  if ((!hasLoaded || loadError) && isLoading && invoices.length === 0) {
-    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+  if (isLoading && invoices.length === 0) {
+    // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
+    // Later loads keep the rows on screen while the new ones arrive.
     // One wide block under the header stands for the amounts table (ListSkeleton has no table option).
     content = <ListSkeleton count={5} metricsCount={1} showAvatar={false} />;
   } else if (invoices.length > 0) {

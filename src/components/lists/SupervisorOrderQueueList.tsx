@@ -429,8 +429,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   );
 
   let content: React.ReactNode;
-  if (!hasLoaded && isLoading) {
-    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+  if (isLoading && (!hasLoaded || orders.length === 0)) {
+    // First load, or a new search with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
+    // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} />;
   } else if (orders.length > 0) {
     content = (

@@ -152,7 +152,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // List state
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [hasLoaded, setHasLoaded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -261,7 +260,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     } finally {
       if (isMountedRef.current && requestId === latestRequest.current) {
         setIsLoading(false);
-        setHasLoaded(true);
         setIsRefreshing(false);
         setIsLoadingMore(false);
       }
@@ -475,8 +473,9 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   );
 
   let content: React.ReactNode;
-  if ((!hasLoaded || loadError) && isLoading && dispatches.length === 0) {
-    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+  if (isLoading && dispatches.length === 0) {
+    // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
+    // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
   } else if (dispatches.length > 0) {
     content = (

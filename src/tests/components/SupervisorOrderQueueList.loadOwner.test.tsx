@@ -165,3 +165,20 @@ it('counts the whole queue in the header, not only the cards loaded', async () =
   expect(badge.length).toBeGreaterThan(0);
   await act(async () => { renderer.unmount(); });
 });
+
+it('shows the skeleton, not the empty state, while a new search with no rows on screen is pending', async () => {
+  getOrdersList.mockResolvedValue({ success: true, message: '', data: [], metadata: { has_more: false, total_count: 0 } } as OrderServiceResponse<Order[]>);
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
+  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(1);
+
+  let finish!: (value: OrderServiceResponse<Order[]>) => void;
+  getOrdersList.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  mockFilters.request = { search: 'onion' };
+  await act(async () => { renderer.update(<SupervisorOrderQueueList />); });
+  expect(renderer.root.findAllByType('ListSkeleton' as unknown as React.ElementType)).toHaveLength(1);
+  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(0);
+  await act(async () => { finish({ success: true, message: '', data: [], metadata: { has_more: false, total_count: 0 } } as OrderServiceResponse<Order[]>); });
+  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(1);
+  await act(async () => { renderer.unmount(); });
+});

@@ -898,8 +898,9 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   );
 
   let content: React.ReactNode;
-  if (loading && !data) {
-    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+  if (loading && (!data || (!hasRows && !refreshing))) {
+    // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
+    // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
   } else if (hasRows) {
     content = (
