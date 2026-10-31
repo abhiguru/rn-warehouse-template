@@ -109,6 +109,7 @@ describe('load-dispatch console privacy', () => {
     expect(result.data?.header.customer_name).toBe(marker);
     expect(result.data?.items).toHaveLength(1);
     expect(result.data?.items[0].grnItems_item_name).toBe(marker);
+    expect(result.data?.items[0].grns_customer_id).toBe('fictional-customer');
     const logs = logOutput();
     expect(logs).not.toContain(marker);
     expect(logs).not.toContain('FXG001');

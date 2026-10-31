@@ -54,3 +54,9 @@ it('a vehicle number over 20 characters is worded by the app, in the app languag
   const result = await updateDispatch('d1', payload);
   expect(result).toMatchObject({ success: false, error: 'Registration must be at most 20 characters' });
 });
+
+it('a line of another customer is worded with the GRN numbers, not the server English', async () => {
+  mockRpc.mockResolvedValue({ data: null, error: { message: 'Item belongs to another customer: Tamarind (G1)', code: 'WH409' } });
+  const result = await updateDispatch('d1', payload);
+  expect(result).toMatchObject({ success: false, error: 'Remove the items from GRN G1: that stock belongs to another customer.' });
+});

@@ -12,7 +12,8 @@ import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { createLogger } from '@/utils/logger';
-import { t } from '@/i18n';
+import { formatIdentifier, t } from '@/i18n';
+import { grnNumbersOfOtherCustomerRefusal } from '@/features/dispatch/utils/lotOwnership';
 import { nextDocumentNumber, type NumberOffer } from '@/services/documentNumberingService';
 import type {
   DispatchHeaderData,
@@ -77,6 +78,18 @@ function wordedRefusal(answer: unknown, fallback: string): DispatchApiResponse |
   const text = serverText(refusal.text, fallback, { write: true, form: true });
   reportOutcome('save_refused', { code: refusal.reason });
   return { success: false, reason: refusal.reason, refusal, error: text, message: text };
+}
+
+/**
+ * The text of a failed save: the sentence naming the GRNs when the server refused a line of another customer's stock (the
+ * server's English names the lots as "item (GRN)"), else the server's text made fit to show.
+ */
+function failureText(raw: unknown, fallback: string, options: Parameters<typeof serverText>[2]): string {
+  const text =
+    typeof raw === 'string' ? raw : typeof (raw as { message?: unknown } | null)?.message === 'string' ? (raw as { message: string }).message : '';
+  const grns = grnNumbersOfOtherCustomerRefusal(text);
+  if (grns) return t('dispatch.validation.otherCustomerLots', { grns: grns.map((grNo) => formatIdentifier(grNo)).join(', ') });
+  return serverText(raw, fallback, options);
 }
 
 /** The vehicle number is longer than the column holds (migration 130: `error_code: 'registration_too_long'`, limit 20). */
@@ -471,7 +484,7 @@ export const createDispatch = async (payload: {
       if (isNumberTakenAnswer(error)) {
         return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
       }
-      throw new Error(serverText(error, t('dispatch.service.createFailed'), { write: true, form: true }));
+      throw new Error(failureText(error, t('dispatch.service.createFailed'), { write: true, form: true }));
     }
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
@@ -484,7 +497,7 @@ export const createDispatch = async (payload: {
       const worded = wordedRefusal(data, t('dispatch.service.createFailed'));
       if (worded) return worded;
       if (isRegistrationTooLong(data)) throw new Error(t('dispatch.validation.registrationMax'));
-      throw markRefusal(new Error(serverText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
+      throw markRefusal(new Error(failureText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
     }
 
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
@@ -652,7 +665,7 @@ export const updateDispatch = async (
       if (isNumberTakenAnswer(error)) {
         return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
       }
-      throw new Error(serverText(error, t('dispatch.service.updateFailed'), { write: true, form: true }));
+      throw new Error(failureText(error, t('dispatch.service.updateFailed'), { write: true, form: true }));
     }
 
     if (data && data.success === false) {
@@ -665,7 +678,7 @@ export const updateDispatch = async (
       const worded = wordedRefusal(data, t('dispatch.service.updateFailed'));
       if (worded) return worded;
       if (isRegistrationTooLong(data)) throw new Error(t('dispatch.validation.registrationMax'));
-      throw markRefusal(new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
+      throw markRefusal(new Error(failureText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
     }
 
     log.info('Dispatch updated', { dispatchId });
@@ -783,6 +796,9 @@ export const loadDispatchData = async (
       .map((item: any) => {
         return {
           unique_id: item.id,
+          // The server keeps a dispatch's lines with its own customer, so a saved line belongs to the customer the dispatch
+          // was loaded with: changing the customer in the edit form then finds the lines of the old one.
+          grns_customer_id: header.customer_id || undefined,
           grns_id: item.grn_details?.id || '',
           grns_gr_no: item.grn_details?.gr_no || '',
           grns_date: item.grn_details?.date || '',
