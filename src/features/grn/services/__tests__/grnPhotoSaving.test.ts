@@ -524,6 +524,25 @@ describe('saving an edited GRN', () => {
     expect(names().indexOf('delete_grn_image')).toBeGreaterThan(names().indexOf('confirm_grn_image_upload'));
   });
 
+  it('keeps the removed GRN-book photo in p_images while its replacement waits, when the GRN also has an item photo', async () => {
+    const ITEM_PHOTO_ID = '99999999-2222-4333-8444-555555555555';
+    mockRpcHandlers.update_grn = () => updateAnswer({ images: [{ id: ITEM_PHOTO_ID }, { id: OLD_PHOTO_ID }] });
+    mockRpcHandlers.delete_grn_image = () => ({ data: { success: true, data: { storage_path: `headers/${GRN_ID}/old.webp` } }, error: null });
+    const removed = [{ id: OLD_PHOTO_ID, storagePath: `headers/${GRN_ID}/old.webp`, header: { fileName: 'old.webp', fileSize: 10, mimeType: 'image/webp' } }];
+
+    const result = await updateGRN(
+      GRN_ID,
+      { header: header([picked('replacement')]), items: [line(LINE_ID, 'Example Potatoes', [saved(ITEM_PHOTO_ID, 'mark')])] },
+      { removedImages: removed }
+    );
+
+    expect(result.success).toBe(true);
+    const sent = callsTo('update_grn')[0].args.p_images;
+    expect(sent.map((i: any) => [i.id, i.image_type])).toEqual([[ITEM_PHOTO_ID, 'item'], [OLD_PHOTO_ID, 'header']]);
+    expect(callsTo('delete_grn_image').map((call) => call.args)).toEqual([{ p_image_id: OLD_PHOTO_ID }]);
+    expect(names().indexOf('delete_grn_image')).toBeGreaterThan(names().indexOf('confirm_grn_image_upload'));
+  });
+
   it('says a GRN needs a photo when the server keeps the last one', async () => {
     mockRpcHandlers.update_grn = () => updateAnswer({ images: [{ id: OLD_PHOTO_ID }] });
     mockRpcHandlers.delete_grn_image = () => ({

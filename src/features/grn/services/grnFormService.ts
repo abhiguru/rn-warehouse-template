@@ -577,7 +577,7 @@ const isUnknownFunctionSignature = (error: { code?: string; message?: string }):
   error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
 
 /** The update_grn body for a form, and the form's lines under the ids that body uses. */
-export const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
+export const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload, removedImages: RemovedGRNImage[] = []) => {
   // ✅ CRITICAL: Normalize field names - support both legacy and new field names
   // Legacy: id, item_id | New: grn_trl_id, item_table_id
   // Helper to check if an ID is a valid UUID (not a temporary ID)
@@ -694,6 +694,25 @@ export const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) 
     }
   });
 
+  // update_grn deletes every photo row not in p_images (when p_images is not empty) and refuses a GRN left without a
+  // GRN-book photo. New photos go up only after the save, so when every saved GRN-book photo was removed and new ones
+  // are waiting, the removed ones stay in the list now; the loop in updateGRN deletes them once the new ones are up.
+  const sendsHeader = rpcImages.some(img => img.image_type === 'header');
+  const newHeaderWaiting = (payload.header.gr_images || []).some(img => !img.storagePath);
+  if (rpcImages.length > 0 && !sendsHeader && newHeaderWaiting) {
+    for (const removed of removedImages) {
+      if (!removed.header || !removed.storagePath || isTemporaryGRNImageId(removed.id)) continue;
+      rpcImages.push({
+        id: removed.id,
+        storage_path: removed.storagePath,
+        image_type: 'header',
+        original_filename: removed.header.fileName || null,
+        file_size: removed.header.fileSize || 0,
+        mime_type: removed.header.mimeType || 'image/jpeg'
+      });
+    }
+  }
+
   // ==========================================================================
   // 🖼️ IMAGE SUMMARY - What's being sent to backend
   // ==========================================================================
@@ -771,7 +790,7 @@ export const updateGRN = async (
   try {
     finishMutation = beginOperatorMutation();
 
-    const { normalizedItems, rpcImages, rpcRequest } = buildUpdateGRNRequest(grnId, payload);
+    const { normalizedItems, rpcImages, rpcRequest } = buildUpdateGRNRequest(grnId, payload, options.removedImages);
 
     const authenticatedClient = await getAuthenticatedClient();
     // The answer is either the stored answer of an earlier Save (found by its request code: nothing is sent) or

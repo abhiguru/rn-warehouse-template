@@ -1049,7 +1049,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
     !isCreateMode && !!effectsGrnId && items.length > 0,
     JSON.stringify([header.customer_id, header.date, items.map((item) => [item.grn_trl_id, item.item_table_id, item.qty, item.stock])]),
-    () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest()).rpcRequest)
+    () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest(), removedImages).rpcRequest)
   );
 
   const performUpdate = async (formSession: number) => {
