@@ -148,7 +148,8 @@ describe('a root navigator that is not ready yet', () => {
     await act(async () => mockNavigationBecomesReady());
     expect(mockReplace).toHaveBeenCalledTimes(1);
     expect(mockReplace).toHaveBeenCalledWith('/login');
-    expect(mockReadyListeners.size).toBe(0);
+    // The readiness listener is gone; what is left is the guard watching its own request.
+    expect(mockReadyListeners.size).toBe(1);
   });
 
   it('a wrong-role link waits the same way and then goes home', async () => {
