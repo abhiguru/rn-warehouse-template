@@ -26,7 +26,7 @@ import type {
 import { uploadDeferredDispatchImages } from './dispatchImageService';
 import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
-import { markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
+import { isServerRefusal, markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
 import { REFUSAL, refusalOf } from '@/utils/serverRefusal';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -480,7 +480,7 @@ export const createDispatch = async (payload: {
     if (answer.afterLeaving && (error || !data || data.success === false)) return { success: false, aborted: true, error: '', message: '' };
 
     if (error) {
-      log.error('create_dispatch_with_stock_check failed', { code: errorCode(error) });
+      (isNumberTakenAnswer(error) ? log.info : log.error).call(log, 'create_dispatch_with_stock_check failed', { code: errorCode(error) });
       handleGlobalAuthError(error);
       if (isNumberTakenAnswer(error)) {
         return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
@@ -490,7 +490,8 @@ export const createDispatch = async (payload: {
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
-      log.error('create_dispatch_with_stock_check returned failure', { reason: typeof data.reason === 'string' ? data.reason : undefined });
+      // A refusal by the server's rules (a likely duplicate, a future date, a number taken) is an answer, not a fault: info.
+      (refusalOf(data) || isNumberTakenAnswer(data) ? log.info : log.error).call(log, 'create_dispatch_with_stock_check returned failure', { reason: typeof data.reason === 'string' ? data.reason : undefined });
       handleGlobalAuthError(data);
       if (isNumberTakenAnswer(data)) {
         return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
@@ -551,7 +552,7 @@ export const createDispatch = async (payload: {
       ...(Array.isArray(data.order_effects) ? { order_effects: parseOrderEffects(data.order_effects) } : {}),
     };
   } catch (error: any) {
-    log.error('Dispatch creation failed');
+    (isServerRefusal(error) ? log.info : log.error).call(log, 'Dispatch creation failed');
     reportSaveError(error, { requestKey: reportedKey });
 
     // Parse error message for user-friendly display
@@ -663,7 +664,7 @@ export const updateDispatch = async (
     if (answer.afterLeaving && (error || !data || data.success === false)) return { success: false, aborted: true, error: '', message: '' };
 
     if (error) {
-      log.error('update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
+      (isNumberTakenAnswer(error) ? log.info : log.error).call(log, 'update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
       handleGlobalAuthError(error);
       if (isNumberTakenAnswer(error)) {
         return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
@@ -672,7 +673,7 @@ export const updateDispatch = async (
     }
 
     if (data && data.success === false) {
-      log.error('update_dispatch_smart returned failure', { dispatchId, reason: typeof data.reason === 'string' ? data.reason : undefined });
+      (refusalOf(data) || isNumberTakenAnswer(data) ? log.info : log.error).call(log, 'update_dispatch_smart returned failure', { dispatchId, reason: typeof data.reason === 'string' ? data.reason : undefined });
       handleGlobalAuthError(data);
       if (isNumberTakenAnswer(data)) {
         return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
@@ -713,7 +714,7 @@ export const updateDispatch = async (
         : {}),
     };
   } catch (error: any) {
-    log.error('Dispatch update failed', { dispatchId });
+    (isServerRefusal(error) ? log.info : log.error).call(log, 'Dispatch update failed', { dispatchId });
     reportSaveError(error, { requestKey: reportedKey });
     return {
       success: false,

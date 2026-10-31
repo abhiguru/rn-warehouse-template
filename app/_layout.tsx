@@ -98,7 +98,7 @@ import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/cen
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { showAlert } from '@/utils/alert';
-import { isUpgradingAnswer } from '@/utils/serverText';
+import { isNetworkError, isUpgradingAnswer } from '@/utils/serverText';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
 import { startDailyLanCheck } from '@/config/lanCheck';
@@ -632,7 +632,8 @@ function BootstrapApp() {
           version: publicConfig.version,
         });
       } catch (error: any) {
-        console.error('[Bootstrap] Config fetch failed:', error);
+        // A server that does not answer is a handled state with its own screen, not a fault.
+        (isNetworkError(error) || isAppTooOld(error) ? console.log : console.error)('[Bootstrap] Config fetch failed:', error);
         setConfigError(
           translate('nav.bootstrap.unreachable')
         );
@@ -672,7 +673,8 @@ function BootstrapApp() {
         setIsReady(true);
         return;
       }
-      console.error('[Bootstrap] Unexpected bootstrap error:', error);
+      // An unreachable server and a too-old app each have their own screen: only the unexpected is an error.
+      (isNetworkError(error) || isAppTooOld(error) ? console.log : console.error)('[Bootstrap] Unexpected bootstrap error:', error);
       if (run === bootstrapRun.current && isAppTooOld(error)) {
         reportAppTooOld(error);
         setIsReady(true);

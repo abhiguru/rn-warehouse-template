@@ -18,7 +18,7 @@ import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculat
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
-import { markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
+import { isServerRefusal, markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
 import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
@@ -791,7 +791,8 @@ export const createInvoice = async (
     const { data, error, sentAt } = await sendSave(authenticatedClient, 'save_invoice', rpcPayload);
 
     if (error) {
-      invoiceFormLogger.error('RPC error:', errorForLog(error));
+      // A number taken is the server's answer, not a fault: info, no red banner.
+      (numberTakenFrom(error, payload.header.inv_no) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'RPC error:', errorForLog(error));
       // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
       if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);
@@ -811,7 +812,7 @@ export const createInvoice = async (
     }
     return await createdInvoice(authenticatedClient, data, payload);
   } catch (error: any) {
-    invoiceFormLogger.error('Error in createInvoice:', errorForLog(error));
+    (error instanceof NumberTakenError || isServerRefusal(error) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'Error in createInvoice:', errorForLog(error));
     // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
     if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now(), requestKey);
     reportSaveError(error, { requestKey });

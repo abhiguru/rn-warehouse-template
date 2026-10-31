@@ -163,6 +163,16 @@ describe('a possible duplicate', () => {
     expect(forgetUnfinishedSave).toHaveBeenCalledWith(lost.lostAnswer!.key);
   });
 
+  it('is logged as information, not as an error (no red banner); an unexpected failure still is an error', async () => {
+    mockRpc.mockResolvedValueOnce(duplicate);
+    await createGRN({ header, items });
+    expect(console.error).not.toHaveBeenCalled();
+
+    mockRpc.mockResolvedValueOnce({ data: { success: false, error_code: 'WH500', message: 'Something broke' }, error: null });
+    await createGRN({ header, items, nonce: 'other' });
+    expect(console.error).toHaveBeenCalled();
+  });
+
   it('is not claimed for another refusal', async () => {
     mockRpc.mockResolvedValueOnce({ data: { success: false, reason: 'NUMBER_TAKEN', message: 'Number is taken' }, error: null });
     expect((await createGRN({ header, items })).duplicate).toBeUndefined();

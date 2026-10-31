@@ -24,7 +24,7 @@ import { isTemporaryGRNImageId } from './imageId';
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { isLostAnswer } from '@/utils/lostAnswer';
-import { reportSaveError } from '@/utils/reportOutcome';
+import { isServerRefusal, reportSaveError } from '@/utils/reportOutcome';
 import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { t, formatIdentifier } from '@/i18n';
@@ -483,7 +483,10 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     }
 
     if (!data || !data.success) {
-      log.error('save_grn returned failure', { errorCode: data?.error_code });
+      // The server's own refusals (a likely duplicate, a number taken, a rate or numbering rule) are answers, not
+      // faults: info, so no red banner. Anything else stays an error.
+      const expected = !!data && (!!possibleDuplicateOf(data, 'grn') || isNumberTaken(data) || isRateRefusalCode(data.error_code) || !!refusalOf(data));
+      (expected ? log.info : log.error).call(log, 'save_grn returned failure', { errorCode: data?.error_code });
       handleGlobalAuthError(data);
       const refusalCode = data?.error_code;
       if (isRateRefusalCode(refusalCode)) throw new RateRefusal(refusalCode, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }), data?.data);
@@ -546,7 +549,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       },
     };
   } catch (error) {
-    log.error('Error creating GRN with enhanced RPC', loggableError(error));
+    (isServerRefusal(error) ? log.info : log.error).call(log, 'Error creating GRN with enhanced RPC', loggableError(error));
     // A resend whose session client could not be got is not settled either: the lock stays.
     if (!lostAnswer && payload.resend && !(error instanceof PossibleDuplicateRefusal) && isUnsettledFailure(error)) lostAnswer = payload.resend;
     // A refusal, or a failure before the request left: the server did not apply it, so nothing is left in doubt. A lost
@@ -849,7 +852,8 @@ export const updateGRN = async (
     const rpcResult = Array.isArray(data) && data.length > 0 ? data[0] : (Array.isArray(data) ? null : data);
 
     if (!rpcResult || !rpcResult.success) {
-      log.error('update_grn returned failure', { errorCode: rpcResult?.error_code });
+      // A refusal by the server's rules is an answer, not a fault (see save_grn above).
+      (rpcResult && (isRateRefusalCode(rpcResult.error_code) || refusalOf(rpcResult)) ? log.info : log.error).call(log, 'update_grn returned failure', { errorCode: rpcResult?.error_code });
       handleGlobalAuthError(rpcResult);
 
       // Handle stock protection from RPC response
@@ -947,7 +951,7 @@ export const updateGRN = async (
       },
     };
   } catch (error) {
-    log.error('Error updating GRN with RPC', loggableError(error));
+    (isServerRefusal(error) ? log.info : log.error).call(log, 'Error updating GRN with RPC', loggableError(error));
     // A resend whose session client could not be got is not settled either: the lock stays.
     if (!lostAnswer && options.resend && isUnsettledFailure(error)) lostAnswer = options.resend;
     reportSaveError(error, { lost: !!lostAnswer, requestKey: (lostAnswer ?? sent.last)?.key });
