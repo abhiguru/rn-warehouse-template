@@ -290,8 +290,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const imageCount = currentItem.trl_images?.length || 0;
         const canViewAll = savedItemsCount > 0 && !!onViewAll;
         const itemNumber = isEditing ? editingItemNumber : savedItemsCount + 1;
-        // A GRN that takes no new line has nothing to save (blockedNotice).
-        const saveEnabled = isValid && !blockedNotice;
+        // A GRN that takes no new line has nothing to save (blockedNotice). An incomplete line does not grey the check
+        // mark out (style guide §10): a tap shows what is missing and moves to the first field (owner decision D7).
+        const saveEnabled = !blockedNotice;
 
         // The fixed strip names the line in the form: which item and how many of
         // what. Rack and Mark are a screen's width away from Item and Quantity,

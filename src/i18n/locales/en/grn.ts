@@ -145,6 +145,7 @@ export const grn = {
 
   // Step 2: alerts
   itemsStep: {
+    backToDetails: 'Back to GRN details',
     qtyLockedTitle: "Quantity can't be changed",
     qtyLockedMessage: 'This item has already been dispatched, so its quantity is locked to keep stock correct.',
     itemsWillBeLost: { one: '{{count}} item will be lost.', other: '{{count}} items will be lost.' },

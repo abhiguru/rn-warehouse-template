@@ -148,6 +148,7 @@ export const grn: Translation<typeof source> = {
   },
 
   itemsStep: {
+    backToDetails: 'આવક પાવતીની વિગતો પર પાછા જાઓ',
     qtyLockedTitle: 'નંગ બદલી શકાશે નહીં',
     qtyLockedMessage: 'આ આઇટમની જાવક થઈ ગઈ છે, તેથી સ્ટોક સાચો રહે તે માટે તેના નંગ લૉક છે.',
     itemsWillBeLost: { one: '{{count}} આઇટમ જતી રહેશે.', other: '{{count}} આઇટમ જતી રહેશે.' },

@@ -1002,7 +1002,14 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         currentStep={STEP_NUMBERS.ITEMS}
         totalSteps={GRN_STEP_COUNT}
         onPrevious={() => requestExit({ to: 'details' })}
+        previousAccessibilityLabel={tr('grn.itemsStep.backToDetails')}
         onNext={() => requestExit({ to: 'review' })}
+        // Add item runs the check mark's check; while a saved item is corrected the same button is Save changes. It
+        // stays pressable when the line is incomplete: the tap shows what is missing (owner decision D7).
+        onAdd={newLineNotice ? undefined : () => { void commitOpenItem(); }}
+        addLabel={editingItemId ? tr('components.wizard.saveChanges') : undefined}
+        addDisabled={isNavigating}
+        addTestID="grn-items-add"
         isLoading={isNavigating}
         loadingLabel={tr('grn.itemsStep.openingReview')}
       />
