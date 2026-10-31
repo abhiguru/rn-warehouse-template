@@ -4,9 +4,10 @@
  * stored and the person goes to My facilities. The layout is the facility
  * sign-in's: src/components/auth/CodeEntryForm.tsx.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useNavigation } from 'expo-router';
 import { CodeEntryForm } from '@/components/auth/CodeEntryForm';
+import { useMarkLeavingOnBack } from '@/hooks/useMarkLeavingOnBack';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useCentralState } from '@/hooks/useCentralState';
 import { getCentralState, setCentralState } from '@/config/centralState';
@@ -48,6 +49,11 @@ export default function CentralOtpScreen() {
     });
     return () => queueMicrotask(unsubscribe);
   }, [navigation]);
+
+  const markLeaving = useCallback(() => { removed.current = true; }, []);
+  // 'removed' arrives one commit after the Back action, so a check answered in between would still
+  // treat this screen as shown: mark it as leaving when Back is pressed, and let the system go on.
+  useMarkLeavingOnBack(markLeaving);
 
   useEffect(() => {
     if (!phoneNumber) router.replace('/central-login');
@@ -127,7 +133,7 @@ export default function CentralOtpScreen() {
       rateLimit={{ isRateLimited, countdown, message: rateLimitMessage }}
       onVerify={verify}
       onResend={resend}
-      onBack={() => router.back()}
+      onBack={() => { removed.current = true; router.back(); }}
     />
   );
 }

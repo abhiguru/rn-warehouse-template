@@ -4,9 +4,10 @@
  * sign-in there, on top of the association sign-in. The existing code screen
  * with a heading that says whose code it is.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useNavigation } from 'expo-router';
 import { CodeEntryForm } from '@/components/auth/CodeEntryForm';
+import { useMarkLeavingOnBack } from '@/hooks/useMarkLeavingOnBack';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useCentralState } from '@/hooks/useCentralState';
 import { cancelFacilityLink, completeFacilityLink, resendFacilityLinkCode } from '@/config/openFacility';
@@ -43,6 +44,11 @@ export default function FacilityLinkScreen() {
     });
     return () => queueMicrotask(unsubscribe);
   }, [navigation]);
+
+  const markLeaving = useCallback(() => { removed.current = true; }, []);
+  // 'removed' arrives one commit after the Back action, so an answer landing in between would still
+  // treat this screen as shown: mark it as leaving when Back is pressed, and let the system go on.
+  useMarkLeavingOnBack(markLeaving);
 
   useEffect(() => {
     // Nothing to confirm (the screen was opened by a link): back to the list.
@@ -89,6 +95,7 @@ export default function FacilityLinkScreen() {
 
   const leave = () => {
     finished.current = true;
+    removed.current = true;
     cancelFacilityLink();
     // To the My facilities this step was opened from, not a second one on top of it.
     returnToMyFacilities();
