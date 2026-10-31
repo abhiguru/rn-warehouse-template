@@ -288,11 +288,10 @@ regression checks. Expo SDK 54 and React Native 0.81.5 are unchanged.
 
 The upstream [decoder advisory](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr)
 identifies 0.5.0 as patched. The lockfile overrides to that version.
-`query-string` 7.1.3 expects a callable CommonJS export; the minimal adapter in
-`scripts/patch-navigation-decoder.mjs` selects the upstream default export while
-preserving `query-string`'s existing parse/stringify interface. Installation
-checks dependency versions and source hashes before patching, is idempotent,
-and fails clearly for unexpected contents. No advisory is suppressed.
+Up to SDK 57, `query-string` 7.1.3 (pulled in by expo-router) expected a callable
+CommonJS export, and a postinstall adapter selected the upstream default export.
+SDK 58's expo-router no longer depends on `query-string`, so that adapter was
+removed in the SDK 58 step. No advisory is suppressed.
 
 Under SDK 54, `scripts/patch-expo-metro.mjs` also adapted Expo's watcher to the
 pinned Metro 0.83.8. SDK 57 ships a matching Metro, so the script now applies

@@ -3,7 +3,7 @@ import { accessSync, constants, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const sdkPackages = ['platform-tools', 'platforms;android-36', 'build-tools;36.0.0',
+export const sdkPackages = ['platform-tools', 'platforms;android-37', 'build-tools;37.0.0',
   'build-tools;35.0.0', 'ndk;27.1.12297006', 'ndk;27.0.12077973', 'cmake;3.22.1'];
 
 // The toolchain versions React Native itself builds with. A pin that CI installs but React Native does not use
@@ -55,12 +55,12 @@ export function checkAndroidSDK(root, { reactNativeVersions = reactNativeVersion
     property('ndk/'+v, 'Pkg.Revision', v);
     accessSync(resolve(root,'ndk',v,'toolchains/llvm/prebuilt/linux-x86_64/bin/clang'), constants.X_OK);
   }
-  for (const v of ['36.0.0','35.0.0']) {
+  for (const v of ['37.0.0','35.0.0']) {
     property('build-tools/'+v,'Pkg.Revision',v);
     accessSync(resolve(root,'build-tools',v,'aapt2'), constants.X_OK);
   }
-  property('platforms/android-36','AndroidVersion.ApiLevel','36');
-  accessSync(resolve(root,'platforms/android-36/android.jar'), constants.R_OK);
+  property('platforms/android-37','AndroidVersion.ApiLevel','37');
+  accessSync(resolve(root,'platforms/android-37/android.jar'), constants.R_OK);
   property('cmake/3.22.1','Pkg.Revision','3.22.1');
   accessSync(resolve(root,'cmake/3.22.1/bin/cmake'), constants.X_OK);
   accessSync(resolve(root,'platform-tools/adb'), constants.X_OK);

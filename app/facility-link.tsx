@@ -31,17 +31,18 @@ export default function FacilityLinkScreen() {
   const removed = useRef(false);
   const navigation = useNavigation();
 
-  useEffect(
-    () =>
-      // Leaving gives the linking step up, by Back exactly as by the "My facilities" control
-      // below. After a session or a waiting request nothing is left to give up: settle() in
-      // openFacility.ts has cleared the link already.
-      navigation.addListener('beforeRemove', () => {
-        removed.current = true;
-        cancelFacilityLink();
-      }),
-    [navigation]
-  );
+  useEffect(() => {
+    // Leaving gives the linking step up, by Back exactly as by the "My facilities" control
+    // below. After a session or a waiting request nothing is left to give up: settle() in
+    // openFacility.ts has cleared the link already.
+    // SDK 58 (React Navigation 8) has no 'beforeRemove'. 'removed' fires once the screen has been
+    // taken off the stack and unmounted, after effect cleanup, so unsubscribing waits a microtask.
+    const unsubscribe = navigation.addListener('removed', () => {
+      removed.current = true;
+      cancelFacilityLink();
+    });
+    return () => queueMicrotask(unsubscribe);
+  }, [navigation]);
 
   useEffect(() => {
     // Nothing to confirm (the screen was opened by a link): back to the list.

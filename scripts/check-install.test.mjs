@@ -23,7 +23,7 @@ const named = name => Object.keys(lock.packages).filter(path => path === `node_m
 function installedCopy() {
   const root = mkdtempSync(join(tmpdir(), 'warehouse-check-install-'));
   cpSync(resolve(project, 'package-lock.json'), join(root, 'package-lock.json'));
-  for (const name of ['query-string', 'decode-uri-component', ...new Set([...manifest.files, ...(manifest.unaffected ?? [])].map(entry => entry.package))]) {
+  for (const name of [...new Set([...manifest.files, ...(manifest.unaffected ?? [])].map(entry => entry.package))]) {
     for (const path of named(name)) cpSync(resolve(project, path), join(root, path), { recursive: true });
   }
   for (const file of ['node_modules/expo/package.json', join(relative(project, cliDirectory), 'package.json'), serverFile]) {
@@ -35,9 +35,6 @@ function installedCopy() {
 // What each postinstall step adds, taken out again: the file as published.
 const published = {
   'Expo CLI USB loopback adapter': () => [serverFile, source => source.replace("process.env.WAREHOUSE_USB_METRO === '1' ? '127.0.0.1' : host", 'host')],
-  'query-string decoder adapter': () => [join(named('query-string')[0], 'index.js'), source => source.replace(
-    "const decodeComponentModule = require('decode-uri-component');\nconst decodeComponent = typeof decodeComponentModule === 'function' ? decodeComponentModule : decodeComponentModule.default;",
-    "const decodeComponent = require('decode-uri-component');")],
   'security backport': () => {
     const spec = manifest.files.find(file => file.package === 'braces');
     return [join(named('braces')[0], spec.file), source => {
@@ -80,5 +77,5 @@ test('start, android, ios, web and test run the check first; install still appli
   for (const name of ['start', 'android', 'ios', 'web', 'test']) {
     assert.equal(scripts[`pre${name}`], 'node scripts/check-install.mjs', `pre${name}`);
   }
-  assert.match(scripts.postinstall, /patch-expo-metro\.mjs && node scripts\/patch-navigation-decoder\.mjs && node scripts\/patch-security-backports\.mjs$/);
+  assert.match(scripts.postinstall, /patch-expo-metro\.mjs && node scripts\/patch-security-backports\.mjs$/);
 });

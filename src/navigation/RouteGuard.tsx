@@ -134,12 +134,9 @@ function useNavigationReady(): boolean {
     };
     // It may have become ready between the render and this effect.
     check();
-    const stopReady = navigationRef.addListener('ready', check);
-    const stopState = navigationRef.addListener('state', check);
-    return () => {
-      stopReady();
-      stopState();
-    };
+    // SDK 58 (React Navigation 8) dropped the container's 'ready' event; the container emits
+    // 'state' when it mounts, which is when the ref becomes ready.
+    return navigationRef.addListener('state', check);
   }, [navigationRef, ready]);
   return ready;
 }

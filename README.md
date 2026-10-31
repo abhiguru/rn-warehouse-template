@@ -11,7 +11,7 @@ Prerequisites:
 
 - Node.js **22.18+** and npm.
 - For native builds only (not needed for [Expo Go](#try-the-app-on-a-phone-with-expo-go)): JDK 17 (Temurin) and an Android SDK with exactly the packages CI pins:
-  `platform-tools`, `platforms;android-36`, `build-tools;36.0.0`,
+  `platform-tools`, `platforms;android-37`, `build-tools;37.0.0`,
   `build-tools;35.0.0`, `ndk;27.1.12297006`, `ndk;27.0.12077973` and
   `cmake;3.22.1`. Set `ANDROID_HOME` to the SDK root;
   `node scripts/check-android-sdk.mjs` verifies the set.
@@ -30,8 +30,8 @@ npm run doctor               # read-only check against an installed backend
 npm run android              # native debug build on a device or emulator
 ```
 
-`npm ci` applies three postinstall patches to installed packages
-(`scripts/patch-expo-metro.mjs`, `scripts/patch-navigation-decoder.mjs` and
+`npm ci` applies two postinstall patches to installed packages
+(`scripts/patch-expo-metro.mjs` and
 `scripts/patch-security-backports.mjs`); `npm run verify:backports` re-checks
 them against `scripts/security-backports.json`. An install with npm scripts
 turned off (`--ignore-scripts`) skips them silently, so `npm start`,

@@ -40,13 +40,14 @@ export default function CentralOtpScreen() {
   // arrow, or by the navigation that follows a correct code. The check may still be running.
   const removed = useRef(false);
   const navigation = useNavigation();
-  useEffect(
-    () =>
-      navigation.addListener('beforeRemove', () => {
-        removed.current = true;
-      }),
-    [navigation]
-  );
+  useEffect(() => {
+    // SDK 58 (React Navigation 8) has no 'beforeRemove'. 'removed' fires once the screen has been
+    // taken off the stack and unmounted, after effect cleanup, so unsubscribing waits a microtask.
+    const unsubscribe = navigation.addListener('removed', () => {
+      removed.current = true;
+    });
+    return () => queueMicrotask(unsubscribe);
+  }, [navigation]);
 
   useEffect(() => {
     if (!phoneNumber) router.replace('/central-login');

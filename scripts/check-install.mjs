@@ -1,7 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { isMain } from './is-main.mjs';
 import { patchExpoMetro } from './patch-expo-metro.mjs';
-import { patch as patchNavigationDecoder } from './patch-navigation-decoder.mjs';
 import { securityBackports } from './patch-security-backports.mjs';
 
 // The two adapters and the security backports are applied by the npm
@@ -12,7 +11,6 @@ import { securityBackports } from './patch-security-backports.mjs';
 // web and test.
 export function checkInstall(root) {
   patchExpoMetro(root, { verifyOnly: true });
-  patchNavigationDecoder(root, { verifyOnly: true });
   securityBackports(root, { verifyOnly: true });
 }
 
