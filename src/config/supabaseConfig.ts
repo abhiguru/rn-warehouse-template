@@ -712,7 +712,15 @@ async function operatorFunctionPost(
       body: JSON.stringify(body),
     };
     const response = await gatedFetch(request, options, { generation, ...gate });
-    const result = (await response.json()) as OperatorEnvelope & { code?: unknown };
+    // A refusal whose body is not JSON (a rate-limit or maintenance page, a gateway that is down) is still a refusal:
+    // the callers read its status. A 2xx that is not JSON stays an error.
+    let result: OperatorEnvelope & { code?: unknown };
+    try {
+      result = (await response.json()) as OperatorEnvelope & { code?: unknown };
+    } catch (error) {
+      if (response.ok) throw error;
+      result = {} as OperatorEnvelope & { code?: unknown };
+    }
     return { response, result };
   } finally {
     clearTimeout(timeout);

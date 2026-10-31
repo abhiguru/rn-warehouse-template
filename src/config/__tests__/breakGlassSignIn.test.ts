@@ -105,6 +105,22 @@ it.each([
   expect(await readSessionEnd()).toBeNull();
 });
 
+it.each([
+  [429, 'rate_limited'],
+  [503, 'unavailable'],
+  [404, 'unavailable'],
+  [502, 'failed'],
+] as const)('maps a %s whose body is not JSON to %s, not to a lost connection', async (status, reason) => {
+  jest.mocked(global.fetch).mockResolvedValue({
+    ok: false,
+    status,
+    headers: { get: () => null },
+    json: async () => { throw new SyntaxError('Unexpected token < in JSON'); },
+  } as unknown as Response);
+  expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason });
+  expect((await getStoredToken()).isValid).toBe(false);
+});
+
 it('reports a lost connection as network', async () => {
   jest.mocked(global.fetch).mockRejectedValue(new TypeError('Network request failed'));
   expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason: 'network' });
