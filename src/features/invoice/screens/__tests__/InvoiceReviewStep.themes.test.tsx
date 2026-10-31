@@ -4,7 +4,7 @@
  * filled (brand.fill) button on the screen.
  */
 import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens } from '@/theme/tokens';
 import { fillNewInvoice, groupLines, makeInvoiceStore, openForEdit, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
@@ -45,7 +45,8 @@ jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocompl
 jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: () => null }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 
-const flat = (style: unknown): Record<string, any> => (StyleSheet.flatten(typeof style === 'function' ? (style as (s: { pressed: boolean }) => unknown)({ pressed: false }) : style) ?? {}) as Record<string, any>;
+type AnyStyle = StyleProp<ViewStyle & TextStyle>;
+const flat = (style: unknown): Record<string, any> => (StyleSheet.flatten(typeof style === 'function' ? (style as (s: { pressed: boolean }) => AnyStyle)({ pressed: false }) : (style as AnyStyle)) ?? {}) as Record<string, any>;
 const MODES = [['create', 'step'], ['edit', 'step']] as const;
 const THEMES = BRANDS.flatMap((brand) => (['light', 'dark'] as const).map((mode) => [brand, mode] as const));
 

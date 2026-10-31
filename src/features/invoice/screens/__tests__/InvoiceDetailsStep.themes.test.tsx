@@ -5,7 +5,7 @@
  * Next only (no Back on step 1).
  */
 import React from 'react';
-import { Keyboard, StyleSheet, Text, TextInput } from 'react-native';
+import { Keyboard, StyleSheet, Text, TextInput, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, space } from '@/theme/tokens';
 import { AA, contrastRatio } from '@/theme/tokens/contrast';
@@ -47,7 +47,8 @@ jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocompl
 jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: () => null }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 
-const flat = (style: unknown): Record<string, any> => (StyleSheet.flatten(typeof style === 'function' ? (style as (s: { pressed: boolean }) => unknown)({ pressed: false }) : style) ?? {}) as Record<string, any>;
+type AnyStyle = StyleProp<ViewStyle & TextStyle>;
+const flat = (style: unknown): Record<string, any> => (StyleSheet.flatten(typeof style === 'function' ? (style as (s: { pressed: boolean }) => AnyStyle)({ pressed: false }) : (style as AnyStyle)) ?? {}) as Record<string, any>;
 const MODES = [['create', 'step'], ['edit', 'step']] as const;
 const THEMES = BRANDS.flatMap((brand) => (['light', 'dark'] as const).map((mode) => [brand, mode] as const));
 
