@@ -8,6 +8,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
 import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { LOCK_A11Y, LOCK_TAG, type LineLock } from '@/features/grn/utils/lineLock';
 
 export interface SavedItemCardData {
   name: string;
@@ -24,8 +25,8 @@ interface SavedItemCardProps {
   item: SavedItemCardData;
   isLast?: boolean;
   isEditing?: boolean;
-  /** Whether this item has dispatches and is protected from quantity changes */
-  isProtected?: boolean;
+  /** What locks this stored line (shown as a tag, as on the review step); null or absent: nothing. */
+  lock?: LineLock;
   style?: ViewStyle;
 }
 
@@ -39,7 +40,7 @@ export const SavedItemCard: React.FC<SavedItemCardProps> = ({
   item,
   isLast = false,
   isEditing = false,
-  isProtected = false,
+  lock = null,
   style,
 }) => {
   const styles = useThemedStyles(makeStyles);
@@ -63,7 +64,7 @@ export const SavedItemCard: React.FC<SavedItemCardProps> = ({
     packageMark ? tr('grn.item.a11yMark', { mark: packageMark }) : '',
     imageCount > 0 ? photosText : '',
     isEditing ? tr('grn.item.a11yEditing') : '',
-    isProtected ? tr('grn.item.a11yQuantityLocked') : '',
+    lock ? LOCK_A11Y[lock]() : '',
   ]
     .filter(Boolean)
     .join(', ');
@@ -94,10 +95,10 @@ export const SavedItemCard: React.FC<SavedItemCardProps> = ({
       </View>
 
       {/* State tags */}
-      {(isEditing || isProtected) && (
+      {(isEditing || lock !== null) && (
         <View style={styles.tagRow}>
           {isEditing && <StatusTag status="informative" label={tr('grn.item.editing')} icon="pencil-outline" />}
-          {isProtected && <StatusTag status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />}
+          {lock !== null && <StatusTag wrap status="critical" label={LOCK_TAG[lock]()} icon="lock-outline" />}
         </View>
       )}
 

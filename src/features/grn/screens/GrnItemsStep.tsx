@@ -38,6 +38,7 @@ import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
+import { lineLock, type LineLock } from '@/features/grn/utils/lineLock';
 import { generateTempGRNId, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import { LOCAL_PHOTO_OWNERS, registerLocalPhoto, releaseLocalPhotos } from '@/utils/localPhotoFiles';
@@ -717,17 +718,19 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     }
   }, [dispatch, loadForm, header.customer_name]);
 
-  // The lines whose quantity is locked, for the sheet's "Quantity locked" tag: the server's word when it gave locks, else
-  // the lines whose stock differs from their quantity (an older server), as before.
-  const quantityLockedIds = useMemo(() => {
+  // What locks each stored line, for the sheet's lock tag (the same words as the review step): the server's locks when it
+  // gave them, else the lines dispatched before (an older server), tagged "Quantity locked" as before.
+  const lineLocks = useMemo(() => {
     if (isCreateMode) return undefined;
-    const ids = new Set(itemsWithDispatchesOnLoad.keys());
+    const locks = new Map<string, LineLock>();
+    itemsWithDispatchesOnLoad.forEach((_count, id) => locks.set(id, 'quantity'));
     items.forEach((item) => {
       if (!item.locks) return;
-      if (item.locks.dispatched) ids.add(item.grn_trl_id);
-      else ids.delete(item.grn_trl_id);
+      const lock = lineLock(item, false);
+      if (lock) locks.set(item.grn_trl_id, lock);
+      else locks.delete(item.grn_trl_id);
     });
-    return ids;
+    return locks;
   }, [isCreateMode, itemsWithDispatchesOnLoad, items]);
 
   // The lines the sheet won't remove, each with the reason (owner decision D11): dispatched or moved before, or on the
@@ -1022,7 +1025,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         onEditItem={handleSheetEditItem}
         onDismissed={() => openRowAfterSheetRef.current()}
         editingItemId={editingItemId ?? undefined}
-        dispatchedItemIds={quantityLockedIds}
+        lineLocks={lineLocks}
         removeBlockedReasons={removeBlockedReasons}
       />
     </View>

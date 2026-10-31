@@ -137,7 +137,6 @@ export const grn = {
     a11yRack: 'rack {{rack}}',
     a11yMark: 'mark {{mark}}',
     a11yEditing: 'editing',
-    a11yQuantityLocked: 'quantity locked',
     totalQuantityLabel: 'Total quantity:',
     summaryEmptyTitle: 'No items added yet',
     summaryEmptySubtitle: 'Fill in the item form and tap the check mark to save it here.',

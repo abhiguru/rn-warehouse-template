@@ -141,7 +141,6 @@ export const grn: Translation<typeof source> = {
     a11yRack: 'રેક {{rack}}',
     a11yMark: 'માર્કો {{mark}}',
     a11yEditing: 'ફેરફાર ચાલુ છે',
-    a11yQuantityLocked: 'નંગ લૉક છે',
     totalQuantityLabel: 'કુલ નંગ:',
     summaryEmptyTitle: 'હજુ કોઈ આઇટમ ઉમેરી નથી',
     summaryEmptySubtitle: 'આઇટમની વિગતો ભરો અને અહીં સાચવવા માટે ખરાની નિશાની પર ટૅપ કરો.',
