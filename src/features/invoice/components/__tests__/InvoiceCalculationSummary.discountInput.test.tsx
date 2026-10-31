@@ -74,16 +74,28 @@ describe('the discount field', () => {
     expect(onDiscountErrorChange).toHaveBeenLastCalledWith(shownErrors(tree)[0]);
   });
 
-  it('shows the discount the invoice really has once the field is left', async () => {
-    const { tree, onDiscountErrorChange } = await render();
+  it('keeps refused text and its message once the field is left; the invoice keeps its discount', async () => {
+    const { tree, onDiscountChange, onDiscountErrorChange } = await render();
     await type(tree, FIELD, '5000');
     expect(inputLabelled(tree, FIELD).props.value).toBe('5000');
+    const message = shownErrors(tree)[0];
 
     await act(async () => { inputLabelled(tree, FIELD).props.onBlur(); });
 
-    expect(inputLabelled(tree, FIELD).props.value).toBe('400.00');
+    expect(inputLabelled(tree, FIELD).props.value).toBe('5000');
+    expect(shownErrors(tree)).toEqual([message]);
+    expect(onDiscountErrorChange).toHaveBeenLastCalledWith(message);
+    expect(onDiscountChange).not.toHaveBeenCalled();
+  });
+
+  it('shows a finished number with two decimals once the field is left', async () => {
+    const { tree } = await render();
+    await type(tree, FIELD, '12.5');
+
+    await act(async () => { inputLabelled(tree, FIELD).props.onBlur(); });
+
+    expect(inputLabelled(tree, FIELD).props.value).toBe('12.50');
     expect(shownErrors(tree)).toEqual([]);
-    expect(onDiscountErrorChange).toHaveBeenLastCalledWith(null);
   });
 
   it('does not read "1,500" as a discount of 1', async () => {

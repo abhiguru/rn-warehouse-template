@@ -360,13 +360,15 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
     if (value !== header.discount) onDiscountChange(value);
   };
 
-  // Leaving the field: the text becomes the discount the invoice really has, with two decimals.
+  // Leaving the field: a complete number becomes the discount the invoice has, with two decimals. Text that was refused
+  // stays as typed, with its message (style guide 13.7); the invoice keeps the discount the field had when it was
+  // entered, and the Review refuses Update and Save until the text is fixed.
   const handleDiscountBlur = () => {
     editing.current = false;
+    if (discountError) return;
     const parsed = parseDiscountInput(discountText, base, formatInvoiceAmount);
-    const shown = parsed.value !== null && !discountError ? parsed.value : header.discount;
+    const shown = parsed.value !== null ? parsed.value : header.discount;
     setDiscountText(discountFieldText(shown));
-    setDiscountError(null);
   };
 
   const setDiscount = (value: number) => {
