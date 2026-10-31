@@ -152,7 +152,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
                 fullWidth
                 variant="secondary"
                 icon={toFacilities ? 'arrow-left' : 'server'}
-                label={toFacilities ? tr('nav.myFacilities') : tr('components.configError.changeServer')}
+                label={toFacilities ? tr('nav.screens.myFacilities') : tr('components.configError.changeServer')}
                 onPress={onChangeServer}
                 disabled={isRetrying}
                 accessibilityLabel={toFacilities ? tr('components.configError.backToFacilitiesLabel') : tr('components.configError.changeServerLabel')}

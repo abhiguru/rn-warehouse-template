@@ -110,7 +110,7 @@ export function PhoneSignInForm({
   // A countdown is a number: ૦-૯ in Gujarati.
   const countdown = rateLimit.countdown;
   const termsMissing = Boolean(terms && !terms.accepted);
-  const termsRef = useRef<View>(null);
+  const termsRef = useRef<React.ComponentRef<typeof Pressable>>(null);
   // Every way of sending (the button, the keyboard's Send) goes through here.
   const submit = () => {
     if (termsMissing) {
