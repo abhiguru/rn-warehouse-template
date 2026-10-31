@@ -595,13 +595,13 @@ export const grn = {
     deleteFailedTitle: "Couldn't delete the GRN",
     deleteFailed: "Couldn't delete the GRN. Try again.",
     leaveWhileCheckingTitle: 'Leave this screen?',
-    dispatchItemsInvoiced: {
-      one: '{{count}} dispatch item invoiced.',
-      other: '{{count}} dispatch items invoiced.',
+    deleteBlockedInvoiced: {
+      one: 'GRN {{number}} has {{count}} dispatch line on an invoice. Delete that invoice first, then the dispatch.',
+      other: 'GRN {{number}} has {{count}} dispatch lines on invoices. Delete those invoices first, then the dispatches.',
     },
-    dispatchItemsRecorded: {
-      one: '{{count}} dispatch item recorded.',
-      other: '{{count}} dispatch items recorded.',
+    deleteBlockedDispatches: {
+      one: 'GRN {{number}} has {{count}} dispatch line. Delete that dispatch first.',
+      other: 'GRN {{number}} has {{count}} dispatch lines. Delete those dispatches first.',
     },
     pdfCreateFailedTitle: "Couldn't create the PDF",
     pdfShareFailedTitle: "Couldn't share the PDF",

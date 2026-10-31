@@ -598,13 +598,13 @@ export const grn: Translation<typeof source> = {
     deleteFailed: 'આવક પાવતી ડિલીટ થઈ શકી નથી. ફરી પ્રયાસ કરો.',
     // Gujarati draft for the owner's wording review (2026-10-20).
     leaveWhileCheckingTitle: 'આ સ્ક્રીન છોડવી છે?',
-    dispatchItemsInvoiced: {
-      one: '{{count}} જાવક આઇટમનું ઇન્વૉઇસ બની ગયું છે.',
-      other: '{{count}} જાવક આઇટમનું ઇન્વૉઇસ બની ગયું છે.',
+    deleteBlockedInvoiced: {
+      one: 'આવક પાવતી {{number}} ની {{count}} જાવક લાઇન ઇન્વૉઇસમાં છે. પહેલાં તે ઇન્વૉઇસ ડિલીટ કરો, પછી જાવક ડિલીટ કરો.',
+      other: 'આવક પાવતી {{number}} ની {{count}} જાવક લાઇન ઇન્વૉઇસમાં છે. પહેલાં તે ઇન્વૉઇસ ડિલીટ કરો, પછી જાવક ડિલીટ કરો.',
     },
-    dispatchItemsRecorded: {
-      one: '{{count}} જાવક આઇટમ નોંધાયેલી છે.',
-      other: '{{count}} જાવક આઇટમ નોંધાયેલી છે.',
+    deleteBlockedDispatches: {
+      one: 'આવક પાવતી {{number}} ની {{count}} જાવક લાઇન છે. પહેલાં તે જાવક ડિલીટ કરો.',
+      other: 'આવક પાવતી {{number}} ની {{count}} જાવક લાઇન છે. પહેલાં તે જાવક ડિલીટ કરો.',
     },
     pdfCreateFailedTitle: 'PDF બનાવી શકાઈ નથી',
     pdfShareFailedTitle: 'PDF શેર કરી શકાઈ નથી',

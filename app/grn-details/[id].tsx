@@ -64,6 +64,7 @@ import { showAlert } from '@/utils/alert';
 import { formatCount } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText, failureText } from '@/utils/serverText';
+import { deleteBlockedText } from '@/features/grn/utils/deleteRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
 import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
 import { invoiceTableFrom } from '@/components/common/invoiceTable';
@@ -620,20 +621,10 @@ function GRNDetailScreen() {
 
                 showDeleted(withOrderEffects(message + details, parseOrderEffects(result.order_effects), 'doneLead'));
               } else {
-                let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true, delete: true });
-
-                if (result.blocking_dependencies) {
-                  const deps = result.blocking_dependencies;
-                  if (deps.invoiced_dispatches) {
-                    errorMessage += `\n\n${tr('grn.details.dispatchItemsInvoiced', { count: deps.invoiced_dispatches })}`;
-                  } else if (deps.dispatches) {
-                    errorMessage += `\n\n${tr('grn.details.dispatchItemsRecorded', { count: deps.dispatches })}`;
-                  }
-
-                  if (result.instructions) {
-                    errorMessage += `\n\n${result.instructions}`;
-                  }
-                }
+                // Dispatch lines in the way: one sentence in the app's words, not the server's English as well.
+                const errorMessage =
+                  deleteBlockedText(grNumber, result.blocking_dependencies) ??
+                  serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true, delete: true });
 
                 showAlert(tr('grn.details.deleteFailedTitle'), errorMessage);
               }
