@@ -649,6 +649,18 @@ test('a definitive refresh rejection clears credentials and ends the Redux sessi
   expect(typeof jest.mocked(appStore.dispatch).mock.calls[0][0]).toBe('function');
 });
 
+test('a definitive refresh rejection signs the person out WITH the reason (shown on My facilities)', async () => {
+  const slice = require('@/store/slices/authSlice') as typeof import('@/store/slices/authSlice');
+  const forceLogout = jest.spyOn(slice, 'forceLogoutOnInvalidToken').mockReturnValue({ type: 'test/forceLogout' } as never);
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  rpc.mockResolvedValue({ data: { success: false, message: 'Invalid refresh token' }, error: null });
+  expect(await refreshCustomJWT()).toBeNull();
+  expect(forceLogout).toHaveBeenCalledTimes(1);
+  expect(forceLogout.mock.calls[0][0]).toEqual(expect.any(String));
+  expect(forceLogout.mock.calls[0][0].length).toBeGreaterThan(0);
+  forceLogout.mockRestore();
+});
+
 test('the P0001 "Session expired" exception is a definitive rejection', async () => {
   await storeTokens(jwt(1), 'a'.repeat(64), 1000);
   rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'Session expired' } });
