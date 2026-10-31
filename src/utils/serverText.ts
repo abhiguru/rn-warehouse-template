@@ -362,7 +362,7 @@ export function isUnreadableAnswer(error: unknown): boolean {
  */
 export function emptyAnswerAsError(answer: { data?: unknown; error?: unknown; status?: number }): { message: string; code: string; status: number } | null {
   if (answer.error || answer.status !== 200 || (answer.data !== null && answer.data !== undefined)) return null;
-  return { message: 'Empty answer from the server', code: '', status: 200 };
+  return { message: '', code: '', status: 200 };
 }
 
 /**
