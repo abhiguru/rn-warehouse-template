@@ -180,8 +180,27 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     };
   }, [navigationRef]);
 
+  // The navigator can be behind the segments (React Navigation 8 commits a navigation after the
+  // route store has already moved). When the effect below finds that the shown route is allowed
+  // although the segments are not, it listens for the navigator's next 'state' event, which runs
+  // the effect again: "once they catch up" in the comment inside it. The listener is registered
+  // there and then (a state event between a render and a later effect would be missed) and
+  // dropped when the event comes, when the effect runs again, or on unmount.
+  const [stateTick, setStateTick] = useState(0);
+  const stopWaiting = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopWaiting.current?.(), []);
+
+  // The way out already requested for the refused root route that is on screen. The requests
+  // are carried out one after another, and the first of them (dismissAll) can move `path` within
+  // that route (a form's own stack goes from step 2 to step 1) before the replace has landed;
+  // asking again then would repeat the whole way out.
+  const issued = useRef<{ decision: RouteDecision; root: string | undefined } | null>(null);
   useEffect(() => {
+    stopWaiting.current?.();
+    stopWaiting.current = null;
+    if (decision === 'allow') issued.current = null;
     if (!navigationReady || decision === 'allow') return;
+    if (issued.current?.decision === decision && issued.current.root === segments[0]) return;
     const now = live.current;
     // Without central login the navigator's state is not consulted: the lines below this
     // block are all there is, as before.
@@ -206,8 +225,15 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
           capabilities: now.capabilities,
           central: { signedIn: now.centralSignedIn, facilitySms: Boolean(now.facilitySms) },
         }) === 'allow'
-      )
+      ) {
+        const stop = navigationRef.addListener('state', () => {
+          stop();
+          if (stopWaiting.current === stop) stopWaiting.current = null;
+          setStateTick((tick) => tick + 1);
+        });
+        stopWaiting.current = stop;
         return;
+      }
       // A facility session has arrived on a central screen (the code step after a correct
       // code; My facilities over a facility's hidden home): replacing only that screen would
       // leave My facilities under the facility's home, or a second home on the first.
@@ -231,6 +257,7 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     // with it any stack layout of its own (a form past its first step). A refused route that
     // stayed mounted with its own stack would pop that stack instead, and would need an
     // action aimed at the root stack.
+    issued.current = { decision, root: segments[0] };
     if (decision === 'login') {
       if (leaveForSignIn) router.dismissAll();
       router.replace('/login');
@@ -248,7 +275,7 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
       }
     }
     // `path` is listed so a second refused route is replaced as well.
-  }, [decision, path, router, navigationReady]);
+  }, [decision, path, router, navigationReady, stateTick]);
 
   return decision;
 }
