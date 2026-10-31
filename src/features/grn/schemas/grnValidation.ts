@@ -134,7 +134,13 @@ const wholeNumberTransform = (_value: unknown, originalValue: unknown): unknown 
   }
   if (typeof originalValue === 'string') {
     if (originalValue.trim() === '') return undefined;
-    return parseWholeNumberInput(originalValue) ?? NaN;
+    const parsed = parseWholeNumberInput(originalValue);
+    if (parsed !== null) return parsed;
+    // Ten or more digits are still a whole number, only a too large one: it reaches `.max` and says so
+    // (a huge run of digits is capped so it stays an integer).
+    const digits = normalizeDigits(originalValue.trim());
+    if (/^\d+$/.test(digits)) return Math.min(Number(digits), Number.MAX_SAFE_INTEGER);
+    return NaN;
   }
   return NaN;
 };
