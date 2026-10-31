@@ -53,7 +53,7 @@ import {
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
-import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
+import { deleteDispatchImage, uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
 import { showAlert } from '@/utils/alert';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -162,6 +162,7 @@ function DispatchDetailScreen() {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageUploadRef = useRef(false);
+  const [isDeletingImage, setIsDeletingImage] = useState(false);
   // A delete is running (the ref is read by the Back key and by a second tap, the state draws the button)
   const [isDeleting, setIsDeleting] = useState(false);
   const isDeletingRef = useRef(false);
@@ -585,6 +586,42 @@ function DispatchDetailScreen() {
     }
   };
 
+  // A photo of the saved dispatch can be deleted by the people who can add one, the last one too (a dispatch needs no
+  // photo). It asks first. When the answer is lost the photo may be gone, so the photos are read again.
+  const handleDeleteImage = (image: DispatchImageData) => {
+    if (imageUploadRef.current || isDeletingRef.current) return;
+    imageUploadRef.current = true;
+    showAlert(tr('dispatch.photos.deleteTitle'), tr('dispatch.photos.deleteMessage'), [
+      { text: tr('common.cancel'), style: 'cancel', onPress: () => { imageUploadRef.current = false; } },
+      {
+        text: tr('dispatch.photos.delete'),
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setIsDeletingImage(true);
+            const result = await deleteDispatchImage(image.id, image.image_url);
+            if (result.success) {
+              await fetchDispatchDetails();
+              setSnackbarMessage(result.partial ? serverText(result.error, tr('dispatch.photos.removedFileUnconfirmed'), { write: true, photo: true }) : tr('dispatch.photos.deleted'));
+            } else {
+              const failure = photoAddFailure(result.error, tr('dispatch.photos.deleteFailed'));
+              setSnackbarMessage(failure.message);
+              if (failure.reread) await fetchDispatchDetails();
+            }
+          } catch (error) {
+            const failure = photoAddFailure(error, tr('dispatch.photos.deleteFailed'));
+            setSnackbarMessage(failure.message);
+            if (failure.reread) await fetchDispatchDetails();
+          } finally {
+            setIsDeletingImage(false);
+            imageUploadRef.current = false;
+            setSnackbarVisible(true);
+          }
+        },
+      },
+    ]);
+  };
+
   // Prepare images for DispatchImagesTab (use processed_images with signed URLs)
   const dispatchImages: DispatchImageData[] = (dispatch.processed_images || []).map((img: any) => ({
     id: img.id,
@@ -687,6 +724,8 @@ function DispatchDetailScreen() {
               onImagePress={handleImagePress}
               onUpload={canUpdate ? handleAddImage : undefined}
               isUploading={isUploadingImage}
+              onDelete={canUpdate ? handleDeleteImage : undefined}
+              isDeleting={isDeletingImage}
             />
           )}
 

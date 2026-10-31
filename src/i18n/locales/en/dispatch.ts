@@ -404,6 +404,12 @@ export const dispatch = {
     networkFailed: 'Network connection failed. Please check your internet connection and try again.',
     processFailed: 'Failed to process image file. Please try a different image.',
     deferredFailed: 'Failed to upload deferred images',
+    deleteLabel: 'Delete dispatch photo {{index}} of {{total}}',
+    deleteTitle: 'Delete this photo?',
+    deleteMessage: 'The photo is removed from the dispatch permanently.',
+    delete: 'Delete photo',
+    deleted: 'Photo deleted.',
+    deleteFailed: "Couldn't delete the photo. Try again.",
     removedFileUnconfirmed:
       'The photo was removed from this dispatch, but its stored file could not be confirmed deleted.',
   },

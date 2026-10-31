@@ -36,6 +36,7 @@ import { t as tr } from '@/i18n';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
+const REMOVE_CIRCLE = 28;
 const GRID_PADDING = space.sm;
 const IMAGE_GAP = space.xs;
 const IMAGE_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
@@ -53,6 +54,10 @@ interface DispatchImagesTabProps {
   /** Adds a photo to the submitted dispatch; omit to show the tab read-only. */
   onUpload?: () => void;
   isUploading?: boolean;
+  /** Deletes one photo of the submitted dispatch (asks first); omit to show no delete button. */
+  onDelete?: (image: DispatchImageData) => void;
+  /** A photo is being deleted: every delete button waits. */
+  isDeleting?: boolean;
 }
 
 /** The photo on the address the phone reaches the server by now: it follows a change of path (WS-L review L6). */
@@ -178,6 +183,24 @@ const makeStyles = (t: ThemeTokens) => ({
     marginTop: space.sm,
     textAlign: 'center' as const,
   },
+  removeButton: {
+    position: 'absolute' as const,
+    right: 0,
+    bottom: 0,
+    width: touchTarget,
+    height: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  removeCircle: {
+    width: REMOVE_CIRCLE,
+    height: REMOVE_CIRCLE,
+    borderRadius: radius.pill,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  removeCirclePressed: { backgroundColor: t.destructive.fill },
   uploadButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -205,6 +228,8 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   onImagePress,
   onUpload,
   isUploading = false,
+  onDelete,
+  isDeleting = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -239,15 +264,33 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   }
 
   const renderImage = ({ item, index }: { item: DispatchImageData; index: number }) => (
-    <Pressable
-      style={({ pressed }) => [styles.imageWrapper, pressed && styles.imageWrapperPressed]}
-      onPress={() => onImagePress?.(images, index)}
-      accessibilityRole="imagebutton"
-      accessibilityLabel={tr('dispatch.photos.photoOf', { index: index + 1, total: images.length })}
-      accessibilityHint={tr('dispatch.photos.opensFullScreen')}
-    >
-      <DispatchPhoto url={item.image_url} style={styles.image} />
-    </Pressable>
+    <View style={styles.imageWrapper}>
+      <Pressable
+        style={({ pressed }) => [styles.image, pressed && styles.imageWrapperPressed]}
+        onPress={() => onImagePress?.(images, index)}
+        accessibilityRole="imagebutton"
+        accessibilityLabel={tr('dispatch.photos.photoOf', { index: index + 1, total: images.length })}
+        accessibilityHint={tr('dispatch.photos.opensFullScreen')}
+      >
+        <DispatchPhoto url={item.image_url} style={styles.image} />
+      </Pressable>
+      {onDelete ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={tr('dispatch.photos.deleteLabel', { index: index + 1, total: images.length })}
+          accessibilityState={{ disabled: isDeleting || isUploading }}
+          disabled={isDeleting || isUploading}
+          style={styles.removeButton}
+          onPress={() => onDelete(item)}
+        >
+          {({ pressed }) => (
+            <View style={[styles.removeCircle, pressed && styles.removeCirclePressed]}>
+              <Icon name="trash-can-outline" size={iconSize.sm} color={t.overlay.onImage} />
+            </View>
+          )}
+        </Pressable>
+      ) : null}
+    </View>
   );
 
   const countLabel = formatCount(images.length, 'photo');
