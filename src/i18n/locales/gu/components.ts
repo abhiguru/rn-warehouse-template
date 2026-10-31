@@ -102,6 +102,7 @@ export const components: Translation<typeof source> = {
     noLink: 'નવું વર્ઝન ક્યાંથી મળશે તે કોલ્ડ સ્ટોરેજને પૂછો.',
   },
   upgrading: {
+    title: 'સર્વર અપડેટ થઈ રહ્યું છે',
     message: 'કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ થઈ રહ્યું છે. થોડી મિનિટ પછી ફરી પ્રયાસ કરો.',
   },
   invalidRoute: {

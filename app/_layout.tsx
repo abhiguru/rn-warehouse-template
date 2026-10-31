@@ -98,6 +98,7 @@ import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/cen
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { showAlert } from '@/utils/alert';
+import { isUpgradingAnswer } from '@/utils/serverText';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
 import { startDailyLanCheck } from '@/config/lanCheck';
@@ -527,6 +528,8 @@ function BootstrapApp() {
   const [isReady, setIsReady] = useState(false);
   const [needsSelection, setNeedsSelection] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  // The facility answered the cold start with `upgrading`: its own full-screen state, not a load error.
+  const [serverUpgrading, setServerUpgrading] = useState(false);
   // The selected facility needs a newer app: its own screen, not a connection error. Set by the facility check
   // (src/config/operatorBootstrap.ts) at the start and on every return to the foreground, so a phone resumed after an upgrade is told too.
   const appTooOld = useSyncExternalStore(subscribeAppTooOld, getAppTooOld, getAppTooOld);
@@ -590,6 +593,7 @@ function BootstrapApp() {
     // A retry must leave the prior error state before starting. Otherwise a
     // successful refresh completes behind the still-mounted error screen.
     setConfigError(null);
+    setServerUpgrading(false);
     clearAppTooOld();
     setIsReady(false);
     setNeedsSelection(false);
@@ -661,6 +665,13 @@ function BootstrapApp() {
 
       if (run === bootstrapRun.current) { setConfigError(null); setIsReady(true); }
     } catch (error: any) {
+      // The facility is being updated: an expected answer, shown on its own screen and not logged as an error.
+      if (run === bootstrapRun.current && isUpgradingAnswer(error)) {
+        setServerUpgrading(true);
+        setConfigError(translate('components.upgrading.message'));
+        setIsReady(true);
+        return;
+      }
       console.error('[Bootstrap] Unexpected bootstrap error:', error);
       if (run === bootstrapRun.current && isAppTooOld(error)) {
         reportAppTooOld(error);
@@ -719,6 +730,7 @@ function BootstrapApp() {
     return (
       <ConfigErrorScreen
         error={configError}
+        upgrading={serverUpgrading}
         onRetry={bootstrapApp}
         toFacilities={centralLogin}
         onChangeServer={

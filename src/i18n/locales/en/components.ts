@@ -98,6 +98,7 @@ export const components = {
     noLink: 'Ask the facility where to get the new version.',
   },
   upgrading: {
+    title: 'Server being updated',
     message: "The facility's server is being updated. Try again in a few minutes.",
   },
   invalidRoute: {
