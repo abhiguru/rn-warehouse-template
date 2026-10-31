@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
-import GRNListFiori from '@/components/GRNListFiori';
+import { grnListElement } from '../helpers/grnListElement';
 import { StyleSheet } from 'react-native';
 import { FIRST_COLUMN_EM, crowded, lastColumnAlone, nb, nestedRowWidth, numberColumnWidth } from '@/components/common/DetailTable';
 import { space, typography } from '@/theme/tokens';
@@ -103,7 +103,7 @@ async function renderList(rows: ReturnType<typeof row>[]) {
   } as never);
   let tree!: ReactTestRenderer;
   await act(async () => {
-    tree = create(<GRNListFiori />);
+    tree = create(grnListElement());
   });
   mounted.push(tree);
   return tree;

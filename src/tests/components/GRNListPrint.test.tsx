@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import GRNListFiori from '@/components/GRNListFiori';
+import { grnListElement } from '../helpers/grnListElement';
 import { getAllGRNItems } from '@/services/grn-service';
 import { printGRNRange } from '@/services/print-service';
 import { showAlert } from '@/utils/alert';
@@ -95,7 +95,7 @@ async function renderList(rows: ReturnType<typeof row>[]) {
   } as never);
   let tree!: ReactTestRenderer;
   await act(async () => {
-    tree = create(<GRNListFiori />);
+    tree = create(grnListElement());
   });
   mounted.push(tree);
   return tree;
