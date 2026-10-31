@@ -536,7 +536,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const finishSave = (savedGrnId: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
     void noteItemsWithoutRate(savedGrnId);
     if (photos && photos.removalFailures > 0) {
-      setSnackbarMessage(tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
+      setSnackbarMessage(photos.removalRefusal ?? tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
       setSnackbarVisible(true);
     }
     if (savedGrnId && photos && photos.failed.length > 0) {

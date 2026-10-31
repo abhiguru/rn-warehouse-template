@@ -127,6 +127,8 @@ export interface GRNPhotoSaveReport {
   failed: FailedGRNPhoto[];
   /** Photos removed in the form that are still on the GRN. */
   removalFailures: number;
+  /** Set when the server kept a photo because it is the GRN's last (GRN_PHOTO_REQUIRED): the app's sentence for it. */
+  removalRefusal?: string;
 }
 
 /** A line whose quantity `update_grn` left unchanged because it already has dispatches (migration 86). */
@@ -877,26 +879,6 @@ export const updateGRN = async (
     const remainingImageIds: Set<string> | null = Array.isArray(rpcResult.grn?.images)
       ? new Set(rpcResult.grn.images.map((image: { id: string }) => image.id))
       : null;
-    let removalFailures = 0;
-    const orphanedPaths: string[] = [];
-    for (const removed of options.removedImages || []) {
-      const stillOnGrn = remainingImageIds ? remainingImageIds.has(removed.id) : rpcImages.length === 0;
-      if (stillOnGrn) {
-        const deletion = await deleteGRNImage(removed.id, '');
-        if (!deletion.success) removalFailures++;
-      } else if (remainingImageIds && removed.storagePath) {
-        orphanedPaths.push(removed.storagePath);
-      }
-    }
-    if (orphanedPaths.length > 0) {
-      // The rows are gone; the stored files are removed on a best effort.
-      try {
-        await authenticatedClient.storage.from('grn-images').remove(orphanedPaths);
-      } catch (removeError) {
-        log.warn('Could not remove the files of deleted photos', loggableError(removeError));
-      }
-    }
-
     // ✅ Photos picked in the form are uploaded now that the update succeeded.
     // A line added in this edit gets its id from update_grn's item_mapping
     // (index = position in p_items); before the save it only had a local id.
@@ -914,12 +896,39 @@ export const updateGRN = async (
       }))
     );
 
+    // The new photos go up and are confirmed BEFORE the removed ones are deleted: the server keeps a GRN's last
+    // photo (migration 130), so replacing the only photo must never pass through a moment with none.
+    const photoUpload0 = await uploadPhotosOfSavedGRN(grnId, pendingPhotos);
+    let removalFailures = 0;
+    let removalRefusal: string | undefined;
+    const orphanedPaths: string[] = [];
+    for (const removed of options.removedImages || []) {
+      const stillOnGrn = remainingImageIds ? remainingImageIds.has(removed.id) : rpcImages.length === 0;
+      if (stillOnGrn) {
+        const deletion = await deleteGRNImage(removed.id, '');
+        if (!deletion.success) {
+          removalFailures++;
+          if (deletion.error === t('grn.refusal.lastPhoto')) removalRefusal = deletion.error;
+        }
+      } else if (remainingImageIds && removed.storagePath) {
+        orphanedPaths.push(removed.storagePath);
+      }
+    }
+    if (orphanedPaths.length > 0) {
+      // The rows are gone; the stored files are removed on a best effort.
+      try {
+        await authenticatedClient.storage.from('grn-images').remove(orphanedPaths);
+      } catch (removeError) {
+        log.warn('Could not remove the files of deleted photos', loggableError(removeError));
+      }
+    }
+
     // The GRN is updated whatever happens to its photos; the caller is told which ones failed.
-    const photoUpload = await uploadPhotosOfSavedGRN(grnId, pendingPhotos);
+    const photoUpload = photoUpload0;
     if (photoUpload.failed.length > 0) {
       log.warn('Photos not uploaded during update', photoUpload.failed.length);
     }
-    const photos: GRNPhotoSaveReport = { ...photoUpload, removalFailures };
+    const photos: GRNPhotoSaveReport = { ...photoUpload, removalFailures, ...(removalRefusal ? { removalRefusal } : {}) };
 
     return {
       success: true,

@@ -520,6 +520,26 @@ describe('saving an edited GRN', () => {
     expect(callsTo('update_grn')[0].args.p_images).toEqual([]);
     expect(callsTo('delete_grn_image').map((call) => call.args)).toEqual([{ p_image_id: OLD_PHOTO_ID }]);
     expect(names().indexOf('delete_grn_image')).toBeGreaterThan(names().indexOf('update_grn'));
+    // The replacement is registered and confirmed before the old photo is deleted (the server keeps a GRN's last photo).
+    expect(names().indexOf('delete_grn_image')).toBeGreaterThan(names().indexOf('confirm_grn_image_upload'));
+  });
+
+  it('says a GRN needs a photo when the server keeps the last one', async () => {
+    mockRpcHandlers.update_grn = () => updateAnswer({ images: [{ id: OLD_PHOTO_ID }] });
+    mockRpcHandlers.delete_grn_image = () => ({
+      data: { success: false, error_code: 'WH409', reason: 'GRN_PHOTO_REQUIRED', error: 'English', gr_no: 'A0010' },
+      error: null,
+    });
+
+    const result = await updateGRN(
+      GRN_ID,
+      { header: header([picked('replacement')]), items: [line(LINE_ID, 'Example Potatoes')] },
+      { removedImages: [{ id: OLD_PHOTO_ID }] }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.photos.removalFailures).toBe(1);
+    expect(result.data?.photos.removalRefusal).toBe('A GRN needs at least one photo. Add another before deleting this one.');
   });
 
   it('does not delete again a photo update_grn already removed, and clears its file', async () => {
