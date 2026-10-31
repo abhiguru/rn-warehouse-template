@@ -419,7 +419,6 @@ export const invoice: Translation<typeof source> = {
     invoiceDateRequired: 'ઇન્વૉઇસની તારીખ જરૂરી છે',
     futureDate: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
     financialYearRequired: 'નાણાકીય વર્ષ જરૂરી છે',
-    financialYearFormat: 'નાણાકીય વર્ષ {{example}} જેવા રૂપમાં લખો.',
     invoiceNumberRequired: 'ઇન્વૉઇસ નંબર જરૂરી છે',
     invoiceNumberPositive: 'ઇન્વૉઇસ નંબર શૂન્યથી મોટો હોવો જોઈએ',
     invoiceNumberWhole: 'ઇન્વૉઇસ નંબર પૂર્ણ સંખ્યા હોવો જોઈએ',

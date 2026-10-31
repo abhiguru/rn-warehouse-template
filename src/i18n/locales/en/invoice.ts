@@ -410,7 +410,6 @@ export const invoice = {
     invoiceDateRequired: 'Invoice date is required',
     futureDate: 'Cannot select a future date',
     financialYearRequired: 'Financial year is required',
-    financialYearFormat: 'Enter the financial year as YYYY-YY, for example {{example}}.',
     invoiceNumberRequired: 'Invoice number is required',
     invoiceNumberPositive: 'Invoice number must be positive',
     invoiceNumberWhole: 'Invoice number must be a whole number',

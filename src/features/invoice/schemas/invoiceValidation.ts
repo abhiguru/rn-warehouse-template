@@ -57,8 +57,7 @@ export const step1Schema = yup.object().shape({
 
   inv_fin_year: yup
     .string()
-    .required(msg('invoice.validation.financialYearRequired'))
-    .matches(/^\d{4}-\d{2}$/, msg('invoice.validation.financialYearFormat', { example: '2025-26' })),
+    .required(msg('invoice.validation.financialYearRequired')),
 
   inv_no: invoiceNumberField(),
 
