@@ -1345,6 +1345,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               </Text>
 
               <ImageUploadButton
+                documentScan
                 onImageUploadStart={(tempImageData: GRNImageData) => {
                   dispatch(addHeaderImage(tempImageData));
                 }}

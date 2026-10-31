@@ -760,6 +760,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
                                     {isCheckingAnswer ? null : (
                                         <ImageUploadButton
+                                            documentScan
                                             onImageUploadStart={handleImageUploadStart}
                                             onImageUploadProgress={handleImageUploadProgress}
                                             onImageUploadComplete={handleImageUploadComplete}
