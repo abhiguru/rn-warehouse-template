@@ -494,7 +494,6 @@ export const grn: Translation<typeof source> = {
 
   validation: {
     numberMax: 'આવક પાવતી નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે',
-    numberNoSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ',
     registrationMax: 'વાહન નંબર વધુમાં વધુ ૨૦ અક્ષરનો હોઈ શકે',
     dateRequired: 'તારીખ જરૂરી છે',
     dateFuture: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
@@ -540,8 +539,11 @@ export const grn: Translation<typeof source> = {
 
   // Draft for the owner's wording review (2026-10-20): every text of this group.
   refusal: {
+    numberSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ.',
     numberLocked: 'નંબર બદલી શકાતો નથી. સુધારવા માટે આ આવક પાવતી કાઢી નાખીને ફરી દાખલ કરો.',
     dateInvoiced: 'આ આવક પાવતીનું ઇન્વૉઇસ બનેલું છે. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
+    dateFuture: 'આવક પાવતી આજ પછીની તારીખની ન હોઈ શકે. આજની તારીખ {{date}} છે.',
+    lastPhoto: 'આવક પાવતી માટે ઓછામાં ઓછો એક ફોટો જોઈએ. આ કાઢતા પહેલાં બીજો ઉમેરો.',
     lockedTitle: 'આ બદલી શકાતું નથી',
     lineTitle: 'આઇટમ {{position}} સાચવી શકાતી નથી',
     removeTitle: 'આ જથ્થો કાઢી શકાતો નથી',

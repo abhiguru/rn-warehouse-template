@@ -11,12 +11,11 @@ const msg = (key: TranslationKey) => () => t(key);
 // Step 1: GRN Header Schema
 export const step1Schema = yup.object().shape({
   // Empty is allowed: the number is then generated on save. The column holds
-  // twenty characters (migration 127), and "A0001 " must not be stored next to "A0001". The shape of the number
-  // is the facility's rule, which only the server knows (a refusal says it).
+  // twenty characters (migration 127). The field takes no spaces while typing (handleGrNoChange). The shape of the
+  // number is the facility's rule, which only the server knows (a refusal says it).
   gr_no: yup
     .string()
-    .max(DOCUMENT_NUMBER_MAX_LENGTH, msg('grn.validation.numberMax'))
-    .matches(/^\S*$/, msg('grn.validation.numberNoSpaces')),
+    .max(DOCUMENT_NUMBER_MAX_LENGTH, msg('grn.validation.numberMax')),
 
   // The column holds 20 characters (owner decision D13: the form matches the catalogue and the columns).
   registration: yup

@@ -23,12 +23,6 @@ describe('GRN number rule', () => {
     expect((await validateStep1(header({ gr_no: '' }))).isValid).toBe(true);
   });
 
-  it.each(['A0010 ', ' A0010', 'A 0010', '     '])('rejects "%s": a number has no spaces', async (grNo) => {
-    const result = await validateStep1(header({ gr_no: grNo }));
-    expect(result.isValid).toBe(false);
-    expect(result.errors.gr_no).toBeTruthy();
-  });
-
   it('rejects a number longer than the twenty characters the server stores', async () => {
     const result = await validateStep1(header({ gr_no: 'GRN/26-27/00000000001' }));
     expect(result.isValid).toBe(false);

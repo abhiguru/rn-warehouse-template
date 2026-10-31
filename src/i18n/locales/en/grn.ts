@@ -486,7 +486,6 @@ export const grn = {
 
   validation: {
     numberMax: 'GRN number must be at most 20 characters',
-    numberNoSpaces: 'GRN number cannot contain spaces',
     registrationMax: 'Registration must be at most 20 characters',
     dateRequired: 'Date is required',
     dateFuture: 'Cannot select a future date',
@@ -534,8 +533,11 @@ export const grn = {
   // the refusal's reason and fields, never from the server's English.
   refusal: {
     // Read-only fields of a saved GRN
+    numberSpaces: "A GRN number can't contain spaces.",
     numberLocked: "The number can't be changed. To correct it, delete this GRN and enter it again.",
     dateInvoiced: 'This GRN is invoiced. Delete or edit the invoice first.',
+    dateFuture: "A GRN can't be dated in the future. Today is {{date}}.",
+    lastPhoto: 'A GRN needs at least one photo. Add another before deleting this one.',
     // Lines that are locked or can't be removed
     lockedTitle: "This can't be changed",
     lineTitle: "Item {{position}} can't be saved",

@@ -39,6 +39,7 @@ import { showAlert } from '@/utils/alert';
 import { StatusTag } from '@/components/ui';
 import { numberBoxNote, numberBoxPlaceholder } from '@/features/numbering/numberingModel';
 import { getLanguage, normalizeDigits, t as tr } from '@/i18n';
+import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
@@ -317,6 +318,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                     }}
                     placeholder={numberBoxPlaceholder(numberHint, numberReason, tr('grn.header.numberPlaceholder'))}
                     placeholderTextColor={t.text.placeholder}
+                    maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
                     autoCapitalize="characters"
                     returnKeyType="next"
                     onFocus={() => setFocusedField('gr_no')}
