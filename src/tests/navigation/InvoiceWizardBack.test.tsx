@@ -120,13 +120,11 @@ beforeEach(async () => {
   backKey = installHardwareBack();
   const context = getMockContext({
     _layout: () => <Stack screenOptions={{ headerShown: false }} />,
-    // expo-router 58 shows only the screens a layout declares.
+    // expo-router 58 tabs show only the screens their layout declares (this context has these two tabs only).
     '(tabs)/_layout': () => (
       <Tabs screenOptions={{ headerShown: false }}>
         <Tabs.Screen name="index" />
-        <Tabs.Screen name="grn" />
         <Tabs.Screen name="invoices" />
-        <Tabs.Screen name="dispatch" />
       </Tabs>
     ),
     '(tabs)/index': () => null,

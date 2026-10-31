@@ -141,13 +141,11 @@ export async function startFlowApp({ location, advance }: StartOptions): Promise
         <Stack screenOptions={{ headerShown: false }} />
       </GestureHandlerRootView>
     ),
-    // expo-router 58 shows only the screens a layout declares.
+    // expo-router 58 tabs show only the screens their layout declares (this context has these two tabs only).
     '(tabs)/_layout': () => (
       <Tabs screenOptions={{ headerShown: false }}>
         <Tabs.Screen name="index" />
-        <Tabs.Screen name="grn" />
         <Tabs.Screen name="invoices" />
-        <Tabs.Screen name="dispatch" />
       </Tabs>
     ),
     '(tabs)/index': () => null,
@@ -182,8 +180,13 @@ export async function startFlowApp({ location, advance }: StartOptions): Promise
     );
     if (closed.length > 0) await act(async () => { closed.forEach((toggle) => toggle.props.onPress()); });
   };
+  // A step circle navigates from a timer, so the screen it opens mounts at the end of the act that ran that timer
+  // and its effects schedule new timers of their own. Run rounds until none is pending (bounded).
   const settle = async () => {
-    await act(async () => { await advance(); });
+    for (let round = 0; round < 10; round += 1) {
+      await act(async () => { await advance(); });
+      if (jest.getTimerCount() === 0) break;
+    }
     await openClosedLines();
   };
   const matches = (node: ReactTestInstance, id: Id) =>
