@@ -37,7 +37,7 @@ jest.mock('@/services/pdf-service', () => ({ generateInvoicePDF: jest.fn() }));
 jest.mock('@/services/print-service', () => ({ printInvoiceRange: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 jest.mock('@/services/invoice-service', () => ({
-  getInvoiceDetails: jest.fn(), getInvoiceItemsDetailed: jest.fn(), deleteInvoice: jest.fn(),
+  getInvoiceDetails: jest.fn(), getInvoiceItemsDetailed: jest.fn(), getInvoiceReasons: jest.fn(async () => null), deleteInvoice: jest.fn(),
 }));
 jest.mock('@/components/invoice-details', () => ({
   InvoiceHeroHeader: () => null,

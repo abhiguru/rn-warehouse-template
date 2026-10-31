@@ -340,6 +340,8 @@ export const invoice: Translation<typeof source> = {
     breakdown: 'હિસાબ',
   },
   details: {
+    // Gujarati draft (glossary): under a discount or zero-charge reason, who set it and when.
+    setBy: 'નક્કી કરનાર: {{name}}, {{date}}',
     titleNumber: 'ઇન્વૉઇસ {{number}}',
     subtitleWithGrn: '{{date}} · આવક પાવતી {{number}}',
     notFoundTitle: 'ઇન્વૉઇસ મળ્યું નથી',

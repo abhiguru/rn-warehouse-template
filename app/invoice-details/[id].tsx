@@ -14,9 +14,11 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   getInvoiceDetails,
   getInvoiceItemsDetailed,
+  getInvoiceReasons,
   InvoiceDetailsResponse,
   InvoiceItemDetailed,
   InvoiceItemsSummary,
+  InvoiceReasons,
   deleteInvoice,
 } from '@/services/invoice-service';
 import { resolveLostInvoiceDelete } from '@/features/invoice/services/invoiceDeleteCheck';
@@ -149,6 +151,10 @@ function InvoiceDetailScreen() {
   const [gone, setGone] = useState(false);
   // The invoice was on this page before. A first load that finds nothing is "not found", not "deleted" (J5).
   const hadData = useRef(false);
+  // The first load failed for a reason other than "not there" (a lost connection, a 502): an error page with Try again.
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Why the discount or zero charge was given, and by whom (staff and up).
+  const [reasons, setReasons] = useState<InvoiceReasons | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
@@ -176,6 +182,7 @@ function InvoiceDetailScreen() {
         hadData.current = true;
         setData(result.data);
         setGone(false);
+        setLoadFailed(false);
       } else if (hadData.current && (result.notFound || (isCustomer && result.accessDenied))) {
         // The invoice was here and now is not: deleted since this page was loaded (on another phone, or just now), or,
         // for a customer, no longer theirs. The old figures must not stay on screen with Edit, Delete and Share: the
@@ -185,9 +192,23 @@ function InvoiceDetailScreen() {
         setDetailedItems([]);
         setItemsSummary(null);
         return;
-      } else {
+      } else if (!hadData.current && !(result.notFound || result.accessDenied)) {
+        // A first load that failed: the page says so and offers Try again. "Invoice not found" is for the server saying so.
+        setLoadFailed(true);
+        return;
+      } else if (hadData.current) {
+        // A refresh of a loaded invoice failed: the figures stay, as before.
         showAlert(tr('invoice.details.loadFailedTitle'), parseErrorToFriendly(result.error || result.message, 'Invoice'));
         return;
+      } else {
+        // The server says there is no such invoice (or it is not theirs): the not-found page, without an alert.
+        setLoadFailed(false);
+        return;
+      }
+
+      // The reasons of the discount and zero charge (staff and up; optional)
+      if (!isCustomer) {
+        void getInvoiceReasons(invoiceId).then((found) => setReasons(found));
       }
 
       // Fetch detailed line items (optional)
@@ -204,7 +225,8 @@ function InvoiceDetailScreen() {
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Exception:', error);
-      showAlert(tr('invoice.details.loadFailedTitle'), getUserFriendlyError('invoice', 'load'));
+      if (hadData.current) showAlert(tr('invoice.details.loadFailedTitle'), getUserFriendlyError('invoice', 'load'));
+      else setLoadFailed(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -410,7 +432,7 @@ function InvoiceDetailScreen() {
       <>
         <Stack.Screen
           options={{
-            title: loading ? tr('common.invoice') : gone ? tr('invoice.details.deletedGoneTitle') : tr('invoice.details.notFoundTitle'),
+            title: loading ? tr('common.invoice') : loadFailed ? tr('common.invoice') : gone ? tr('invoice.details.deletedGoneTitle') : tr('invoice.details.notFoundTitle'),
             headerBackTitle: tr('common.back'),
             headerShown: true,
             headerStyle: styles.navBar,
@@ -420,6 +442,35 @@ function InvoiceDetailScreen() {
         <View style={styles.centerContainer}>
           {loading ? (
             <DetailSkeleton tabCount={3} cardCount={3} />
+          ) : loadFailed ? (
+            <View style={styles.errorContainer} accessibilityLiveRegion="polite">
+              <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+              <Text style={styles.errorTitle} accessibilityRole="header">
+                {tr('invoice.edit.loadFailedTitle')}
+              </Text>
+              <Text style={styles.errorMessage}>{tr('common.checkConnection')}</Text>
+              <Pressable
+                style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                onPress={() => {
+                  setLoadFailed(false);
+                  setLoading(true);
+                  void fetchInvoiceDetails();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={tr('common.retry')}
+                testID="invoice-load-retry"
+              >
+                <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                onPress={() => router.back()}
+                accessibilityRole="button"
+                accessibilityLabel={tr('common.goBack')}
+              >
+                <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
+              </Pressable>
+            </View>
           ) : (
             <View style={styles.errorContainer}>
               <Icon
@@ -557,6 +608,7 @@ function InvoiceDetailScreen() {
               } : undefined}
               financial_summary={financialSummary}
               financial_year={invoice.financial_year}
+              reasons={!isCustomer ? reasons ?? undefined : undefined}
               notes={invoice.notes ?? undefined}
               invoice_number={String(invoice.invoice_number)}
               invoice_id={id}

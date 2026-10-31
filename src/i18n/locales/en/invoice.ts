@@ -333,6 +333,8 @@ export const invoice = {
   details: {
     titleNumber: 'Invoice {{number}}',
     subtitleWithGrn: '{{date}} · GRN {{number}}',
+    // Under a discount or zero-charge reason: who set it and when.
+    setBy: 'Set by {{name}}, {{date}}',
     notFoundTitle: 'Invoice not found',
     notFoundMessage: 'This invoice may have been deleted, or you may not have access to it.',
     loadFailedTitle: "Couldn't load invoice",
