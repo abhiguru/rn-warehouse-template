@@ -164,6 +164,7 @@ test('the Android build pins Gradle checksums and limits the mirror to self-host
   const ci = workflowText('ci.yml');
   const step = ci.slice(ci.indexOf('- name: Assemble debug APK'), ci.indexOf('- name: Audit picker React Native ABI'));
   assert.match(step, /distributionSha256Sum=\$dist_sha/);
+  assert.match(step, /cp \.\.\/node_modules\/@react-native\/gradle-plugin\/gradle\/wrapper\/gradle-wrapper\.jar gradle\/wrapper\/gradle-wrapper\.jar/);
   assert.match(step, /actual_jar_sha/);
   assert.match(step, /has no pinned checksums/);
   const guard = step.indexOf('if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]');

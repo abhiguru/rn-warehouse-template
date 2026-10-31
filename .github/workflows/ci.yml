@@ -112,7 +112,7 @@ jobs:
         run: npx expo prebuild --platform android --clean --no-install
       - name: Assemble debug APK
         # The Gradle distribution and the wrapper jar are checked against checksums pinned here, on
-        # every runner. A Gradle version that is not in the map fails the step: add its checksums
+        # every runner. The wrapper jar is replaced by the official one that React Native ships. A Gradle version that is not in the map fails the step: add its checksums
         # (from services.gradle.org) when Expo moves to a new Gradle. Only on self-hosted runners,
         # which may have IPv6 routes that cannot connect or no route to services.gradle.org, prefer
         # IPv4, give the wrapper more time and download the same version from the GitHub mirror;
@@ -131,9 +131,12 @@ jobs:
               echo "Gradle $version has no pinned checksums. Add its gradle-$version-bin.zip and wrapper jar sha256 from services.gradle.org to this step."
               exit 1 ;;
           esac
+          # Expo's template carries its own build of the wrapper jar, which is not Gradle's official one. Use the official
+          # jar that React Native ships (installed by npm ci, no download) and check it against the pinned checksum.
+          cp ../node_modules/@react-native/gradle-plugin/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
           actual_jar_sha="$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)"
           if [ "$actual_jar_sha" != "$jar_sha" ]; then
-            echo "gradle-wrapper.jar from prebuild has sha256 $actual_jar_sha, not the official $jar_sha for Gradle $version."
+            echo "gradle-wrapper.jar from @react-native/gradle-plugin has sha256 $actual_jar_sha, not the official $jar_sha for Gradle $version."
             exit 1
           fi
           sed -i '/^distributionSha256Sum=/d' "$props"
