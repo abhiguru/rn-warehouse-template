@@ -45,6 +45,8 @@ export interface DocumentData {
   itemCount?: number;
   /** The order lines this save changed (orders.effect texts); drawn under the message when there are any. */
   orderNotes?: string[];
+  /** Plain notices drawn under the message as one warning strip (a GRN saved by staff: items without a rate yet). */
+  notices?: string[];
 }
 
 interface DocumentSuccessDialogProps {
@@ -264,6 +266,12 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
                   variant="warning"
                   message={`${tr('orders.effect.doneLead')}\n${documentData.orderNotes.map((line) => `• ${line}`).join('\n')}`}
                 />
+              </View>
+            ) : null}
+
+            {documentData.notices && documentData.notices.length > 0 ? (
+              <View style={styles.orderNotes} testID="document-success-notices">
+                <InlineValidation variant="warning" message={documentData.notices.join('\n')} />
               </View>
             ) : null}
 

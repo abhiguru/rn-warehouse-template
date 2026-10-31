@@ -236,6 +236,7 @@ export const grn = {
 
   // Step 3: review
   review: {
+    noRateYet: 'No rate yet for {{items}}. An administrator adds it before invoicing.',
     stockProtectedMessage:
       "You can't change the quantity or stock of dispatched items. You can still change other details.",
     saveFailedTitle: "Couldn't save the GRN",

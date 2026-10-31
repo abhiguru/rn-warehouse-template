@@ -117,6 +117,7 @@ import { getLanguage } from '@/i18n/language';
 import { serverText } from '@/utils/serverText';
 import { isNumberFormatRefusal, numberFormatText } from '@/utils/numberFormatRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
+import { getGrnItemRates } from '@/services/item-pricing-service';
 import type { ScrollViewRef } from '@/types/nativeRefs';
 
 const log = createLogger('grn');
@@ -518,6 +519,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    * photos that did not upload are listed with a retry, never passed over.
    */
   const finishSave = (savedGrnId: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
+    void noteItemsWithoutRate(savedGrnId);
     if (photos && photos.removalFailures > 0) {
       setSnackbarMessage(tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
       setSnackbarVisible(true);
@@ -528,6 +530,23 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       return;
     }
     setShowSuccessDialog(true);
+  };
+
+  /**
+   * Staff do not see or set rates (owner decision D11): a GRN with an item that has no rate yet is still saved. What
+   * they may read is the rate each lot is invoiced at (get_grn_item_rates), so the success dialog tells them which
+   * items have none. A failed or missing read says nothing; the save is not affected.
+   */
+  const noteItemsWithoutRate = async (savedGrnId: string | undefined) => {
+    if (canSetRates || !savedGrnId) return;
+    try {
+      const answer = await getGrnItemRates(savedGrnId);
+      const names = [...new Set((answer?.rates ?? []).filter((rate) => rate.source === null).map((rate) => rate.item_name))];
+      if (names.length === 0) return;
+      setSuccessDialogData((current) => (current ? { ...current, notices: [tr('grn.review.noRateYet', { items: names.join(', ') })] } : current));
+    } catch (rateError) {
+      log.warn('Could not read the rates of the saved GRN', loggableError(rateError));
+    }
   };
 
   const handleRetryPhotos = async () => {
