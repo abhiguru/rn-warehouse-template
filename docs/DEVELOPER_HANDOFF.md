@@ -1,6 +1,6 @@
 # Contributor guide
 
-Expo SDK 57 / React Native 0.86 warehouse client for the companion backend
+Expo SDK 58 / React Native 0.88 warehouse client for the companion backend
 ([`supabase-warehouse-template`](https://github.com/abhiguru/supabase-warehouse-template)).
 Install that backend with its [operator guide](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/OPERATOR_INSTALL.md) before running the app against it.
 

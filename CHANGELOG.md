@@ -10,7 +10,12 @@
 - **Leaving the code screens.** The central code step and the facility code step note that they are being left as soon as Back is pressed
   (header, leave control or hardware key), not only when React Navigation reports the removal, so a code check answered in between cannot
   act for a screen that is going away.
-- **Route guard and leave guard** act on the navigator's real state under React Navigation 8.
+- **Route guard and leave guard** act on the navigator's real state under React Navigation 8. The route guard forgets a requested way out that
+  never lands and asks again; the hardware-Back marker listens only while its screen is focused and marks only when Back can leave it; a
+  polled route mounted behind another one waits for its focus before the first run.
+- **Dependency gate.** `glob` (GHSA-3g3m-2fjr-6pw4) and `minimatch` (GHSA-g3hv-75wg-m249) are accepted without a local repair, for build and
+  dev tooling only, until 2026-12-15 (`acceptedWithoutRepair`); the gate fails if the production dependency tree declares either outside a
+  listed tooling package. See `docs/DEPENDENCY_SECURITY.md`.
 
 ## Unreleased — deepmerge repair for the dependency gate
 
