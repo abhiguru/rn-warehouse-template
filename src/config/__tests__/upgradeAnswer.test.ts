@@ -304,3 +304,50 @@ describe('the gateway answers "upgrading"', () => {
     });
   });
 });
+
+describe('the server answers 429 (too many requests)', () => {
+  const TOO_MANY = { message: 'Too many requests' };
+
+  test('a read waits Retry-After and is sent once more; the repeat\'s answer is the answer', async () => {
+    answers = [reply(429, TOO_MANY, { 'Retry-After': '7' })];
+    const pending = createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    await jest.advanceTimersByTimeAsync(6_000);
+    expect(calls).toHaveLength(1);
+    await jest.advanceTimersByTimeAsync(1_000);
+    const response = await pending;
+    expect(calls).toEqual([`GET ${READ}`, `GET ${READ}`]);
+    expect(response.status).toBe(200);
+  });
+
+  test('the wait is capped like a read\'s own limit', async () => {
+    answers = [reply(429, TOO_MANY, { 'Retry-After': '3600' })];
+    const pending = createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect((await pending).status).toBe(200);
+    expect(calls).toHaveLength(2);
+  });
+
+  test('a read is repeated once only: a second 429 is handed to the caller', async () => {
+    answers = [reply(429, TOO_MANY, { 'Retry-After': '2' }), reply(429, TOO_MANY, { 'Retry-After': '2' })];
+    const pending = createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect((await pending).status).toBe(429);
+    expect(calls).toHaveLength(2);
+  });
+
+  test('without Retry-After the wait is one second', async () => {
+    answers = [reply(429, TOO_MANY)];
+    const pending = createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect((await pending).status).toBe(200);
+    expect(calls).toHaveLength(2);
+  });
+
+  test('a write is never sent again: one request, the 429 is handed back', async () => {
+    answers = [reply(429, TOO_MANY, { 'Retry-After': '2' })];
+    const response = await createAuthenticatedFetch()(WRITE, { method: 'POST', body: '{}' });
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(calls).toEqual([`POST ${WRITE}`]);
+    expect(response.status).toBe(429);
+  });
+});

@@ -91,6 +91,8 @@ type GatedFetchOptions = {
   honorSwitch: boolean;
   /** Set on the one repeat of a read after the gateway's "upgrading" answer; there is no second wait. */
   afterUpgradeWait?: boolean;
+  /** Set on the one repeat of a read after a 429 (too many requests); there is no second wait. */
+  afterRateLimitWait?: boolean;
 };
 
 // Every credentialed request waits for the foreground identity check, then
@@ -195,10 +197,17 @@ function abortedRead(): Error {
   return error;
 }
 
+/** The seconds a 429 asks to wait (its Retry-After header as whole seconds); one second when it names none. */
+export function rateLimitWaitSeconds(response: Response): number {
+  const header = typeof response.headers?.get === 'function' ? response.headers.get('Retry-After') : null;
+  const seconds = typeof header === 'string' && /^\d+$/.test(header.trim()) ? Number(header) : NaN;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 1;
+}
+
 async function gatedFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  { generation, mutation, honorSwitch, afterUpgradeWait }: GatedFetchOptions
+  { generation, mutation, honorSwitch, afterUpgradeWait, afterRateLimitWait }: GatedFetchOptions
 ): Promise<Response> {
   // A verified identity is the common case; keep it synchronous so a server
   // switch sees this request registered before the first await.
@@ -286,7 +295,16 @@ async function gatedFetch(
     await waitForRetry(Math.min(upgrade.retryAfter, REQUEST_TIME_LIMIT_MS.read / 1000), init?.signal);
     // The caller's own limit (a sign-in check's 15 s) can end the wait: its error still says "being updated".
     if (init?.signal?.aborted) throw Object.assign(abortedRead(), { code: UPGRADING_CODE });
-    return gatedFetch(input, init, { generation, mutation, honorSwitch, afterUpgradeWait: true });
+    return gatedFetch(input, init, { generation, mutation, honorSwitch, afterUpgradeWait: true, afterRateLimitWait });
+  }
+  // "Too many requests": a read waits the server's Retry-After (never longer than a read's own limit) and goes out once
+  // more; a write never does, the person decides. Whatever the repeat is answered stands.
+  if (response.status === 429 && !mutation && !afterRateLimitWait) {
+    controller.abort();
+    release();
+    await waitForRetry(Math.min(rateLimitWaitSeconds(response), REQUEST_TIME_LIMIT_MS.read / 1000), init?.signal);
+    if (init?.signal?.aborted) throw abortedRead();
+    return gatedFetch(input, init, { generation, mutation, honorSwitch, afterUpgradeWait, afterRateLimitWait: true });
   }
   if (honorSwitch && invalidated()) {
     release();
