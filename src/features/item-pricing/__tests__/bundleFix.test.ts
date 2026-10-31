@@ -299,7 +299,16 @@ describe('F23: rows a save deleted are listed in the history card', () => {
       entry(1, 'delete', price(12, '2026-12-01', null), null),
     ]);
     expect(view.kind).toBe('changed');
-    expect(view.removed).toEqual([{ band: { min: 0, max: 100 }, field: 'monthlyPrice', price: 12, from: '2026-12-01' }]);
+    expect(view.removed).toEqual([{ band: { min: 0, max: 100 }, field: 'monthlyPrice', price: 12, from: '2026-12-01', begun: false }]);
+  });
+  it('a removed rate that had already begun on the save day is marked begun', () => {
+    // The save is on 2026-10-14 (India); the removed rate began on 2026-09-15.
+    const view = groupChanges([
+      entry(3, 'insert', null, price(11, '2026-10-05', null)),
+      entry(2, 'delete', price(10, '2026-09-15', null, 101, 150), null),
+      entry(1, 'delete', price(12, '2026-10-14', null, 151, 200), null),
+    ]);
+    expect(view.removed.map(r => [r.from, r.begun])).toEqual([['2026-09-15', true], ['2026-10-14', true]]);
   });
   it('bands a correction dropped are listed', () => {
     const view = groupChanges([

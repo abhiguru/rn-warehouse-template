@@ -101,5 +101,6 @@ export const pricingEdit = {
     groupStopped: 'Rate stopped after {{date}}',
     arrow: '{{old}} → {{new}}',
     removed: 'Removed: {{band}}, {{amount}}, planned from {{date}}',
+    removedBegun: 'Removed: {{band}}, {{amount}}, from {{date}}',
   },
 };

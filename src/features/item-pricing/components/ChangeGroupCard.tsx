@@ -50,7 +50,7 @@ const ChangeGroupCard = memo<Props>(({ entries, view }) => {
     }),
   }));
   const removed = view.removed.map(r =>
-    t('pricing.changes.removed', {
+    t(r.begun ? 'pricing.changes.removedBegun' : 'pricing.changes.removed', {
       band: r.band.min !== null && r.band.max !== null ? bandText(r.band.min, r.band.max) : '—',
       amount: priceHistoryValueText(r.field, r.price),
       date: r.from ? dateText(r.from) : '—',

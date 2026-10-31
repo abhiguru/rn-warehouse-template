@@ -104,5 +104,6 @@ export const pricingEdit: Translation<typeof source> = {
     groupStopped: '{{date}} પછી દર બંધ થયો',
     arrow: '{{old}} → {{new}}',
     removed: 'કાઢી નાખ્યો: {{band}}, {{amount}}, {{date}} થી નક્કી થયેલો',
+    removedBegun: 'કાઢી નાખ્યો: {{band}}, {{amount}}, {{date}} થી ચાલુ થયેલો',
   },
 };
