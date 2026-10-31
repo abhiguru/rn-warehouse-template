@@ -131,7 +131,11 @@ jobs:
               echo "Gradle $version has no pinned checksums. Add its gradle-$version-bin.zip and wrapper jar sha256 from services.gradle.org to this step."
               exit 1 ;;
           esac
-          echo "$jar_sha  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
+          actual_jar_sha="$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)"
+          if [ "$actual_jar_sha" != "$jar_sha" ]; then
+            echo "gradle-wrapper.jar from prebuild has sha256 $actual_jar_sha, not the official $jar_sha for Gradle $version."
+            exit 1
+          fi
           sed -i '/^distributionSha256Sum=/d' "$props"
           echo "distributionSha256Sum=$dist_sha" >> "$props"
           if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
