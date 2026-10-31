@@ -15,6 +15,7 @@ export const orders = {
     noticeTitle: 'These orders change when you save',
     // Added to the question before a save.
     questionLead: 'This also changes orders:',
+    checking: 'Checking orders…',
     // Added to the message after a save.
     doneLead: 'Orders changed:',
     orderOf: "{{name}}'s order",

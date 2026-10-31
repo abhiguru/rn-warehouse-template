@@ -16,6 +16,7 @@ export const orders: Translation<typeof source> = {
   effect: {
     noticeTitle: 'સેવ કરતાં આ ઑર્ડર બદલાશે',
     questionLead: 'આથી આ ઑર્ડર પણ બદલાશે:',
+    checking: 'ઑર્ડર તપાસી રહ્યા છીએ…',
     doneLead: 'બદલાયેલા ઑર્ડર:',
     orderOf: '{{name}}નો ઑર્ડર',
     orderOfS: '{{name}}નો ઑર્ડર',

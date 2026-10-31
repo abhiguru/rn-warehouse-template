@@ -122,17 +122,23 @@ const PREVIEW_TIMEOUT_MS = 8000;
  */
 async function preview(name: string, args: Record<string, unknown>): Promise<OrderEffect[] | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // A preview that took too long is cancelled, not left running: a request still open would hold back a facility switch.
+  const controller = new AbortController();
   try {
     const call = (async () => {
       const client = await getAuthenticatedClient();
-      const { data, error } = await client.rpc(name, args);
+      const request = client.rpc(name, args);
+      const { data, error } = await (typeof request.abortSignal === 'function' ? request.abortSignal(controller.signal) : request);
       if (error || !data || typeof data !== 'object') return null;
       const answer = data as { success?: unknown; order_effects?: unknown };
       if (answer.success !== true || !Array.isArray(answer.order_effects)) return null;
       return parseOrderEffects(answer.order_effects);
     })();
     const timeout = new Promise<null>((resolve) => {
-      timer = setTimeout(() => resolve(null), PREVIEW_TIMEOUT_MS);
+      timer = setTimeout(() => {
+        controller.abort();
+        resolve(null);
+      }, PREVIEW_TIMEOUT_MS);
     });
     return await Promise.race([call, timeout]);
   } catch (error) {

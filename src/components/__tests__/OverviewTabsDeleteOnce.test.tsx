@@ -49,6 +49,16 @@ describe('the Delete button of the Overview tab', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it('GRN: while the orders it would change are read, the button says "Checking orders…" and waits; while deleting it says Deleting', () => {
+    const texts = () => tree.root.findAll((n) => typeof n.type === 'string' && n.type === 'Text').map((n) => [n.props.children].flat(Infinity).join(''));
+    render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_checking_orders onEdit={jest.fn()} onDelete={jest.fn()} />);
+    expect(texts()).toContain('Checking orders…');
+    expect(tree.root.find((n) => n.props?.accessibilityLabel === 'Delete GRN' && typeof n.props?.onPress === 'function').props.disabled).toBe(true);
+    act(() => tree.update(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_deleting is_checking_orders onEdit={jest.fn()} onDelete={jest.fn()} />));
+    expect(texts()).not.toContain('Checking orders…');
+    expect(texts()).toContain('Deleting…');
+  });
+
   it('invoice: hands over to the page at once, with no question of its own', () => {
     const onDelete = jest.fn();
     render(

@@ -45,6 +45,8 @@ interface GRNOverviewTabProps {
   can_delete?: boolean;
   /** The GRN is being deleted: the Delete button is disabled. */
   is_deleting?: boolean;
+  /** Delete is busy only because the orders it would change are being read: the button says so. */
+  is_checking_orders?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
   onSharePDF?: () => void;
@@ -66,6 +68,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   can_edit = false,
   can_delete,
   is_deleting = false,
+  is_checking_orders = false,
   onEdit,
   onDelete,
   onSharePDF,
@@ -162,7 +165,8 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
         canEdit={can_edit}
         canDelete={can_delete}
         onDelete={onDelete}
-        isDeleting={is_deleting}
+        isDeleting={is_deleting || is_checking_orders}
+        deleteBusyLabel={is_checking_orders && !is_deleting ? tr('orders.effect.checking') : undefined}
         // The GRN page asks its own, fuller question (the items leave stock; a GRN with dispatches or invoices can't be
         // deleted): the person is asked once, not twice.
         confirmDelete={false}

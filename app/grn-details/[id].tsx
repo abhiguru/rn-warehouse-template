@@ -536,12 +536,20 @@ function GRNDetailScreen() {
 
   // Handle delete GRN
   const askingDeleteRef = useRef(false);
+  // Delete was tapped and the orders it would change are being read: the button says so (the read is capped).
+  const [checkingOrders, setCheckingOrders] = useState(false);
   const handleDeleteGRN = async () => {
     // The question names the orders that lose lines (migration 128); an older server has no preview and it is asked as before.
     if (askingDeleteRef.current || deleteRunningRef.current) return;
     askingDeleteRef.current = true;
-    const orderEffects = id ? await previewDeleteGrn(id) : null;
-    askingDeleteRef.current = false;
+    setCheckingOrders(true);
+    let orderEffects: Awaited<ReturnType<typeof previewDeleteGrn>> = null;
+    try {
+      orderEffects = id ? await previewDeleteGrn(id) : null;
+    } finally {
+      askingDeleteRef.current = false;
+      setCheckingOrders(false);
+    }
     showAlert(
       data?.grn?.gr_no
         ? tr('grn.details.deleteTitle', { number: formatIdentifier(data.grn.gr_no) })
@@ -887,6 +895,7 @@ function GRNDetailScreen() {
               can_edit={canEdit}
               can_delete={canDelete}
               is_deleting={isDeleting}
+              is_checking_orders={checkingOrders}
               onEdit={handleEditGRN}
               onDelete={handleDeleteGRN}
               onSharePDF={handleSharePDF}

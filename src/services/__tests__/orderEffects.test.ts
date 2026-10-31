@@ -100,6 +100,20 @@ describe('previews', () => {
     expect(await previewDeleteGrn('g')).toBeNull();
   });
 
+  it('cancel the request when the time limit is lost, so it never holds back a facility switch', async () => {
+    jest.useFakeTimers();
+    const abortSignal = jest.fn((signal: AbortSignal) => new Promise(() => undefined));
+    rpc.mockReturnValue({ abortSignal });
+    const pending = previewDeleteGrn('g');
+    await jest.advanceTimersByTimeAsync(0);
+    const signal = abortSignal.mock.calls[0][0];
+    expect(signal.aborted).toBe(false);
+    await jest.advanceTimersByTimeAsync(8001);
+    expect(await pending).toBeNull();
+    expect(signal.aborted).toBe(true);
+    jest.useRealTimers();
+  });
+
   it('give up after the time limit and answer null', async () => {
     jest.useFakeTimers();
     rpc.mockReturnValue(new Promise(() => undefined));
