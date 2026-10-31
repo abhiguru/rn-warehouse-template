@@ -105,6 +105,8 @@ export const pricing = {
   },
   how: {
     title: 'How an invoice picks a rate',
+    l0a: 'A saved invoice keeps its own figures.',
+    l0b: "A rate set for that GRN only comes before the customer's rate.",
     l1: "The customer's own rate, if there is one for that bag weight.",
     l2: 'Otherwise the default rate.',
     l3: 'The narrowest weight band that holds the weight of one bag.',
