@@ -219,13 +219,28 @@ describe('a facility the association no longer lists', () => {
     expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: 'address' });
   });
 
-  it('treats an entry saved before the source was recorded like a catalogue one, and notes where it came from once listed', async () => {
+  it('notes where an entry saved before the source was recorded came from once the catalogue lists it', async () => {
     await addMyFacility('asha', NORTH);
     await noteCatalogueRead('asha', listedNorth);
     expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: 'catalogue' });
+  });
+
+  it('never marks an entry of unknown source as gone, listed or not (a working facility added by typed address stays)', async () => {
     await addMyFacility('asha', SOUTH);
     await noteCatalogueRead('asha', listedNorth);
-    expect((await loadMyFacilities('asha')).find(f => f.origin === SOUTH.origin)?.gone).toBe(true);
+    expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: null });
+    await noteCatalogueRead('asha', []);
+    expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: null });
+  });
+
+  it('clears a gone mark that an earlier build put on an entry of unknown source', async () => {
+    await addMyFacility('asha', SOUTH);
+    const raw = JSON.parse((await AsyncStorage.getItem((await AsyncStorage.getAllKeys()).find(key => key.includes('asha')) as string)) as string);
+    raw[0].gone = true;
+    await AsyncStorage.setItem((await AsyncStorage.getAllKeys()).find(key => key.includes('asha')) as string, JSON.stringify(raw));
+    expect((await loadMyFacilities('asha'))[0].gone).toBe(true);
+    await noteCatalogueRead('asha', []);
+    expect((await loadMyFacilities('asha'))[0]).toMatchObject({ gone: false, source: null });
   });
 
   it('adding it again from the catalogue clears the mark', async () => {

@@ -173,10 +173,13 @@ export async function updateMyFacility(
 }
 
 /**
- * After a read of the association's catalogue: a facility that came from the catalogue (or from
- * before this was recorded) and is not listed with an app server address any more is marked gone;
- * one that is listed again is not. A facility added by typed address is left alone. Nothing is
- * contacted and nothing is changed on a failed read (the caller passes only a successful one).
+ * After a read of the association's catalogue: a facility that was added from the catalogue and is
+ * not listed with an app server address any more is marked gone; one that is listed again is not.
+ * Only such an entry can ever be marked gone. A facility added by typed address, and one saved before
+ * the source was recorded (it may have been added by address, and may be working), is never marked: an
+ * entry of unknown source that the catalogue lists is noted as a catalogue one from then on, and one
+ * that an earlier build marked gone is cleared. Nothing is contacted and nothing is changed on a
+ * failed read (the caller passes only a successful one).
  */
 export async function noteCatalogueRead(userId: string, listedOrigins: readonly (string | null)[]): Promise<void> {
   if (!userId) return;
@@ -186,9 +189,14 @@ export async function noteCatalogueRead(userId: string, listedOrigins: readonly 
     let touched = false;
     for (const entry of list) {
       if (entry.source === 'address') continue;
+      if (entry.source === null) {
+        // Unknown source: never marked gone. Listed, it is a catalogue entry from now on.
+        if (listed.has(entry.origin)) { entry.source = 'catalogue'; touched = true; }
+        if (entry.gone) { entry.gone = false; touched = true; }
+        continue;
+      }
       const gone = !listed.has(entry.origin);
       if (entry.gone !== gone) { entry.gone = gone; touched = true; }
-      if (!gone && entry.source === null) { entry.source = 'catalogue'; touched = true; }
     }
     if (touched) await write(userId, list);
     return touched;
