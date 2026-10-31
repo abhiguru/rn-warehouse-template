@@ -12,6 +12,7 @@ import {
 } from '../supabaseConfig';
 import { saveOperatorServer } from '../operatorServer';
 import { resetLanTransport } from '../lanTransport';
+import { installNetReachability, resetNetReachability } from '../netReachability';
 import { isUpgrading, noteDiscoveryUpgrading, noteServerAnswered, resetUpgradeNotice } from '../upgradeNotice';
 import { operatorResumeGate } from '../operatorResume';
 import { store as appStore } from '@/store';
@@ -34,6 +35,10 @@ jest.mock('@/utils/otpRateLimiter', () => ({
   checkOTPRateLimit: jest.fn(),
   recordOTPRequest: jest.fn(),
   clearAllRateLimits: jest.fn(async () => {}),
+}));
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { configure: jest.fn(), addEventListener: jest.fn(() => () => {}), fetch: jest.fn(), refresh: jest.fn(async () => ({})) },
 }));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '0.1.0' } } }));
 
@@ -349,5 +354,17 @@ describe('the server answers 429 (too many requests)', () => {
     await jest.advanceTimersByTimeAsync(60_000);
     expect(calls).toEqual([`POST ${WRITE}`]);
     expect(response.status).toBe(429);
+  });
+});
+
+describe('a request that gets no answer', () => {
+  test('asks for an immediate reachability re-check', async () => {
+    jest.useRealTimers();
+    installNetReachability();
+    const netInfo = jest.requireMock('@react-native-community/netinfo').default as { refresh: jest.Mock };
+    global.fetch = jest.fn(() => Promise.reject(new TypeError('Network request failed'))) as unknown as typeof fetch;
+    await expect(createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } })).rejects.toThrow();
+    expect(netInfo.refresh).toHaveBeenCalled();
+    resetNetReachability();
   });
 });

@@ -24,11 +24,12 @@ import {
 } from './sessionLifecycle';
 import { AppError, getAppErrorCode } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
-import { isUpgradingAnswer, serverText, UPGRADING_CODE, upgradingBody } from '@/utils/serverText';
+import { isNetworkError, isUpgradingAnswer, serverText, UPGRADING_CODE, upgradingBody } from '@/utils/serverText';
 import { DISCARD_BODY, discardBody } from './discardBody';
 import { isGatewayKeyRejection } from './gatewayRejection';
 import { isUpgrading, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from './upgradeNotice';
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
+import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
 
 const authLogger = createLogger('Auth');
@@ -268,6 +269,8 @@ async function gatedFetch(
     ]);
   } catch (error) {
     release();
+    // No answer at all: the offline banner should follow now, not at the next scheduled check (src/config/netReachability.ts).
+    if (isNetworkError(error)) noteRequestNetworkFailure();
     throw error;
   }
   // A copy, read outside the request's tracked life: it must not hold a switch back.
