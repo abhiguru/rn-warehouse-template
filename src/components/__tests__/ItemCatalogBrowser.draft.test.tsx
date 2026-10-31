@@ -273,6 +273,30 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     expect(showAlert).toHaveBeenCalledTimes(1);
   });
 
+  it('"Add to order" saves first: the sheet is not presented again and no saving header is left when all are saved', async () => {
+    await open([]);
+    await choose('Fictional potatoes');
+    await leaveBy(way);
+    const presented = mockSheet.present.mock.calls.length;
+    await answer('Add to order');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mockSheet.present.mock.calls.length - presented).toBe(0);
+    expect(addButtonText()).not.toMatch(/Saving/);
+  });
+
+  it('"Add to order" with a lot refused shows the sheet again with the reason', async () => {
+    onAddItems.mockResolvedValueOnce([{ grnItemId: 'lot-a', ok: false, reason: 'Only 3 bags in stock.' }]);
+    await open([]);
+    await choose('Fictional potatoes');
+    await leaveBy(way);
+    const presented = mockSheet.present.mock.calls.length;
+    await answer('Add to order');
+    expect(onClose).not.toHaveBeenCalled();
+    if (way === 'swipe') expect(mockSheet.present.mock.calls.length - presented).toBe(1);
+    expect(textOf(node('catalog-reason-lot-a'))).toBe('Only 3 bags in stock.');
+    expect(addButtonText()).toBe('Add (1)');
+  });
+
   it('keeps the selection when the question is closed without an answer', async () => {
     await open([]);
     await choose('Fictional potatoes');
@@ -409,6 +433,23 @@ describe('Add waits for the server', () => {
     await pressAdd();
     expect(onAddItems).toHaveBeenCalledTimes(2);
     expect(onAddItems.mock.calls[1][0]).toEqual([{ grnItemId: 'lot-b', quantity: 1, expected: 0 }]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('a lot saved with another quantity moves its base there: the next Add sends the chosen number against it and closes', async () => {
+    onAddItems.mockResolvedValueOnce([
+      { grnItemId: 'lot-b', ok: false, reason: 'Changed by someone else: now 29 bags.', savedQuantity: 29 },
+    ]);
+    await open([saved('lot-b', 30)]);
+    await choose('Fictional onions');
+    await pressAdd();
+    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-b', quantity: 31, expected: 30 }]);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(textOf(node('catalog-reason-lot-b'))).toBe('Changed by someone else: now 29 bags.');
+
+    await pressAdd();
+    expect(onAddItems).toHaveBeenCalledTimes(2);
+    expect(onAddItems.mock.calls[1][0]).toEqual([{ grnItemId: 'lot-b', quantity: 31, expected: 29 }]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
