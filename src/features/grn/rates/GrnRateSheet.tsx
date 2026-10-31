@@ -331,6 +331,10 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     labour !== rupees(preload.figures.labour_rate) ||
     tax !== text(preload.figures.tax_percent) ||
     to !== preload.to;
+  // A row whose rate is a pending Everyone / This customer change: "This GRN" with the same figures is a change
+  // of that (it turns the pending change into a rate for this GRN only), so Save rate is on for it.
+  const pendingBroad = !adding && !!row.rate?.entry && 'scope' in row.rate.entry && row.rate.entry.scope !== 'grn';
+  const canSave = adding || dirty || (pendingBroad && scope === 'grn');
   const requestClose = () => {
     if (!dirty) {
       onClose();
@@ -613,7 +617,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
             <View style={[styles.footer, { paddingBottom: space.sm + insets.bottom }]} testID="rate-footer">
               {/* Changing a rate, nothing to save until something differs; adding, there is nothing to compare with
                   (owner, 2026-10-17: an untouched save stored a copy as this GRN's own rate). */}
-              <Button type="primary" size="fullWidth" onPress={save} disabled={!adding && !dirty} testID="rate-save">
+              <Button type="primary" size="fullWidth" onPress={save} disabled={!canSave} testID="rate-save">
                 {t('grn.rates.sheet.save')}
               </Button>
             </View>

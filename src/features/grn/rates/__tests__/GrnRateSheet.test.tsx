@@ -663,6 +663,15 @@ describe('Save and leaving (owner, 2026-10-17)', () => {
     expect(saveButton().props.disabled).toBe(false);
   });
 
+  it('on Change of a row with a pending Everyone change, Save is on for "This GRN" with the same figures', async () => {
+    const change: RateChange = { item_id: 'gur', price_type: 'monthly', weight_min: 0, weight_max: 50, unit_price: 3.5, labour_rate: 1, tax_percent: 5, scope: 'everyone', to: null, ctx: contextKey(ctx) };
+    open(rates, 12, ctx, 'A0010', { changes: [change] });
+    expect(chip('This GRN, A0010').props.accessibilityState?.selected).toBe(true);
+    expect(saveButton().props.disabled).toBe(false);
+    await save();
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ scope: 'grn', unit_price: 3.5 }));
+  });
+
   it('on Add, Save is enabled before anything is typed', () => {
     open([], 12);
     expect(saveButton().props.disabled).toBeFalsy();
