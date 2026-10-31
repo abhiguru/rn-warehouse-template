@@ -105,6 +105,13 @@ it('createDispatch sends the dispatch date as a calendar day', async () => {
   expect(sent.p_dispatch_data.disp_date).toBe('2026-10-11');
 });
 
+it('createDispatch sends the vehicle number without the spaces around or inside it that were only typed', async () => {
+  const rpc = server([]);
+  await createDispatch({ ...payload, header: { ...payload.header, registration: ' t31  x18 ' }, images: [] });
+  const sent = rpc.mock.calls.find(([name]) => name === 'create_dispatch_with_stock_check')![1] as { p_dispatch_data: { registration: string } };
+  expect(sent.p_dispatch_data.registration).toBe('T31 X18');
+});
+
 // P2F-MEDIA-2: the dispatch uploads share the GRN rule, a few complete uploads at a time.
 it('uploads at most four photos at once, reading each file only when its turn comes', async () => {
   const waiting: Array<() => void> = [];

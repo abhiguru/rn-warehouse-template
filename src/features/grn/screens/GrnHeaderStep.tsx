@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import {
   View,
   Text,
@@ -401,7 +402,11 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
               icon="car"
               isFocused={focusedField === 'registration'}
               onFocus={() => setFocusedField('registration')}
-              onBlur={() => setFocusedField(null)}
+              onBlur={() => {
+                setFocusedField(null);
+                const clean = normalizeVehicle(header.registration);
+                if (clean !== header.registration) updateHeaderField('registration', clean);
+              }}
             />
           </View>
         </View>

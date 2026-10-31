@@ -7,6 +7,7 @@
  * data, items and error messages never reach the console.
  */
 
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import * as Crypto from 'expo-crypto';
 import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
@@ -403,7 +404,7 @@ export const createDispatch = async (payload: {
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
         disp_date: toCalendarDay(payload.header.disp_date), // the day, 'YYYY-MM-DD': the server takes the day from this text
-        registration: payload.header.registration.toUpperCase(), // Ensure uppercase
+        registration: normalizeVehicle(payload.header.registration).toUpperCase(), // Ensure uppercase
         customer_id: payload.header.customer_id,
         customer_name: payload.header.customer_name,
         supervisor_id: payload.header.supervisor_id,
@@ -631,7 +632,7 @@ export const updateDispatch = async (
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
         disp_date: toCalendarDay(payload.header.disp_date),
-        registration: payload.header.registration.toUpperCase(),
+        registration: normalizeVehicle(payload.header.registration).toUpperCase(),
         customer_id: payload.header.customer_id,
         customer_name: payload.header.customer_name,
         supervisor_id: payload.header.supervisor_id,

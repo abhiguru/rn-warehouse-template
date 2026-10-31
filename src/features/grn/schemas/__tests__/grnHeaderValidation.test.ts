@@ -67,3 +67,11 @@ describe('GRN date limit', () => {
     expect((await validateStep1(header({ date: new Date(2026, 9, 10, 23, 0, 0).toISOString() }))).isValid).toBe(true);
   });
 });
+
+describe('GRN vehicle number spaces', () => {
+  it('accepts spaces only (no vehicle) and a number padded with spaces', async () => {
+    expect((await validateStep1(header({ registration: '   ' }))).isValid).toBe(true);
+    expect((await validateStep1(header({ registration: ` ${'A'.repeat(20)} ` }))).isValid).toBe(true);
+    expect((await validateStep1(header({ registration: 'A'.repeat(21) }))).isValid).toBe(false);
+  });
+});

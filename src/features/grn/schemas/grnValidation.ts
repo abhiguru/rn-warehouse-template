@@ -1,4 +1,5 @@
 import * as yup from 'yup';
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import { normalizeDigits, t, type TranslationKey } from '@/i18n';
 import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
 
@@ -20,6 +21,7 @@ export const step1Schema = yup.object().shape({
   // The column holds 20 characters (owner decision D13: the form matches the catalogue and the columns).
   registration: yup
     .string()
+    .transform((value: unknown) => (typeof value === 'string' ? normalizeVehicle(value) : value))
     .max(20, msg('grn.validation.registrationMax')),
 
   // "Today" is worked out when the form is checked. A limit fixed when this

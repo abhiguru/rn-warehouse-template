@@ -6,6 +6,7 @@
  * Refactored to use useDispatchForm hook for consolidated form logic.
  */
 
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import React, { useState, useRef } from 'react';
 import {
     View,
@@ -505,6 +506,10 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 placeholder={tr('dispatch.form.vehicleRegistration')}
                                 autoCapitalize="characters"
                                 maxLength={20}
+                                onBlur={() => {
+                                    const clean = normalizeVehicle(header.registration);
+                                    if (clean !== header.registration) updateHeaderField('registration', clean);
+                                }}
                                 icon="car"
                                 hasError={!!validationErrors.registration}
                             />

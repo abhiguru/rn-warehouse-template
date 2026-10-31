@@ -1,4 +1,5 @@
 import { parseOrderEffects } from '@/services/orderEffects';
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { viaCurrentPath } from '@/config/lanTransport';
@@ -409,7 +410,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         p_sender_name: payload.header.sender_name || null,
         p_supervisor_id: payload.header.supervisor_id || null,
         p_supervisor_name: payload.header.supervisor_name || null,
-        p_registration: payload.header.registration || null,
+        p_registration: normalizeVehicle(payload.header.registration ?? '') || null,
         p_note: payload.header.note || null,
         p_leon: payload.header.leon || false,
         p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
@@ -738,7 +739,7 @@ export const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload, 
     p_supervisor_name: payload.header.supervisor_name || null,
     // A cleared text goes as '' (update_grn keeps the old value for null, and the
     // screens show '' and null alike); only a missing one is null.
-    p_registration: payload.header.registration ?? null,
+    p_registration: payload.header.registration == null ? null : normalizeVehicle(payload.header.registration),
     p_note: payload.header.note ?? null,
     // Always a boolean: null would keep the old value, so Leon could not be switched off.
     p_leon: payload.header.leon === true,
