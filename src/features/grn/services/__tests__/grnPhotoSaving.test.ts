@@ -269,7 +269,7 @@ describe('creating a GRN', () => {
         imageType: 'header',
         position: 1,
         image: expect.objectContaining({ id: 'temp_book', imageUrl: 'file:///cache/book.webp' }),
-        error: 'Network request failed',
+        error: 'No answer from the server. The photo change may have gone through. Check the photos on this screen before trying again.',
       }),
     ]);
   });

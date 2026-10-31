@@ -19,6 +19,7 @@ import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { mapWithConcurrency } from '@/utils/concurrency';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
+import { photoUploadFailureText } from '@/utils/photoUploadError';
 import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
 import {
   holdLocalPhoto,
@@ -407,10 +408,7 @@ export const uploadDispatchImage = async (
       } else {
         return {
           success: false,
-          error:
-            uploadOrConfirmError instanceof Error
-              ? uploadOrConfirmError.message
-              : t('dispatch.photos.uploadFailed'),
+          error: photoUploadFailureText(uploadOrConfirmError, t('dispatch.photos.uploadFailedRetry')),
         };
       }
     }
@@ -419,18 +417,14 @@ export const uploadDispatchImage = async (
   } catch (error) {
     console.error('[DispatchImageService] Upload exception:', error);
 
-    let errorMessage = t('dispatch.photos.uploadFailed');
-    if (error instanceof Error) {
-      if (error.message.includes('Network request failed')) {
-        errorMessage = t('dispatch.photos.networkFailed');
-      } else if (
-        error.message.includes('Failed to read image') ||
-        error.message === PHOTO_PROCESSING_FAILED
-      ) {
-        errorMessage = t('dispatch.photos.processFailed');
-      } else {
-        errorMessage = error.message;
-      }
+    // Only the photo being unreadable has a sentence of its own; a failure to reach the server is worded by
+    // photoUploadFailureText, and anything else is the app's generic text (never a library's English message).
+    let errorMessage = photoUploadFailureText(error, t('dispatch.photos.uploadFailedRetry'));
+    if (
+      error instanceof Error &&
+      (error.message.includes('Failed to read image') || error.message === PHOTO_PROCESSING_FAILED)
+    ) {
+      errorMessage = t('dispatch.photos.processFailed');
     }
 
     return {
@@ -496,7 +490,7 @@ const uploadSingleDeferredImage = async (
 
     if (regError) {
       console.error('[DispatchImageService] Registration failed:', regError);
-      return { success: false, error: regError.message };
+      return { success: false, error: photoUploadFailureText(regError, t('dispatch.photos.uploadFailedRetry')) };
     }
 
     if (!regResult?.success) {
@@ -565,10 +559,7 @@ const uploadSingleDeferredImage = async (
 
       return {
         success: false,
-        error:
-          uploadOrConfirmError instanceof Error
-            ? uploadOrConfirmError.message
-            : t('dispatch.photos.uploadFailed'),
+        error: photoUploadFailureText(uploadOrConfirmError, t('dispatch.photos.uploadFailedRetry')),
       };
     }
   } catch (err) {
@@ -578,7 +569,7 @@ const uploadSingleDeferredImage = async (
     );
     return {
       success: false,
-      error: err instanceof Error ? err.message : t('dispatch.wizard.unknownError'),
+      error: photoUploadFailureText(err, t('dispatch.photos.uploadFailedRetry')),
     };
   }
 };

@@ -574,7 +574,7 @@ export const grn = {
     dispatchHistoryFailed: "Couldn't load the dispatch history. Try again.",
     dispatchHistoryFailedConnection: "Couldn't load the dispatch history. Check your connection and try again.",
     photoAccessNeeded: 'Allow photo access in Settings to add an image.',
-    imageUploadFailed: "Couldn't upload the image. Try again.",
+    imageUploadFailed: "Couldn't upload the photo. Try again.",
     imageAdded: 'Image added.',
     deleteImageTitle: 'Delete this image?',
     deleteImageMessage: 'The image is removed from the GRN permanently.',

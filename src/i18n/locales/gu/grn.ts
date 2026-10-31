@@ -576,7 +576,7 @@ export const grn: Translation<typeof source> = {
     dispatchHistoryFailed: 'જાવકની વિગતો લોડ થઈ શકી નથી. ફરી પ્રયાસ કરો.',
     dispatchHistoryFailedConnection: 'જાવકની વિગતો લોડ થઈ શકી નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     photoAccessNeeded: 'ફોટો ઉમેરવા માટે સેટિંગમાં ફોટો જોવાની પરવાનગી આપો.',
-    imageUploadFailed: 'ફોટો અપલોડ થઈ શક્યો નથી. ફરી પ્રયાસ કરો.',
+    imageUploadFailed: 'ફોટો અપલોડ કરી શકાયો નથી. ફરી પ્રયાસ કરો.',
     imageAdded: 'ફોટો ઉમેરાયો.',
     deleteImageTitle: 'આ ફોટો ડિલીટ કરવો છે?',
     deleteImageMessage: 'ફોટો આવક પાવતીમાંથી કાયમ માટે નીકળી જશે.',
