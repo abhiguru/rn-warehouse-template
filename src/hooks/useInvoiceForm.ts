@@ -68,6 +68,7 @@ import {
   checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
 import { transformFormDataToPayload } from '@/features/invoice/utils/invoicePayload';
+import { createRequestKeyKeeper } from '@/utils/requestKeyKeeper';
 import { newInvoiceRequestKey } from '@/features/invoice/utils/requestKey';
 import { sendUntilAnswered } from '@/features/invoice/utils/lostAnswerSubmit';
 import { InvoiceRouteIdContext } from '@/features/invoice/utils/invoiceRouteId';
@@ -345,6 +346,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
 
   // A save is on its way (set before the first await, so a second tap finds it).
   const saveLock = useRef(false);
+  const requestKeys = useRef(createRequestKeyKeeper(() => newInvoiceRequestKey(isCreateMode ? 'create' : 'update')));
   // True while navigateToStep checks the form before it moves to a step.
   const isNavigating = useRef(false);
 
@@ -728,7 +730,6 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
 
       // One request code for this save, made now and kept until its outcome is known (D22). Every send of this save,
       // the first and any send after a lost answer, is the identical request: the same payload and the same code.
-      const requestKey = newInvoiceRequestKey(isCreateMode ? 'create' : 'update');
       const base: CreateInvoicePayload = isCreateMode
         ? {
             // The service converts inv_fin_year from "2026-27" to the year it starts in.
@@ -748,6 +749,8 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
           ...(loadedUpdatedAt ? { expected_updated_at: loadedUpdatedAt } : {}),
         },
       };
+      // Kept across Save presses until the server answers definitively or the form changes (see requestKeyKeeper).
+      const requestKey = requestKeys.current.keyFor(JSON.stringify([isCreateMode, invoiceId ?? null, payload]));
       const controller = new AbortController();
       saveAbort.current = controller;
       const outcome = await sendUntilAnswered({
@@ -764,6 +767,8 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       // The person left the form while the server was asked: there is nobody to tell.
       if (outcome === 'left') return { success: false, left: true };
       const result = outcome;
+      // The server answered: this save is settled, the next one is a new request.
+      requestKeys.current.settle();
 
       if (result.success) {
         return {

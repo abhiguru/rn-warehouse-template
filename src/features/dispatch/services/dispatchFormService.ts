@@ -26,6 +26,7 @@ import type {
 import { uploadDeferredDispatchImages } from './dispatchImageService';
 import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
+import { createRequestKeyKeeper } from '@/utils/requestKeyKeeper';
 import { isServerRefusal, markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
 import { REFUSAL, refusalOf } from '@/utils/serverRefusal';
 import { toCalendarDay } from '@/utils/formatters';
@@ -599,6 +600,10 @@ export const createDispatch = async (payload: {
  * of the request that is captured once below, so a resend after a lost answer is byte-identical; the server answers a
  * resend of one's own saved request from the stored answer of its request code, before it compares versions.
  */
+const dispatchUpdateKeys = createRequestKeyKeeper(() => `warehouse-dispatch-update-${Crypto.randomUUID()}`);
+const updateSignature = (dispatchId: string, payload: { header: DispatchHeaderData; items: DispatchItemData[]; expectedUpdatedAt?: string | null }): string =>
+  JSON.stringify([dispatchId, payload.header, payload.items, payload.expectedUpdatedAt ?? null]);
+
 export const updateDispatch = async (
   dispatchId: string,
   payload: {
@@ -613,7 +618,8 @@ export const updateDispatch = async (
     log.info('Updating dispatch', { dispatchId, itemCount: payload.items.length });
 
     const authenticatedClient = await getAuthenticatedClient();
-    const requestKey = `warehouse-dispatch-update-${Crypto.randomUUID()}`;
+    // Kept across Save presses until the server answers definitively or the form changes (see requestKeyKeeper).
+    const requestKey = dispatchUpdateKeys.keyFor(updateSignature(dispatchId, payload));
     reportedKey = requestKey;
 
     // Transform data to match RPC function format
@@ -648,6 +654,8 @@ export const updateDispatch = async (
     );
     if (!answer) return { success: false, aborted: true, error: '', message: '' };
     if (answer.lostAfterLeaving) return { success: false, aborted: true, maybeSaved: true, error: '', message: '' };
+    // The server answered: this save is settled, the next one is a new request.
+    dispatchUpdateKeys.settle();
     // The resend was refused for the number twice: the first send may have saved it. The screen says so; no next number.
     if (answer.numberMaybeSaved) {
       reportOutcome('save_refused', { code: 'NUMBER_TAKEN', requestKey });

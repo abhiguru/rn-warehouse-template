@@ -132,6 +132,40 @@ describe('saving a new invoice', () => {
   });
 });
 
+describe('the request key of a save', () => {
+  it('two presses of Save send the same key until the server answers; the next save gets a new one', async () => {
+    jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
+    jest.mocked(createInvoice)
+      .mockRejectedValueOnce(new Error('could not send'))
+      .mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 735 } } as never);
+    const { form, unmount } = await mount('create');
+
+    await submit(form);
+    await submit(form);
+    await submit(form);
+
+    const keys = jest.mocked(createInvoice).mock.calls.map(call => call[1]);
+    expect(keys).toHaveLength(3);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
+    await unmount();
+  });
+
+  it('a changed form gets a new key', async () => {
+    jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
+    jest.mocked(createInvoice).mockRejectedValue(new Error('could not send'));
+    const { form, store, unmount } = await mount('create');
+
+    await submit(form);
+    await act(async () => { store.dispatch(updateEditedItem({ temp_id: 't1', values: { charge: 0 } })); });
+    await submit(form);
+
+    const keys = jest.mocked(createInvoice).mock.calls.map(call => call[1]);
+    expect(keys[1]).not.toBe(keys[0]);
+    await unmount();
+  });
+});
+
 describe('saving an existing invoice', () => {
   it('is not asked whether its own GRN can be invoiced (it already holds it)', async () => {
     jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 735 } } as never);
