@@ -30,7 +30,7 @@ import { formatIdentifier, localizeDigits, t } from '@/i18n';
 import { ONE_LINE, makeTableStyles } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
-import { amountText, taxText } from './GrnItemRates';
+import { amountText, taxText } from './rateFigures';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatWeightEach, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { rowWeightText } from './GrnRatesSection';

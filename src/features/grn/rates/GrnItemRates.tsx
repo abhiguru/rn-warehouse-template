@@ -44,19 +44,15 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { isManager } from '@/config/roles';
 import { customerPricingPath, itemRatesPath } from '@/features/item-pricing/contract';
 import { useAppSelector } from '@/store/hooks';
-import { localizeDigits, t } from '@/i18n';
+import { t } from '@/i18n';
 import { money } from '@/features/item-pricing/rateText';
 import { space, type ThemeTokens } from '@/theme/tokens';
-import { formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatWeightEach } from '@/utils/formatters';
 import type { RpcGrnItemRate, RpcGrnRate } from '@/types/rpc-canonical.types';
 import { GrnOnlyRates } from './GrnOnlyRates';
 import { useGrnItemRates } from './useGrnItemRates';
 import { grnRatesStepPath, yourRatePath } from './paths';
-
-/** Column widths at font scale 1; each grows with its widest value. */
-export const RENT_WIDTH = 56;
-export const LABOUR_WIDTH = 56;
-export const TAX_WIDTH = 40;
+import { LABOUR_WIDTH, RENT_WIDTH, TAX_WIDTH, amountText, taxText } from './rateFigures';
 
 const makeStyles = (th: ThemeTokens) => ({
   /** The table card inside the Overview's padded content: no margins of its own. */
@@ -94,10 +90,6 @@ const SOURCE_LABEL = {
   item: 'grn.rates.tagItem',
 } as const;
 
-/** A money cell: "88.00" (the ₹ is in the heading); "—" without a rate. */
-export const amountText = (value: number | null): string => (value === null ? '—' : formatNumber(value, 2));
-/** A tax cell: "18" or "12.5" (the % is in the heading); "—" without a rate. */
-export const taxText = (value: number | null): string => (value === null ? '—' : localizeDigits(String(value)));
 
 /** The items that have more than one row: their rows show the weight of one bag to tell them apart. */
 export function repeatedItems(groups: RateGroup[]): Set<string> {

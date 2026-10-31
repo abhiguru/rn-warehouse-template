@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui';
 import { HeaderCell, ONE_LINE, crowded, makeTableStyles, nb, nestedRowWidth, numberColumnWidth, useStackedWhen, useTableLayout } from '@/components/common/DetailTable';
 import { RateStrip } from '@/features/item-pricing/components/RateStrip';
-import { LABOUR_WIDTH, RENT_WIDTH, TAX_WIDTH, amountText, taxText } from './GrnItemRates';
+import { LABOUR_WIDTH, RENT_WIDTH, TAX_WIDTH, amountText, taxText } from './rateFigures';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { bandText, dateText, money, unitText } from '@/features/item-pricing/rateText';
