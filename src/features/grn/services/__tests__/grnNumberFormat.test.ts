@@ -47,3 +47,18 @@ it('returns the refusal with its pattern, is not a taken number and not a lost a
   expect(result.lostAnswer).toBeUndefined();
   expect(mockRpc).toHaveBeenCalledTimes(1);
 });
+
+it.each([
+  ['GRN_DATE_FUTURE', { date: '2026-12-01', today: '2026-10-31' }],
+  ['GRN_NUMBER_SPACES', { gr_no: 'A 1' }],
+])('returns %s as a refusal, not as a taken number and not as a lost answer (migration 130)', async (reason, fields) => {
+  mockRpc.mockResolvedValue({
+    data: { success: false, error_code: 'WH409', reason, error: 'Some English', message: 'Some English', ...fields },
+    error: null,
+  });
+  const result = await createGRN({ header, items });
+  expect(result.success).toBe(false);
+  expect(result.refusal).toMatchObject({ reason, fields });
+  expect(result.numberTaken).toBeUndefined();
+  expect(result.lostAnswer).toBeUndefined();
+});

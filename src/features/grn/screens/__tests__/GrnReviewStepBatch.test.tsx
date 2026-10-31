@@ -5,7 +5,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
-import { createGRN, getNextGRNNumber } from '@/features/grn/services/grnFormService';
+import { createGRN, getNextGRNNumber, updateGRN } from '@/features/grn/services/grnFormService';
 import { unpreparedGRNPhotos } from '@/features/grn/services/imageUploadService';
 import { getGrnItemRates } from '@/services/item-pricing-service';
 import { showAlert } from '@/utils/alert';
@@ -170,6 +170,44 @@ describe('staff and an item with no rate (owner decision D11)', () => {
     tree = await render();
     await save(tree);
     expect(successData(tree).notices).toBeUndefined();
+  });
+});
+
+describe('the server\'s refusals for the date and the number (migration 130)', () => {
+  it('words a date in the future in the app\'s text and takes the person to step 1', async () => {
+    (createGRN as jest.Mock).mockResolvedValueOnce({
+      success: false,
+      error: 'x',
+      refusal: { reason: 'GRN_DATE_FUTURE', fields: { date: '2026-12-01', today: '2026-10-31' }, text: 'x' },
+    });
+    const tree = await render();
+    await save(tree);
+    expect(alerts().at(-1)).toEqual([expect.any(String), "A GRN can't be dated in the future. Today is 31 Oct 2026.", [expect.objectContaining({ text: 'OK' })]]);
+  });
+
+  it('words a number with a space', async () => {
+    (createGRN as jest.Mock).mockResolvedValueOnce({
+      success: false,
+      error: 'x',
+      refusal: { reason: 'GRN_NUMBER_SPACES', fields: { gr_no: 'A 1' }, text: 'x' },
+    });
+    const tree = await render();
+    await save(tree);
+    expect(alerts().at(-1)?.[1]).toBe("A GRN number can't contain spaces.");
+  });
+});
+
+describe('an edit refused for the last photo (migration 130)', () => {
+  it('says a GRN needs at least one photo', async () => {
+    (updateGRN as jest.Mock).mockResolvedValueOnce({
+      success: false,
+      error: 'x',
+      refusal: { reason: 'GRN_PHOTO_REQUIRED', fields: { gr_no: 'A0010' }, text: 'x' },
+    });
+    const tree = await render('edit');
+    await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
+    await act(async () => { await saveDialog(tree).props.onConfirm(); });
+    expect(alerts().at(-1)?.[1]).toBe('A GRN needs at least one photo. Add another before deleting this one.');
   });
 });
 

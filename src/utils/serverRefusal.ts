@@ -64,6 +64,13 @@ export const REFUSAL = {
    * `pattern`); with the pattern null, a number of more than 20 characters. Nothing was saved.
    */
   NUMBER_FORMAT: 'NUMBER_FORMAT',
+  // Backend migration 130 (GRN rules).
+  /** A GRN dated after today (`date`, `today`). */
+  GRN_DATE_FUTURE: 'GRN_DATE_FUTURE',
+  /** A GRN's last photo can't be deleted, nor can an edit leave none (`gr_no`). */
+  GRN_PHOTO_REQUIRED: 'GRN_PHOTO_REQUIRED',
+  /** A GRN number with a space in it (`gr_no`). */
+  GRN_NUMBER_SPACES: 'GRN_NUMBER_SPACES',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

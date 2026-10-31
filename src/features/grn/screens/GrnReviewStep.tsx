@@ -138,6 +138,19 @@ type GrnReviewStepProps = {
 };
 
 /** The folding sections of the step, top to bottom. */
+/** The server's refusals about the date and the number of a new GRN: the person fixes them on step 1. */
+const CREATE_STEP_REFUSALS: ReadonlySet<string> = new Set([REFUSAL.GRN_DATE_FUTURE, REFUSAL.GRN_NUMBER_SPACES]);
+
+/** The app's sentence for a refusal about the date or the number of a GRN; undefined for any other reason. */
+function refusalText(refusal: ServerRefusal): string | undefined {
+  if (refusal.reason === REFUSAL.GRN_DATE_FUTURE) {
+    const today = refusalString(refusal, 'today')?.slice(0, 10);
+    return tr('grn.refusal.dateFuture', { date: today ? formatDate(today) : '' });
+  }
+  if (refusal.reason === REFUSAL.GRN_NUMBER_SPACES) return tr('grn.refusal.numberSpaces');
+  return undefined;
+}
+
 type ReviewSectionId = 'details' | 'photos' | 'items' | 'rates';
 
 export function GrnReviewStep({ mode }: GrnReviewStepProps) {
@@ -852,6 +865,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         const message = numberFormatText(result.refusal);
         dispatch(setTakenNumberError(message));
         showAlert(saveFailedTitle(), message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
+      } else if (result.refusal && CREATE_STEP_REFUSALS.has(result.refusal.reason)) {
+        // The date or the number is refused (migration 130): said in the app's words, and the person is taken to step 1.
+        triggerError();
+        const message = refusalText(result.refusal);
+        if (message) {
+          showAlert(saveFailedTitle(), message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
+        }
       } else {
         triggerError();
         if (result.rateError) showRateRefusal(result.rateError, result.error);
@@ -942,6 +962,14 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       }
       case REFUSAL.GRN_DATE_LOCKED:
         showAlert(saveFailedTitle(), tr('grn.refusal.dateInvoiced'), ok(goToDetailsStep));
+        return;
+      case REFUSAL.GRN_DATE_FUTURE:
+      case REFUSAL.GRN_NUMBER_SPACES:
+        showAlert(saveFailedTitle(), refusalText(refusal) ?? serverText(refusal.text, connectionHint(), { write: true, form: true }), ok(goToDetailsStep));
+        return;
+      case REFUSAL.GRN_PHOTO_REQUIRED:
+        // An edit may not leave a GRN with no photo: the photos section is where one is added.
+        showAlert(saveFailedTitle(), tr('grn.refusal.lastPhoto'), ok(() => show('photos')));
         return;
       case REFUSAL.GRN_NUMBER_LOCKED:
         showAlert(saveFailedTitle(), tr('grn.refusal.numberLocked'), ok(goToDetailsStep));
