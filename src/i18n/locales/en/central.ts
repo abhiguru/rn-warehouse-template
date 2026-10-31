@@ -29,6 +29,8 @@ export const central = {
     cellLabel: '{{name}}, {{status}}',
     cellLabelCity: '{{name}}, {{city}}, {{status}}',
     cellHint: 'Opens this facility',
+    goneMessage: '{{facility}} is no longer listed by the association.',
+    goneRemove: 'Remove from my list',
     refreshNote: 'A status is checked again when you open the facility.',
     accountLabel: 'Your account',
     accountHint: 'Name, sign out and account deletion',

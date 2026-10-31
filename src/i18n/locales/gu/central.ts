@@ -25,6 +25,8 @@ export const central: Translation<typeof source> = {
     cellLabel: '{{name}}, {{status}}',
     cellLabelCity: '{{name}}, {{city}}, {{status}}',
     cellHint: 'આ કોલ્ડ સ્ટોરેજ ખોલે છે',
+    goneMessage: '{{facility}} હવે ઍસોસિએશનની યાદીમાં નથી.',
+    goneRemove: 'મારી યાદીમાંથી કાઢી નાખો',
     refreshNote: 'કોલ્ડ સ્ટોરેજ ખોલો ત્યારે તેની સ્થિતિ ફરી તપાસાય છે.',
     accountLabel: 'તમારું એકાઉન્ટ',
     accountHint: 'નામ, લૉગઆઉટ અને એકાઉન્ટ ડિલીટ',

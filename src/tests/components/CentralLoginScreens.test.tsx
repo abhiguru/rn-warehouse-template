@@ -723,7 +723,7 @@ describe('Add facility', () => {
     });
     await render(<FacilityCatalogueScreen />);
     await press(byTestID('catalogue-gondal-agro'));
-    expect(addMyFacility).toHaveBeenCalledWith('asha', { origin: 'https://gondal-agro.example.test', name: 'Gondal Agro Cold Storage', city: 'Gondal' });
+    expect(addMyFacility).toHaveBeenCalledWith('asha', { origin: 'https://gondal-agro.example.test', name: 'Gondal Agro Cold Storage', city: 'Gondal', source: 'catalogue' });
     expect(router.back).toHaveBeenCalledTimes(1);
     expect(openFacility).toHaveBeenCalledWith('https://gondal-agro.example.test', 'Gondal Agro Cold Storage');
   });
