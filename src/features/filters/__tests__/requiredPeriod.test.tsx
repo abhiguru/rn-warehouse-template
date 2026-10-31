@@ -9,7 +9,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { getDateDaysAgo } from '@/services/reporting/reportDates';
 import { applyListFilters, clearListFilters } from '@/store/slices/listFilterSlice';
 import { watchPhoneZone } from '@/tests/helpers/phoneZone';
-import { formatDate, toLocalISODate, todayInIST } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, toLocalISODate, todayInIST } from '@/utils/formatters';
 import { ApplyFiltersButton } from '../components/ApplyFiltersButton';
 import { FilterBar } from '../components/FilterBar';
 import { SingleFilterSheet, type OpenFilter } from '../components/SingleFilterSheet';
@@ -140,7 +140,7 @@ describe('report periods', () => {
     expect(presetLabel('today')).toBe('Today');
     expect(describeValue(PERIOD, { preset: 'last364' })).toBe('Last 364 days');
     // Days of another year carry it; days of this year do not.
-    expect(describeValue(PERIOD, { from: '2024-01-01', to: '2024-01-31' })).toBe('1 Jan 2024 – 31 Jan 2024');
+    expect(describeValue(PERIOD, { from: '2024-01-01', to: '2024-01-31' })).toBe('01/01/24 – 31/01/24');
   });
 });
 
@@ -353,8 +353,8 @@ describe('the period sheet of a report shows the days its request asks for', () 
         expect({ now: now.toISOString(), preset: preset.id, ...shown(preset.id) }).toEqual({
           now: now.toISOString(),
           preset: preset.id,
-          from: `From date, ${formatDate(period.from)}`,
-          to: `To date, ${formatDate(period.to)}`,
+          from: `From date, ${formatSpokenDate(period.from)}`,
+          to: `To date, ${formatSpokenDate(period.to)}`,
         });
       }
     }
@@ -407,8 +407,8 @@ describe('a list\'s date sheet shows the days its request asks for', () => {
         expect({ now: now.toISOString(), preset: preset.id, ...shownDays(list, 'date', values) }).toEqual({
           now: now.toISOString(),
           preset: preset.id,
-          from: `From date, ${formatDate(String(sent.from).slice(0, 10))}`,
-          to: `To date, ${formatDate(String(sent.to).slice(0, 10))}`,
+          from: `From date, ${formatSpokenDate(String(sent.from).slice(0, 10))}`,
+          to: `To date, ${formatSpokenDate(String(sent.to).slice(0, 10))}`,
         });
       }
     }

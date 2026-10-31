@@ -325,7 +325,7 @@ const invalidDateText = (details: { earliest?: unknown }, startsOn?: string | nu
   // The server sends INVALID_DATE for a day too far ahead as well: that one is told apart by the day sent.
   if (startsOn && startsOn.slice(0, 10) > addDays(toCalendarDay(new Date()), 730)) return t('pricing.error.startTooFar');
   return typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)
-    ? t('pricing.error.invalidDate', { date: formatDate(details.earliest.slice(0, 10), 'medium') })
+    ? t('pricing.error.invalidDate', { date: formatDate(details.earliest.slice(0, 10)) })
     : t('pricing.error.invalidDateWindow');
 };
 

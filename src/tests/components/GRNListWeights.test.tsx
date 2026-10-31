@@ -152,7 +152,7 @@ describe('GRN list card', () => {
     expect(all).not.toContain('5,000 kg');
     expect(all.filter((text) => /kg|kilo/i.test(text))).toEqual([]);
     expect(host(tree, `grn-card-${GRN}`).props.accessibilityLabel).toBe(
-      `GRN RV15001, Fictional Orchard, 1 Oct, 1 item, 80 of ${nb('100 bags')}, In stock`
+      `GRN RV15001, Fictional Orchard, 1 Oct 2026, 1 item, 80 of ${nb('100 bags')}, In stock`
     );
   });
 

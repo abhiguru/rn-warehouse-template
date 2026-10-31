@@ -72,7 +72,7 @@ it('a customer rate: says the customer pays the default rate (3.50) afterwards, 
   expect(texts).toContain('Stop this rate');
   expect(texts).toContain('After the last day Review Orchard B pays the default rate, ₹3.50 per bag, per month.');
   expect(texts).toContain('Last day');
-  expect(chipState(t)).toEqual(['Today, 14 Oct:on', '31 Oct 2026:off', '31 Mar 2027:off', 'Other date:off']);
+  expect(chipState(t)).toEqual(['Today, 14/10/26:on', '31/10/26:off', '31/03/27:off', 'Other date:off']);
 });
 
 // CR-14: the default rate quoted is the one in force the day after the chosen last day.
@@ -80,7 +80,7 @@ it('the quoted default rate follows the chosen last day', async () => {
   const rows = [...onionRows().map(r => (r.customer_id ? r : { ...r, effective_to: '2026-12-31' })), rate('onion', null, 0, 100, 4.5, 1.5, 5, '2027-01-01', null, 'monthly', 'Review Onion Red')];
   const t = await open(customer, rows);
   expect(textsOf(t)).toContain('After the last day Review Orchard B pays the default rate, ₹3.50 per bag, per month.');
-  await act(async () => { chip(t, '31 Mar 2027').props.onPress(); });
+  await act(async () => { chip(t, '31/03/27').props.onPress(); });
   expect(textsOf(t)).toContain('After the last day Review Orchard B pays the default rate, ₹4.50 per bag, per month.');
 });
 
@@ -105,7 +105,7 @@ it('Stop rate with Today sends the day after as the start of nothing, then toast
   await act(async () => { stopButton(t).props.onPress(); });
   expect(replace).toHaveBeenCalledTimes(1);
   expect(replace).toHaveBeenCalledWith({ item_id: 'onion', customer_id: 'cust-b', price_type: 'monthly', starts_on: '2026-10-15', bands: [], seen_rows: expect.any(Array), request_key: expect.stringMatching(/^warehouse-rate-stop-/) }, { signal: expect.anything() });
-  expect(showToast).toHaveBeenCalledWith('Rate stopped. Last day 14 Oct 2026.');
+  expect(showToast).toHaveBeenCalledWith('Rate stopped. Last day 14/10/26.');
   expect(told).toEqual(['onion']);
   expect(router.back).toHaveBeenCalledTimes(1);
   stop();
@@ -120,13 +120,13 @@ it('a rate that started today can be stopped with last day today', async () => {
   expect(t.root.findAll(n => n.props.testID === 'editor-error')).toHaveLength(0);
 });
 
-it('the 31 Mar 2027 chip stops after that day', async () => {
+it('the 31/03/27 chip stops after that day', async () => {
   const t = await open(customer);
-  await act(async () => { chip(t, '31 Mar 2027').props.onPress(); });
+  await act(async () => { chip(t, '31/03/27').props.onPress(); });
   replace.mockResolvedValue({ success: true });
   await act(async () => { stopButton(t).props.onPress(); });
   expect(replace.mock.calls[0][0].starts_on).toBe('2027-04-01');
-  expect(showToast).toHaveBeenCalledWith('Rate stopped. Last day 31 Mar 2027.');
+  expect(showToast).toHaveBeenCalledWith('Rate stopped. Last day 31/03/27.');
 });
 
 it('Other date opens the calendar at once; no past day for any role', async () => {
@@ -160,7 +160,7 @@ it('a planned rate after the last day asks before it is replaced', async () => {
   });
   await act(async () => { stopButton(t).props.onPress(); });
   const dialog = t.root.findByType(ConfirmDialog);
-  expect(dialog.props.title).toBe('Replace the rate from 1 Jan 2027?');
+  expect(dialog.props.title).toBe('Replace the rate from 01/01/27?');
   replace.mockResolvedValueOnce({ success: true });
   await act(async () => { dialog.props.onConfirm(); });
   expect(replace.mock.calls[1][0]).toMatchObject({ replace_later: true, starts_on: '2026-10-15', bands: [] });
@@ -171,7 +171,7 @@ it('a planned rate after the last day asks before it is replaced', async () => {
 it('a planned rate that starts the day after the last day asks, then sends replace_later with its id in seen_rows', async () => {
   const planned = rate('onion', ORCHARD_B, 0, 100, 4.25, 1.5, 5, '2026-10-15', null);
   const t = await open(customer, [...onionRows(), planned]);
-  await act(async () => { chip(t, 'Today, 14 Oct').props.onPress(); });
+  await act(async () => { chip(t, 'Today, 14/10/26').props.onPress(); });
   await act(async () => { stopButton(t).props.onPress(); });
   expect(replace).not.toHaveBeenCalled();
   const dialog = t.root.findByType(ConfirmDialog);

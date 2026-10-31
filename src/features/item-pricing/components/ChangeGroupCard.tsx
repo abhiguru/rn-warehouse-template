@@ -10,7 +10,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
-import { formatDateTime } from '@/utils/formatters';
+import { formatDateTime, formatSpokenDateTime } from '@/utils/formatters';
 import { bandText, dateText } from '../rateText';
 import type { GroupView } from '../utils/priceHistory';
 import { priceHistoryAuthor, priceHistoryFieldLabel, priceHistoryValueText } from '../utils/priceHistoryLabels';
@@ -56,7 +56,7 @@ const ChangeGroupCard = memo<Props>(({ entries, view }) => {
       date: r.from ? dateText(r.from) : '—',
     })
   );
-  const spoken = [title, itemName, customerName, ...bands.flatMap(b => [b.heading, ...b.rows.map(r => r.spoken)]), ...removed, when, who].filter(Boolean).join(', ');
+  const spoken = [title, itemName, customerName, ...bands.flatMap(b => [b.heading, ...b.rows.map(r => r.spoken)]), ...removed, formatSpokenDateTime(first.changed_at), who].filter(Boolean).join(', ');
 
   return (
     <View style={styles.card} accessible accessibilityLabel={spoken} testID={`price-history-group-${first.id}`}>

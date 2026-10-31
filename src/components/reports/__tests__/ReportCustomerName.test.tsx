@@ -363,7 +363,7 @@ describe('GRN activity opened from its customers list', () => {
   it("a row tap: the report shows the row's name at once without asking the facility, and \"Last opened\" keeps that name", async () => {
     const store = makeStore();
     const list = await open(GRNActivityScreen, store);
-    await list.press('Riverbank Produce, 9 GRNs · Latest 11 Aug, 80 bags');
+    await list.press('Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 bags');
     expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
 
     // The route the tap pushed opens the customer. The facility's names are held back: none is needed.
@@ -407,7 +407,7 @@ describe('customer activity opened by a link that pairs a customer with another 
     expect(getCustomerActivityDetail).toHaveBeenCalledWith(expect.objectContaining({ customerId: 'c1' }));
     expect(screen.subtitle()).toBe('Riverbank Produce');
 
-    await screen.press('GRNs in 15 Jun – 12 Oct: 12. View GRNs in 15 Jun – 12 Oct');
+    await screen.press('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
     // The report the card opens has the name at once.

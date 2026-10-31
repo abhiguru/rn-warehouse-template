@@ -28,6 +28,7 @@ import {
   STEP_NUMBERS,
   getCompletedSteps,
   formatInvoiceDate,
+  formatSpokenInvoiceDate,
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
 import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInput } from '@/i18n';
@@ -312,7 +313,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
             accessibilityRole="button"
             accessibilityLabel={
               formatInvoiceDate(header.inv_date)
-                ? tr('invoice.form.invoiceDateA11y', { date: formatInvoiceDate(header.inv_date) })
+                ? tr('invoice.form.invoiceDateA11y', { date: formatSpokenInvoiceDate(header.inv_date) })
                 : tr('invoice.form.invoiceDateNotSetA11y')
             }
             accessibilityHint={tr('invoice.form.datePickerHint')}

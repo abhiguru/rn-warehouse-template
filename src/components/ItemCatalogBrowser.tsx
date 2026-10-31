@@ -1030,7 +1030,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const stockStatus = getStockStatus(item.current_stock, item.original_quantity);
     const status = t.status[stockStatus];
     const stockWord = stockLabel(stockStatus);
-    const grnDate = item.grn_date ? formatDate(item.grn_date, 'short') : null;
+    const grnDate = item.grn_date ? formatDate(item.grn_date) : null;
     // The weight of one package, "50 kg each"; none for a lot without a weight.
     const weightText = formatWeightEach(item.weight);
     const rowLabel = [

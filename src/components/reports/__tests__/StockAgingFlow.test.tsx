@@ -513,7 +513,7 @@ describe('stock aging, one customer', () => {
       ['Received quantity', '25'],
       ['Package mark', '—'],
       ['Dispatched', '10 in 2 dispatches'],
-      ['Last dispatch', '1 Sep 2026'],
+      ['Last dispatch', '01/09/26'],
       ['Average time between dispatches', '12 days'],
     ]);
 

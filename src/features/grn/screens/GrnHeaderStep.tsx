@@ -29,7 +29,7 @@ import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/compo
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { formatDate, formatNumber, toCalendarDay, toLocalISODate } from '@/utils/formatters';
+import { formatDate, formatNumber, formatSpokenDate, toCalendarDay, toLocalISODate } from '@/utils/formatters';
 import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
@@ -349,7 +349,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                 disabled={dateLocked}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: dateLocked }}
-                accessibilityLabel={tr('grn.header.dateLabel', { date: formatHeaderDate(header.date) })}
+                accessibilityLabel={tr('grn.header.dateLabel', { date: formatSpokenDate(header.date || new Date()) })}
                 accessibilityHint={dateLocked ? tr('grn.refusal.dateInvoiced') : tr('grn.header.dateHint')}
               >
                 <Icon name={dateLocked ? 'lock-outline' : 'calendar-outline'} size={iconSize.md} color={t.icon.secondary} />
@@ -562,7 +562,7 @@ function latestPickableDate(firstDispatchDate: string | null, loadedDate: string
   return limit < today ? limit : today;
 }
 
-/** "9 Oct 2026" (§12.3); today when no date is set yet. */
+/** "09/10/26" (§12.3); today when no date is set yet. */
 function formatHeaderDate(value: string | undefined): string {
   return formatDate(value || new Date());
 }

@@ -51,7 +51,7 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
     expect(StyleSheet.flatten(container.props.style).backgroundColor).toBe(t.surface.card);
     const all = texts(tree);
     expect(all).toContain('Z0797');
-    expect(all).toContain('Patel Traders · 9 Oct 2026');
+    expect(all).toContain('Patel Traders · 09/10/26');
     expect(all).toContain('Low stock');
     const tag = tree.root.findByProps({ accessibilityLabel: 'Low stock' });
     expect(StyleSheet.flatten(tag.props.style).backgroundColor).toBe(t.status.critical.background);

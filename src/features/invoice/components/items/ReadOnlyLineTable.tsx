@@ -33,7 +33,7 @@ import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { itemsLayout, type ItemsLayout } from './itemsLayout';
 import { columnInset, lineColumnDefs, lineColumnsOf, type LineColumn } from './lineColumns';
-import { countText, dateText, monthsText, tableDateText } from './lineText';
+import { countText, monthsText, spokenDateText, tableDateText } from './lineText';
 import { fieldHeading, rateText } from './itemsModel';
 import { makeItemsStyles } from './itemsStyles';
 import { makeTableScroll, SidewaysViewport } from './SidewaysViewport';
@@ -188,7 +188,7 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
   const spoken = (line: ReadOnlyLine): string => {
     const args = {
       number: formatIdentifier(line.dispatchNo || '—'),
-      date: line.dispatchDate && toDate(line.dispatchDate) ? dateText(line.dispatchDate) : '—',
+      date: line.dispatchDate && toDate(line.dispatchDate) ? spokenDateText(line.dispatchDate) : '—',
       months: oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(line.months * 10) / 10, 'month'),
       days: formatCount(line.days, 'day'),
       bags: formatCount(line.qty, 'bag'),

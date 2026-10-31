@@ -107,15 +107,15 @@ describe('a new invoice, from the Invoices tab to the saved invoice', () => {
     // Opened empty: both GRNs are listed.
     expect(server.callsOf('get_invoiceable_grns').map((call) => call.args)).toEqual([{ p_search_grn_no: null }]);
     expect(app.controls(/^GRN A00\d\d,/).map((control) => control.props.accessibilityLabel)).toEqual([
-      'GRN A0010, Example Traders, 2 Oct',
-      'GRN A0011, Example Traders, 2 Oct',
+      'GRN A0010, Example Traders, 2 Oct 2026',
+      'GRN A0011, Example Traders, 2 Oct 2026',
     ]);
 
     await app.typeKeys('Search GRN number or customer', 'A0011', { stayInField: true });
     await app.settle();
 
     expect(server.callsOf('get_invoiceable_grns').at(-1)!.args).toEqual({ p_search_grn_no: 'A0011' });
-    expect(app.controls(/^GRN A00\d\d,/).map((control) => control.props.accessibilityLabel)).toEqual(['GRN A0011, Example Traders, 2 Oct']);
+    expect(app.controls(/^GRN A00\d\d,/).map((control) => control.props.accessibilityLabel)).toEqual(['GRN A0011, Example Traders, 2 Oct 2026']);
 
     await app.tap(/^GRN A0011,/);
 

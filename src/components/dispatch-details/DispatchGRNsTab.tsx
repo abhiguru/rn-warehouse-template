@@ -111,7 +111,7 @@ const bags = (qty: number) => formatCount(qty, 'bag');
 
 function grnSpoken(group: Pick<GrnGroup, 'grn_no' | 'grn_date'>): string {
   if (!group.grn_no) return tr('dispatch.details.table.grnUnavailable');
-  const date = toDate(group.grn_date) ? formatDate(group.grn_date, 'short') : tr('dispatch.details.table.dateUnavailable');
+  const date = toDate(group.grn_date) ? formatDate(group.grn_date) : tr('dispatch.details.table.dateUnavailable');
   return tr('dispatch.details.grnLabelWithDate', { number: formatIdentifier(group.grn_no), date });
 }
 

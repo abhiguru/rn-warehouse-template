@@ -77,7 +77,7 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
     await open();
     expect(has('invoice-review')).toBe(true);
     ['details', 'items', 'charges'].forEach((id) => expect(has(`invoice-review-section-${id}`)).toBe(true));
-    expect(toggle('details').props.accessibilityLabel).toBe('Invoice details, Invoice 42 · 5 Oct 2026 · Example Traders');
+    expect(toggle('details').props.accessibilityLabel).toBe('Invoice details, Invoice 42 · 05/10/26 · Example Traders');
     expect(toggle('items').props.accessibilityLabel).toMatch(/^Items, 1, /);
     expect(toggle('charges').props.accessibilityLabel).toMatch(/^Charges/);
     // No title of its own inside the card (P0-11): the summary has no header role.
@@ -89,7 +89,7 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
     expect(hidden('charges')).toBe(false);
     expect(hidden('details')).toBe(true);
     expect(hidden('items')).toBe(true);
-    expect(closedLine('details')).toBe('Invoice 42 · 5 Oct 2026 · Example Traders');
+    expect(closedLine('details')).toBe('Invoice 42 · 05/10/26 · Example Traders');
     // The bags only: the one money total is in CHARGES, so two different totals never show in one card.
     expect(closedLine('items')).toBe('120 bags');
     expect(closedLine('charges')).toBeUndefined();

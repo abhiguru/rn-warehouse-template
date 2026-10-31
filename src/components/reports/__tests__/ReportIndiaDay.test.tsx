@@ -247,7 +247,7 @@ describe('invoice history', () => {
     expect(screen.rows(/^Invoice \d{4}\/\d{4}$/)).toEqual([
       'Today', 'Invoice 2026/0012',
       'Yesterday', 'Invoice 2026/0011',
-      'Thu, 1 Oct', 'Invoice 2026/0001',
+      '01/10/26', 'Invoice 2026/0001',
     ]);
     // The date a screen reader hears with the card (no heading is read with it).
     expect(screen.label('Invoice 2026/0012,')).toContain('Invoice 2026/0012, 12 Oct 2026 · ');
@@ -262,14 +262,14 @@ describe('invoice history', () => {
     await screen.press('Amount');
     await screen.press('Done');
     expect(screen.rows(/^Invoice \d{4}\/\d{4}$/)).toEqual(['Invoice 2026/0011', 'Invoice 2026/0001', 'Invoice 2026/0012']);
-    const dates = screen.texts().filter(text => /^\d{1,2} [A-Z][a-z]{2}$/.test(text));
-    expect(dates).toEqual(['11 Oct', '1 Oct', '12 Oct']);
+    const dates = screen.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
+    expect(dates).toEqual(['11/10/26', '01/10/26', '12/10/26']);
     expect(watch.reads).toEqual([]);
   });
 
   it('names the day of a customer\'s latest invoice as it is in India', async () => {
     const screen = await open(InvoiceHistoryScreen);
-    expect(screen.label('Green Valley Traders,')).toContain('3 invoices, Latest 1 Oct, ');
+    expect(screen.label('Green Valley Traders,')).toContain('3 invoices, Latest 01/10/26, ');
     expect(watch.reads).toEqual([]);
   });
 });
@@ -320,7 +320,7 @@ describe('GRN activity', () => {
 
   it('heads each day as it is in India, and a card names the day its heading names', async () => {
     const screen = await open(GRNActivityScreen, GREEN);
-    expect(screen.rows(/^GRN A\d+$/)).toEqual(['Today', 'GRN A0012', 'Yesterday', 'GRN A0011', 'Thu, 1 Oct', 'GRN A0001']);
+    expect(screen.rows(/^GRN A\d+$/)).toEqual(['Today', 'GRN A0012', 'Yesterday', 'GRN A0011', '01/10/26', 'GRN A0001']);
     expect(screen.label('GRN A0012,')).toContain('GRN A0012, 12 Oct 2026, ');
     expect(screen.label('GRN A0011,')).toContain('GRN A0011, 11 Oct 2026, ');
     expect(screen.label('GRN A0001,')).toContain('GRN A0001, 1 Oct 2026, ');
@@ -333,14 +333,14 @@ describe('GRN activity', () => {
     await screen.press('Bags');
     await screen.press('Done');
     expect(screen.rows(/^GRN A\d+$/)).toEqual(['GRN A0011', 'GRN A0001', 'GRN A0012']);
-    const dates = screen.texts().filter(text => /^\d{1,2} [A-Z][a-z]{2}$/.test(text));
-    expect(dates).toEqual(['11 Oct', '1 Oct', '12 Oct']);
+    const dates = screen.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
+    expect(dates).toEqual(['11/10/26', '01/10/26', '12/10/26']);
     expect(watch.reads).toEqual([]);
   });
 
   it('shows a plain day of a customer row as the server sent it', async () => {
     const screen = await open(GRNActivityScreen);
-    expect(screen.label('Green Valley Traders,')).toContain('Latest 12 Oct');
+    expect(screen.label('Green Valley Traders,')).toContain('Latest 12/10/26');
   });
 });
 
@@ -401,17 +401,17 @@ describe('customer activity', () => {
     const screen = await open(CustomerActivityScreen);
     expect(screen.customers()).toEqual({
       'Riverbank Produce': ['Rajkot', 'Active today'],
-      'Green Valley Traders': ['Surat', 'Last active 11 Oct'],
-      'Sunrise Agro Foods': ['Anand', 'Last active 1 Oct'],
+      'Green Valley Traders': ['Surat', 'Last active 11/10/26'],
+      'Sunrise Agro Foods': ['Anand', 'Last active 01/10/26'],
     });
     expect(watch.reads).toEqual([]);
   });
 
   it('dates a customer\'s latest GRN, dispatch and invoice by the day in India', async () => {
     const screen = await open(CustomerActivityScreen, GREEN);
-    expect(screen.label('GRN A0012,')).toContain('GRN A0012, 12 Oct, ');
-    expect(screen.label('Dispatch D0011,')).toContain('Dispatch D0011, 11 Oct, ');
-    expect(screen.label('Invoice 2026-0001,')).toContain('Invoice 2026-0001, 1 Oct, ');
+    expect(screen.label('GRN A0012,')).toContain('GRN A0012, 12/10/26, ');
+    expect(screen.label('Dispatch D0011,')).toContain('Dispatch D0011, 11/10/26, ');
+    expect(screen.label('Invoice 2026-0001,')).toContain('Invoice 2026-0001, 01/10/26, ');
     expect(watch.reads).toEqual([]);
   });
 });
@@ -448,11 +448,11 @@ describe('stock aging', () => {
   it('dates the receipt of a line and its last dispatch by the day in India', async () => {
     const screen = await open(StockAgingScreen, GREEN);
     await screen.press('Garlic, ');
-    expect(screen.label('GRN A0001')).toContain('received 1 Oct, ');
-    expect(screen.texts()).toContain('Received 1 Oct');
+    expect(screen.label('GRN A0001')).toContain('received 1 Oct 2026, ');
+    expect(screen.texts()).toContain('Received 01/10/26');
     await screen.press('GRN A0001');
     const cells = Object.fromEntries(screen.tree.root.findAllByType(KeyValueCell).map(cell => [cell.props.keyLabel as string, cell.props.value as string]));
-    expect(cells['Last dispatch']).toBe('12 Oct 2026');
+    expect(cells['Last dispatch']).toBe('12/10/26');
     expect(watch.reads).toEqual([]);
   });
 });
@@ -479,7 +479,7 @@ describe('operations dashboard', () => {
     const activity = screen.tree.root
       .findAll(node => typeof node.type === 'string' && node.props.accessible === true && /^(GRN|Dispatch) /.test(String(node.props.accessibilityLabel)))
       .map(node => node.props.accessibilityLabel as string);
-    expect(activity).toEqual(['Dispatch D0011, Riverbank Produce, 2 min ago', 'GRN A0001, Green Valley Traders, 1 Oct']);
+    expect(activity).toEqual(['Dispatch D0011, Riverbank Produce, 2 min ago', 'GRN A0001, Green Valley Traders, 01/10/26']);
     expect(watch.reads).toEqual([]);
   });
 });
@@ -518,8 +518,8 @@ describe('the GRNs of a stock item', () => {
       .findAll(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('GRN A'))
       .map(node => node.props.accessibilityLabel as string);
     expect(labels).toHaveLength(2);
-    expect(labels[0]).toContain('GRN A0001, Received 1 Oct, ');
-    expect(labels[1]).toContain('GRN A0002, Received 2 Sep, Emptied 12 Oct');
+    expect(labels[0]).toContain('GRN A0001, Received 1 Oct 2026, ');
+    expect(labels[1]).toContain('GRN A0002, Received 2 Sep 2026, Emptied 12 Oct 2026');
     expect(watch.reads).toEqual([]);
   });
 });
@@ -541,11 +541,11 @@ describe('the heading over a day', () => {
     watch = watchPhoneZone([NOW, ...ROW_TIMES]);
     expect(heading('2026-10-12')).toBe('Today');
     expect(heading('2026-10-11')).toBe('Yesterday');
-    expect(heading('2026-10-10')).toBe('Sat, 10 Oct');
+    expect(heading('2026-10-10')).toBe('10/10/26');
     expect(heading(TODAY)).toBe('Today');
     expect(heading(YESTERDAY)).toBe('Yesterday');
-    expect(heading(FIRST_OF_OCTOBER)).toBe('Thu, 1 Oct');
-    expect(heading('2025-10-08')).toBe('Wed, 8 Oct 2025');
+    expect(heading(FIRST_OF_OCTOBER)).toBe('01/10/26');
+    expect(heading('2025-10-08')).toBe('08/10/25');
     expect(watch.reads).toEqual([]);
   });
 });

@@ -84,7 +84,7 @@ describe('Add rate', () => {
     expect(input('Tax')!.props.value).toBe('5');
     expect(chip('Everyone').props.accessibilityState.selected).toBe(true);
     // A rate starts later in the band, so the last day is set: the chips show "Until a date" and a date field is open.
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26');
     expect(chip('Until a date').props.accessibilityState.selected).toBe(true);
     expect(chip('No end date').props.accessibilityState.selected).toBe(false);
     expect(tree!.root.findAllByType(DatePickerInput)).toHaveLength(1);
@@ -170,7 +170,7 @@ describe('Change', () => {
     expect(input('From (kg)')!.props.value).toBe('0');
     expect(input('Up to (kg)')!.props.value).toBe('50');
     // This GRN has no end: the dates line says so and there is no end choice.
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026 · No end date');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26 · No end date');
     expect(tree!.root.findAll(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'Until a date')).toHaveLength(0);
     expect(input('Rent ₹/month')!.props.value).toBe('4.00');
     expect(input('Labour ₹')!.props.value).toBe('1.50');
@@ -201,11 +201,11 @@ describe('Change', () => {
     expect(figureRow('labour')).toEqual({ cells: ['Labour', '₹1.50', '₹1.50'], a11y: 'Labour: ₹1.50, no change' });
     expect(figureRow('tax')).toEqual({ cells: ['Tax', '5%', '5%'], a11y: 'Tax: 5%, no change' });
     expect(part('rate-confirm-period')).toEqual([
-      'From 12 Oct 2026 to 14 Nov 2026',
-      'The ₹4.00 rate ends on 11 Oct 2026.',
-      'The ₹4.00 rate applies again from 15 Nov 2026.',
+      'From 12/10/26 to 14/11/26',
+      'The ₹4.00 rate ends on 11/10/26.',
+      'The ₹4.00 rate applies again from 15/11/26.',
     ]);
-    expect(part('rate-confirm-reach')).toEqual(['GRNs of every customer from 12 Oct 2026 that are not invoiced yet will use it. Saved invoices keep their figures.']);
+    expect(part('rate-confirm-reach')).toEqual(['GRNs of every customer from 12/10/26 that are not invoiced yet will use it. Saved invoices keep their figures.']);
     const buttons = ['rate-confirm-change', 'rate-confirm-only-grn', 'rate-confirm-back'].map(id => tree!.root.find(n => n.props.testID === id && typeof n.props.onPress === 'function'));
     expect(buttons.map(b => [b.props.type, b.props.children])).toEqual([['primary', 'Change the rate'], ['secondary', 'Only this GRN'], ['secondary', 'Back']]);
   });
@@ -247,8 +247,8 @@ describe('Change', () => {
     await save();
     // Who pays it, with what it means for the others, sits together; the period has no note about the old rate.
     expect(part('rate-confirm-audience')).toEqual(['For: Fictional Traders only', 'Fictional Traders pays the new rate. The ₹4.00 rate stays for other customers.']);
-    expect(part('rate-confirm-period')).toEqual(['From 12 Oct 2026, no end date']);
-    expect(part('rate-confirm-reach')).toEqual(['GRNs of Fictional Traders from 12 Oct 2026 that are not invoiced yet will use it. Saved invoices keep their figures.']);
+    expect(part('rate-confirm-period')).toEqual(['From 12/10/26, no end date']);
+    expect(part('rate-confirm-reach')).toEqual(['GRNs of Fictional Traders from 12/10/26 that are not invoiced yet will use it. Saved invoices keep their figures.']);
   });
 
   it('a last day before the planned rate is the only one accepted: clearing the end is refused', async () => {
@@ -257,7 +257,7 @@ describe('Change', () => {
     await act(async () => { chip('No end date').props.onPress(); });
     await save();
     expect(onSave).not.toHaveBeenCalled();
-    expect(texts()).toContain('A rate for this band starts on 15 Nov 2026. Choose a last day before it.');
+    expect(texts()).toContain('A rate for this band starts on 15/11/26. Choose a last day before it.');
   });
 });
 
@@ -278,10 +278,10 @@ describe('round 3', () => {
     await act(async () => { chip('No end date').props.onPress(); });
     await save();
     expect(onSave).not.toHaveBeenCalled();
-    expect(texts()).toContain('A rate for this band starts on 1 Nov 2026. Choose a last day before it.');
+    expect(texts()).toContain('A rate for this band starts on 01/11/26. Choose a last day before it.');
     await act(async () => { chip('Until a date').props.onPress(); });
     await save();
-    expect(part('rate-confirm-period')[0]).toBe('From 12 Oct 2026 to 31 Oct 2026');
+    expect(part('rate-confirm-period')[0]).toBe('From 12/10/26 to 31/10/26');
   });
 
 });
@@ -393,11 +393,11 @@ describe('dates (owner, 2026-10-17)', () => {
 
   it('This GRN: one line, "No end date", and no end choice; Customer and Everyone: the start and the chips, always visible', async () => {
     open([stored(0, 50, 4, '2026-01-01')], 12);
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026 · No end date');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26 · No end date');
     expect(tree!.root.findAll(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'No end date')).toHaveLength(0);
     expect(tree!.root.findAllByType(DatePickerInput)).toHaveLength(0);
     await act(async () => { chip('Customer').props.onPress(); });
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26');
     expect(chip('No end date').props.accessibilityState.selected).toBe(true);
     expect(chip('Until a date').props.accessibilityState.selected).toBe(false);
     expect(tree!.root.findAllByType(DatePickerInput)).toHaveLength(0);
@@ -408,7 +408,7 @@ describe('dates (owner, 2026-10-17)', () => {
     expect(tree!.root.findAllByType(DatePickerInput)).toHaveLength(0);
     // Back to This GRN: the chips go and the line says "No end date" again.
     await act(async () => { chip('This GRN').props.onPress(); });
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026 · No end date');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26 · No end date');
     expect(tree!.root.findAll(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'Until a date')).toHaveLength(0);
   });
 
@@ -516,7 +516,7 @@ describe('rates in force (owner, 2026-10-17)', () => {
     expect(has('rate-ref-everyone')).toBe(false);
     await tap('rate-ref-toggle');
     expect(toggle().props.accessibilityState).toEqual({ expanded: true });
-    expect(hostText('rate-ref-date')).toBe('In force on 12 Oct 2026');
+    expect(hostText('rate-ref-date')).toBe('In force on 12/10/26');
     for (const id of ['rate-ref-date', 'rate-ref-customer', 'rate-ref-everyone']) {
       expect(at('rate-reference').findAll(n => n.props.testID === id && typeof n.type === 'string')).toHaveLength(1);
     }

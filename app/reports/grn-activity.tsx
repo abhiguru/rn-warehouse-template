@@ -46,7 +46,7 @@ import { getAllGRNActivity, getCustomerGRNActivity } from '@/services/reporting/
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllGRNActivityData, CustomerGRNSummary, GRNActivityData, GRNActivityRecord } from '@/types/report.types';
-import { formatCount, formatIndiaDate, formatNumber, indiaDay } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatIndiaSpokenDate, formatNumber, indiaDay } from '@/utils/formatters';
 
 const REPORT_ID = 'grn-activity';
 
@@ -204,7 +204,7 @@ interface CustomerRowProps {
 
 const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: CustomerRowProps) {
   const styles = useThemedStyles(makeStyles);
-  const latest = customer.latest_grn_date ? formatIndiaDate(customer.latest_grn_date, 'short') : '';
+  const latest = customer.latest_grn_date ? formatIndiaDate(customer.latest_grn_date) : '';
   const facts = [formatCount(customer.grn_count, 'GRN')];
   if (latest && latest !== '—') facts.push(tr('reports.grnActivity.latestGrn', { date: latest }));
   return (
@@ -394,7 +394,7 @@ const GRNCard = memo(function GRNCard({ grn, words, showDate, onOpen }: GRNCardP
       onPress={() => onOpen(grn.grn_id)}
       accessibilityRole="button"
       // One element for a screen reader, the date included: a heading above the card is not read with it.
-      accessibilityLabel={[number, formatIndiaDate(grn.grn_date), people, stockLabel, invoiceLabel, dispatchLabel, photos, ...matched]
+      accessibilityLabel={[number, formatIndiaSpokenDate(grn.grn_date), people, stockLabel, invoiceLabel, dispatchLabel, photos, ...matched]
         .filter(Boolean)
         .join(', ')}
       accessibilityHint={tr('reports.grnActivity.openHint')}
@@ -411,7 +411,7 @@ const GRNCard = memo(function GRNCard({ grn, words, showDate, onOpen }: GRNCardP
             {grn.image_count > 0 && <StatusTag status="neutral" label={formatNumber(grn.image_count)} icon="camera-outline" />}
           </View>
           <HighlightedText style={styles.subtitle} numberOfLines={2} text={people} words={words} />
-          {showDate ? <Text style={styles.footnote}>{formatIndiaDate(grn.grn_date, 'short')}</Text> : null}
+          {showDate ? <Text style={styles.footnote}>{formatIndiaDate(grn.grn_date)}</Text> : null}
           {matched.length > 0 ? <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null}
         </View>
 

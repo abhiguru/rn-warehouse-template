@@ -182,7 +182,7 @@ describe('the server\'s refusals for the date and the number (migration 130)', (
     });
     const tree = await render();
     await save(tree);
-    expect(alerts().at(-1)).toEqual([expect.any(String), "A GRN can't be dated in the future. Today is 31 Oct 2026.", [expect.objectContaining({ text: 'OK' })]]);
+    expect(alerts().at(-1)).toEqual([expect.any(String), "A GRN can't be dated in the future. Today is 31/10/26.", [expect.objectContaining({ text: 'OK' })]]);
   });
 
   it('words a number with a space', async () => {

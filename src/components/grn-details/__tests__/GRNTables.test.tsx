@@ -149,7 +149,7 @@ describe('GRN Dispatches table', () => {
     expect(textOf(byTestId('grn-dispatch-row-o'))).toBe('Onions|60 received · 0 dispatches|0');
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
     expect(textOf(byTestId('grn-dispatch-row-g'))).toBe('Garlic|G1|10 received · 1 dispatch|10');
-    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Date|Bags|DD0041|9 Oct|12|DD0042|11 Oct|8');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Date|Bags|DD0041|09/10/26|12|DD0042|11/10/26|8');
     expect(has('grn-dispatch-lines-g')).toBe(false);
   });
 
@@ -184,7 +184,7 @@ describe('GRN Dispatches table', () => {
 
     expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Bags dispatched\|/);
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
-    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Bags|DD0041|9 Oct|12|DD0042|11 Oct|8');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Bags|DD0041|09/10/26|12|DD0042|11/10/26|8');
   });
 
   it('keeps the loading, failure and empty states', () => {
@@ -278,7 +278,7 @@ describe('GRN Items table, sorting', () => {
 });
 
 describe('GRN Invoices table, sorting', () => {
-  // Drawn in this order: A (no. 9, 10 Oct, ₹900), B (no. 10, 5 Oct, ₹100), C (no. 2, 20 Oct, ₹500).
+  // Drawn in this order: A (no. 9, 10/10/26, ₹900), B (no. 10, 05/10/26, ₹100), C (no. 2, 20/10/26, ₹500).
   const invoices: InvoiceTable = {
     detailed: true,
     count: 3,

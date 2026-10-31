@@ -222,8 +222,8 @@ describe('GRNs table', () => {
     const rows = tree.root.findAll((n) => typeof n.props.testID === 'string' && n.props.testID.startsWith('dispatch-grn-row-') && typeof n.type !== 'string');
     expect([...new Set(rows.map((n) => n.props.testID))]).toEqual(['dispatch-grn-row-grn-161', 'dispatch-grn-row-grn-159']);
 
-    expect(textOf(byTestId('dispatch-grn-row-grn-161'))).toBe('0161|15 Oct|2|65');
-    expect(textOf(byTestId('dispatch-grn-row-grn-159'))).toBe('0159|14 Oct|1|50');
+    expect(textOf(byTestId('dispatch-grn-row-grn-161'))).toBe('0161|15/10/26|2|65');
+    expect(textOf(byTestId('dispatch-grn-row-grn-159'))).toBe('0159|14/10/26|1|50');
     expect(has('dispatch-grn-lines-grn-161')).toBe(false);
     expect(has('dispatch-grn-lines-grn-159')).toBe(false);
     expect(textOf(byTestId('dispatch-grns-total'))).toBe('Total|2 GRNs|3|115');
@@ -314,15 +314,15 @@ describe('GRNs table', () => {
 
   it('counts two lots of one item as two item lines', () => {
     render(<DispatchGRNsTab items={[rice, item({ id: 'r2', package_mark: 'B2', dispatch_quantity: 5 })]} />);
-    expect(textOf(byTestId('dispatch-grn-row-grn-161'))).toBe('0161|15 Oct|2|30');
-    expect(byTestId('dispatch-grn-row-grn-161').props.accessibilityLabel).toBe('GRN 0161, 15 Oct, 2 item lines, 30 bags dispatched');
+    expect(textOf(byTestId('dispatch-grn-row-grn-161'))).toBe('0161|15/10/26|2|30');
+    expect(byTestId('dispatch-grn-row-grn-161').props.accessibilityLabel).toBe('GRN 0161, 15/10/26, 2 item lines, 30 bags dispatched');
   });
 
   it('puts the line count and the mark under the first column at large text', () => {
     mockFontScale = 2;
     render(<DispatchGRNsTab items={[rice]} />);
 
-    expect(textOf(byTestId('dispatch-grn-row-grn-161'))).toBe('0161|15 Oct|1 item line|25');
+    expect(textOf(byTestId('dispatch-grn-row-grn-161'))).toBe('0161|15/10/26|1 item line|25');
     expect(textOf(byTestId('dispatch-grn-lines-grn-161'))).toBe('Item|Bags dispatched|Basmati Rice|PM · 50 kg each|25');
   });
 
@@ -347,7 +347,7 @@ describe('Invoices table', () => {
     render(<DispatchInvoicesTab invoices={detailed} />);
 
     expect(textOf(byTestId('dispatch-invoices-count'))).toBe('2 invoices');
-    expect(textOf(byTestId('dispatch-invoice-row-inv-241'))).toBe('241|15 Oct|₹12,450.00');
+    expect(textOf(byTestId('dispatch-invoice-row-inv-241'))).toBe('241|15/10/26|₹12,450.00');
     // A missing date is shown as unavailable, not as today.
     expect(textOf(byTestId('dispatch-invoice-row-inv-242'))).toBe('242|—|₹3,250.00');
     expect(byTestId('dispatch-invoice-row-inv-242').props.accessibilityLabel).toBe('Invoice 242, date not available, invoice total ₹3,250.00');
@@ -361,7 +361,7 @@ describe('Invoices table', () => {
     mockWidth = 800;
     render(<DispatchInvoicesTab invoices={detailed} />);
 
-    expect(textOf(byTestId('dispatch-invoices-table'))).toMatch(/^Invoice\|Date\|Invoice total\|241\|15 Oct\|₹12,450.00\|/);
+    expect(textOf(byTestId('dispatch-invoices-table'))).toMatch(/^Invoice\|Date\|Invoice total\|241\|15\/10\/26\|₹12,450.00\|/);
   });
 
   it('opens the invoice page by its id', () => {
@@ -457,7 +457,7 @@ describe('Items table, sorting', () => {
 });
 
 describe('Invoices table, sorting', () => {
-  // Drawn in this order: A (no. 9, 10 Oct, ₹900), B (no. 10, 5 Oct, ₹100), C (no. 2, 20 Oct, ₹500).
+  // Drawn in this order: A (no. 9, 10/10/26, ₹900), B (no. 10, 05/10/26, ₹100), C (no. 2, 20/10/26, ₹500).
   const invoices: InvoiceTable = {
     detailed: true,
     count: 3,

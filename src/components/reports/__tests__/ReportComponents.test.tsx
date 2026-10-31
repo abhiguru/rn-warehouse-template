@@ -143,7 +143,7 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
 });
 
 describe('report status line', () => {
-  // Noon on 12 Oct 2026, local time.
+  // Noon on 12/10/26, local time.
   const NOW = new Date(2026, 9, 12, 12, 0);
   beforeEach(() => jest.useFakeTimers({ now: NOW }));
   afterEach(() => {
@@ -166,21 +166,21 @@ describe('report status line', () => {
   });
 
   it('names the day for figures kept on the phone from an earlier day', () => {
-    expect(line({ updatedAt: new Date(2026, 9, 11, 16, 5).getTime() }).shown).toEqual(['Last updated 11 Oct 2026, 4:05 pm']);
-    expect(line({ updatedAt: new Date(2026, 9, 9, 9, 30).getTime() }).shown).toEqual(['Last updated 9 Oct 2026, 9:30 am']);
+    expect(line({ updatedAt: new Date(2026, 9, 11, 16, 5).getTime() }).shown).toEqual(['Last updated 11/10/26, 4:05 pm']);
+    expect(line({ updatedAt: new Date(2026, 9, 9, 9, 30).getTime() }).shown).toEqual(['Last updated 09/10/26, 9:30 am']);
   });
 
   it('writes the day and time in Gujarati digits, each fact on its own uncut line', () => {
     setLanguage('gu');
     expect(line({ updatedAt: new Date(2026, 9, 12, 10, 42).getTime() }).shown).toEqual(['છેલ્લે અપડેટ થયું: ૧૦:૪૨ AM']);
     const yesterday = line({ updatedAt: new Date(2026, 9, 11, 16, 5).getTime(), shown: 3, total: 40 });
-    expect(yesterday.shown).toEqual(['૪૦માંથી ૩ દેખાય છે', 'છેલ્લે અપડેટ થયું: ૧૧ ઑક્ટો ૨૦૨૬, ૪:૦૫ PM']);
+    expect(yesterday.shown).toEqual(['૪૦માંથી ૩ દેખાય છે', 'છેલ્લે અપડેટ થયું: ૧૧/૧૦/૨૬, ૪:૦૫ PM']);
     expect(yesterday.lineLimits).toEqual([undefined, undefined]);
   });
 
   it('never cuts the line, and announces a new count politely', () => {
     const { shown, liveRegion, lineLimits } = line({ range: { from: '2026-06-15', to: '2026-10-12' }, shown: 3, total: 40, updatedAt: new Date(2026, 9, 11, 16, 5).getTime() });
-    expect(shown).toEqual(['15 Jun – 12 Oct · Showing 3 of 40 · Last updated 11 Oct 2026, 4:05 pm']);
+    expect(shown).toEqual(['15/06/26 – 12/10/26 · Showing 3 of 40 · Last updated 11/10/26, 4:05 pm']);
     expect(lineLimits).toEqual([undefined]);
     expect(liveRegion).toBe('polite');
   });

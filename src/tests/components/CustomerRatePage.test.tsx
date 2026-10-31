@@ -151,7 +151,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
       params: { item_id: 'onion', item_name: 'Review Onion Red', price_type: 'monthly', customer_id: 'orchard-b', customer_name: 'Review Orchard B' },
     });
     press('rate-correct');
-    expect(shown()).toContain('This changes the rate since 1 Jan 2026.');
+    expect(shown()).toContain('This changes the rate since 01/01/26.');
     await type('band-0-rent', '3.10');
     expect(shown()).toContain('Save correction');
     expect(chip('Today')).toBeUndefined();
@@ -228,7 +228,7 @@ describe('the day control is behind a link', () => {
     expect(shown()).not.toContain("You're looking at");
     expect(texts(tree)).toContain('See rates on another day');
     press('other-day-link');
-    expect(shown()).toContain('Rates for lots received on 14 Oct 2026');
+    expect(shown()).toContain('Rates for lots received on 14/10/26');
     expect(shown()).toContain('Change date');
     expect(host('rate-box-monthly').length).toBeGreaterThan(0);
     press('other-day-hide');
@@ -242,7 +242,7 @@ describe('the day control is behind a link', () => {
     expect(host('rate-card-monthly').length).toBeGreaterThan(0);
     expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
     for (const id of ['rate-correct', 'rate-stop', 'add-customer-rate', 'add-other-type']) expect(byId(id)).toHaveLength(0);
-    expect(shown()).toContain("You're looking at rates for lots received on 1 Jun 2026. Go back to today to change rates.");
+    expect(shown()).toContain("You're looking at rates for lots received on 01/06/26. Go back to today to change rates.");
     await act(async () => { byId('other-day-back')[0].props.onPress(); });
     expect(cell('band-0-rent').props.value).toBe('3.00');
     expect(shown()).not.toContain("You're looking at");
@@ -251,7 +251,7 @@ describe('the day control is behind a link', () => {
   it('the `on` param opens the controls on that day, so the page is never silently read-only', async () => {
     await open('admin', data(), { itemId: 'onion', customerId: 'orchard-b', deactivated: '0', on: '2026-06-01' });
     expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
-    expect(shown()).toContain('Rates for lots received on 1 Jun 2026');
+    expect(shown()).toContain('Rates for lots received on 01/06/26');
     expect(byId('other-day-back').length).toBeGreaterThan(0);
   });
 

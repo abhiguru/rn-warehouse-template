@@ -12,7 +12,7 @@ import { t } from '@/i18n';
 import { iconSize, layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
 import type { CustomerItemEntry } from '../customerRates';
-import { bandText, dateText, money, percentRange, rentRange, unitText } from '../rateText';
+import { bandText, dateText, spokenDateText, money, percentRange, rentRange, unitText } from '../rateText';
 
 export interface CustomerItemRateRowProps {
   entry: CustomerItemEntry;
@@ -70,7 +70,8 @@ function CustomerItemRateRowBase({ entry, onPress, testID }: CustomerItemRateRow
   const lines = entry.bands.map(bandLine);
   const compare = defaultLine(entry);
   const tags = tagTexts(entry);
-  const spoken = [entry.name, since, ...lines, compare, ...tags.map(tag => tag.label)].filter(Boolean).join(', ');
+  const spokenSince = entry.since ? t('pricing.customerTab.since', { date: spokenDateText(entry.since) }) : null;
+  const spoken = [entry.name, spokenSince, ...lines, compare, ...tags.map(tag => tag.label)].filter(Boolean).join(', ');
   return (
     <View>
       <Pressable

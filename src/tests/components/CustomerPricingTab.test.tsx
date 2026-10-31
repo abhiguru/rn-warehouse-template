@@ -76,7 +76,7 @@ describe('a customer with one own rate', () => {
     await mount();
     const s = texts(tree);
     expect(s).toContain('Review Onion Red');
-    expect(s).toContain('since 1 Jan 2026');
+    expect(s).toContain('since 01/01/26');
     expect(s).toContain('0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%');
     expect(s).toContain('Default rate: ₹3.50 per bag, per month');
     expect(s).toContain('ITEMS WITH THEIR OWN RATE');
@@ -117,10 +117,10 @@ describe('a customer with several own rates', () => {
     // Garlic: a line for each of its two bands.
     expect(s).toContain('0–40 kg · ₹5.00 · Labour ₹2.50 · Tax 5%');
     expect(s).toContain('41–100 kg · ₹8.00 · Labour ₹2.50 · Tax 5%');
-    expect(s).toContain('Rate ends 31 Dec 2026');
-    expect(s).toContain('New rate from 1 Jan 2027');
+    expect(s).toContain('Rate ends 31/12/26');
+    expect(s).toContain('New rate from 01/01/27');
     // The potato rate is not in force yet: its line is the later rate, its default is today's.
-    expect(s).toContain('since 1 Jan 2027');
+    expect(s).toContain('since 01/01/27');
     expect(s).toContain('0–100 kg · ₹3.75 · Labour ₹2.00 · Tax 0%');
     expect(s).toContain('Default rate: ₹4.00 per bag, per month');
   });

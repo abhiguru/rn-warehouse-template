@@ -69,7 +69,7 @@ it('is not ready while the rows load, and opens a draft in change mode from the 
   act(() => tree!.update(React.createElement(Harness, { args: baseArgs(cuminRows()) })));
   expect(latest.ready).toBe(true);
   expect(latest.ctx).toMatchObject({ mode: 'change', itemId: 'cumin', itemName: 'Review Cumin Bold', customerId: null, today: TODAY });
-  // The rate in force (11, since 1 Apr 2026) is what the draft starts from.
+  // The rate in force (11, since 01/04/26) is what the draft starts from.
   expect(latest.draft!.priceType).toBe('monthly');
   expect(latest.draft!.bands.map(b => [b.upTo, b.rent])).toEqual([['100', '11.00']]);
   expect(latest.dirty).toBe(false);
@@ -388,7 +388,7 @@ describe('correcting a rate in force', () => {
     act(() => latest.setDraft(setBandField(latest.draft!, 0, 'rent', '11.50')));
     replace.mockResolvedValueOnce({ success: true, keptEnd: '2027-03-31' });
     await act(async () => { await latest.submit(); });
-    expect(showToast).toHaveBeenCalledWith('Correction saved. This rate still stops after 31 Mar 2027.');
+    expect(showToast).toHaveBeenCalledWith('Correction saved. This rate still stops after 31/03/27.');
   });
 });
 
@@ -471,7 +471,7 @@ describe('the earliest day a rate may start (the day of the oldest GRN)', () => 
     act(() => latest.setStartsOn('other', '2021-12-31'));
     await act(async () => { await latest.submit(); });
     expect(replace).not.toHaveBeenCalled();
-    expect(latest.errors.startsOn).toBe('Choose a start date on or after 1 Jan 2022.');
+    expect(latest.errors.startsOn).toBe('Choose a start date on or after 01/01/22.');
   });
 
   it('the oldest GRN day itself is accepted', async () => {
@@ -486,9 +486,9 @@ describe('the earliest day a rate may start (the day of the oldest GRN)', () => 
   it("the server's INVALID_DATE shows the same text at the field and moves the floor", async () => {
     await mount();
     act(() => latest.setStartsOn('other', '2026-11-01'));
-    replace.mockResolvedValueOnce({ success: false, errorCode: 'INVALID_DATE', earliest: '2026-11-02', message: 'Choose a start date on or after 2 Nov 2026.' });
+    replace.mockResolvedValueOnce({ success: false, errorCode: 'INVALID_DATE', earliest: '2026-11-02', message: 'Choose a start date on or after 02/11/26.' });
     await act(async () => { await latest.submit(); });
-    expect(latest.errors.startsOn).toBe('Choose a start date on or after 2 Nov 2026.');
+    expect(latest.errors.startsOn).toBe('Choose a start date on or after 02/11/26.');
     expect(latest.earliest).toBe('2026-11-02');
     // The rest of the form is still there.
     expect(latest.draft!.bands[0].rent).toBe('11.00');
@@ -506,7 +506,7 @@ it('LATER_RATES_EXIST names the later rate as the one in force today when it is'
   await act(async () => { await latest.submit(); });
   expect(latest.later).toHaveLength(1);
   expect(laterDialogText(latest.later!, '2027-01-01', TODAY).message).toBe(
-    'A rate from 1 Apr 2026 (₹11.00) comes after this date. Saving removes it. It is the rate in force today.',
+    'A rate from 01/04/26 (₹11.00) comes after this date. Saving removes it. It is the rate in force today.',
   );
 });
 

@@ -35,6 +35,8 @@ afterEach(() => setLanguage('en'));
 const staff: FilterContext = { role: 'staff', isWarehouseRole: true, assignedCustomers: [] };
 const field = (config: FilterListDefinition, key: string) => config.fields.find(candidate => candidate.key === key) as FilterFieldDef;
 const thisYear = new Date().getFullYear();
+// The two-digit year of this year in Gujarati digits, as a date is written.
+const thisYearGu = String(thisYear).slice(-2).replace(/\d/g, digit => '૦૧૨૩૪૫૬૭૮૯'[Number(digit)]);
 
 describe('a language switch at run time', () => {
   it('changes a field label, and changes it back', () => {
@@ -145,9 +147,9 @@ describe('a language switch at run time', () => {
     const invoiceNumbers = field(INVOICE_FILTERS, 'numberRange');
     const date = field(GRN_FILTERS, 'date');
     expect(describeValue(weight, { min: 10, max: 50 })).toBe('10 – 50 kg');
-    expect(describeValue(date, { from: `${thisYear}-10-01`, to: `${thisYear}-10-07` })).toBe('1 Oct – 7 Oct');
-    expect(describeValue(date, { from: `${thisYear}-10-01` })).toBe('From 1 Oct');
-    expect(describeValue(date, { to: `${thisYear}-10-07` })).toBe('Until 7 Oct');
+    expect(describeValue(date, { from: `${thisYear}-10-01`, to: `${thisYear}-10-07` })).toBe('01/10/26 – 07/10/26');
+    expect(describeValue(date, { from: `${thisYear}-10-01` })).toBe('From 01/10/26');
+    expect(describeValue(date, { to: `${thisYear}-10-07` })).toBe('Until 07/10/26');
     expect(describeValue(numbers, { from: 'A0010' })).toBe('From A0010');
     expect(describeValue(numbers, { to: 'A0020' })).toBe('Up to A0020');
     expect(describeValue(invoiceNumbers, { min: 5 })).toBe('5 or more');
@@ -157,10 +159,10 @@ describe('a language switch at run time', () => {
     expect(describeValue(weight, { max: 5 })).toBe('૫ કિલો સુધી');
     // Invoice numbers are identifiers: 0-9 in every language (docs/I18N.md rule 5).
     expect(describeValue(invoiceNumbers, { min: 5, max: 9 })).toBe('5થી 9 સુધી');
-    expect(describeValue(date, { from: `${thisYear}-10-01`, to: `${thisYear}-10-07` })).toBe('૧ ઑક્ટોથી ૭ ઑક્ટો સુધી');
-    expect(describeValue(date, { from: `${thisYear}-10-01` })).toBe('૧ ઑક્ટોથી');
-    expect(describeValue(date, { to: `${thisYear}-10-07` })).toBe('૭ ઑક્ટો સુધી');
-    expect(describeDateRange({ from: `${thisYear}-10-07`, to: `${thisYear}-10-07` })).toBe('૭ ઑક્ટો');
+    expect(describeValue(date, { from: `${thisYear}-10-01`, to: `${thisYear}-10-07` })).toBe(`૦૧/૧૦/${thisYearGu}થી ૦૭/૧૦/${thisYearGu} સુધી`);
+    expect(describeValue(date, { from: `${thisYear}-10-01` })).toBe(`૦૧/૧૦/${thisYearGu}થી`);
+    expect(describeValue(date, { to: `${thisYear}-10-07` })).toBe(`૦૭/૧૦/${thisYearGu} સુધી`);
+    expect(describeDateRange({ from: `${thisYear}-10-07`, to: `${thisYear}-10-07` })).toBe(`૦૭/૧૦/${thisYearGu}`);
     // Document numbers are identifiers: their digits stay as typed.
     expect(describeValue(numbers, { from: 'A0010', to: 'A0020' })).toBe('A0010થી A0020 સુધી');
     expect(describeValue(numbers, { from: 'A0010' })).toBe('A0010થી');

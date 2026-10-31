@@ -55,7 +55,8 @@ describe('dispatch validation follows the language', () => {
     const result = validateDispatchDateVsGRNDates('2026-01-01', [{ grns_gr_no: 'G0042', grns_date: '2026-01-05' }]);
     expect(result.isValid).toBe(false);
     expect(result.error).toContain('આવક પાવતી G0042નો માલ');
-    expect(result.error).toContain('જાન્યુ');
+    expect(result.error).toContain('૦૫/૦૧/૨૬');
+    expect(result.error).toContain('૦૧/૦૧/૨૬');
     expect(result.error).not.toMatch(/2026|GRN/);
   });
 });

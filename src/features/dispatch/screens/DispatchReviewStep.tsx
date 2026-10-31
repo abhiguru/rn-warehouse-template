@@ -256,7 +256,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         return { totalQuantity, uniqueGRNs: new Set(items.map((item) => item.grns_gr_no)).size };
     }, [items]);
 
-    // Format date (guide 12.3: "9 Oct 2026")
+    // Format date (guide 12.3: "09/10/26")
     const formatDisplayDate = (isoDate: string) => {
         return toDate(isoDate) ? formatDate(isoDate) : '';
     };

@@ -58,7 +58,7 @@ describe('Your rate', () => {
     expect(texts()).toEqual([
       'Back',
       'Fictional Gur',
-      'GRN WM0001, goods received on 1 Oct 2026',
+      'GRN WM0001, goods received on 01/10/26',
       'YOUR RATE',
       '₹4.50', '  per bag, per month',
       'Weight each', '25 kg', 'Labour', '₹1.50 per bag', 'Tax', '5%',
@@ -119,6 +119,6 @@ describe('Your rate', () => {
     const retry = tree.root.findAll(n => n.props.testID === 'your-rate-error')[0].findAll(n => typeof n.props.onPress === 'function')[0];
     await act(async () => { retry.props.onPress(); });
     expect(read).toHaveBeenCalledTimes(2);
-    expect(texts()).toContain('Goods received on 1 Oct 2026');
+    expect(texts()).toContain('Goods received on 01/10/26');
   });
 });

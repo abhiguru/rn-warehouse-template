@@ -15,7 +15,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
-import { formatDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -480,7 +480,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const hasItems = dispatch.items && dispatch.items.length > 0;
   const itemsLabel = formatCount(totalItems, 'item');
   const bagsLabel = formatCount(totalQty, 'bag');
-  const dateLabel = formatDate(dispatch.disp_date, 'short');
+  const dateLabel = formatDate(dispatch.disp_date);
   const matched = hiddenMatches(dispatch, words);
 
   const handleToggleExpand = useCallback(() => {
@@ -496,7 +496,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     itemsLabel,
     bagsLabel,
     dispatch.registration ? translate('lists.card.vehicle', { number: formatIdentifier(dispatch.registration) }) : null,
-    dateLabel,
+    formatSpokenDate(dispatch.disp_date),
     statusConfig.label,
     matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
   ].filter(Boolean).join(', ');

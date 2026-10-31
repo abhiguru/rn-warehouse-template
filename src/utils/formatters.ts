@@ -236,6 +236,13 @@ export const formatDateTime = (date: string | Date | null | undefined): string =
   return `${formatDate(d)}, ${formatTime(d)}`;
 };
 
+/** The date and time for a screen reader: "9 Oct 2026, 4:05 pm". */
+export const formatSpokenDateTime = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  if (!d) return '—';
+  return `${formatSpokenDate(d)}, ${formatTime(d)}`;
+};
+
 /**
  * A financial year for display: "2026-27" or the backend's "2027-2028", in the
  * language's digits (a period, not an identifier). Values sent to the backend

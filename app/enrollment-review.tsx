@@ -41,7 +41,7 @@ import { customerService } from '@/services/customer-service';
 
 import { showAlert } from '@/utils/alert';
 import { getAppErrorCode } from '@/utils/appError';
-import { formatDate, formatMobile, nationalMobileDigits } from '@/utils/formatters';
+import { formatDate, formatMobile, formatSpokenDate, nationalMobileDigits } from '@/utils/formatters';
 import { transportText } from '@/utils/serverText';
 import { showToast } from '@/utils/toast';
 import { publishUserListChange } from '@/utils/userListSync';
@@ -357,7 +357,7 @@ export default function EnrollmentReviewScreen() {
               <Pressable
                 accessibilityRole="radio"
                 accessibilityState={{ selected, checked: selected }}
-                accessibilityLabel={`${name}, ${formatMobile(profile.mobile)}, ${tr('auth.review.askedOn', { date: formatDate(profile.created_at) })}`}
+                accessibilityLabel={`${name}, ${formatMobile(profile.mobile)}, ${tr('auth.review.askedOn', { date: formatSpokenDate(profile.created_at) })}`}
                 onPress={() => {
                   if (selected) { revealOptions(); return; }
                   revealPendingRef.current = true;

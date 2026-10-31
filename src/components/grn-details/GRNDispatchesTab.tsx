@@ -110,7 +110,7 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 const bags = (qty: number) => formatCount(qty, 'bag');
-const dateText = (date: string | null | undefined) => (toDate(date) ? formatDate(date, 'short') : '—');
+const dateText = (date: string | null | undefined) => (toDate(date) ? formatDate(date) : '—');
 const openDispatch = (dispatchId: string) => router.push(`/dispatch-details/${dispatchId}`);
 
 interface ItemGroup {

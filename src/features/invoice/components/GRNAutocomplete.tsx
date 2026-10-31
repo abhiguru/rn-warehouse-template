@@ -40,7 +40,7 @@ import {
 } from '@/theme/tokens';
 import { InvoiceableGrn } from '@/types/invoice.types';
 import { getInvoiceableGrns } from '@/features/invoice/services/invoiceFormService';
-import { formatCount, formatDate, toDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatSpokenDate, toDate } from '@/utils/formatters';
 import { normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { createLogger } from '@/utils/logger';
 import type { TextInputRef } from '@/types/nativeRefs';
@@ -64,7 +64,7 @@ interface GRNAutocompleteProps {
   onDismissed?: () => void;
 }
 
-const formatGrnDate = (value: string): string => (toDate(value) ? formatDate(value, 'short') : '');
+const formatGrnDate = (value: string): string => (toDate(value) ? formatDate(value) : '');
 
 const makeStyles = (t: ThemeTokens) => ({
   modalOverlay: {
@@ -386,7 +386,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
           ]}
           onPress={() => handleGRNSelect(item)}
           accessibilityRole="button"
-          accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(item.gr_no) })}, ${item.customer_name}${date ? `, ${date}` : ''}`}
+          accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(item.gr_no) })}, ${item.customer_name}${date ? `, ${formatSpokenDate(item.date)}` : ''}`}
           accessibilityState={{ selected: isSelected }}
         >
           <Icon name="package-down" size={iconSize.lg} color={t.icon.secondary} />

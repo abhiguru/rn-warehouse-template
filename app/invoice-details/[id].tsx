@@ -534,7 +534,7 @@ function InvoiceDetailScreen() {
     invoice.summary?.total_items ??
     lineItems.length;
 
-  // Date per style guide §12.3, e.g. "9 Oct 2026"
+  // Date per style guide §12.3, e.g. "09/10/26"
   const formattedDate = formatDate(invoice.invoice_date || new Date());
 
 

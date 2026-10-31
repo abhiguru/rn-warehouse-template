@@ -3,7 +3,7 @@
  * Days are 'YYYY-MM-DD' strings; calendar maths never goes through UTC.
  */
 import { localizeDigits, t } from '@/i18n';
-import { formatCurrency, formatDate, parseLocalISODate, toLocalISODate, todayInIST } from '@/utils/formatters';
+import { formatCurrency, formatDate, formatSpokenDate, parseLocalISODate, toLocalISODate, todayInIST } from '@/utils/formatters';
 import type { PriceType } from '@/types/item-pricing.types';
 import { weightBandLabel } from './utils/priceLabels';
 import { packageUnit } from '@/utils/packagingWord';
@@ -23,9 +23,12 @@ export const labourText = (amount: string, packaging?: string | null): string =>
 export const bandText = (min: number, max: number): string => weightBandLabel(min, max);
 
 /** A day with its year, in the digits of the language. */
-export const dateText = (isoDay: string): string => formatDate(isoDay, 'medium');
+export const dateText = (isoDay: string): string => formatDate(isoDay);
 
-/** "1 Jan 2025 – 31 Mar 2026"; with no end day, only the start day (the caller words "Since …"). */
+/** The same day in words for a screen reader: "9 Oct 2026". */
+export const spokenDateText = (isoDay: string): string => formatSpokenDate(isoDay);
+
+/** "01/01/25 – 31/03/26"; with no end day, only the start day (the caller words "Since …"). */
 export const rangeText = (fromDay: string, toDay?: string | null): string =>
   toDay ? `${dateText(fromDay)} – ${dateText(toDay)}` : dateText(fromDay);
 

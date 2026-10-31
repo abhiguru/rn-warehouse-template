@@ -45,7 +45,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { searchGRNNumbers, getGRNPrefixesWithStock, getCustomerGRNsWithStock, type GRNPrefixWithStock } from '../services/grnDetailService';
 import type { GRNAutocompleteItem } from '@/types/dispatch.types';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatSpokenDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -555,7 +555,7 @@ const GRNListItem = memo<GRNListItemProps>(({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  const grnDate = useMemo(() => formatDate(item.date, 'short'), [item.date]);
+  const grnDate = useMemo(() => formatDate(item.date), [item.date]);
 
   const handlePress = useCallback(() => onSelect(item), [item, onSelect]);
   const handleViewDetails = useCallback(() => onViewDetails(item), [item, onViewDetails]);
@@ -588,7 +588,7 @@ const GRNListItem = memo<GRNListItemProps>(({
           isSelected && styles.grnCardSelected,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={tr('dispatch.grnSheet.rowLabel', { number: formatIdentifier(item.gr_no), date: grnDate, customer: item.customer_name })}
+        accessibilityLabel={tr('dispatch.grnSheet.rowLabel', { number: formatIdentifier(item.gr_no), date: formatSpokenDate(item.date), customer: item.customer_name })}
         accessibilityState={{ selected: isSelected }}
         accessibilityActions={[{ name: 'viewGRN', label: tr('dispatch.grnSheet.viewGrn') }]}
         onAccessibilityAction={(e) => {

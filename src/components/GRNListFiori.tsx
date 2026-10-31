@@ -76,7 +76,7 @@ import { HighlightedText, matchesAnyWord, searchWords } from '@/features/filters
 import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
-import { formatSectionDate, formatNumber, formatCount, formatDate, formatTime, formatWeightEach } from '@/utils/formatters';
+import { formatSectionDate, formatNumber, formatCount, formatDate, formatSpokenDate, formatTime, formatWeightEach } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
 import { t as translate, formatIdentifier } from '@/i18n';
@@ -306,7 +306,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
 
   const stockStatus = stockStatusFor(totalStock, totalQty);
   const stock = stockText(totalStock, totalQty);
-  const displayDate = formatDate(group.date, 'short');
+  const displayDate = formatDate(group.date);
   // Under a line-level filter the items, bags and tag are those of the matching lines only, and the card says so.
   const itemCountLabel = linesHidden
     ? translate('lists.grn.matchingItems', { count: group.items.length })
@@ -374,7 +374,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
           accessibilityLabel={[
             title,
             group.customerName,
-            displayDate,
+            formatSpokenDate(group.date),
             group.registration,
             itemCountLabel,
             stock,

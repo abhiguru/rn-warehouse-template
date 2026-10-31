@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { formatDate, formatCount } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, formatCount } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -192,7 +192,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
   const itemCount = dispatch.item_count || dispatch.items?.length || 0;
   const itemsLabel = formatCount(itemCount, 'item');
   const bagsLabel = formatCount(dispatch.total_qty, 'bag');
-  const dateLabel = formatDate(dispatch.disp_date, 'short');
+  const dateLabel = formatDate(dispatch.disp_date);
 
   const handleToggleExpand = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -208,7 +208,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
     bagsLabel,
     dispatch.registration ? translate('lists.card.vehicle', { number: formatIdentifier(dispatch.registration) }) : null,
     translate('lists.recent.createdBy', { name: dispatch.created_by_name }),
-    dateLabel,
+    formatSpokenDate(dispatch.disp_date),
     translate('lists.order.statusDispatched'),
   ]
     .filter(Boolean)

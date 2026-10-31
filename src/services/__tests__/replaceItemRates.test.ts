@@ -117,7 +117,7 @@ describe('replaceItemRates', () => {
     expect(await replaceItemRates(input)).toMatchObject({
       errorCode: 'INVALID_DATE',
       earliest: '2022-01-01',
-      message: 'Choose a start date on or after 1 Jan 2022.',
+      message: 'Choose a start date on or after 01/01/22.',
     });
   });
 

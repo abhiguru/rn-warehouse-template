@@ -266,7 +266,7 @@ function SectionHeading({ title }: { title: string }) {
 }
 
 /** The day an activity of a day or more ago fell on in India, as every date of a report is read. */
-const indiaShortDate = (time: Date) => formatIndiaDate(time, 'short');
+const indiaShortDate = (time: Date) => formatIndiaDate(time);
 
 /**
  * The server sends the time of an activity as a timestamp. It is shown as "2 hr ago"

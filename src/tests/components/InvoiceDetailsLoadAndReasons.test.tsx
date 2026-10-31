@@ -133,7 +133,7 @@ describe('the reasons of a discount and a zero charge', () => {
     jest.mocked(getInvoiceReasons).mockResolvedValue(reasons);
     await open();
     await showOverview();
-    expect(texts()).toEqual(expect.arrayContaining(['Discount reason', 'Damaged bags', 'Set by Asha Patel, 2 Oct 2026', 'Reason for zero charge', 'Sample lot', 'Set by Ravi Shah, 3 Oct 2026']));
+    expect(texts()).toEqual(expect.arrayContaining(['Discount reason', 'Damaged bags', 'Set by Asha Patel, 02/10/26', 'Reason for zero charge', 'Sample lot', 'Set by Ravi Shah, 03/10/26']));
   });
 
   it('show only the reasons that exist', async () => {

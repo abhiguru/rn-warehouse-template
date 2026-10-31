@@ -877,8 +877,8 @@ describe('the GRNs of an item', () => {
     expect(screen.texts()).toEqual(expect.arrayContaining(['GRN 311', 'Rack B-14 · 50 kg each', 'GRN 312', 'Rack C-02', 'GRN 313', 'Rack D-07']));
     // The one weight on the screen, worded "each": no bare "50 kg", no "0 kg", and no total (200 bags × 50 kg).
     expect(screen.texts().filter(text => /kg/.test(text))).toEqual(['Rack B-14 · 50 kg each']);
-    expect(screen.has('GRN 311, Fictional Traders, Received 1 Oct, Rack B-14 · 50 kg each, 30 of 200 in stock')).toBe(true);
-    expect(screen.has('GRN 312, Fictional Traders, Received 1 Oct, Rack C-02, 30 of 200 in stock')).toBe(true);
+    expect(screen.has('GRN 311, Fictional Traders, Received 1 Oct 2026, Rack B-14 · 50 kg each, 30 of 200 in stock')).toBe(true);
+    expect(screen.has('GRN 312, Fictional Traders, Received 1 Oct 2026, Rack C-02, 30 of 200 in stock')).toBe(true);
   });
 
   /**

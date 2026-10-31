@@ -382,9 +382,9 @@ describe('refusals for the date, the discount and changed rates', () => {
 
     await act(async () => { await form().submitForm(onFailure); });
 
-    expect(onFailure.mock.calls[0][1]).toBe("An invoice can't be dated in the future. Today is 31 Oct 2026.");
+    expect(onFailure.mock.calls[0][1]).toBe("An invoice can't be dated in the future. Today is 31/10/26.");
     expect(onFailure.mock.calls[0][2]).toEqual({ dateRefused: true });
-    expect(store.getState().invoiceForm.validationErrors.inv_date).toBe("An invoice can't be dated in the future. Today is 31 Oct 2026.");
+    expect(store.getState().invoiceForm.validationErrors.inv_date).toBe("An invoice can't be dated in the future. Today is 31/10/26.");
     await unmount();
   });
 
@@ -396,7 +396,7 @@ describe('refusals for the date, the discount and changed rates', () => {
 
     await act(async () => { await form().submitForm(onFailure); });
 
-    const message = 'The invoice date 5 Jun 2026 is before dispatch D17 (11 Jul 2026).';
+    const message = 'The invoice date 05/06/26 is before dispatch D17 (11/07/26).';
     expect(onFailure.mock.calls[0][1]).toBe(message);
     expect(onFailure.mock.calls[0][2]).toEqual({ dateRefused: true });
     expect(store.getState().invoiceForm.validationErrors.inv_date).toBe(message);
@@ -483,7 +483,7 @@ describe('the invoice date against the dispatches of the lines (App 15)', () => 
 
     expect(createInvoice).not.toHaveBeenCalled();
     expect(onFailure.mock.calls[0][1]).toContain('The invoice date');
-    expect(onFailure.mock.calls[0][1]).toContain('is before dispatch I0001 (1 Oct 2026)');
+    expect(onFailure.mock.calls[0][1]).toContain('is before dispatch I0001 (01/10/26)');
     await unmount();
   });
 

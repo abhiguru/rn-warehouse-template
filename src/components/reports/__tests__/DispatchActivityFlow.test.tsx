@@ -262,7 +262,7 @@ async function open(store: Store) {
 }
 
 const DEFAULT_ORDER = ['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co'];
-const BY_DATE = ['Today', 'Dispatch DD0010', 'Yesterday', 'Dispatch DD0009', 'Dispatch DD0100', 'Sun, 20 Sep', 'Dispatch DD0050'];
+const BY_DATE = ['Today', 'Dispatch DD0010', 'Yesterday', 'Dispatch DD0009', 'Dispatch DD0100', '20/09/26', 'Dispatch DD0050'];
 const days = (fromDate: string) => ({ fromDate, toDate: '2026-10-12' });
 const GREEN = { customerId: 'c2', customerName: 'Green Valley Traders' };
 
@@ -273,14 +273,14 @@ describe('dispatch activity, every customer', () => {
     const screen = await open(makeStore());
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')]]);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.texts()).toEqual(expect.arrayContaining(['Dispatches', '27', 'Bags dispatched', '550']));
 
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')], [days('2026-02-15')]]);
     expect(screen.has('Period: Last 240 days. Change')).toBe(true);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.customers()).toEqual([...DEFAULT_ORDER, 'Old Mill Stores']);
 
     // One request for each new period, reaching further back to the same day.
@@ -329,7 +329,7 @@ describe('dispatch activity, every customer', () => {
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Hillside Produce Co', 'Riverbank Produce']);
     expect(screen.bold()).toEqual(['Produce', 'Produce']);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Showing 2 of 5 · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Showing 2 of 5 · Last updated 10:00 am');
 
     await screen.press('Clear all filters and the search');
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Old Mill Stores', 'Riverbank Produce', 'Sunrise Agro Foods']);
@@ -401,12 +401,12 @@ describe('dispatch activity, one customer', () => {
     expect(screen.dispatchRows()).toEqual(['Dispatch DD0009', 'Dispatch DD0010', 'Dispatch DD0050', 'Dispatch DD0100']);
     await screen.press('Done');
     // With no heading above it, each card gives its own date.
-    expect(screen.texts()).toEqual(expect.arrayContaining(['11 Oct', '12 Oct', '20 Sep']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['11/10/26', '12/10/26', '20/09/26']));
 
     await screen.press('Sorted by Dispatch number, lowest number first. Change sort');
     await screen.press('Date');
     await screen.press('Done');
-    expect(screen.dispatchRows()).toEqual(['Sun, 20 Sep', 'Dispatch DD0050', 'Yesterday', 'Dispatch DD0009', 'Dispatch DD0100', 'Today', 'Dispatch DD0010']);
+    expect(screen.dispatchRows()).toEqual(['20/09/26', 'Dispatch DD0050', 'Yesterday', 'Dispatch DD0009', 'Dispatch DD0100', 'Today', 'Dispatch DD0010']);
     expect(customerActivity).toHaveBeenCalledTimes(1);
   });
 
@@ -494,7 +494,7 @@ describe('dispatch activity, one customer', () => {
     await screen.search('asha');
     expect(screen.dispatchRows()).toEqual(['Today', 'Dispatch DD0010', 'Yesterday', 'Dispatch DD0100']);
     expect(screen.bold()).toEqual(['Asha', 'Asha']);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 4 · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 2 of 4 · Last updated 10:00 am');
 
     await screen.search('chilli');
     expect(screen.dispatchRows()).toEqual(['Yesterday', 'Dispatch DD0009']);
@@ -635,7 +635,7 @@ describe('dispatch activity, the layout of a dispatch card', () => {
     await screen.press('Bags');
     await screen.press('Done');
     const card = head(screen, 'DD0009');
-    expect(outline(card)).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11 Oct'], ['200', 'bags'], 'icon chevron-down']);
+    expect(outline(card)).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11/10/26'], ['200', 'bags'], 'icon chevron-down']);
     // Every card of the list has that shape, whatever its total weight (900 kg to 6,100.5 kg).
     const shape = (value: Outline): Outline => (typeof value === 'string' ? (value.startsWith('icon ') ? value : 'text') : value.map(shape));
     const shapes = ['DD0100', 'DD0010', 'DD0050', 'DD0009'].map(number => JSON.stringify(shape(outline(head(screen, number)))));
@@ -660,7 +660,7 @@ describe('dispatch activity, the layout of a dispatch card', () => {
     }
     // A found item is named under the date, in the texts' column.
     await screen.search('chilli');
-    expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11 Oct', 'Red chilli'], ['200', 'bags'], 'icon chevron-down']);
+    expect(outline(head(screen, 'DD0009'))).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11/10/26', 'Red chilli'], ['200', 'bags'], 'icon chevron-down']);
     expect(screen.weights()).toEqual([]);
   });
 
@@ -794,7 +794,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(flat(text('Asha Example')).color).toBe(t.text.secondary);
     expect(flat(text('120'))).toMatchObject({ color: t.text.primary, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] });
     expect(flat(text('bags')).color).toBe(t.text.secondary);
-    expect(flat(text('11 Oct')).color).toBe(t.text.secondary);
+    expect(flat(text('11/10/26')).color).toBe(t.text.secondary);
     // The dispatch's 6,100.5 kg is in the answer and not on the card.
     expect(text('6,100.5 kg')).toBeUndefined();
     expect(one.weights()).toEqual([]);

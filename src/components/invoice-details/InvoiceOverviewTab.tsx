@@ -18,7 +18,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
-import { formatDate, toDate, formatFinancialYear, formatMobile } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, toDate, formatFinancialYear, formatMobile } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import type { InvoiceReasons } from '@/services/invoice-service';
 
@@ -313,7 +313,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         onPress={handleGRNPress}
         disabled={!on_view_grn}
         accessibilityRole={on_view_grn ? 'button' : undefined}
-        accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(grn_details.number) })}${grnDate ? `, ${grnDate}` : ''}`}
+        accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(grn_details.number) })}${grnDate ? `, ${formatSpokenDate(grn_details.date)}` : ''}`}
         accessibilityHint={on_view_grn ? tr('invoice.details.opensGrnHint') : undefined}
       >
         <View style={styles.objectCellHeader}>

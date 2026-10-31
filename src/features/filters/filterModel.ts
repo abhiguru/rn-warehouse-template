@@ -138,7 +138,7 @@ export const financialYearLabel = (startYear: number) =>
 /** The financial year (April to March) a date falls in, as its starting year. */
 export const financialYearOf = (date: Date) => (date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1);
 
-const dateText = (iso?: string) => (iso ? formatDate(parseLocalISODate(iso), 'short') : '');
+const dateText = (iso?: string) => (iso ? formatDate(parseLocalISODate(iso)) : '');
 
 export function describeDateRange(range: { from?: string; to?: string }): string {
   if (range.from && range.to) {

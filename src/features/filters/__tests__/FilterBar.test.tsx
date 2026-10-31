@@ -149,7 +149,7 @@ describe('FilterBar chips', () => {
     const filters = makeFilters({ search: 'garlic 7 oct 2021' });
     const bar = renderBar(filters);
     const chip = bar.labels().find(label => label.startsWith('Date '));
-    expect(chip).toBe('Date 7 Oct 2021, read from your search. Search for these words as text instead');
+    expect(chip).toBe('Date 07/10/21, read from your search. Search for these words as text instead');
     bar.press(chip!);
     expect(filters.searchAsText).toHaveBeenCalledTimes(1);
     expect(filters.setField).not.toHaveBeenCalled();

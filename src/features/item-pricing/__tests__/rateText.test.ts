@@ -7,9 +7,9 @@ describe('rateText', () => {
   });
 
   it('writes a date with its year and a range from two days', () => {
-    expect(dateText('2027-01-01')).toBe('1 Jan 2027');
-    expect(rangeText('2025-01-01', '2026-03-31')).toBe('1 Jan 2025 – 31 Mar 2026');
-    expect(rangeText('2026-04-01', null)).toBe('1 Apr 2026');
+    expect(dateText('2027-01-01')).toBe('01/01/27');
+    expect(rangeText('2025-01-01', '2026-03-31')).toBe('01/01/25 – 31/03/26');
+    expect(rangeText('2026-04-01', null)).toBe('01/04/26');
   });
 
   it('writes units and bands in words', () => {
@@ -37,7 +37,7 @@ describe('rateText', () => {
   it('takes today from the local calendar, not UTC', () => {
     jest.useFakeTimers();
     try {
-      // 23:30 local on 14 Oct: a UTC day extraction would differ in any zone ahead of UTC.
+      // 23:30 local on 14/10/26: a UTC day extraction would differ in any zone ahead of UTC.
       jest.setSystemTime(new Date(2026, 9, 14, 23, 30));
       expect(todayDay()).toBe('2026-10-14');
       jest.setSystemTime(new Date(2026, 9, 14, 0, 15));

@@ -32,7 +32,7 @@ import { ratePeriods, type RatePeriod } from '../ratePeriods';
 import { seenRowIds } from '../editModel';
 import { rateState, scopeView } from '../rateModel';
 import { rateRights } from '../rateRights';
-import { addDays, dateText, todayDay } from '../rateText';
+import { addDays, dateText, spokenDateText, todayDay } from '../rateText';
 import { tierTags } from '../standardRate';
 import { useItemRatesFor } from '../useItemRates';
 import { useRateActions, type RateScope } from '../useRateActions';
@@ -127,17 +127,17 @@ export function ItemPricingTab({ itemId, itemName, packaging, active = true }: I
     if (!canChange || !active) return [];
     if (period.state === 'upcoming') {
       return [
-        { label: t('pricing.action.changeUpcoming'), a11yLabel: t('pricing.itemTab.changeA11y', { date: dateText(period.from) }), onPress: () => openForm('upcoming', period.from), disabled: offline || busy, testID: 'period-change' },
-        { label: t('pricing.action.cancelPeriod'), a11yLabel: t('pricing.itemTab.cancelA11y', { date: dateText(period.from) }), onPress: () => actions.askCancel(scopeOf(period)), disabled: offline || busy, negative: true, testID: 'period-cancel' },
+        { label: t('pricing.action.changeUpcoming'), a11yLabel: t('pricing.itemTab.changeA11y', { date: spokenDateText(period.from) }), onPress: () => openForm('upcoming', period.from), disabled: offline || busy, testID: 'period-change' },
+        { label: t('pricing.action.cancelPeriod'), a11yLabel: t('pricing.itemTab.cancelA11y', { date: spokenDateText(period.from) }), onPress: () => actions.askCancel(scopeOf(period)), disabled: offline || busy, negative: true, testID: 'period-cancel' },
       ];
     }
     // Only the newest period in force has buttons: older data can hold two (they overlap), and the rate screens work on the newest.
     if (period.state === 'inForce' && period === inForcePeriod) {
       return [
         ...(rights.canCorrect && oneStart
-          ? [{ label: t('pricing.action.correct'), a11yLabel: t('pricing.itemTab.correctA11y', { date: dateText(period.from) }), onPress: () => openForm('correct', period.from), disabled: offline || busy, testID: 'period-correct' }]
+          ? [{ label: t('pricing.action.correct'), a11yLabel: t('pricing.itemTab.correctA11y', { date: spokenDateText(period.from) }), onPress: () => openForm('correct', period.from), disabled: offline || busy, testID: 'period-correct' }]
           : []),
-        { label: t('pricing.action.stop'), a11yLabel: t('pricing.itemTab.stopA11y', { date: dateText(period.from) }), onPress: () => actions.stop(scopeOf(period)), disabled: offline || busy, negative: true, testID: 'period-stop' },
+        { label: t('pricing.action.stop'), a11yLabel: t('pricing.itemTab.stopA11y', { date: spokenDateText(period.from) }), onPress: () => actions.stop(scopeOf(period)), disabled: offline || busy, negative: true, testID: 'period-stop' },
       ];
     }
     return [];

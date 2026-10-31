@@ -122,7 +122,7 @@ import type { ScrollViewRef } from '@/types/nativeRefs';
 
 const log = createLogger('grn');
 
-/** "9 Oct 2026" (§12.3); today when no date is set yet. */
+/** "09/10/26" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {
   return formatDate(value || new Date());
 }
