@@ -150,6 +150,9 @@ export const components: Translation<typeof source> = {
   },
   wizard: {
     createGrn: 'આવક પાવતી બનાવો',
+    review: 'ચકાસણી',
+    addItem: 'આઇટમ ઉમેરો',
+    saveChanges: 'ફેરફાર સાચવો',
   },
   sharePdf: 'PDF શેર કરો',
   preparingPdf: 'PDF તૈયાર થઈ રહી છે…',

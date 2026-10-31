@@ -146,6 +146,9 @@ export const components = {
   },
   wizard: {
     createGrn: 'Create GRN',
+    review: 'Review',
+    addItem: 'Add item',
+    saveChanges: 'Save changes',
   },
   sharePdf: 'Share PDF',
   preparingPdf: 'Preparing PDF…',
