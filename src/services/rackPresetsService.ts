@@ -10,7 +10,7 @@ import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { serverText } from '@/utils/serverText';
+import { emptyAnswerAsError, isLostAnswer, serverText, withHttpStatus } from '@/utils/serverText';
 import { DEFAULT_RACK_PRESETS, type RackPresets } from '@/features/grn/rackPresets';
 
 export interface RackPresetsAnswer extends RackPresets {
@@ -114,7 +114,25 @@ export function rackPresetsRefusalText(refusal: ServerRefusal): string | undefin
 
 export type SaveRackPresetsResult =
   | { ok: true; answer: RackPresetsAnswer; changed: boolean }
-  | { ok: false; message: string; changedByOthers: boolean };
+  | { ok: false; message: string; changedByOthers: boolean; unconfirmed?: boolean };
+
+const sameLists = (a: RackPresets, b: RackPresets) =>
+  a.floor.length === b.floor.length && a.chamber.length === b.chamber.length && a.floor.every((l, i) => l === b.floor[i]) && a.chamber.every((l, i) => l === b.chamber[i]);
+
+/**
+ * set_rack_presets got no usable answer (a lost connection, a timeout, an empty 200): it may have been applied. The
+ * lists are read again; if they are what was sent the save is done, otherwise the edit stays and the person is told
+ * it could not be confirmed. Sending the same lists again is safe (it answers `changed: false`).
+ */
+async function confirmSave(presets: RackPresets): Promise<SaveRackPresetsResult> {
+  try {
+    const stored = await getRackPresets({ refresh: true });
+    if (stored && sameLists(stored, presets)) return { ok: true, answer: stored, changed: true };
+  } catch (failure) {
+    if (failure instanceof AppError && failure.code === 'SESSION_CHANGED') throw failure;
+  }
+  return { ok: false, message: t('settings.rackPresets.unconfirmed'), changedByOthers: false, unconfirmed: true };
+}
 
 /**
  * Saves the lists. `version` is the one the person read: a save from an older list is refused (PRESETS_CHANGED).
@@ -123,8 +141,10 @@ export type SaveRackPresetsResult =
 export async function setRackPresets(presets: RackPresets, version: number): Promise<SaveRackPresetsResult> {
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
-  const { data, error } = await client.rpc('set_rack_presets', { p_floor: presets.floor, p_chamber: presets.chamber, p_version: version });
+  const { data, error, status } = await client.rpc('set_rack_presets', { p_floor: presets.floor, p_chamber: presets.chamber, p_version: version });
   if (generation !== getSessionGeneration()) throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
+  const failure = error ? withHttpStatus(error, status) : emptyAnswerAsError({ data, error, status });
+  if (failure && isLostAnswer(failure)) return confirmSave(presets);
   if (error) {
     handleGlobalAuthError(error);
     return { ok: false, message: serverText(error.message, t('settings.rackPresets.saveFailed'), { write: true, form: true }), changedByOthers: false };

@@ -39,6 +39,7 @@ export const settings = {
     loadFailed: "Couldn't load the rack buttons. Try again.",
     saveFailed: "Couldn't save the rack buttons. Try again.",
     changed: 'Someone else changed the rack buttons. Reload to see their changes.',
+    unconfirmed: "Couldn't confirm that the rack buttons were saved. Your changes are still here.",
     reload: 'Reload',
     errEmpty: 'A {{list}} button has no name. Type one or remove it.',
     errTooLong: '"{{label}}" is too long. A name can have at most {{limit}} characters.',

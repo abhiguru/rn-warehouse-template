@@ -53,6 +53,22 @@ it('shows the two lists, and saves an edit with the version that was read', asyn
   expect(setRackPresets).toHaveBeenCalledWith({ floor: ['BASE', 'F9'], chamber: ['C4', 'C7'] }, 2);
 });
 
+it('keeps the edit when the save is unconfirmed, and Try again sends the same lists again', async () => {
+  const { showAlert } = jest.requireMock('@/utils/alert');
+  await mount();
+  const save = () => tree!.root.find((n) => n.props.testID === 'rack-presets-save' && typeof n.props.onPress === 'function');
+  await act(async () => { byId('rack-presets-floor-1').props.onChangeText('F9'); });
+  (setRackPresets as jest.Mock).mockResolvedValueOnce({ ok: false, message: 'Not confirmed', changedByOthers: false, unconfirmed: true });
+  await act(async () => { await save().props.onPress(); });
+  const buttons = showAlert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+  expect(buttons.map((b) => b.text)).toEqual(['Cancel', 'Try again']);
+  expect(byId('rack-presets-floor-1').props.value).toBe('F9');
+  (setRackPresets as jest.Mock).mockResolvedValueOnce({ ok: true, changed: false, answer: { ...loaded, floor: ['BASE', 'F9'], version: 3 } });
+  await act(async () => { buttons[1].onPress?.(); });
+  expect(setRackPresets).toHaveBeenCalledTimes(2);
+  expect((setRackPresets as jest.Mock).mock.calls[1]).toEqual((setRackPresets as jest.Mock).mock.calls[0]);
+});
+
 it('removes a button', async () => {
   await mount();
   await act(async () => { byId('rack-presets-floor-0-remove').props.onPress(); });

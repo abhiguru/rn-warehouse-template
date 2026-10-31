@@ -112,6 +112,12 @@ export default function RackPresetsScreen() {
         setLoaded(result.answer);
         setDraft({ floor: [...result.answer.floor], chamber: [...result.answer.chamber] });
         showToast(tr(result.changed ? 'settings.rackPresets.saved' : 'settings.rackPresets.unchanged'));
+      } else if (result.unconfirmed) {
+        // The edit stays; sending it again is safe.
+        showAlert(tr('settings.rackPresets.title'), result.message, [
+          { text: tr('common.cancel'), style: 'cancel' },
+          { text: tr('common.retry'), onPress: () => void save() },
+        ]);
       } else if (result.changedByOthers) {
         showAlert(tr('settings.rackPresets.title'), result.message, [{ text: tr('settings.rackPresets.reload'), onPress: () => void load() }]);
       } else {

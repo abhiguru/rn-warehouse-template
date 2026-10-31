@@ -74,4 +74,30 @@ describe('set_rack_presets', () => {
     mockRpc.mockResolvedValue({ data: { success: false, error_code: 'WH409', reason, error: 'English', ...fields }, error: null });
     expect(await setRackPresets({ floor: ['x'], chamber: [] }, 3)).toEqual({ ok: false, message, changedByOthers });
   });
+
+  describe('no usable answer (a lost connection, a timeout, an empty 200)', () => {
+    const sent = { floor: ['A'], chamber: ['C4'] };
+    const lost = { data: null, error: { message: 'TypeError: Network request failed', code: '' } };
+
+    it('says saved when the lists read again are the ones sent', async () => {
+      mockRpc.mockResolvedValueOnce(lost).mockResolvedValueOnce({ data: answer({ floor: ['A'], version: 4 }), error: null });
+      expect(await setRackPresets(sent, 3)).toMatchObject({ ok: true, changed: true, answer: { version: 4, floor: ['A'] } });
+      expect(mockRpc).toHaveBeenNthCalledWith(2, 'get_rack_presets');
+    });
+
+    it('keeps the edit with an unconfirmed note when the lists read again differ', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: null, status: 200 }).mockResolvedValueOnce({ data: answer(), error: null });
+      expect(await setRackPresets(sent, 3)).toEqual({
+        ok: false,
+        message: "Couldn't confirm that the rack buttons were saved. Your changes are still here.",
+        changedByOthers: false,
+        unconfirmed: true,
+      });
+    });
+
+    it('is unconfirmed too when the lists cannot be read again', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'Bad gateway', code: '' }, status: 504 }).mockResolvedValueOnce(lost);
+      expect(await setRackPresets(sent, 3)).toMatchObject({ ok: false, unconfirmed: true });
+    });
+  });
 });
