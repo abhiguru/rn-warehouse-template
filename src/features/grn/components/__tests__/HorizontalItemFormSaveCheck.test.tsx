@@ -9,7 +9,8 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-image', () => ({ Image: 'Image' }));
-jest.mock('@/components/RemoteAutocompleteInput', () => ({ RemoteAutocompleteInput: () => null }));
+let mockAutocomplete: any;
+jest.mock('@/components/RemoteAutocompleteInput', () => ({ RemoteAutocompleteInput: (props: unknown) => { mockAutocomplete = props; return null; } }));
 jest.mock('@/services/item-search-service', () => ({ searchItems: jest.fn() }));
 
 const empty: ItemFormData = {
@@ -49,4 +50,39 @@ it('is pressable with an empty line, and a tap runs the check', () => {
 
 it('is still off when the GRN takes no new line', () => {
   expect(check('This GRN is invoiced.').button.props.disabled).toBe(true);
+});
+
+describe('typing in the item field after a pick', () => {
+  const picked: ItemFormData = { ...empty, item_table_id: 'item-1', item_name: 'Example Potatoes', packaging: 'Bag' };
+  const mount = (item: ItemFormData) => {
+    const onFieldChange = jest.fn();
+    act(() => {
+      create(
+        <HorizontalItemForm currentItem={item} onFieldChange={onFieldChange} onImagePick={jest.fn()} onImageRemove={jest.fn()} onSaveItem={jest.fn()} isValid isEditing={false} editingItemNumber={0} savedItemsCount={0} />,
+      );
+    });
+    return onFieldChange;
+  };
+
+  it('unchooses the item, so the form cannot save an item the field does not show', () => {
+    const onFieldChange = mount(picked);
+    act(() => mockAutocomplete.onTextChange('Zzz unknown'));
+    expect(onFieldChange).toHaveBeenCalledWith('item_table_id', '');
+    expect(onFieldChange).toHaveBeenCalledWith('packaging', '');
+    expect(onFieldChange).toHaveBeenCalledWith('item_name', 'Zzz unknown');
+  });
+
+  it('unchooses it when the field is emptied too', () => {
+    const onFieldChange = mount(picked);
+    act(() => mockAutocomplete.onTextChange(''));
+    expect(onFieldChange).toHaveBeenCalledWith('item_table_id', '');
+    expect(onFieldChange).toHaveBeenCalledWith('item_name', '');
+  });
+
+  it('only follows the text while no item is chosen', () => {
+    const onFieldChange = mount(empty);
+    act(() => mockAutocomplete.onTextChange('Po'));
+    expect(onFieldChange).toHaveBeenCalledTimes(1);
+    expect(onFieldChange).toHaveBeenCalledWith('item_name', 'Po');
+  });
 });

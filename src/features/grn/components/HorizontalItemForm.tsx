@@ -451,6 +451,15 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             value={currentItem.item_name}
                             placeholder={tr('grn.item.searchPlaceholder')}
                             fetchData={searchItems}
+                            // Typing after a pick (or emptying the field) unchooses the item: the form must not keep
+                            // the earlier item while the field shows other text.
+                            onTextChange={(text) => {
+                                if (currentItem.item_table_id) {
+                                    onFieldChange('item_table_id', '');
+                                    onFieldChange('packaging', '');
+                                }
+                                onFieldChange('item_name', text);
+                            }}
                             suggestionPlacement="inline"
                             getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: item.name })}
                             onSelect={(item) => {

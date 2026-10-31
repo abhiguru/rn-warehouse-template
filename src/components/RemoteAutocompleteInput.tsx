@@ -83,6 +83,8 @@ interface RemoteAutocompleteInputProps<T> {
   rightIcon?: React.ReactNode;
   /** Custom empty state text */
   emptyText?: string;
+  /** The person typed in the field (not a pick, not the clear button): the text as it now stands. */
+  onTextChange?: (text: string) => void;
 }
 
 // ============================================================================
@@ -113,6 +115,7 @@ export function RemoteAutocompleteInput<T>({
   leftIcon,
   rightIcon,
   emptyText: emptyTextProp,
+  onTextChange,
 }: RemoteAutocompleteInputProps<T>) {
   const placeholder = placeholderProp ?? tr('components.autocomplete.placeholder');
   const emptyText = emptyTextProp ?? tr('components.autocomplete.noMatches');
@@ -158,6 +161,7 @@ export function RemoteAutocompleteInput<T>({
   const handleSearch = useCallback(
     (text: string) => {
       setQuery(text);
+      onTextChange?.(text);
 
       // Supersede any armed or in-flight search for the previous text.
       cancelPendingSearch();
@@ -191,7 +195,7 @@ export function RemoteAutocompleteInput<T>({
         }
       }, debounceMs);
     },
-    [fetchData, minChars, debounceMs, cancelPendingSearch]
+    [fetchData, minChars, debounceMs, cancelPendingSearch, onTextChange]
   );
 
   const handleSelectItem = (item: T) => {
