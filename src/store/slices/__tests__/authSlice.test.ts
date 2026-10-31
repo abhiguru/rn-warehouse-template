@@ -115,6 +115,18 @@ describe('authSlice', () => {
       expect(authReducer(state, setUserProfile({ id: 'u' } as never)).signOutReason).toBeNull();
     });
 
+    it('keeps the reason through the leave-facility cleanup (its logout), so My facilities can show it', () => {
+      let state = authReducer(initialState, { type: 'auth/forceLogoutOnInvalidToken/pending', meta: { requestId: 'a' } });
+      state = authReducer(state, { type: 'auth/forceLogoutOnInvalidToken/fulfilled', meta: { requestId: 'a' }, payload: { reason: 'Keys changed' } });
+      // leaveFacility dispatches logout(), then clears the session-scoped state; neither touches the reason.
+      state = authReducer(state, { type: 'auth/logout/pending', meta: { requestId: 'b' } });
+      expect(state.signOutReason).toBe('Keys changed');
+      state = authReducer(state, { type: 'auth/logout/fulfilled', meta: { requestId: 'b' }, payload: { localCleared: true } });
+      expect(state.signOutReason).toBe('Keys changed');
+      state = authReducer(state, { type: 'auth/logout/rejected', meta: { requestId: 'c' } });
+      expect(state.signOutReason).toBe('Keys changed');
+    });
+
     it('also keeps the reason when the teardown failed', () => {
       let state = authReducer(initialState, { type: 'auth/forceLogoutOnInvalidToken/pending', meta: { requestId: 'a' } });
       state = authReducer(state, { type: 'auth/forceLogoutOnInvalidToken/rejected', meta: { requestId: 'a', arg: 'Session ended' } });
