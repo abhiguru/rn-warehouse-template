@@ -242,7 +242,7 @@ export const grn: Translation<typeof source> = {
   },
 
   review: {
-    noRateYet: '{{items}} માટે હજી દર નથી. ઇન્વૉઇસ બનાવતા પહેલાં એડમિન દર ઉમેરશે.',
+    noRateYet: '{{items}} માટે હજુ દર નથી. ઇન્વૉઇસ બનાવતા પહેલાં એડમિન દર ઉમેરશે.',
     stockProtectedMessage: 'જે આઇટમની જાવક થઈ ગઈ છે તેના નંગ કે સ્ટોક બદલી શકાતા નથી. બીજી વિગતો બદલી શકાય છે.',
     saveFailedTitle: 'આવક પાવતી સાચવી શકાઈ નથી',
     discardCreateMessage: {

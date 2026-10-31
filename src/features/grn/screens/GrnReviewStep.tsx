@@ -859,12 +859,6 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         showNumberMaybeSaved(result.numberTaken?.number ?? header.gr_no);
       } else if (result.numberTaken) {
         await handleNumberTakenAtCreate(result.numberTaken.number, formLeft);
-      } else if (isNumberFormatRefusal(result.refusal)) {
-        // The number does not follow the facility's numbering (migration 127): step 1 refuses it until it is changed.
-        triggerError();
-        const message = numberFormatText(result.refusal);
-        dispatch(setTakenNumberError(message));
-        showAlert(saveFailedTitle(), message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
       } else if (result.refusal && CREATE_STEP_REFUSALS.has(result.refusal.reason)) {
         // The date or the number is refused (migration 130): said in the app's words, and the person is taken to step 1.
         triggerError();
@@ -872,6 +866,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         if (message) {
           showAlert(saveFailedTitle(), message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
         }
+      } else if (isNumberFormatRefusal(result.refusal)) {
+        // The number does not follow the facility's numbering (migration 127): step 1 refuses it until it is changed.
+        triggerError();
+        const message = numberFormatText(result.refusal);
+        dispatch(setTakenNumberError(message));
+        showAlert(saveFailedTitle(), message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
       } else {
         triggerError();
         if (result.rateError) showRateRefusal(result.rateError, result.error);
