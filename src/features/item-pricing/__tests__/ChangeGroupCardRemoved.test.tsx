@@ -33,3 +33,16 @@ it('says "from" for a removed rate that had begun and "planned from" for one tha
   expect(texts).toEqual(expect.arrayContaining(['Removed: 0–50 kg, ₹10.00, from 15/09/26', 'Removed: 0–50 kg, ₹12.00, planned from 01/12/26']));
   await act(async () => { tree.unmount(); });
 });
+
+it('reads the dates in words for a screen reader, and as DD/MM/YY on screen', async () => {
+  let tree!: ReturnType<typeof create>;
+  await act(async () => {
+    tree = create(<ChangeGroupCard entries={entries} view={view([{ band, field: 'monthlyPrice', price: 10, from: '2026-09-15', begun: true }])} />);
+  });
+  const card = tree.root.findByProps({ testID: 'price-history-group-1' });
+  const label = card.props.accessibilityLabel as string;
+  expect(label).toContain('5 Sep 2026');
+  expect(label).toContain('from 15 Sep 2026');
+  expect(label).not.toMatch(/\d\d\/\d\d\/\d\d/);
+  await act(async () => { tree.unmount(); });
+});

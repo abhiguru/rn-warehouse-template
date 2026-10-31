@@ -479,7 +479,7 @@ describe('operations dashboard', () => {
     const activity = screen.tree.root
       .findAll(node => typeof node.type === 'string' && node.props.accessible === true && /^(GRN|Dispatch) /.test(String(node.props.accessibilityLabel)))
       .map(node => node.props.accessibilityLabel as string);
-    expect(activity).toEqual(['Dispatch D0011, Riverbank Produce, 2 min ago', 'GRN A0001, Green Valley Traders, 01/10/26']);
+    expect(activity).toEqual(['Dispatch D0011, Riverbank Produce, 2 min ago', 'GRN A0001, Green Valley Traders, 1 Oct 2026']);
     expect(watch.reads).toEqual([]);
   });
 });

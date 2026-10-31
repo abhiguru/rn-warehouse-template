@@ -159,6 +159,14 @@ describe('GRN Dispatches table', () => {
     expect(byTestId('grn-dispatch-row-o').props.accessibilityState).toBeUndefined();
   });
 
+  it('reads the dispatch date in words for a screen reader', () => {
+    render(<GRNDispatchesTab items={[potatoes, garlic]} dispatchesByItem={byItem} />);
+    press('grn-dispatch-row-g');
+    const label = byTestId('grn-dispatch-line-r3').props.accessibilityLabel as string;
+    expect(label).toMatch(/\d{1,2} [A-Z][a-z]{2} 20\d\d/);
+    expect(label).not.toMatch(/\d\d\/\d\d\/\d\d/);
+  });
+
   it('opens and closes rows on tap and opens a dispatch by its id', () => {
     const onViewDispatch = jest.fn();
     render(<GRNDispatchesTab items={[potatoes, garlic]} dispatchesByItem={byItem} onViewDispatch={onViewDispatch} />);

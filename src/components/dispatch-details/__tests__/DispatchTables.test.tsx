@@ -315,7 +315,7 @@ describe('GRNs table', () => {
   it('counts two lots of one item as two item lines', () => {
     render(<DispatchGRNsTab items={[rice, item({ id: 'r2', package_mark: 'B2', dispatch_quantity: 5 })]} />);
     expect(textOf(byTestId('dispatch-grn-row-grn-161'))).toBe('0161|15/10/26|2|30');
-    expect(byTestId('dispatch-grn-row-grn-161').props.accessibilityLabel).toBe('GRN 0161, 15/10/26, 2 item lines, 30 bags dispatched');
+    expect(byTestId('dispatch-grn-row-grn-161').props.accessibilityLabel).toBe('GRN 0161, 15 Oct 2026, 2 item lines, 30 bags dispatched');
   });
 
   it('puts the line count and the mark under the first column at large text', () => {

@@ -25,7 +25,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
-import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatSpokenDate, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import {
   ONE_LINE,
@@ -190,7 +190,7 @@ const DispatchLines: React.FC<DispatchLinesProps> = ({ dispatches, widths, onVie
       rowLabel={(row) =>
         tr('grn.dispatches.rowLabelDateFirst', {
           number: formatIdentifier(row.original.disp_no),
-          date: dateText(row.original.disp_date),
+          date: toDate(row.original.disp_date) ? formatSpokenDate(row.original.disp_date) : '—',
           bags: bags(row.original.disp_quantity),
         })
       }
