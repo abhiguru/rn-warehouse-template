@@ -4,7 +4,6 @@ import { generateKeyPairSync, sign, constants } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, cpSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { backportSource, securityBackports } from './patch-security-backports.mjs';
@@ -89,7 +88,7 @@ test('braces and micromatch retain normal nested, range, escaped and quoted patt
 });
 
 // The copy of a package at the version the manifest names, wherever the lockfile puts it
-// (zod 3.25.76 is nested under expo; the top level holds zod 4).
+// (a package can be nested under another, so look it up in the lockfile).
 const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
 function installedDirectory(spec) {
   const paths = Object.keys(lock.packages).filter(path => (path === `node_modules/${spec.package}` || path.endsWith(`/node_modules/${spec.package}`)) && lock.packages[path].version === spec.version);
@@ -182,70 +181,6 @@ test('precision payload no longer terminates an asynchronous worker under the de
   } finally { rmSync(root, {recursive: true, force: true}); }
 });
 
-// ---- zod 3.25.76 under expo (the copy @expo/cli loads), GHSA-mrhx-c7xc-m3w5 ----
-const zodFiles = manifest.files.filter(file => file.package === 'zod');
-const nestedZod = installedDirectory(zodFiles[0]);
-const cliRequire = createRequire(join(resolve('node_modules/expo/node_modules/@expo/cli'), 'package.json'));
-
-test('zod entries cover both loadable v3 files of the nested copy and cite the advisory and the v4 fix', () => {
-  assert.deepEqual(zodFiles.map(file => file.file).sort(), ['v3/types.cjs', 'v3/types.js']);
-  assert.ok(zodFiles.every(file => file.version === '3.25.76'));
-  assert.equal(nestedZod, resolve('node_modules/expo/node_modules/zod'));
-  assert.equal(manifest.references.zod.advisory, 'GHSA-mrhx-c7xc-m3w5');
-  assert.equal(manifest.references.zod.commit, 'a0ebf970f2d752e5f58527cd2942ff48be4f46bd');
-  assert.match(manifest.references.zod.implementation, /v3 has no upstream fix/);
-  // Everything the package can load for the root or zod/v3 comes from these two files.
-  const external = readFileSync(join(nestedZod, 'v3/external.cjs'), 'utf8') + readFileSync(join(nestedZod, 'v3/external.js'), 'utf8');
-  assert.match(external, /types\.cjs/);
-  assert.match(external, /types\.js/);
-});
-
-test('@expo/cli resolves the patched nested zod, and the top-level zod 4 is left as published', () => {
-  assert.equal(cliRequire.resolve('zod'), join(nestedZod, 'index.cjs'));
-  assert.equal(createRequire(import.meta.url)('zod/package.json').version.split('.')[0], '4');
-  for (const spec of zodFiles) {
-    const source = readFileSync(join(nestedZod, spec.file), 'utf8');
-    assert.match(source, /GHSA-mrhx-c7xc-m3w5/);
-    assert.equal(backportSource(source, spec.version, spec), source);
-  }
-  assert.doesNotMatch(readFileSync(resolve('node_modules/zod/v3/types.cjs'), 'utf8'), /GHSA-mrhx-c7xc-m3w5/);
-});
-
-test('installer patches only the zod copy below 4.6.6 and refuses an unreviewed one', () => {
-  const root = mkdtempSync(join(tmpdir(), 'warehouse-zod-backport-'));
-  const nested = 'node_modules/expo/node_modules/zod';
-  const packages = {};
-  const place = (path, name, version, files) => {
-    packages[path] = { version };
-    mkdirSync(join(root, path), { recursive: true });
-    writeFileSync(join(root, path, 'package.json'), JSON.stringify({ name, version }));
-    for (const [file, text] of Object.entries(files)) { mkdirSync(dirname(join(root, path, file)), { recursive: true }); writeFileSync(join(root, path, file), text); }
-  };
-  const lay = version => {
-    for (const spec of manifest.files) {
-      const path = spec.package === 'zod' ? nested : `node_modules/${spec.package}`;
-      place(path, spec.package, spec.package === 'zod' ? version : spec.version, { [spec.file]: originalSource(spec) });
-    }
-    place('node_modules/zod', 'zod', '4.6.7', { 'v3/types.cjs': 'top level, unchanged', 'v3/types.js': 'top level, unchanged' });
-    writeFileSync(join(root, 'package-lock.json'), JSON.stringify({ packages }));
-  };
-  try {
-    lay('3.25.76');
-    const done = securityBackports(root).filter(change => change.package === 'zod');
-    assert.deepEqual(done.map(change => change.installedPath), [nested, nested]);
-    assert.equal(readFileSync(join(root, 'node_modules/zod/v3/types.cjs'), 'utf8'), 'top level, unchanged');
-    assert.equal(securityBackports(root, { verifyOnly: true }).filter(change => change.package === 'zod').length, 2);
-    for (const version of ['3.25.75', '4.6.5', '3.25.77']) {
-      lay(version);
-      assert.throws(() => securityBackports(root), /Unreviewed zod version/);
-    }
-    for (const version of ['4.6.6', '4.7.0', '5.0.0']) {
-      lay(version);
-      assert.equal(securityBackports(root).filter(change => change.package === 'zod').length, 0);
-    }
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
 test('a package with only an unaffected entry is refused below its fixed version and accepted from it', () => {
   const root = mkdtempSync(join(tmpdir(), 'warehouse-unaffected-'));
   const entry = manifest.unaffected.find(item => item.package === 'node-forge');
@@ -278,70 +213,6 @@ test('a package with only an unaffected entry is refused below its fixed version
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-const issueSummary = result => result.error.issues.map(issue => [issue.code, issue.path.join('.'), issue.message, issue.maximum ?? issue.minimum, issue.exact]);
-const big = n => new Array(n).fill(1);
-
-// Run the same cases against the module as @expo/cli loads it (CommonJS) and as an import resolves it (ESM).
-const zodVariants = [
-  ['require', () => cliRequire('zod').z],
-  ['import', async () => (await import(pathToFileURL(join(nestedZod, 'index.js')))).z],
-];
-for (const [name, load] of zodVariants) {
-  test(`patched zod (${name}): an oversized array or set fails with one size issue and no element is parsed`, async () => {
-    const z = await load();
-    let parsed = 0;
-    const counted = z.string().refine(() => { parsed++; return true; });
-    const one = (schema, input, code, expected) => {
-      const result = schema.safeParse(input);
-      assert.equal(result.success, false);
-      assert.deepEqual(issueSummary(result).map(row => row[0]), [code]);
-      assert.deepEqual(issueSummary(result)[0].slice(1), expected);
-    };
-    one(z.array(z.string()).max(2), big(200000), 'too_big', ['', 'Array must contain at most 2 element(s)', 2, false]);
-    one(z.array(z.string()).max(2, 'too many'), big(200000), 'too_big', ['', 'too many', 2, false]);
-    one(z.array(z.string()).length(2), big(200000), 'too_big', ['', 'Array must contain exactly 2 element(s)', 2, true]);
-    one(z.array(z.string()).length(2, 'exactly two'), big(3), 'too_big', ['', 'exactly two', 2, true]);
-    one(z.set(z.string()).max(2), new Set(big(200000).map((_, i) => i)), 'too_big', ['', 'Invalid input', 2, false]);
-    one(z.set(z.string()).size(2), new Set(big(200000).map((_, i) => i)), 'too_big', ['', 'Invalid input', 2, false]);
-    one(z.object({ list: z.array(z.string()).max(1) }), { list: big(50000) }, 'too_big', ['list', 'Array must contain at most 1 element(s)', 1, false]);
-    assert.equal(z.array(counted).max(2).safeParse(['a', 'b', 'c']).success, false);
-    assert.equal(z.array(counted).length(2).safeParse(['a', 'b', 'c']).success, false);
-    assert.equal(z.set(counted).max(1).safeParse(new Set(['a', 'b'])).success, false);
-    assert.equal(parsed, 0, 'no element parsed once the input is over its bound');
-    const asynchronous = await z.array(z.string()).max(2).safeParseAsync(big(200000));
-    assert.deepEqual(issueSummary(asynchronous).map(row => row[0]), ['too_big']);
-    const both = z.array(z.string()).length(2).max(3).safeParse(big(10));
-    assert.deepEqual(issueSummary(both).map(row => row[0]), ['too_big', 'too_big'], 'each existing size issue is still reported');
-  });
-
-  test(`patched zod (${name}): in-bound and too-small inputs behave as before`, async () => {
-    const z = await load();
-    const rows = result => issueSummary(result).map(row => row.slice(0, 2));
-    assert.deepEqual(rows(z.array(z.string()).max(5).safeParse(['a', 1, 2])), [['invalid_type', '1'], ['invalid_type', '2']]);
-    assert.deepEqual(rows(z.array(z.string()).length(3).safeParse(['a', 1, 'c'])), [['invalid_type', '1']]);
-    assert.deepEqual(rows(z.array(z.string()).min(3).max(5).safeParse([1])), [['too_small', ''], ['invalid_type', '0']]);
-    assert.deepEqual(rows(z.array(z.string()).nonempty().safeParse([])), [['too_small', '']]);
-    assert.deepEqual(z.array(z.string()).max(2).parse(['a', 'b']), ['a', 'b']);
-    assert.deepEqual(z.array(z.string()).parse(big(0)), []);
-    assert.equal(z.array(z.string()).safeParse(big(5)).error.issues.length, 5, 'an unbounded array still reports every element');
-    assert.deepEqual(rows(z.array(z.string()).max(2).safeParse('not an array')), [['invalid_type', '']]);
-    assert.deepEqual(rows(z.set(z.string()).max(5).safeParse(new Set(['a', 1]))), [['invalid_type', '1']]);
-    assert.deepEqual(rows(z.set(z.string()).min(3).safeParse(new Set(['a']))), [['too_small', '']]);
-    assert.deepEqual([...z.set(z.string()).max(2).parse(new Set(['a', 'b']))], ['a', 'b']);
-    assert.equal(z.set(z.string()).safeParse(new Set(big(5).map((_, i) => i))).error.issues.length, 5);
-  });
-}
-
-test('the same oversized array on the unpatched zod 3.25.76 produces one issue per element', () => {
-  const root = mkdtempSync(join(tmpdir(), 'warehouse-zod-regression-'));
-  try {
-    cpSync(nestedZod, join(root, 'zod'), { recursive: true });
-    for (const spec of zodFiles) writeFileSync(join(root, 'zod', spec.file), originalSource(spec));
-    const { z } = createRequire(join(root, 'x.cjs'))('./zod/index.cjs');
-    assert.equal(z.array(z.string()).max(2).safeParse(big(2000)).error.issues.length, 2001);
-    assert.equal(z.set(z.string()).max(2).safeParse(new Set(big(2000).map((_, i) => i))).error.issues.length, 2001);
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
 
 // ---- deepmerge 4.3.1 (expo -> @expo/config, jest-config), GHSA-gcqx-w48m-w2h4 ----
 const deepmergeFiles = manifest.files.filter(file => file.package === 'deepmerge');

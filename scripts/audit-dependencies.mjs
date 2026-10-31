@@ -15,7 +15,6 @@ import { isMain } from './is-main.mjs';
 export const acceptedAdvisories = {
   'GHSA-vfj7-8cjw-p6xm': { package: 'braces', range: '<=3.0.3', reviewBy: '2027-01-10', reason: 'local depth bound; no patched release' },
   'GHSA-hp3w-g68c-fv3c': { package: 'sprintf-js', range: '<=1.1.3', reviewBy: '2027-01-10', reason: 'local precision bound; no patched release' },
-  'GHSA-mrhx-c7xc-m3w5': { package: 'zod', range: '<4.6.6', reviewBy: '2027-01-24', reason: 'local size gate in the zod 3.25.76 copy under expo (@expo/cli loads its v3 code); upstream fixed only the v4 code in 4.6.6' },
   'GHSA-gcqx-w48m-w2h4': { package: 'deepmerge', range: '>=4.2.0<=4.3.1', reviewBy: '2027-01-28', reason: 'local fix in deepmerge 4.3.1 (own __proto__ key defined as a data property, upstream PR 277); no patched release' },
 };
 // Any other advisory at one of these severities fails the gate. Low and info
