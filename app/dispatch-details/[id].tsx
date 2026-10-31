@@ -58,6 +58,7 @@ import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageS
 import { showAlert } from '@/utils/alert';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { photoAddFailure } from '@/utils/photoUploadError';
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -563,16 +564,21 @@ function DispatchDetailScreen() {
       setIsUploadingImage(true);
       const result = await uploadDispatchImage(picked.assets[0], id);
       if (!result.success) {
-        setSnackbarMessage(tr('dispatch.photos.uploadFailedRetry'));
+        // As the GRN screen words it; after a lost answer the photo may be attached, so the photos are read again.
+        const failure = photoAddFailure(result.error, tr('dispatch.photos.uploadFailedRetry'));
+        setSnackbarMessage(failure.message);
         setSnackbarVisible(true);
+        if (failure.reread) await fetchDispatchDetails();
         return;
       }
       await fetchDispatchDetails();
       setSnackbarMessage(tr('dispatch.photos.added'));
       setSnackbarVisible(true);
-    } catch {
-      setSnackbarMessage(tr('dispatch.photos.uploadFailedRetry'));
+    } catch (error) {
+      const failure = photoAddFailure(error, tr('dispatch.photos.uploadFailedRetry'));
+      setSnackbarMessage(failure.message);
       setSnackbarVisible(true);
+      if (failure.reread) await fetchDispatchDetails();
     } finally {
       setIsUploadingImage(false);
       imageUploadRef.current = false;
