@@ -15,13 +15,35 @@
   React Native 0.88, Metro and Expo 58 support (`^22.13 || ^24.3 || >=26`). Node 23 and 25 are no longer admitted.
 - **Android toolchain.** React Native 0.88 builds with compile SDK 37, build tools 37.0.0, NDK 27.1.12297006 and Android Gradle
   Plugin 9.2.1. Google publishes API 37 as `platforms;android-37.0`; there is no `platforms;android-37`. Target SDK stays 36.
-- **Open at this date.** `npm run audit:dependencies` fails with `FAIL_UNREPAIRED_DEPENDENCIES` on two moderate advisories published on
-  2026-10-30: GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `<11.0.1`,
-  denial of service, fixed in 11.0.1). Both are pulled in by build and test tooling (Expo CLI and config packages, Sentry bundler plugins, Jest, ESLint, Babel
-  plugins); no bundle map was checked in this step. They are not accepted. A fix needs `glob` 14 and `minimatch` 11, but the dependents
-  ask for `glob` ^7, ^9, ^10 and ^13 and `minimatch` ^3, ^8, ^9 and ^10, so no lockfile update reaches them and an `overrides` pin
-  across those majors would break callers that use the old APIs. They stay open until the dependents release versions that take the
-  fixed ones.
+- **glob and minimatch: accepted without a repair, build and dev tooling only (owner decision 2026-10-31, review by 2026-12-15).**
+  `npm run audit:dependencies` failed with `FAIL_UNREPAIRED_DEPENDENCIES` on two moderate advisories published on 2026-10-30:
+  GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `<11.0.1`, denial of
+  service, fixed in 11.0.1). A fix needs `glob` 14 and `minimatch` 11, but the dependents ask for `glob` ^7, ^9, ^10 and ^13
+  and `minimatch` ^3, ^8, ^9 and ^10, so no lockfile update reaches them, and an `overrides` pin across those majors would
+  break callers that use the old APIs. They are accepted for as long as nothing the app ships contains them.
+  - **What reaches the bundle: nothing.** On 2026-10-31 a static trace of every `require` and `import` (relative, aliased and
+    package, with the packages' `react-native`, `browser` and `exports` entries) from the app entry and every `app/` route found
+    4195 files in 130 packages. Neither `glob` nor `minimatch` is among them, and neither are `@expo/cli`, `@expo/config`,
+    `@expo/config-plugins`, `@expo/fingerprint`, `@expo/metro-config` or `@sentry/bundler-plugins`. It over-approximates (a
+    `require` inside a function counts), and it is not a Metro build: no bundle was made on this host in this step. `expo-updates` is in
+    the graph as its runtime JavaScript; it uses `glob` only in `utils/build/vcs.js`, which the runtime does not import. The
+    last full bundle check was 2026-10-24 (see the section on the Expo 57 line below).
+  - **Who declares them in the production tree** (`npm ls --omit=dev --all`): `@expo/cli`, `@expo/fingerprint` and
+    `@expo/metro-config` (through `expo`), `@expo/config-plugins` (through `expo-sharing`), `@expo/config` and
+    `@sentry/bundler-plugins` (through `@sentry/react-native`), and `expo-updates`. All are Expo or Sentry command-line,
+    prebuild or bundler code. Everything else that carries the advisories (Jest, ESLint, typescript-eslint, Babel's
+    istanbul plugin and `test-exclude`) is a dev dependency.
+  - **How the gate stays safe.** `scripts/audit-dependencies.mjs` has a second list, `acceptedWithoutRepair` (advisory, package,
+    range, reason, `reviewBy`), apart from `acceptedAdvisories`, which keeps its rule that every entry has a verified local
+    backport. The gate also reads `npm ls --omit=dev --all --json` and fails (`SHIPPED:`) when `glob` or `minimatch` is
+    declared by anything outside `toolingParents` (the list above), including the app itself. From the day after `reviewBy`
+    the entries are `REVIEW_OVERDUE` and the gate fails, as for the backported ones. Tests are in
+    `scripts/audit-dependencies.test.mjs`. The result carries `reviewByWithoutRepair` and `shippedPaths`.
+  - **At 2026-12-15:** check whether `@expo/*`, Jest and ESLint have moved to `glob` 14 and `minimatch` 11 (`npm outdated`,
+    the advisories' pages). If so, upgrade and delete the entries; if not, move the date in the same pull request as a note
+    here. A new Expo or Sentry release that makes a runtime package declare either one makes the gate fail by itself.
+  - The gate now reports `PASS_WITH_VERIFIED_BACKPORTS` (deepmerge and braces are still backported); the two tooling
+    advisories appear under `covered` for the 44 packages that depend on them.
 
 ## deepmerge 4.3.1 — 2026-10-28
 
@@ -85,7 +107,7 @@ GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The other copies have 
 | Package | Advisory | Pulled in by | Fixed version |
 | ------- | -------- | ------------ | ------------- |
 | `node-forge` (history) | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | 1.4.1 (2026-10-27); no longer accepted, see the section above |
-| `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the two above, as dependents | | follow the two above |
+| `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the node-forge row above, as dependents | | follow the row above |
 
 - These are build and development tools: the Expo CLI (Metro, prebuild, export) and the code-signing of over-the-air updates
   (off in this template, see below). They run on the developer's machine, not in the app. On 2026-10-24 `npx expo export
@@ -111,6 +133,14 @@ list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
 | GHSA-vfj7-8cjw-p6xm | braces `<=3.0.3`            | Repaired locally (depth bound); no patched release                                        | 2027-01-10 |
 | GHSA-hp3w-g68c-fv3c | sprintf-js `<=1.1.3`        | Repaired locally (precision bound); no patched release                                    | 2027-01-10 |
 | GHSA-gcqx-w48m-w2h4 | deepmerge `>=4.2.0 <=4.3.1` | Repaired locally in 4.3.1 (own `__proto__` key defined, not assigned); no patched release | 2027-01-28 |
+
+Since 2026-10-31 a second list, `acceptedWithoutRepair`, holds advisories accepted for build and dev tooling only, with no local
+repair (a package of the shipped tree makes the gate fail):
+
+| Advisory            | Package and range             | Why it is accepted                                                          | Review by  |
+| ------------------- | ----------------------------- | --------------------------------------------------------------------------- | ---------- |
+| GHSA-3g3m-2fjr-6pw4 | glob `>=9.0.0 <=14.0.1`       | Build and dev tooling only; not in the app bundle; 14.0.2 not reachable     | 2026-12-15 |
+| GHSA-g3hv-75wg-m249 | minimatch `<11.0.1`           | Build and dev tooling only; not in the app bundle; 11.0.1 not reachable     | 2026-12-15 |
 
 - Every entry of the npm report at **moderate, high or critical** must resolve
   to advisories on this list, with the same package and affected range, and
