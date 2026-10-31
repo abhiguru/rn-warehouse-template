@@ -180,12 +180,15 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     };
   }, [navigationRef]);
 
-  // The navigator can be behind the segments (React Navigation 8 commits a navigation after the
-  // route store has already moved). When the effect below finds that the shown route is allowed
-  // although the segments are not, it listens for the navigator's next 'state' event, which runs
-  // the effect again: "once they catch up" in the comment inside it. The listener is registered
-  // there and then (a state event between a render and a later effect would be missed) and
-  // dropped when the event comes, when the effect runs again, or on unmount.
+  // The navigator can be behind the segments: after a server change the tree is rebuilt and the
+  // route store has moved on before the navigator shows the new stack. When the effect below
+  // finds that the shown route is allowed although the segments are not, it listens for the
+  // navigator's next 'state' event, which runs the effect again: "once they catch up" in the
+  // comment inside it. The listener is registered there and then (a state event between a
+  // render and a later effect would be missed) and dropped when the event comes, when the
+  // effect runs again, or on unmount. (On a phone, getRootState() is current in the effect of
+  // the render that moved the segments, so this is rare there. Under Jest it was the normal
+  // case until jest.setup.js set navigator.product as React Native does.)
   const [stateTick, setStateTick] = useState(0);
   const stopWaiting = useRef<(() => void) | null>(null);
   useEffect(() => () => stopWaiting.current?.(), []);
