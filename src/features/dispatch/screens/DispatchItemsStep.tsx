@@ -819,7 +819,6 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
 
     const exceedsMax = (currentItem.disp_quantity ?? 0) > maxAllowedQty;
     const quantityHasError = !!validationErrors.disp_quantity || exceedsMax;
-    const canSaveItem = !!isCurrentItemValid && !isAddingItem;
     // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
     const lotWeightEach = formatWeightEach(currentItem.grnItems_weight);
     const itemTitle = isEditingItem
@@ -924,13 +923,14 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     style={({ pressed }) => [
                         styles.addPillButton,
                         pressed && styles.addPillButtonPressed,
-                        !canSaveItem && styles.disabled,
+                        isAddingItem && styles.disabled,
                     ]}
                     accessibilityRole="button"
                     accessibilityLabel={isEditingItem ? tr('dispatch.items.saveItemChanges') : tr('dispatch.items.saveItem')}
-                    accessibilityState={{ disabled: !canSaveItem, busy: isAddingItem }}
+                    accessibilityState={{ disabled: isAddingItem, busy: isAddingItem }}
                     onPress={handleAddItem}
-                    disabled={!canSaveItem}
+                    // Pressable while the line is incomplete (style guide §10, owner decision D7): a tap shows what is missing.
+                    disabled={isAddingItem}
                 >
                     {isAddingItem ? (
                         <ActivityIndicator size="small" color={t.brand.onFill} />
@@ -1269,6 +1269,11 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                 previousAccessibilityLabel={tr('dispatch.items.backToDetails')}
                 onNext={handleNext}
                 nextAccessibilityLabel={tr('dispatch.items.nextReview')}
+                // Add item runs the check mark's check; while a saved item is corrected it is Save changes.
+                onAdd={() => { void handleAddItem(); }}
+                addLabel={isEditingItem ? tr('components.wizard.saveChanges') : undefined}
+                addDisabled={isAddingItem}
+                addTestID="dispatch-items-add"
             />
 
             {/* Bottom Sheets */}
