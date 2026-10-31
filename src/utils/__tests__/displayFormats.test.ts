@@ -1,7 +1,8 @@
 import {
   formatCount,
   formatDate,
-  formatDateShort,
+  formatSpokenDate,
+  formatIndiaSpokenDate,
   formatDateTime,
   formatIndiaDate,
   formatIndiaSectionDate,
@@ -43,11 +44,14 @@ function withoutPhoneZone(run: () => void): void {
 }
 
 describe('style guide §12.3 formats', () => {
-  it('formats dates with fixed month names', () => {
-    expect(formatDate('2026-09-22')).toBe('22 Sep 2026');
-    expect(formatDate('2026-10-09', 'long')).toBe('9 October 2026');
-    expect(formatDate(`${thisYear}-10-06`, 'short')).toBe('6 Oct');
-    expect(formatDate('2019-10-06', 'short')).toBe('6 Oct 2019');
+  it('formats dates as DD/MM/YY, the year always written', () => {
+    expect(formatDate('2026-09-22')).toBe('22/09/26');
+    expect(formatDate('2026-10-09')).toBe('09/10/26');
+    expect(formatDate(`${thisYear}-10-06`)).toBe(`06/10/${String(thisYear).slice(-2)}`);
+    expect(formatDate('2019-10-06')).toBe('06/10/19');
+    expect(formatDate('2100-01-05')).toBe('05/01/00');
+    expect(formatDate(new Date(2026, 2, 9))).toBe('09/03/26');
+    expect(formatDate('2026-03-09T00:00:00')).toBe('09/03/26');
     expect(formatDate(null)).toBe('—');
     expect(formatMonth('2026-10-09')).toBe('October 2026');
     expect(formatMonth('2026-10-09', 'short')).toBe('Oct 2026');
@@ -59,13 +63,13 @@ describe('style guide §12.3 formats', () => {
     const d = new Date(2026, 9, 9, 16, 5);
     expect(formatTime(d)).toBe('4:05 pm');
     expect(formatTime(new Date(2026, 9, 9, 0, 30))).toBe('12:30 am');
-    expect(formatDateTime(d)).toBe('9 Oct 2026, 4:05 pm');
+    expect(formatDateTime(d)).toBe('09/10/26, 4:05 pm');
   });
 
   it('formats section headers', () => {
     const today = new Date();
     expect(formatSectionDate(today.toISOString())).toBe('Today');
-    expect(formatSectionDate('2019-10-08')).toBe('Tue, 8 Oct 2019');
+    expect(formatSectionDate('2019-10-08')).toBe('08/10/19');
   });
 
   it('formats relative times under a day, then the date', () => {
@@ -74,7 +78,7 @@ describe('style guide §12.3 formats', () => {
     expect(formatRelativeTime(fiveMin)).toBe('5 min ago');
     expect(formatRelativeTime(threeH)).toBe('3 h ago');
     // By default the date is the phone's own: 10 am on the 8th by its clock, whatever its zone.
-    expect(formatRelativeTime(new Date(2019, 9, 8, 10, 0).toISOString())).toBe('8 Oct 2019');
+    expect(formatRelativeTime(new Date(2019, 9, 8, 10, 0).toISOString())).toBe('08/10/19');
   });
 
   it('formats mobiles, counts, weights and temperatures', () => {
@@ -222,26 +226,24 @@ const AFTER_NEW_YEAR = new Date('2026-12-31T18:31:07Z'); // Friday 1 January 202
 
 describe('formatIndiaDate, a date of a report', () => {
   it('writes an instant as the day it fell on in India', () => {
-    expect(formatIndiaDate('2026-09-30T18:29:59Z')).toBe('30 Sep 2026');
-    expect(formatIndiaDate('2026-09-30T18:30:00Z')).toBe('1 Oct 2026');
-    expect(formatIndiaDate('2026-09-30T20:00:00+00:00', 'long')).toBe('1 October 2026');
-    expect(formatIndiaDate('2026-10-01T01:30:00+05:30')).toBe('1 Oct 2026');
-    expect(formatIndiaDate(new Date(Date.UTC(2026, 8, 30, 18, 30)))).toBe('1 Oct 2026');
+    expect(formatIndiaDate('2026-09-30T18:29:59Z')).toBe('30/09/26');
+    expect(formatIndiaDate('2026-09-30T18:30:00Z')).toBe('01/10/26');
+    expect(formatIndiaDate('2026-09-30T20:00:00+00:00')).toBe('01/10/26');
+    expect(formatIndiaDate('2026-10-01T01:30:00+05:30')).toBe('01/10/26');
+    expect(formatIndiaDate(new Date(Date.UTC(2026, 8, 30, 18, 30)))).toBe('01/10/26');
   });
 
   it('writes a plain day as it is', () => {
-    expect(formatIndiaDate('2026-10-12')).toBe('12 Oct 2026');
-    expect(formatIndiaDate('2026-01-01', 'long')).toBe('1 January 2026');
+    expect(formatIndiaDate('2026-10-12')).toBe('12/10/26');
+    expect(formatIndiaDate('2026-01-01')).toBe('01/01/26');
   });
 
-  it('leaves the year out of a short date when it is the year in India', () => {
-    expect(formatIndiaDate('2026-10-11T20:00:00+00:00', 'short', AFTER_MIDNIGHT)).toBe('12 Oct');
-    expect(formatIndiaDate('2019-10-08', 'short', AFTER_MIDNIGHT)).toBe('8 Oct 2019');
-    // 20:00 UTC on 31 December is 1 January in India. A minute before midnight there it is next year's day.
-    expect(formatIndiaDate('2026-12-31T20:00:00Z', 'short', BEFORE_NEW_YEAR)).toBe('1 Jan 2027');
-    expect(formatIndiaDate('2026-12-31', 'short', BEFORE_NEW_YEAR)).toBe('31 Dec');
-    expect(formatIndiaDate('2026-12-31T20:00:00Z', 'short', AFTER_NEW_YEAR)).toBe('1 Jan');
-    expect(formatIndiaDate('2026-12-31', 'short', AFTER_NEW_YEAR)).toBe('31 Dec 2026');
+  it('always writes the year, whatever the year in India is', () => {
+    expect(formatIndiaDate('2026-10-11T20:00:00+00:00')).toBe('12/10/26');
+    expect(formatIndiaDate('2019-10-08')).toBe('08/10/19');
+    // 20:00 UTC on 31 December is 1 January in India, the next year.
+    expect(formatIndiaDate('2026-12-31T20:00:00Z')).toBe('01/01/27');
+    expect(formatIndiaDate('2026-12-31')).toBe('31/12/26');
   });
 
   it('is a dash for nothing and for what cannot be read', () => {
@@ -253,13 +255,11 @@ describe('formatIndiaDate, a date of a report', () => {
 
   it('does not depend on the zone of the phone', () => {
     withoutPhoneZone(() => {
-      expect(formatIndiaDate('2026-09-30T18:29:59Z')).toBe('30 Sep 2026');
-      expect(formatIndiaDate('2026-09-30T18:30:00Z')).toBe('1 Oct 2026');
-      expect(formatIndiaDate('2026-10-12', 'long')).toBe('12 October 2026');
-      expect(formatIndiaDate('2026-12-31T20:00:00Z', 'short', BEFORE_NEW_YEAR)).toBe('1 Jan 2027');
-      expect(formatIndiaDate('2026-12-31T20:00:00Z', 'short', AFTER_NEW_YEAR)).toBe('1 Jan');
-      // The current year, read from the clock.
-      expect(formatIndiaDate('2019-10-08T20:00:00Z', 'short')).toBe('9 Oct 2019');
+      expect(formatIndiaDate('2026-09-30T18:29:59Z')).toBe('30/09/26');
+      expect(formatIndiaDate('2026-09-30T18:30:00Z')).toBe('01/10/26');
+      expect(formatIndiaDate('2026-10-12')).toBe('12/10/26');
+      expect(formatIndiaDate('2026-12-31T20:00:00Z')).toBe('01/01/27');
+      expect(formatIndiaDate('2019-10-08T20:00:00Z')).toBe('09/10/19');
     });
   });
 });
@@ -268,26 +268,26 @@ describe('formatIndiaSectionDate, the heading over a day of a report', () => {
   it('calls the day it is in India today, and the day before it yesterday', () => {
     expect(formatIndiaSectionDate('2026-10-12', AFTER_MIDNIGHT)).toBe('Today');
     expect(formatIndiaSectionDate('2026-10-11', AFTER_MIDNIGHT)).toBe('Yesterday');
-    expect(formatIndiaSectionDate('2026-10-10', AFTER_MIDNIGHT)).toBe('Sat, 10 Oct');
+    expect(formatIndiaSectionDate('2026-10-10', AFTER_MIDNIGHT)).toBe('10/10/26');
     // Two minutes earlier it is still the 11th in India.
     expect(formatIndiaSectionDate('2026-10-11', BEFORE_MIDNIGHT)).toBe('Today');
     expect(formatIndiaSectionDate('2026-10-10', BEFORE_MIDNIGHT)).toBe('Yesterday');
     // A day that has not begun in India is not today.
-    expect(formatIndiaSectionDate('2026-10-12', BEFORE_MIDNIGHT)).toBe('Mon, 12 Oct');
-    expect(formatIndiaSectionDate('2026-10-13', AFTER_MIDNIGHT)).toBe('Tue, 13 Oct');
+    expect(formatIndiaSectionDate('2026-10-12', BEFORE_MIDNIGHT)).toBe('12/10/26');
+    expect(formatIndiaSectionDate('2026-10-13', AFTER_MIDNIGHT)).toBe('13/10/26');
   });
 
   it('reads an instant as the day it fell on in India', () => {
     expect(formatIndiaSectionDate('2026-10-11T18:30:00Z', AFTER_MIDNIGHT)).toBe('Today');
     expect(formatIndiaSectionDate('2026-10-11T18:29:59Z', AFTER_MIDNIGHT)).toBe('Yesterday');
-    expect(formatIndiaSectionDate('2026-10-09T20:00:00+00:00', AFTER_MIDNIGHT)).toBe('Sat, 10 Oct');
+    expect(formatIndiaSectionDate('2026-10-09T20:00:00+00:00', AFTER_MIDNIGHT)).toBe('10/10/26');
   });
 
-  it('names the weekday of the day, and the year when it is not the year in India', () => {
-    expect(formatIndiaSectionDate('2019-10-08', AFTER_MIDNIGHT)).toBe('Tue, 8 Oct 2019');
-    expect(formatIndiaSectionDate('2026-12-29', BEFORE_NEW_YEAR)).toBe('Tue, 29 Dec');
+  it('writes the date without a weekday, with the year always', () => {
+    expect(formatIndiaSectionDate('2019-10-08', AFTER_MIDNIGHT)).toBe('08/10/19');
+    expect(formatIndiaSectionDate('2026-12-29', BEFORE_NEW_YEAR)).toBe('29/12/26');
     expect(formatIndiaSectionDate('2026-12-30', BEFORE_NEW_YEAR)).toBe('Yesterday');
-    expect(formatIndiaSectionDate('2026-12-30', AFTER_NEW_YEAR)).toBe('Wed, 30 Dec 2026');
+    expect(formatIndiaSectionDate('2026-12-30', AFTER_NEW_YEAR)).toBe('30/12/26');
     expect(formatIndiaSectionDate('2026-12-31', AFTER_NEW_YEAR)).toBe('Yesterday');
     expect(formatIndiaSectionDate('2027-01-01', AFTER_NEW_YEAR)).toBe('Today');
   });
@@ -305,28 +305,26 @@ describe('formatIndiaSectionDate, the heading over a day of a report', () => {
       expect(formatIndiaSectionDate('2026-10-11', BEFORE_MIDNIGHT)).toBe('Today');
       expect(formatIndiaSectionDate('2026-10-11T18:30:00Z', AFTER_MIDNIGHT)).toBe('Today');
       expect(formatIndiaSectionDate('2026-10-11T18:29:59Z', AFTER_MIDNIGHT)).toBe('Yesterday');
-      expect(formatIndiaSectionDate('2026-10-10', AFTER_MIDNIGHT)).toBe('Sat, 10 Oct');
-      expect(formatIndiaSectionDate('2026-12-30', AFTER_NEW_YEAR)).toBe('Wed, 30 Dec 2026');
+      expect(formatIndiaSectionDate('2026-10-10', AFTER_MIDNIGHT)).toBe('10/10/26');
+      expect(formatIndiaSectionDate('2026-12-30', AFTER_NEW_YEAR)).toBe('30/12/26');
       // Today, read from the clock.
-      expect(formatIndiaSectionDate('2019-10-08')).toBe('Tue, 8 Oct 2019');
+      expect(formatIndiaSectionDate('2019-10-08')).toBe('08/10/19');
     });
   });
 });
 
-describe('the year a short date leaves out', () => {
+describe('the year of a date', () => {
   afterEach(() => jest.useRealTimers());
 
-  it('is the year in India: it turns over at midnight there, and the clock is not read in the phone\'s zone', () => {
+  it('is always written, and the clock is not read for it', () => {
     jest.useFakeTimers({ now: BEFORE_NEW_YEAR });
     const watch = watchPhoneZone([BEFORE_NEW_YEAR, AFTER_NEW_YEAR]);
     try {
-      expect(formatDate('2026-12-31', 'short')).toBe('31 Dec');
-      expect(formatDate('2027-01-01', 'short')).toBe('1 Jan 2027');
+      expect(formatDate('2026-12-31')).toBe('31/12/26');
+      expect(formatDate('2027-01-01')).toBe('01/01/27');
       jest.setSystemTime(AFTER_NEW_YEAR);
-      expect(formatDate('2026-12-31', 'short')).toBe('31 Dec 2026');
-      expect(formatDate('2027-01-01', 'short')).toBe('1 Jan');
-      // The year is always written in the other forms.
-      expect(formatDate('2027-01-01')).toBe('1 Jan 2027');
+      expect(formatDate('2026-12-31')).toBe('31/12/26');
+      expect(formatDate('2027-01-01')).toBe('01/01/27');
       expect(watch.reads).toEqual([]);
     } finally {
       watch.restore();
@@ -336,42 +334,65 @@ describe('the year a short date leaves out', () => {
 
 describe('formatRelativeTime, a day or more ago', () => {
   it('is written as the caller asks: a report asks for the day in India', () => {
-    const indiaShort = (time: Date) => formatIndiaDate(time, 'short');
+    const indiaShort = (time: Date) => formatIndiaDate(time);
     // 20:00 UTC on the 8th is the 9th in India.
-    expect(formatRelativeTime('2019-10-08T20:00:00Z', indiaShort)).toBe('9 Oct 2019');
-    withoutPhoneZone(() => expect(formatRelativeTime('2019-10-08T20:00:00Z', indiaShort)).toBe('9 Oct 2019'));
+    expect(formatRelativeTime('2019-10-08T20:00:00Z', indiaShort)).toBe('09/10/19');
+    withoutPhoneZone(() => expect(formatRelativeTime('2019-10-08T20:00:00Z', indiaShort)).toBe('09/10/19'));
   });
 
   it('is still how long ago under a day', () => {
     const threeHours = new Date(Date.now() - 3 * 3600000).toISOString();
-    expect(formatRelativeTime(threeHours, time => formatIndiaDate(time, 'short'))).toBe('3 h ago');
+    expect(formatRelativeTime(threeHours, time => formatIndiaDate(time))).toBe('3 h ago');
   });
 });
 
-describe('formatDateShort, the DD/MM/YY of the dispatch tables', () => {
+describe('formatDate, the DD/MM/YY of every screen', () => {
   afterEach(() => setLanguage('en'));
 
   it('writes two digits for the day, the month and the year', () => {
-    expect(formatDateShort('2026-06-01')).toBe('01/06/26');
-    expect(formatDateShort('2026-10-19')).toBe('19/10/26');
-    expect(formatDateShort('2030-12-31')).toBe('31/12/30');
-    expect(formatDateShort('2100-01-05')).toBe('05/01/00');
-  });
-
-  it('reads a date or a stored timestamp, and never moves the day', () => {
-    expect(formatDateShort(new Date(2026, 2, 9))).toBe('09/03/26');
-    expect(formatDateShort('2026-03-09T00:00:00')).toBe('09/03/26');
+    expect(formatDate('2026-06-01')).toBe('01/06/26');
+    expect(formatDate('2026-10-19')).toBe('19/10/26');
+    expect(formatDate('2030-12-31')).toBe('31/12/30');
   });
 
   it('is a dash for a missing or invalid date', () => {
-    expect(formatDateShort(null)).toBe('—');
-    expect(formatDateShort(undefined)).toBe('—');
-    expect(formatDateShort('')).toBe('—');
-    expect(formatDateShort('not a date')).toBe('—');
+    expect(formatDate(null)).toBe('—');
+    expect(formatDate(undefined)).toBe('—');
+    expect(formatDate('')).toBe('—');
+    expect(formatDate('not a date')).toBe('—');
   });
 
   it('uses the digits of the language: Gujarati digits in Gujarati', () => {
     setLanguage('gu');
-    expect(formatDateShort('2026-06-01')).toBe('૦૧/૦૬/૨૬');
+    expect(formatDate('2026-06-01')).toBe('૦૧/૦૬/૨૬');
+    expect(formatDate('2026-10-09')).toBe('૦૯/૧૦/૨૬');
+  });
+});
+
+describe('formatSpokenDate and formatIndiaSpokenDate, the date in words for a screen reader', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('names the month and writes the whole year, even in the current year', () => {
+    expect(formatSpokenDate('2026-10-09')).toBe('9 Oct 2026');
+    expect(formatSpokenDate(`${thisYear}-10-06`)).toBe(`6 Oct ${thisYear}`);
+    expect(formatSpokenDate(new Date(2019, 0, 5))).toBe('5 Jan 2019');
+  });
+
+  it('reads a report instant as the day it fell on in India', () => {
+    expect(formatIndiaSpokenDate('2026-09-30T18:30:00Z')).toBe('1 Oct 2026');
+    expect(formatIndiaSpokenDate('2026-09-30')).toBe('30 Sep 2026');
+    withoutPhoneZone(() => expect(formatIndiaSpokenDate('2026-09-30T18:30:00Z')).toBe('1 Oct 2026'));
+  });
+
+  it('is a dash for a missing or invalid date', () => {
+    expect(formatSpokenDate(null)).toBe('—');
+    expect(formatSpokenDate('not a date')).toBe('—');
+    expect(formatIndiaSpokenDate('')).toBe('—');
+    expect(formatIndiaSpokenDate('garbage')).toBe('—');
+  });
+
+  it('uses Gujarati month names and digits in Gujarati', () => {
+    setLanguage('gu');
+    expect(formatSpokenDate('2026-10-09')).toBe('૯ ઑક્ટો ૨૦૨૬');
   });
 });
