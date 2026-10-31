@@ -47,11 +47,14 @@ import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
 import {
   createGRN,
   updateGRN,
+  buildUpdateGRNRequest,
   getNextGRNNumber,
   loadGRNData as loadGRNDataService,
   type GRNLostAnswer,
   type GRNPhotoSaveReport,
 } from '@/features/grn/services/grnFormService';
+import { useOrderEffectsPreview } from '@/hooks/useOrderEffectsPreview';
+import { orderEffectLines, orderEffectsNotice, previewUpdateGrn, withOrderEffects } from '@/services/orderEffects';
 import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
 import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
@@ -74,6 +77,7 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printGRNRange } from '@/services/print-service';
 import { DocumentSuccessDialog, DocumentData } from '@/components/DocumentSuccessDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { generateGRNPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
@@ -466,6 +470,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       );
       return;
     }
+
+    // An edit asks the server again which orders it changes, so the question names what is true now.
+    if (!isCreateMode) await refreshOrderEffects();
 
     // Show custom confirm dialog (dark mode compliant)
     setShowConfirmDialog(true);
@@ -953,6 +960,48 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
   };
 
+  /** The update_grn request as the form holds it now (built once per save; a resend is identical). */
+  const buildUpdateRequest = () => ({
+    header: {
+      registration: header.registration,
+      date: header.date,
+      sender_id: header.sender_id,
+      sender_name: header.sender_name,
+      customer_id: header.customer_id,
+      customer_name: header.customer_name,
+      supervisor_id: header.supervisor_id,
+      supervisor_name: header.supervisor_name,
+      note: header.note,
+      leon: header.leon,
+      pricing_mode: header.pricing_mode,
+      gr_images: header.gr_images,
+    },
+    items: items.map((item) => ({
+      grn_trl_id: item.grn_trl_id,
+      item_table_id: item.item_table_id,
+      item_name: item.item_name,
+      packaging: item.packaging,
+      qty: item.qty,
+      stock: item.stock,
+      weight: item.weight,
+      rack: item.rack,
+      package_mark: item.package_mark,
+      trl_images: item.trl_images || [],
+    })),
+    rates: ratesToSave(),
+    // The version the form was read at: part of the request, so a resend after a lost answer is byte for byte the same.
+    expectedUpdatedAt: loadedUpdatedAt,
+  });
+
+  // What saving this edit does to customers' orders (migration 128), read when the step opens and again when Save is
+  // tapped. An older server has no preview: null, and the question is asked as it always was.
+  const effectsGrnId = Array.isArray(id) ? id[0] : id || grnId;
+  const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
+    !isCreateMode && !!effectsGrnId && items.length > 0,
+    JSON.stringify([header.customer_id, header.date, items.map((item) => [item.grn_trl_id, item.item_table_id, item.qty, item.stock])]),
+    () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest()).rpcRequest)
+  );
+
   const performUpdate = async (formSession: number) => {
     const formLeft = () => currentGrnFormSession() !== formSession;
     // The GRN being edited is the route's; the form's id is only what was loaded last. If they differ the form
@@ -968,37 +1017,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     try {
       // Built once: a send after a lost answer is the identical request. Its request code is the edit session's key
       // for this body, kept until a save is answered (grnUpdateIdempotencyKey).
-      const request = {
-        header: {
-          registration: header.registration,
-          date: header.date,
-          sender_id: header.sender_id,
-          sender_name: header.sender_name,
-          customer_id: header.customer_id,
-          customer_name: header.customer_name,
-          supervisor_id: header.supervisor_id,
-          supervisor_name: header.supervisor_name,
-          note: header.note,
-          leon: header.leon,
-          pricing_mode: header.pricing_mode,
-          gr_images: header.gr_images,
-        },
-        items: items.map((item) => ({
-          grn_trl_id: item.grn_trl_id,
-          item_table_id: item.item_table_id,
-          item_name: item.item_name,
-          packaging: item.packaging,
-          qty: item.qty,
-          stock: item.stock,
-          weight: item.weight,
-          rack: item.rack,
-          package_mark: item.package_mark,
-          trl_images: item.trl_images || [],
-        })),
-        rates: ratesToSave(),
-        // The version the form was read at: part of the request, so a resend after a lost answer is byte for byte the same.
-        expectedUpdatedAt: loadedUpdatedAt,
-      };
+      const request = buildUpdateRequest();
 
       const result = await sendUntilAnswered(
         (resend, storedAnswer) =>
@@ -1048,6 +1067,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           customerName: header.customer_name || tr('common.unknown'),
           date: formatReviewDate(header.date),
           itemCount: items.length,
+          orderNotes: orderEffectLines(result.data?.orderEffects),
         });
         const savedPhotos = result.data?.photos;
         if (skippedMessage) {
@@ -1393,6 +1413,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             </ReviewSection>
           ) : null}
           </ReviewCard>
+          {!isCreateMode && orderEffectsNotice(orderEffects) ? (
+            <View testID="grn-review-order-effects" style={{ margin: space.sm }}>
+              <InlineValidation variant="warning" message={orderEffectsNotice(orderEffects)} />
+            </View>
+          ) : null}
 
         </ScrollView>
 
@@ -1429,11 +1454,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       <ConfirmDialog
         visible={showConfirmDialog}
         title={isCreateMode ? tr('grn.review.confirmCreateTitle') : tr('grn.review.confirmSaveTitle')}
-        message={
+        message={withOrderEffects(
           header.gr_no
             ? tr(isCreateMode ? 'grn.review.confirmCreateNumbered' : 'grn.review.confirmSaveNumbered', { number: formatIdentifier(header.gr_no), count: totalItems })
-            : tr(isCreateMode ? 'grn.review.confirmCreate' : 'grn.review.confirmSave', { count: totalItems })
-        }
+            : tr(isCreateMode ? 'grn.review.confirmCreate' : 'grn.review.confirmSave', { count: totalItems }),
+          isCreateMode ? null : orderEffects
+        )}
         confirmText={ctaLabel}
         cancelText={tr('common.cancel')}
         onConfirm={handleConfirmSubmit}

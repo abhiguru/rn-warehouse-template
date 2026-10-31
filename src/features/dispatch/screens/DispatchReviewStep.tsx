@@ -31,6 +31,8 @@ import { DocumentSuccessDialog, DocumentData } from '@/components/DocumentSucces
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StatusTag } from '@/components/ui';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
+import { useOrderEffectsPreview } from '@/hooks/useOrderEffectsPreview';
+import { orderEffectLines, orderEffectsNotice, type OrderEffect, previewCreateDispatch, previewUpdateDispatch, withOrderEffects } from '@/services/orderEffects';
 import { generateDispatchPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { useDispatchForm, type DispatchSubmitResult } from '@/hooks/useDispatchForm';
@@ -98,12 +100,23 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         removeImageFromForm,
         navigateToStep,
         submitForm,
+        getLoadedUpdatedAt,
         reloadDispatch,
         resetFormState,
     } = useDispatchForm({
         mode,
         dispatchIdParam: id,
     });
+
+    // What saving does to customers' orders (migration 128), read when the step opens and again when Save is tapped.
+    // An older server has no preview: null, and the question is asked as it always was.
+    const effectsKey = JSON.stringify([header.customer_id, header.disp_date, header.source_order_id, items.map((item) => [item.grnItems_id, item.disp_quantity])]);
+    const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
+        items.length > 0 && !!header.customer_id,
+        effectsKey,
+        () => (isCreateMode ? previewCreateDispatch(header, items) : previewUpdateDispatch(id!, header, items, getLoadedUpdatedAt?.()))
+    );
+    const [isPreviewing, setIsPreviewing] = useState(false);
 
     // Generate temp dispatch ID for image uploads (create mode only)
     const [tempDispatchId] = useState(() => generateTempDispatchId());
@@ -118,6 +131,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Print dialog state (create mode)
     const [showPrintDialog, setShowPrintDialog] = useState(false);
     const [createdDispatchNumber, setCreatedDispatchNumber] = useState('');
+    // The order lines a saved edit changed (migration 128), told in the edit's success dialog.
+    const [editOrderEffects, setEditOrderEffects] = useState<OrderEffect[] | null>(null);
     // Toasts wait until the success or print dialog is gone: a dialog is a modal and would hide them.
     const pendingToasts = useRef<string[]>([]);
     // Set while the print error alert is on screen
@@ -286,6 +301,14 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 return;
             }
         }
+        // The orders this save changes are asked again, so the question names what the server says now.
+        if (isPreviewing) return;
+        setIsPreviewing(true);
+        try {
+            await refreshOrderEffects();
+        } finally {
+            setIsPreviewing(false);
+        }
         // Show custom confirm dialog (dark mode compliant)
         setShowConfirmDialog(true);
     };
@@ -378,6 +401,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 customerName: header.customer_name || tr('dispatch.review.noCustomer'),
                 date: formatDisplayDate(header.disp_date),
                 itemCount: items.length,
+                orderNotes: orderEffectLines(result.orderEffects),
             });
 
             // Said once the success dialog is gone, for a dispatch made from an order: the order is gone from the
@@ -400,6 +424,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             afterDialog.current = () => setShowSuccessDialog(true);
         } else {
             setEditOrderSynced(result.orderSynced === true);
+            setEditOrderEffects(result.orderEffects ?? null);
             afterDialog.current = () => setShowEditSuccessDialog(true);
         }
     };
@@ -526,7 +551,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         setShowPrintDialog(true);
     };
 
-    const isBusy = isSaving || isSubmitting || isRetryingPhotos || isCheckingAnswer || isReloading === true;
+    const isBusy = isSaving || isSubmitting || isRetryingPhotos || isCheckingAnswer || isReloading === true || isPreviewing;
     // While the dispatch is read again ("Open it again") nothing can be saved or changed: what is read replaces the form.
     const stepsLocked = isCheckingAnswer || isReloading === true;
 
@@ -816,6 +841,11 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             />
                         </ReviewSection>
                     </ReviewCard>
+                    {orderEffectsNotice(orderEffects) ? (
+                        <View style={styles.errorStrip} testID="dispatch-review-order-effects">
+                            <InlineValidation variant="warning" message={orderEffectsNotice(orderEffects)} />
+                        </View>
+                    ) : null}
                 </ScrollView>
 
                 {/* Bottom bar (guide 13.8): Back secondary, primary action */}
@@ -840,9 +870,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 title={tr(isCreateMode ? 'dispatch.review.confirmCreateTitle' : 'dispatch.review.confirmSaveTitle', {
                     number: formatIdentifier(header.disp_no),
                 })}
-                message={tr(isCreateMode ? 'dispatch.review.confirmCreateMessage' : 'dispatch.review.confirmSaveMessage', {
-                    count: items.length,
-                })}
+                message={withOrderEffects(
+                    tr(isCreateMode ? 'dispatch.review.confirmCreateMessage' : 'dispatch.review.confirmSaveMessage', {
+                        count: items.length,
+                    }),
+                    orderEffects
+                )}
                 confirmText={submitLabel}
                 cancelText={tr('common.cancel')}
                 onConfirm={handleConfirmSubmit}
@@ -949,7 +982,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             <ConfirmDialog
                 visible={showEditSuccessDialog}
                 title={tr('dispatch.review.savedTitle', { number: formatIdentifier(header.disp_no) })}
-                message={[tr('dispatch.review.savedMessage'), editOrderSynced ? tr('dispatch.refusal.orderSynced') : null].filter(Boolean).join('\n')}
+                message={withOrderEffects([tr('dispatch.review.savedMessage'), editOrderSynced ? tr('dispatch.refusal.orderSynced') : null].filter(Boolean).join('\n'), editOrderEffects, 'doneLead')}
                 confirmText={tr('dispatch.review.viewDispatch')}
                 cancelText=""
                 onConfirm={handleEditSuccessConfirm}

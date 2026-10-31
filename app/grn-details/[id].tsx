@@ -54,6 +54,7 @@ import {
 } from '@/components/grn-details';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { parseOrderEffects, previewDeleteGrn, withOrderEffects } from '@/services/orderEffects';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
@@ -521,12 +522,18 @@ function GRNDetailScreen() {
   };
 
   // Handle delete GRN
-  const handleDeleteGRN = () => {
+  const askingDeleteRef = useRef(false);
+  const handleDeleteGRN = async () => {
+    // The question names the orders that lose lines (migration 128); an older server has no preview and it is asked as before.
+    if (askingDeleteRef.current || deleteRunningRef.current) return;
+    askingDeleteRef.current = true;
+    const orderEffects = id ? await previewDeleteGrn(id) : null;
+    askingDeleteRef.current = false;
     showAlert(
       data?.grn?.gr_no
         ? tr('grn.details.deleteTitle', { number: formatIdentifier(data.grn.gr_no) })
         : tr('grn.details.deleteTitleNoNumber'),
-      tr('grn.details.deleteMessage'),
+      withOrderEffects(tr('grn.details.deleteMessage'), orderEffects),
       [
         { text: tr('common.cancel'), style: 'cancel' },
         {
@@ -589,7 +596,7 @@ function GRNDetailScreen() {
                     })
                   : '';
 
-                showDeleted(message + details);
+                showDeleted(withOrderEffects(message + details, parseOrderEffects(result.order_effects), 'doneLead'));
               } else {
                 let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'), { write: true, form: true, delete: true });
 

@@ -7,6 +7,28 @@ export const orders = {
     addItemsToOrder: 'Add items to order',
     historyError: "Couldn't load the order history. Check your connection and try again.",
   },
+  // What a save does to customers' open orders (shown before and after a dispatch or GRN is saved or a GRN is deleted).
+  effect: {
+    // Heading of the note on a Review step.
+    noticeTitle: 'These orders change when you save',
+    // Added to the question before a save.
+    questionLead: 'This also changes orders:',
+    // Added to the message after a save.
+    doneLead: 'Orders changed:',
+    orderOf: "{{name}}'s order",
+    // A name that ends in s takes only the apostrophe.
+    orderOfS: "{{name}}' order",
+    // {{from}} → {{count}} bags: the line's old and new quantity.
+    reduced: { one: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bags' },
+    increased: { one: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bags' },
+    added: { one: '{{order}}: {{item}} ({{grn}}) is added, {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) is added, {{count}} bags' },
+    removed: '{{item}} ({{grn}}) is removed from {{order}}.',
+    removedLast: '{{item}} ({{grn}}) is removed from {{order}}. No line is left, so the order is removed.',
+    exceedsStock: {
+      one: '{{order}}: {{item}} ({{grn}}) asks for {{wanted}} bags, but only {{count}} bag will be in stock.',
+      other: '{{order}}: {{item}} ({{grn}}) asks for {{wanted}} bags, but only {{count}} bags will be in stock.',
+    },
+  },
   manage: {
     loading: 'Loading order…',
     loadingLabel: 'Loading order',

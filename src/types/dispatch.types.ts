@@ -7,6 +7,7 @@
 // DISPATCH IMAGE
 // ============================================================================
 
+import type { OrderEffect } from '@/services/orderEffects';
 import { toLocalISODate } from '@/utils/formatters';
 import type { ServerRefusal } from '@/utils/serverRefusal';
 
@@ -218,6 +219,8 @@ export interface DispatchApiResponse {
   source_order_id?: string;        // The order ID that was cleared
   /** Create only (server migration 120): lines of the source order still open after this dispatch; null for a dispatch without an order; absent on an older server. */
   order_lines_left?: number | null;
+  /** Migration 128: the order lines the save changed ([] when none). Absent on an older server. */
+  order_effects?: OrderEffect[];
   /** The server's reason for a refusal: 'NUMBER_TAKEN' (or the unique-key error of an older server), or one of wave B's (see `refusal`). */
   reason?: string;
   /** Wave B: the refusal the server sent (STALE_RECORD, DISPATCH_INVOICED, DISPATCH_DATE_FUTURE, POSSIBLE_DUPLICATE, ...), for the screen to word. */

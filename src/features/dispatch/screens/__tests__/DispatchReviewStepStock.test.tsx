@@ -55,6 +55,12 @@ jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   uploadDispatchImage: jest.fn(),
 }));
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
+// The order preview is not what this suite is about: it answers "no preview" without a call.
+jest.mock('@/services/orderEffects', () => ({
+  ...jest.requireActual('@/services/orderEffects'),
+  previewCreateDispatch: jest.fn(async () => null),
+  previewUpdateDispatch: jest.fn(async () => null),
+}));
 jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));

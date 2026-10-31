@@ -1,3 +1,4 @@
+import { parseOrderEffects } from '@/services/orderEffects';
 import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { viaCurrentPath } from '@/config/lanTransport';
@@ -565,7 +566,7 @@ const isUnknownFunctionSignature = (error: { code?: string; message?: string }):
   error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
 
 /** The update_grn body for a form, and the form's lines under the ids that body uses. */
-const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
+export const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
   // ✅ CRITICAL: Normalize field names - support both legacy and new field names
   // Legacy: id, item_id | New: grn_trl_id, item_table_id
   // Helper to check if an ID is a valid UUID (not a temporary ID)
@@ -925,6 +926,8 @@ export const updateGRN = async (
         id: rpcResult.gr_id || grnId,
         message: rpcResult.message,
         stats: rpcResult.stats as GRNUpdateStats | undefined,
+        // Migration 128: the order lines this edit changed. Absent on an older server.
+        orderEffects: Array.isArray(rpcResult.order_effects) ? parseOrderEffects(rpcResult.order_effects) : undefined,
         photos,
       },
     };

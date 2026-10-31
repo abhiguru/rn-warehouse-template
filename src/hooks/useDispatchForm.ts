@@ -45,6 +45,7 @@
  *
  */
 
+import type { OrderEffect } from '@/services/orderEffects';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { router } from 'expo-router';
@@ -171,6 +172,8 @@ export type DispatchSubmitResult = {
   dispatchId?: string;
   error?: string;
   orderLinesLeft?: number | null;
+  /** Migration 128: the order lines the save changed. */
+  orderEffects?: OrderEffect[];
   failedPhotos?: DispatchImageData[];
   numberTaken?: { message: string };
   /**
@@ -1076,6 +1079,7 @@ export function useDispatchForm({
           success: true,
           dispatchId: result.dispatch_id,
           orderLinesLeft: result.order_lines_left,
+          ...(result.order_effects ? { orderEffects: result.order_effects } : {}),
           failedPhotos: result.failed_photos ?? [],
           ...(result.order_sync && result.order_sync.given_back + result.order_sync.taken > 0 ? { orderSynced: true } : {}),
         };
@@ -1218,6 +1222,8 @@ export function useDispatchForm({
     items,
     images,
     dispatchId,
+    // The version the edit read, read when asked (the order preview carries it like the save does).
+    getLoadedUpdatedAt: (): string | null => store.getState().dispatchForm.loadedUpdatedAt ?? null,
     isGeneratingNumber,
     numberHint: numberOffer?.hint ?? null,
     numberReason: numberOffer?.reason ?? null,

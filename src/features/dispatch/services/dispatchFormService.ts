@@ -29,6 +29,7 @@ import { markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutco
 import { REFUSAL, refusalOf } from '@/utils/serverRefusal';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
+import { parseOrderEffects } from '@/services/orderEffects';
 import { forgetUnfinishedSave, releaseUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 
 const log = createLogger('dispatch');
@@ -523,6 +524,8 @@ export const createDispatch = async (payload: {
       // Server migration 120: how many lines of the order are still open. Absent on an older server (null: show
       // neither text).
       order_lines_left: typeof data.order_lines_left === 'number' ? data.order_lines_left : null,
+      // Server migration 128: the order lines this dispatch changed. Absent on an older server.
+      ...(Array.isArray(data.order_effects) ? { order_effects: parseOrderEffects(data.order_effects) } : {}),
     };
   } catch (error: any) {
     log.error('Dispatch creation failed');
@@ -672,6 +675,8 @@ export const updateDispatch = async (
       dispatch_id: data?.dispatch_id ?? dispatchId,
       message: serverText(data?.message, t('dispatch.service.updated')),
       ...(typeof data?.updated_at === 'string' ? { updated_at: data.updated_at } : {}),
+      // Server migration 128: the order lines this edit changed. Absent on an older server.
+      ...(Array.isArray(data?.order_effects) ? { order_effects: parseOrderEffects(data.order_effects) } : {}),
       ...(orderSync && typeof orderSync === 'object'
         ? {
             order_sync: {

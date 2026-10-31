@@ -43,6 +43,8 @@ export interface DocumentData {
   totalAmount?: number;
   finYear?: string;
   itemCount?: number;
+  /** The order lines this save changed (orders.effect texts); drawn under the message when there are any. */
+  orderNotes?: string[];
 }
 
 interface DocumentSuccessDialogProps {
@@ -120,6 +122,9 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.body,
     color: t.text.secondary,
     textAlign: 'center' as const,
+    marginBottom: space.xl,
+  },
+  orderNotes: {
     marginBottom: space.xl,
   },
   detailsContainer: {
@@ -253,6 +258,14 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
               {config.title}
             </Text>
             <Text style={styles.message}>{config.message}</Text>
+            {documentData.orderNotes && documentData.orderNotes.length > 0 ? (
+              <View style={styles.orderNotes} testID="document-success-order-notes">
+                <InlineValidation
+                  variant="warning"
+                  message={`${tr('orders.effect.doneLead')}\n${documentData.orderNotes.map((line) => `• ${line}`).join('\n')}`}
+                />
+              </View>
+            ) : null}
 
             {/* Document details */}
             <View style={styles.detailsContainer}>
