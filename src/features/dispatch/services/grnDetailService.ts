@@ -291,6 +291,7 @@ export const getGRNDetailByNumber = async (
         quantity: item.qty || item.quantity || 0,
         stock: item.stock || 0,
         package_mark: item.packageMark || item.package_mark || '',
+        packaging: item.packaging || item.itemDetails?.packaging || item.item_details?.packaging || '',
         rack: item.rack || '',
         weight: item.weight || 0,
       }));
@@ -375,6 +376,7 @@ export const getGRNDetailById = async (grnId: string): Promise<GRNDetailResponse
         quantity: item.qty || item.quantity || 0,
         stock: item.stock || 0,
         package_mark: item.packageMark || item.package_mark || '',
+        packaging: item.packaging || item.itemDetails?.packaging || item.item_details?.packaging || '',
         rack: item.rack || '',
         weight: item.weight || 0,
       }));
@@ -468,6 +470,7 @@ export const getGRNItemsGroupedByItem = async (
         quantity: item.qty,
         stock: item.stock,
         package_mark: item.packageMark || '',
+        packaging: item.packaging || item.itemDetails?.packaging || '',
         rack: item.rack || '',
         weight: item.weight || 0,
       };

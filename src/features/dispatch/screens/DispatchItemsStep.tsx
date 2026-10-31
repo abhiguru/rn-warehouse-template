@@ -58,6 +58,7 @@ import { readDispatchQuantityInput } from '@/features/dispatch/utils/dispatchQua
 
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatPackages, packNounCapital } from '@/utils/packagingWord';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import type { TextInputRef } from '@/types/nativeRefs';
 /** The bags a saved dispatch held per lot, for a form that holds none (a new dispatch). */
@@ -269,6 +270,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                             grnItems_quantity: firstAvailableLot.quantity,
                             grnItems_stock: firstAvailableLot.stock,
                             grnItems_package_mark: firstAvailableLot.package_mark,
+                            grnItems_packaging: firstAvailableLot.packaging,
                             grnItems_rack: firstAvailableLot.rack,
                             grnItems_weight: firstAvailableLot.weight,
                         }));
@@ -381,6 +383,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             grnItems_quantity: lot.quantity,
             grnItems_stock: lot.stock,
             grnItems_package_mark: lot.package_mark,
+            grnItems_packaging: lot.packaging,
             grnItems_rack: lot.rack,
             grnItems_weight: lot.weight,
             original_disp_quantity: heldBagsOfLot,
@@ -558,6 +561,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                 grnItems_quantity: item.grnItems_quantity,
                 grnItems_stock: item.grnItems_stock,
                 grnItems_package_mark: item.grnItems_package_mark,
+                grnItems_packaging: item.grnItems_packaging,
                 grnItems_rack: item.grnItems_rack,
                 grnItems_weight: item.grnItems_weight,
                 disp_quantity: item.disp_quantity,
@@ -844,7 +848,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             onPress={() => handleQuickQuantityChange(delta)}
             disabled={!currentItem.grnItems_id}
             accessibilityRole="button"
-            accessibilityLabel={delta > 0 ? tr('dispatch.items.addBags', { count: delta }) : tr('dispatch.items.removeBags', { count: -delta })}
+            accessibilityLabel={delta > 0 ? tr('dispatch.items.addPacks', { packs: formatPackages(delta, currentItem.grnItems_packaging) }) : tr('dispatch.items.removePacks', { packs: formatPackages(-delta, currentItem.grnItems_packaging) })}
             accessibilityState={{ disabled: !currentItem.grnItems_id }}
         >
             <Text style={styles.quickButtonText}>{localizeDigits(delta > 0 ? `+${delta}` : `−${-delta}`)}</Text>
@@ -1128,7 +1132,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     {/* Quantity Input - after Lot selector */}
                     <View style={styles.formGroup}>
                         <Text style={[styles.label, quantityHasError && styles.labelError]}>
-                            {tr('dispatch.items.bagsToDispatch')}<Text style={styles.required}> *</Text>
+                            {tr('dispatch.items.packsToDispatch', { things: packNounCapital(currentItem.grnItems_packaging) })}<Text style={styles.required}> *</Text>
                         </Text>
 
                         {currentItem.grnItems_id && (
@@ -1162,7 +1166,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                     <View style={styles.stockInfoRow} testID="dispatch-items-order-asks">
                                         <Icon name="clipboard-text-outline" size={iconSize.sm} color={t.status.informative.text} />
                                         <Text style={styles.stockDisplayText}>
-                                            {tr('dispatch.items.orderAsks', { bags: formatCount(orderLots[currentItem.grnItems_id].requested, 'bag') })}
+                                            {tr('dispatch.items.orderAsks', { bags: formatPackages(orderLots[currentItem.grnItems_id].requested, currentItem.grnItems_packaging) })}
                                         </Text>
                                     </View>
                                 ) : null}
@@ -1186,7 +1190,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                 />
                                 <TextInput
                                     ref={quantityInputRef}
-                                    accessibilityLabel={tr('dispatch.items.bagsToDispatch')}
+                                    accessibilityLabel={tr('dispatch.items.packsToDispatch', { things: packNounCapital(currentItem.grnItems_packaging) })}
                                     style={styles.input}
                                     value={
                                         rejectedQuantityText ??
@@ -1213,9 +1217,9 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                 // The limit includes the bags the saved dispatch held on this lot; in a new
                                 // dispatch, and on a lot it did not hold, it is the available stock alone.
                                 tr((currentItem.original_disp_quantity ?? 0) > 0
-                                    ? 'dispatch.items.maxBagsOriginal'
-                                    : 'dispatch.items.maxBagsAvailable', {
-                                    count: maxAllowedQty,
+                                    ? 'dispatch.items.maxPacksOriginal'
+                                    : 'dispatch.items.maxPacksAvailable', {
+                                    packs: formatPackages(maxAllowedQty, currentItem.grnItems_packaging),
                                 })
                             )}
                         {/* Above the limit the line above already gives the reason, with the number. */}
@@ -1231,7 +1235,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                     <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
                                     <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
                                     <Text style={styles.detailValue}>
-                                        {formatCount(currentItem.grnItems_stock, 'bag')}
+                                        {formatPackages(currentItem.grnItems_stock, currentItem.grnItems_packaging)}
                                     </Text>
                                 </View>
                                 {currentItem.grnItems_package_mark && (

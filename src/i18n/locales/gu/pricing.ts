@@ -36,8 +36,8 @@ export const pricing: Translation<typeof source> = {
     rateEnds: 'દર {{date}} એ પૂરો થાય છે',
   },
   unit: {
-    monthly: 'નંગ દીઠ, માસિક',
-    oneTime: 'નંગ દીઠ, એક વખત',
+    monthly: '{{unit}} દીઠ, માસિક',
+    oneTime: '{{unit}} દીઠ, એક વખત',
   },
   band: {
     weightEach: 'દરેકનું વજન',
@@ -47,7 +47,7 @@ export const pricing: Translation<typeof source> = {
   item: {
     status: '{{date}} ના રોજ આવેલા જથ્થાના દર',
     labour: 'મજૂરી',
-    labourValue: 'નંગ દીઠ {{amount}}, માલ મોકલતી વખતે એક વાર લેવાય છે',
+    labourValue: '{{unit}} દીઠ {{amount}}, માલ મોકલતી વખતે એક વાર લેવાય છે',
     labourShort: 'નંગ દીઠ {{amount}}',
     taxShort: '{{percent}}%',
     tax: 'ટેક્સ',

@@ -131,6 +131,13 @@ export const formatQuantity = (
   return unit ? `${formatted} ${unit}` : formatted;
 };
 
+/** The noun alone, as `formatCount` writes it after a count: "box" or "boxes" (English), the translated word otherwise. */
+export const countNoun = (count: number | null | undefined, singular: string, plural: string = `${singular}s`): string => {
+  const n = count === null || count === undefined || isNaN(count) ? 0 : count;
+  const translated = words().nouns[singular];
+  return translated ? translated[n === 1 ? 0 : 1] : n === 1 ? singular : plural;
+};
+
 /**
  * A count with its noun, singular when 1 (§12.3): "1 item", "12 items",
  * "1 bag", "1,200 bags". Pass the plural when it is not noun + "s".

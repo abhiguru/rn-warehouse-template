@@ -809,6 +809,7 @@ export const loadDispatchData = async (
           grnItems_quantity: item.grn_item_details?.qty || 0,
           grnItems_stock: item.grn_item_details?.stock || 0,
           grnItems_package_mark: item.grn_item_details?.package_mark || '',
+          grnItems_packaging: item.grn_item_details?.packaging || item.item_details?.packaging || undefined,
           grnItems_rack: item.grn_item_details?.rack || '',
           grnItems_weight: item.grn_item_details?.weight || 0,
           disp_quantity: item.disp_qty || 0,

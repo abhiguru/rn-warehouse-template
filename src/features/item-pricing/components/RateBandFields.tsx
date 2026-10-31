@@ -28,7 +28,7 @@ import {
   type EditorContext,
 } from '../editModel';
 import { figuresStack } from '../figureRow';
-import { bandText } from '../rateText';
+import { bandText, unitText } from '../rateText';
 import type { TierTag } from '../standardRate';
 import { TierTagView } from './BandList';
 import { BandsFooter } from './BandsFooter';
@@ -109,7 +109,7 @@ export function RateBandFields({ draft, ctx, errors, onChange, order, fields, ta
   };
   const unit = {
     kg: t('pricing.box.unitKg'),
-    rent: t('pricing.box.unitRupees', { unit: oneTime ? t('pricing.unit.oneTime') : t('pricing.unit.monthly') }),
+    rent: t('pricing.box.unitRupees', { unit: unitText(oneTime ? 'one_time' : 'monthly') }),
     labour: t('pricing.box.unitLabour'),
     percent: t('pricing.box.unitPercent'),
   };

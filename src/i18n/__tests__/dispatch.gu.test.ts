@@ -31,7 +31,8 @@ describe('dispatch texts in Gujarati', () => {
     const lots = t('dispatch.count.lots', { count: 3 }, 'gu');
     expect(lots).toBe('૩ જથ્થા');
     expect(t('dispatch.lotSheet.countInStockWithOut', { lots, out: 2 }, 'gu')).toBe('સ્ટોકમાં ૩ જથ્થા (૨માં સ્ટોક નથી)');
-    expect(t('dispatch.items.maxBagsAvailable', { count: 50 }, 'gu')).toBe('૫૦ કે તેથી ઓછા નંગ લખો. સ્ટોકમાં એટલા જ છે.');
+    expect(t('dispatch.items.maxPacksAvailable', { packs: '૫૦ નંગ' }, 'gu')).toBe('૫૦ નંગ કે તેથી ઓછા લખો. સ્ટોકમાં એટલા જ છે.');
+    expect(t('dispatch.items.packsToDispatch', { things: 'બૉક્સ' }, 'gu')).toBe('મોકલવાના બૉક્સ');
   });
 });
 

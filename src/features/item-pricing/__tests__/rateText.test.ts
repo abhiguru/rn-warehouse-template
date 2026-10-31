@@ -1,4 +1,4 @@
-import { addDays, bandText, dateText, money, rangeText, rentRange, todayDay, unitText } from '../rateText';
+import { addDays, bandText, dateText, money, rangeText, labourText, rentRange, todayDay, unitText } from '../rateText';
 
 describe('rateText', () => {
   it('writes money with two decimals', () => {
@@ -16,6 +16,14 @@ describe('rateText', () => {
     expect(unitText('monthly')).toBe('per bag, per month');
     expect(unitText('one_time')).toBe('per bag, once');
     expect(bandText(0, 40)).toBe('0–40 kg');
+  });
+
+  it('says box or crate for a Box or Crate item, and bag for other packaging', () => {
+    expect(unitText('monthly', 'Box')).toBe('per box, per month');
+    expect(unitText('one_time', 'Crate')).toBe('per crate, once');
+    expect(unitText('monthly', 'Tin')).toBe('per bag, per month');
+    expect(labourText('₹2.00', 'Box')).toBe('₹2.00 per box, charged once at dispatch');
+    expect(labourText('₹2.00')).toBe('₹2.00 per bag, charged once at dispatch');
   });
 
   it('adds days across month and year ends and back', () => {

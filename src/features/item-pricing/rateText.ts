@@ -6,13 +6,18 @@ import { localizeDigits, t } from '@/i18n';
 import { formatCurrency, formatDate, parseLocalISODate, toLocalISODate, todayInIST } from '@/utils/formatters';
 import type { PriceType } from '@/types/item-pricing.types';
 import { weightBandLabel } from './utils/priceLabels';
+import { packageUnit } from '@/utils/packagingWord';
 
 /** "₹11.00" */
 export const money = (amount: number): string => formatCurrency(amount, { minimumFractionDigits: 2 });
 
-/** "per bag, per month" / "per bag, once" */
-export const unitText = (priceType: PriceType): string =>
-  priceType === 'one_time' ? t('pricing.unit.oneTime') : t('pricing.unit.monthly');
+/** "per bag, per month" / "per bag, once"; "per box" ... for a Box item (Bag, Box and Crate by the item's packaging) */
+export const unitText = (priceType: PriceType, packaging?: string | null): string =>
+  t(priceType === 'one_time' ? 'pricing.unit.oneTime' : 'pricing.unit.monthly', { unit: packageUnit(packaging) });
+
+/** "₹2.00 per bag, charged once at dispatch": the labour of one bag, box or crate (the item's packaging; "bag" when unknown). */
+export const labourText = (amount: string, packaging?: string | null): string =>
+  t('pricing.item.labourValue', { amount, unit: packageUnit(packaging) });
 
 /** "0–40 kg" */
 export const bandText = (min: number, max: number): string => weightBandLabel(min, max);

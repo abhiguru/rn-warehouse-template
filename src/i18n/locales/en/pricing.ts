@@ -34,8 +34,9 @@ export const pricing = {
     rateEnds: 'Rate ends {{date}}',
   },
   unit: {
-    monthly: 'per bag, per month',
-    oneTime: 'per bag, once',
+    // {{unit}}: bag, box or crate, by the item's packaging.
+    monthly: 'per {{unit}}, per month',
+    oneTime: 'per {{unit}}, once',
   },
   band: {
     weightEach: 'Weight each',
@@ -45,7 +46,7 @@ export const pricing = {
   item: {
     status: 'Rates for lots received on {{date}}',
     labour: 'Labour',
-    labourValue: '{{amount}} per bag, charged once at dispatch',
+    labourValue: '{{amount}} per {{unit}}, charged once at dispatch',
     // Short values of the GRN rate cards (For GRNs only, Your rate).
     labourShort: '{{amount}} per bag',
     taxShort: '{{percent}}%',

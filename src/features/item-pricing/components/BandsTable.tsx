@@ -30,7 +30,7 @@ import {
   type Draft,
   type EditorContext,
 } from '../editModel';
-import { bandText } from '../rateText';
+import { bandText, unitText } from '../rateText';
 import type { TierTag } from '../standardRate';
 import { TierTagView } from './BandList';
 import { BandsEditor } from './BandsEditor';
@@ -241,7 +241,7 @@ export function BandsTable({ draft, ctx, errors, onChange, fields, tags, readOnl
 
   const unit = {
     kg: t('pricing.box.unitKg'),
-    rent: t('pricing.box.unitRupees', { unit: oneTime ? t('pricing.unit.oneTime') : t('pricing.unit.monthly') }),
+    rent: t('pricing.box.unitRupees', { unit: unitText(oneTime ? 'one_time' : 'monthly') }),
     labour: t('pricing.box.unitLabour'),
     percent: t('pricing.box.unitPercent'),
   };

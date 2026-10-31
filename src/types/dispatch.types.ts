@@ -70,6 +70,8 @@ export interface DispatchItemData {
   grnItems_quantity: number;   // Original GRN quantity
   grnItems_stock: number;      // Available stock for this lot
   grnItems_package_mark: string;
+  /** The item's packaging (Bag, Box, Crate ...): what the lot is counted in. Absent for a line read before this was known. */
+  grnItems_packaging?: string;
   grnItems_rack: string;
   grnItems_weight: number;
 
@@ -272,6 +274,8 @@ export interface GRNDetailItem {
   quantity: number;            // Original GRN quantity
   stock: number;               // Available stock
   package_mark: string;
+  /** The item's packaging (Bag, Box, Crate ...). */
+  packaging?: string;
   rack: string;
   weight: number;
 }

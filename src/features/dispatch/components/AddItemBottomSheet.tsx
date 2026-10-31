@@ -45,7 +45,8 @@ import { LotBottomSheet } from './LotBottomSheet';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatPackages, packNoun, packNounCapital } from '@/utils/packagingWord';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 const addItemBottomSheetLogger = createLogger('AddItemBottomSheet');
@@ -413,6 +414,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         grnItems_quantity: 0,
         grnItems_stock: 0,
         grnItems_package_mark: '',
+        grnItems_packaging: undefined,
         grnItems_rack: '',
         grnItems_weight: 0,
         disp_quantity: 0,
@@ -439,6 +441,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         grnItems_quantity: lot.quantity,
         grnItems_stock: lot.stock,
         grnItems_package_mark: lot.package_mark,
+        grnItems_packaging: lot.packaging,
         grnItems_rack: lot.rack,
         grnItems_weight: lot.weight,
       }));
@@ -734,7 +737,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                     <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
                     <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
                     <Text style={styles.detailValue}>
-                      {formatCount(currentItem.grnItems_stock, 'bag')}
+                      {formatPackages(currentItem.grnItems_stock, currentItem.grnItems_packaging)}
                     </Text>
                   </View>
                 </View>
@@ -747,7 +750,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                 style={[styles.label, (validationErrors.disp_quantity || exceedsStock) && styles.labelError]}
                 nativeID="add-item-quantity-label"
               >
-                {tr('dispatch.items.bagsToDispatch')} <Text style={styles.required}>*</Text>
+                {tr('dispatch.items.packsToDispatch', { things: packNounCapital(currentItem.grnItems_packaging) })} <Text style={styles.required}>*</Text>
               </Text>
 
               {/* Dynamic Stock Display */}
@@ -780,16 +783,16 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                   ]}
                   value={(currentItem.disp_quantity || 0) > 0 ? localizeDigits((currentItem.disp_quantity || 0).toString()) : ''}
                   onChangeText={handleQuantityChange}
-                  placeholder={tr('dispatch.items.enterBags')}
+                  placeholder={tr('dispatch.items.enterPacks', { things: packNoun(currentItem.grnItems_packaging) })}
                   keyboardType="numeric"
                   editable={!!currentItem.grnItems_id}
                   placeholderTextColor={t.text.placeholder}
-                  accessibilityLabel={tr('dispatch.items.bagsToDispatch')}
+                  accessibilityLabel={tr('dispatch.items.packsToDispatch', { things: packNounCapital(currentItem.grnItems_packaging) })}
                   accessibilityLabelledBy="add-item-quantity-label"
                 />
               </View>
               {exceedsStock &&
-                renderError(tr('dispatch.items.maxBagsInHand', { count: currentItem.grnItems_stock }))}
+                renderError(tr('dispatch.items.maxPacksInHand', { packs: formatPackages(currentItem.grnItems_stock, currentItem.grnItems_packaging) }))}
               {renderError(validationErrors.disp_quantity)}
             </View>
           </BottomSheetScrollView>

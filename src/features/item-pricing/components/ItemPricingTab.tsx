@@ -46,6 +46,8 @@ import { RatesState } from './RatesState';
 export interface ItemPricingTabProps {
   itemId: string;
   itemName: string;
+  /** The item's packaging (Bag, Box, Crate), for "per box" in the rate texts. */
+  packaging?: string | null;
   /** The item is deactivated (Overview -> Deactivate): its rates cannot change, so the tab says so. */
   active?: boolean;
 }
@@ -64,7 +66,7 @@ const makeStyles = (th: ThemeTokens) => ({
   block: { gap: space.md },
 });
 
-export function ItemPricingTab({ itemId, itemName, active = true }: ItemPricingTabProps) {
+export function ItemPricingTab({ itemId, itemName, packaging, active = true }: ItemPricingTabProps) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
@@ -203,7 +205,7 @@ export function ItemPricingTab({ itemId, itemName, active = true }: ItemPricingT
             {periods.map(period => {
               const tags = period.state === 'inForce' && priceType === 'monthly' ? tierTags(period.rows, standard.rate?.tiers) : null;
               return (
-                <RatePeriodCard key={period.key} period={period} tags={tags} actions={buttonsOf(period)}>
+                <RatePeriodCard key={period.key} period={period} tags={tags} packaging={packaging} actions={buttonsOf(period)}>
                   {period === inForcePeriod && view.stopsAfter ? (
                     <RateStrip
                       variant="warning"
