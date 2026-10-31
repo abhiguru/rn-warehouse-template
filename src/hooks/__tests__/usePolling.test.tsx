@@ -105,6 +105,17 @@ test('an unresolved run spans many intervals and stays the only one in flight', 
   act(() => tree.unmount());
 });
 
+test('a route mounted behind another one does not run, and runs once when it comes to the front', async () => {
+  const d = deferredRun();
+  const { tree, route } = mount(d.run, makeRoute(false));
+  await advance(60_000);
+  expect(d.run).not.toHaveBeenCalled();
+
+  act(() => route.focus());
+  expect(d.run).toHaveBeenCalledTimes(1);
+  act(() => tree.unmount());
+});
+
 test('blur stops polling, a refocus runs exactly once, then the cadence resumes', async () => {
   const d = deferredRun();
   const { tree, route } = mount(d.run);

@@ -16,7 +16,7 @@
  *   ignored through the `isCurrent` callback every run receives.
  */
 import { useCallback, useEffect, useRef } from 'react';
-import { useAppForeground, useRouteFocus } from './useRouteFocus';
+import { useAppForeground, useRouteFocusState } from './useRouteFocus';
 
 /** Whether a run is still the current one: false once polling stopped or `resetKey` changed. */
 export type IsCurrent = () => boolean;
@@ -53,7 +53,9 @@ export function usePolling(
   run: PollRun,
   { intervalMs, enabled, focus = true, resetKey }: UsePollingOptions
 ): UsePollingResult {
-  const focused = useRouteFocus(focus);
+  const { focused: routeFocused, confirmed } = useRouteFocusState(focus);
+  // A route mounted behind another one assumes focus for its first render only; no poll starts on that.
+  const focused = routeFocused && confirmed;
   const foreground = useAppForeground();
   const active = enabled && focused && foreground;
 
