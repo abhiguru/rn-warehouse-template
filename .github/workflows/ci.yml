@@ -111,15 +111,35 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
       - name: Assemble debug APK
-        # Some self-hosted runners have IPv6 routes that cannot connect, and some cannot reach
-        # services.gradle.org at all. Prefer IPv4, give the wrapper more time, and download the
-        # same Gradle version from Gradle's official GitHub mirror. A distributionSha256Sum line,
-        # if the wrapper has one, is left untouched so the download is still verified.
-        env:
-          JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true
+        # The Gradle distribution and the wrapper jar are checked against checksums pinned here, on
+        # every runner. A Gradle version that is not in the map fails the step: add its checksums
+        # (from services.gradle.org) when Expo moves to a new Gradle. Only on self-hosted runners,
+        # which may have IPv6 routes that cannot connect or no route to services.gradle.org, prefer
+        # IPv4, give the wrapper more time and download the same version from the GitHub mirror;
+        # the pinned checksum still applies to that download.
+        shell: bash
         run: |
-          sed -i 's/^networkTimeout=.*/networkTimeout=60000/' gradle/wrapper/gradle-wrapper.properties
-          sed -i -E 's#^distributionUrl=.*/gradle-([0-9.]+)-(bin|all)\.zip#distributionUrl=https\\://github.com/gradle/gradle-distributions/releases/download/v\1/gradle-\1-\2.zip#' gradle/wrapper/gradle-wrapper.properties
+          set -euo pipefail
+          props=gradle/wrapper/gradle-wrapper.properties
+          version="$(sed -n -E 's#^distributionUrl=.*/gradle-([0-9][0-9.]*)-bin\.zip$#\1#p' "$props")"
+          test -n "$version" || { echo "distributionUrl in $props is not a gradle-<version>-bin.zip URL"; exit 1; }
+          case "$version" in
+            9.4.1)
+              dist_sha=2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb
+              jar_sha=55243ef57851f12b070ad14f7f5bb8302daceeebc5bce5ece5fa6edb23e1145c ;;
+            *)
+              echo "Gradle $version has no pinned checksums. Add its gradle-$version-bin.zip and wrapper jar sha256 from services.gradle.org to this step."
+              exit 1 ;;
+          esac
+          echo "$jar_sha  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
+          sed -i '/^distributionSha256Sum=/d' "$props"
+          echo "distributionSha256Sum=$dist_sha" >> "$props"
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Djava.net.preferIPv4Stack=true"
+            sed -i 's/^networkTimeout=.*/networkTimeout=60000/' "$props"
+            sed -i '/^distributionUrl=/d' "$props"
+            echo 'distributionUrl=https\://github.com/gradle/gradle-distributions/releases/download/v'"${version}/gradle-${version}-bin.zip" >> "$props"
+          fi
           ./gradlew assembleDebug
         working-directory: android
       - name: Audit picker React Native ABI compile options
