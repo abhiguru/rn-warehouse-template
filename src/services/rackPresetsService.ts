@@ -53,7 +53,7 @@ let cached: { generation: number; answer: RackPresetsAnswer | null } | null = nu
 export function resetRackPresetsCache(): void {
   cached = null;
 }
-registerSessionScoped('rack-presets', () => resetRackPresetsCache(), { onGenerationChange: true });
+registerSessionScoped('rack-presets', () => resetRackPresetsCache());
 
 /**
  * The lists of this facility; null when the backend has no such setting. A failure other than that throws, and
