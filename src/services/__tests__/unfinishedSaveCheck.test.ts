@@ -24,7 +24,7 @@ const grn = { kind: 'grn' as const, requestKey: 'warehouse-grn-key-1', number: '
 const dispatch = { kind: 'dispatch' as const, requestKey: 'warehouse-dispatch-key-1', number: 'D0042', customerName: 'Green Valley Traders' };
 
 /** An entry from an earlier run of the app (the start-up check leaves the entries of this run to their screens). */
-async function fromEarlierRun(entry: typeof grn | typeof dispatch, startedAt = Date.now() - 5 * 60_000) {
+async function fromEarlierRun(entry: typeof grn | typeof dispatch | { kind: 'invoice'; requestKey: string; number: string; customerName: string }, startedAt = Date.now() - 5 * 60_000) {
   await rememberUnfinishedSave({ ...entry, startedAt });
   resetUnfinishedSavesForTests();
 }

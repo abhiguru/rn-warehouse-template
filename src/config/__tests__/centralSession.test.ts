@@ -799,7 +799,7 @@ describe('catalogue', () => {
   });
 
   it.each([[401, 'invalid_token'], [403, 'forbidden']])('answers %s on the public list as unavailable, never as an ended session', async (status, code) => {
-    serve({ 'GET /v1/facilities': refused(status, code) });
+    serve({ 'GET /v1/facilities': { status, body: { error: { code, message: 'English text for a developer' } } } });
     expect(await fetchFacilityCatalogue({ force: true })).toMatchObject({
       ok: false,
       code: 'unavailable',

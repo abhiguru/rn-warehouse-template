@@ -101,7 +101,7 @@ it('names each affected order line on the step and in the question, using the cr
   await render('create');
 
   expect(textOf(byTestId('dispatch-review-order-effects')[0])).toContain("Lakeview Spices' order: Onions (X0001) 20 → 15 bags");
-  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function').props.onPress(); });
+  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function')!.props.onPress(); });
   expect(jest.mocked(previewCreateDispatch).mock.calls.length).toBeGreaterThanOrEqual(2);
   const message = dialog().props.message as string;
   expect(message).toContain('This also changes orders:');
@@ -120,7 +120,7 @@ it('uses the update preview for an edit, with the version the edit read', async 
 it('asks the question as before when the server has no preview, or no order changes', async () => {
   await render('create');
   expect(byTestId('dispatch-review-order-effects')).toHaveLength(0);
-  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function').props.onPress(); });
+  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function')!.props.onPress(); });
   expect(dialog().props.message).not.toContain('orders');
   expect(dialog().props.visible).toBe(true);
 
@@ -133,7 +133,7 @@ it('asks the question as before when the server has no preview, or no order chan
 it('repeats the order lines of the real save in the success dialog', async () => {
   mockForm.submitForm.mockResolvedValue({ success: true, dispatchId: 'd9', orderEffects: [effect({})] });
   await render('create');
-  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function').props.onPress(); });
+  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function')!.props.onPress(); });
   await act(async () => { await dialog().props.onConfirm(); });
   const success = tree.root.findAllByType('DocumentSuccessDialog' as never)[0];
   expect(success.props.documentData.orderNotes).toEqual(["Lakeview Spices' order: Onions (X0001) 20 → 15 bags"]);

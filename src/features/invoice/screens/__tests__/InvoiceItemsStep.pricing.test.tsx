@@ -8,7 +8,6 @@ import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { groupLines } from '@/tests/helpers/invoiceFixtures';
 import { openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { InvoiceItemsStep } from '../InvoiceItemsStep';
 
 const mockNavigateToStep = jest.fn();

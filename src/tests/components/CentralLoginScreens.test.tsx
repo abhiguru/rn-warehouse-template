@@ -137,6 +137,8 @@ const facility = (name: string, status: MyFacility['status'], city = 'Rajkot'): 
   status,
   lastOpenedAt: null,
   addedAt: '',
+  source: 'catalogue',
+  gone: false,
 });
 /** A catalogue entry as centralSession.ts reads it; `online: null` is a catalogue from before central 0.8.0. */
 const entry = (id: string, name: string, town: string, extra: Partial<CatalogueFacility> = {}): CatalogueFacility => ({
