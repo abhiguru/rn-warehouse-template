@@ -70,6 +70,8 @@ export interface PhoneSignInFormProps {
   facility?: { name: string; host: string; onChange: () => void; changeLabel: string };
   /** A line under the subtitle. */
   note?: string;
+  /** A strip at the very top, under the status bar (the reason of an earlier sign-out). */
+  banner?: React.ReactNode;
   /** Digits only, as typed. */
   phoneNumber: string;
   onChangePhone: (digits: string) => void;
@@ -87,6 +89,7 @@ export interface PhoneSignInFormProps {
 export function PhoneSignInForm({
   facility,
   note,
+  banner,
   phoneNumber,
   onChangePhone,
   busy,
@@ -106,6 +109,7 @@ export function PhoneSignInForm({
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+      {banner}
 
       <KeyboardAvoidingView
         style={styles.keyboardView}

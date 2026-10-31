@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { CentralHeader } from '@/components/central/CentralHeader';
+import { SignOutReasonStrip } from '@/components/central/SignOutReasonStrip';
 import { Button } from '@/components/ui/Button';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 import { useAppDispatch } from '@/store/hooks';
@@ -261,6 +262,7 @@ export default function FacilitiesScreen() {
     <View style={styles.screen}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <CentralHeader title={tr('central.facilities.title')} />
+      <SignOutReasonStrip />
       {leaving ? (
         <View style={styles.strip} accessibilityRole="alert" accessibilityLiveRegion="polite" testID="facilities-signing-out">
           <ActivityIndicator size="small" color={t.status.neutral.text} />

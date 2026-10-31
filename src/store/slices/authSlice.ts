@@ -58,12 +58,11 @@ interface AuthState {
   otpSent: boolean;
   error: string | null;
 
-  // Token expiry warnings
-  tokenExpiryWarning: boolean;
-  tokenExpired: boolean;
-
-  // E2 Fix: Track background operation failures
-  configFetchFailed: boolean;
+  /**
+   * Why the session was ended without the person asking (a forced sign-out), shown once on
+   * My facilities / the facility Sign in screen until dismissed or the next sign-in.
+   */
+  signOutReason: string | null;
   /**
    * Whether the session restore (initializeAuth) has run for the session
    * generation in `initializeGeneration`. The root restores at start; the tabs
@@ -91,9 +90,7 @@ const initialState: AuthState = {
   phoneNumber: '',
   otpSent: false,
   error: null,
-  tokenExpiryWarning: false,
-  tokenExpired: false,
-  configFetchFailed: false,
+  signOutReason: null,
 };
 
 // Helper to safely execute async operations with logging
@@ -149,7 +146,6 @@ const fetchConfigOnce = (
     })
     .catch((configError: unknown) => {
       authSliceLogger.warn('Full config fetch failed:', configError);
-      dispatch(setConfigFetchFailed(true));
     })
     .finally(() => {
       // Reset the guard after completion (success or failure)
@@ -637,29 +633,13 @@ const authSlice = createSlice({
       if (state.initializeRequest) state.initializeStatus = 'idle';
       state.initializeRequest = undefined;
       state.userProfile = action.payload;
-    },
-    setTokenExpiryWarning: (state, action: PayloadAction<boolean>) => {
-      state.tokenExpiryWarning = action.payload;
-    },
-    setTokenExpired: (state, action: PayloadAction<boolean>) => {
-      state.tokenExpired = action.payload;
-    },
-    clearTokenExpiryStates: state => {
-      state.tokenExpiryWarning = false;
-      state.tokenExpired = false;
+      if (action.payload) state.signOutReason = null;
     },
     clearAuthError: state => {
       state.error = null;
     },
-    clearAllAuthAlerts: state => {
-      state.tokenExpiryWarning = false;
-      state.tokenExpired = false;
-      state.error = null;
-      state.configFetchFailed = false;
-    },
-    // E2 Fix: Track config fetch failures for UI awareness
-    setConfigFetchFailed: (state, action: PayloadAction<boolean>) => {
-      state.configFetchFailed = action.payload;
+    clearSignOutReason: state => {
+      state.signOutReason = null;
     },
   },
   extraReducers: builder => {
@@ -683,6 +663,7 @@ const authSlice = createSlice({
         state.session = action.payload.session;
         state.user = action.payload.user;
         state.userProfile = action.payload.userProfile;
+        if (action.payload.userProfile) state.signOutReason = null;
       })
       .addCase(initializeAuth.rejected, (state, action) => {
         if (state.initializeRequest !== action.meta.requestId) return;
@@ -783,6 +764,7 @@ const authSlice = createSlice({
         state.phoneNumber = '';
         state.otpSent = false;
         state.error = action.payload.reason;
+        state.signOutReason = action.payload.reason;
       })
       .addCase(forceLogoutOnInvalidToken.rejected, (state, action) => {
         // A failed teardown must not suppress every later forced logout.
@@ -793,6 +775,7 @@ const authSlice = createSlice({
         state.user = null;
         state.userProfile = null;
         state.error = action.meta.arg;
+        state.signOutReason = action.meta.arg;
       })
       // Token refresh
       .addCase(refreshAuthToken.pending, (state, action) => {
@@ -803,12 +786,9 @@ const authSlice = createSlice({
         state.refreshRequest = undefined;
         state.session = action.payload.session;
         state.user = action.payload.user;
-        state.tokenExpiryWarning = false;
-        state.tokenExpired = false;
       })
       .addCase(refreshAuthToken.rejected, state => {
         // Don't clear auth on refresh failure - user may still be able to use app
-        // The token expiry warning will remain visible
         authSliceLogger.warn(
           'Token refresh rejected, keeping current auth state'
         );
@@ -824,12 +804,8 @@ export const {
   setSession,
   setUser,
   setUserProfile,
-  setTokenExpiryWarning,
-  setTokenExpired,
-  clearTokenExpiryStates,
   clearAuthError,
-  clearAllAuthAlerts,
-  setConfigFetchFailed,
+  clearSignOutReason,
 } = authSlice.actions;
 
 // ============================================================================

@@ -12,9 +12,10 @@ import { fetchFacilityCatalogue } from '@/config/centralSession';
 import { openFacility } from '@/config/openFacility';
 import { showAlert } from '@/utils/alert';
 
+let mockAuth: Record<string, unknown> = {};
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
-  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' }, auth: {} }),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' }, auth: mockAuth }),
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() }, useIsFocused: () => true, useFocusEffect: require('./focusHarness').useFocusEffect }));
@@ -43,6 +44,7 @@ const catalogueOf = (...origins: string[]) =>
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockAuth = {};
   await AsyncStorage.clear();
   resetCentralStateForTests();
   await addMyFacility('asha', { ...DEV, source: 'catalogue' });
@@ -90,4 +92,12 @@ it('a tap on it explains and offers Remove from my list, which removes it', asyn
   await act(async () => { remove.onPress!(); });
   await flush();
   expect(await loadMyFacilities('asha')).toEqual([]);
+});
+
+it('shows the stored sign-out reason at the top of the list', async () => {
+  mockAuth = { signOutReason: "This server's sign-in keys were changed. Please sign in again." };
+  catalogueOf(DEV.origin);
+  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await flush();
+  expect(tree!.root.findAll(node => node.props.testID === 'sign-out-reason').length).toBeGreaterThan(0);
 });
