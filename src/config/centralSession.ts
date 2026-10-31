@@ -1149,7 +1149,11 @@ export async function fetchFacilityCatalogue(
   if (!options.force && catalogueCache && Date.now() - catalogueCache.at < CATALOGUE_CACHE_MS && Date.now() >= catalogueCache.at)
     return { ok: true, facilities: catalogueCache.facilities };
   const answer = await centralFetch(config, 'GET', '/v1/facilities', { headers: { 'Cache-Control': 'no-cache' } });
-  if (answer.kind !== 'ok') return failureOf(answer);
+  if (answer.kind !== 'ok') {
+    // The catalogue is public: a 401 or 403 is the service refusing, never a session that ended.
+    if (answer.kind === 'error' && (answer.status === 401 || answer.status === 403)) return failure('unavailable');
+    return failureOf(answer);
+  }
   const facilities = readCatalogueToken(answer.body.catalogue, config.issuer);
   if (!facilities) return failure('catalogue_invalid');
   catalogueCache = { at: Date.now(), facilities };
