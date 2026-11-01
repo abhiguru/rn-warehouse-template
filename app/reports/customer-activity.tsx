@@ -520,7 +520,7 @@ function quickAccessHead(
       // Today's stock, whatever the period; the report it opens is the customer's stock age.
       return {
         icon: 'cube-outline',
-        head: tr('reports.customerActivity.currentStockHead', { count: formatPackages(s.current_stock, sharedPackaging(data.top_stock_items.map(stockPackaging))) }),
+        head: tr('reports.customerActivity.currentStockHead', { count: formatPackages(s.current_stock, currentStockPackaging(data)) }),
         action: tr('reports.customerActivity.viewStockAge'),
         previewHeading: tr('reports.customerActivity.topStockItems'),
       };
@@ -539,6 +539,18 @@ function quickAccessHead(
 
 /** An item's stock packaging: null means its lots differ ("units"); absent (an older server) reads "bags". */
 const stockPackaging = (item: { packaging?: string | null }): string | undefined => (item.packaging === null ? MIXED_PACKAGING : item.packaging);
+
+/**
+ * What the Current stock total is counted in. The rows are only the top items (the server sends five), the total covers all stock:
+ * one word is shown only when the rows account for the whole total and share that word; otherwise "units". With no word on any
+ * row (an older server) it reads "bags".
+ */
+function currentStockPackaging(data: CustomerActivityDetailData): string | undefined {
+  const rows = data.top_stock_items;
+  if (rows.every(row => row.packaging === undefined)) return undefined;
+  const covered = rows.reduce((sum, row) => sum + row.total_stock, 0) === data.summary.current_stock;
+  return covered ? sharedPackaging(rows.map(stockPackaging)) : MIXED_PACKAGING;
+}
 
 /** `payments`: the facility records payments, so an invoice shows Paid or Pending (a Cancelled tag is always shown). */
 function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailData, payments: boolean): React.ReactNode[] {

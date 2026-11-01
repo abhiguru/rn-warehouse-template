@@ -721,4 +721,32 @@ describe('customer activity, what the stock is counted in (D18)', () => {
     // Not all one word: the card's total reads units.
     expect(labels).toContain('Current stock: 300 units. View stock age');
   });
+
+  it('the total reads boxes when the top rows are all Box and add up to the whole stock', async () => {
+    openGreenValley();
+    detail.mockResolvedValue(
+      answerDetail({
+        top_stock_items: [
+          { item_name: 'Garlic', total_stock: 200, grn_count: 2, packaging: 'Box' },
+          { item_name: 'Cumin', total_stock: 100, grn_count: 1, packaging: 'Box' },
+        ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
+      }) as never
+    );
+    const screen = await open(makeStore());
+    expect(screen.labels()).toContain('Current stock: 300 boxes. View stock age');
+  });
+
+  it('the total reads units when the top rows are all Box but stock outside them makes up the rest', async () => {
+    openGreenValley();
+    detail.mockResolvedValue(
+      answerDetail({
+        top_stock_items: [
+          { item_name: 'Garlic', total_stock: 200, grn_count: 2, packaging: 'Box' },
+          { item_name: 'Cumin', total_stock: 50, grn_count: 1, packaging: 'Box' },
+        ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
+      }) as never
+    );
+    const screen = await open(makeStore());
+    expect(screen.labels()).toContain('Current stock: 300 units. View stock age');
+  });
 });
