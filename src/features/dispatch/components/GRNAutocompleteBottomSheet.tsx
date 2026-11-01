@@ -673,6 +673,9 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   const [searchFailed, setSearchFailed] = useState(false);
   const lastQueryRef = useRef('');
   const lastAnchorRef = useRef('');
+  // Latest request per list: a slow answer for a previous customer must not overwrite the current one.
+  const defaultsRequestRef = useRef(0);
+  const prefixesRequestRef = useRef(0);
 
   // Fetch prefixes and default GRNs when modal opens
   useEffect(() => {
@@ -687,8 +690,11 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
 
   // Load default GRNs for customer
   const loadDefaultGRNs = useCallback(async () => {
+    const requestId = ++defaultsRequestRef.current;
     if (!customerId) {
       setDefaultGrnList([]);
+      setDefaultsFailed(false);
+      setIsLoadingDefaults(false);
       return;
     }
 
@@ -702,31 +708,42 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
         date: item.grnDate,
         customer_name: item.customerName,
       }));
+      if (requestId !== defaultsRequestRef.current) return;
       setDefaultGrnList(converted);
     } catch (error) {
+      if (requestId !== defaultsRequestRef.current) return;
       if (__DEV__) console.error('[GRNAutocompleteBottomSheet] Error loading default GRNs:', error);
       setDefaultGrnList([]);
       setDefaultsFailed(true);
     } finally {
-      setIsLoadingDefaults(false);
+      if (requestId === defaultsRequestRef.current) setIsLoadingDefaults(false);
     }
   }, [customerId]);
 
   // Load GRN prefixes with stock
   const loadPrefixes = useCallback(async () => {
+    const requestId = ++prefixesRequestRef.current;
+    if (!customerId) {
+      setPrefixes([]);
+      setPrefixesFailed(false);
+      setIsPrefixesLoading(false);
+      return;
+    }
     setIsPrefixesLoading(true);
     setPrefixesFailed(false);
     try {
-      const result = await getGRNPrefixesWithStock();
+      const result = await getGRNPrefixesWithStock(customerId);
+      if (requestId !== prefixesRequestRef.current) return;
       setPrefixes(result);
     } catch (error) {
+      if (requestId !== prefixesRequestRef.current) return;
       if (__DEV__) console.error('[GRNAutocompleteBottomSheet] Error loading prefixes:', error);
       setPrefixes([]);
       setPrefixesFailed(true);
     } finally {
-      setIsPrefixesLoading(false);
+      if (requestId === prefixesRequestRef.current) setIsPrefixesLoading(false);
     }
-  }, []);
+  }, [customerId]);
 
   // Handle search from CustomKeyboard - called with debounced query
   const handleSearch = useCallback(async (query: string, anchorPrefix = '') => {

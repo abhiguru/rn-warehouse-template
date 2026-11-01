@@ -68,6 +68,53 @@ describe('GRN picker search', () => {
     await act(async () => { tree.unmount(); });
   });
 
+  it("loads the prefix buttons for the dispatch customer, null when there is none, and reloads when it changes", async () => {
+    const CUSTOMER_B = '44444444-2222-4333-8444-555555555555';
+    const tree = await open(CUSTOMER_A);
+    expect(getGRNPrefixesWithStock).toHaveBeenLastCalledWith(CUSTOMER_A);
+
+    await act(async () => {
+      tree.update(<GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={CUSTOMER_B} />);
+    });
+    expect(getGRNPrefixesWithStock).toHaveBeenLastCalledWith(CUSTOMER_B);
+    await act(async () => { tree.unmount(); });
+
+    jest.mocked(getGRNPrefixesWithStock).mockClear();
+    const none = await open();
+    expect(getGRNPrefixesWithStock).not.toHaveBeenCalled();
+    await act(async () => { none.unmount(); });
+  });
+
+  it('ignores a slow reply for a previous customer when the answers arrive out of order', async () => {
+    const CUSTOMER_B = '44444444-2222-4333-8444-555555555555';
+    let resolveSlowPrefixes!: (v: { prefix: string; grnCount: number }[]) => void;
+    let resolveSlowGrns!: (v: never[]) => void;
+    jest.mocked(getGRNPrefixesWithStock)
+      .mockImplementationOnce(() => new Promise((r) => { resolveSlowPrefixes = r; }))
+      .mockResolvedValueOnce([{ prefix: 'B', grnCount: 1 }]);
+    jest.mocked(getCustomerGRNsWithStock)
+      .mockImplementationOnce(() => new Promise((r) => { resolveSlowGrns = r as never; }))
+      .mockResolvedValueOnce([{ grnId: 'g-b', grNo: 'B-1', grnDate: '2026-01-01', customerName: 'Bee' }] as never);
+    const tree = await open(CUSTOMER_A);
+    await act(async () => {
+      tree.update(<GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={CUSTOMER_B} />);
+    });
+    await act(async () => {
+      resolveSlowPrefixes([{ prefix: 'A', grnCount: 9 }]);
+      resolveSlowGrns([]);
+    });
+    const labels = tree.root
+      .findAll((n) => typeof n.props.accessibilityLabel === 'string')
+      .map((n) => n.props.accessibilityLabel as string);
+    expect(labels).toContain('Use GRN prefix B, 1 GRNs');
+    expect(labels.some((l) => l.startsWith('Use GRN prefix A'))).toBe(false);
+    const shown = tree.root
+      .findAll((node) => (node.type as unknown) === 'Text')
+      .map((node) => [node.props.children].flat().join(''));
+    expect(shown).toContain('GRN B-1');
+    await act(async () => { tree.unmount(); });
+  });
+
   it('a prefix button with several letters ("DV") searches that prefix, and digits go after it', async () => {
     jest.mocked(getGRNPrefixesWithStock).mockResolvedValueOnce([{ prefix: 'DV', grnCount: 2 }, { prefix: 'A', grnCount: 1 }]);
     const tree = await open(CUSTOMER_A);
@@ -82,8 +129,8 @@ describe('GRN picker search', () => {
   it('does not search every customer when the dispatch has no customer yet', async () => {
     const tree = await open(undefined);
 
-    await tapKey(tree, 'Enter GRN digit 7');
-
+    // With no customer there are no prefix buttons, so there is no digit key to tap either.
+    expect(tree.root.findAll((n) => n.props.accessibilityLabel === 'Enter GRN digit 7')).toHaveLength(0);
     expect(searchGRNNumbers).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
@@ -109,6 +156,7 @@ describe('GRN picker search', () => {
 
     expect(getCustomerGRNsWithStock).toHaveBeenCalledTimes(2);
     expect(getGRNPrefixesWithStock).toHaveBeenCalledTimes(2);
+    expect(getGRNPrefixesWithStock).toHaveBeenLastCalledWith(CUSTOMER_A);
     expect(texts(tree)).toContain('No GRNs with stock');
     await act(async () => { tree.unmount(); });
   });
