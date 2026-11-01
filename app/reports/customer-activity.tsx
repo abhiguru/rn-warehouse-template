@@ -562,7 +562,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           label={tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
           sublabel={formatIndiaDate(grn.grn_date)}
           spokenSublabel={formatIndiaSpokenDate(grn.grn_date)}
-          value={tr('reports.customerActivity.stockOfTotal', { stock: formatNumber(grn.current_stock), total: formatNumber(grn.total_qty) })}
+          value={tr('reports.customerActivity.stockOfTotal', { stock: formatNumber(grn.current_stock), total: grn.packaging === undefined ? formatNumber(grn.total_qty) : formatPackages(grn.total_qty, stockPackaging(grn)) })}
           onPress={grn.grn_id ? () => openDocument(`/grn-details/${grn.grn_id}`) : undefined}
           accessibilityHint={tr('reports.shared.opensGrnHint')}
         />
@@ -574,7 +574,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           label={tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.dispatch_no) })}
           sublabel={formatIndiaDate(dispatch.dispatch_date)}
           spokenSublabel={formatIndiaSpokenDate(dispatch.dispatch_date)}
-          value={formatCount(dispatch.total_qty, 'bag')}
+          value={formatPackages(dispatch.total_qty, stockPackaging(dispatch))}
           onPress={dispatch.dispatch_id ? () => openDocument(`/dispatch-details/${dispatch.dispatch_id}`) : undefined}
           accessibilityHint={tr('grn.dispatches.openHint')}
         />

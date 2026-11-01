@@ -713,6 +713,8 @@ export interface RecentGRNPreview {
   total_qty: number;
   current_stock: number;
   is_invoiced: boolean;
+  /** What the receipt's or dispatch's lots are counted in; null when they differ (read as units); absent on an older server. */
+  packaging?: string | null;
 }
 
 /**
@@ -724,6 +726,8 @@ export interface RecentDispatchPreview {
   dispatch_date: string;
   total_qty: number;
   supervisor_name: string;
+  /** What the receipt's or dispatch's lots are counted in; null when they differ (read as units); absent on an older server. */
+  packaging?: string | null;
 }
 
 /**

@@ -749,4 +749,29 @@ describe('customer activity, what the stock is counted in (D18)', () => {
     const screen = await open(makeStore());
     expect(screen.labels()).toContain('Current stock: 300 units. View stock age');
   });
+
+  it('the GRN and dispatch preview rows read the word: given, units when null, as before when absent', async () => {
+    openGreenValley();
+    detail.mockResolvedValue(
+      answerDetail({
+        recent_grns: [
+          { grn_id: 'g1', gr_no: 'A0010', grn_date: '2026-10-05', total_qty: 100, current_stock: 60, is_invoiced: false, packaging: 'Box' },
+          { grn_id: 'g2', gr_no: 'A0009', grn_date: '2026-09-28', total_qty: 50, current_stock: 50, is_invoiced: true, packaging: null },
+        ],
+        recent_dispatches: [
+          { dispatch_id: 'd1', dispatch_no: 'D0005', dispatch_date: '2026-10-08', total_qty: 40, supervisor_name: 'Ravi', packaging: 'Box' },
+          { dispatch_id: 'd2', dispatch_no: 'D0004', dispatch_date: '2026-10-07', total_qty: 30, supervisor_name: 'Ravi', packaging: null },
+          { dispatch_id: 'd3', dispatch_no: 'D0003', dispatch_date: '2026-10-06', total_qty: 20, supervisor_name: 'Ravi' },
+        ],
+      }) as never
+    );
+    const screen = await open(makeStore());
+    const labels = screen.labels();
+    expect(labels).toEqual(expect.arrayContaining([
+      expect.stringContaining('40 boxes'), expect.stringContaining('30 units'), expect.stringContaining('20 bags'),
+    ]));
+    expect(screen.labels()).toEqual(expect.arrayContaining([
+      expect.stringContaining('60 of 100 boxes in stock'), expect.stringContaining('50 of 50 units in stock'),
+    ]));
+  });
 });

@@ -283,6 +283,7 @@ export async function getCustomerActivityDetail(
       total_qty: grn.total_qty ?? 0,
       current_stock: grn.current_stock ?? 0,
       is_invoiced: grn.is_invoiced ?? false,
+      packaging: grn.packaging, // as sent: null means the lots differ, absent means an older server
     }));
 
     // Map recent dispatches
@@ -294,6 +295,7 @@ export async function getCustomerActivityDetail(
       dispatch_date: dispatch.dispatch_date,
       total_qty: dispatch.total_qty ?? 0,
       supervisor_name: dispatch.supervisor_name ?? '',
+      packaging: dispatch.packaging, // as sent: null means the lots differ, absent means an older server
     }));
 
     // Map top stock items

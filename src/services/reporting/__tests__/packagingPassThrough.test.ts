@@ -70,3 +70,27 @@ describe('customer activity top stock items', () => {
     expect(rows[2].packaging).toBeUndefined();
   });
 });
+
+describe('customer activity recent GRN and dispatch previews', () => {
+  it('keeps the packaging word, null for differing lots, and absent for an older server', async () => {
+    rpc.mockResolvedValue({
+      error: null,
+      data: {
+        success: true,
+        recent_grns: [
+          { grn_id: 'g1', gr_no: 'A1', packaging: 'Box' },
+          { grn_id: 'g2', gr_no: 'A2', packaging: null },
+          { grn_id: 'g3', gr_no: 'A3' },
+        ],
+        recent_dispatches: [
+          { dispatch_id: 'd1', dispatch_no: 'D1', packaging: 'Crate' },
+          { dispatch_id: 'd2', dispatch_no: 'D2', packaging: null },
+          { dispatch_id: 'd3', dispatch_no: 'D3' },
+        ],
+      },
+    });
+    const { data } = await getCustomerActivityDetail({ customerId: CUSTOMER, ...RANGE });
+    expect(data.recent_grns.map(r => r.packaging)).toEqual(['Box', null, undefined]);
+    expect(data.recent_dispatches.map(r => r.packaging)).toEqual(['Crate', null, undefined]);
+  });
+});
