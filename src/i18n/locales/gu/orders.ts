@@ -127,7 +127,7 @@ export const orders: Translation<typeof source> = {
     // The same question when Add would send something: it lists the changes and offers Add to order. Gujarati is a draft.
     addChangesTitle: 'આ ફેરફાર ઑર્ડરમાં ઉમેરવા છે?',
     addToOrder: 'ઑર્ડરમાં ઉમેરો',
-    // One line per changed lot; {{lot}} is "name · mark · GRN · weight", {{count}} the bags after the change.
+    // One line per changed lot; {{lot}} is "name · mark · GRN · weight".
     // The changed quantity is in words, not "→", so a screen reader says it right.
     // {{packs}} is the count in the lot's packaging word, {{from}} the count before. Draft.
     changeAdd: '{{lot}} — {{packs}} ઉમેરો',

@@ -163,6 +163,15 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
+  keypadRetryButton: {
+    minHeight: Math.max(touchTarget, 48),
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
   retryButtonPressed: {
     backgroundColor: t.brand.subtle,
   },
@@ -265,17 +274,26 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingVertical: space.sm,
     width: '100%' as const,
   },
+  // Message on one line (it may wrap), the Try again button on its own line below, so a long message cannot push it off screen.
   noPrefixContainer: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    paddingVertical: space.sm,
+    width: '100%' as const,
+  },
+  noPrefixMessageRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: space.s6,
-    paddingVertical: space.sm,
-    width: '100%' as const,
+    maxWidth: '100%' as const,
   },
   keyboardMessage: {
     ...typography.footnote,
     color: t.text.secondary,
+    flexShrink: 1,
+    textAlign: 'center' as const,
   },
 
   // GRNListItem
@@ -368,6 +386,12 @@ const makeStyles = (t: ThemeTokens) => ({
 interface CustomKeyboardProps {
   prefixes: GRNPrefixWithStock[];
   isPrefixesLoading: boolean;
+  /** False until the dispatch has a customer: the keypad then says to choose one instead of "no stock". */
+  hasCustomer: boolean;
+  /** The prefix read failed for a real customer: say so, with Try again, instead of "no stock". */
+  prefixesFailed: boolean;
+  /** Reads only the prefixes again, so the working list does not flash to its spinner. */
+  onRetry: () => void;
   /** `anchorPrefix`: the text starts with a tapped prefix button, so the number must start with it. */
   onSearch: (query: string, anchorPrefix: string) => void;
   onClear: () => void;
@@ -376,6 +400,9 @@ interface CustomKeyboardProps {
 const CustomKeyboard = memo<CustomKeyboardProps>(({
   prefixes,
   isPrefixesLoading,
+  hasCustomer,
+  prefixesFailed,
+  onRetry,
   onSearch,
   onClear,
 }) => {
@@ -527,8 +554,27 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
           </>
         ) : (
           <View style={styles.noPrefixContainer}>
-            <Icon name="information" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.keyboardMessage}>{tr('dispatch.grnSheet.noStockLeft')}</Text>
+            <View style={styles.noPrefixMessageRow} testID="grn-keypad-message-row">
+              <Icon name="information" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.keyboardMessage}>
+                {!hasCustomer
+                  ? tr('dispatch.grnSheet.noCustomerMessage')
+                  : prefixesFailed
+                    ? tr('dispatch.grnSheet.loadFailed')
+                    : tr('dispatch.grnSheet.noStockLeft')}
+              </Text>
+            </View>
+            {hasCustomer && prefixesFailed && (
+              <Pressable
+                onPress={onRetry}
+                style={({ pressed }) => [styles.keypadRetryButton, pressed && styles.retryButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={tr('common.retry')}
+                testID="grn-keypad-retry"
+              >
+                <Text style={styles.retryText}>{tr('common.retry')}</Text>
+              </Pressable>
+            )}
           </View>
         )}
         <Pressable
@@ -676,13 +722,18 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   // Latest request per list: a slow answer for a previous customer must not overwrite the current one.
   const defaultsRequestRef = useRef(0);
   const prefixesRequestRef = useRef(0);
+  const searchRequestRef = useRef(0);
 
   // Fetch prefixes and default GRNs when modal opens
   useEffect(() => {
     if (isVisible) {
       loadPrefixes();
       loadDefaultGRNs();
-      // Reset search state when modal opens
+      // Reset search state when modal opens; a query typed for another customer must not be re-run by Retry
+      lastQueryRef.current = '';
+      lastAnchorRef.current = '';
+      searchRequestRef.current++;
+      setIsLoading(false);
       setHasSearchQuery(false);
       setGrnList([]);
     }
@@ -698,6 +749,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
       return;
     }
 
+    // A new customer must not show the previous customer's list while this one loads.
+    setDefaultGrnList([]);
     setIsLoadingDefaults(true);
     setDefaultsFailed(false);
     try {
@@ -747,6 +800,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
 
   // Handle search from CustomKeyboard - called with debounced query
   const handleSearch = useCallback(async (query: string, anchorPrefix = '') => {
+    const requestId = ++searchRequestRef.current;
     lastAnchorRef.current = anchorPrefix;
     setHasSearchQuery(query.length > 0);
     lastQueryRef.current = query;
@@ -754,30 +808,36 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
 
     if (query.trim().length < 1) {
       setGrnList([]);
+      setIsLoading(false);
       return;
     }
 
     // A dispatch only takes its own customer's stock: without a customer there is nothing to search.
     if (!customerId) {
       setGrnList([]);
+      setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
     try {
       const results = anchorPrefix ? await searchGRNNumbers(query, customerId, { startsWith: anchorPrefix }) : await searchGRNNumbers(query, customerId);
+      if (requestId !== searchRequestRef.current) return;
       setGrnList(results);
     } catch (error) {
+      if (requestId !== searchRequestRef.current) return;
       if (__DEV__) console.error('[GRNAutocompleteBottomSheet] Search error:', error);
       setGrnList([]);
       setSearchFailed(true);
     } finally {
-      setIsLoading(false);
+      if (requestId === searchRequestRef.current) setIsLoading(false);
     }
   }, [customerId]);
 
   // Handle clear from CustomKeyboard
   const handleClear = useCallback(() => {
+    searchRequestRef.current++; // a search still in flight must not show or change anything
+    setIsLoading(false);
     lastQueryRef.current = '';
     setSearchFailed(false);
     setHasSearchQuery(false);
@@ -968,8 +1028,12 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
 
             {/* Search field and keypad - always visible, within thumb reach */}
             <CustomKeyboard
+              key={customerId ?? 'no-customer'}
               prefixes={prefixes}
               isPrefixesLoading={isPrefixesLoading}
+              hasCustomer={!!customerId}
+              prefixesFailed={prefixesFailed}
+              onRetry={loadPrefixes}
               onSearch={handleSearch}
               onClear={handleClear}
             />
