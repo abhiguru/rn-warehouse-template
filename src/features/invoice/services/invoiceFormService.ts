@@ -530,6 +530,7 @@ export const loadInvoiceFormData = async (
       const packageMark = item.grn_items_package_mark || item.package_mark || '';
       const rack = item.grn_items_rack || item.rack || '';
       const weight = item.grn_items_weight || item.weight || 0;
+      const packaging = item.grn_items_packaging || item.packaging || null;
 
       const dispatchId = item.dispatches_id || item.dispatch_id || '';
       const dispatchNo = item.dispatches_no || item.dispatch_no || '';
@@ -572,6 +573,7 @@ export const loadInvoiceFormData = async (
         package_mark: packageMark,
         rack: rack,
         weight: weight,
+        packaging,
 
         // Dispatch details
         dispatch_id: dispatchId,
@@ -1048,6 +1050,7 @@ export const loadInvoiceData = async (
         package_mark: item.package_mark || '',
         rack: item.rack || '',
         weight: item.weight || 0,
+        packaging: item.packaging || null,
 
         // Dispatch details - now available from backend
         dispatch_id: item.dispatch_id || '',

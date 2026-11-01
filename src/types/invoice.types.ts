@@ -65,6 +65,8 @@ export interface InvoiceItemData {
   package_mark: string;
   rack: string;
   weight: number;
+  /** What the lot is counted in (Bag, Box, Crate); missing on a server that does not send it (read as bags). */
+  packaging?: string | null;
 
   // Dispatch details
   dispatch_id: string;

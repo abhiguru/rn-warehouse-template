@@ -51,7 +51,8 @@ import {
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
 import { t as tr, formatIdentifier } from '@/i18n';
-import { formatCount, formatFinancialYear } from '@/utils/formatters';
+import { formatFinancialYear } from '@/utils/formatters';
+import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { createLogger } from '@/utils/logger';
 import { invoiceGroupKey } from '@/features/invoice/utils/groupInvoiceItems';
 import type { InvoiceStepProps } from './InvoiceDetailsStep';
@@ -534,7 +535,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             count={groupCount}
             onEdit={lostAnswer || reloading ? undefined : () => handleStepPress(STEP_NUMBERS.ITEMS)}
             editLabel={tr('invoice.review.editItemsA11y')}
-            closedLine={formatCount(totalQty, 'bag')}
+            closedLine={formatPackages(totalQty, sharedPackaging(items.map((item) => item.packaging)))}
             open={openSection === 'items'}
             onToggle={toggleSection}
             deferBody
