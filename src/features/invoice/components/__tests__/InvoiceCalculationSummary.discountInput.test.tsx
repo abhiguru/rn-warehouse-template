@@ -140,3 +140,43 @@ describe('the discount field', () => {
     }
   });
 });
+
+describe('the discount the invoice already has, when the amount before discount changes (D8)', () => {
+  // Storage 500 + labour 200 + tax 35 = 735; a discount of 500 is allowed.
+  const withDiscount: InvoiceHeaderData = { ...header, discount: 500 };
+  const mount = async (onDiscountErrorChange = jest.fn()) => {
+    let tree!: ReactTestRenderer;
+    const element = (h: InvoiceHeaderData) => (
+      <InvoiceCalculationSummary header={h} items={[item]} onDiscountChange={jest.fn()} onDiscountErrorChange={onDiscountErrorChange} />
+    );
+    await act(async () => { tree = create(element(withDiscount)); });
+    return { tree, element, onDiscountErrorChange };
+  };
+
+  it('shows the D8 sentence at once when lowering labour and tax takes the total to zero, and tells the form', async () => {
+    const { tree, element, onDiscountErrorChange } = await mount();
+    expect(shownErrors(tree)).toEqual([]);
+
+    await act(async () => { tree.update(element({ ...withDiscount, labour: 0, tax_amount: 0 })); });
+
+    expect(shownErrors(tree)).toEqual([t('invoice.summary.discountTotalZero')]);
+    expect(onDiscountErrorChange).toHaveBeenLastCalledWith(t('invoice.summary.discountTotalZero'));
+  });
+
+  it('clears the message when the amount goes back up', async () => {
+    const { tree, element, onDiscountErrorChange } = await mount();
+    await act(async () => { tree.update(element({ ...withDiscount, labour: 0, tax_amount: 0 })); });
+    await act(async () => { tree.update(element(withDiscount)); });
+
+    expect(shownErrors(tree)).toEqual([]);
+    expect(onDiscountErrorChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('says the discount is too large when the new amount is below it', async () => {
+    const { tree, element } = await mount();
+    await act(async () => { tree.update(element({ ...withDiscount, discount: 600, labour: 0, tax_amount: 0 })); });
+
+    expect(shownErrors(tree)).toHaveLength(1);
+    expect(shownErrors(tree)[0]).not.toBe(t('invoice.summary.discountTotalZero'));
+  });
+});

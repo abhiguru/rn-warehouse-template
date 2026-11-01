@@ -10,7 +10,7 @@
  * - 44pt minimum touch target
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { forwardRef, useImperativeHandle, useState, useEffect, useCallback, useRef, type ForwardedRef, type ReactElement, type Ref } from 'react';
 import {
   View,
   TextInput,
@@ -91,7 +91,15 @@ interface RemoteAutocompleteInputProps<T> {
 // COMPONENT
 // ============================================================================
 
-export function RemoteAutocompleteInput<T>({
+/** What a parent can ask of the field: the cursor, with the keyboard open. */
+export interface RemoteAutocompleteInputHandle {
+  focus: () => void;
+  /** True while the text field has the cursor. */
+  isFocused: () => boolean;
+  blur: () => void;
+}
+
+function RemoteAutocompleteInputInner<T>({
   value,
   label,
   placeholder: placeholderProp,
@@ -116,7 +124,7 @@ export function RemoteAutocompleteInput<T>({
   rightIcon,
   emptyText: emptyTextProp,
   onTextChange,
-}: RemoteAutocompleteInputProps<T>) {
+}: RemoteAutocompleteInputProps<T>, ref: ForwardedRef<RemoteAutocompleteInputHandle>) {
   const placeholder = placeholderProp ?? tr('components.autocomplete.placeholder');
   const emptyText = emptyTextProp ?? tr('components.autocomplete.noMatches');
   const [query, setQuery] = useState(value);
@@ -131,6 +139,11 @@ export function RemoteAutocompleteInput<T>({
   // suggestions after the operator moved on.
   const searchRequestRef = useRef(0);
   const inputRef = useRef<TextInputRef>(null);
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+    isFocused: () => inputRef.current?.isFocused() ?? false,
+    blur: () => inputRef.current?.blur(),
+  }), []);
 
   const cancelPendingSearch = useCallback(() => {
     searchRequestRef.current += 1;
@@ -533,6 +546,10 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'center' as const,
   },
 });
+
+export const RemoteAutocompleteInput = forwardRef(RemoteAutocompleteInputInner) as <T>(
+  props: RemoteAutocompleteInputProps<T> & { ref?: Ref<RemoteAutocompleteInputHandle> },
+) => ReactElement | null;
 
 // ============================================================================
 // DEFAULT EXPORT

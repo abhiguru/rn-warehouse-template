@@ -161,7 +161,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
       case 'dispatch_deleted':
         return tr('components.changeLog.dispatchDeletedGaveBack', {
           number: formatIdentifier(details.dispatch_no || tr('common.unknown')),
-          bags: formatCount(Number(details.total_quantity_restored ?? 0), 'bag'),
+          bags: formatCount(Number(details.restoration_details?.quantity_restored ?? details.total_quantity_restored ?? 0), 'bag'),
           item: lineName,
         });
       case 'quantity_updated':
@@ -207,10 +207,13 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
     }
     
     // Fallback to top-level data
-    if (entry.grn_no && entry.item_name) {
-      return `→ ${entry.grn_no} ${entry.item_name}`;
+    // The entry's item_name is the server's own English title ("Quantity changed: Dry Red Chillies"): never shown
+    // under the translated title. The lot's item is named from the details when they carry it.
+    if (entry.grn_no) {
+      const lotItem = entry.change_details?.grn_details?.grn_item_name;
+      return lotItem ? `→ ${entry.grn_no} ${lotItem}` : `→ ${entry.grn_no}`;
     }
-    
+
     return null;
   }, []);
 

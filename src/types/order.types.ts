@@ -318,6 +318,9 @@ export interface ChangeLogEntry {
       stock_at_time: number;
     };
     reason?: string;
+    /** A dispatch that was deleted (backend 128-133): the bags it gave back, in either of two shapes. */
+    restoration_details?: { quantity_restored?: number };
+    total_quantity_restored?: number;
     [key: string]: any;
   };
   change_timestamp: string;

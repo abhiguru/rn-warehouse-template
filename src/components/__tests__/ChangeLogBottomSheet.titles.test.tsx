@@ -91,6 +91,32 @@ describe('titles from the action code', () => {
     expect(texts.join('|')).not.toContain('Dispatch reduced quantity');
   });
 
+  it('a deleted dispatch (backend 128-132 shape) counts the bags from restoration_details, and the GRN line has no server English', () => {
+    const deleted = (details: Record<string, unknown>) =>
+      ({ ...entry('x', { action: 'dispatch_deleted', dispatch_no: 'I1234571', grn_details: { grn_item_name: 'Dry Red Chillies' }, ...details }, 'Quantity changed: Dry Red Chillies'), grn_no: 'X0001' }) as ChangeLogEntry;
+    const texts = render([
+      deleted({ restoration_details: { quantity_restored: 20 } }),
+      deleted({ total_quantity_restored: 12 }),
+      deleted({ restoration_details: { quantity_restored: 20 }, total_quantity_restored: 99 }),
+      deleted({}),
+    ]);
+    expect(texts).toEqual(expect.arrayContaining([
+      'Dispatch I1234571 deleted: 20 bags given back to Dry Red Chillies',
+      'Dispatch I1234571 deleted: 12 bags given back to Dry Red Chillies',
+      'Dispatch I1234571 deleted: 0 bags given back to Dry Red Chillies',
+    ]));
+    // restoration_details wins over total_quantity_restored.
+    expect(texts.filter(text => text === 'Dispatch I1234571 deleted: 20 bags given back to Dry Red Chillies')).toHaveLength(2);
+    expect(texts).toContain('→ X0001 Dry Red Chillies');
+    expect(texts.join('|')).not.toContain('Quantity changed');
+  });
+
+  it('the GRN line names no item when the details do not, rather than the server\'s English title', () => {
+    const texts = render([{ ...entry('y', { action: 'dispatch_deleted', dispatch_no: 'D1' }, 'Quantity changed: Dry Red Chillies'), grn_no: 'X0001' } as ChangeLogEntry]);
+    expect(texts).toContain('→ X0001');
+    expect(texts.filter(text => text.startsWith('→')).join('|')).not.toContain('Quantity changed');
+  });
+
   it('writes the bags in Gujarati digits and keeps the dispatch number as typed', () => {
     setLanguage('gu');
     const texts = render([

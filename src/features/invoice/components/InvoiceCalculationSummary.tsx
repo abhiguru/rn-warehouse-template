@@ -342,6 +342,21 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
   );
   const hasFreeLine = useMemo(() => hasZeroChargeLine(items), [items]);
 
+  // The base moved (a charge, labour or tax changed): the discount the invoice already has is checked against the new
+  // base, so a discount that now takes the total to ₹0 shows its sentence here and not only after the question.
+  // A message from text typed in the field stays until that text is corrected.
+  const checkedBase = useRef(base);
+  const baseError = useRef(false);
+  useEffect(() => {
+    if (checkedBase.current === base) return;
+    checkedBase.current = base;
+    if (editing.current) return;
+    if (discountError && !baseError.current) return;
+    const parsed = parseDiscountInput(discountFieldText(header.discount), base, formatInvoiceAmount);
+    baseError.current = parsed.error !== null;
+    if (parsed.error !== discountError) setDiscountError(parsed.error);
+  }, [base]);
+
   const handleDiscountFocus = () => {
     editing.current = true;
     enteredDiscount.current = header.discount;
