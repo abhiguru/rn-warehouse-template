@@ -46,4 +46,33 @@ describe('searchGRNNumbers', () => {
     expect(await searchGRNNumbers('  ', CUSTOMER_A)).toEqual([]);
     expect(calls).toEqual([]);
   });
+
+  it.each([
+    ['D0102', '%D%0102%'],
+    ['DV0102', '%DV%0102%'],
+    ['0102', '%0102%'],
+    ['A', '%A%'],
+    ['0', '%0%'],
+    ['2', '%2%'],
+    ['20102', '%20102%'],
+  ])('searches %s as %s, so a letter prefix finds a longer one', async (typed, pattern) => {
+    await searchGRNNumbers(typed, CUSTOMER_A);
+
+    expect(calls).toContainEqual(['ilike', 'gr_no', pattern]);
+  });
+
+  it.each([
+    ['D', 'D', 'D%'],
+    ['D0102', 'D', 'D%0102%'],
+    ['DV0102', 'D', 'D%V0102%'],
+    ['DV0102', 'DV', 'DV%0102%'],
+    ['DV1', 'DV', 'DV%1%'],
+    ['001', '0', '0%01%'],
+    ['0', '0', '0%'],
+    ['A_', 'A_', 'A\\_%'],
+  ])('with a prefix button tapped, %s after %s is searched as %s (starts with the prefix)', async (typed, prefix, pattern) => {
+    await searchGRNNumbers(typed, CUSTOMER_A, { startsWith: prefix });
+
+    expect(calls).toContainEqual(['ilike', 'gr_no', pattern]);
+  });
 });

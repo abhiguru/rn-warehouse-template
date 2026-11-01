@@ -76,3 +76,7 @@ it('takes a whole number, and the message goes when the text is corrected', asyn
   expect(bags(tree).props.value).toBe('12');
   expect(texts(tree)).not.toContain('Quantity must be a whole number');
 });
+
+it('names the empty field by the lot\'s packaging (bags when no lot says otherwise)', () => {
+  expect(bags(tree).props.placeholder).toBe('Bags');
+});

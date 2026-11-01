@@ -21,16 +21,13 @@ export const orders = {
     orderOf: "{{name}}'s order",
     // A name that ends in s takes only the apostrophe.
     orderOfS: "{{name}}' order",
-    // {{from}} → {{count}} bags: the line's old and new quantity.
-    reduced: { one: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bags' },
-    increased: { one: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bags' },
-    added: { one: '{{order}}: {{item}} ({{grn}}) is added, {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) is added, {{count}} bags' },
+    // {{from}} → {{packs}}: the line's old quantity and its new quantity with what the lot is counted in ("5 bags", "2 boxes").
+    reduced: '{{order}}: {{item}} ({{grn}}) {{from}} → {{packs}}',
+    increased: '{{order}}: {{item}} ({{grn}}) {{from}} → {{packs}}',
+    added: '{{order}}: {{item}} ({{grn}}) is added, {{packs}}',
     removed: '{{item}} ({{grn}}) is removed from {{order}}.',
     removedLast: '{{item}} ({{grn}}) is removed from {{order}}. No line is left, so the order is removed.',
-    exceedsStock: {
-      one: '{{order}}: {{item}} ({{grn}}) asks for {{wanted}} bags, but only {{count}} bag will be in stock.',
-      other: '{{order}}: {{item}} ({{grn}}) asks for {{wanted}} bags, but only {{count}} bags will be in stock.',
-    },
+    exceedsStock: '{{order}}: {{item}} ({{grn}}) asks for {{wanted}}, but only {{packs}} will be in stock.',
   },
   manage: {
     loading: 'Loading order…',

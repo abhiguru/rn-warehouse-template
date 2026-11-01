@@ -36,6 +36,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 import { formatCount } from '@/utils/formatters';
+import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { t as tr } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 
@@ -184,7 +185,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-type UniqueItem = { item_id: string; item_name: string; totalStock: number; lotCount: number };
+type UniqueItem = { item_id: string; item_name: string; totalStock: number; lotCount: number; packaging?: string };
 
 export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   isVisible,
@@ -205,23 +206,28 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   // Group items by unique item_id and calculate total stock
   const uniqueItems = useMemo(() => {
     const itemMap = new Map<string, UniqueItem>();
+    const packagings = new Map<string, Array<string | undefined>>();
 
     items.forEach((item) => {
       if (itemMap.has(item.item_id)) {
         const existing = itemMap.get(item.item_id)!;
         existing.totalStock += item.stock;
         existing.lotCount += 1;
+        packagings.get(item.item_id)!.push(item.packaging);
       } else {
         itemMap.set(item.item_id, {
           item_id: item.item_id,
           item_name: item.item_name,
           totalStock: item.stock,
           lotCount: 1,
+          packaging: item.packaging,
         });
+        packagings.set(item.item_id, [item.packaging]);
       }
     });
 
-    return Array.from(itemMap.values());
+    // The stock of an item is counted in the packaging its lots share; lots of different packaging count as units.
+    return Array.from(itemMap.values()).map((unique) => ({ ...unique, packaging: sharedPackaging(packagings.get(unique.item_id) ?? []) }));
   }, [items]);
 
   // Handle sheet changes
@@ -262,7 +268,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
     ({ item }: { item: UniqueItem }) => {
       const isSelected = currentValue?.item_id === item.item_id;
       const lots = tr('dispatch.count.lots', { count: item.lotCount });
-      const available = tr('dispatch.itemSheet.available', { bags: formatCount(item.totalStock, 'bag') });
+      const available = tr('dispatch.itemSheet.available', { bags: formatPackages(item.totalStock, item.packaging) });
 
       return (
         <Pressable

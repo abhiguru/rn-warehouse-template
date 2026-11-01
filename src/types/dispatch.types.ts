@@ -414,6 +414,11 @@ export interface BackendDispatchData {
     package_mark?: string;
     grnQty?: number | string;
     grn_qty?: number | string;
+    /** The GRN the line was taken from (backend 0.7.x and newer). */
+    grn_id?: string | null;
+    grnId?: string | null;
+    /** What the lot is counted in (Bag, Box, Crate), when the backend sends it (migration 133). */
+    packaging?: string | null;
     rack?: string;
   }>;
   createdAt?: string;
@@ -516,6 +521,8 @@ export interface RecentDispatchedOrderItem {
   /** What the GRN received, and the GRN's id (backend 0.7.x and newer); absent from an older backend. */
   grn_qty?: number;
   grn_id?: string | null;
+  /** What the lot is counted in (Bag, Box, Crate), when the backend sends it. */
+  packaging?: string | null;
 }
 
 /**

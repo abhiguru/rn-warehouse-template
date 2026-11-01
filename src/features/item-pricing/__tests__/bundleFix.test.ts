@@ -310,6 +310,30 @@ describe('F23: rows a save deleted are listed in the history card', () => {
     ]);
     expect(view.removed.map(r => [r.from, r.begun])).toEqual([['2026-09-15', true], ['2026-10-14', true]]);
   });
+  it('a new rate that starts before every later rate is paired with the earliest one; the others are listed as removed', () => {
+    // C34: two bands; begun 01/10 at 3.00 and planned 01/12 at 4.00 are deleted by a rate saved from 01/09 at 2.50.
+    const rows: ItemPriceHistoryEntry[] = [];
+    let id = 10;
+    for (const [min, max] of [[0, 100], [101, 200]]) {
+      rows.push(entry(id--, 'insert', null, price(2.5, '2026-09-01', null, min, max)));
+      rows.push(entry(id--, 'delete', price(4, '2026-12-01', null, min, max), null));
+      rows.push(entry(id--, 'delete', price(3, '2026-10-01', null, min, max), null));
+    }
+    const view = groupChanges(rows);
+    expect(view.bands.map(b => b.changes.map(c => [c.field, c.before, c.after]).find(c => c[0] === 'monthlyPrice'))).toEqual([['monthlyPrice', 3, 2.5], ['monthlyPrice', 3, 2.5]]);
+    expect(view.removed.map(r => [r.band, r.price, r.from, r.begun])).toEqual([
+      [{ min: 0, max: 100 }, 4, '2026-12-01', false],
+      [{ min: 101, max: 200 }, 4, '2026-12-01', false],
+    ]);
+  });
+  it('a same-day correction (old row deleted, new row inserted) still shows the old price and removes nothing', () => {
+    const view = groupChanges([
+      entry(2, 'insert', null, price(12, '2026-04-01', null)),
+      entry(1, 'delete', price(11, '2026-04-01', null), null),
+    ]);
+    expect(view.bands[0].changes.find(c => c.field === 'monthlyPrice')).toMatchObject({ before: 11, after: 12 });
+    expect(view.removed).toEqual([]);
+  });
   it('bands a correction dropped are listed', () => {
     const view = groupChanges([
       entry(3, 'insert', null, price(5, '2026-01-01', null, 0, 100)),

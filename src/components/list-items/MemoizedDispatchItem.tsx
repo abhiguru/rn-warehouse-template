@@ -12,9 +12,10 @@
 
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
+import { useReducedMotion } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
+import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { formatDate, formatSpokenDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
@@ -24,7 +25,6 @@ import {
   fontWeight,
   iconSize,
   layout,
-  motion,
   radius,
   singleLineText,
   space,
@@ -261,6 +261,8 @@ export interface DispatchLine {
   rack?: string | null;
   gr_no?: string | null;
   grn_qty?: number | null;
+  /** What the lot is counted in (Bag, Box, Crate), when the server sends it; a card total counts bags without it. */
+  packaging?: string | null;
   grn_item_id?: string;
   grn_id?: string | null;
 }
@@ -479,7 +481,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const totalItems = dispatch.total_items || (dispatch.items?.length ?? 0);
   const hasItems = dispatch.items && dispatch.items.length > 0;
   const itemsLabel = formatCount(totalItems, 'item');
-  const bagsLabel = formatCount(totalQty, 'bag');
+  const bagsLabel = formatPackages(totalQty, sharedPackaging((dispatch.items ?? []).map((item) => item.packaging)));
   const dateLabel = formatDate(dispatch.disp_date);
   const matched = hiddenMatches(dispatch, words);
 
@@ -560,9 +562,11 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
 
       {/* Expanded Items Table - SAP Fiori Data Table */}
       {isExpanded && hasItems && (
-        <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
+        // No `entering` animation here: `animateExpand` already fades the section in, and a second opacity animation
+        // on a recycled list cell left the first expand blank (device re-test 2026-11-01).
+        <View style={styles.expandedSection}>
           <DispatchLinesTable items={dispatch.items!} words={words} rowKey={String(dispatchId)} testID={`dispatch-lines-${dispatchId}`} onViewGRN={onViewGRN} />
-        </Animated.View>
+        </View>
       )}
 
       {/* Expand/Collapse Button */}

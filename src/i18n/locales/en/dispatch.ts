@@ -13,7 +13,6 @@ export const dispatch = {
   count: {
     lots: { one: '{{count}} lot', other: '{{count}} lots' },
     itemsLabel: { one: 'Item', other: 'Items' },
-    bagsLabel: { one: 'Bag', other: 'Bags' },
     bagsUnit: { one: 'bag', other: 'bags' },
     invoicesLabel: { one: 'Invoice', other: 'Invoices' },
   },
@@ -391,6 +390,7 @@ export const dispatch = {
     photoOf: 'Dispatch photo {{index}} of {{total}}',
     opensFullScreen: 'Opens the photo full screen',
     allowAccess: 'Allow photo access in Settings to add a photo.',
+    uploadFailedTitle: "Couldn't upload the photo",
     uploadFailedRetry: "Couldn't upload the photo. Try again.",
     added: 'Photo added.',
     tooLarge: 'File size ({{size}}MB) exceeds maximum limit (10MB)',
@@ -471,7 +471,8 @@ export const dispatch = {
       sourceGrn: 'Source GRN',
       sourceGrnReceived: 'GRN/Received',
       grnNumbered: 'GRN {{number}}',
-      bagsDispatched: 'Bags dispatched',
+      // {{things}}: "Bags", "Boxes" or "Crates", by what the lines are counted in.
+      bagsDispatched: '{{things}} dispatched',
       itemLines: 'Item lines',
       mark: 'Mark',
       total: 'Total',

@@ -10,6 +10,7 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { createLogger } from '@/utils/logger';
 import { toCalendarDay } from '@/utils/formatters';
 import { formatIdentifier, t } from '@/i18n';
+import { formatPackages } from '@/utils/packagingWord';
 import type { DispatchHeaderData, DispatchItemData } from '@/types/dispatch.types';
 
 const log = createLogger('orderEffects');
@@ -32,6 +33,8 @@ export interface OrderEffect {
   change: OrderEffectChange;
   /** Only for `exceeds_stock`: what the lot will hold. */
   availableStock: number | null;
+  /** What the lot is counted in: 'Bag', 'Box' or 'Crate'; '' or missing (an older server) reads as bags. */
+  packaging: string | null;
   /** Lines the order keeps after this save; 0 means the order goes. */
   orderLinesLeft: number | null;
 }
@@ -62,6 +65,7 @@ export function parseOrderEffects(raw: unknown): OrderEffect[] {
       itemName: text(e.item_name) ?? '',
       packageMark: text(e.package_mark),
       grnNo: text(e.grn_no),
+      packaging: text(e.packaging),
       oldQuantity: count(e.old_quantity) ?? 0,
       newQuantity: count(e.new_quantity) ?? 0,
       removed: e.removed === true,
@@ -89,13 +93,17 @@ export function orderEffectLines(effects: readonly OrderEffect[] | null | undefi
       case 'removed':
         return t(effect.orderLinesLeft === 0 ? 'orders.effect.removedLast' : 'orders.effect.removed', params);
       case 'added':
-        return t('orders.effect.added', { ...params, count: effect.newQuantity });
+        return t('orders.effect.added', { ...params, packs: formatPackages(effect.newQuantity, effect.packaging) });
       case 'exceeds_stock':
-        return t('orders.effect.exceedsStock', { ...params, wanted: effect.newQuantity, count: effect.availableStock ?? 0 });
+        return t('orders.effect.exceedsStock', {
+          ...params,
+          wanted: formatPackages(effect.newQuantity, effect.packaging),
+          packs: formatPackages(effect.availableStock ?? 0, effect.packaging),
+        });
       case 'increased':
-        return t('orders.effect.increased', { ...params, from: effect.oldQuantity, count: effect.newQuantity });
+        return t('orders.effect.increased', { ...params, from: effect.oldQuantity, packs: formatPackages(effect.newQuantity, effect.packaging) });
       default:
-        return t('orders.effect.reduced', { ...params, from: effect.oldQuantity, count: effect.newQuantity });
+        return t('orders.effect.reduced', { ...params, from: effect.oldQuantity, packs: formatPackages(effect.newQuantity, effect.packaging) });
     }
   });
 }

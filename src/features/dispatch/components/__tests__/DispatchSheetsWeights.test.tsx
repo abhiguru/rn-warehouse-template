@@ -177,6 +177,20 @@ describe('the saved-items sheet', () => {
     expect(badges().some((badge) => /weight|kg|250/i.test(badge))).toBe(false);
   });
 
+  it('counts a Box lot in boxes on the line and in the total', () => {
+    render(<ItemsSummaryBottomSheet isVisible onClose={jest.fn()} items={[{ ...line(50), grnItems_packaging: 'Box', disp_quantity: 1 }]} onDeleteItem={jest.fn()} />);
+
+    expect(texts(tree)).toContain('1 box');
+    expect(texts(tree)).not.toContain('1 bag');
+    expect(badges()).toEqual(['Boxes 1', 'GRNs 1']);
+  });
+
+  it('names the total in units when the lines are counted in different things', () => {
+    render(<ItemsSummaryBottomSheet isVisible onClose={jest.fn()} items={[{ ...line(50), grnItems_packaging: 'Box' }, { ...line(50), unique_id: 'line-2' }]} onDeleteItem={jest.fn()} />);
+
+    expect(badges()[0]).toBe('Units 10');
+  });
+
   it('gives the weight of one bag on the item, as "50 kg each"', () => {
     render(sheet(50));
 

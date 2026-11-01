@@ -92,6 +92,26 @@ describe('Items table', () => {
     expect(heading.props.numberOfLines).toBe(1);
   });
 
+  it('counts in boxes when every line is a Box lot, and in bags when the lines differ', () => {
+    const box = (id: string, qty: number) => item({ id, packaging: 'Box', dispatch_quantity: qty, original_quantity: 188 });
+    render(<DispatchItemsTab items={[box('b1', 1), box('b2', 4)]} />);
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/^Item\|GRN\/Received\|Boxes dispatched\|/);
+    expect(byTestId('dispatch-items-total').props.accessibilityLabel).toBe('Total: 2 item lines from 1 GRN, 5 boxes dispatched');
+    expect(byTestId('dispatch-item-row-b1').props.accessibilityLabel).toContain('Received 188 boxes');
+    expect(byTestId('dispatch-item-row-b1').props.accessibilityLabel).toContain('1 box dispatched');
+    act(() => tree.unmount());
+    render(<DispatchItemsTab items={[box('b1', 1), item({ id: 'g1', packaging: 'Bag', dispatch_quantity: 4 })]} />);
+    expect(byTestId('dispatch-items-total').props.accessibilityLabel).toContain('5 units dispatched');
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-items-table' }))).toMatch(/Units dispatched/);
+  });
+
+  it('counts a GRN row of Box lots in boxes on the GRNs tab', () => {
+    render(<DispatchGRNsTab items={[item({ id: 'b1', packaging: 'Box', dispatch_quantity: 3 })]} />);
+    expect(byTestId('dispatch-grns-total').props.accessibilityLabel).toContain('3 boxes dispatched');
+    expect(byTestId('dispatch-grn-row-grn-161').props.accessibilityLabel).toContain('3 boxes dispatched');
+    expect(textOf(tree.root.findByProps({ testID: 'dispatch-grns-table' }))).toMatch(/Boxes dispatched/);
+  });
+
   it('totals the bags, item lines and distinct source GRNs in the footer', () => {
     render(<DispatchItemsTab items={[rice, wheat, older]} />);
 

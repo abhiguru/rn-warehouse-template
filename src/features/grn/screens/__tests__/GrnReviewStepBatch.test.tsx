@@ -7,7 +7,7 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN, getNextGRNNumber, updateGRN } from '@/features/grn/services/grnFormService';
 import { unpreparedGRNPhotos } from '@/features/grn/services/imageUploadService';
-import { getGrnItemRates } from '@/services/item-pricing-service';
+import { getGrnItemRates, getItemsWithoutRate } from '@/services/item-pricing-service';
 import { showAlert } from '@/utils/alert';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
@@ -18,12 +18,15 @@ let mockRemovedImages: Array<{ id: string; storagePath?: string }> = [];
 let mockNonce: string | null = null;
 let mockNumberTyped = false;
 let mockOffline = false;
+let mockRole: string | undefined;
+let mockInvoiced = false;
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({
       theme: { preference: 'light', brand: 'orange' },
-      grnForm: { items: [], removedImages: mockRemovedImages, submissionNonce: mockNonce, grNoTyped: mockNumberTyped },
+      auth: { userProfile: { role: mockRole } },
+      grnForm: { items: [], removedImages: mockRemovedImages, submissionNonce: mockNonce, grNoTyped: mockNumberTyped, grnInvoiced: mockInvoiced },
     }),
 }));
 // The server is asked about the request code by this (utils/lostAnswer); the tests say what it answers and when. The
@@ -39,6 +42,7 @@ const mockHeader = {
   gr_no: 'A0010',
   date: '2026-10-01',
   sender_name: 'Fictional Sender',
+  customer_id: 'c-fixture',
   customer_name: 'Fictional Traders',
   supervisor_name: 'Fictional Supervisor',
   registration: '',
@@ -56,7 +60,7 @@ let mockForm: Record<string, unknown>;
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
 jest.mock('@/features/grn/rates/useGrnRates', () => require('@/tests/helpers/grnRatesMock').grnRatesModuleMock());
 jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: () => null }));
-jest.mock('@/services/item-pricing-service', () => ({ getGrnItemRates: jest.fn() }));
+jest.mock('@/services/item-pricing-service', () => ({ getGrnItemRates: jest.fn(), getItemsWithoutRate: jest.fn().mockResolvedValue(null) }));
 jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'ready' }) }));
 
 // Children are stand-ins that keep their props, so the test can press their buttons.
@@ -91,10 +95,10 @@ jest.mock('@/utils/localPhotoFiles', () => ({
   releaseLocalPhotos: jest.fn(async () => 0),
 }));
 
-async function render(mode: 'create' | 'edit' = 'create', header: Record<string, unknown> = mockHeader) {
+async function render(mode: 'create' | 'edit' = 'create', header: Record<string, unknown> = mockHeader, items: Array<Record<string, unknown>> = mockItems) {
   mockForm = {
     header,
-    items: mockItems,
+    items,
     grnId: mode === 'edit' ? GRN_ID : null,
     tempGrnId: mode === 'edit' ? null : 'temp_grn_fixture',
     isSaving: false,
@@ -133,7 +137,10 @@ beforeEach(() => {
   mockNonce = null;
   mockNumberTyped = true;
   mockOffline = false;
+  mockRole = undefined;
+  mockInvoiced = false;
   (unpreparedGRNPhotos as jest.Mock).mockReturnValue(null);
+  (getItemsWithoutRate as jest.Mock).mockReset().mockResolvedValue(null);
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -237,3 +244,83 @@ describe('the section the step opens on', () => {
     expect(openOnes(await render('edit', noPhotos))).toEqual(['items']);
   });
 });
+
+describe('staff are told on the Review step which items have no rate (migration 133)', () => {
+  const created = { success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { failed: [], removalFailures: 0 } } };
+  const strip = (tree: ReactTestRenderer) => tree.root.findAll((n) => n.props.testID === 'grn-review-no-rate' && typeof n.type === 'string');
+
+  it('shows the notice before the save, and again in the success dialog after it', async () => {
+    (createGRN as jest.Mock).mockResolvedValue(created);
+    (getItemsWithoutRate as jest.Mock).mockImplementation(async (_customer: string, lines: Array<{ itemId: string }>) => lines.map((l) => l.itemId));
+    (getGrnItemRates as jest.Mock).mockResolvedValueOnce({ rates: [{ item_name: 'Example Potatoes', source: null }] });
+    const tree = await render();
+    expect(strip(tree)).toHaveLength(1);
+    expect(getItemsWithoutRate).toHaveBeenCalledWith('c-fixture', [{ itemId: 'i1', weight: 50 }], '2026-10-01', 'monthly', null);
+    expect(tree.root.findAll((n) => n.props.message === 'No rate yet for Example Potatoes. An administrator adds it before invoicing.').length).toBeGreaterThan(0);
+    await save(tree);
+    expect(successData(tree).notices).toEqual(['No rate yet for Example Potatoes. An administrator adds it before invoicing.']);
+  });
+
+  it('a save while a new check is still pending uses the notice after the save, and the old answer is not shown', async () => {
+    (createGRN as jest.Mock).mockResolvedValue(created);
+    (getItemsWithoutRate as jest.Mock).mockResolvedValueOnce(['i1']);
+    const tree = await render();
+    expect(strip(tree)).toHaveLength(1);
+    // The next check never answers; the items change.
+    (getItemsWithoutRate as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (getGrnItemRates as jest.Mock).mockResolvedValueOnce({ rates: [{ item_name: 'Example Potatoes', source: null }] });
+    mockForm = { ...mockForm, items: [{ ...mockItems[0], weight: 60 }] };
+    await act(async () => { tree.update(<GrnReviewStep mode="create" />); });
+    expect(strip(tree)).toHaveLength(0);
+    await save(tree);
+    expect(successData(tree).notices).toEqual(['No rate yet for Example Potatoes. An administrator adds it before invoicing.']);
+  });
+
+  it('an invoiced GRN is not asked, shows no strip and gets no notice after the save', async () => {
+    mockInvoiced = true;
+    (updateGRN as jest.Mock).mockResolvedValue(created);
+    (getItemsWithoutRate as jest.Mock).mockImplementation(async (_c: string, lines: Array<{ itemId: string }>) => lines.map((l) => l.itemId));
+    (getGrnItemRates as jest.Mock).mockResolvedValue({ rates: [{ item_name: 'Example Potatoes', source: null }] });
+    const tree = await render('edit');
+    expect(getItemsWithoutRate).not.toHaveBeenCalled();
+    expect(strip(tree)).toHaveLength(0);
+    await save(tree);
+    expect(getGrnItemRates).not.toHaveBeenCalled();
+  });
+
+  it.each(['admin', 'supervisor'])('never asks the server about missing rates for %s', async (role) => {
+    mockRole = role;
+    await render();
+    expect(getItemsWithoutRate).not.toHaveBeenCalled();
+  });
+
+  it('sends each line with its weight and the GRN\'s pricing mode', async () => {
+    const heavy = { ...mockItems[0], grn_trl_id: 'g2', weight: 120 };
+    await render('create', { ...mockHeader, pricing_mode: 'ONE_TIME' }, [mockItems[0], heavy]);
+    expect(getItemsWithoutRate).toHaveBeenCalledWith('c-fixture', [{ itemId: 'i1', weight: 50 }, { itemId: 'i1', weight: 120 }], '2026-10-01', 'one_time', null);
+  });
+
+  it('sends the GRN id when editing, and none on create', async () => {
+    await render('edit');
+    expect(getItemsWithoutRate).toHaveBeenLastCalledWith('c-fixture', [{ itemId: 'i1', weight: 50 }], '2026-10-01', 'monthly', GRN_ID);
+    (getItemsWithoutRate as jest.Mock).mockClear();
+    await render('create');
+    expect(getItemsWithoutRate).toHaveBeenLastCalledWith('c-fixture', [{ itemId: 'i1', weight: 50 }], '2026-10-01', 'monthly', null);
+  });
+
+  it('shows nothing when every item has a rate', async () => {
+    (getItemsWithoutRate as jest.Mock).mockResolvedValue([]);
+    const tree = await render();
+    expect(strip(tree)).toHaveLength(0);
+  });
+
+  it('keeps the notice after the save when the server cannot be asked (older server)', async () => {
+    (createGRN as jest.Mock).mockResolvedValue(created);
+    (getGrnItemRates as jest.Mock).mockResolvedValueOnce({ rates: [{ item_name: 'Example Potatoes', source: null }] });
+    const tree = await render();
+    expect(strip(tree)).toHaveLength(0);
+    await save(tree);
+    expect(successData(tree).notices).toEqual(['No rate yet for Example Potatoes. An administrator adds it before invoicing.']);
+  });
+});
+

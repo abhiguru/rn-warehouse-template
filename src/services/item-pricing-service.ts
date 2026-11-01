@@ -840,3 +840,45 @@ export const getGrnItemRates = async (grnId: string): Promise<RpcGrnItemRates | 
     })),
   };
 };
+
+/**
+ * Which of these lines have no rate for the customer on a day, at the line weight and the GRN's pricing mode (backend
+ * migration 133, `get_items_without_rate`): the ids of the items that would be invoiced at no rate. Staff cannot read rates, so this is how a Review step can warn
+ * them before the save. Null when the server lacks the function (an older one) or cannot answer: the caller then
+ * falls back to the notice after the save. Never throws.
+ */
+export const getItemsWithoutRate = async (
+  customerId: string,
+  lines: ReadonlyArray<{ itemId: string; weight: number }>,
+  onDate: string,
+  pricingMode: 'monthly' | 'one_time',
+  /** The GRN being edited: its own GRN-only rates count. Left out on create. */
+  grnId?: string | null,
+): Promise<string[] | null> => {
+  if (!customerId || lines.length === 0) return [];
+  try {
+    const client = await getAuthenticatedClient();
+    const { data, error } = await withTimeout(
+      Promise.resolve(client.rpc('get_items_without_rate', {
+        p_customer_id: customerId,
+        // One entry per line, weights in the same order (0 when unknown), as the RATE_MISSING check reads them.
+        p_item_ids: lines.map(l => l.itemId),
+        p_on: onDate,
+        p_weights: lines.map(l => (Number.isFinite(l.weight) && l.weight > 0 ? Math.round(l.weight) : 0)),
+        p_pricing_mode: pricingMode,
+        ...(grnId ? { p_grn_id: grnId } : {}),
+      })),
+      RPC_TIMEOUT_MS,
+      'Items without a rate',
+    );
+    if (error) {
+      handleGlobalAuthError(error);
+      return null;
+    }
+    const response = unwrapArrayResponse(data) as { success?: unknown; data?: { item_ids?: unknown } | null } | null;
+    if (!response || response.success !== true || !Array.isArray(response.data?.item_ids)) return null;
+    return (response.data.item_ids as unknown[]).filter((id): id is string => typeof id === 'string');
+  } catch {
+    return null;
+  }
+};

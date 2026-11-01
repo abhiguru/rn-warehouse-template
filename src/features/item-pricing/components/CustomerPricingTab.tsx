@@ -16,7 +16,7 @@ import { SectionFooter, SectionHeader } from '@/components/ui/SectionHeader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
-import { customerRateAddPath, customerRatePath } from '../contract';
+import { customerRateAddPath, customerRatePath, itemRatesPath } from '../contract';
 import { customerItemRows } from '../customerRates';
 import { todayDay } from '../rateText';
 import { useItemRates } from '../useItemRates';
@@ -62,6 +62,8 @@ export function CustomerPricingTab({ customerId, customerName, deactivated = fal
     (itemId: string) => router.push(customerRatePath(itemId, customerId, undefined, customerName, deactivated)),
     [customerId, customerName, deactivated],
   );
+  // A deactivated item's rate cannot be edited: a tap opens the item's own Pricing tab, which says it is deactivated.
+  const openItemPage = useCallback((itemId: string) => router.push(itemRatesPath(itemId)), []);
   const addForItem = useCallback(
     (item: PickableItem) => {
       setPicking(false);
@@ -123,7 +125,7 @@ export function CustomerPricingTab({ customerId, customerName, deactivated = fal
       <>
         <SectionHeader title={t('pricing.customerTab.sectionTitle')} count={entries.length} action={addAction} testID="customer-pricing-header" />
         <View style={styles.list}>
-          {entries.map(entry => <CustomerItemRateRow key={entry.itemId} entry={entry} onPress={openItem} />)}
+          {entries.map(entry => <CustomerItemRateRow key={entry.itemId} entry={entry} onPress={entry.deactivated ? openItemPage : openItem} />)}
         </View>
         <SectionFooter text={t('pricing.customerTab.footer')} testID="customer-pricing-footer" />
       </>

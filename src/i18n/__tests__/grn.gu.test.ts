@@ -31,6 +31,13 @@ describe('grn texts in Gujarati', () => {
     expect(t('grn.dispatches.dispatchedOfTotal', { dispatched: 250, total: 1200 })).toBe('250 of 1,200');
   });
 
+  it('lists what a deleted GRN removed without a stock movement line', () => {
+    const args = { items: '2 items', orderItems: '0 order items', images: '1 image' };
+    expect(t('grn.details.removedCounts', args)).toBe('\n\nRemoved:\n• 2 items\n• 0 order items\n• 1 image');
+    expect(t('grn.details.removedCounts', args, 'gu')).not.toContain('{{');
+    expect(t('grn.details.removedCounts', args, 'gu').split('\n•')).toHaveLength(4);
+  });
+
   it('builds a sentence from formatted values', () => {
     setLanguage('gu');
     expect(t('dispatch.details.received', { bags: formatCount(50, 'bag') })).toBe('આવક ૫૦ નંગ');

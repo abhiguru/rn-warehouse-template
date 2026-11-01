@@ -233,7 +233,11 @@ const makeStyles = (t: ThemeTokens) => ({
   quickInputButtonPressed: {
     backgroundColor: t.brand.subtle,
   },
+  // A prefix is one letter or several ("A", "DV"): the button grows with it, side by side with its count.
   prefixButton: {
+    flexDirection: 'row' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
     backgroundColor: t.brand.subtle,
     borderColor: t.brand.subtle,
   },
@@ -364,7 +368,8 @@ const makeStyles = (t: ThemeTokens) => ({
 interface CustomKeyboardProps {
   prefixes: GRNPrefixWithStock[];
   isPrefixesLoading: boolean;
-  onSearch: (query: string) => void;
+  /** `anchorPrefix`: the text starts with a tapped prefix button, so the number must start with it. */
+  onSearch: (query: string, anchorPrefix: string) => void;
   onClear: () => void;
 }
 
@@ -379,6 +384,10 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
   // Local state for instant display - no parent re-render on keystroke
   const [localQuery, setLocalQuery] = useState('');
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The prefix button last tapped; while the text still starts with it the search is anchored to the start.
+  const tappedPrefixRef = useRef('');
+  /** The tapped prefix while the text still starts with it, else '' (a plain "contains" search). */
+  const anchorFor = (text: string) => (tappedPrefixRef.current.length > 0 && text.startsWith(tappedPrefixRef.current) ? tappedPrefixRef.current : '');
 
   // Handle key press with local state update (instant) + debounced parent callback
   const handleKeyPress = useCallback((char: string) => {
@@ -390,35 +399,38 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
       clearTimeout(searchTimeoutRef.current);
     }
     searchTimeoutRef.current = setTimeout(() => {
-      onSearch(newQuery);
+      onSearch(newQuery, anchorFor(newQuery));
     }, 150);
   }, [localQuery, onSearch]);
 
   // Handle prefix tap (replaces entire query)
   const handlePrefixTap = useCallback((prefix: string) => {
+    tappedPrefixRef.current = prefix;
     setLocalQuery(prefix);
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
     searchTimeoutRef.current = setTimeout(() => {
-      onSearch(prefix);
+      onSearch(prefix, prefix);
     }, 150);
   }, [onSearch]);
 
   // Handle backspace
   const handleBackspace = useCallback(() => {
     const newQuery = localQuery.slice(0, -1);
+    if (!anchorFor(newQuery)) tappedPrefixRef.current = '';
     setLocalQuery(newQuery);
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
     searchTimeoutRef.current = setTimeout(() => {
-      onSearch(newQuery);
+      onSearch(newQuery, anchorFor(newQuery));
     }, 150);
   }, [localQuery, onSearch]);
 
   // Handle clear
   const handleClear = useCallback(() => {
+    tappedPrefixRef.current = '';
     setLocalQuery('');
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -497,7 +509,7 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
                 ]}
                 onPress={() => handlePrefixTap(prefixItem.prefix)}
               >
-                <Text style={[styles.quickInputText, styles.prefixText]}>{prefixItem.prefix}</Text>
+                <Text style={[styles.quickInputText, styles.prefixText]} numberOfLines={1}>{prefixItem.prefix}</Text>
                 <Text style={styles.prefixCount} maxFontSizeMultiplier={1.6}>{formatNumber(prefixItem.grnCount)}</Text>
               </Pressable>
             ))}
@@ -660,6 +672,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   const [prefixesFailed, setPrefixesFailed] = useState(false);
   const [searchFailed, setSearchFailed] = useState(false);
   const lastQueryRef = useRef('');
+  const lastAnchorRef = useRef('');
 
   // Fetch prefixes and default GRNs when modal opens
   useEffect(() => {
@@ -716,7 +729,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   }, []);
 
   // Handle search from CustomKeyboard - called with debounced query
-  const handleSearch = useCallback(async (query: string) => {
+  const handleSearch = useCallback(async (query: string, anchorPrefix = '') => {
+    lastAnchorRef.current = anchorPrefix;
     setHasSearchQuery(query.length > 0);
     lastQueryRef.current = query;
     setSearchFailed(false);
@@ -734,7 +748,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
 
     setIsLoading(true);
     try {
-      const results = await searchGRNNumbers(query, customerId);
+      const results = anchorPrefix ? await searchGRNNumbers(query, customerId, { startsWith: anchorPrefix }) : await searchGRNNumbers(query, customerId);
       setGrnList(results);
     } catch (error) {
       if (__DEV__) console.error('[GRNAutocompleteBottomSheet] Search error:', error);
@@ -795,7 +809,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   const handleRetry = useCallback(() => {
     loadPrefixes();
     loadDefaultGRNs();
-    if (lastQueryRef.current.trim().length > 0) void handleSearch(lastQueryRef.current);
+    if (lastQueryRef.current.trim().length > 0) void handleSearch(lastQueryRef.current, lastAnchorRef.current);
   }, [loadPrefixes, loadDefaultGRNs, handleSearch]);
 
   // Empty component for FlatList

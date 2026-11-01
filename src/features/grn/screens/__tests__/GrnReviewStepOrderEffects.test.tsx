@@ -86,7 +86,7 @@ jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 const effect = (over: Partial<OrderEffect>): OrderEffect => ({
   customerId: 'c1', customerName: 'Leading Space Traders', orderId: 'o1', orderNo: 'ORD-1', orderItemId: 'oi1', grnItemId: 'l1',
   itemName: 'Onions', packageMark: null, grnNo: 'T31-G5', oldQuantity: 5, newQuantity: 5, removed: false, change: 'exceeds_stock',
-  availableStock: 3, orderLinesLeft: 1, ...over,
+  availableStock: 3, orderLinesLeft: 1, packaging: null, ...over,
 });
 
 async function render(mode: 'create' | 'edit') {

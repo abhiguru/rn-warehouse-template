@@ -614,7 +614,6 @@ function GRNDetailScreen() {
                   ? tr('grn.details.removedCounts', {
                       items: formatCount(result.deleted_counts.grn_items, 'item'),
                       orderItems: tr('grn.details.orderItemCount', { count: result.deleted_counts.order_items ?? 0 }),
-                      stockMovements: tr('grn.details.stockMovementCount', { count: result.deleted_counts.stock_movements ?? 0 }),
                       images: formatCount(result.deleted_counts.images, 'image'),
                     })
                   : '';

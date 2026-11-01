@@ -9,7 +9,6 @@ import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { DocumentSuccessDialog } from '@/components/DocumentSuccessDialog';
 import { GRNDispatchesTab } from '@/components/grn-details/GRNDispatchesTab';
-import { GRNDispatchTimeline } from '@/components/grn-details/GRNDispatchTimeline';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
@@ -100,7 +99,7 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     expect(tree.root.findByProps({ children: 'Dispatch created' })).toBeTruthy();
   });
 
-  it('renders GRN dispatch table and timeline', () => {
+  it('renders GRN dispatch table', () => {
     const table = renderIn(
       brand,
       mode,
@@ -113,14 +112,5 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     );
     expect(backgrounds(table)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     expect(backgrounds(table)).not.toContain(t.brand.fill);
-
-    const timeline = renderIn(
-      brand,
-      mode,
-      <GRNDispatchTimeline
-        dispatches={[{ id: 'r1', dispatchId: 'd1', dispNo: '42', dispDate: '2026-10-09', dispQuantity: 1 }]}
-      />
-    );
-    expect(backgrounds(timeline)).toContain(t.surface.card);
   });
 });

@@ -17,3 +17,30 @@ describe('mapBackendDispatch: no total weight', () => {
     expect(mapped.items?.[0].weight).toBe(50);
   });
 });
+
+describe('mapBackendDispatch: the GRN of a line', () => {
+  const dispatch = (item: Record<string, unknown>) =>
+    mapBackendDispatch({ id: 'd1', disp_no: 'DD0001', customer_id: 'c1', customer_name: 'Example Customer', items: [{ item_id: 'i1', item_name: 'Potatoes', disp_qty: 5, gr_no: 'A0001', ...item }] } as never);
+
+  it('keeps the GRN id the server sends, so the list can open the GRN', () => {
+    expect(dispatch({ grn_id: 'grn-1' }).items?.[0].grn_id).toBe('grn-1');
+  });
+
+  it('leaves it null for an older server that sends none', () => {
+    expect(dispatch({}).items?.[0].grn_id).toBeNull();
+  });
+});
+
+describe('mapBackendDispatch: the packaging of a line', () => {
+  const dispatch = (item: Record<string, unknown>) =>
+    mapBackendDispatch({ id: 'd1', disp_no: 'DD0001', customer_id: 'c1', customer_name: 'Example Customer', items: [{ item_id: 'i1', item_name: 'Potatoes', disp_qty: 5, gr_no: 'A0001', ...item }] } as never);
+
+  it('keeps the packaging the server sends, so the list card can count in boxes', () => {
+    expect(dispatch({ packaging: 'Box' }).items?.[0].packaging).toBe('Box');
+  });
+
+  it('leaves it null for an older server, or an empty text', () => {
+    expect(dispatch({}).items?.[0].packaging).toBeNull();
+    expect(dispatch({ packaging: '' }).items?.[0].packaging).toBeNull();
+  });
+});
