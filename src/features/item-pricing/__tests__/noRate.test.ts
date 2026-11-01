@@ -25,6 +25,10 @@ describe('items with no rate (the Items list tag and filter)', () => {
     expect(ids(['a'], [make('a', { effective_to: '2026-06-30' }), make('a', { effective_from: '2027-01-01' })])).toEqual(['a']);
   });
 
+  it('reaches back per price type: an ended monthly rate with a planned one-time rate is rated', () => {
+    expect(ids(['a'], [make('a', { effective_to: '2026-06-30' }), make('a', { price_type: 'one_time', effective_from: '2027-01-01' })])).toEqual([]);
+  });
+
   it("a customer's rate does not make the item rated, planned or not", () => {
     expect(ids(['a'], [make('a', { customer_id: 'orchard-b', customer_name: 'Orchard B' })])).toEqual(['a']);
     expect(ids(['a'], [make('a', { customer_id: 'orchard-b', customer_name: 'Orchard B', effective_from: '2027-01-01' })])).toEqual(['a']);

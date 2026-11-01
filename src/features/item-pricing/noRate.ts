@@ -12,7 +12,7 @@ import { firstDefaultStart, rateState } from './rateModel';
 export function itemIdsWithoutRate(items: ActiveItem[], rates: ItemStoragePrice[], day: string): Set<string> {
   const rated = new Set<string>();
   for (const rate of rates) {
-    if (rate.customer_id === null && (rateState(rate, day) === 'inForce' || firstDefaultStart(rates, rate.item_id, day) !== null)) {
+    if (rate.customer_id === null && (rateState(rate, day) === 'inForce' || firstDefaultStart(rates, rate.item_id, day, rate.price_type) !== null)) {
       rated.add(rate.item_id);
     }
   }
