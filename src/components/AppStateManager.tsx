@@ -12,10 +12,11 @@
  * @module components/AppStateManager
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { checkTokenExpiry, selectUserProfile } from '@/store/slices/authSlice';
+import { checkTokenExpiry, forceLogoutOnInvalidToken, selectUserProfile } from '@/store/slices/authSlice';
+import { readSessionEnd, scheduleSessionEnd, sessionEndedReason } from '@/config/sessionEnd';
 import { useAppState, STALE_THRESHOLDS, shouldRefreshAfterBackground } from '@/hooks/useAppState';
 import { createLogger } from '@/utils/logger';
 
@@ -53,6 +54,26 @@ export function AppStateManager({ children }: AppStateManagerProps) {
   // Use memoized selector to prevent re-renders on unrelated auth state changes
   const userProfile = useAppSelector(selectUserProfile);
 
+  // A session started with a code from the facility ends at a time the facility named: sign out then, and on return to
+  // the foreground when the time passed meanwhile (src/config/sessionEnd.ts). Other sessions have no such end.
+  const [foregroundCount, setForegroundCount] = useState(0);
+  const signedIn = Boolean(userProfile);
+  useEffect(() => {
+    if (!signedIn) return undefined;
+    let cancelled = false;
+    let cancel = () => {};
+    void readSessionEnd().then(endsAt => {
+      if (cancelled || endsAt === null) return;
+      cancel = scheduleSessionEnd(endsAt, () => {
+        void dispatch(forceLogoutOnInvalidToken(sessionEndedReason()));
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancel();
+    };
+  }, [dispatch, signedIn, foregroundCount]);
+
   // Track if this is initial mount (skip first foreground callback)
   const isInitialMount = useRef(true);
 
@@ -67,6 +88,7 @@ export function AppStateManager({ children }: AppStateManagerProps) {
     if (__DEV__) {
       logger.info('App returned to foreground');
     }
+    setForegroundCount(count => count + 1);
 
     // Only perform authenticated user actions if logged in
     if (userProfile) {

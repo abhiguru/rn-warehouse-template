@@ -67,6 +67,7 @@ export function convertOrderToDispatchData(order: Order): ConvertedDispatchData 
       grnItems_quantity: grnItem.original_quantity,
       grnItems_stock: grnItem.current_stock,
       grnItems_package_mark: grnItem.package_mark || '',
+      grnItems_packaging: grnItem.packaging || undefined,
       grnItems_rack: grnItem.rack || '',
       grnItems_weight: grnItem.weight || 0,
 

@@ -230,7 +230,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                 accessibilityRole="button"
                 accessibilityLabel={
                   isFieldActive(field, values[field.key])
-                    ? translate('filters.page.pickerRowSet', { label: field.label, value: describeValue(field, values[field.key]) })
+                    ? translate('filters.page.pickerRowSet', { label: field.label, value: describeValue(field, values[field.key], true) })
                     : translate('filters.page.pickerRowAny', { label: field.label })
                 }
               >

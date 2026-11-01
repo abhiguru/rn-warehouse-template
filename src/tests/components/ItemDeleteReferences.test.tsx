@@ -1,5 +1,6 @@
 /** G-30: 'Can't delete this item' lists where the item is used, under the names the server sends. */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Text } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import ItemsScreen from '../../../app/items';
@@ -61,7 +62,7 @@ const ITEMS = [
 const listOf = (data: unknown[], total = data.length) => ({ success: true, message: '', data, pagination: { total_count: total } });
 const renderItems = async () => {
   jest.mocked(itemService.getItemList).mockResolvedValue(listOf(ITEMS, 91) as never);
-  await act(async () => { tree = create(<ItemsScreen />); });
+  await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
 };
 beforeEach(() => {
   jest.clearAllMocks();

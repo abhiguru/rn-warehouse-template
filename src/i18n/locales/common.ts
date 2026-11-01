@@ -67,6 +67,9 @@ const gu: CommonWords = {
   nouns: {
     item: same('આઇટમ'),
     bag: same('નંગ'),
+    // A box or a crate is named as such (the glossary keeps નંગ for a bag as a count).
+    box: same('બૉક્સ'),
+    crate: same('ક્રેટ'),
     dispatch: same('જાવક'),
     GRN: same('આવક પાવતી'),
     invoice: same('ઇન્વૉઇસ'),

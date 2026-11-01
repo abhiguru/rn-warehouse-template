@@ -216,7 +216,7 @@ describe('the discount text (P1-6)', () => {
     expect(field().props.value).toBe(shown);
   });
 
-  it('is empty when cleared, and shows the discount the invoice has after refused text', async () => {
+  it('is empty when cleared, and keeps refused text with its message after the field is left', async () => {
     await render({ discount: 250 });
     expect(field().props.value).toBe('250.00');
     await focus();
@@ -226,7 +226,8 @@ describe('the discount text (P1-6)', () => {
     await focus();
     await type('99999999999');
     await blur();
-    expect(field().props.value).toBe('');
+    // Refused text stays as typed (style guide 13.7); the Review refuses Save until it is fixed.
+    expect(field().props.value).toBe('99999999999');
   });
 
   it('is at full width and at least touchTarget tall', async () => {

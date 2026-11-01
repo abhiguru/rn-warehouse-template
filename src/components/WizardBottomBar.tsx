@@ -28,6 +28,18 @@ export interface WizardBottomBarProps {
   previousAccessibilityLabel?: string;
   previousTestID?: string;
   nextTestID?: string;
+  /**
+   * The Items steps of the GRN and the dispatch: a middle button "Add item" (outlined) beside Back and Next. Back then
+   * shrinks to an icon (‹, still read as Back) and Next is named "Review" unless `nextLabel` says otherwise. Active only
+   * when `onAdd` is given. It stays pressable (style guide §10: a tap shows what is missing); `addDisabled` is for a
+   * save already running.
+   */
+  onAdd?: () => void | Promise<void>;
+  /** "Add item" by default; "Save changes" while a saved item is being corrected. */
+  addLabel?: string;
+  addDisabled?: boolean;
+  addAccessibilityLabel?: string;
+  addTestID?: string;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -61,6 +73,12 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.sm,
     paddingHorizontal: space.lg,
   },
+  // Back as an icon only (the bar has an Add item button): as wide as it is tall, never stretched.
+  backIconButton: {
+    flex: 0,
+    width: 48,
+    paddingHorizontal: 0,
+  },
   backButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
@@ -87,6 +105,11 @@ const makeStyles = (t: ThemeTokens) => ({
   buttonDisabled: {
     opacity: t.interaction.disabledOpacity,
   },
+  addButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
 });
 
 /**
@@ -108,6 +131,11 @@ export default function WizardBottomBar({
   previousAccessibilityLabel,
   previousTestID,
   nextTestID,
+  onAdd,
+  addLabel,
+  addDisabled = false,
+  addAccessibilityLabel,
+  addTestID,
 }: WizardBottomBarProps) {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -115,7 +143,8 @@ export default function WizardBottomBar({
   const { stacked } = useTableLayout();
 
   const isLastStep = currentStep >= totalSteps;
-  const label = nextLabel ?? (isLastStep ? tr('components.wizard.createGrn') : tr('common.next'));
+  const hasAdd = !!onAdd;
+  const label = nextLabel ?? (hasAdd ? tr('components.wizard.review') : isLastStep ? tr('components.wizard.createGrn') : tr('common.next'));
   const loadingLabel = loadingLabelProp ?? tr('common.saving');
 
   const handlePrevious = () => {
@@ -133,11 +162,41 @@ export default function WizardBottomBar({
 
   const showPreviousButton = showPrevious && !!onPrevious && currentStep > 1;
 
+  // With the Add item button Back is an icon, unless the buttons are stacked: then each is a full-width row.
+  const backIconOnly = hasAdd && !stacked;
+  const handleAdd = () => {
+    if (onAdd && !addDisabled && !isLoading) {
+      return onAdd();
+    }
+  };
+  const addText = addLabel ?? tr('components.wizard.addItem');
+  const addButton = hasAdd ? (
+    <Pressable
+      style={({ pressed }) => [
+        styles.button,
+        styles.backButton,
+        stacked && styles.buttonStacked,
+        pressed && styles.backButtonPressed,
+        (addDisabled || isLoading) && styles.buttonDisabled,
+      ]}
+      onPress={handleAdd}
+      disabled={addDisabled || isLoading}
+      accessibilityRole="button"
+      accessibilityLabel={addAccessibilityLabel ?? addText}
+      accessibilityState={{ disabled: addDisabled || isLoading }}
+      testID={addTestID}
+    >
+      <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
+      <Text style={styles.addButtonText} numberOfLines={1}>{addText}</Text>
+    </Pressable>
+  ) : null;
+
   const backButton = showPreviousButton ? (
     <Pressable
       style={({ pressed }) => [
         styles.button,
         styles.backButton,
+        backIconOnly && styles.backIconButton,
         stacked && styles.buttonStacked,
         pressed && styles.backButtonPressed,
         isLoading && styles.buttonDisabled,
@@ -150,7 +209,7 @@ export default function WizardBottomBar({
       testID={previousTestID}
     >
       <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
-      <Text style={styles.backButtonText}>{tr('common.back')}</Text>
+      {backIconOnly ? null : <Text style={styles.backButtonText}>{tr('common.back')}</Text>}
     </Pressable>
   ) : null;
   const nextButton = (
@@ -189,11 +248,13 @@ export default function WizardBottomBar({
       {stacked ? (
         <>
           {nextButton}
+          {addButton}
           {backButton}
         </>
       ) : (
         <>
           {backButton}
+          {addButton}
           {nextButton}
         </>
       )}

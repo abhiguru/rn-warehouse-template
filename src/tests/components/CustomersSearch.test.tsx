@@ -1,5 +1,6 @@
 /** G-20: search, count line, "no match" and a refresh that fails while rows are shown. */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Text, TextInput } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import CustomersScreen from '../../../app/customers';
@@ -29,7 +30,7 @@ const rows = [
 
 let tree: ReactTestRenderer | undefined;
 const mount = async () => {
-  await act(async () => { tree = create(<CustomersScreen />); });
+  await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
   return tree as ReactTestRenderer;
 };
 const text = (screen: ReactTestRenderer) =>

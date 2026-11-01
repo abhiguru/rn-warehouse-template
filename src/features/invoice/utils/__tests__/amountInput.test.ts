@@ -21,8 +21,9 @@ describe('a line rate as typed', () => {
     expect(parseRateInput('charge', '0.5').value).toBe(0.5);
   });
 
-  it('reads an empty field as zero, which the server allows', () => {
-    expect(parseRateInput('labour_rate', '')).toEqual({ text: '', value: 0, error: null });
+  it('reads an empty field as no figure, not as zero: a 0 must be typed', () => {
+    expect(parseRateInput('labour_rate', '')).toEqual({ text: '', value: null, error: null });
+    expect(parseRateInput('charge', '  ')).toEqual({ text: '', value: null, error: null });
   });
 
   it('reads digits typed in Gujarati', () => {
@@ -87,7 +88,9 @@ describe('the discount as typed', () => {
       value: null,
       error: t('invoice.summary.discountTooLarge', { amount: '₹998' }),
     });
-    expect(parseDiscountInput('998', 998, money).value).toBe(998);
+    // The whole amount would take the total to exactly 0, which a discount may not do.
+    expect(parseDiscountInput('998', 998, money)).toMatchObject({ value: null, error: t('invoice.summary.discountTotalZero') });
+    expect(parseDiscountInput('997.99', 998, money).value).toBe(997.99);
   });
 });
 
@@ -97,5 +100,30 @@ describe('the text a field starts with', () => {
     expect(amountText(5.5)).toBe('5.5');
     expect(amountText(-40)).toBe('-40');
     expect(amountText(undefined)).toBe('');
+  });
+});
+
+describe('a discount that would take the total to 0', () => {
+  const describeMax = (amount: number) => `₹${amount}`;
+
+  it('is refused under Discount with the sentence of the rule, at the amount before discount', () => {
+    expect(parseDiscountInput('184', 184, describeMax)).toEqual({
+      text: '184', value: null, error: "A discount can't take the total to ₹0. To charge nothing, set the charge to 0 and give a reason.",
+    });
+    expect(parseDiscountInput('184.00', 184, describeMax).error).toBe(t('invoice.summary.discountTotalZero'));
+  });
+
+  it('allows a discount that leaves something to pay, and still says "more than" above the amount', () => {
+    expect(parseDiscountInput('183.99', 184, describeMax)).toMatchObject({ value: 183.99, error: null });
+    expect(parseDiscountInput('184.01', 184, describeMax).error).toBe(t('invoice.summary.discountTooLarge', { amount: '₹184' }));
+  });
+
+  it('does not refuse a discount of 0 on an invoice of 0', () => {
+    expect(parseDiscountInput('0', 0, describeMax)).toMatchObject({ value: 0, error: null });
+  });
+
+  it('is worded in Gujarati with the digit ૦', () => {
+    setLanguage('gu');
+    expect(parseDiscountInput('184', 184, describeMax).error).toContain('₹૦');
   });
 });

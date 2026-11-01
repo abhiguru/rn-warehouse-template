@@ -43,7 +43,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
+jest.mock('@/components/skeletons', () => ({ ListSkeleton: 'ListSkeleton' }));
 jest.mock('@/components/list-items', () => ({ MemoizedOrderItem: () => null }));
 jest.mock('@/components/CustomerSearchBottomSheet', () => ({
   CustomerSearchBottomSheet: require('react').forwardRef(() => null),
@@ -129,5 +129,23 @@ it('loads a change made while hidden once on the return as a new first page, and
   expect(mockHeader.loading).toBe(false);
   await act(async () => { finish(answer); });
   expect(getOrdersList).toHaveBeenCalledTimes(3);
+  await act(async () => { renderer.unmount(); });
+});
+
+it('shows the skeleton while a new search with no rows on screen is pending', async () => {
+  const empty = { success: true, message: '', data: [], metadata: { has_more: false } } as OrderServiceResponse<Order[]>;
+  getOrdersList.mockResolvedValue(empty);
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<OrderFlashList />); });
+  const skeletons = () => renderer.root.findAllByType('ListSkeleton' as unknown as React.ElementType).length;
+  expect(skeletons()).toBe(0);
+
+  let finish!: (value: OrderServiceResponse<Order[]>) => void;
+  getOrdersList.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  mockFilters.request = { search: 'onion' };
+  await act(async () => { renderer.update(<OrderFlashList />); });
+  expect(skeletons()).toBe(1);
+  await act(async () => { finish(empty); });
+  expect(skeletons()).toBe(0);
   await act(async () => { renderer.unmount(); });
 });

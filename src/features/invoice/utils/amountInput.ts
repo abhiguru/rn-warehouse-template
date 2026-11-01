@@ -44,10 +44,16 @@ const rangeMessage = (field: RateField): string =>
       ? t('invoice.validation.labourRateRange')
       : t('invoice.validation.taxRange');
 
-/** A line rate as typed. An empty field is 0, which the server allows. */
+/** The range message of a line field: what an emptied or refused Charge, Labour or Tax says. */
+export const rateRangeMessage = rangeMessage;
+
+/**
+ * A line rate as typed. An empty field has no figure (it is not 0: a 0 must be typed): value null, and no message while it
+ * is being typed; Next and leaving the field refuse it with the range message (`settle`).
+ */
 export function parseRateInput(field: RateField, typed: string): ParsedAmount {
   const text = normalizeDigits(typed).trim();
-  if (text === '') return { text, value: 0, error: null };
+  if (text === '') return { text, value: null, error: null };
   if (text === '.') return { text, value: null, error: null };
   // A minus sign followed by a number (or nothing yet): the number is below the range.
   if (/^-(\d+\.?\d*|\.\d*)?$/.test(text)) return { text, value: null, error: rangeMessage(field) };
@@ -67,7 +73,8 @@ export const clampDiscount = (discount: number, base: number): number =>
 /**
  * The discount as typed. A negative discount is a surcharge and is allowed. A discount above `maxDiscount` (the amount
  * before the discount) is not, and neither is one beyond the save's own limit (999,999.99, in either direction):
- * the field says so at once, not after the confirm.
+ * the field says so at once, not after the confirm. A discount equal to the amount before discount would take the total to
+ * exactly 0, which a discount may not do (to charge nothing, the charge is set to 0 with a reason): refused the same way.
  */
 export function parseDiscountInput(typed: string, maxDiscount: number, describeMax: (amount: number) => string): ParsedAmount {
   const text = normalizeDigits(typed).trim();
@@ -78,6 +85,9 @@ export function parseDiscountInput(typed: string, maxDiscount: number, describeM
   const max = Math.min(maxDiscount, DISCOUNT_LIMIT);
   if (value > max) {
     return { text, value: null, error: t('invoice.summary.discountTooLarge', { amount: describeMax(max) }) };
+  }
+  if (value > 0 && Math.round(value * 100) === Math.round(maxDiscount * 100)) {
+    return { text, value: null, error: t('invoice.summary.discountTotalZero') };
   }
   if (value < -DISCOUNT_LIMIT) {
     return { text, value: null, error: t('invoice.summary.surchargeTooLarge', { amount: describeMax(DISCOUNT_LIMIT) }) };

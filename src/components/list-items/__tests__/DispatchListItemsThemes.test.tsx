@@ -202,7 +202,7 @@ describe('weights on the dispatch cards', () => {
 
     expect(texts(tree)).toEqual(expect.arrayContaining(['Kg each', '50', '311', '5']));
     expect(texts(tree)).not.toContain('Kg');
-    expect(labels(tree)).toContain('Potatoes, rack B-14, 50 kg each, GRN 311, 5 dispatched');
+    expect(labels(tree)).toContain('Potatoes, PM, rack B-14, 50 kg each, GRN 311, 5 dispatched');
   });
 
   it.each([[0], [null]])('a line whose lot has no weight (%s) shows a dash, not 0, and is read without a weight', (weight) => {
@@ -220,11 +220,11 @@ describe('weights on the dispatch cards', () => {
     tree = openRecent(recentFiveBags({ weight }));
     expect(texts(tree)).toEqual(expect.arrayContaining(['Kg each', '—']));
     expect(texts(tree)).not.toContain('0');
-    expect(labels(tree)).toContain('Potatoes, rack B-14, GRN 311, 5 dispatched');
+    expect(labels(tree)).toContain('Potatoes, PM, rack B-14, GRN 311, 5 dispatched');
     act(() => tree.unmount());
 
     tree = openRecent(recentFiveBags({ weight, rack: null }));
-    expect(labels(tree)).toContain('Potatoes, GRN 311, 5 dispatched');
+    expect(labels(tree)).toContain('Potatoes, PM, GRN 311, 5 dispatched');
   });
 
   it('in Gujarati: "દરેકના kg" over ૫૦, read as દરેક ૫૦ કિલો, and without a weight read without one', () => {
@@ -242,13 +242,26 @@ describe('weights on the dispatch cards', () => {
     expect(labels(tree)).toContain('Potatoes, PM, આવક પાવતી 311, ૫ નંગ જાવક');
   });
 
-  // The drawn width cannot be measured here. The dispatch card's table sizes "Kg each" with
-  // `numberColumnWidth` (56 dp at font scale 1, grown with the text); the recent card keeps 72 dp for its heading.
-  it('the weight column of the recent card leaves its heading 72 dp to write in', () => {
+  it('the recent card opens the GRN of a line that has a GRN id, and shows plain text for one that has none', () => {
+    const onViewGRN = jest.fn();
+    const withId = { ...recentFiveBags(), items: [{ ...recentFiveBags().items[0], grn_id: 'grn-9', grn_qty: 200 }] } as RecentDispatchedOrder;
+    tree = render(<RecentDispatchedOrderCard dispatch={withId} onPress={jest.fn()} onViewGRN={onViewGRN} />);
+    act(() => tree.root.find(node => typeof node.props.onPress === 'function' && node.props.accessibilityState?.expanded === false).props.onPress());
+    const link = tree.root.find(node => typeof node.props.onPress === 'function' && node.props.testID === 'dispatch-line-grn-grn-9');
+    act(() => link.props.onPress());
+    expect(onViewGRN).toHaveBeenCalledWith('grn-9');
+    expect(texts(tree)).toContain('311/200');
+    act(() => tree.unmount());
+
     tree = openRecent(recentFiveBags());
-    const recentColumn = weightColumn(tree);
-    expect((recentColumn.width as number) - ((recentColumn.paddingRight as number) || 0)).toBeGreaterThanOrEqual(72);
-    expect(recentColumn.width).toBeLessThanOrEqual(72);
+    expect(tree.root.findAll(node => String(node.props.testID).startsWith('dispatch-line-grn-'))).toHaveLength(0);
+  });
+
+  it('the recent card draws the same lines table as the dispatch card', () => {
+    tree = openRecent(recentFiveBags());
+    const grid = tree.root.find(node => typeof node.type === 'string' && node.props.testID === 'recent-dispatch-lines-d2');
+    expect(grid).toBeDefined();
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Item', 'Kg each', 'GRN/Received', 'Qty']));
   });
 
   // Review 2026-10-14, finding 2. The 72 dp weight column leaves the name about 70 dp on a
@@ -298,26 +311,21 @@ describe('the item cell of the dispatch cards', () => {
     const rackText = textNode(tree, '(B-14)');
     expect(rackText).not.toBe(nameText);
     expect(nameText.findAll(node => node === rackText)).toHaveLength(0);
-    // Name, rack and mark are stacked in one column, in that order.
+    // Name, mark and rack are stacked in one column, in that order.
     expect(hostParent(rackText)).toBe(itemCell(tree));
     expect(StyleSheet.flatten(itemCell(tree).props.style).flexDirection ?? 'column').toBe('column');
-    expect(cellTexts(tree)).toEqual([name, '(B-14)', 'PM']);
+    expect(cellTexts(tree)).toEqual([name, 'PM', '(B-14)']);
     // The name keeps two lines and then a tail ellipsis; a long rack wraps, it is not cut.
     expect(nameText.props.numberOfLines).toBe(2);
     expect(nameText.props.ellipsizeMode).toBe('tail');
     expect(rackText.props.numberOfLines).toBeUndefined();
-    // The recent card's mark wraps onto a second line. In the dispatch card's table a mark is cut with "…" on one
-    // line at the normal size (§13.7, phone run GL 2026-10-18); the whole mark is in the row's label.
-    if (_card === 'dispatch card') {
-      expect(textNode(tree, 'PM').props.numberOfLines).toBe(1);
-      expect(textNode(tree, 'PM').props.ellipsizeMode).toBe('tail');
-    } else {
-      expect(textNode(tree, 'PM').props.numberOfLines).toBeUndefined();
-    }
-    // The dispatch card's table styles it as the shared secondary text (footnote, 13); the recent card's own is 12.
-    expect(StyleSheet.flatten(rackText.props.style)).toMatchObject({ fontSize: _card === 'dispatch card' ? 13 : 12 });
+    // A mark is cut with "…" on one line at the normal size (§13.7, phone run GL 2026-10-18); the whole mark is in the row's label.
+    expect(textNode(tree, 'PM').props.numberOfLines).toBe(1);
+    expect(textNode(tree, 'PM').props.ellipsizeMode).toBe('tail');
+    // The table styles the rack as the shared secondary text (footnote, 13).
+    expect(StyleSheet.flatten(rackText.props.style)).toMatchObject({ fontSize: 13 });
     // What the row says is unchanged.
-    expect(labels(tree)).toContain(`${name}, ${_card === 'dispatch card' ? 'PM, ' : ''}rack B-14, 50 kg each, GRN 311, 5 dispatched`);
+    expect(labels(tree)).toContain(`${name}, PM, rack B-14, 50 kg each, GRN 311, 5 dispatched`);
   });
 
   it.each(cards)('%s: a lot with no rack has no rack line', (_card, openCard) => {
@@ -325,16 +333,9 @@ describe('the item cell of the dispatch cards', () => {
       tree = openCard({ rack });
       expect(cellTexts(tree)).toEqual([name, 'PM']);
       expect(texts(tree).some(text => text.startsWith('('))).toBe(false);
-      expect(labels(tree)).toContain(`${name}, ${_card === 'dispatch card' ? 'PM, ' : ''}50 kg each, GRN 311, 5 dispatched`);
+      expect(labels(tree)).toContain(`${name}, PM, 50 kg each, GRN 311, 5 dispatched`);
       if (rack === null) act(() => tree.unmount());
     }
-  });
-
-  it('recent dispatch card: the row centres the cells beside a taller item cell', () => {
-    tree = openRecent(recentFiveBags({ item_name: name }));
-    const row = hostParent(itemCell(tree));
-    expect(row.props.accessible).toBe(true);
-    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row', alignItems: 'center' });
   });
 
   it('dispatch card: the table is the shared nested DataTable, one row per line, each read as one element', () => {
@@ -343,19 +344,6 @@ describe('the item cell of the dispatch cards', () => {
     expect(grid).toBeDefined();
     const row = tree.root.find(node => typeof node.type === 'string' && node.props.testID === 'd1-item-g1-0');
     expect(row.props.accessible).toBe(true);
-  });
-
-  // The drawn width cannot be measured here. The recent card gives the GRN cell 92 dp to write in
-  // and lets it wrap after the slash; the dispatch card sizes the column to its text (below).
-  it('recent dispatch card: the GRN cell has 92 dp to write in and wraps rather than shrinking or clipping', () => {
-    tree = openRecent(recentFiveBags({ item_name: name }));
-    const column = headingColumn(tree, 'GRN');
-    expect((column.width as number) - (column.paddingRight as number)).toBeGreaterThanOrEqual(92);
-    expect(weightColumn(tree).width).toBe(72);
-
-    const cell = tree.root.find(node => (node.type as unknown) === 'Text' && /^311/.test(shown(node)));
-    expect(cell.props.numberOfLines).toBeUndefined();
-    expect(cell.props.adjustsFontSizeToFit).toBeFalsy();
   });
 
   it('dispatch card: "311/200" is one figure on one line, in a column sized to it', () => {

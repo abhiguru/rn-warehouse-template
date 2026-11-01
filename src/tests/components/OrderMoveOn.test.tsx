@@ -54,6 +54,7 @@ jest.mock('@/components/ItemCatalogBrowser', () => ({
 jest.mock('@/services/order-service', () => ({
   OrderService: {
     getOrCreateOrder: jest.fn(),
+    getCustomerOrder: jest.fn(),
     getOrderWithItems: jest.fn(),
     updateOrderItemQuantity: jest.fn(),
     removeItemFromOrder: jest.fn(),
@@ -92,6 +93,8 @@ beforeEach(() => {
   mockParams.customerId = 'customer-a';
   mockPicker.props = undefined;
   const orders: Record<string, Order> = { 'order-a': orderOf('order-a', 'customer-a'), 'order-b': orderOf('order-b', 'customer-b') };
+  // These tests are about an older facility's way of opening an order (get_or_create_cart); the new way is in OrderManagementOpen.
+  service.getCustomerOrder.mockReset().mockResolvedValue({ success: false, message: '', notAvailable: true } as never);
   service.getOrCreateOrder.mockReset().mockImplementation((async (customerId: string) =>
     ({ success: true, data: { cart_id: customerId === 'customer-a' ? 'order-a' : 'order-b' } })) as never);
   service.getOrderWithItems.mockReset().mockImplementation((async (id: string) =>

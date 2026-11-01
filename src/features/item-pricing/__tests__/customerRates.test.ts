@@ -62,9 +62,18 @@ describe('customerItemRows: the items a customer has an own rate for', () => {
     expect(later.bands.map(b => b.unit_price)).toEqual([3.2]);
   });
 
-  it('an item whose rate ended has no entry, and an item that is not active has none either', () => {
-    const rates = [mine('onion', 3, '2026-01-01', '2026-06-30'), mine('retired', 5, '2026-01-01'), mine('cumin', 11, '2026-04-01')];
+  it('an item whose rate ended has no entry', () => {
+    const rates = [mine('onion', 3, '2026-01-01', '2026-06-30'), mine('retired', 5, '2026-01-01', '2026-06-30'), mine('cumin', 11, '2026-04-01')];
     expect(customerItemRows(rates, ITEMS, A.id, DAY).map(e => e.itemId)).toEqual(['cumin']);
+  });
+
+  it('an item that is not active still has its entry, named by its rate and marked deactivated', () => {
+    const rates = [mine('retired', 5, '2026-01-01', null, { item_name: 'Review Retired Seed' }), mine('cumin', 11, '2026-04-01'), dflt('retired', 6)];
+    const entries = customerItemRows(rates, ITEMS, A.id, DAY);
+    expect(entries.map(e => [e.itemId, e.name, e.deactivated, e.bands.map(b => b.unit_price), e.defaultBands.map(b => b.unit_price)])).toEqual([
+      ['cumin', 'Review Cumin Bold', false, [11], []],
+      ['retired', 'Review Retired Seed', true, [5], [6]],
+    ]);
   });
 
   it('shows the monthly rate before a one-time one', () => {

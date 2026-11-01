@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { TextInput } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { act } from 'react-test-renderer';
 import type { ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -37,7 +38,9 @@ export function ConnectedEditor({
   const dispatch = useAppDispatch();
   const items = useAppSelector((state) => (state as unknown as State).invoiceForm.items);
   const itemOverrides = useAppSelector((state) => (state as unknown as State).invoiceForm.itemOverrides);
+  // The app's root layout wraps every screen in GestureHandlerRootView; gesture-handler 3 requires it, tests included.
   return (
+    <GestureHandlerRootView>
     <InvoiceItemsEditor
       ref={editorRef}
       items={items}
@@ -47,6 +50,7 @@ export function ConnectedEditor({
       onBulkEdit={(group_key, pricing) => dispatch(bulkUpdateItemGroupPricing({ group_key, pricing }))}
       onRestoreRates={(rates) => dispatch(applySavedRates(rates))}
     />
+    </GestureHandlerRootView>
   );
 }
 

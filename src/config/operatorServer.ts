@@ -7,6 +7,7 @@ import type { PublicConfig } from '@/services/configService';
 import { t } from '@/i18n';
 import { isHostPartChange, parseLanOrigin } from './lanAddress';
 import { setLanContext, toCanonicalUrl, transportFetch } from './lanTransport';
+import { rememberFacilityLan } from './facilityLanMemory';
 import { AppTooOldError } from './appTooOld';
 import { clearUpgradeNotice } from './upgradeNotice';
 import { DISCOVERY_BUSY_CODE, UPGRADING_CODE } from '@/utils/serverText';
@@ -207,6 +208,7 @@ export async function saveOperatorServer(server: OperatorServer, notify = true):
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   activeServer = next;
   syncLanContext(next);
+  if (next.lan) void rememberFacilityLan(next.origin, next.instanceId, lanAddressOf(next));
   if (notify) for (const listener of listeners) listener();
 }
 
@@ -232,6 +234,7 @@ export async function recordServerLanAddress(origin: string, value: unknown): Pr
     ...(offered ? { lan: offered } : {}),
     ...(typedStays && lanTyped ? { lanTyped } : {}),
   };
+  void rememberFacilityLan(next.origin, next.instanceId, lanAddressOf(next));
   if (JSON.stringify(next) === JSON.stringify(current)) return;
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   if (activeServer !== current) return; // the selected server changed while saving
@@ -257,6 +260,7 @@ export async function setTypedLanAddress(text: string): Promise<boolean> {
   if (activeServer !== current) return false;
   activeServer = next;
   syncLanContext(next);
+  void rememberFacilityLan(next.origin, next.instanceId, lanAddressOf(next));
   return true;
 }
 

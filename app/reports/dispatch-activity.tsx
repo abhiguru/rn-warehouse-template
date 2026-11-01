@@ -44,7 +44,7 @@ import { getAllDispatchActivity, getCustomerDispatchActivity } from '@/services/
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllDispatchActivityData, CustomerDispatchRow, DispatchActivityData, DispatchActivityRecord, DispatchItemDetail } from '@/types/report.types';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatSpokenDate } from '@/utils/formatters';
 
 const REPORT_ID = 'dispatch-activity';
 
@@ -425,7 +425,7 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
   const label = [
     tr('reports.dispatchActivity.cardLabel', {
       number: formatIdentifier(dispatch.disp_no),
-      date: formatDate(dispatch.disp_date),
+      date: formatSpokenDate(dispatch.disp_date),
       supervisor,
       bags: formatCount(dispatch.total_qty, 'bag'),
     }),
@@ -437,7 +437,7 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
   // A document number is never cut short (§4).
   const titleText = <HighlightedText style={styles.title} text={title} words={words} />;
   const supervisorText = <HighlightedText style={styles.subtitle} numberOfLines={2} text={supervisor} words={words} />;
-  const dateText = showDate ? <Text style={styles.footnote}>{formatDate(dispatch.disp_date, 'short')}</Text> : null;
+  const dateText = showDate ? <Text style={styles.footnote}>{formatDate(dispatch.disp_date)}</Text> : null;
   const matchedText =
     matched.length > 0 ? <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null;
   const bags = (

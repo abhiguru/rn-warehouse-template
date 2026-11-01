@@ -87,6 +87,8 @@ export interface GRNItemData {
 export interface RemovedGRNImage {
   id: string;
   storagePath?: string;
+  /** Set for a GRN-book (header) photo: it may have to stay in the save's photo list until its replacement is up. */
+  header?: { fileName?: string; fileSize?: number; mimeType?: string };
 }
 
 // Snapshot for rollback support
@@ -237,10 +239,14 @@ const formSignature = (
 };
 
 /** A removed photo that exists on the server (not a photo picked in this form) is kept for the save. */
-const rememberRemovedImage = (state: GRNFormState, image: GRNImageData | undefined) => {
+const rememberRemovedImage = (state: GRNFormState, image: GRNImageData | undefined, isHeader = false) => {
   if (!image || isTemporaryGRNImageId(image.id)) return;
   if (state.removedImages.some(removed => removed.id === image.id)) return;
-  state.removedImages.push({ id: image.id, storagePath: image.storagePath });
+  state.removedImages.push({
+    id: image.id,
+    storagePath: image.storagePath,
+    ...(isHeader ? { header: { fileName: image.fileName, fileSize: image.fileSize, mimeType: image.mimeType } } : {}),
+  });
 };
 
 /** Equal as stored: the same value, or arrays whose entries are equal field by field. */
@@ -390,7 +396,7 @@ const grnFormSlice = createSlice({
       const imageToRemove = state.header.gr_images.find(img => img.id === imageIdToRemove);
 
       state.header.gr_images = state.header.gr_images.filter(img => img.id !== imageIdToRemove);
-      rememberRemovedImage(state, imageToRemove);
+      rememberRemovedImage(state, imageToRemove, true);
     },
 
     // Item image management (supports multiple images per item)

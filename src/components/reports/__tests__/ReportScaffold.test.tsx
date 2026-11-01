@@ -152,7 +152,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
   it('shows the figures, what they cover, the rows and the totals', () => {
     const { text } = render();
     expect(text()).toEqual(expect.arrayContaining(['GRNs', 'GRN A0010', 'GRN A0011', 'Total 2 GRNs']));
-    expect(text()).toContain('15 Jun 2024 – 12 Oct 2024 · Showing 2 of 5 · Last updated 10:42 am');
+    expect(text()).toContain('15/06/24 – 12/10/24 · Showing 2 of 5 · Last updated 10:42 am');
   });
 
   it('shows a skeleton while loading: no rows, no "nothing here"', () => {
@@ -285,7 +285,7 @@ describe('report status line, the saved copy', () => {
   beforeEach(() => {
     mockState = { theme: { preference: 'light', brand: 'orange' } };
   });
-  const LINE = '15 Jun 2024 – 12 Oct 2024 · Showing 2 of 5 · Saved copy, refreshing… · Last updated 10:42 am';
+  const LINE = '15/06/24 – 12/10/24 · Showing 2 of 5 · Saved copy, refreshing… · Last updated 10:42 am';
 
   it('says "Saved copy, refreshing…" beside the time while the kept copy is asked again', () => {
     const { text } = render({ query: { isKeptCopy: true, isFetching: true } });
@@ -293,13 +293,13 @@ describe('report status line, the saved copy', () => {
   });
 
   it('says nothing of it once the facility has answered, or for a fresh answer being refreshed', () => {
-    expect(render({ query: { isKeptCopy: false, isFetching: true } }).text()).toContain('15 Jun 2024 – 12 Oct 2024 · Showing 2 of 5 · Last updated 10:42 am');
+    expect(render({ query: { isKeptCopy: false, isFetching: true } }).text()).toContain('15/06/24 – 12/10/24 · Showing 2 of 5 · Last updated 10:42 am');
     expect(render({ query: { isKeptCopy: true, isFetching: false } }).text()).not.toContain(LINE);
   });
 
   it('leaves the failure to the banner: no "refreshing" once the request failed', () => {
     const { text } = render({ query: { isKeptCopy: true, isFetching: false, error: 'Could not reach the facility' } });
-    expect(text()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", '15 Jun 2024 – 12 Oct 2024 · Showing 2 of 5 · Last updated 10:42 am']));
+    expect(text()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", '15/06/24 – 12/10/24 · Showing 2 of 5 · Last updated 10:42 am']));
     expect(text().some(line => line.includes('refreshing'))).toBe(false);
   });
 
@@ -323,7 +323,7 @@ describe('report layout, figures in groups', () => {
           title="Operations dashboard"
           query={query({})}
           kpiGroups={[
-            { title: 'In 1 Sep – 30 Sep', items: [{ icon: 'package-down', value: 12, label: 'GRNs' }, { icon: 'truck-delivery-outline', value: 7, label: 'Dispatches' }] },
+            { title: 'In 01/09/26 – 30/09/26', items: [{ icon: 'package-down', value: 12, label: 'GRNs' }, { icon: 'truck-delivery-outline', value: 7, label: 'Dispatches' }] },
             { title: 'Nothing here', items: [] },
             { title: 'Right now', items: [{ icon: 'clipboard-list-outline', value: 3, label: 'Pending orders' }] },
           ]}
@@ -338,7 +338,7 @@ describe('report layout, figures in groups', () => {
     mounted.push(tree);
     // The headings are read as headers, in their own words; on screen they are capitals.
     const headers = tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header' && node.props.accessible);
-    expect(headers.map(node => node.props.accessibilityLabel)).toEqual(['In 1 Sep – 30 Sep', 'Right now']);
+    expect(headers.map(node => node.props.accessibilityLabel)).toEqual(['In 01/09/26 – 30/09/26', 'Right now']);
     // Each grid follows its own heading: the figures of a group are under it, not under the other.
     const grids = tree.root.findAllByType(KPIGrid);
     expect(grids.map(grid => grid.props.items.map((item: { label: string }) => item.label))).toEqual([['GRNs', 'Dispatches'], ['Pending orders']]);

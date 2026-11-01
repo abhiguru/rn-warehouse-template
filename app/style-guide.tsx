@@ -45,6 +45,7 @@ import {
   formatMobile,
   formatRelativeTime,
   formatSectionDate,
+  formatSpokenDate,
   formatTemperature,
   formatWeight,
   formatWeightEach,
@@ -393,7 +394,7 @@ export default function StyleGuideScreen() {
 
         <Section title="Formats" styles={styles}>
           <KeyValueCell keyLabel="formatDate" value={formatDate(new Date(2026, 8, 22))} showDivider />
-          <KeyValueCell keyLabel="formatDate short" value={formatDate(new Date(), 'short')} showDivider />
+          <KeyValueCell keyLabel="formatSpokenDate" value={formatSpokenDate(new Date(2026, 8, 22))} showDivider />
           <KeyValueCell keyLabel="formatDateTime" value={formatDateTime(new Date(2026, 9, 9, 16, 5))} showDivider />
           <KeyValueCell keyLabel="formatSectionDate" value={formatSectionDate('2026-10-06')} showDivider />
           <KeyValueCell keyLabel="formatRelativeTime" value={formatRelativeTime(new Date(Date.now() - 5 * 60000).toISOString())} showDivider />

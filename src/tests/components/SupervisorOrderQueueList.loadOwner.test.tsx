@@ -29,7 +29,7 @@ jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 })
 jest.mock('@/features/filters/configs', () => ({ ORDER_QUEUE_FILTERS: { listKey: 'order-queue' } }));
 const mockHeader: { loading?: boolean } = {};
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
-  FilteredListHeader: (props: { loading?: boolean }) => { mockHeader.loading = props.loading; return null; },
+  FilteredListHeader: (props: { loading?: boolean; actions?: React.ReactNode }) => { mockHeader.loading = props.loading; return props.actions ?? null; },
   filteredEmptyProps: () => ({}),
 }));
 const mockFilters: { request: { search?: string }; values: object } = { request: {}, values: {} };
@@ -43,8 +43,8 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
-jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: () => null }));
+jest.mock('@/components/skeletons', () => ({ ListSkeleton: 'ListSkeleton' }));
+jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: 'ListEmptyState' }));
 jest.mock('@/components/list-items/CustomerOrderGroupCard', () => ({ CustomerOrderGroupCard: 'CustomerOrderGroupCard' }));
 jest.mock('@/components/RecentDispatchedOrdersSection', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/services/order-service', () => ({ OrderService: { getOrdersList: jest.fn() } }));
@@ -154,5 +154,31 @@ it('reads "Recently dispatched" again, quietly, on a real return to the queue an
   // A pull to refresh uses its own trigger.
   await act(async () => { list(renderer).props.refreshControl.props.onRefresh(); });
   expect(recent()).toMatchObject({ refreshTrigger: 1, quietRefreshTrigger: 2 });
+  await act(async () => { renderer.unmount(); });
+});
+
+it('counts the whole queue in the header, not only the cards loaded', async () => {
+  getOrdersList.mockResolvedValue({ ...answer, metadata: { has_more: true, total_count: 21 } } as OrderServiceResponse<Order[]>);
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
+  const badge = renderer.root.findAll(n => n.props.accessibilityLabel !== undefined && /21/.test(String(n.props.accessibilityLabel)));
+  expect(badge.length).toBeGreaterThan(0);
+  await act(async () => { renderer.unmount(); });
+});
+
+it('shows the skeleton, not the empty state, while a new search with no rows on screen is pending', async () => {
+  getOrdersList.mockResolvedValue({ success: true, message: '', data: [], metadata: { has_more: false, total_count: 0 } } as OrderServiceResponse<Order[]>);
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
+  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(1);
+
+  let finish!: (value: OrderServiceResponse<Order[]>) => void;
+  getOrdersList.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  mockFilters.request = { search: 'onion' };
+  await act(async () => { renderer.update(<SupervisorOrderQueueList />); });
+  expect(renderer.root.findAllByType('ListSkeleton' as unknown as React.ElementType)).toHaveLength(1);
+  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(0);
+  await act(async () => { finish({ success: true, message: '', data: [], metadata: { has_more: false, total_count: 0 } } as OrderServiceResponse<Order[]>); });
+  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(1);
   await act(async () => { renderer.unmount(); });
 });

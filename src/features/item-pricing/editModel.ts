@@ -10,7 +10,7 @@ import type { ItemStoragePrice, PriceType, ReplaceRatesInput } from '@/types/ite
 import type { EditorMode, EditorParams } from './contract';
 import { rateRights } from './rateRights';
 import { addDays, bandText, dateText, money, unitText } from './rateText';
-import { acceptRentText, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
+import { acceptRentText, labourNumber, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
 
 /** The server allows ten bands in one scope (INVALID_BANDS). */
 export const MAX_BANDS = 10;
@@ -581,7 +581,7 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
       }
     }
     if (rentNumber(band.rent) === null) errors[`band.${i}.rent`] = t('pricing.edit.err.rent');
-    if (band.labour !== undefined && !oneTime && priceNumber(band.labour, 2) === null) {
+    if (band.labour !== undefined && !oneTime && labourNumber(band.labour) === null) {
       errors[`band.${i}.labour`] = t('pricing.edit.err.labour');
     }
     if (band.tax !== undefined) {
@@ -591,7 +591,7 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
   });
 
   const shared = !draft.bands.some(b => b.labour !== undefined);
-  if (shared && !oneTime && priceNumber(draft.labour, 2) === null) errors.labour = t('pricing.edit.err.labour');
+  if (shared && !oneTime && labourNumber(draft.labour) === null) errors.labour = t('pricing.edit.err.labour');
   if (!draft.bands.some(b => b.tax !== undefined)) {
     if (draft.tax.trim() === '') errors.tax = t('pricing.edit.err.taxRequired');
     else {

@@ -12,6 +12,7 @@ import {
 } from '../supabaseConfig';
 import { saveOperatorServer } from '../operatorServer';
 import { resetLanTransport } from '../lanTransport';
+import { installNetReachability, resetNetReachability } from '../netReachability';
 import { isUpgrading, noteDiscoveryUpgrading, noteServerAnswered, resetUpgradeNotice } from '../upgradeNotice';
 import { operatorResumeGate } from '../operatorResume';
 import { store as appStore } from '@/store';
@@ -34,6 +35,10 @@ jest.mock('@/utils/otpRateLimiter', () => ({
   checkOTPRateLimit: jest.fn(),
   recordOTPRequest: jest.fn(),
   clearAllRateLimits: jest.fn(async () => {}),
+}));
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { configure: jest.fn(), addEventListener: jest.fn(() => () => {}), fetch: jest.fn(), refresh: jest.fn(async () => ({})) },
 }));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '0.1.0' } } }));
 
@@ -302,5 +307,64 @@ describe('the gateway answers "upgrading"', () => {
       await saveOperatorServer({ origin: 'https://other.example.test', instanceId: 'instance-0002', displayName: 'Warehouse Two', companyName: 'Other Operator' });
       expect(isUpgrading()).toBe(false);
     });
+  });
+});
+
+describe('the server answers 429 (too many requests)', () => {
+  const TOO_MANY = { message: 'Too many requests' };
+
+  test('a read waits Retry-After and is sent once more; the repeat\'s answer is the answer', async () => {
+    answers = [reply(429, TOO_MANY, { 'Retry-After': '7' })];
+    const pending = createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    await jest.advanceTimersByTimeAsync(6_000);
+    expect(calls).toHaveLength(1);
+    await jest.advanceTimersByTimeAsync(1_000);
+    const response = await pending;
+    expect(calls).toEqual([`GET ${READ}`, `GET ${READ}`]);
+    expect(response.status).toBe(200);
+  });
+
+  test('the wait is capped like a read\'s own limit', async () => {
+    answers = [reply(429, TOO_MANY, { 'Retry-After': '3600' })];
+    const pending = createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect((await pending).status).toBe(200);
+    expect(calls).toHaveLength(2);
+  });
+
+  test('a read is repeated once only: a second 429 is handed to the caller', async () => {
+    answers = [reply(429, TOO_MANY, { 'Retry-After': '2' }), reply(429, TOO_MANY, { 'Retry-After': '2' })];
+    const pending = createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect((await pending).status).toBe(429);
+    expect(calls).toHaveLength(2);
+  });
+
+  test('without Retry-After the wait is one second', async () => {
+    answers = [reply(429, TOO_MANY)];
+    const pending = createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } });
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect((await pending).status).toBe(200);
+    expect(calls).toHaveLength(2);
+  });
+
+  test('a write is never sent again: one request, the 429 is handed back', async () => {
+    answers = [reply(429, TOO_MANY, { 'Retry-After': '2' })];
+    const response = await createAuthenticatedFetch()(WRITE, { method: 'POST', body: '{}' });
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(calls).toEqual([`POST ${WRITE}`]);
+    expect(response.status).toBe(429);
+  });
+});
+
+describe('a request that gets no answer', () => {
+  test('asks for an immediate reachability re-check', async () => {
+    jest.useRealTimers();
+    installNetReachability();
+    const netInfo = jest.requireMock('@react-native-community/netinfo').default as { refresh: jest.Mock };
+    global.fetch = jest.fn(() => Promise.reject(new TypeError('Network request failed'))) as unknown as typeof fetch;
+    await expect(createSessionReadFetch()(READ, { headers: { Authorization: 'Bearer t', apikey: 'k' } })).rejects.toThrow();
+    expect(netInfo.refresh).toHaveBeenCalled();
+    resetNetReachability();
   });
 });

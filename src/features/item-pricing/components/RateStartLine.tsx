@@ -17,7 +17,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { StartsOnChoice } from '../editModel';
-import { dateText } from '../rateText';
+import { dateText, spokenDateText } from '../rateText';
 import { type FieldNode, type FieldRegistry } from './fieldLink';
 import { StartsOnField } from './StartsOnField';
 import type { ViewRef } from '@/types/nativeRefs';
@@ -113,8 +113,9 @@ export function RateStartLine({ day, choice, today, earliest, canStartInPast, fi
   if (!editing || fixed) {
     const text = fixed ? t('pricing.box.datesFrom', { date: day ? dateText(day) : '—' }) : caption ?? (day ? t('pricing.box.datesFrom', { date: dateText(day) }) : null);
     if (!text) return null;
+    const spokenText = !fixed && caption ? text : t('pricing.box.datesFrom', { date: day ? spokenDateText(day) : '—' });
     return (
-      <View ref={anchor} style={styles.fact} accessible accessibilityLabel={text} testID={testID}>
+      <View ref={anchor} style={styles.fact} accessible accessibilityLabel={spokenText} testID={testID}>
         <Icon name={fixed ? 'calendar-lock' : 'calendar'} size={iconSize.sm} color={th.icon.secondary} />
         <Text style={styles.text} numberOfLines={2} testID={`${testID}-text`}>{text}</Text>
       </View>
@@ -129,7 +130,7 @@ export function RateStartLine({ day, choice, today, earliest, canStartInPast, fi
         style={[styles.toggle, showRefused && styles.refused]}
         onPress={() => setOpen(o => !o)}
         accessibilityRole="button"
-        accessibilityLabel={text}
+        accessibilityLabel={day ? t('pricing.box.datesFrom', { date: spokenDateText(day) }) : text}
         accessibilityHint={error ?? t('pricing.edit.chooseDate')}
         accessibilityState={{ expanded: open }}
         testID={`${testID}-toggle`}

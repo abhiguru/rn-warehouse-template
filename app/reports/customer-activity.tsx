@@ -120,14 +120,14 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 /**
- * "Active today" or "Last active 9 Oct" (row date, guide §12.3). The time is an instant: its day,
+ * "Active today" or "Last active 09/10/26" (row date, guide §12.3). The time is an instant: its day,
  * and today, are India's, as the period of the report is.
  */
 function lastActivity(value: string): string {
   const day = indiaDay(value);
   if (!day) return '';
   if (day === indiaDay(new Date())) return tr('reports.customerActivity.activeToday');
-  return tr('reports.customerActivity.lastActive', { date: formatIndiaDate(day, 'short') });
+  return tr('reports.customerActivity.lastActive', { date: formatIndiaDate(day) });
 }
 
 /** "No customer activity", and a longer period to try unless there is none. */
@@ -538,7 +538,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
         <Preview
           key={grn.grn_id}
           label={tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
-          sublabel={formatIndiaDate(grn.grn_date, 'short')}
+          sublabel={formatIndiaDate(grn.grn_date)}
           value={tr('reports.customerActivity.stockOfTotal', { stock: formatNumber(grn.current_stock), total: formatNumber(grn.total_qty) })}
           onPress={grn.grn_id ? () => openDocument(`/grn-details/${grn.grn_id}`) : undefined}
           accessibilityHint={tr('reports.shared.opensGrnHint')}
@@ -549,7 +549,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
         <Preview
           key={dispatch.dispatch_id}
           label={tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.dispatch_no) })}
-          sublabel={formatIndiaDate(dispatch.dispatch_date, 'short')}
+          sublabel={formatIndiaDate(dispatch.dispatch_date)}
           value={formatCount(dispatch.total_qty, 'bag')}
           onPress={dispatch.dispatch_id ? () => openDocument(`/dispatch-details/${dispatch.dispatch_id}`) : undefined}
           accessibilityHint={tr('grn.dispatches.openHint')}
@@ -570,7 +570,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
         <Preview
           key={invoice.invoice_id}
           label={tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) })}
-          sublabel={formatIndiaDate(invoice.invoice_date, 'short')}
+          sublabel={formatIndiaDate(invoice.invoice_date)}
           value={formatCurrency(invoice.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           status={invoiceStatus(invoice.status)}
           onPress={invoice.invoice_id ? () => openDocument(`/invoice-details/${invoice.invoice_id}`) : undefined}

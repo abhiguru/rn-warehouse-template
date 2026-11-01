@@ -39,7 +39,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { MonthlyTrendPoint } from '@/types/report.types';
-import { formatCount, formatIndiaDate, formatMonth, formatNumber, indiaDay, toDate } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatIndiaSpokenDate, formatMonth, formatNumber, indiaDay, toDate } from '@/utils/formatters';
 
 export interface StockTrendChartProps {
   /** Months of the period, oldest first. */
@@ -261,7 +261,7 @@ function TrendTable({ points, values, nowIndex, asOf }: { points: MonthlyTrendPo
       // The values the chart draws, the month in progress included: that one is not a month end.
       rowLabel={row =>
         row.original.now
-          ? tr('reports.customerActivity.trend.rowNowA11y', { month: row.original.month, date: asOf, stock: formatNumber(row.original.stock) })
+          ? tr('reports.customerActivity.trend.rowNowA11y', { month: row.original.month, date: formatIndiaSpokenDate(new Date()), stock: formatNumber(row.original.stock) })
           : `${row.original.month}, ${formatNumber(row.original.stock)}`
       }
       rowTestID={row => `stock-trend-row-${row.id}`}
@@ -319,7 +319,7 @@ export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) 
   const last = points.length - 1;
   // The trend ends with the month in progress: its figure is the stock as of today (India's day).
   const endsNow = nowIndex >= 0 && nowIndex === last;
-  const asOf = formatIndiaDate(new Date(), 'short');
+  const asOf = formatIndiaDate(new Date());
   const summary = (() => {
     if (points.length === 1) {
       return endsNow

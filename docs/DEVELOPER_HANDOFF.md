@@ -1,6 +1,6 @@
 # Contributor guide
 
-Expo SDK 57 / React Native 0.86 warehouse client for the companion backend
+Expo SDK 58 / React Native 0.88 warehouse client for the companion backend
 ([`supabase-warehouse-template`](https://github.com/abhiguru/supabase-warehouse-template)).
 Install that backend with its [operator guide](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/OPERATOR_INSTALL.md) before running the app against it.
 
@@ -116,8 +116,8 @@ invoice and stock list prefixes in `cacheConfig.ts` are cleared too, but no list
 ## Commands
 
 ```bash
-npm ci                      # runs the three postinstall patches (not with --ignore-scripts)
-node scripts/check-install.mjs   # all three patches are in place; also runs before start, android, ios, web, test
+npm ci                      # runs the two postinstall patches (not with --ignore-scripts)
+node scripts/check-install.mjs   # both patches are in place; also runs before start, android, ios, web, test
 npm run verify:backports    # re-checks scripts/security-backports.json against node_modules
 npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
 npm run audit:dependencies -- --report-dir /tmp/dependency-security-report
@@ -138,7 +138,7 @@ in one SDK upgrade with `npx expo install --fix`.
 
 `.github/workflows/ci.yml` runs `Lint & Type Check` (expo doctor from the lockfile with `--no-install`, lint with a
 `--max-warnings` limit, typecheck, test-file typecheck, jest, setup tests, Android bundle and its `audit:artifact -- dist`),
-`Android debug artifact audit` (pinned JDK 17 / SDK 36 build and APK audit),
+`Android debug artifact audit` (pinned JDK 17 / compile SDK 37 (target SDK 36) build and APK audit),
 `dependencies` (backport verification and the dependency audit report) and `secrets` (history scan).
 `release.yml` validates any semantic `v*` tag (`scripts/check-release.sh`) with the same gates plus
 `expo export`; publishing a GitHub release stays a manual step after the validation run passes.

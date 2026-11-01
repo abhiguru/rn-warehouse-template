@@ -55,7 +55,7 @@ describe('AppTooOldScreen', () => {
   });
 
   it('with the facility\'s link, offers "Get the update" and opens that link', () => {
-    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
     act(() => { tree = create(<AppTooOldScreen {...info} updateUrl="https://updates.example.test/app.apk" onClose={jest.fn()} />); });
     act(() => { button(tree!, 'Get the update').props.onPress(); });
     expect(open).toHaveBeenCalledWith('https://updates.example.test/app.apk');

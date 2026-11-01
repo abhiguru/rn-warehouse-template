@@ -7,13 +7,34 @@ export const orders: Translation<typeof source> = {
   screen: {
     title: 'ઑર્ડર: {{name}}',
     viewHistory: 'ઑર્ડરનો ઇતિહાસ જુઓ',
+    // Under "Order for …": the order's number (an identifier, 0-9).
+    orderNumber: 'ઑર્ડર {{number}}',
     addItemsToOrder: 'ઑર્ડરમાં આઇટમ ઉમેરો',
     historyError: 'ઑર્ડરનો ઇતિહાસ લોડ કરી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+  },
+  // What a save does to customers' open orders (shown before and after a dispatch or GRN is saved or a GRN is deleted).
+  effect: {
+    noticeTitle: 'સેવ કરતાં આ ઑર્ડર બદલાશે',
+    questionLead: 'આથી આ ઑર્ડર પણ બદલાશે:',
+    checking: 'ઑર્ડર તપાસી રહ્યા છીએ…',
+    doneLead: 'બદલાયેલા ઑર્ડર:',
+    orderOf: '{{name}}નો ઑર્ડર',
+    orderOfS: '{{name}}નો ઑર્ડર',
+    reduced: { one: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} નંગ', other: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} નંગ' },
+    increased: { one: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} નંગ', other: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} નંગ' },
+    added: { one: '{{order}}: {{item}} ({{grn}}) ઉમેરાય છે, {{count}} નંગ', other: '{{order}}: {{item}} ({{grn}}) ઉમેરાય છે, {{count}} નંગ' },
+    removed: '{{item}} ({{grn}}) {{order}}માંથી નીકળી જાય છે.',
+    removedLast: '{{item}} ({{grn}}) {{order}}માંથી નીકળી જાય છે. કોઈ લાઇન બાકી રહેતી નથી, તેથી ઑર્ડર નીકળી જાય છે.',
+    exceedsStock: {
+      one: '{{order}}: {{item}} ({{grn}}) માં {{wanted}} નંગ માગ્યા છે, પણ સ્ટૉકમાં {{count}} નંગ જ રહેશે.',
+      other: '{{order}}: {{item}} ({{grn}}) માં {{wanted}} નંગ માગ્યા છે, પણ સ્ટૉકમાં {{count}} નંગ જ રહેશે.',
+    },
   },
   manage: {
     loading: 'ઑર્ડર લોડ થઈ રહ્યો છે…',
     loadingLabel: 'ઑર્ડર લોડ થઈ રહ્યો છે',
     couldNotOpenTitle: 'ઑર્ડર ખોલી શકાયો નથી',
+    couldNotOpenMessage: "ઑર્ડર ખોલી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.",
     businessInactive: 'આ વેપારી હવે સક્રિય નથી. તમારા કોલ્ડ સ્ટોરેજને પૂછો.',
     businessDeactivatedStaff: 'આ વેપારી નિષ્ક્રિય છે. ઑર્ડર લેવા માટે વેપારીઓમાં તેને ચાલુ કરો.',
     deactivatedTitle: 'કોલ્ડ સ્ટોરેજમાં નિષ્ક્રિય',

@@ -132,12 +132,21 @@ const SettingsScreen: React.FC = () => {
       subtitle: t('settings.features.documentNumbersSubtitle'),
       route: '/document-numbering',
     },
+    rackPresets: {
+      icon: 'view-grid-outline',
+      label: t('settings.features.rackPresets'),
+      subtitle: t('settings.features.rackPresetsSubtitle'),
+      route: '/rack-presets',
+    },
     sensors: { icon: 'thermometer', label: t('settings.features.sensors'), subtitle: t('settings.features.sensorsSubtitle'), route: '/sensors' },
   };
   // Document numbers needs the backend's numbering calls (migration 127): on an older backend the row would open to a
   // "could not load" screen, so it is left out until the facility has upgraded.
+  // Rack buttons (migration 131) the same way: an older backend has no such setting, so there is no row.
   const featureRows = settingsFeatureRows(userProfile?.role, capabilities).filter(
-    feature => feature !== 'documentNumbering' || backendHasFeature('documentNumbering')
+    feature =>
+      (feature !== 'documentNumbering' || backendHasFeature('documentNumbering')) &&
+      (feature !== 'rackPresets' || backendHasFeature('rackPresets'))
   );
   const showsRequests = featureRows.includes('enrollmentReview');
   useFocusEffect(useCallback(() => {

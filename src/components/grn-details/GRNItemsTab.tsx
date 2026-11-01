@@ -302,7 +302,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
         {item.rack ? (
           <View style={own.detailLine}>
             <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
-            <Text style={styles.secondary}>{tr('grn.item.rackWithValue', { rack: item.rack })}</Text>
+            <Text style={styles.secondary} accessibilityLabel={tr('grn.item.rackWithValue', { rack: item.rack })}>{item.rack}</Text>
           </View>
         ) : null}
         {item.packaging ? (

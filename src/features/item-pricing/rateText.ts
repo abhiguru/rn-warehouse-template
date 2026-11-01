@@ -3,24 +3,32 @@
  * Days are 'YYYY-MM-DD' strings; calendar maths never goes through UTC.
  */
 import { localizeDigits, t } from '@/i18n';
-import { formatCurrency, formatDate, parseLocalISODate, toLocalISODate, todayInIST } from '@/utils/formatters';
+import { formatCurrency, formatDate, formatSpokenDate, parseLocalISODate, toLocalISODate, todayInIST } from '@/utils/formatters';
 import type { PriceType } from '@/types/item-pricing.types';
 import { weightBandLabel } from './utils/priceLabels';
+import { packageUnit } from '@/utils/packagingWord';
 
 /** "₹11.00" */
 export const money = (amount: number): string => formatCurrency(amount, { minimumFractionDigits: 2 });
 
-/** "per bag, per month" / "per bag, once" */
-export const unitText = (priceType: PriceType): string =>
-  priceType === 'one_time' ? t('pricing.unit.oneTime') : t('pricing.unit.monthly');
+/** "per bag, per month" / "per bag, once"; "per box" ... for a Box item (Bag, Box and Crate by the item's packaging) */
+export const unitText = (priceType: PriceType, packaging?: string | null): string =>
+  t(priceType === 'one_time' ? 'pricing.unit.oneTime' : 'pricing.unit.monthly', { unit: packageUnit(packaging) });
+
+/** "₹2.00 per bag, charged once at dispatch": the labour of one bag, box or crate (the item's packaging; "bag" when unknown). */
+export const labourText = (amount: string, packaging?: string | null): string =>
+  t('pricing.item.labourValue', { amount, unit: packageUnit(packaging) });
 
 /** "0–40 kg" */
 export const bandText = (min: number, max: number): string => weightBandLabel(min, max);
 
 /** A day with its year, in the digits of the language. */
-export const dateText = (isoDay: string): string => formatDate(isoDay, 'medium');
+export const dateText = (isoDay: string): string => formatDate(isoDay);
 
-/** "1 Jan 2025 – 31 Mar 2026"; with no end day, only the start day (the caller words "Since …"). */
+/** The same day in words for a screen reader: "9 Oct 2026". */
+export const spokenDateText = (isoDay: string): string => formatSpokenDate(isoDay);
+
+/** "01/01/25 – 31/03/26"; with no end day, only the start day (the caller words "Since …"). */
 export const rangeText = (fromDay: string, toDay?: string | null): string =>
   toDay ? `${dateText(fromDay)} – ${dateText(toDay)}` : dateText(fromDay);
 

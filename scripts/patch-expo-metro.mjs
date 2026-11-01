@@ -6,11 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { isMain } from './is-main.mjs';
 
 // Reviewed @expo/cli release and the SHA-256 of its unpatched runServer-fork.js.
-// 57.0.29 (with expo 57.0.28) ships the file byte-identical to 57.0.28's, 57.0.30 (with
-// expo 57.0.29) byte-identical to 57.0.29's, and 57.0.31 (with expo 57.0.30) byte-identical to
-// 57.0.30's; 57.0.32 (with expo 57.0.31) is byte-identical to 57.0.31's. The hash is the same.
-const reviewedVersion = '57.0.32';
-const reviewedHash = '72177ad9dc279383f6970348550ec0f380bb2d5cf14b96dec690b2efcc2fc4e2';
+// 58.1.18 (with expo 58.0.22, SDK 58; its runServer-fork.js is byte-identical to 58.1.17's), reviewed against 57.0.32: the diff is build output only
+// (optional chaining `a?.b` / `cb?.(err)` instead of the down-levelled `a == null ? void 0 : a.b`
+// form, and a trailing newline). The `httpServer.listen(config.server.port, host, ()=>{` line the
+// adapter rewrites is unchanged and occurs once, so the USB loopback adapter applies as before.
+const reviewedVersion = '58.1.18';
+const reviewedHash = '97c33e706e8faf610c36be206c54d443db24dd44b20bdcbd93c458b9da3f3c5e';
 const oldBinding = 'httpServer.listen(config.server.port, host, ()=>{';
 const usbBinding = "httpServer.listen(config.server.port, process.env.WAREHOUSE_USB_METRO === '1' ? '127.0.0.1' : host, ()=>{";
 export function adaptBinding(source, version) {

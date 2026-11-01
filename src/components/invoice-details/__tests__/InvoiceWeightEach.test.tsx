@@ -6,6 +6,7 @@
  * a weight shows none. Names and numbers are fictional.
  */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Text } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { setLanguage } from '@/i18n';
@@ -30,7 +31,7 @@ afterEach(() => {
 function render(element: React.ReactElement) {
   let tree!: ReactTestRenderer;
   act(() => {
-    tree = create(element);
+    tree = create(<GestureHandlerRootView>{element}</GestureHandlerRootView>);
   });
   mounted.push(tree);
   return {

@@ -61,7 +61,7 @@ describe('CR-01: Edit new rate moves or corrects the planned rate', () => {
     expect(input.mode).toBe('change');
     expect(input.move_from).toBe('2027-01-01');
     expect(input.starts_on).toBe('2027-02-01');
-    expect(summaryLines(moved, context)).toContain('Moves the new rate from 1 Jan 2027 to 1 Feb 2027');
+    expect(summaryLines(moved, context)).toContain('Moves the new rate from 01/01/27 to 01/02/27');
   });
 });
 
@@ -71,7 +71,7 @@ describe('CR-02: a scheduled stop is kept', () => {
   it('Correct this rate shows and keeps the stop', () => {
     const { draft, context } = open('correct', { price_type: 'monthly' }, stopped);
     expect(keptEnd(draft, context)).toBe('2027-03-31');
-    expect(summaryLines(draft, context)).toContain('This rate still stops after 31 Mar 2027.');
+    expect(summaryLines(draft, context)).toContain('This rate still stops after 31/03/27.');
   });
 
   it('Change rate from today keeps the stop when it is on or after the start', () => {

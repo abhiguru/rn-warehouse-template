@@ -12,7 +12,7 @@ import { FioriSegmentedProgress } from '@/components/FioriLinearProgress';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatDate, formatNumber } from '@/utils/formatters';
+import { formatDate, formatNumber, formatSpokenDate } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -144,7 +144,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
           style={styles.titleBlock}
           accessible
           accessibilityRole="header"
-          accessibilityLabel={[tr('grn.details.titleWithNumber', { number: formatIdentifier(gr_no) }), customer_name, formattedDate].filter(Boolean).join(', ')}
+          accessibilityLabel={[tr('grn.details.titleWithNumber', { number: formatIdentifier(gr_no) }), customer_name, formattedDate ? formatSpokenDate(date) : null].filter(Boolean).join(', ')}
         >
           {/* From the compact scale the title bar ("GRN <number>") already shows these two. */}
           {!compact && <Text style={styles.docType} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('common.grn')}</Text>}

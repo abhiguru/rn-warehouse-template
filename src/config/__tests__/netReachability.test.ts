@@ -6,13 +6,15 @@ import {
   applyNetReachability,
   installNetReachability,
   networkOf,
+  noteRequestNetworkFailure,
+  RECHECK_MIN_INTERVAL_MS,
   reachabilityConfiguration,
   resetNetReachability,
 } from '../netReachability';
 
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
-  default: { configure: jest.fn(), addEventListener: jest.fn(), fetch: jest.fn() },
+  default: { configure: jest.fn(), addEventListener: jest.fn(), fetch: jest.fn(), refresh: jest.fn(async () => ({})) },
 }));
 jest.mock('../operatorServer', () => ({
   getActiveOperatorServer: jest.fn(),
@@ -222,5 +224,33 @@ describe('the transport is told the phone\'s network on every NetInfo event', ()
       subnet: null,
     });
     expect(networkOf({ type: 'wifi', isConnected: true, isInternetReachable: true, details: { ipAddress: null, subnet: 5 } } as never).ipAddress).toBeNull();
+  });
+});
+
+describe('a request that fails with a network failure', () => {
+  beforeEach(() => {
+    select(A);
+    applyNetReachability();
+  });
+
+  it('does nothing before the probe is installed', () => {
+    resetNetReachability();
+    noteRequestNetworkFailure(100_000);
+    expect(NetInfo.refresh).not.toHaveBeenCalled();
+  });
+
+  it('asks NetInfo to check reachability now, once per interval', () => {
+    noteRequestNetworkFailure(100_000);
+    noteRequestNetworkFailure(100_000 + RECHECK_MIN_INTERVAL_MS - 1);
+    expect(NetInfo.refresh).toHaveBeenCalledTimes(1);
+    noteRequestNetworkFailure(100_000 + RECHECK_MIN_INTERVAL_MS);
+    expect(NetInfo.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('never throws, whatever NetInfo does', () => {
+    jest.mocked(NetInfo.refresh).mockRejectedValueOnce(new Error('native module gone'));
+    expect(() => noteRequestNetworkFailure(500_000)).not.toThrow();
+    jest.mocked(NetInfo.refresh).mockImplementationOnce(() => { throw new Error('sync'); });
+    expect(() => noteRequestNetworkFailure(600_000)).not.toThrow();
   });
 });

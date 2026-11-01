@@ -1,5 +1,50 @@
 # Dependency security review — 2026-09-14
 
+## Expo SDK 58 — 2026-10-31
+
+- **What moved.** Expo SDK 57 to 58 (React Native 0.86.3 to 0.88.1, React 19.2.3 to 19.3.0, Expo Router 58 with React
+  Navigation 8 inside it, Jest 30 with jest-expo 58). `react-test-renderer` follows React at 19.3.0. No advisory was accepted
+  or suppressed by this step.
+- **One postinstall patch less.** Expo Router 58 no longer depends on `query-string`, so the query-string decoder adapter
+  (`scripts/patch-navigation-decoder.mjs`) was removed. `decode-uri-component` is no longer installed either, so its
+  `overrides` pin, its `transformIgnorePatterns` entry and the Dependabot ignore for `query-string` were removed. Postinstall now
+  runs the USB loopback patch of `@expo/cli` and the security backports. The sections below that speak of two adapters,
+  query-string or decode-uri-component describe SDK 57.
+- **zod backport removed.** See the section after this one.
+- **Node range.** `engines.node` is `^22.18.0 || ^24.3.0 || >=26.0.0`: the repository's own minimum of 22.18 intersected with what
+  React Native 0.88, Metro and Expo 58 support (`^22.13 || ^24.3 || >=26`). Node 23 and 25 are no longer admitted.
+- **Android toolchain.** React Native 0.88 builds with compile SDK 37, build tools 37.0.0, NDK 27.1.12297006 and Android Gradle
+  Plugin 9.2.1. Google publishes API 37 as `platforms;android-37.0`; there is no `platforms;android-37`. Target SDK stays 36.
+- **glob and minimatch: accepted without a repair, build and dev tooling only (owner decision 2026-10-31, review by 2026-12-15).**
+  `npm run audit:dependencies` failed with `FAIL_UNREPAIRED_DEPENDENCIES` on two moderate advisories published on 2026-10-30:
+  GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `<11.0.1`, denial of
+  service, fixed in 11.0.1). A fix needs `glob` 14 and `minimatch` 11, but the dependents ask for `glob` ^7, ^9, ^10 and ^13
+  and `minimatch` ^3, ^8, ^9 and ^10, so no lockfile update reaches them, and an `overrides` pin across those majors would
+  break callers that use the old APIs. They are accepted for as long as nothing the app ships contains them.
+  - **What reaches the bundle: nothing.** On 2026-10-31 a static trace of every `require` and `import` (relative, aliased and
+    package, with the packages' `react-native`, `browser` and `exports` entries) from the app entry and every `app/` route found
+    4195 files in 130 packages. Neither `glob` nor `minimatch` is among them, and neither are `@expo/cli`, `@expo/config`,
+    `@expo/config-plugins`, `@expo/fingerprint`, `@expo/metro-config` or `@sentry/bundler-plugins`. It over-approximates (a
+    `require` inside a function counts), and it is not a Metro build: no bundle was made on this host in this step. `expo-updates` is in
+    the graph as its runtime JavaScript; it uses `glob` only in `utils/build/vcs.js`, which the runtime does not import. The
+    last full bundle check was 2026-10-24 (see the section on the Expo 57 line below).
+  - **Who declares them in the production tree** (`npm ls --omit=dev --all`): `@expo/cli`, `@expo/fingerprint` and
+    `@expo/metro-config` (through `expo`), `@expo/config-plugins` (through `expo-sharing`), `@expo/config` and
+    `@sentry/bundler-plugins` (through `@sentry/react-native`), and `expo-updates`. All are Expo or Sentry command-line,
+    prebuild or bundler code. Everything else that carries the advisories (Jest, ESLint, typescript-eslint, Babel's
+    istanbul plugin and `test-exclude`) is a dev dependency.
+  - **How the gate stays safe.** `scripts/audit-dependencies.mjs` has a second list, `acceptedWithoutRepair` (advisory, package,
+    range, reason, `reviewBy`), apart from `acceptedAdvisories`, which keeps its rule that every entry has a verified local
+    backport. The gate also reads `npm ls --omit=dev --all --json` and fails (`SHIPPED:`) when `glob` or `minimatch` is
+    declared by anything outside `toolingParents` (the list above), including the app itself. From the day after `reviewBy`
+    the entries are `REVIEW_OVERDUE` and the gate fails, as for the backported ones. Tests are in
+    `scripts/audit-dependencies.test.mjs`. The result carries `reviewByWithoutRepair` and `shippedPaths`.
+  - **At 2026-12-15:** check whether `@expo/*`, Jest and ESLint have moved to `glob` 14 and `minimatch` 11 (`npm outdated`,
+    the advisories' pages). If so, upgrade and delete the entries; if not, move the date in the same pull request as a note
+    here. A new Expo or Sentry release that makes a runtime package declare either one makes the gate fail by itself.
+  - The gate now reports `PASS_WITH_VERIFIED_BACKPORTS` (deepmerge and braces are still backported); the two tooling
+    advisories appear under `covered` for the 44 packages that depend on them.
+
 ## deepmerge 4.3.1 — 2026-10-28
 
 - **What failed.** `npm run audit:dependencies` reported `FAIL_UNREPAIRED_DEPENDENCIES`: `expo` and `@expo/cli` also carried
@@ -27,6 +72,14 @@
   bundle (see above).
 - `npm run audit:dependencies` is `PASS_WITH_VERIFIED_BACKPORTS` again.
 
+## zod backport removed — Expo SDK 58
+
+`@expo/cli` 58.1.18 no longer depends on `zod`, so the nested `node_modules/expo/node_modules/zod` 3.25.76 that the local size
+gate patched is gone from the lockfile. The only zod left is the dev-only 4.6.7 that `eslint-plugin-react-hooks` and
+`zod-validation-error` use, which is past the fix (GHSA-mrhx-c7xc-m3w5 is fixed in 4.6.6). The zod entries were therefore removed
+from `scripts/security-backports.json`, its tests and `acceptedAdvisories`; the accepted set is braces, sprintf-js and deepmerge.
+Wherever the sections below describe the zod repair, they are superseded by this one.
+
 ## node-forge 1.4.1 — 2026-10-27
 
 - **What moved.** `package.json` `overrides` pins `node-forge` to 1.4.1. Both consumers (`@expo/cli` through `expo`, and
@@ -34,12 +87,12 @@
   for about ten high advisories, so the audit would otherwise have listed them as `UNREPAIRED`.
 - **The local GHSA-86w9-cpqp-85rv repair is retired.** It copied upstream PR 1152, which was closed unmerged. 1.4.1 instead
   re-encodes the DigestInfo canonically and compares the bytes (`lib/rsa.js`), which rejects the same forgery and more.
-  `scripts/security-backports.json` now declares node-forge `unaffected` from 1.4.1 (the same mechanism as zod from 4.6.6) and no
+  `scripts/security-backports.json` now declares node-forge `unaffected` from 1.4.1 (the same mechanism the zod entry used, since removed) and no
   longer patches it; the patch script refuses any other node-forge version. The regression test in
   `scripts/security-backports.test.mjs` is unchanged and now runs against the installed, unpatched 1.4.1: a signature whose
   DigestInfo carries an extra nested DigestAlgorithm element must fail `verify`.
 - **Accepted set now.** Three advisories, each repaired locally: braces (GHSA-vfj7-8cjw-p6xm, review by 2027-01-10), sprintf-js
-  (GHSA-hp3w-g68c-fv3c, 2027-01-10) and zod (GHSA-mrhx-c7xc-m3w5, 2027-01-24). `npm run audit:dependencies` reports
+  (GHSA-hp3w-g68c-fv3c, 2027-01-10) and zod (GHSA-mrhx-c7xc-m3w5, 2027-01-24; removed again, see the SDK 58 section). `npm run audit:dependencies` reports
   `PASS_WITH_VERIFIED_BACKPORTS`. The Dependabot ignore for node-forge is removed, so Dependabot proposes node-forge updates again.
 - The tables and notes below describe the state before this change; where they say node-forge is repaired locally or has no fixed
   release, they are superseded by this section.
@@ -53,9 +106,8 @@ GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The other copies have 
 
 | Package | Advisory | Pulled in by | Fixed version |
 | ------- | -------- | ------------ | ------------- |
-| `zod` 3.25.76 (nested at `node_modules/expo/node_modules/zod`) | GHSA-mrhx-c7xc-m3w5 | `@expo/cli` (inside `expo`) | none in the 3.x copy that `@expo/cli` 57 pins; upstream fixed 4.6.6 only |
 | `node-forge` (history) | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | 1.4.1 (2026-10-27); no longer accepted, see the section above |
-| `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the two above, as dependents | | follow the two above |
+| `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the node-forge row above, as dependents | | follow the row above |
 
 - These are build and development tools: the Expo CLI (Metro, prebuild, export) and the code-signing of over-the-air updates
   (off in this template, see below). They run on the developer's machine, not in the app. On 2026-10-24 `npx expo export
@@ -63,21 +115,7 @@ GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The other copies have 
   `@expo/code-signing-certificates`, `@expo/cli` or `zod` (the only name match is Sentry's unrelated `zoderrors.js`);
   `expo-updates` appears as its runtime JavaScript only.
 - No fixed version exists in the Expo 57 line. **Do not run `npm audit fix --force`**: it proposes `expo@54.0.38`, a downgrade
-  by three SDKs, and breaks the project. Do not add an `overrides` entry for the zod copy under `@expo/cli`; that CLI needs
-  zod 3 and stops working with 4.
-- **The zod repair is a local gate, not an upstream backport.** The advisory (an array schema collects one issue per failing
-  element, so an oversized input exhausts memory) was fixed in zod 4.6.6 (commit
-  `a0ebf970f2d752e5f58527cd2942ff48be4f46bd`, PR 6652) in the v4 code only. `@expo/cli` does `require("zod")` and so loads the
-  zod **3** code (`v3/types`) of the 3.25.76 copy, which has the same flaw (a 200000-element array against `.max(2)` gave 200001
-  issues) and no upstream fix; the copy's own `v4` code, where the fix applies, is not loaded by anything here and is too old
-  to take the 4.6.6 change. So `scripts/security-backports.json` patches `v3/types.cjs` and `v3/types.js` (the require and
-  import entries of the root and of `zod/v3`) with the same idea as 4.6.6: `ZodArray` (`.max`, `.length`) and `ZodSet`
-  (`.max`, `.size`) return invalid, after recording the size issue they already recorded, before any element is parsed when the
-  input is over its upper bound. In-bound input, minimum checks and messages are unchanged. The installer treats a zod from
-  4.6.6 on as unaffected (the top-level 4.6.7 is left alone) and refuses any other zod version it has no entry for.
-- `acceptedAdvisories` lists GHSA-mrhx-c7xc-m3w5 with the advisory's own range `<4.6.6` (the gate compares it to what npm
-  reports; the manifest limits the repair to exactly 3.25.76), review date **2027-01-24**. At that date check whether
-  `@expo/cli` has moved to a zod with the fix, and if so delete the entry and its backport.
+  by three SDKs, and breaks the project.
 
 ## The audit gate, install check and update channels — 11 October 2026
 
@@ -94,8 +132,15 @@ list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
 | ------------------- | --------------------------- | ----------------------------------------------------------------------------------------- | ---------- |
 | GHSA-vfj7-8cjw-p6xm | braces `<=3.0.3`            | Repaired locally (depth bound); no patched release                                        | 2027-01-10 |
 | GHSA-hp3w-g68c-fv3c | sprintf-js `<=1.1.3`        | Repaired locally (precision bound); no patched release                                    | 2027-01-10 |
-| GHSA-mrhx-c7xc-m3w5 | zod `<4.6.6`                | Repaired locally in zod 3.25.76 (size gate); v3 has no fix                                | 2027-01-24 |
 | GHSA-gcqx-w48m-w2h4 | deepmerge `>=4.2.0 <=4.3.1` | Repaired locally in 4.3.1 (own `__proto__` key defined, not assigned); no patched release | 2027-01-28 |
+
+Since 2026-10-31 a second list, `acceptedWithoutRepair`, holds advisories accepted for build and dev tooling only, with no local
+repair (a package of the shipped tree makes the gate fail):
+
+| Advisory            | Package and range             | Why it is accepted                                                          | Review by  |
+| ------------------- | ----------------------------- | --------------------------------------------------------------------------- | ---------- |
+| GHSA-3g3m-2fjr-6pw4 | glob `>=9.0.0 <=14.0.1`       | Build and dev tooling only; not in the app bundle; 14.0.2 not reachable     | 2026-12-15 |
+| GHSA-g3hv-75wg-m249 | minimatch `<11.0.1`           | Build and dev tooling only; not in the app bundle; 11.0.1 not reachable     | 2026-12-15 |
 
 - Every entry of the npm report at **moderate, high or critical** must resolve
   to advisories on this list, with the same package and affected range, and
@@ -115,12 +160,12 @@ list, `acceptedAdvisories` in `scripts/audit-dependencies.mjs`:
   backport manifest.
 - Review the `overrides` in `package.json` on the same date. They are exact
   pins that Dependabot does not edit, so a later fix release of `postcss`,
-  `decode-uri-component`, `compression`, `source-map-js` or
+  `compression`, `source-map-js` or
   `shell-quote` is adopted only by hand. (The `uuid` pin under `xcode` was
   removed with expo 57.0.31: xcode 4 no longer depends on `uuid`.) A new
   advisory against a pinned version at moderate or above now fails this gate.
 
-**Installs with scripts turned off.** The two adapters and the backports are
+**Installs with scripts turned off.** The USB loopback binding and the backports are
 applied by the npm `postinstall` script and by nothing else. `npm ci
 --ignore-scripts`, or `ignore-scripts=true` in a developer's own `.npmrc`,
 leaves `node_modules` as published and prints nothing. `npm start`, `npm run
@@ -183,7 +228,7 @@ Jest stays on 29 and Babel on 7 because SDK 57's `jest-expo` and
   (58 entries, 53 high), and `npm run audit:dependencies` reports no unresolved
   findings.
 
-The remaining overrides (PostCSS, UUID under `xcode`, decode-uri-component,
+The remaining overrides (PostCSS, UUID under `xcode`, decode-uri-component (removed in the SDK 58 step),
 compression, source-map-js, shell-quote) are unchanged; each pins a version at
 or above what SDK 57 resolves.
 
@@ -287,23 +332,23 @@ regression checks. Expo SDK 54 and React Native 0.81.5 are unchanged.
 ## Decoder and Metro compatibility
 
 The upstream [decoder advisory](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr)
-identifies 0.5.0 as patched. The lockfile overrides to that version.
-`query-string` 7.1.3 expects a callable CommonJS export; the minimal adapter in
-`scripts/patch-navigation-decoder.mjs` selects the upstream default export while
-preserving `query-string`'s existing parse/stringify interface. Installation
-checks dependency versions and source hashes before patching, is idempotent,
-and fails clearly for unexpected contents. No advisory is suppressed.
+identifies `decode-uri-component` 0.5.0 as patched. Up to SDK 57 the lockfile overrode it to that version; SDK 58 no
+longer installs the package, so the override was removed.
+Up to SDK 57, `query-string` 7.1.3 (pulled in by expo-router) expected a callable
+CommonJS export, and a postinstall adapter selected the upstream default export.
+SDK 58's expo-router no longer depends on `query-string`, so that adapter was
+removed in the SDK 58 step. No advisory is suppressed.
 
 Under SDK 54, `scripts/patch-expo-metro.mjs` also adapted Expo's watcher to the
 pinned Metro 0.83.8. SDK 57 ships a matching Metro, so the script now applies
-only the USB loopback binding. Both adapters run on postinstall; keep package.json CommonJS because
+only the USB loopback binding. That patch and the backports run on postinstall; keep package.json CommonJS because
 Babel/Jest rely on it. ESLint's own configuration is `eslint.config.mjs`.
 
 ## Verification
 
 - Released mobile: 100 Jest tests across nine suites, including actual navigation
   consumers, malformed input, logout/refresh races and configuration TTLs.
-- Setup regressions cover bootstrap, dependency consumers, both checked adapters
+- Setup regressions cover bootstrap, dependency consumers, the checked patches
   and safe environment-file creation.
 - Online SDK compatibility passes in mobile main CI 34825877719; offline local
   compatibility checks are weaker evidence and are recorded as such.

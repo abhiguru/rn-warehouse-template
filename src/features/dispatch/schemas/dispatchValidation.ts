@@ -3,6 +3,7 @@
  * Uses Yup for form validation across all 3 steps
  */
 
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import * as yup from 'yup';
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { t, type TranslationKey, formatIdentifier } from '@/i18n';
@@ -52,8 +53,9 @@ export const step1Schema = yup.object().shape({
 
   registration: yup
     .string()
+    .transform((value: unknown) => (typeof value === 'string' ? normalizeVehicle(value) : value))
     .required(m('dispatch.validation.registrationRequired'))
-    .max(30, m('dispatch.validation.registrationMax'))
+    .max(20, m('dispatch.validation.registrationMax'))
     .matches(/^[A-Z0-9 ]+$/, m('dispatch.validation.registrationFormat')),
 
   customer_id: yup

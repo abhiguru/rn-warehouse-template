@@ -13,14 +13,6 @@
       "upstreamPR": "https://github.com/alexei/sprintf.js/pull/238",
       "implementation": "Local precision saturation to native bounds: 0..100 for e/f,1..100 for g; keeps valid outputs and avoids out-of-range worker termination; not an upstream release"
     },
-    "zod": {
-      "advisory": "GHSA-mrhx-c7xc-m3w5",
-      "upstreamReport": "https://github.com/colinhacks/zod/issues/1872",
-      "upstreamPR": "https://github.com/colinhacks/zod/pull/6652",
-      "commit": "a0ebf970f2d752e5f58527cd2942ff48be4f46bd",
-      "upstreamStatus": "fixed in zod 4.6.6 for the v4 code only (v4 reference); the zod 3.25.76 copy under expo/@expo/cli has no upstream fix",
-      "implementation": "Local gate in the zod v3 code that @expo/cli loads (v3 has no upstream fix): ZodArray (exactLength, maxLength) and ZodSet (maxSize) return INVALID before parsing any element once the input is over its upper bound, after the existing size issues are recorded unchanged; min checks and in-bound behaviour are identical. Mirrors the intent of the 4.6.6 change (an upper size bound fails before any element is parsed); not an upstream release"
-    },
     "deepmerge": {
       "advisory": "GHSA-gcqx-w48m-w2h4",
       "upstreamReport": "https://github.com/TehShrike/deepmerge/issues/273",
@@ -126,44 +118,6 @@
       ]
     },
     {
-      "package": "zod",
-      "version": "3.25.76",
-      "file": "v3/types.cjs",
-      "originalSHA256": "06487cc05ed45c5dd29789bf0aa75734d1ce06592a7f2665ba4ca90a68e8a3e1",
-      "patchedSHA256": "43ab751bac2e3f3eca738b381b18b67bc1ca144f842ed1ac1ae3db7a9e5dfbe7",
-      "edits": [
-        {
-          "before": "        if (ctx.common.async) {\n            return Promise.all([...ctx.data].map((item, i) => {",
-          "after": "        // Local gate for GHSA-mrhx-c7xc-m3w5 (no upstream fix in zod 3): an array over its\n        // upper bound fails before any element is parsed. The size issues are added above.\n        if ((def.exactLength !== null && ctx.data.length > def.exactLength.value) ||\n            (def.maxLength !== null && ctx.data.length > def.maxLength.value)) {\n            return parseUtil_js_1.INVALID;\n        }\n        if (ctx.common.async) {\n            return Promise.all([...ctx.data].map((item, i) => {",
-          "count": 1
-        },
-        {
-          "before": "        const valueType = this._def.valueType;\n        function finalizeSet(elements) {",
-          "after": "        // Local gate for GHSA-mrhx-c7xc-m3w5 (no upstream fix in zod 3): a set over its\n        // upper bound fails before any element is parsed. The size issue is added above.\n        if (def.maxSize !== null && ctx.data.size > def.maxSize.value) {\n            return parseUtil_js_1.INVALID;\n        }\n        const valueType = this._def.valueType;\n        function finalizeSet(elements) {",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "package": "zod",
-      "version": "3.25.76",
-      "file": "v3/types.js",
-      "originalSHA256": "9763a2938f0e7f983363ef4bf6530e7583e3f2d54f8a4a6684efad58febc6e8e",
-      "patchedSHA256": "adf888295cfc2f8af146b8ae533956969d72f17e65800a3d6ce4ecc7deec5fd1",
-      "edits": [
-        {
-          "before": "        if (ctx.common.async) {\n            return Promise.all([...ctx.data].map((item, i) => {",
-          "after": "        // Local gate for GHSA-mrhx-c7xc-m3w5 (no upstream fix in zod 3): an array over its\n        // upper bound fails before any element is parsed. The size issues are added above.\n        if ((def.exactLength !== null && ctx.data.length > def.exactLength.value) ||\n            (def.maxLength !== null && ctx.data.length > def.maxLength.value)) {\n            return INVALID;\n        }\n        if (ctx.common.async) {\n            return Promise.all([...ctx.data].map((item, i) => {",
-          "count": 1
-        },
-        {
-          "before": "        const valueType = this._def.valueType;\n        function finalizeSet(elements) {",
-          "after": "        // Local gate for GHSA-mrhx-c7xc-m3w5 (no upstream fix in zod 3): a set over its\n        // upper bound fails before any element is parsed. The size issue is added above.\n        if (def.maxSize !== null && ctx.data.size > def.maxSize.value) {\n            return INVALID;\n        }\n        const valueType = this._def.valueType;\n        function finalizeSet(elements) {",
-          "count": 1
-        }
-      ]
-    },
-    {
       "package": "deepmerge",
       "version": "4.3.1",
       "file": "dist/cjs.js",
@@ -227,11 +181,6 @@
       "package": "node-forge",
       "fromVersion": "1.4.1",
       "reason": "GHSA-86w9-cpqp-85rv is fixed in node-forge 1.4.1 (canonical DigestInfo re-encoding and byte comparison in lib/rsa.js); only 1.4.0 and older needed the local repair"
-    },
-    {
-      "package": "zod",
-      "fromVersion": "4.6.6",
-      "reason": "GHSA-mrhx-c7xc-m3w5 is fixed in zod 4.6.6; only copies below it need the gate"
     },
     {
       "package": "deepmerge",

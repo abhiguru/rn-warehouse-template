@@ -429,15 +429,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       return orderStatus !== 'DISPATCHED';
     });
 
-    // Group orders by status: Active (with items) vs Empty
-    const activeOrders = nonDispatchedOrders.filter(order => {
-      const itemCount = order.item_count ?? order.total_items ?? 0;
-      return itemCount > 0;
-    });
-    const emptyOrders = nonDispatchedOrders.filter(order => {
-      const itemCount = order.item_count ?? order.total_items ?? 0;
-      return itemCount === 0;
-    });
+    // An order exists only while it has a line (an order with none is never listed, and an older facility's empty
+    // ones are left out): one section, the orders with items.
+    const activeOrders = nonDispatchedOrders.filter(order => (order.item_count ?? order.total_items ?? 0) > 0);
 
     const sections: SectionData<Order>[] = [];
 
@@ -448,15 +442,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       });
     }
 
-    if (emptyOrders.length > 0 && !showWithItemsOnly) {
-      sections.push({
-        title: translate('lists.order.emptySection'),
-        data: emptyOrders,
-      });
-    }
-
     return flattenSections(sections, (order) => order.id);
-  }, [orders, showWithItemsOnly]);
+  }, [orders]);
 
   // ============================================================================
   // FLASHLIST KEY EXTRACTOR (stable, not inline)
@@ -542,8 +529,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   );
 
   let content: React.ReactNode;
-  if (!hasLoaded && isLoading) {
-    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+  if (isLoading && (!hasLoaded || orders.length === 0)) {
+    // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
+    // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
   } else if (orders.length > 0) {
     content = (

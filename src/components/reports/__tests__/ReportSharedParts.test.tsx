@@ -63,7 +63,7 @@ describe.each(THEMES)('shared report parts in %s %s', (brand, mode) => {
     const root = render(<ReportDateHeading date="2026-10-09" />, brand, mode);
     const [heading] = textNodes(root);
     expect(heading.props.accessibilityRole).toBe('header');
-    expect(textOf(heading)).toMatch(/9 Oct/);
+    expect(textOf(heading)).toMatch(/09\/10\/26/);
     expect(flat(heading).color).toBe(t.text.secondary);
     expect(flat(heading).fontWeight).toBe(fontWeight.semibold);
     expect(flat(heading).textTransform).toBe('uppercase');

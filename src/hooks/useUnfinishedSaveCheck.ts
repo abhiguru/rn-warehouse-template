@@ -14,7 +14,7 @@ type AuthState = { auth: { userProfile?: { id?: string } | null } };
 
 /** The details page of the saved document. */
 const detailsRoute = (kind: UnfinishedSaveKind, id: string): Href =>
-  (kind === 'grn' ? `/grn-details/${id}` : `/dispatch-details/${id}`) as Href;
+  (kind === 'grn' ? `/grn-details/${id}` : kind === 'invoice' ? `/invoice-details/${id}` : `/dispatch-details/${id}`) as Href;
 
 export function useUnfinishedSaveCheck(): void {
   const profileId = useAppSelector((state: AuthState) => state.auth.userProfile?.id);

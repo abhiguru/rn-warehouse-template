@@ -51,6 +51,12 @@ describe('writing a create down', () => {
     expect(wasStartedThisRun(grn.requestKey)).toBe(true);
   });
 
+  it('keeps an invoice like any other create', async () => {
+    const invoice = { kind: 'invoice' as const, requestKey: 'warehouse-invoice-create-1', number: '12', customerName: 'Hilltop Fresh Mart' };
+    await rememberUnfinishedSave(invoice);
+    expect(await readUnfinishedSaves()).toEqual([{ ...invoice, startedAt: expect.any(Number) }]);
+  });
+
   it('keeps a GRN and a dispatch side by side, oldest first when read', async () => {
     await rememberUnfinishedSave({ ...grn, startedAt: Date.now() - 5_000 });
     await rememberUnfinishedSave({ ...dispatch, startedAt: Date.now() - 9_000 });
@@ -197,7 +203,7 @@ describe('never in the way of a save', () => {
   it('skips entries that are not well formed', async () => {
     await AsyncStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ [ANA_AT_ALPHA]: [{ kind: 'invoice', requestKey: 'x', number: '1', customerName: 'c', startedAt: Date.now() }, { ...grn, startedAt: Date.now() }, 'text', null] })
+      JSON.stringify({ [ANA_AT_ALPHA]: [{ kind: 'order', requestKey: 'x', number: '1', customerName: 'c', startedAt: Date.now() }, { ...grn, startedAt: Date.now() }, 'text', null] })
     );
 
     expect((await readUnfinishedSaves()).map((entry) => entry.requestKey)).toEqual([grn.requestKey]);

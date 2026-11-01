@@ -16,7 +16,8 @@ describe('filters in Gujarati', () => {
   it('puts "થી … સુધી" after the values of a range', () => {
     setLanguage('gu');
     const year = new Date().getFullYear();
-    expect(t('filters.chip.dateBetween', { from: formatDate(`${year}-10-01`, 'short'), to: formatDate(`${year}-10-07`, 'short') })).toBe('૧ ઑક્ટોથી ૭ ઑક્ટો સુધી');
+    const yy = String(year).slice(-2).replace(/\d/g, digit => '૦૧૨૩૪૫૬૭૮૯'[Number(digit)]);
+    expect(t('filters.chip.dateBetween', { from: formatDate(`${year}-10-01`), to: formatDate(`${year}-10-07`) })).toBe(`૦૧/૧૦/${yy}થી ૦૭/૧૦/${yy} સુધી`);
     expect(t('filters.chip.numberBetweenUnit', { min: formatNumber(10), max: formatNumber(1500), unit: t('filters.unit.kg') })).toBe('૧૦થી ૧,૫૦૦ કિલો સુધી');
     expect(t('filters.chip.atLeastUnit', { min: formatNumber(40), unit: t('filters.unit.bags') })).toBe('૪૦ નંગ કે વધુ');
     expect(t('filters.chip.upTo', { max: formatNumber(99) })).toBe('૯૯ સુધી');

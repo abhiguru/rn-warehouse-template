@@ -197,6 +197,12 @@ describe('updateGRN header values that were switched off or cleared', () => {
     expect(body.p_registration).toBe('');
   });
 
+  it('sends a vehicle number without the spaces around it, and spaces only as empty text', async () => {
+    expect((await sent({ registration: ' GJ01  AB1234 ' })).p_registration).toBe('GJ01 AB1234');
+    mockRpc.mockReset();
+    expect((await sent({ registration: '   ' })).p_registration).toBe('');
+  });
+
   it('sends the note and registration as typed', async () => {
     const body = await sent({ note: 'Handle with care', registration: 'GJ01AB1234' });
     expect(body.p_note).toBe('Handle with care');

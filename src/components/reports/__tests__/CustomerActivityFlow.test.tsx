@@ -245,17 +245,17 @@ describe('customer activity, every customer', () => {
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')]]);
     expect(detail).not.toHaveBeenCalled();
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.labels()).toEqual(expect.arrayContaining(['Customers: 4', 'Stock: 550']));
     // City, when last active, and the stock.
     expect(screen.labels()).toContain('Hillside Produce Co, Morbi · Active today, 50 in stock');
-    expect(screen.labels()).toContain('Riverbank Produce, Rajkot · Last active 11 Aug, 80 in stock');
+    expect(screen.labels()).toContain('Riverbank Produce, Rajkot · Last active 11/08/26, 80 in stock');
 
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')], [days('2026-02-15')]]);
     expect(screen.has('Period: Last 240 days. Change')).toBe(true);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.customers()).toEqual([...DEFAULT_ORDER, 'Old Mill Stores']);
   });
 
@@ -271,9 +271,9 @@ describe('customer activity, every customer', () => {
     // Sorted by the invoiced amount, each card says it first, so the order can be read off the cards.
     expect(screen.labels()).toEqual(
       expect.arrayContaining([
-        'Sunrise Agro Foods, Invoiced ₹9,000 · Anand · Last active 1 Jul, 120 in stock',
-        'Riverbank Produce, Invoiced ₹5,000 · Rajkot · Last active 11 Aug, 80 in stock',
-        'Green Valley Traders, Invoiced ₹1,200 · Surat · Last active 20 Sep, 300 in stock',
+        'Sunrise Agro Foods, Invoiced ₹9,000 · Anand · Last active 01/07/26, 120 in stock',
+        'Riverbank Produce, Invoiced ₹5,000 · Rajkot · Last active 11/08/26, 80 in stock',
+        'Green Valley Traders, Invoiced ₹1,200 · Surat · Last active 20/09/26, 300 in stock',
         'Hillside Produce Co, Invoiced ₹300 · Morbi · Active today, 50 in stock',
       ])
     );
@@ -283,7 +283,7 @@ describe('customer activity, every customer', () => {
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods']);
     await screen.press('Done');
     expect(screen.has('Sorted by Customer, A to Z. Change sort')).toBe(true);
-    expect(screen.labels()).toContain('Green Valley Traders, Surat · Last active 20 Sep, 300 in stock');
+    expect(screen.labels()).toContain('Green Valley Traders, Surat · Last active 20/09/26, 300 in stock');
     expect(screen.labels().filter(label => label.includes('Invoiced ₹'))).toEqual([]);
     expect(allActivity).toHaveBeenCalledTimes(1);
   });
@@ -299,7 +299,7 @@ describe('customer activity, every customer', () => {
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Riverbank Produce', 'Hillside Produce Co']);
     expect(screen.bold()).toEqual(['Produce', 'Produce']);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Showing 2 of 5 · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Showing 2 of 5 · Last updated 10:00 am');
 
     await screen.press('Clear all filters and the search');
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co', 'Old Mill Stores']);
@@ -362,7 +362,7 @@ describe('customer activity, one customer', () => {
     expect(header.indexOf('Riverside Cold Storage')).toBeLessThan(header.indexOf('Green Valley Traders'));
     expect(screen.labels()).toContain('Facility: Riverside Cold Storage');
     expect(screen.labels()).toEqual(expect.arrayContaining(['Stock: 300', 'GRNs: 12', 'Dispatches: 7']));
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
     // Nothing to search or sort.
     expect(screen.searchFields()).toEqual([]);
     expect(screen.labels().filter(label => label.startsWith('Sorted by'))).toEqual([]);
@@ -372,7 +372,7 @@ describe('customer activity, one customer', () => {
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
     expect(detail.mock.calls).toEqual([[{ customerId: 'c2', ...days('2026-06-15') }], [{ customerId: 'c2', ...days('2026-02-15') }]]);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
   });
 
   it('counts each card from the period\'s totals, not from its few preview rows, and names the period and what the action opens', async () => {
@@ -380,15 +380,15 @@ describe('customer activity, one customer', () => {
     const screen = await open(makeStore());
     const cards = screen.controls(label => label.includes('. View ')).map(node => node.props.accessibilityLabel);
     expect(cards).toEqual([
-      'GRNs in 15 Jun – 12 Oct: 12. View GRNs in 15 Jun – 12 Oct',
-      'Dispatches in 15 Jun – 12 Oct: 7. View dispatches in 15 Jun – 12 Oct',
+      'GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26',
+      'Dispatches in 15/06/26 – 12/10/26: 7. View dispatches in 15/06/26 – 12/10/26',
       'Current stock: 300 bags. View stock age',
-      'Invoiced in 15 Jun – 12 Oct: ₹15,400. View invoices in 15 Jun – 12 Oct',
+      'Invoiced in 15/06/26 – 12/10/26: ₹15,400. View invoices in 15/06/26 – 12/10/26',
     ]);
     // The preview rows are the latest of any date, under a heading that says so; the stock card's are its top items.
     const headings = screen.tree.root.findAll(node => (node.type as unknown) === 'Text' && node.props.accessibilityRole === 'header').map(textOf);
     expect(headings).toEqual(expect.arrayContaining(['Latest GRNs (any date)', 'Latest dispatches (any date)', 'Top stock items', 'Latest invoices (any date)']));
-    expect(screen.texts()).toEqual(expect.arrayContaining(['View GRNs in 15 Jun – 12 Oct', 'View stock age']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['View GRNs in 15/06/26 – 12/10/26', 'View stock age']));
     expect(screen.texts()).not.toContain('View all');
   });
 
@@ -409,13 +409,13 @@ describe('customer activity, one customer', () => {
     await screen.press('Last month');
     expect(detail.mock.calls.at(-1)).toEqual([{ customerId: 'c2', fromDate: '2026-09-01', toDate: '2026-09-30' }]);
 
-    const card = 'GRNs in 1 Sep – 30 Sep: 1. View GRNs in 1 Sep – 30 Sep';
+    const card = 'GRNs in 01/09/26 – 30/09/26: 1. View GRNs in 01/09/26 – 30/09/26';
     expect(screen.has(card)).toBe(true);
     // The October rows sit under "Latest GRNs (any date)", not under the September count.
     const texts = screen.texts();
-    expect(texts.indexOf('GRNs in 1 Sep – 30 Sep: 1')).toBeLessThan(texts.indexOf('Latest GRNs (any date)'));
+    expect(texts.indexOf('GRNs in 01/09/26 – 30/09/26: 1')).toBeLessThan(texts.indexOf('Latest GRNs (any date)'));
     expect(texts.indexOf('Latest GRNs (any date)')).toBeLessThan(texts.indexOf('GRN A0012'));
-    expect(screen.labels()).toEqual(expect.arrayContaining(['GRN A0012, 9 Oct, 40 of 40 in stock', 'GRN A0010, 5 Oct, 60 of 100 in stock']));
+    expect(screen.labels()).toEqual(expect.arrayContaining(['GRN A0012, 09/10/26, 40 of 40 in stock', 'GRN A0010, 05/10/26, 60 of 100 in stock']));
 
     // The action opens GRN activity with the period it names: the one period every report shares.
     await screen.press(card);
@@ -427,13 +427,13 @@ describe('customer activity, one customer', () => {
     openGreenValley();
     const store = makeStore();
     const screen = await open(store);
-    await screen.press('GRNs in 15 Jun – 12 Oct: 12. View GRNs in 15 Jun – 12 Oct');
+    await screen.press('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
     // The stock card says where it goes: the customer's stock age.
     await screen.press('Current stock: 300 bags. View stock age');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/stock-aging', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
-    await screen.press('Dispatches in 15 Jun – 12 Oct: 7. View dispatches in 15 Jun – 12 Oct');
-    await screen.press('Invoiced in 15 Jun – 12 Oct: ₹15,400. View invoices in 15 Jun – 12 Oct');
+    await screen.press('Dispatches in 15/06/26 – 12/10/26: 7. View dispatches in 15/06/26 – 12/10/26');
+    await screen.press('Invoiced in 15/06/26 – 12/10/26: ₹15,400. View invoices in 15/06/26 – 12/10/26');
     expect(mockPush.mock.calls.map(([target]) => target.pathname)).toEqual(['/reports/grn-activity', '/reports/stock-aging', '/reports/dispatch-activity', '/reports/invoice-history']);
     const green = { id: 'c2', name: 'Green Valley Traders' };
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({
@@ -466,7 +466,7 @@ describe('customer activity, one customer', () => {
     expect(chart.props.formatYLabel('433.3333')).toBe('433');
     expect(screen.texts()).toContain('bags');
     // October is in progress on 12 October: its figure is the stock as of today, not a month end.
-    expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12 Oct. Highest 1,200.');
+    expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12/10/26. Highest 1,200.');
 
     await screen.pressStarting('Stock level trend. ');
     const segments = screen.tree.root.findAll(node => node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function');
@@ -479,8 +479,8 @@ describe('customer activity, one customer', () => {
     expect(segments.map(node => node.props.accessibilityState.selected)).toEqual([true, false]);
 
     await screen.press('Table of values');
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, as of 12 Oct, 300']));
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Stock at month end', 'as of 12 Oct', 'Oct 2026: as of 12 Oct']));
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, as of 12 Oct 2026, 300']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Stock at month end', 'as of 12/10/26', 'Oct 2026: as of 12/10/26']));
     const after = screen.tree.root.findAll(node => node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function');
     expect(after.map(node => node.props.accessibilityState.selected)).toEqual([false, true]);
   });
@@ -492,8 +492,8 @@ describe('customer activity, one customer', () => {
     detail.mockResolvedValue(answerDetail({ summary: { ...DETAIL.summary, current_stock: 1300 } }) as never);
     const screen = await open(makeStore());
     expect(screen.labels()).toContain('Stock: 1,300');
-    expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 1,300 as of 12 Oct. Highest 1,300.');
-    expect(screen.texts()).not.toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12 Oct. Highest 1,200.');
+    expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 1,300 as of 12/10/26. Highest 1,300.');
+    expect(screen.texts()).not.toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12/10/26. Highest 1,200.');
     const chart = screen.tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0];
     expect((chart.props.data as { value: number }[]).map(dot => dot.value)).toEqual([200, 1200, 1300]);
 
@@ -501,8 +501,8 @@ describe('customer activity, one customer', () => {
     expect(screen.labels()).toEqual(expect.arrayContaining(['Latest 1,300', 'Highest 1,300']));
     await screen.press('Table of values');
     // The months that are over keep the server's month-end figures.
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, as of 12 Oct, 1,300']));
-    expect(screen.labels()).not.toContain('Oct 2026, as of 12 Oct, 300');
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, as of 12 Oct 2026, 1,300']));
+    expect(screen.labels()).not.toContain('Oct 2026, as of 12 Oct 2026, 300');
   });
 
   it('says so when the period has no stock trend, instead of leaving the section out', async () => {
@@ -513,7 +513,7 @@ describe('customer activity, one customer', () => {
     expect(screen.texts()).toEqual(expect.arrayContaining(['CHARTS', 'Stock level trend', 'No stock levels to show for this period.']));
     expect(screen.controls(label => label.startsWith('Stock level trend'))).toEqual([]);
     // The rest of the dashboard is still there.
-    expect(screen.labels()).toContain('GRNs in 15 Jun – 12 Oct: 12. View GRNs in 15 Jun – 12 Oct');
+    expect(screen.labels()).toContain('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
   });
 
   it('shows the report\'s empty state for a customer with nothing in the period', async () => {
@@ -561,7 +561,7 @@ describe('customer activity, a card\'s "View …" clears what the destination wa
       searches: { c2: 'A0009', c1: 'E0014' },
     });
     const screen = await open(store);
-    await screen.press('GRNs in 15 Jun – 12 Oct: 12. View GRNs in 15 Jun – 12 Oct');
+    await screen.press('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
     const after = store.getState().listFilters.lists['report-grn-activity-customer'];
     expect(after.values).toEqual({});
@@ -574,7 +574,7 @@ describe('customer activity, a card\'s "View …" clears what the destination wa
     const store = makeStore();
     narrow(store, 'report-invoice-history-customer', { payment: 'paid', search: '2026/0042' }, 'c2');
     const screen = await open(store);
-    await screen.press('Invoiced in 15 Jun – 12 Oct: ₹15,400. View invoices in 15 Jun – 12 Oct');
+    await screen.press('Invoiced in 15/06/26 – 12/10/26: ₹15,400. View invoices in 15/06/26 – 12/10/26');
     const after = store.getState().listFilters.lists['report-invoice-history-customer'];
     expect(after.values).toEqual({});
     expect(after.searches?.c2).toBeUndefined();

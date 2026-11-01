@@ -52,7 +52,7 @@ beforeEach(async () => {
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc: server.rpc } as never);
   server.addGrn(IDS.grn, 'A0010', flowLines.grnA());
   server.setInvoice(flowLines.grnA(), { labour: 450, tax_amount: 70, total: 1720 });
-  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync() });
+  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
 });
 
 afterEach(async () => {

@@ -76,7 +76,7 @@ describe('a customer with one own rate', () => {
     await mount();
     const s = texts(tree);
     expect(s).toContain('Review Onion Red');
-    expect(s).toContain('since 1 Jan 2026');
+    expect(s).toContain('since 01/01/26');
     expect(s).toContain('0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%');
     expect(s).toContain('Default rate: ₹3.50 per bag, per month');
     expect(s).toContain('ITEMS WITH THEIR OWN RATE');
@@ -117,10 +117,10 @@ describe('a customer with several own rates', () => {
     // Garlic: a line for each of its two bands.
     expect(s).toContain('0–40 kg · ₹5.00 · Labour ₹2.50 · Tax 5%');
     expect(s).toContain('41–100 kg · ₹8.00 · Labour ₹2.50 · Tax 5%');
-    expect(s).toContain('Rate ends 31 Dec 2026');
-    expect(s).toContain('New rate from 1 Jan 2027');
+    expect(s).toContain('Rate ends 31/12/26');
+    expect(s).toContain('New rate from 01/01/27');
     // The potato rate is not in force yet: its line is the later rate, its default is today's.
-    expect(s).toContain('since 1 Jan 2027');
+    expect(s).toContain('since 01/01/27');
     expect(s).toContain('0–100 kg · ₹3.75 · Labour ₹2.00 · Tax 0%');
     expect(s).toContain('Default rate: ₹4.00 per bag, per month');
   });
@@ -216,6 +216,20 @@ describe('the `item` link', () => {
   it('without the link nothing opens', async () => {
     await mount();
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe('an item that is deactivated', () => {
+  it('lists the customer\'s rate tagged Deactivated, read only (no press target), and is not the empty state', async () => {
+    const gone = row({ item_id: 'gone', item_name: 'Review Gone Seed', weight_min: 0, weight_max: 100, unit_price: 12.5, effective_from: '2026-09-01', ...ORCHARD_B });
+    jest.mocked(useItemRates).mockReturnValue(result({ rates: [gone] }));
+    await mount();
+    expect(host(tree, 'customer-pricing-empty')).toHaveLength(0);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Review Gone Seed', 'Deactivated']));
+    const rowNode = host(tree, 'customer-item-row-gone')[0];
+    expect(rowNode.props.onPress).toBeUndefined();
+    expect(rowNode.props.accessibilityLabel).toContain('Deactivated');
+    expect(tree.root.findAll(n => n.props.testID === 'customer-item-row-gone' && typeof n.props.onPress === 'function')).toHaveLength(0);
   });
 });
 

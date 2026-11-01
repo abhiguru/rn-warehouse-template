@@ -39,7 +39,7 @@ import type { RateSaveBarState } from './ScopeSaveBar';
 export type { RateSaveBarState } from './ScopeSaveBar';
 
 export interface ScopeRatesProps {
-  item: { id: string; name: string };
+  item: { id: string; name: string; packaging?: string | null };
   /** The customer whose own rate this is. */
   customerId: string;
   customerName?: string;
@@ -78,7 +78,7 @@ interface BoxReport {
 }
 
 interface Shared {
-  item: { id: string; name: string };
+  item: { id: string; name: string; packaging?: string | null };
   customerId: string;
   customerName?: string;
   rows: ItemStoragePrice[];
@@ -268,6 +268,7 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, showUnit = true, loc
             showUnit={showUnit}
             startSignal={startAsk}
             locked={locked}
+            packaging={shared.item.packaging}
             testID={`rate-box-${id}`}
           />
           {adding ? (
@@ -478,7 +479,7 @@ export function ScopeRates({
                 <Text style={styles.compare} testID="default-is">
                   {t('pricing.customerRate.defaultIs', {
                     amount: rentRange(Math.min(...defaultBands.map(r => r.unit_price)), Math.max(...defaultBands.map(r => r.unit_price))),
-                    unit: unitText(priceType),
+                    unit: unitText(priceType, item.packaging),
                   })}
                 </Text>
               ) : null}
@@ -494,6 +495,7 @@ export function ScopeRates({
                 stopsAfter={stopsAfter}
                 overlap={Boolean(scopeView.overlap)}
                 day={day}
+                packaging={item.packaging}
               />
             </View>
           );
@@ -512,7 +514,7 @@ export function ScopeRates({
               <Text style={styles.compare} testID="default-is">
                 {t('pricing.customerRate.defaultIs', {
                   amount: rentRange(Math.min(...defaultBands.map(r => r.unit_price)), Math.max(...defaultBands.map(r => r.unit_price))),
-                  unit: unitText(priceType),
+                  unit: unitText(priceType, item.packaging),
                 })}
               </Text>
             ) : null}
@@ -552,7 +554,7 @@ export function ScopeRates({
               <View style={styles.strip}>
                 <RateStrip
                   variant="info"
-                  message={t('pricing.item.upcoming', { date: dateText(upcoming.startsOn), amount: upcomingAmount, unit: unitText(priceType) })}
+                  message={t('pricing.item.upcoming', { date: dateText(upcoming.startsOn), amount: upcomingAmount, unit: unitText(priceType, item.packaging) })}
                   actions={[
                     {
                       label: t('pricing.action.editUpcoming'),

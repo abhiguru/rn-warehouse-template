@@ -38,6 +38,7 @@ describe('searchGRNNumbers', () => {
     expect(calls).toContainEqual(['from', 'goodsreceived']);
     expect(calls).toContainEqual(['ilike', 'gr_no', '%001%']);
     expect(calls).toContainEqual(['eq', 'customer_id', CUSTOMER_A]);
+    expect(calls).toContainEqual(['eq', 'out_of_stock', false]);
     expect(results).toEqual([{ id: 'grn-1', gr_no: 'A0010', date: '2026-10-01', customer_name: 'Fictional Traders' }]);
   });
 

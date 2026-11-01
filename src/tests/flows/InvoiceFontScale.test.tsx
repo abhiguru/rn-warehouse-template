@@ -67,7 +67,7 @@ afterEach(async () => {
 const form = () => app.store.getState().invoiceForm;
 const start = async (fontScale: number) => {
   mockFontScale = fontScale;
-  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync() });
+  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
   await openNewInvoice(app);
   await pickGrn(app, 'A0010');
 };

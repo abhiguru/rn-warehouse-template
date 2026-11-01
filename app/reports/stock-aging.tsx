@@ -59,7 +59,7 @@ import { getAllStockAging, getCustomerStockAging } from '@/services/reporting/st
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AgingBucketData, AllStockAgingData, CustomerAgingSummary, StockAgingData } from '@/types/report.types';
-import { formatCount, formatIndiaDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatIndiaDate, formatIndiaSpokenDate, formatNumber } from '@/utils/formatters';
 
 const REPORT_ID = 'stock-aging';
 
@@ -583,7 +583,7 @@ const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expande
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const title = grnTitle(line);
-  const received = formatIndiaDate(line.grn_date, 'short');
+  const received = formatIndiaDate(line.grn_date);
   const dispatch = line.dispatch_info;
 
   return (
@@ -592,7 +592,7 @@ const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expande
         style={({ pressed }) => [styles.lineRow, pressed && styles.rowPressed]}
         onPress={() => onToggle(groupKey, line.lineKey)}
         accessibilityRole="button"
-        accessibilityLabel={tr('reports.stockAging.entryA11y', { title, date: received, age: days(line.aging_days), units: units(line.current_stock) })}
+        accessibilityLabel={tr('reports.stockAging.entryA11y', { title, date: formatIndiaSpokenDate(line.grn_date), age: days(line.aging_days), units: units(line.current_stock) })}
         accessibilityState={{ expanded }}
       >
         <View style={styles.cellContent}>

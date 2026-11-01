@@ -7,12 +7,14 @@
  * data, items and error messages never reach the console.
  */
 
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import * as Crypto from 'expo-crypto';
 import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
-import { executeRPC } from '@/utils/serviceErrorHandler';
+import { executeRPC, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { createLogger } from '@/utils/logger';
-import { t } from '@/i18n';
+import { formatIdentifier, t } from '@/i18n';
+import { grnNumbersOfOtherCustomerRefusal } from '@/features/dispatch/utils/lotOwnership';
 import { nextDocumentNumber, type NumberOffer } from '@/services/documentNumberingService';
 import type {
   DispatchHeaderData,
@@ -23,12 +25,14 @@ import type {
   StockCheckResponse,
 } from '@/types/dispatch.types';
 import { uploadDeferredDispatchImages } from './dispatchImageService';
-import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
+import { emptyAnswerAsError, isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { checkSubmission, isLostAnswer } from '@/utils/lostAnswer';
-import { markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
+import { createRequestKeyKeeper } from '@/utils/requestKeyKeeper';
+import { isServerRefusal, markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
 import { REFUSAL, refusalOf } from '@/utils/serverRefusal';
 import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
+import { parseOrderEffects } from '@/services/orderEffects';
 import { forgetUnfinishedSave, releaseUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 
 const log = createLogger('dispatch');
@@ -65,6 +69,8 @@ const WORDED_REFUSALS: ReadonlySet<string> = new Set([
   REFUSAL.POSSIBLE_DUPLICATE,
   // Migration 127: the number does not follow the facility's numbering rule (nothing was saved).
   REFUSAL.NUMBER_FORMAT,
+  // Migration 130: the number has a space in it (nothing was saved).
+  REFUSAL.DISPATCH_NUMBER_SPACES,
 ]);
 
 /** The result for a refusal of the list above, or undefined when the answer is none of them. */
@@ -74,6 +80,23 @@ function wordedRefusal(answer: unknown, fallback: string): DispatchApiResponse |
   const text = serverText(refusal.text, fallback, { write: true, form: true });
   reportOutcome('save_refused', { code: refusal.reason });
   return { success: false, reason: refusal.reason, refusal, error: text, message: text };
+}
+
+/**
+ * The text of a failed save: the sentence naming the GRNs when the server refused a line of another customer's stock (the
+ * server's English names the lots as "item (GRN)"), else the server's text made fit to show.
+ */
+function failureText(raw: unknown, fallback: string, options: Parameters<typeof serverText>[2]): string {
+  const text =
+    typeof raw === 'string' ? raw : typeof (raw as { message?: unknown } | null)?.message === 'string' ? (raw as { message: string }).message : '';
+  const grns = grnNumbersOfOtherCustomerRefusal(text);
+  if (grns) return t('dispatch.validation.otherCustomerLots', { grns: grns.map((grNo) => formatIdentifier(grNo)).join(', ') });
+  return serverText(raw, fallback, options);
+}
+
+/** The vehicle number is longer than the column holds (migration 130: `error_code: 'registration_too_long'`, limit 20). */
+function isRegistrationTooLong(answer: unknown): boolean {
+  return (answer as { error_code?: unknown } | null)?.error_code === 'registration_too_long';
 }
 
 /** The number a refusal is about: the one the server names, else the number that was sent. */
@@ -239,7 +262,10 @@ async function sendUntilAnswered(
   let takenOnResend = false;
   for (;;) {
     const sentAt = Date.now();
-    const { data, error, status } = await send(resent);
+    const sentAnswer = await send(resent);
+    const { data, status } = sentAnswer;
+    // An empty HTTP 200 is no answer of the server's: a lost answer (checked by the request key).
+    const error = sentAnswer.error ?? emptyAnswerAsError(sentAnswer);
     const left = options.signal?.aborted === true;
     // The HTTP status goes with the error: a gateway's 502 / 504 is told from the server's own refusals.
     const failure = error ? withHttpStatus(error, status) : null;
@@ -378,7 +404,7 @@ export const createDispatch = async (payload: {
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
         disp_date: toCalendarDay(payload.header.disp_date), // the day, 'YYYY-MM-DD': the server takes the day from this text
-        registration: payload.header.registration.toUpperCase(), // Ensure uppercase
+        registration: normalizeVehicle(payload.header.registration).toUpperCase(), // Ensure uppercase
         customer_id: payload.header.customer_id,
         customer_name: payload.header.customer_name,
         supervisor_id: payload.header.supervisor_id,
@@ -459,23 +485,27 @@ export const createDispatch = async (payload: {
     if (answer.afterLeaving && (error || !data || data.success === false)) return { success: false, aborted: true, error: '', message: '' };
 
     if (error) {
-      log.error('create_dispatch_with_stock_check failed', { code: errorCode(error) });
+      (isNumberTakenAnswer(error) ? log.info : log.error).call(log, 'create_dispatch_with_stock_check failed', { code: errorCode(error) });
+      handleGlobalAuthError(error);
       if (isNumberTakenAnswer(error)) {
         return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
       }
-      throw new Error(serverText(error, t('dispatch.service.createFailed'), { write: true, form: true }));
+      throw new Error(failureText(error, t('dispatch.service.createFailed'), { write: true, form: true }));
     }
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
-      log.error('create_dispatch_with_stock_check returned failure', { reason: typeof data.reason === 'string' ? data.reason : undefined });
+      // A refusal by the server's rules (a likely duplicate, a future date, a number taken) is an answer, not a fault: info.
+      (refusalOf(data) || isNumberTakenAnswer(data) ? log.info : log.error).call(log, 'create_dispatch_with_stock_check returned failure', { reason: typeof data.reason === 'string' ? data.reason : undefined });
+      handleGlobalAuthError(data);
       if (isNumberTakenAnswer(data)) {
         return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
       }
       // Wave B: the date rules (D3) and the order that moved (D5) are worded by the screen, from the reason and the fields.
       const worded = wordedRefusal(data, t('dispatch.service.createFailed'));
       if (worded) return worded;
-      throw markRefusal(new Error(serverText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
+      if (isRegistrationTooLong(data)) throw new Error(t('dispatch.validation.registrationMax'));
+      throw markRefusal(new Error(failureText(data.error || data.message, t('dispatch.service.createFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
     }
 
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
@@ -523,9 +553,11 @@ export const createDispatch = async (payload: {
       // Server migration 120: how many lines of the order are still open. Absent on an older server (null: show
       // neither text).
       order_lines_left: typeof data.order_lines_left === 'number' ? data.order_lines_left : null,
+      // Server migration 128: the order lines this dispatch changed. Absent on an older server.
+      ...(Array.isArray(data.order_effects) ? { order_effects: parseOrderEffects(data.order_effects) } : {}),
     };
   } catch (error: any) {
-    log.error('Dispatch creation failed');
+    (isServerRefusal(error) ? log.info : log.error).call(log, 'Dispatch creation failed');
     reportSaveError(error, { requestKey: reportedKey });
 
     // Parse error message for user-friendly display
@@ -572,6 +604,10 @@ export const createDispatch = async (payload: {
  * of the request that is captured once below, so a resend after a lost answer is byte-identical; the server answers a
  * resend of one's own saved request from the stored answer of its request code, before it compares versions.
  */
+const dispatchUpdateKeys = createRequestKeyKeeper(() => `warehouse-dispatch-update-${Crypto.randomUUID()}`);
+const updateSignature = (dispatchId: string, payload: { header: DispatchHeaderData; items: DispatchItemData[]; expectedUpdatedAt?: string | null }): string =>
+  JSON.stringify([dispatchId, payload.header, payload.items, payload.expectedUpdatedAt ?? null]);
+
 export const updateDispatch = async (
   dispatchId: string,
   payload: {
@@ -586,7 +622,8 @@ export const updateDispatch = async (
     log.info('Updating dispatch', { dispatchId, itemCount: payload.items.length });
 
     const authenticatedClient = await getAuthenticatedClient();
-    const requestKey = `warehouse-dispatch-update-${Crypto.randomUUID()}`;
+    // Kept across Save presses until the server answers definitively or the form changes (see requestKeyKeeper).
+    const requestKey = dispatchUpdateKeys.keyFor(updateSignature(dispatchId, payload));
     reportedKey = requestKey;
 
     // Transform data to match RPC function format
@@ -595,7 +632,7 @@ export const updateDispatch = async (
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
         disp_date: toCalendarDay(payload.header.disp_date),
-        registration: payload.header.registration.toUpperCase(),
+        registration: normalizeVehicle(payload.header.registration).toUpperCase(),
         customer_id: payload.header.customer_id,
         customer_name: payload.header.customer_name,
         supervisor_id: payload.header.supervisor_id,
@@ -621,6 +658,8 @@ export const updateDispatch = async (
     );
     if (!answer) return { success: false, aborted: true, error: '', message: '' };
     if (answer.lostAfterLeaving) return { success: false, aborted: true, maybeSaved: true, error: '', message: '' };
+    // The server answered: this save is settled, the next one is a new request.
+    dispatchUpdateKeys.settle();
     // The resend was refused for the number twice: the first send may have saved it. The screen says so; no next number.
     if (answer.numberMaybeSaved) {
       reportOutcome('save_refused', { code: 'NUMBER_TAKEN', requestKey });
@@ -637,15 +676,17 @@ export const updateDispatch = async (
     if (answer.afterLeaving && (error || !data || data.success === false)) return { success: false, aborted: true, error: '', message: '' };
 
     if (error) {
-      log.error('update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
+      (isNumberTakenAnswer(error) ? log.info : log.error).call(log, 'update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
+      handleGlobalAuthError(error);
       if (isNumberTakenAnswer(error)) {
         return numberTakenResponse(numberOfRefusal(error, payload.header.disp_no));
       }
-      throw new Error(serverText(error, t('dispatch.service.updateFailed'), { write: true, form: true }));
+      throw new Error(failureText(error, t('dispatch.service.updateFailed'), { write: true, form: true }));
     }
 
     if (data && data.success === false) {
-      log.error('update_dispatch_smart returned failure', { dispatchId, reason: typeof data.reason === 'string' ? data.reason : undefined });
+      (refusalOf(data) || isNumberTakenAnswer(data) ? log.info : log.error).call(log, 'update_dispatch_smart returned failure', { dispatchId, reason: typeof data.reason === 'string' ? data.reason : undefined });
+      handleGlobalAuthError(data);
       if (isNumberTakenAnswer(data)) {
         return numberTakenResponse(numberOfRefusal(data, payload.header.disp_no));
       }
@@ -653,7 +694,8 @@ export const updateDispatch = async (
       // worded by the screen, from the reason and the fields.
       const worded = wordedRefusal(data, t('dispatch.service.updateFailed'));
       if (worded) return worded;
-      throw markRefusal(new Error(serverText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
+      if (isRegistrationTooLong(data)) throw new Error(t('dispatch.validation.registrationMax'));
+      throw markRefusal(new Error(failureText(data.error || data.message, t('dispatch.service.updateFailed'), { write: true, form: true })), typeof data.reason === 'string' ? data.reason : undefined);
     }
 
     log.info('Dispatch updated', { dispatchId });
@@ -672,6 +714,8 @@ export const updateDispatch = async (
       dispatch_id: data?.dispatch_id ?? dispatchId,
       message: serverText(data?.message, t('dispatch.service.updated')),
       ...(typeof data?.updated_at === 'string' ? { updated_at: data.updated_at } : {}),
+      // Server migration 128: the order lines this edit changed. Absent on an older server.
+      ...(Array.isArray(data?.order_effects) ? { order_effects: parseOrderEffects(data.order_effects) } : {}),
       ...(orderSync && typeof orderSync === 'object'
         ? {
             order_sync: {
@@ -682,7 +726,7 @@ export const updateDispatch = async (
         : {}),
     };
   } catch (error: any) {
-    log.error('Dispatch update failed', { dispatchId });
+    (isServerRefusal(error) ? log.info : log.error).call(log, 'Dispatch update failed', { dispatchId });
     reportSaveError(error, { requestKey: reportedKey });
     return {
       success: false,
@@ -769,6 +813,9 @@ export const loadDispatchData = async (
       .map((item: any) => {
         return {
           unique_id: item.id,
+          // The server keeps a dispatch's lines with its own customer, so a saved line belongs to the customer the dispatch
+          // was loaded with: changing the customer in the edit form then finds the lines of the old one.
+          grns_customer_id: header.customer_id || undefined,
           grns_id: item.grn_details?.id || '',
           grns_gr_no: item.grn_details?.gr_no || '',
           grns_date: item.grn_details?.date || '',
@@ -779,10 +826,13 @@ export const loadDispatchData = async (
           grnItems_quantity: item.grn_item_details?.qty || 0,
           grnItems_stock: item.grn_item_details?.stock || 0,
           grnItems_package_mark: item.grn_item_details?.package_mark || '',
+          grnItems_packaging: item.grn_item_details?.packaging || item.item_details?.packaging || undefined,
           grnItems_rack: item.grn_item_details?.rack || '',
           grnItems_weight: item.grn_item_details?.weight || 0,
           disp_quantity: item.disp_qty || 0,
           original_disp_quantity: item.disp_qty || 0,
+          // The live invoice this line is on, if any: the line is then read only in the edit.
+          ...(item.invoice_details ? { invoice_no: String(item.invoice_details.invoice_no ?? '') } : {}),
         };
       });
 

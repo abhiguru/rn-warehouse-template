@@ -46,6 +46,7 @@ export const components: Translation<typeof source> = {
     retryLabel: 'સેટિંગ ફરી લોડ કરો',
     changeServer: 'સર્વર બદલો',
     changeServerLabel: 'કોલ્ડ સ્ટોરેજનું સર્વર બદલો',
+    backToFacilitiesLabel: 'મારાં કોલ્ડ સ્ટોરેજ પર પાછા જાઓ',
     footer: 'આવું વારંવાર થાય તો તમારા કોલ્ડ સ્ટોરેજનો સંપર્ક કરો.',
   },
   errorBoundary: {
@@ -101,6 +102,7 @@ export const components: Translation<typeof source> = {
     noLink: 'નવું વર્ઝન ક્યાંથી મળશે તે કોલ્ડ સ્ટોરેજને પૂછો.',
   },
   upgrading: {
+    title: 'સર્વર અપડેટ થઈ રહ્યું છે',
     message: 'કોલ્ડ સ્ટોરેજનું સર્વર અપડેટ થઈ રહ્યું છે. થોડી મિનિટ પછી ફરી પ્રયાસ કરો.',
   },
   invalidRoute: {
@@ -150,6 +152,9 @@ export const components: Translation<typeof source> = {
   },
   wizard: {
     createGrn: 'આવક પાવતી બનાવો',
+    review: 'ચકાસણી',
+    addItem: 'આઇટમ ઉમેરો',
+    saveChanges: 'ફેરફાર સાચવો',
   },
   sharePdf: 'PDF શેર કરો',
   preparingPdf: 'PDF તૈયાર થઈ રહી છે…',
@@ -175,6 +180,10 @@ export const components: Translation<typeof source> = {
     orderUpdated: 'ઑર્ડર અપડેટ થયો',
     statusChanged: 'ઑર્ડરની સ્થિતિ બદલાઈ',
     dispatchCreated: 'જાવક બની: {{number}}',
+    lineAdded: 'ઉમેરાઈ: {{item}}',
+    lineRemoved: 'કાઢી નખાઈ: {{item}}',
+    dispatchTook: 'જાવક {{number}} એ {{item}} માંથી {{bags}} લીધા',
+    dispatchDeletedGaveBack: 'જાવક {{number}} ડિલીટ થઈ: {{item}} માં {{bags}} પાછા આવ્યા',
     availableStock: 'ઉપલબ્ધ સ્ટોક: {{stock}}',
     availableStockWas: 'ઉપલબ્ધ સ્ટોક: {{stock}} (પહેલાં {{previous}})',
     by: '{{name}} દ્વારા',
@@ -184,6 +193,7 @@ export const components: Translation<typeof source> = {
     dialogLabel: '{{title}}, {{noun}} {{number}}',
     financialYear: 'નાણાકીય વર્ષ',
     totalAmount: 'કુલ રકમ',
+    totalQuantity: 'કુલ નંગ',
     grn: {
       createdTitle: 'આવક પાવતી બની ગઈ',
       updatedTitle: 'આવક પાવતી અપડેટ થઈ',

@@ -100,3 +100,47 @@ describe('WizardBottomBar labels and test ids', () => {
     expect(button(plain, 'Back').props.testID).toBeUndefined();
   });
 });
+
+describe('WizardBottomBar with an Add item button (Items steps)', () => {
+  const texts = (tree: ReactTestRenderer) =>
+    tree.root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat(Infinity).join(''));
+  const order = (tree: ReactTestRenderer) =>
+    tree.root.findAll((n) => typeof n.props.onPress === 'function' && typeof n.props.accessibilityLabel === 'string').map((n) => n.props.accessibilityLabel);
+
+  it('is Back (icon only, still read as Back), Add item (outlined), Review (filled)', () => {
+    const onAdd = jest.fn();
+    const tree = render('android', 1, { onAdd });
+    expect(order(tree)).toEqual(['Back', 'Add item', 'Review']);
+    // Back has no word; the other two do.
+    expect(texts(tree)).toEqual(['Add item', 'Review']);
+    expect(styleOf(button(tree, 'Back'))).toMatchObject({ flex: 0, width: 48 });
+    act(() => { button(tree, 'Add item').props.onPress(); });
+    expect(onAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the buttons as the screen says (Save changes, Back to ...)', () => {
+    const tree = render('android', 1, { onAdd: jest.fn(), addLabel: 'Save changes', previousAccessibilityLabel: 'Back to details' });
+    expect(order(tree)).toEqual(['Back to details', 'Save changes', 'Review']);
+  });
+
+  it('stacks Review, Add item, Back from font scale 1.5, with Back written out', () => {
+    const tree = render('android', 1.5, { onAdd: jest.fn() });
+    expect(order(tree)).toEqual(['Review', 'Add item', 'Back']);
+    expect(texts(tree)).toEqual(['Review', 'Add item', 'Back']);
+  });
+
+  it('keeps Add item pressable unless a save is running', () => {
+    const onAdd = jest.fn();
+    const tree = render('android', 1, { onAdd });
+    expect(button(tree, 'Add item').props.disabled).toBe(false);
+    const busy = render('android', 1, { onAdd, addDisabled: true });
+    act(() => { button(busy, 'Add item').props.onPress(); });
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it('without onAdd the bar is what it was', () => {
+    const tree = render('android', 1);
+    expect(order(tree)).toEqual(['Back', 'Next']);
+    expect(texts(tree)).toEqual(['Back', 'Next']);
+  });
+});

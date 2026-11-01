@@ -55,6 +55,12 @@ jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   uploadDispatchImage: jest.fn(),
 }));
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
+// The order preview is not what this suite is about: it answers "no preview" without a call.
+jest.mock('@/services/orderEffects', () => ({
+  ...jest.requireActual('@/services/orderEffects'),
+  previewCreateDispatch: jest.fn(async () => null),
+  previewUpdateDispatch: jest.fn(async () => null),
+}));
 jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -173,7 +179,7 @@ describe('an edited dispatch', () => {
     // Not the stored 40, not the half that was read: no stock tag at all.
     expect(all().some((text) => /in stock|left|Checking stock/.test(text))).toBe(false);
     // Everything else on the lines is still there.
-    expect(all()).toEqual(expect.arrayContaining(['Fictional item 1', 'A101/100', 'Rack R3']));
+    expect(all()).toEqual(expect.arrayContaining(['Fictional item 1', 'A101/100', 'R3']));
   });
 
   it('a read that throws is a failed read', async () => {

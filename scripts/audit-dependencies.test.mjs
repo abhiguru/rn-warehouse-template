@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { acceptedAdvisories, assessDependencyAudit } from './audit-dependencies.mjs';
+import { acceptedAdvisories, acceptedWithoutRepair, assessDependencyAudit, shippedPaths, toolingParents } from './audit-dependencies.mjs';
 
 const nodePath = 'node_modules/braces';
 const verified = [{ package: 'braces', installedPath: nodePath }];
@@ -165,4 +165,90 @@ test('audit refuses a changed deepmerge range and an overdue review', () => {
   const late = assess(withDeepmerge(), [...verified, ...deepmergeProof], on('2027-01-29'));
   assert.equal(late.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
   assert.ok(late.unresolved.some(entry => entry.reasons.includes('REVIEW_OVERDUE:GHSA-gcqx-w48m-w2h4')));
+});
+
+// Accepted without a local repair: build and dev tooling only, never in the shipped dependency tree.
+const globAdvisory = { name: 'glob', url: 'https://github.com/advisories/GHSA-3g3m-2fjr-6pw4', range: '>=9.0.0 <=14.0.1', severity: 'moderate' };
+const minimatchAdvisory = { name: 'minimatch', url: 'https://github.com/advisories/GHSA-g3hv-75wg-m249', range: '<11.0.1', severity: 'moderate' };
+const withTooling = () => {
+  const input = report({
+    glob: { severity: 'moderate', nodes: ['node_modules/glob', 'node_modules/foo/node_modules/glob'], via: [globAdvisory, 'minimatch'] },
+    minimatch: { severity: 'moderate', nodes: ['node_modules/minimatch'], via: [minimatchAdvisory] },
+    '@expo/cli': { severity: 'moderate', nodes: ['node_modules/@expo/cli'], via: ['glob'] },
+  });
+  return input;
+};
+const noShipped = { shipped: [] };
+
+test('glob and minimatch are accepted without a repair while nothing shipped declares them', () => {
+  const result = assess(withTooling(), verified, { ...beforeReview, ...noShipped });
+  assert.equal(result.status, 'PASS_WITH_VERIFIED_BACKPORTS');
+  assert.deepEqual(result.unresolved, []);
+  const cli = result.covered.find(entry => entry.package === '@expo/cli');
+  assert.deepEqual(cli.advisories, ['GHSA-3g3m-2fjr-6pw4', 'GHSA-g3hv-75wg-m249']);
+  assert.equal(result.reviewByWithoutRepair, '2026-12-15');
+  // Alone, without a backported advisory, the status says what was accepted.
+  const only = withTooling();
+  delete only.vulnerabilities.braces; delete only.vulnerabilities.expo;
+  only.metadata.vulnerabilities = { info: 0, low: 0, moderate: 3, high: 0, critical: 0 };
+  assert.equal(assess(only, [], { ...beforeReview, ...noShipped }).status, 'PASS_WITH_ACCEPTED_TOOLING_ADVISORIES');
+});
+
+test('the gate fails when an accepted-without-repair package is in the shipped dependency tree', () => {
+  const shipped = [{ package: 'minimatch', path: 'rn-warehouse-template > some-runtime-lib > minimatch' }];
+  const result = assess(withTooling(), verified, { ...beforeReview, shipped });
+  assert.equal(result.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
+  assert.ok(result.unresolved.some(entry => entry.package === 'minimatch' && entry.reasons.includes('SHIPPED:GHSA-g3hv-75wg-m249')));
+  // Its consumers carry the refusal with it.
+  assert.ok(result.unresolved.some(entry => entry.package === 'glob' && entry.reasons.includes('SHIPPED:GHSA-g3hv-75wg-m249')));
+});
+
+test('the production dependency paths are required, never assumed empty', () => {
+  assert.throws(() => assess(withTooling(), verified), /production dependency paths are required/);
+});
+
+test('accepting without a repair ends on the review date, and only for the named package and range', () => {
+  const [year, month, day] = acceptedWithoutRepair['GHSA-3g3m-2fjr-6pw4'].reviewBy.split('-').map(Number);
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+  assert.equal(assess(withTooling(), verified, { ...on(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`), ...noShipped }).status, 'PASS_WITH_VERIFIED_BACKPORTS');
+  const late = assess(withTooling(), verified, { ...on(nextDay), ...noShipped });
+  assert.equal(late.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
+  assert.ok(late.unresolved.some(entry => entry.reasons.includes('REVIEW_OVERDUE:GHSA-3g3m-2fjr-6pw4')));
+  for (const change of [{ range: '<=99.0.0' }, { name: 'other-package' }, { url: 'https://evil.invalid/GHSA-3g3m-2fjr-6pw4' }]) {
+    const input = withTooling(); input.vulnerabilities.glob.via = [{ ...globAdvisory, ...change }, 'minimatch'];
+    const result = assess(input, verified, { ...beforeReview, ...noShipped });
+    assert.equal(result.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
+  }
+});
+
+test('shippedPaths allows tooling parents only', () => {
+  const tree = {
+    name: 'rn-warehouse-template',
+    dependencies: {
+      expo: { dependencies: { '@expo/cli': { dependencies: { glob: { dependencies: { minimatch: {} } } } }, '@expo/fingerprint': { dependencies: { minimatch: {} } } } },
+      'expo-updates': { dependencies: { glob: {} } },
+    },
+  };
+  const names = ['glob', 'minimatch'];
+  assert.deepEqual(shippedPaths(tree, names), []);
+  // A runtime library, or the app itself, starts to declare one of them.
+  tree.dependencies.expo.dependencies['some-runtime-lib'] = { dependencies: { minimatch: {} } };
+  assert.deepEqual(shippedPaths(tree, names), [{ package: 'minimatch', path: 'rn-warehouse-template > expo > some-runtime-lib > minimatch' }]);
+  tree.dependencies.glob = {};
+  assert.deepEqual(shippedPaths(tree, names).map(found => found.path), [
+    'rn-warehouse-template > expo > some-runtime-lib > minimatch',
+    'rn-warehouse-template > glob',
+  ]);
+  assert.throws(() => shippedPaths({}, names), /npm ls/);
+  assert.ok(toolingParents.includes('@expo/cli') && !toolingParents.includes('expo'));
+});
+
+test('the accepted-without-repair list is separate from the backported one and fully dated', () => {
+  for (const [id, entry] of Object.entries(acceptedWithoutRepair)) {
+    assert.ok(!Object.hasOwn(acceptedAdvisories, id));
+    assert.match(entry.reviewBy, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(new Date(`${entry.reviewBy}T00:00:00Z`).toISOString().slice(0, 10), entry.reviewBy);
+    assert.ok(entry.package && entry.range && entry.reason);
+  }
+  assert.deepEqual(Object.keys(acceptedWithoutRepair).sort(), ['GHSA-3g3m-2fjr-6pw4', 'GHSA-g3hv-75wg-m249']);
 });

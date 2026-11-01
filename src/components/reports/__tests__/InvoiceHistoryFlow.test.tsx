@@ -385,7 +385,7 @@ async function open(store: Store, params?: Record<string, string>) {
 
 const LIGHT = getTokens('orange', 'light');
 const DEFAULT_ORDER = ['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co'];
-const BY_DATE = ['Today', 'Invoice 2026/0010', 'Yesterday', 'Invoice 2026/0009', 'Invoice 2026/0100', 'Sun, 20 Sep', 'Invoice 2026/0050'];
+const BY_DATE = ['Today', 'Invoice 2026/0010', 'Yesterday', 'Invoice 2026/0009', 'Invoice 2026/0100', '20/09/26', 'Invoice 2026/0050'];
 const days = (fromDate: string) => ({ fromDate, toDate: '2026-10-12' });
 const GREEN = { customerId: 'c2', customerName: 'Green Valley Traders' };
 
@@ -405,7 +405,7 @@ describe('invoice history, every customer', () => {
     const screen = await open(makeStore());
     expect(allHistory.mock.calls).toEqual([[days('2026-06-15')]]);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.texts()).toEqual(expect.arrayContaining(['Invoices', '27', 'Amount', '₹55,000']));
     // Each customer row has its amount, like the rows of the other reports.
     expect(screen.texts()).toEqual(expect.arrayContaining(['₹30,000', '₹12,000', '₹8,000', '₹5,000']));
@@ -414,7 +414,7 @@ describe('invoice history, every customer', () => {
     await screen.press('Last 240 days');
     expect(allHistory.mock.calls).toEqual([[days('2026-06-15')], [days('2026-02-15')]]);
     expect(screen.has('Period: Last 240 days. Change')).toBe(true);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.customers()).toEqual([...DEFAULT_ORDER, 'Old Mill Stores']);
     expect(customerHistory).not.toHaveBeenCalled();
   });
@@ -456,7 +456,7 @@ describe('invoice history, every customer', () => {
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Hillside Produce Co', 'Riverbank Produce']);
     expect(screen.bold()).toEqual(['Produce', 'Produce']);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Showing 2 of 5 · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Showing 2 of 5 · Last updated 10:00 am');
 
     await screen.press('Clear all filters and the search');
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Old Mill Stores', 'Riverbank Produce', 'Sunrise Agro Foods']);
@@ -479,7 +479,7 @@ describe('invoice history, every customer', () => {
     expect(screen.customers()).toEqual(byInvoices);
     expect(screen.texts()).not.toContain('Last opened');
 
-    await screen.press('Riverbank Produce, 9 invoices, Latest 11 Aug, Amount: ₹8,000');
+    await screen.press('Riverbank Produce, 9 invoices, Latest 11/08/26, Amount: ₹8,000');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/invoice-history', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({ 'invoice-history': { id: 'c1', name: 'Riverbank Produce' } });
 
@@ -525,12 +525,12 @@ describe('invoice history, one customer', () => {
     await screen.press('Lowest number first');
     expect(screen.invoiceRows()).toEqual(['Invoice 2026/0009', 'Invoice 2026/0010', 'Invoice 2026/0050', 'Invoice 2026/0100']);
     await screen.press('Done');
-    expect(screen.texts()).toEqual(expect.arrayContaining(['11 Oct', '12 Oct', '20 Sep']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['11/10/26', '12/10/26', '20/09/26']));
 
     await screen.press('Sorted by Invoice number, lowest number first. Change sort');
     await screen.press('Date');
     await screen.press('Done');
-    expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0050', 'Yesterday', 'Invoice 2026/0009', 'Invoice 2026/0100', 'Today', 'Invoice 2026/0010']);
+    expect(screen.invoiceRows()).toEqual(['20/09/26', 'Invoice 2026/0050', 'Yesterday', 'Invoice 2026/0009', 'Invoice 2026/0100', 'Today', 'Invoice 2026/0010']);
     expect(customerHistory).toHaveBeenCalledTimes(1);
   });
 
@@ -547,14 +547,14 @@ describe('invoice history, one customer', () => {
     await screen.press('Filter by payment');
     await screen.press('Paid');
     expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0010', 'Yesterday', 'Invoice 2026/0100']);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 4 · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 2 of 4 · Last updated 10:00 am');
     expect(screen.texts()).toEqual(expect.arrayContaining(figures));
 
     await screen.press('Payment: Paid. Change');
     await screen.press('Pending');
     // Every invoice is under one of the two: the one whose word the app does not know has a balance.
-    expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009', 'Sun, 20 Sep', 'Invoice 2026/0050']);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 4 · Last updated 10:00 am');
+    expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009', '20/09/26', 'Invoice 2026/0050']);
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 2 of 4 · Last updated 10:00 am');
 
     await screen.press('Clear all filters and the search');
     expect(screen.invoiceRows()).toEqual(BY_DATE);
@@ -575,7 +575,7 @@ describe('invoice history, one customer', () => {
     expect(screen.controls(label => label.startsWith('Invoice 2026/0009,'))[0].props.accessibilityLabel).toMatch(/, Red chilli$/);
 
     await screen.search('0050');
-    expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0050']);
+    expect(screen.invoiceRows()).toEqual(['20/09/26', 'Invoice 2026/0050']);
     expect(screen.bold()).toEqual(['0050', '0050']);
   });
 
@@ -1083,8 +1083,8 @@ describe('invoice history, one customer', () => {
 
   it('puts an invoice under the day, and in the month, it fell on in India when the date is an instant', async () => {
     mockParams = GREEN;
-    // A timestamptz comes in UTC. 11 Oct 20:00 is 12 Oct 01:30 in India (the 12 Oct heading, not 11 Oct);
-    // 30 Sep 20:00 is 1 Oct 01:30 (October, not September); 30 Sep 18:00 is still 30 Sep, 23:30.
+    // A timestamptz comes in UTC. 11/10/26 20:00 is 12/10/26 01:30 in India (the 12/10/26 heading, not 11/10/26);
+    // 30/09/26 20:00 is 01/10/26 01:30 (October, not September); 30/09/26 18:00 is still 30/09/26, 23:30.
     const instants = [
       invoice('inv-t1', '2026/0129', '2026-10-12T04:00:00+00:00', 2000, 'pending', 'A0129', 'Garlic'),
       invoice('inv-t2', '2026/0130', '2026-10-11T20:00:00+00:00', 1000, 'paid', 'A0130', 'Cumin'),
@@ -1093,11 +1093,11 @@ describe('invoice history, one customer', () => {
     ];
     customerHistory.mockResolvedValue({ ...answerMonthly, data: { ...answerMonthly.data, invoices: instants } } as never);
     const screen = await open(makeStore());
-    expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0129', 'Invoice 2026/0130', 'Thu, 1 Oct', 'Invoice 2026/0128', 'Wed, 30 Sep', 'Invoice 2026/0127']);
+    expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0129', 'Invoice 2026/0130', '01/10/26', 'Invoice 2026/0128', '30/09/26', 'Invoice 2026/0127']);
     // The card of the October invoice gives the same day as its heading, in the phone's India time.
     expect(screen.controls(label => label.startsWith('Invoice 2026/0128,'))[0].props.accessibilityLabel).toContain('1 Oct 2026');
 
-    // The table agrees: the 1 Oct invoice is in October, with the other two of that month.
+    // The table agrees: the 01/10/26 invoice is in October, with the other two of that month.
     await screen.press('Monthly breakdown');
     expect(screen.monthTable()!.rows).toEqual([
       ['Oct 2026', '3', '₹3,400', '₹1,400', '₹2,000'],
@@ -1330,10 +1330,10 @@ describe('invoice history shows the invoice total, on a server with or without b
       const screen = await open(makeStore());
       expect(tiles(screen)).toEqual(['Invoices: 27', 'Amount: ₹55,000']);
       expect(screen.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
-      expect(cardLabelOfCustomer(screen, 'Green Valley Traders')).toBe('Green Valley Traders, 2 invoices, Latest 20 Sep, Amount: ₹30,000');
-      expect(cardLabelOfCustomer(screen, 'Sunrise Agro Foods')).toBe('Sunrise Agro Foods, 4 invoices, Latest 1 Jul, Amount: ₹12,000');
-      expect(cardLabelOfCustomer(screen, 'Riverbank Produce')).toBe('Riverbank Produce, 9 invoices, Latest 11 Aug, Amount: ₹8,000');
-      expect(cardLabelOfCustomer(screen, 'Hillside Produce Co')).toBe('Hillside Produce Co, 12 invoices, Latest 2 Oct, Amount: ₹5,000');
+      expect(cardLabelOfCustomer(screen, 'Green Valley Traders')).toBe('Green Valley Traders, 2 invoices, Latest 20/09/26, Amount: ₹30,000');
+      expect(cardLabelOfCustomer(screen, 'Sunrise Agro Foods')).toBe('Sunrise Agro Foods, 4 invoices, Latest 01/07/26, Amount: ₹12,000');
+      expect(cardLabelOfCustomer(screen, 'Riverbank Produce')).toBe('Riverbank Produce, 9 invoices, Latest 11/08/26, Amount: ₹8,000');
+      expect(cardLabelOfCustomer(screen, 'Hillside Produce Co')).toBe('Hillside Produce Co, 12 invoices, Latest 02/10/26, Amount: ₹5,000');
       expect(screen.texts()).toEqual(expect.arrayContaining(['₹30,000', '₹12,000', '₹8,000', '₹5,000']));
       // Not the net_amount figures of an unfixed server (59,000 in all; 21,000, 15,000, 14,000, 9,000).
       for (const net of ['₹59,000', '₹21,000', '₹15,000', '₹14,000', '₹9,000']) expect(screen.texts()).not.toContain(net);
@@ -1430,7 +1430,7 @@ const WITH_62 = answerPayments(
 const NO_AMOUNTS = answerPayments([UNPAID_ROW, PART_PAID_ROW, PAID_ROW], [2, 14, 20], [1, 30, 0]);
 
 const PART_PAID_LINE = 'Paid: ₹4.00 · Pending: ₹10.00';
-const PAYMENT_ROWS = ['Today', 'Invoice 2026/0403', 'Mon, 5 Oct', 'Invoice 2026/0402', 'Sun, 20 Sep', 'Invoice 2026/0401'];
+const PAYMENT_ROWS = ['Today', 'Invoice 2026/0403', '05/10/26', 'Invoice 2026/0402', '20/09/26', 'Invoice 2026/0401'];
 /** Every text drawn inside `card`, in order (a text with a bold part is one text). */
 const textsIn = (card: ReactTestInstance) => {
   const insideText = (node: ReactTestInstance) => {
@@ -1491,14 +1491,14 @@ describe('invoice history: Paid is the money received and Pending is what is sti
 
       await screen.press('Filter by payment');
       await screen.press('Paid');
-      expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0401']);
-      expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 1 of 3 · Last updated 10:00 am');
+      expect(screen.invoiceRows()).toEqual(['20/09/26', 'Invoice 2026/0401']);
+      expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 1 of 3 · Last updated 10:00 am');
       expect(tiles(screen)).toEqual(['Invoices: 3', 'Paid (1): ₹24', 'Pending (2): ₹40']);
 
       await screen.press('Payment: Paid. Change');
       await screen.press('Pending');
-      expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0403', 'Mon, 5 Oct', 'Invoice 2026/0402']);
-      expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 3 · Last updated 10:00 am');
+      expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0403', '05/10/26', 'Invoice 2026/0402']);
+      expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 2 of 3 · Last updated 10:00 am');
       expect(tiles(screen)).toEqual(['Invoices: 3', 'Paid (1): ₹24', 'Pending (2): ₹40']);
 
       await screen.press('Clear all filters and the search');
@@ -1522,7 +1522,7 @@ describe('invoice history: Paid is the money received and Pending is what is sti
 
       // A search that finds an item inside the card names it after the two parts.
       await screen.search('chilli');
-      expect(screen.invoiceRows()).toEqual(['Mon, 5 Oct', 'Invoice 2026/0402']);
+      expect(screen.invoiceRows()).toEqual(['05/10/26', 'Invoice 2026/0402']);
       expect(cardLabel(screen, '2026/0402')).toBe('Invoice 2026/0402, 5 Oct 2026 · GRN A0402, ₹14.00, 1 item, Pending, Paid: ₹4.00, Pending: ₹10.00, Red chilli');
     });
 
@@ -1553,12 +1553,12 @@ describe('invoice history: Paid is the money received and Pending is what is sti
 
       await screen.press('Filter by payment');
       await screen.press('Paid');
-      expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0401']);
+      expect(screen.invoiceRows()).toEqual(['20/09/26', 'Invoice 2026/0401']);
       expect(await requestShared()).toEqual({ ...BASE, status: 'paid' });
 
       await screen.press('Payment: Paid. Change');
       await screen.press('Pending');
-      expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0403', 'Mon, 5 Oct', 'Invoice 2026/0402']);
+      expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0403', '05/10/26', 'Invoice 2026/0402']);
       expect(await requestShared()).toEqual({ ...BASE, status: 'pending' });
       expect(alert).not.toHaveBeenCalled();
     });
@@ -1593,8 +1593,8 @@ describe('invoice history: Paid is the money received and Pending is what is sti
     expect(without.all.tiles).toEqual(['Invoices: 3', 'Paid (1): ₹24', 'Pending (2): ₹40']);
     expect(without.all.table?.totals).toEqual(['Total', '3', '₹64', '₹24', '₹40']);
     expect(without.all.texts).toContain(PART_PAID_LINE);
-    expect(without.paid.rows).toEqual(['Sun, 20 Sep', 'Invoice 2026/0401']);
-    expect(without.pendingOnly.rows).toEqual(['Today', 'Invoice 2026/0403', 'Mon, 5 Oct', 'Invoice 2026/0402']);
+    expect(without.paid.rows).toEqual(['20/09/26', 'Invoice 2026/0401']);
+    expect(without.pendingOnly.rows).toEqual(['Today', 'Invoice 2026/0403', '05/10/26', 'Invoice 2026/0402']);
     expect(withIt).toEqual(without);
   });
 
@@ -1680,12 +1680,12 @@ describe('invoice history, one customer: the Invoices tile counts the invoices l
 
     await screen.press('Filter by payment');
     await screen.press('Paid');
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Showing 2 of 4 · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 2 of 4 · Last updated 10:00 am');
     expect(tiles(screen)[0]).toBe('Invoices: 4');
 
     await screen.press('Clear all filters and the search');
     await screen.search('0050');
-    expect(screen.invoiceRows()).toEqual(['Sun, 20 Sep', 'Invoice 2026/0050']);
+    expect(screen.invoiceRows()).toEqual(['20/09/26', 'Invoice 2026/0050']);
     expect(tiles(screen)[0]).toBe('Invoices: 4');
   });
 
@@ -1847,7 +1847,7 @@ describe('invoice history, the report PDF', () => {
 
     await screen.press('Payment: Paid. Change');
     await screen.press('Pending');
-    expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009', 'Sun, 20 Sep', 'Invoice 2026/0050']);
+    expect(screen.invoiceRows()).toEqual(['Yesterday', 'Invoice 2026/0009', '20/09/26', 'Invoice 2026/0050']);
     expect(await requestShared()).toEqual({ ...BASE, status: 'pending' });
 
     // The search narrows the screen only: the person is told before the PDF, which has the status and no search.

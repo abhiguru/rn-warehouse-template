@@ -12,7 +12,8 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t, type TranslationKey } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { errorCodeOf, serverText } from '@/utils/serverText';
+import { emptyAnswerAsError, errorCodeOf, isLostAnswer, serverText, transportText, withHttpStatus } from '@/utils/serverText';
+import { NumberingUnconfirmedError } from './documentNumberingUnconfirmed';
 
 export type DocumentType = 'grn' | 'dispatch' | 'invoice';
 
@@ -195,25 +196,34 @@ export async function getDocumentNumbering(): Promise<NumberingRule[]> {
   unchanged(generation);
   if (error) {
     handleGlobalAuthError(error);
-    throw new Error(serverText(error.message, t('numbering.screen.loadFailed')));
+    // The app's own words, never the server's sentence.
+    throw new Error(transportText(error) ?? t('numbering.screen.loadFailed'));
   }
   const rules = isRecord(data) && Array.isArray(data.rules) ? data.rules.map(asRule).filter((rule): rule is NumberingRule => rule !== null) : [];
   if (rules.length === 0) throw new Error(t('numbering.screen.loadFailed'));
   return rules;
 }
 
-/** Changes the rule of one document type. A refusal (SQLSTATE 22023, "Administrator required") is thrown with the server's sentence. */
+/** Changes the rule of one document type. A refusal (SQLSTATE 22023, "Administrator required") is thrown in the app's own words. */
 export async function setDocumentNumbering(type: DocumentType, rule: NumberingRuleInput): Promise<SetNumberingResult> {
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
-  const { data, error } = await client.rpc('set_document_numbering', { p_document_type: type, p_rule: rule });
+  const answered = await client.rpc('set_document_numbering', { p_document_type: type, p_rule: rule });
+  const { data, status } = answered;
+  // An empty HTTP 200 is no answer of the server's.
+  const error = answered.error ?? emptyAnswerAsError(answered);
   unchanged(generation);
   if (error) {
+    // Sent and not answered (a dropped connection, a timeout, a gateway's 5xx, an empty or unreadable 200): the server may
+    // hold the new rule. Nothing is worded as a failure; the screen offers to read what the server holds.
+    if (isLostAnswer(withHttpStatus(error, status)) || (typeof status === 'number' && status >= 500)) {
+      throw new NumberingUnconfirmedError(t('numbering.edit.unconfirmed'));
+    }
     handleGlobalAuthError(error);
-    // 22023: the server read the request and refused the values. In English its sentence is shown; in another language
-    // the fallback must not blame the connection, which worked.
+    // 22023: the server read the request and refused the values; the fallback must not blame the connection, which worked.
+    // The text is always the app's own, in the app's language.
     const refused = errorCodeOf(error) === '22023';
-    throw new Error(serverText(error.message, t(refused ? 'numbering.edit.refused' : 'numbering.edit.saveFailed'), { write: true, form: true }));
+    throw new Error(transportText(error, { write: true, form: true }) ?? t(refused ? 'numbering.edit.refused' : 'numbering.edit.saveFailed'));
   }
   if (!isRecord(data) || data.success === false) throw new Error(t('numbering.edit.saveFailed'));
   const whole = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);

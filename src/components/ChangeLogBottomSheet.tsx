@@ -29,7 +29,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { ChangeLogEntry, CustomerSummary, ChangeLogAnalytics } from '@/types/order.types';
-import { formatRelativeTime, formatWeightEach } from '@/utils/formatters';
+import { formatCount, formatRelativeTime, formatWeightEach } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 
@@ -43,6 +43,8 @@ interface ChangeLogBottomSheetProps {
   hasMore?: boolean;
   error?: string;
   analytics?: ChangeLogAnalytics;
+  /** The order's number, shown under the business name. */
+  orderNumber?: string;
 }
 
 export interface ChangeLogBottomSheetRef {
@@ -54,6 +56,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
   isVisible,
   onClose,
   customer,
+  orderNumber,
   entries,
   loading,
   onLoadMore,
@@ -133,9 +136,33 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
   // Format action description based on change details
   const formatActionDescription = useCallback((entry: ChangeLogEntry): string => {
     const action = entry.change_details.action;
+    // The line's own name: `entry.item_name` carries the server's English prefix ("Quantity changed: Onions").
+    const details = entry.change_details;
+    const lineName: string = details.grn_details?.grn_item_name || details.item_details?.item_name || entry.item_name;
     const itemName = entry.item_name;
+    const quantity = details.quantity_change;
 
     switch (action) {
+      // A change of an order line, told by what it did to the line (added, removed, or the quantity).
+      case 'quantity_changed':
+        if (quantity?.change_type === 'added') return tr('components.changeLog.lineAdded', { item: lineName });
+        if (quantity?.change_type === 'removed') return tr('components.changeLog.lineRemoved', { item: lineName });
+        return tr('components.changeLog.quantityUpdated', { item: lineName });
+      // A dispatch took bags from the line.
+      case 'quantity_reduced_by_dispatch': {
+        const taken = Number(details.dispatch_impact?.dispatched_quantity ?? Math.abs(Number(quantity?.change_amount ?? 0)));
+        // A dispatch that was deleted gives its bags back: the quantity went up.
+        if (quantity?.change_type === 'increased' || taken < 0) {
+          return tr('components.changeLog.dispatchDeletedGaveBack', { number: formatIdentifier(details.dispatch_no || tr('common.unknown')), bags: formatCount(Math.abs(taken), 'bag'), item: lineName });
+        }
+        return tr('components.changeLog.dispatchTook', { number: formatIdentifier(details.dispatch_no || tr('common.unknown')), bags: formatCount(taken, 'bag'), item: lineName });
+      }
+      case 'dispatch_deleted':
+        return tr('components.changeLog.dispatchDeletedGaveBack', {
+          number: formatIdentifier(details.dispatch_no || tr('common.unknown')),
+          bags: formatCount(Number(details.total_quantity_restored ?? 0), 'bag'),
+          item: lineName,
+        });
       case 'quantity_updated':
         return tr('components.changeLog.quantityUpdated', { item: itemName });
       case 'item_added':
@@ -380,6 +407,11 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
         <Text style={dynamicStyles.headerCustomerName} numberOfLines={1}>
           {customer?.name}
         </Text>
+        {orderNumber ? (
+          <Text style={dynamicStyles.headerSubtitle} testID="changelog-order-number">
+            {tr('orders.screen.orderNumber', { number: formatIdentifier(orderNumber) })}
+          </Text>
+        ) : null}
         <Text style={dynamicStyles.headerTitle} accessibilityRole="header">
           {tr('components.changeLog.title')}
         </Text>
@@ -402,7 +434,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
         <MaterialCommunityIcons name="close" size={iconSize.lg} color={t.icon.primary} />
       </Pressable>
     </View>
-  ), [customer, entries.length, analytics, onClose, dynamicStyles, t]);
+  ), [customer, orderNumber, entries.length, analytics, onClose, dynamicStyles, t]);
 
   return (
     <BottomSheetModal

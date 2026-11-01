@@ -36,7 +36,7 @@
  * };
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigation, usePreventRemove } from 'expo-router/react-navigation';
+import { usePreventRemove } from 'expo-router/react-navigation';
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 
@@ -62,16 +62,22 @@ export interface LeaveGuard {
 const ASKS_FIRST = new Set(['GO_BACK', 'POP']);
 
 export function useLeaveGuard({ hasChanges, title, message, onDiscard, blocked = false }: LeaveGuardOptions): LeaveGuard {
-  const navigation = useNavigation();
   const [bypass, setBypass] = useState(false);
   // The way out asked for by leaveWithoutAsking, run once the guard is off.
   const pendingLeave = useRef<(() => void) | null>(null);
   const [leaveRequests, setLeaveRequests] = useState(0);
 
-  usePreventRemove((hasChanges || blocked) && !bypass, ({ data }) => {
+  // `repeat` switches the prevention off for this screen and then dispatches the held action again; a plain
+  // `navigation.dispatch(action)` would be held (and asked about) once more while the prevention is still on.
+  // `bypass` is set with it so the `preventRemove` value below follows (the hook warns when they disagree).
+  usePreventRemove((hasChanges || blocked) && !bypass, ({ data, repeat }) => {
     const { action } = data;
+    const goOn = () => {
+      setBypass(true);
+      repeat();
+    };
     if (!ASKS_FIRST.has(action.type)) {
-      navigation.dispatch(action);
+      goOn();
       return;
     }
     // A save is running: Back waits for it.
@@ -86,7 +92,7 @@ export function useLeaveGuard({ hasChanges, title, message, onDiscard, blocked =
           style: 'destructive',
           onPress: () => {
             onDiscard?.();
-            navigation.dispatch(action);
+            goOn();
           },
         },
       ],

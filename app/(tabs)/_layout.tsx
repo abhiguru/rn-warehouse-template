@@ -9,7 +9,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
-import { ActivityIndicator, ImageBackground, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -106,11 +106,7 @@ export default function TabsLayout() {
     <View style={{ flex: 1, backgroundColor: screenBg }}>
       {/* StatusBar explicitly set for tab screens */}
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-      <ImageBackground
-        source={require('../../assets/logo.png')}
-        style={{ flex: 1 }}
-        resizeMode="repeat"
-      >
+      <View style={{ flex: 1 }}>
         {/* SafeAreaView with theme background covers status bar area */}
         <SafeAreaView
           style={{ flex: 1, backgroundColor: screenBg }}
@@ -155,7 +151,7 @@ export default function TabsLayout() {
             />
           </Tabs>
         </SafeAreaView>
-      </ImageBackground>
+      </View>
     </View>
   );
 }

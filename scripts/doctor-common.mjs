@@ -20,5 +20,6 @@ export function readEnv(path) {
 export const root = fileURLToPath(new URL('..', import.meta.url));
 export const supportedNode = (version = process.versions.node) => {
   const [major, minor] = version.split('.').map(Number);
-  return major > 22 || (major === 22 && minor >= 18);
+  // The intersection of package.json engines.node and what React Native 0.88 and Expo SDK 58 support.
+  return (major === 22 && minor >= 18) || (major === 24 && minor >= 3) || major >= 26;
 };

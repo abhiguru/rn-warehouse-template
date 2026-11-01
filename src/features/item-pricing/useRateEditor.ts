@@ -15,6 +15,7 @@ import { replaceItemRates } from '@/services/item-pricing-service';
 import { getRateStartFloor } from '@/services/rateStartFloor';
 import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/item-pricing.types';
 import { showToast } from '@/utils/toast';
+import { useRateSaveKey } from './useRateSaveKey';
 import { notifyRatesChanged, type EditorMode, type EditorParams } from './contract';
 import {
   copyTiersFrom,
@@ -136,6 +137,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const ownSave = useRef(false);
   // This phone's own save got no answer (timed out): the rows that come back may be that save, not another phone.
   const maybeSaved = useRef(false);
+  const saveKey = useRateSaveKey('replace');
   const checked = useRef(false);
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
@@ -293,7 +295,10 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     setSaving(true);
     setStrip(null);
     try {
-      const result = await replaceItemRates({ ...toReplaceInput(data, context), ...(replaceLater ? { replace_later: true } : {}) });
+      const input = { ...toReplaceInput(data, context), ...(replaceLater ? { replace_later: true } : {}) };
+      // One key per unchanged form: a second press after a lost answer is the identical request.
+      const result = await replaceItemRates({ ...input, request_key: saveKey.keyFor(JSON.stringify(input)) }, { signal: saveKey.signal() });
+      if (!result.outcomeUnknown) saveKey.settle();
       if (result.success) {
         setLater(null);
         finish(data, context, result.keptEnd);

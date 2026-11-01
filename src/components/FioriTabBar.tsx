@@ -63,7 +63,8 @@ interface FioriTabBarProps extends BottomTabBarProps {
 export default function FioriTabBar({
   state,
   descriptors,
-  navigation,
+  emitter,
+  navigateToTab,
   badges = {},
 }: FioriTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -113,19 +114,19 @@ export default function FioriTabBar({
           };
 
           const onPress = () => {
-            const event = navigation.emit({
+            const event = emitter.emit({
               type: 'tabPress',
               target: route.key,
               canPreventDefault: true,
             });
 
             if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
+              navigateToTab(route.key);
             }
           };
 
           const onLongPress = () => {
-            navigation.emit({
+            emitter.emit({
               type: 'tabLongPress',
               target: route.key,
             });

@@ -106,13 +106,13 @@ describe.each(['create', 'edit'] as const)('the messages of the fields, %s', (mo
 
     await pressNext();
 
-    expect(screenText()).toContain('Cannot select a future date');
-    expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining('Cannot select a future date'));
+    expect(screenText()).toContain("An invoice can't be dated in the future");
+    expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining("An invoice can't be dated in the future"));
     expect(router.navigate).not.toHaveBeenCalled();
 
     await act(async () => { datePicker().props.onConfirm({ date: new Date(2026, 9, 6) }); });
 
-    expect(screenText()).not.toContain('Cannot select a future date');
+    expect(screenText()).not.toContain("An invoice can't be dated in the future");
     expect(state().header.inv_date).toBe('2026-10-06');
   });
 

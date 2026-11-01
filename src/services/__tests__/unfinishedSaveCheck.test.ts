@@ -24,7 +24,7 @@ const grn = { kind: 'grn' as const, requestKey: 'warehouse-grn-key-1', number: '
 const dispatch = { kind: 'dispatch' as const, requestKey: 'warehouse-dispatch-key-1', number: 'D0042', customerName: 'Green Valley Traders' };
 
 /** An entry from an earlier run of the app (the start-up check leaves the entries of this run to their screens). */
-async function fromEarlierRun(entry: typeof grn | typeof dispatch, startedAt = Date.now() - 5 * 60_000) {
+async function fromEarlierRun(entry: typeof grn | typeof dispatch | { kind: 'invoice'; requestKey: string; number: string; customerName: string }, startedAt = Date.now() - 5 * 60_000) {
   await rememberUnfinishedSave({ ...entry, startedAt });
   resetUnfinishedSavesForTests();
 }
@@ -85,6 +85,29 @@ describe('a create the server saved', () => {
     buttons?.[1].onPress?.();
     expect(open).toHaveBeenCalledWith('dispatch', 'disp-id-1');
     expect(await keys()).toEqual([]);
+  });
+
+  it('an invoice: the same, with the invoice wording and its id', async () => {
+    const invoice = { kind: 'invoice' as const, requestKey: 'warehouse-invoice-create-1', number: '12', customerName: 'Green Valley Traders' };
+    await fromEarlierRun(invoice);
+    ask.mockResolvedValue({ found: true, response: { success: true, invoice_id: 'inv-id-1' } });
+
+    await checkUnfinishedSaves({ ask, open });
+
+    expect(alerts()[0][1]).toBe('Invoice 12 for Green Valley Traders was saved.');
+    alerts()[0][2]?.[1].onPress?.();
+    expect(open).toHaveBeenCalledWith('invoice', 'inv-id-1');
+    expect(await keys()).toEqual([]);
+  });
+
+  it('an invoice that was not found says so', async () => {
+    const invoice = { kind: 'invoice' as const, requestKey: 'warehouse-invoice-create-2', number: '12', customerName: 'Green Valley Traders' };
+    await fromEarlierRun(invoice);
+    ask.mockResolvedValue({ found: false });
+
+    await checkUnfinishedSaves({ ask, open });
+
+    expect(alerts()[0][1]).toBe('No saved invoice 12 for Green Valley Traders was found. Enter it again if you still need it.');
   });
 
   it('an answer without the document id has OK alone', async () => {

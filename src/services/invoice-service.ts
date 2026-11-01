@@ -546,6 +546,43 @@ export interface InvoiceItem {
   };
 }
 
+/** Why the invoice has a discount or a zero charge, and who set it and when (staff and up; `get_invoice_detail`). */
+export interface InvoiceReasons {
+  discountReason: string | null;
+  discountSetByName: string | null;
+  discountSetAt: string | null;
+  zeroChargeReason: string | null;
+  zeroChargeSetByName: string | null;
+  zeroChargeSetAt: string | null;
+}
+
+const textOrNull = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+/**
+ * The reasons of an invoice's discount and zero charge. `get_invoice_data` does not carry them; `get_invoice_detail` does,
+ * for staff and up only (a customer's answer has none). Null when they cannot be read: the details page is complete
+ * without them, so a failure here shows nothing and raises no alert.
+ */
+export const getInvoiceReasons = async (invoiceId: string): Promise<InvoiceReasons | null> => {
+  try {
+    const client = await getAuthenticatedClient();
+    const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
+    if (error || !data?.success || !data.invoice) return null;
+    const h = data.invoice as Record<string, unknown>;
+    return {
+      discountReason: textOrNull(h.discount_reason),
+      discountSetByName: textOrNull(h.discount_set_by_name),
+      discountSetAt: textOrNull(h.discount_set_at),
+      zeroChargeReason: textOrNull(h.zero_charge_reason),
+      zeroChargeSetByName: textOrNull(h.zero_charge_set_by_name),
+      zeroChargeSetAt: textOrNull(h.zero_charge_set_at),
+    };
+  } catch (error) {
+    invoiceServiceLogger.warn('The reasons of the invoice could not be read:', error);
+    return null;
+  }
+};
+
 export interface InvoiceDetailsResponse {
   success: boolean;
   message: string;
@@ -969,7 +1006,8 @@ export const deleteInvoice = async (invoiceId: string, options: { resend?: boole
     // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.
     const transportFailure = !isStatementTimeout(result) && (isTimeoutError(result) || isNetworkError(result));
     const refusal = transportFailure ? undefined : serverReason(result.error ?? '');
-    return { success: false, message: refusal ?? result.message, error: result.error };
+    // Any other failure says "Couldn't delete the invoice. Try again.": a server sentence the app has no wording for stays hidden.
+    return { success: false, message: refusal ?? (transportFailure ? result.message : t('errors.invoice.deleteFailed')), error: result.error };
   }
 
   // A report left open under the invoice must not keep listing it (SR-10, as for every other write).

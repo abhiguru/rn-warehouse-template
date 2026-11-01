@@ -1,6 +1,6 @@
 /**
  * "Starts on": the chips (Today, the first of next month, the next 1 April, Other date),
- * the Android calendar that opens at once on Other date, and the earliest day it offers. Today is 14 Oct 2026.
+ * the Android calendar that opens at once on Other date, and the earliest day it offers. Today is 14/10/26.
  */
 import React from 'react';
 import { Platform, Text } from 'react-native';
@@ -44,20 +44,20 @@ afterEach(() => {
   Platform.OS = originalOS;
 });
 
-it('offers Today, 1 Nov 2026, 1 Apr 2027 and Other date with none chosen, and asks for a day', () => {
+it('offers Today, 01/11/26, 01/04/27 and Other date with none chosen, and asks for a day', () => {
   const t = mount();
-  expect(chipState(t)).toEqual(['Today:off', '1 Nov 2026:off', '1 Apr 2027:off', 'Other date:off']);
+  expect(chipState(t)).toEqual(['Today:off', '01/11/26:off', '01/04/27:off', 'Other date:off']);
   expect(textsOf(t)).toContain('Choose a start date.');
 });
 
-it('offers no 1 Apr chip for a start in 2026 that falls on the first of next month', () => {
+it('offers no 01/04/26 chip for a start in 2026 that falls on the first of next month', () => {
   const t = mount({}, '2026-03-20');
-  expect(chipState(t)).toEqual(['Today:off', '1 Apr 2026:off', 'Other date:off']);
+  expect(chipState(t)).toEqual(['Today:off', '01/04/26:off', 'Other date:off']);
 });
 
 it('a chip reports its choice and day', () => {
   const t = mount();
-  act(() => { chip(t, '1 Apr 2027').props.onPress(); });
+  act(() => { chip(t, '01/04/27').props.onPress(); });
   expect(onChange).toHaveBeenLastCalledWith('april', '2027-04-01');
   act(() => { chip(t, 'Today').props.onPress(); });
   expect(onChange).toHaveBeenLastCalledWith('today', TODAY);
@@ -65,12 +65,12 @@ it('a chip reports its choice and day', () => {
 
 it('shows the chosen chip as on', () => {
   const t = mount({ choice: 'april', day: '2027-04-01' });
-  expect(chipState(t)[2]).toBe('1 Apr 2027:on');
+  expect(chipState(t)[2]).toBe('01/04/27:on');
   expect(textsOf(t)).not.toContain('Choose a start date.');
 });
 
 describe('Other date', () => {
-  it('a manager: the calendar opens at once on 1 Nov 2026, three years back with no floor from the server', () => {
+  it('a manager: the calendar opens at once on 01/11/26, three years back with no floor from the server', () => {
     const t = mount();
     act(() => { chip(t, 'Other date').props.onPress(); });
     const opts = lastCalendar();
@@ -85,7 +85,7 @@ describe('Other date', () => {
     expect(ymd(lastCalendar().minimumDate)).toEqual([2022, 1, 1]);
   });
 
-  it('without the right to start in the past the calendar starts today, so 13 Oct cannot be chosen', () => {
+  it('without the right to start in the past the calendar starts today, so 13/10/26 cannot be chosen', () => {
     const t = mount({ canStartInPast: false, earliest: '2022-01-01' });
     act(() => { chip(t, 'Other date').props.onPress(); });
     expect(ymd(lastCalendar().minimumDate)).toEqual([2026, 10, 14]);
@@ -104,7 +104,7 @@ describe('Other date', () => {
     act(() => { chip(t, 'Other date').props.onPress(); });
     act(() => { lastCalendar().onChange!({ type: 'dismissed' } as never, undefined); });
     expect(onChange).not.toHaveBeenCalled();
-    expect(chipState(t)).toEqual(['Today:off', '1 Nov 2026:off', '1 Apr 2027:off', 'Other date:off']);
+    expect(chipState(t)).toEqual(['Today:off', '01/11/26:off', '01/04/27:off', 'Other date:off']);
   });
 
   it('with Other date chosen the calendar reopens on the day chosen', () => {
@@ -117,10 +117,10 @@ describe('Other date', () => {
 it('a correction shows its own day as text and offers no chip', () => {
   const t = mount({ choice: 'fixed', day: '2026-04-01', fixed: true });
   expect(chipState(t)).toEqual([]);
-  expect(t.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''))).toContain('1 Apr 2026 (a correction keeps the start date)');
+  expect(t.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''))).toContain('01/04/26 (a correction keeps the start date)');
 });
 
 it('shows the error of the field instead of the hint', () => {
-  const t = mount({ choice: 'other', day: '2021-12-31', error: 'Choose a start date on or after 1 Jan 2022.' });
-  expect(textsOf(t)).toContain('Choose a start date on or after 1 Jan 2022.');
+  const t = mount({ choice: 'other', day: '2021-12-31', error: 'Choose a start date on or after 01/01/22.' });
+  expect(textsOf(t)).toContain('Choose a start date on or after 01/01/22.');
 });

@@ -6,7 +6,7 @@
  */
 import { formatIdentifier, localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 import { roundMoney } from '@/utils/invoiceCalculations';
-import { parseRateInput, RATE_MAX, type RateField } from '@/features/invoice/utils/amountInput';
+import { parseRateInput, rateRangeMessage, RATE_MAX, type RateField } from '@/features/invoice/utils/amountInput';
 import { groupKeyOf, type InvoiceItemGroup } from '@/features/invoice/utils/groupInvoiceItems';
 import type { GroupRates, InvoiceItemData } from '@/types/invoice.types';
 import type { TextInputRef } from '@/types/nativeRefs';
@@ -47,7 +47,8 @@ export const rateText = (field: RateField, rate: number): string => {
 /** The text of a typed field read the way Next and leaving the field read it: an unfinished number is wrong too. */
 export function settle(field: RateField, typed: string): { value: number | null; error: string | null; text: string } {
   const parsed = parseRateInput(field, typed);
-  if (parsed.value === null && parsed.error === null) return { ...parsed, error: tr('invoice.validation.rateNotNumber') };
+  // An emptied field is not 0: it says the range, so that the 0 is typed. An unfinished number ("." ) is not a number.
+  if (parsed.value === null && parsed.error === null) return { ...parsed, error: parsed.text === '' ? rateRangeMessage(field) : tr('invoice.validation.rateNotNumber') };
   return parsed;
 }
 

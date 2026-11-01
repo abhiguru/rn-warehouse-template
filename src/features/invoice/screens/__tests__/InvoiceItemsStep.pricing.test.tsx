@@ -3,6 +3,7 @@
  * "How pricing works" is a button, and Next stops at a figure that holds refused text.
  */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { groupLines } from '@/tests/helpers/invoiceFixtures';
@@ -46,7 +47,7 @@ jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() 
 
 async function render(mode: 'create' | 'edit' = 'create') {
   let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<InvoiceItemsStep mode={mode} />); });
+  await act(async () => { tree = create(<GestureHandlerRootView><InvoiceItemsStep mode={mode} /></GestureHandlerRootView>); });
   return tree;
 }
 const press = async (tree: ReactTestRenderer, label: string) => {

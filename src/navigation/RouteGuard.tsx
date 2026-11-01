@@ -134,12 +134,9 @@ function useNavigationReady(): boolean {
     };
     // It may have become ready between the render and this effect.
     check();
-    const stopReady = navigationRef.addListener('ready', check);
-    const stopState = navigationRef.addListener('state', check);
-    return () => {
-      stopReady();
-      stopState();
-    };
+    // SDK 58 (React Navigation 8) dropped the container's 'ready' event; the container emits
+    // 'state' when it mounts, which is when the ref becomes ready.
+    return navigationRef.addListener('state', check);
   }, [navigationRef, ready]);
   return ready;
 }
@@ -183,8 +180,65 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     };
   }, [navigationRef]);
 
+  // The navigator can be behind the segments: after a server change the tree is rebuilt and the
+  // route store has moved on before the navigator shows the new stack. When the effect below
+  // finds that the shown route is allowed although the segments are not, it listens for the
+  // navigator's next 'state' event, which runs the effect again: "once they catch up" in the
+  // comment inside it. The listener is registered there and then (a state event between a
+  // render and a later effect would be missed) and dropped when the event comes, when the
+  // effect runs again, or on unmount. (On a phone, getRootState() is current in the effect of
+  // the render that moved the segments, so this is rare there. Under Jest it was the normal
+  // case until jest.setup.js set navigator.product as React Native does.)
+  const [stateTick, setStateTick] = useState(0);
+  const stopWaiting = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopWaiting.current?.(), []);
+
+  // The way out already requested for the refused root route that is on screen. The requests
+  // are carried out one after another, and the first of them (dismissAll) can move `path` within
+  // that route (a form's own stack goes from step 2 to step 1) before the replace has landed;
+  // asking again then would repeat the whole way out.
+  // `shown` is the route the navigator showed when the way out was requested, `calls` how many
+  // router calls it made (dismissAll and replace are two) and `events` how many state changes
+  // have come since with `shown` still on screen. Every call that lands changes the navigator's
+  // state once, so when as many changes as calls have come and the same route is still shown,
+  // the request was lost: it is forgotten, and the next run of the effect asks again instead of
+  // leaving the spinner up for good.
+  const issued = useRef<{
+    decision: RouteDecision;
+    root: string | undefined;
+    shown: string | undefined;
+    calls: number;
+    events: number;
+  } | null>(null);
+  const watchRequest = () => {
+    const stop = navigationRef.addListener('state', () => {
+      const request = issued.current;
+      const shown = liveRootRoute(live.current.navigationRef.getRootState?.() as RootState | undefined);
+      if (request === null || shown !== request.shown) {
+        // The navigator moved: the request is being carried out.
+        stop();
+        if (stopWaiting.current === stop) stopWaiting.current = null;
+        return;
+      }
+      request.events += 1;
+      if (request.events >= request.calls) {
+        stop();
+        if (stopWaiting.current === stop) stopWaiting.current = null;
+        issued.current = null;
+        setStateTick((tick) => tick + 1);
+      }
+    });
+    stopWaiting.current = stop;
+  };
   useEffect(() => {
+    stopWaiting.current?.();
+    stopWaiting.current = null;
+    if (decision === 'allow') issued.current = null;
     if (!navigationReady || decision === 'allow') return;
+    if (issued.current?.decision === decision && issued.current.root === segments[0]) {
+      watchRequest();
+      return;
+    }
     const now = live.current;
     // Without central login the navigator's state is not consulted: the lines below this
     // block are all there is, as before.
@@ -209,8 +263,15 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
           capabilities: now.capabilities,
           central: { signedIn: now.centralSignedIn, facilitySms: Boolean(now.facilitySms) },
         }) === 'allow'
-      )
+      ) {
+        const stop = navigationRef.addListener('state', () => {
+          stop();
+          if (stopWaiting.current === stop) stopWaiting.current = null;
+          setStateTick((tick) => tick + 1);
+        });
+        stopWaiting.current = stop;
         return;
+      }
       // A facility session has arrived on a central screen (the code step after a correct
       // code; My facilities over a facility's hidden home): replacing only that screen would
       // leave My facilities under the facility's home, or a second home on the first.
@@ -234,6 +295,13 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
     // with it any stack layout of its own (a form past its first step). A refused route that
     // stayed mounted with its own stack would pop that stack instead, and would need an
     // action aimed at the root stack.
+    issued.current = {
+      decision,
+      root: segments[0],
+      shown: liveRootRoute(now.navigationRef.getRootState?.() as RootState | undefined),
+      calls: leaveCentralScreens || leaveForSignIn || leaveFacilityScreens ? 2 : 1,
+      events: 0,
+    };
     if (decision === 'login') {
       if (leaveForSignIn) router.dismissAll();
       router.replace('/login');
@@ -250,8 +318,9 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
         router.replace('/facilities');
       }
     }
+    watchRequest();
     // `path` is listed so a second refused route is replaced as well.
-  }, [decision, path, router, navigationReady]);
+  }, [decision, path, router, navigationReady, stateTick]);
 
   return decision;
 }

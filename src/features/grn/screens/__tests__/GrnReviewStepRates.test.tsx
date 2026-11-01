@@ -157,11 +157,11 @@ describe('the rows', () => {
     const tree = await render('create');
     // The new rent, with the customer's rent it replaces struck through under it.
     expect(rowTexts(tree, 0)).toEqual([
-      'Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5% · From 12 Oct 2026', 'Changed · This customer', '4.00', '3.50',
+      'Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5% · From 12/10/26', 'Changed · This customer', '4.00', '3.50',
       'Undo change', 'Change',
     ]);
     expect(tree.root.find(n => n.props.testID === 'grn-rate-was-0' && n.type === Text).props.style).toEqual(expect.objectContaining({ textDecorationLine: 'line-through' }));
-    expect(rowA11y(tree, 0)).toBe('Fictional Gur, 12 kg, ₹4.00 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Changed · This customer, From 12 Oct 2026, was ₹3.50');
+    expect(rowA11y(tree, 0)).toBe('Fictional Gur, 12 kg, ₹4.00 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Changed · This customer, From 12/10/26, was ₹3.50');
     await act(async () => { byId(tree, 'grn-rate-undo-0')[0].props.onPress(); });
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([]));
@@ -270,7 +270,7 @@ describe('saving the rates with the GRN', () => {
 
   it.each([
     ['RATE_MISSING', { lines: [{ item_id: 'rice', item_name: 'Fictional Rice', weight: 30 }] }, 'The server found no rate for 1 item. The rates are shown again; add the missing one and save.'],
-    ['RATE_PLANNED', { starts_on: '2026-11-01' }, 'A rate for this weight band already starts on 1 Nov 2026. Choose a last day before it.'],
+    ['RATE_PLANNED', { starts_on: '2026-11-01' }, 'A rate for this weight band already starts on 01/11/26. Choose a last day before it.'],
     ['BANDS_OVERLAP', {}, "This weight band overlaps another band of the item's rate. Use the same band, or change the bands on the item's Pricing tab."],
     ['GRN_INVOICED', {}, 'This GRN is invoiced, so its rates for this GRN only cannot change.'],
   ])('%s: reads the rates again and shows the reason', async (code, data, text) => {
@@ -543,7 +543,7 @@ describe('the sections fold, one open at a time (owner, 2026-10-17)', () => {
   it('opens on ITEMS; every closed heading carries its line; the open one none', async () => {
     const tree = await render('edit');
     expect(openOnes(tree)).toEqual(['items']);
-    expect(line(tree, 'details')).toBe('A0010 · 12 Oct 2026 · Fictional Traders');
+    expect(line(tree, 'details')).toBe('A0010 · 12/10/26 · Fictional Traders');
     expect(line(tree, 'photos')).toBe('1 photo');
     expect(line(tree, 'items')).toBeNull();
     // Rice has no rate: the red tag says so and no line repeats it.
@@ -556,7 +556,7 @@ describe('the sections fold, one open at a time (owner, 2026-10-17)', () => {
   it('the Edit pencil is an icon only, the chevron\'s size, beside the chevron, and is its own button', async () => {
     const tree = await render('edit');
     const header = tree.root.find(n => n.props.testID === 'grn-review-section-details' && typeof n.props.onPress === 'function').parent!;
-    expect(header.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''))).toEqual(['GRN DETAILS', 'A0010 · 12 Oct 2026 · Fictional Traders']);
+    expect(header.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''))).toEqual(['GRN DETAILS', 'A0010 · 12/10/26 · Fictional Traders']);
     const icons = header.findAllByType('Icon' as never).map(n => [n.props.name, n.props.size]);
     expect(icons).toEqual([['pencil-outline', icons[1][1]], ['chevron-down', icons[1][1]]]);
     const edit = tree.root.find(n => n.props.testID === 'grn-review-section-details-edit' && typeof n.props.onPress === 'function');

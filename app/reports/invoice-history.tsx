@@ -57,7 +57,7 @@ import type {
   InvoiceHistoryData,
   InvoiceHistoryRecord,
 } from '@/types/report.types';
-import { formatCount, formatCurrency, formatIndiaDate, formatMonth, formatNumber, indiaDay } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatIndiaDate, formatIndiaSpokenDate, formatMonth, formatNumber, indiaDay } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 const REPORT_ID = 'invoice-history';
@@ -245,7 +245,7 @@ interface CustomerRowProps {
 
 const CustomerRow = memo(function CustomerRow({ customer, words, onOpen }: CustomerRowProps) {
   const styles = useThemedStyles(makeStyles);
-  const latest = customer.latest_invoice_date ? formatIndiaDate(customer.latest_invoice_date, 'short') : '';
+  const latest = customer.latest_invoice_date ? formatIndiaDate(customer.latest_invoice_date) : '';
   const facts = [formatCount(customer.invoice_count, 'invoice')];
   if (latest && latest !== '—') facts.push(tr('reports.invoiceHistory.latestInvoice', { date: latest }));
   const amount = formatSummaryAmount(customer.total_amount);
@@ -700,7 +700,7 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
     tr('reports.invoiceHistory.cardLabel', {
       number: formatIdentifier(invoice.invoice_number),
       // The date is read with the card: a heading above it is not.
-      subtitle: [formatIndiaDate(invoice.invoice_date), grn].filter(Boolean).join(' · '),
+      subtitle: [formatIndiaSpokenDate(invoice.invoice_date), grn].filter(Boolean).join(' · '),
       amount,
       items,
       status: status.label,
@@ -726,7 +726,7 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
           {/* A document number is never cut short (§4). */}
           <HighlightedText style={styles.title} text={number} words={words} />
           {grn ? <HighlightedText style={styles.subtitle} text={grn} words={words} /> : null}
-          {showDate ? <Text style={styles.footnote}>{formatIndiaDate(invoice.invoice_date, 'short')}</Text> : null}
+          {showDate ? <Text style={styles.footnote}>{formatIndiaDate(invoice.invoice_date)}</Text> : null}
           {matched.length > 0 ? <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} /> : null}
         </View>
 

@@ -27,7 +27,7 @@ import {
   sortCatalogue,
   type CatalogueAvailability,
 } from '@/config/catalogueView';
-import { addMyFacility, loadMyFacilities } from '@/config/centralFacilities';
+import { addMyFacility, loadMyFacilities, noteCatalogueRead } from '@/config/centralFacilities';
 import { openFacility } from '@/config/openFacility';
 import { showAlert } from '@/utils/alert';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
@@ -77,6 +77,7 @@ export default function FacilityCatalogueScreen() {
     setCatalogue({ kind: 'loading' });
     setRefreshError(null);
     const result = await fetchFacilityCatalogue({ force });
+    if (result.ok && userId) void noteCatalogueRead(userId, result.facilities.map(f => f.origin));
     setCatalogue(result.ok ? { kind: 'ready', facilities: result.facilities } : { kind: 'error', message: result.message });
   }, []);
 
@@ -87,6 +88,7 @@ export default function FacilityCatalogueScreen() {
     try {
       const result = await fetchFacilityCatalogue({ force: true });
       if (result.ok) {
+        if (userId) void noteCatalogueRead(userId, result.facilities.map(f => f.origin));
         setCatalogue({ kind: 'ready', facilities: result.facilities });
         setRefreshError(null);
       } else {
@@ -121,7 +123,7 @@ export default function FacilityCatalogueScreen() {
     if (picking || !userId || !origin) return;
     setPicking(true);
     try {
-      await addMyFacility(userId, { origin, name: facility.name, city: facility.town || facility.city });
+      await addMyFacility(userId, { origin, name: facility.name, city: facility.town || facility.city, source: 'catalogue' });
       // The answer of the open is shown on My facilities.
       router.back();
       void openFacility(origin, facility.name);

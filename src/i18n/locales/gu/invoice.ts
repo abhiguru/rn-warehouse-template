@@ -61,6 +61,12 @@ export const invoice: Translation<typeof source> = {
   },
   // Step 1: details
   form: {
+    // Gujarati draft (glossary): an edit moves the invoice date into another financial year.
+    moveYearTitle: 'નાણાકીય વર્ષ {{year}} માં ખસેડવું છે?',
+    moveYearMessage: 'ઇન્વૉઇસ {{old}} હવે ઇન્વૉઇસ {{new}} બનશે.',
+    moveYearMessageNoNumber: 'ઇન્વૉઇસને તે વર્ષનો આગળનો નંબર મળશે.',
+    moveYearConfirm: 'ઇન્વૉઇસ ખસેડો',
+    moveYearKeep: 'તારીખ રાખો',
     invoiceDate: 'ઇન્વૉઇસની તારીખ',
     invoiceDateA11y: 'ઇન્વૉઇસની તારીખ, {{date}}',
     invoiceDateNotSetA11y: 'ઇન્વૉઇસની તારીખ, સેટ નથી',
@@ -216,6 +222,8 @@ export const invoice: Translation<typeof source> = {
     discountA11y: 'ઇન્વૉઇસની છૂટ',
     discountNotNumber: 'છૂટ આંકડામાં લખો, જેમ કે ૨૫૦.૫૦.',
     discountTooLarge: 'છૂટ {{amount}} થી વધુ ન હોઈ શકે.',
+    // Gujarati draft (glossary): a discount that takes a charged invoice to exactly 0.
+    discountTotalZero: 'છૂટથી કુલ રકમ ₹૦ થઈ શકતી નથી. કંઈ ન લેવું હોય તો ભાડાનો દર ૦ કરો અને કારણ લખો.',
     // Draft for the owner's wording review (invoice review fixes 2026-10-19): surchargeTooLarge, finalAmount*.
     surchargeTooLarge: 'વધારાનો ચાર્જ {{amount}} થી વધુ ન હોઈ શકે.',
     discountReasonRequired: 'છૂટનું કારણ (જરૂરી)',
@@ -303,6 +311,8 @@ export const invoice: Translation<typeof source> = {
     totalChanged: 'કુલ રકમ હવે {{current}} છે, {{expected}} નથી. રકમ તપાસીને ફરી સાચવો.',
     // Draft for the owner's wording review (push 2026-10-21).
     totalUnmatched: 'સર્વર પ્રમાણે કુલ રકમ {{current}} છે. તેની રકમો જોવા ઇન્વૉઇસ ફરી ખોલો.',
+    // Gujarati draft (glossary): the rates changed after the invoice was opened; the lines now show the new ones.
+    ratesChanged: 'આ ઇન્વૉઇસ ખોલ્યા પછી દર બદલાયા છે. નવી રકમો તપાસો.',
   },
   // The dialog after an invoice is saved
   success: {
@@ -340,6 +350,8 @@ export const invoice: Translation<typeof source> = {
     breakdown: 'હિસાબ',
   },
   details: {
+    // Gujarati draft (glossary): under a discount or zero-charge reason, who set it and when.
+    setBy: 'નક્કી કરનાર: {{name}}, {{date}}',
     titleNumber: 'ઇન્વૉઇસ {{number}}',
     subtitleWithGrn: '{{date}} · આવક પાવતી {{number}}',
     notFoundTitle: 'ઇન્વૉઇસ મળ્યું નથી',
@@ -417,9 +429,10 @@ export const invoice: Translation<typeof source> = {
   // Field messages of the create and edit steps
   validation: {
     invoiceDateRequired: 'ઇન્વૉઇસની તારીખ જરૂરી છે',
-    futureDate: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',
+    futureDate: 'ઇન્વૉઇસની તારીખ આજ પછીની ન હોઈ શકે. આજે {{today}} છે.',
+    // Gujarati draft (glossary): the invoice date is before the latest dispatch of its lines.
+    beforeDispatch: 'ઇન્વૉઇસની તારીખ {{date}} જાવક {{number}} ({{dispatchDate}}) પહેલાંની છે.',
     financialYearRequired: 'નાણાકીય વર્ષ જરૂરી છે',
-    financialYearFormat: 'નાણાકીય વર્ષ {{example}} જેવા રૂપમાં લખો.',
     invoiceNumberRequired: 'ઇન્વૉઇસ નંબર જરૂરી છે',
     invoiceNumberPositive: 'ઇન્વૉઇસ નંબર શૂન્યથી મોટો હોવો જોઈએ',
     invoiceNumberWhole: 'ઇન્વૉઇસ નંબર પૂર્ણ સંખ્યા હોવો જોઈએ',

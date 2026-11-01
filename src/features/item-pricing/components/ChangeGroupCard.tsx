@@ -10,8 +10,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
-import { formatDateTime } from '@/utils/formatters';
-import { bandText, dateText } from '../rateText';
+import { formatDateTime, formatSpokenDateTime } from '@/utils/formatters';
+import { bandText, dateText, spokenDateText } from '../rateText';
 import type { GroupView } from '../utils/priceHistory';
 import { priceHistoryAuthor, priceHistoryFieldLabel, priceHistoryValueText } from '../utils/priceHistoryLabels';
 
@@ -29,6 +29,10 @@ const ChangeGroupCard = memo<Props>(({ entries, view }) => {
     view.kind === 'stopped'
       ? t('pricing.changes.groupStopped', { date: dateText(view.day ?? '') })
       : t('pricing.changes.group', { date: dateText(view.day ?? '') });
+  const spokenTitle =
+    view.kind === 'stopped'
+      ? t('pricing.changes.groupStopped', { date: spokenDateText(view.day ?? '') })
+      : t('pricing.changes.group', { date: spokenDateText(view.day ?? '') });
   const itemName = first.item_name || t('pricing.history.deletedItem');
   const customerName = !first.customer_id ? t('pricing.history.defaultPrice') : first.customer_name || t('pricing.history.deletedCustomer');
   const when = formatDateTime(first.changed_at);
@@ -49,14 +53,15 @@ const ChangeGroupCard = memo<Props>(({ entries, view }) => {
       };
     }),
   }));
-  const removed = view.removed.map(r =>
-    t('pricing.changes.removed', {
+  const removedText = (r: GroupView['removed'][number], day: (iso: string) => string) =>
+    t(r.begun ? 'pricing.changes.removedBegun' : 'pricing.changes.removed', {
       band: r.band.min !== null && r.band.max !== null ? bandText(r.band.min, r.band.max) : '—',
       amount: priceHistoryValueText(r.field, r.price),
-      date: r.from ? dateText(r.from) : '—',
-    })
-  );
-  const spoken = [title, itemName, customerName, ...bands.flatMap(b => [b.heading, ...b.rows.map(r => r.spoken)]), ...removed, when, who].filter(Boolean).join(', ');
+      date: r.from ? day(r.from) : '—',
+    });
+  const removed = view.removed.map(r => removedText(r, dateText));
+  const spokenRemoved = view.removed.map(r => removedText(r, spokenDateText));
+  const spoken = [spokenTitle, itemName, customerName, ...bands.flatMap(b => [b.heading, ...b.rows.map(r => r.spoken)]), ...spokenRemoved, formatSpokenDateTime(first.changed_at), who].filter(Boolean).join(', ');
 
   return (
     <View style={styles.card} accessible accessibilityLabel={spoken} testID={`price-history-group-${first.id}`}>

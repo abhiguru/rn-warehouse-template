@@ -42,6 +42,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 jest.mock('@/services/order-service', () => ({
   OrderService: {
     getOrCreateOrder: jest.fn(),
+    getCustomerOrder: jest.fn(),
     getOrderWithItems: jest.fn(),
     getAvailableItems: jest.fn(),
     searchCustomerItemsForOrder: jest.fn(),
@@ -129,6 +130,8 @@ beforeEach(() => {
     id: 'order-fictional-1', customer_id: 'customer-fictional-1', created_at: '2026-10-01T08:00:00Z',
     customer: { id: 'customer-fictional-1', name: 'Fictional Farms' } as Order['customer'], items: [],
   };
+  // These tests are about an older facility's way of opening an order (get_or_create_cart); the new way is in OrderManagementOpen.
+  service.getCustomerOrder.mockReset().mockResolvedValue({ success: false, message: '', notAvailable: true } as never);
   service.getOrCreateOrder.mockReset().mockResolvedValue({ success: true, data: { cart_id: server.id } } as never);
   service.getOrderWithItems.mockReset().mockImplementation(async () => ({ success: true, data: copy(server) }) as never);
   service.getAvailableItems.mockReset().mockResolvedValue({ success: true, message: '', data: LOTS } as never);

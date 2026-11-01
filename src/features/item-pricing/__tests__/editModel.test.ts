@@ -254,12 +254,22 @@ describe('validate', () => {
     expect(validate({ ...filled, tax: '5' }, context).ok).toBe(true);
   });
 
+  it('accepts a labour of 999999 and refuses 1000000, shared or per band', () => {
+    const { draft, context } = open('add', { item_id: 'item-new', price_type: 'monthly' }, []);
+    const base = { ...draft, bands: [{ upTo: '100', rent: '4' }], tax: '5' };
+    expect(validate({ ...base, labour: '999999' }, context).errors.labour).toBeUndefined();
+    expect(validate({ ...base, labour: '1000000' }, context).errors.labour).toBe('Enter a labour rate from 0 to 999999.');
+    const perBand = (labour: string) => ({ ...base, bands: [{ upTo: '100', rent: '4', labour, tax: '5' }] });
+    expect(validate(perBand('999999.99'), context).errors['band.0.labour']).toBe('Enter a labour rate from 0 to 999999.');
+    expect(validate(perBand('999999'), context).errors['band.0.labour']).toBeUndefined();
+  });
+
   it('rejects a tax above 100 and a missing labour (monthly only)', () => {
     const { draft, context } = open('add', { item_id: 'item-new', price_type: 'monthly' }, []);
     const bad = { ...draft, bands: [{ upTo: '100', rent: '4' }], tax: '101', labour: '' };
     const { errors } = validate(bad, context);
     expect(errors.tax).toBe('Enter a tax rate from 0 to 100.');
-    expect(errors.labour).toBe('Enter a labour rate of 0 or more.');
+    expect(errors.labour).toBe('Enter a labour rate from 0 to 999999.');
     const oneTime = validate({ ...bad, priceType: 'one_time', tax: '5' }, context);
     expect(oneTime.errors.labour).toBeUndefined();
   });
@@ -396,19 +406,19 @@ describe('what the person is told', () => {
     const { draft, context } = open('change', { item_id: CUMIN }, cuminRows);
     const chosen = { ...setStartsOn(draft, 'april', '2027-04-01'), bands: [{ upTo: '100', rent: '12' }] };
     expect(lotsRule(chosen, context)).toBe(
-      'Lots received from 1 Apr 2027 are charged the new rate. Lots received before keep ₹11.00.'
+      'Lots received from 01/04/27 are charged the new rate. Lots received before keep ₹11.00.'
     );
     expect(summaryLines(chosen, context)).toEqual([
-      'Until 31 Mar 2027: ₹11.00 per bag, per month',
-      'From 1 Apr 2027: ₹12.00 per bag, per month',
+      'Until 31/03/27: ₹11.00 per bag, per month',
+      'From 01/04/27: ₹12.00 per bag, per month',
     ]);
   });
 
   it('says nothing about an old rate when there was none', () => {
     const { draft, context } = open('add', { item_id: 'item-new', price_type: 'monthly' }, []);
     const chosen = { ...draft, bands: [{ upTo: '100', rent: '5' }] };
-    expect(lotsRule(chosen, context)).toBe('Lots received from 14 Oct 2026 are charged this rate.');
-    expect(summaryLines(chosen, context)).toEqual(['From 14 Oct 2026: ₹5.00 per bag, per month']);
+    expect(lotsRule(chosen, context)).toBe('Lots received from 14/10/26 are charged this rate.');
+    expect(summaryLines(chosen, context)).toEqual(['From 14/10/26: ₹5.00 per bag, per month']);
   });
 
   it('with several bands, one line per band, and the old rates as a range', () => {
@@ -416,16 +426,16 @@ describe('what the person is told', () => {
     const chosen = startingOn(draft, '2027-01-01');
     expect(lotsRule(chosen, context)).toContain('Lots received before keep ₹6.00–₹9.50.');
     expect(summaryLines(chosen, context)).toEqual([
-      'Until 31 Dec 2026: ₹6.00–₹9.50 per bag, per month',
-      'From 1 Jan 2027, 0–40 kg: ₹6.00 per bag, per month',
-      'From 1 Jan 2027, 41–100 kg: ₹9.50 per bag, per month',
+      'Until 31/12/26: ₹6.00–₹9.50 per bag, per month',
+      'From 01/01/27, 0–40 kg: ₹6.00 per bag, per month',
+      'From 01/01/27, 41–100 kg: ₹9.50 per bag, per month',
     ]);
   });
 
   it('a correction shows only the corrected line', () => {
     const { draft, context } = open('correct', { item_id: CUMIN }, cuminRows);
     const typed = { ...draft, bands: [{ upTo: '100', rent: '11.50' }] };
-    expect(summaryLines(typed, context)).toEqual(['Corrected since 1 Apr 2026: ₹11.50 per bag, per month']);
+    expect(summaryLines(typed, context)).toEqual(['Corrected since 01/04/26: ₹11.50 per bag, per month']);
     expect(lotsRule(typed, context)).toBeNull();
   });
 

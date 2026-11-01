@@ -11,7 +11,7 @@ import { ActivityIndicator, LayoutAnimation, StyleSheet } from 'react-native';
 import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
 import { BRANDS, fontWeight, getTokens, motion, touchTarget, typography, type Mode } from '@/theme/tokens';
 import { setLanguage } from '@/i18n';
-import { formatDate } from '@/utils/formatters';
+import { formatDate, formatSpokenDate } from '@/utils/formatters';
 import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui';
 import {
@@ -44,8 +44,10 @@ const ROWS: StockGRNRowData[] = [
 ];
 
 // The list rows show the short date, which adds the year outside the current one.
-const OCT_1 = () => formatDate('2026-10-01', 'short');
-const SEP_2 = () => formatDate('2026-09-02', 'short');
+const OCT_1 = () => formatDate('2026-10-01');
+const OCT_1_SPOKEN = () => formatSpokenDate('2026-10-01');
+const SEP_2 = () => formatDate('2026-09-02');
+const SEP_2_SPOKEN = () => formatSpokenDate('2026-09-02');
 
 const configureNext = jest.spyOn(LayoutAnimation, 'configureNext').mockImplementation(() => undefined);
 
@@ -290,7 +292,7 @@ describe('GRN rows', () => {
     expect(grnButtons()).toHaveLength(1);
     const row = grnButtons()[0];
     expect(row.props.accessibilityLabel).toBe(
-      `GRN 311, mark RS, Fictional Traders, Received ${OCT_1()}, Rack B-14 · 1,250.5 kg each, 60 of 100 in stock`
+      `GRN 311, mark RS, Fictional Traders, Received ${OCT_1_SPOKEN()}, Rack B-14 · 1,250.5 kg each, 60 of 100 in stock`
     );
     expect(pressedStyle(row, false).minHeight).toBeGreaterThanOrEqual(touchTarget);
     act(() => row.props.onPress());
@@ -309,7 +311,7 @@ describe('GRN rows', () => {
     expect(row.props.accessible).toBe(true);
     expect(row.props.accessibilityRole).toBeUndefined();
     expect(row.props.onPress).toBeUndefined();
-    expect(row.props.accessibilityLabel).toBe(`GRN ${LONG_GR_NO}, Received ${SEP_2()}, 5 units, 50 kg each`);
+    expect(row.props.accessibilityLabel).toBe(`GRN ${LONG_GR_NO}, Received ${SEP_2_SPOKEN()}, 5 units, 50 kg each`);
   });
 
   it('rows do not open without a handler, even with a GRN id', () => {
@@ -341,7 +343,7 @@ describe('GRN rows', () => {
     expect(flat(line.props.style)).toMatchObject({ fontSize: typography.footnote.fontSize, color: t.text.secondary });
     // The row's label names the mark once, after the GRN number.
     expect(grnButtons()[0].props.accessibilityLabel).toBe(
-      `GRN 311, mark ${LONG_MARK}, Fictional Traders, Received ${OCT_1()}, Rack B-14 · 1,250.5 kg each, 60 of 100 in stock`
+      `GRN 311, mark ${LONG_MARK}, Fictional Traders, Received ${OCT_1_SPOKEN()}, Rack B-14 · 1,250.5 kg each, 60 of 100 in stock`
     );
   });
 

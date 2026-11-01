@@ -234,7 +234,7 @@ it.each([
   expect(container.length).toBeGreaterThan(0);
   expect(texts(tree)).toContain('1,250.5 kg each');
   expect(texts(tree)).not.toContain('1,250.5 kg');
-  expect(texts(tree)).toContain(formatDate('2026-10-09', 'short'));
+  expect(texts(tree)).toContain(formatDate('2026-10-09'));
   const remove = byLabel(tree, 'Remove Fictional Onions from order');
   expect(remove.findByProps({ name: 'trash-can-outline' }).props.color).toBe(tokens.status.negative.text);
   await act(async () => { tree.unmount(); });

@@ -47,6 +47,8 @@ interface ActionsSectionProps {
   onDelete?: () => void;
   /** Whether Delete is in loading state. Edit is disabled with it: an invoice that is being deleted is not edited. */
   isDeleting?: boolean;
+  /** Words for the busy Delete button when something else than the delete runs (default: Deleting…). */
+  deleteBusyLabel?: string;
   /**
    * Whether this section asks "Delete ...?" before it calls `onDelete`. Default: yes. A page that asks its own,
    * more specific question in `onDelete` (invoices: "Invoice N for <customer> will be deleted") passes false, so the
@@ -70,6 +72,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   canDelete, // If not provided, follows canEdit
   onDelete,
   isDeleting = false,
+  deleteBusyLabel,
   confirmDelete = true,
 }) => {
   const colorStyles = useOverviewColors();
@@ -220,7 +223,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               <Icon name="trash-can-outline" size={iconSize.lg} color={colorStyles.iconError} />
             )}
             <Text style={[overviewStyles.secondaryNegativeButtonText, colorStyles.secondaryNegativeButtonText]}>
-              {isDeleting ? t('common.deleting') : labels.delete}
+              {isDeleting ? deleteBusyLabel ?? t('common.deleting') : labels.delete}
             </Text>
           </Pressable>
         )}

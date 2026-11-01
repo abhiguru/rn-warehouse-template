@@ -139,12 +139,12 @@ describe('the period', () => {
   it('asks for the last 120 days, and for 240 days once that period is chosen on the chip', async () => {
     const screen = await open();
     expect(dashboard.mock.calls).toEqual([[days('2026-06-15')]]);
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
 
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
     expect(dashboard.mock.calls).toEqual([[days('2026-06-15')], [days('2026-02-15')]]);
-    expect(screen.status()).toBe('15 Feb – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.texts()).not.toContain('Last 120 days');
   });
 
@@ -153,7 +153,7 @@ describe('the period', () => {
     expect(screen.texts()).toEqual(
       expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Period averages', 'Latest activity (any date)'])
     );
-    // Over the 120 days of 15 Jun to 12 Oct, not over the 2 days (GRNs) and 1 day (dispatches) that had events:
+    // Over the 120 days of 15/06/26 to 12/10/26, not over the 2 days (GRNs) and 1 day (dispatches) that had events:
     // 5 GRNs / 120 = 0.04 and 1 dispatch / 120 = 0.008: not zero, and too small for one decimal, so "<0.1" and
     // never "0" (the active-day figures were 2.5 and 1).
     expect(screen.averages()).toEqual(['GRNs per day: <0.1', 'Dispatches per day: <0.1']);
@@ -168,21 +168,21 @@ describe('the period', () => {
       screen.tree.root
         .findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header')
         .map(node => (node.props.accessibilityLabel as string | undefined) ?? [node.props.children].flat().join(''));
-    expect(headers()).toEqual(['Operations dashboard', 'In 15 Jun – 12 Oct', 'Right now', 'Period averages', 'Latest activity (any date)']);
+    expect(headers()).toEqual(['Operations dashboard', 'In 15/06/26 – 12/10/26', 'Right now', 'Period averages', 'Latest activity (any date)']);
     // The facility whose figures these are, under the title, and read out as such.
     expect(screen.texts()).toContain('Riverside Cold Storage');
     expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Facility: Riverside Cold Storage').length).toBeGreaterThan(0);
     // Each group's figures are under its own heading.
     const texts = screen.texts();
     const at = (words: string) => texts.indexOf(words);
-    const order = ['IN 15 JUN – 12 OCT', 'GRNs', 'Dispatches', 'RIGHT NOW', 'Pending orders', 'Active customers', 'Total stock'].map(at);
+    const order = ['IN 15/06/26 – 12/10/26', 'GRNs', 'Dispatches', 'RIGHT NOW', 'Pending orders', 'Active customers', 'Total stock'].map(at);
     expect(order.every((position, index) => position >= 0 && (index === 0 || position > order[index - 1]))).toBe(true);
     expect(texts).not.toContain('Recent activity');
 
     // Last month (all of September): the movement is September's; stock and pending orders are still today's.
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last month');
-    expect(headers()).toEqual(['Operations dashboard', 'In 1 Sep – 30 Sep', 'Right now', 'Period averages', 'Latest activity (any date)']);
+    expect(headers()).toEqual(['Operations dashboard', 'In 01/09/26 – 30/09/26', 'Right now', 'Period averages', 'Latest activity (any date)']);
   });
 
   it('with no latest activity says none yet under the figures, without naming the period', async () => {
@@ -196,12 +196,12 @@ describe('the period', () => {
   it('with no activity offers "Show last 420 days", which asks for those days, until that period is chosen', async () => {
     dashboard.mockResolvedValue(answer([]) as never);
     const screen = await open();
-    expect(screen.status()).toBe('15 Jun – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
     const button = () => screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Show last 420 days' && typeof node.props.onPress === 'function');
     expect(button()).not.toEqual([]);
     await screen.press('Show last 420 days');
     expect(dashboard.mock.calls).toEqual([[days('2026-06-15')], [days('2025-08-19')]]);
-    expect(screen.status()).toBe('19 Aug 2025 – 12 Oct · Last updated 10:00 am');
+    expect(screen.status()).toBe('19/08/25 – 12/10/26 · Last updated 10:00 am');
     expect(button()).toEqual([]);
   });
 });
@@ -313,7 +313,7 @@ describe('the daily averages', () => {
     const screen = await open();
     expect(screen.averages()).toEqual(['GRNs per day: <0.1', 'Dispatches per day: <0.1']);
 
-    // This month is 1 to 31 Oct, but today is 12 Oct: 12 days. 5 / 12 = 0.42, 1 / 12 = 0.08 (not 5 / 31 = 0.16).
+    // This month is 1 to 31/10/26, but today is 12/10/26: 12 days. 5 / 12 = 0.42, 1 / 12 = 0.08 (not 5 / 31 = 0.16).
     await screen.press('Period: Last 120 days. Change');
     await screen.press('This month');
     expect(dashboard.mock.calls.at(-1)).toEqual([{ fromDate: '2026-10-01', toDate: '2026-10-31' }]);

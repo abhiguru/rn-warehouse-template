@@ -47,11 +47,14 @@ import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
 import {
   createGRN,
   updateGRN,
+  buildUpdateGRNRequest,
   getNextGRNNumber,
   loadGRNData as loadGRNDataService,
   type GRNLostAnswer,
   type GRNPhotoSaveReport,
 } from '@/features/grn/services/grnFormService';
+import { useOrderEffectsPreview } from '@/hooks/useOrderEffectsPreview';
+import { orderEffectLines, orderEffectsNotice, previewUpdateGrn, withOrderEffects } from '@/services/orderEffects';
 import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
 import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
@@ -74,6 +77,7 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printGRNRange } from '@/services/print-service';
 import { DocumentSuccessDialog, DocumentData } from '@/components/DocumentSuccessDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { generateGRNPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
@@ -111,13 +115,15 @@ import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 import { serverText } from '@/utils/serverText';
+import { lineLock, LOCK_A11Y, LOCK_TAG, type LineLock } from '@/features/grn/utils/lineLock';
 import { isNumberFormatRefusal, numberFormatText } from '@/utils/numberFormatRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
+import { getGrnItemRates } from '@/services/item-pricing-service';
 import type { ScrollViewRef } from '@/types/nativeRefs';
 
 const log = createLogger('grn');
 
-/** "9 Oct 2026" (§12.3); today when no date is set yet. */
+/** "09/10/26" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {
   return formatDate(value || new Date());
 }
@@ -133,6 +139,19 @@ type GrnReviewStepProps = {
 };
 
 /** The folding sections of the step, top to bottom. */
+/** The server's refusals about the date and the number of a new GRN: the person fixes them on step 1. */
+const CREATE_STEP_REFUSALS: ReadonlySet<string> = new Set([REFUSAL.GRN_DATE_FUTURE, REFUSAL.GRN_NUMBER_SPACES]);
+
+/** The app's sentence for a refusal about the date or the number of a GRN; undefined for any other reason. */
+function refusalText(refusal: ServerRefusal): string | undefined {
+  if (refusal.reason === REFUSAL.GRN_DATE_FUTURE) {
+    const today = refusalString(refusal, 'today')?.slice(0, 10);
+    return tr('grn.refusal.dateFuture', { date: today ? formatDate(today) : '' });
+  }
+  if (refusal.reason === REFUSAL.GRN_NUMBER_SPACES) return tr('grn.refusal.numberSpaces');
+  return undefined;
+}
+
 type ReviewSectionId = 'details' | 'photos' | 'items' | 'rates';
 
 export function GrnReviewStep({ mode }: GrnReviewStepProps) {
@@ -218,8 +237,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // Scroll to Rates each time the block moves while the GRN loads, until the person scrolls or opens a section.
   const ratesFocusPending = useRef(openedOnRates);
   // The sections fold, one open at a time (owner, 2026-10-17): ITEMS when the step opens, RATES when it was
-  // opened from the GRN's Rates. A closed section shows a one-line summary under its heading.
-  const { open: openSection, toggle, show } = useReviewSections<ReviewSectionId>(openedOnRates ? 'rates' : 'items');
+  // opened from the GRN's Rates, and on a new GRN with no GRN photo yet, the GRN PHOTOS (a photo is required).
+  // A closed section shows a one-line summary under its heading. Read once, when the step mounts.
+  const startSection: ReviewSectionId = openedOnRates ? 'rates' : isCreateMode && !header.gr_images?.length ? 'photos' : 'items';
+  const { open: openSection, toggle, show } = useReviewSections<ReviewSectionId>(startSection);
   const toggleSection = (section: string) => {
     ratesFocusPending.current = false;
     toggle(section as ReviewSectionId);
@@ -467,6 +488,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       return;
     }
 
+    // An edit asks the server again which orders it changes, so the question names what is true now.
+    if (!isCreateMode) await refreshOrderEffects();
+
     // Show custom confirm dialog (dark mode compliant)
     setShowConfirmDialog(true);
   };
@@ -511,8 +535,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    * photos that did not upload are listed with a retry, never passed over.
    */
   const finishSave = (savedGrnId: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
+    void noteItemsWithoutRate(savedGrnId);
     if (photos && photos.removalFailures > 0) {
-      setSnackbarMessage(tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
+      setSnackbarMessage(photos.removalRefusal ?? tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
       setSnackbarVisible(true);
     }
     if (savedGrnId && photos && photos.failed.length > 0) {
@@ -521,6 +546,23 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       return;
     }
     setShowSuccessDialog(true);
+  };
+
+  /**
+   * Staff do not see or set rates (owner decision D11): a GRN with an item that has no rate yet is still saved. What
+   * they may read is the rate each lot is invoiced at (get_grn_item_rates), so the success dialog tells them which
+   * items have none. A failed or missing read says nothing; the save is not affected.
+   */
+  const noteItemsWithoutRate = async (savedGrnId: string | undefined) => {
+    if (canSetRates || !savedGrnId) return;
+    try {
+      const answer = await getGrnItemRates(savedGrnId);
+      const names = [...new Set((answer?.rates ?? []).filter((rate) => rate.source === null).map((rate) => rate.item_name))];
+      if (names.length === 0) return;
+      setSuccessDialogData((current) => (current ? { ...current, notices: [tr('grn.review.noRateYet', { items: names.join(', ') })] } : current));
+    } catch (rateError) {
+      log.warn('Could not read the rates of the saved GRN', loggableError(rateError));
+    }
   };
 
   const handleRetryPhotos = async () => {
@@ -805,6 +847,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           customerName: header.customer_name || tr('common.unknown'),
           date: formatReviewDate(header.date),
           itemCount: items.length,
+          totalQuantity: totalQty,
         });
         finishSave(result.data.id, result.data.photos);
       } else if (result.duplicate) {
@@ -817,6 +860,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         showNumberMaybeSaved(result.numberTaken?.number ?? header.gr_no);
       } else if (result.numberTaken) {
         await handleNumberTakenAtCreate(result.numberTaken.number, formLeft);
+      } else if (result.refusal && CREATE_STEP_REFUSALS.has(result.refusal.reason)) {
+        // The date or the number is refused (migration 130): said in the app's words, and the person is taken to step 1.
+        triggerError();
+        const message = refusalText(result.refusal);
+        if (message) {
+          showAlert(saveFailedTitle(), message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
+        }
       } else if (isNumberFormatRefusal(result.refusal)) {
         // The number does not follow the facility's numbering (migration 127): step 1 refuses it until it is changed.
         triggerError();
@@ -914,6 +964,14 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       case REFUSAL.GRN_DATE_LOCKED:
         showAlert(saveFailedTitle(), tr('grn.refusal.dateInvoiced'), ok(goToDetailsStep));
         return;
+      case REFUSAL.GRN_DATE_FUTURE:
+      case REFUSAL.GRN_NUMBER_SPACES:
+        showAlert(saveFailedTitle(), refusalText(refusal) ?? serverText(refusal.text, connectionHint(), { write: true, form: true }), ok(goToDetailsStep));
+        return;
+      case REFUSAL.GRN_PHOTO_REQUIRED:
+        // An edit may not leave a GRN with no photo: the photos section is where one is added.
+        showAlert(saveFailedTitle(), tr('grn.refusal.lastPhoto'), ok(() => show('photos')));
+        return;
       case REFUSAL.GRN_NUMBER_LOCKED:
         showAlert(saveFailedTitle(), tr('grn.refusal.numberLocked'), ok(goToDetailsStep));
         return;
@@ -953,6 +1011,48 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
   };
 
+  /** The update_grn request as the form holds it now (built once per save; a resend is identical). */
+  const buildUpdateRequest = () => ({
+    header: {
+      registration: header.registration,
+      date: header.date,
+      sender_id: header.sender_id,
+      sender_name: header.sender_name,
+      customer_id: header.customer_id,
+      customer_name: header.customer_name,
+      supervisor_id: header.supervisor_id,
+      supervisor_name: header.supervisor_name,
+      note: header.note,
+      leon: header.leon,
+      pricing_mode: header.pricing_mode,
+      gr_images: header.gr_images,
+    },
+    items: items.map((item) => ({
+      grn_trl_id: item.grn_trl_id,
+      item_table_id: item.item_table_id,
+      item_name: item.item_name,
+      packaging: item.packaging,
+      qty: item.qty,
+      stock: item.stock,
+      weight: item.weight,
+      rack: item.rack,
+      package_mark: item.package_mark,
+      trl_images: item.trl_images || [],
+    })),
+    rates: ratesToSave(),
+    // The version the form was read at: part of the request, so a resend after a lost answer is byte for byte the same.
+    expectedUpdatedAt: loadedUpdatedAt,
+  });
+
+  // What saving this edit does to customers' orders (migration 128), read when the step opens and again when Save is
+  // tapped. An older server has no preview: null, and the question is asked as it always was.
+  const effectsGrnId = Array.isArray(id) ? id[0] : id || grnId;
+  const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
+    !isCreateMode && !!effectsGrnId && items.length > 0,
+    JSON.stringify([header.customer_id, header.date, items.map((item) => [item.grn_trl_id, item.item_table_id, item.qty, item.stock])]),
+    () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest(), removedImages).rpcRequest)
+  );
+
   const performUpdate = async (formSession: number) => {
     const formLeft = () => currentGrnFormSession() !== formSession;
     // The GRN being edited is the route's; the form's id is only what was loaded last. If they differ the form
@@ -968,37 +1068,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     try {
       // Built once: a send after a lost answer is the identical request. Its request code is the edit session's key
       // for this body, kept until a save is answered (grnUpdateIdempotencyKey).
-      const request = {
-        header: {
-          registration: header.registration,
-          date: header.date,
-          sender_id: header.sender_id,
-          sender_name: header.sender_name,
-          customer_id: header.customer_id,
-          customer_name: header.customer_name,
-          supervisor_id: header.supervisor_id,
-          supervisor_name: header.supervisor_name,
-          note: header.note,
-          leon: header.leon,
-          pricing_mode: header.pricing_mode,
-          gr_images: header.gr_images,
-        },
-        items: items.map((item) => ({
-          grn_trl_id: item.grn_trl_id,
-          item_table_id: item.item_table_id,
-          item_name: item.item_name,
-          packaging: item.packaging,
-          qty: item.qty,
-          stock: item.stock,
-          weight: item.weight,
-          rack: item.rack,
-          package_mark: item.package_mark,
-          trl_images: item.trl_images || [],
-        })),
-        rates: ratesToSave(),
-        // The version the form was read at: part of the request, so a resend after a lost answer is byte for byte the same.
-        expectedUpdatedAt: loadedUpdatedAt,
-      };
+      const request = buildUpdateRequest();
 
       const result = await sendUntilAnswered(
         (resend, storedAnswer) =>
@@ -1048,6 +1118,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           customerName: header.customer_name || tr('common.unknown'),
           date: formatReviewDate(header.date),
           itemCount: items.length,
+          totalQuantity: totalQty,
+          orderNotes: orderEffectLines(result.data?.orderEffects),
         });
         const savedPhotos = result.data?.photos;
         if (skippedMessage) {
@@ -1274,6 +1346,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               </Text>
 
               <ImageUploadButton
+                documentScan
                 onImageUploadStart={(tempImageData: GRNImageData) => {
                   dispatch(addHeaderImage(tempImageData));
                 }}
@@ -1393,6 +1466,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             </ReviewSection>
           ) : null}
           </ReviewCard>
+          {!isCreateMode && orderEffectsNotice(orderEffects) ? (
+            <View testID="grn-review-order-effects" style={{ margin: space.sm }}>
+              <InlineValidation variant="warning" message={orderEffectsNotice(orderEffects)} />
+            </View>
+          ) : null}
 
         </ScrollView>
 
@@ -1429,11 +1507,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       <ConfirmDialog
         visible={showConfirmDialog}
         title={isCreateMode ? tr('grn.review.confirmCreateTitle') : tr('grn.review.confirmSaveTitle')}
-        message={
+        message={withOrderEffects(
           header.gr_no
             ? tr(isCreateMode ? 'grn.review.confirmCreateNumbered' : 'grn.review.confirmSaveNumbered', { number: formatIdentifier(header.gr_no), count: totalItems })
-            : tr(isCreateMode ? 'grn.review.confirmCreate' : 'grn.review.confirmSave', { count: totalItems })
-        }
+            : tr(isCreateMode ? 'grn.review.confirmCreate' : 'grn.review.confirmSave', { count: totalItems }),
+          isCreateMode ? null : orderEffects
+        )}
         confirmText={ctaLabel}
         cancelText={tr('common.cancel')}
         onConfirm={handleConfirmSubmit}
@@ -1538,31 +1617,6 @@ type TableStyles = ReturnType<typeof makeTableStyles>;
 
 const itemColumnHelper = createAppColumnHelper<GRNItemData>();
 
-/**
- * What locks a stored line of an edited GRN, as far as the screen says it: 'invoiced' (quantity, item, packing and
- * weight), 'dispatched' (quantity, item and packing) from the server's locks, or 'quantity' on an older server that
- * sends none (the line's stock differs from its quantity). null: nothing is locked, or a new GRN.
- */
-type LineLock = 'invoiced' | 'dispatched' | 'quantity' | null;
-
-function lineLock(item: GRNItemData, isCreateMode: boolean): LineLock {
-  if (isCreateMode) return null;
-  if (item.locks) return item.locks.invoiced ? 'invoiced' : item.locks.dispatched ? 'dispatched' : null;
-  return item.qty !== item.stock ? 'quantity' : null;
-}
-
-/** The tag text and the spoken text of a line's lock. */
-const LOCK_TAG: Record<Exclude<LineLock, null>, () => string> = {
-  invoiced: () => tr('grn.item.lockedInvoiced'),
-  dispatched: () => tr('grn.item.lockedDispatched'),
-  quantity: () => tr('grn.item.quantityLocked'),
-};
-const LOCK_A11Y: Record<Exclude<LineLock, null>, () => string> = {
-  invoiced: () => tr('grn.review.a11yInvoicedLocked'),
-  dispatched: () => tr('grn.review.a11yDispatchedLockedAll'),
-  quantity: () => tr('grn.review.a11yDispatchedLocked'),
-};
-
 /** What a screen reader says for one line of the review's Items table. */
 function itemA11y(item: GRNItemData, index: number, lock: LineLock, weightText: string | null): string {
   const qty = item.qty || 0;
@@ -1635,9 +1689,9 @@ const GrnReviewItemCell = React.memo(function GrnReviewItemCell({ item, weightTe
       {item.packaging ? <Text style={table.secondary} numberOfLines={1}>{item.packaging}</Text> : null}
       <View style={styles.itemTags}>
         {weightText !== null && <StatusTag wrap status="neutral" label={weightText} icon="weight-kilogram" />}
-        {rack ? <StatusTag wrap status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
-        {packageMark ? <StatusTag wrap status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
-        {imageCount > 0 && <StatusTag wrap status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />}
+        {rack ? <StatusTag wrap status="neutral" label={rack} accessibilityLabel={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
+        {packageMark ? <StatusTag wrap status="neutral" label={packageMark} accessibilityLabel={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
+        {imageCount > 0 && <StatusTag wrap status="neutral" label={formatNumber(imageCount)} accessibilityLabel={formatCount(imageCount, 'photo')} icon="camera-outline" />}
         {lock !== null && <StatusTag wrap status="critical" label={LOCK_TAG[lock]()} icon="lock-outline" />}
       </View>
     </>

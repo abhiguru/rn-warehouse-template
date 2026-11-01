@@ -7,8 +7,10 @@
  * (app/central-login.tsx, with the terms tick on a first sign-in). The screens
  * own the number, the request and what happens next; this component only draws.
  */
-import React from 'react';
+import React, { useRef } from 'react';
 import {
+  AccessibilityInfo,
+  findNodeHandle,
   View,
   Text,
   StyleSheet,
@@ -70,6 +72,8 @@ export interface PhoneSignInFormProps {
   facility?: { name: string; host: string; onChange: () => void; changeLabel: string };
   /** A line under the subtitle. */
   note?: string;
+  /** A strip at the very top, under the status bar (the reason of an earlier sign-out). */
+  banner?: React.ReactNode;
   /** Digits only, as typed. */
   phoneNumber: string;
   onChangePhone: (digits: string) => void;
@@ -78,15 +82,25 @@ export interface PhoneSignInFormProps {
   /** The countdown is already in the language's digits. */
   rateLimit: { isRateLimited: boolean; countdown: string; message: string };
   onSubmit: () => void;
-  /** Shown as a tick box; "Send code" stays disabled until it is ticked. */
-  terms?: { accepted: boolean; onToggle: () => void };
+  /**
+   * Shown as a tick box. "Send code" stays pressable while it is unticked: a tap sends nothing, moves the focus to the
+   * box and calls `onBlocked`; `error` then shows "Tick the box above to continue." under the box (style guide §10).
+   */
+  terms?: { accepted: boolean; onToggle: () => void; error?: boolean; onBlocked?: () => void };
   onOpenTerms: () => void;
   onOpenPrivacy: () => void;
+  /** A link under the button, for another way to sign in (central sign-in: a code from the facility). */
+  alternative?: { label: string; hint: string; onPress: () => void; testID?: string };
+  /** Replaces the sentence under the title ("Enter your mobile number to get a one-time code."). */
+  subtitle?: string;
+  /** Replaces "Send code" on the button, with the label for the busy state. */
+  submitLabel?: { label: string; busy: string; hint: string };
 }
 
 export function PhoneSignInForm({
   facility,
   note,
+  banner,
   phoneNumber,
   onChangePhone,
   busy,
@@ -95,6 +109,9 @@ export function PhoneSignInForm({
   terms,
   onOpenTerms,
   onOpenPrivacy,
+  alternative,
+  subtitle,
+  submitLabel,
 }: PhoneSignInFormProps) {
   const insets = useSafeAreaInsets();
   const t = useTokens();
@@ -102,10 +119,22 @@ export function PhoneSignInForm({
   // A countdown is a number: ૦-૯ in Gujarati.
   const countdown = rateLimit.countdown;
   const termsMissing = Boolean(terms && !terms.accepted);
+  const termsRef = useRef<React.ComponentRef<typeof Pressable>>(null);
+  // Every way of sending (the button, the keyboard's Send) goes through here.
+  const submit = () => {
+    if (termsMissing) {
+      terms?.onBlocked?.();
+      const node = termsRef.current ? findNodeHandle(termsRef.current) : null;
+      if (node) AccessibilityInfo.setAccessibilityFocus(node);
+      return;
+    }
+    onSubmit();
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+      {banner}
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -159,7 +188,7 @@ export function PhoneSignInForm({
               <Text style={styles.appName}>{APP_NAME}</Text>
               <Text style={styles.welcomeTitle}>{tr('auth.signIn')}</Text>
               <Text style={styles.welcomeSubtitle}>
-                {tr('auth.login.subtitle')}
+                {subtitle ?? tr('auth.login.subtitle')}
               </Text>
               {note ? <Text style={[styles.welcomeSubtitle, styles.note]}>{note}</Text> : null}
             </View>
@@ -200,7 +229,7 @@ export function PhoneSignInForm({
                 autoComplete="tel-national"
                 textContentType="telephoneNumber"
                 returnKeyType="send"
-                onSubmitEditing={onSubmit}
+                onSubmitEditing={submit}
                 leftIcon={
                   <View style={styles.countryCode}>
                     <Text style={styles.countryCodeText}>+91</Text>
@@ -212,6 +241,7 @@ export function PhoneSignInForm({
             {/* First sign-in on this phone: the terms are accepted with a tick (central sign-in) */}
             {terms ? (
               <Pressable
+                ref={termsRef}
                 style={styles.termsRow}
                 onPress={terms.onToggle}
                 disabled={busy}
@@ -227,29 +257,53 @@ export function PhoneSignInForm({
                 <Text style={styles.termsLabel}>{tr('central.signIn.acceptTerms')}</Text>
               </Pressable>
             ) : null}
+            {terms?.error && termsMissing ? (
+              <Text
+                style={styles.termsError}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                testID="accept-terms-error"
+              >
+                {tr('central.signIn.acceptFirst')}
+              </Text>
+            ) : null}
 
             {/* E. Primary Action Button (full width) */}
             <View style={styles.buttonSection}>
               <Button
                 type="primary"
                 size="fullWidth"
-                onPress={onSubmit}
-                disabled={busy || rateLimit.isRateLimited || termsMissing}
+                onPress={submit}
+                disabled={busy || rateLimit.isRateLimited}
                 loading={busy}
-                loadingText={tr('auth.login.sendingCode')}
+                loadingText={submitLabel?.busy ?? tr('auth.login.sendingCode')}
                 accessibilityLabel={
                   rateLimit.isRateLimited
                     ? tr('auth.login.waitBeforeSending', { time: countdown })
-                    : tr('auth.login.sendCode')
+                    : (submitLabel?.label ?? tr('auth.login.sendCode'))
                 }
-                accessibilityHint={termsMissing ? tr('central.signIn.acceptFirst') : tr('auth.login.sendCodeHint')}
+                accessibilityHint={termsMissing ? tr('central.signIn.acceptFirst') : (submitLabel?.hint ?? tr('auth.login.sendCodeHint'))}
                 accessibilityState={{
-                  disabled: busy || rateLimit.isRateLimited || termsMissing,
+                  disabled: busy || rateLimit.isRateLimited,
                   busy: busy,
                 }}
               >
-                {rateLimit.isRateLimited ? tr('auth.rateLimit.wait', { time: countdown }) : tr('auth.login.sendCode')}
+                {rateLimit.isRateLimited ? tr('auth.rateLimit.wait', { time: countdown }) : (submitLabel?.label ?? tr('auth.login.sendCode'))}
               </Button>
+              {alternative ? (
+                <Button
+                  type="tertiary"
+                  variant="tint"
+                  size="fullWidth"
+                  onPress={alternative.onPress}
+                  disabled={busy}
+                  accessibilityLabel={alternative.label}
+                  accessibilityHint={alternative.hint}
+                  testID={alternative.testID}
+                >
+                  {alternative.label}
+                </Button>
+              ) : null}
             </View>
 
             {/* F. Footer Section */}
@@ -432,6 +486,12 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.brand.fill,
     borderColor: t.brand.fill,
   },
+  termsError: {
+    ...typography.footnote,
+    color: t.status.negative.text,
+    marginTop: space.xs,
+    marginBottom: space.sm,
+  },
   termsLabel: {
     ...typography.subhead,
     color: t.text.primary,
@@ -495,6 +555,7 @@ const makeStyles = (t: ThemeTokens) => ({
 
   buttonSection: {
     marginBottom: space.xxl,
+    gap: space.sm,
   },
 
   footerSection: {

@@ -109,7 +109,7 @@ describe.each([['a new dispatch', 'create'], ['an edited dispatch', 'edit']] as 
 
     expect(texts(tree).some((text) => /kg|weight/i.test(text))).toBe(false);
     expect(labels(tree).some((label) => /kg each|weight/i.test(label))).toBe(false);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Fictional item 1', 'Rack R1']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Fictional item 1', 'R1']));
   });
 });
 

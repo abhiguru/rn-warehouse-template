@@ -77,4 +77,27 @@ describe('undoRateChange', () => {
     rpc.mockRejectedValue(new Error('boom'));
     expect((await undoRateChange(input)).errorCode).toBe('UNKNOWN');
   });
+
+  it.each([
+    ['a dropped connection', { data: null, error: { message: 'TypeError: Network request failed' } }],
+    ['a gateway page', { data: null, error: { message: '<html>502 Bad Gateway</html>' }, status: 502 }],
+    ['an empty HTTP 200', { data: null, error: null, status: 200 }],
+  ])('%s with no database code is outcome unknown, with its own text', async (_name, answer) => {
+    rpc.mockResolvedValue(answer);
+    const result = await undoRateChange(input);
+    expect(result).toMatchObject({ success: false, outcomeUnknown: true, message: t('pricing.error.undoUnconfirmed') });
+    expect(result.message).toBe("We couldn't confirm the change. Check the rates on this page before you try again.");
+  });
+
+  it('a timeout of the call is outcome unknown', async () => {
+    rpc.mockRejectedValue(Object.assign(new Error('Request timeout'), { name: 'TimeoutError' }));
+    expect(await undoRateChange(input)).toMatchObject({ outcomeUnknown: true, message: t('pricing.error.undoUnconfirmed') });
+  });
+
+  it('a real refusal keeps its own text and is not outcome unknown', async () => {
+    rpc.mockResolvedValue(refused('NOTHING_TO_UNDO'));
+    const result = await undoRateChange(input);
+    expect(result.outcomeUnknown).toBeUndefined();
+    expect(result.message).toBe(t('pricing.error.nothingToUndo'));
+  });
 });

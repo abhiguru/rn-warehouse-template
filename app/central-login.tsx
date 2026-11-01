@@ -13,6 +13,7 @@ import { setCentralState } from '@/config/centralState';
 import { requestCentralCode } from '@/config/centralSession';
 import { getCentralLoginConfig } from '@/config/envConfig';
 import { hasAcceptedTerms } from '@/config/centralTerms';
+import { SignOutReasonStrip } from '@/components/central/SignOutReasonStrip';
 import { showAlert } from '@/utils/alert';
 import { getLanguage, localizeDigits, t as tr } from '@/i18n';
 import { clearSignInDraft, readSignInDraft, saveSignInDraft } from '@/utils/signInDraft';
@@ -45,6 +46,8 @@ export default function CentralLoginScreen() {
   const [checked, setChecked] = useState<{ number: string; accepted: boolean } | null>(null);
   const termsNeeded = !(checked?.number === phoneNumber && checked.accepted);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  // "Send code" was tapped with the box unticked: the line under the box says to tick it.
+  const [termsError, setTermsError] = useState(false);
   useEffect(() => {
     let active = true;
     void hasAcceptedTerms(phoneNumber).then(accepted => {
@@ -67,7 +70,10 @@ export default function CentralLoginScreen() {
 
   const sendCode = async () => {
     if (isRateLimited || busy) return;
-    if (termsNeeded && !termsAccepted) return;
+    if (termsNeeded && !termsAccepted) {
+      setTermsError(true);
+      return;
+    }
     if (!phoneNumber.trim()) {
       showAlert(tr('auth.login.enterMobileTitle'), tr('auth.login.enterMobileMessage'));
       return;
@@ -102,9 +108,21 @@ export default function CentralLoginScreen() {
       busy={busy}
       rateLimit={{ isRateLimited, countdown, message: rateLimitMessage }}
       onSubmit={sendCode}
-      terms={termsNeeded ? { accepted: termsAccepted, onToggle: () => setTermsAccepted(value => !value) } : undefined}
+      terms={termsNeeded ? {
+        accepted: termsAccepted,
+        onToggle: () => { setTermsError(false); setTermsAccepted(value => !value); },
+        error: termsError,
+        onBlocked: () => setTermsError(true),
+      } : undefined}
       onOpenTerms={() => router.push('/terms-of-service')}
       onOpenPrivacy={() => router.push('/privacy-policy')}
+      banner={<SignOutReasonStrip />}
+      alternative={{
+        label: tr('auth.facilityCode.link'),
+        hint: tr('auth.facilityCode.linkHint'),
+        onPress: () => router.push('/facility-code'),
+        testID: 'sign-in-with-facility-code',
+      }}
     />
   );
 }

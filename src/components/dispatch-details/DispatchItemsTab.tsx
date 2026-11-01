@@ -128,7 +128,7 @@ export function sourceColumnWidth(
 }
 
 /** The GRN date for display, "—" when the GRN has none (never today). */
-export const grnDateText = (date: string | null): string => (toDate(date) ? formatDate(date, 'short') : '—');
+export const grnDateText = (date: string | null): string => (toDate(date) ? formatDate(date) : '—');
 
 /** "GRN 0161, Received 100 bags, Mark PM" for a screen reader. */
 function sourceSpoken(item: Pick<DispatchItem, 'grn_no' | 'original_quantity' | 'package_mark'>): string {

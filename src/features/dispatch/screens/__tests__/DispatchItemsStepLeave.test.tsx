@@ -569,11 +569,18 @@ describe('the bottom bar is the shared WizardBottomBar (R1-08)', () => {
     expect(barStyle().paddingBottom).toBe(34 + space.md);
   });
 
-  it('keeps its spoken labels, and shows "Back" and "Next"', async () => {
+  it('keeps its spoken labels, and shows "Add item" and "Review" (Back is an icon)', async () => {
     await mount(<DispatchItemsStep mode="create" />);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Back', 'Next']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Add item', 'Review']));
+    expect(texts(tree)).not.toContain('Next');
     expect(button(tree, 'Back to dispatch details')).toBeTruthy();
     expect(button(tree, 'Next, review dispatch')).toBeTruthy();
+  });
+
+  it('keeps Add item and the check mark pressable with an empty line (owner decision D7)', async () => {
+    await mount(<DispatchItemsStep mode="create" />);
+    expect(button(tree, 'Add item').props.disabled).toBeFalsy();
+    expect(button(tree, 'Save item').props.disabled).toBeFalsy();
   });
 });
 

@@ -113,6 +113,13 @@ export function ruleInputOf(type: DocumentType, draft: NumberingDraft): Numberin
 /** The request the stored rule would make: a draft sends the same thing when nothing was changed. */
 export const ruleInputOfRule = (rule: NumberingRule): NumberingRuleInput => ruleInputOf(rule.document_type, draftFor(rule));
 
+/** Whether the rule the server holds is the one that was sent (every field of the request equal). */
+export function ruleEqualsInput(rule: NumberingRule, sent: NumberingRuleInput): boolean {
+  const held = ruleInputOfRule(rule);
+  const keys = new Set([...Object.keys(sent), ...Object.keys(held)]) as Set<keyof NumberingRuleInput>;
+  return [...keys].every(key => sent[key] === held[key]);
+}
+
 /** Whether the draft would change the stored rule. */
 export function draftChanged(rule: NumberingRule, draft: NumberingDraft): boolean {
   const next = ruleInputOf(rule.document_type, draft);

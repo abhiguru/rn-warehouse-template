@@ -163,9 +163,34 @@ describe('a possible duplicate', () => {
     expect(forgetUnfinishedSave).toHaveBeenCalledWith(lost.lostAnswer!.key);
   });
 
+  it('is logged as information, not as an error (no red banner); an unexpected failure still is an error', async () => {
+    mockRpc.mockResolvedValueOnce(duplicate);
+    await createGRN({ header, items });
+    expect(console.error).not.toHaveBeenCalled();
+
+    mockRpc.mockResolvedValueOnce({ data: { success: false, error_code: 'WH500', message: 'Something broke' }, error: null });
+    await createGRN({ header, items, nonce: 'other' });
+    expect(console.error).toHaveBeenCalled();
+  });
+
   it('is not claimed for another refusal', async () => {
     mockRpc.mockResolvedValueOnce({ data: { success: false, reason: 'NUMBER_TAKEN', message: 'Number is taken' }, error: null });
     expect((await createGRN({ header, items })).duplicate).toBeUndefined();
+  });
+});
+
+describe('an empty or non-JSON HTTP 200', () => {
+  it.each([
+    ['empty', { data: null, error: null, status: 200 }],
+    ['not JSON', { data: null, error: { message: '<html>Maintenance</html>' }, status: 200 }],
+  ])('%s: a lost answer, so the screen checks by the request key', async (_name, answer) => {
+    mockRpc.mockResolvedValueOnce(answer);
+    const result = await createGRN({ header, items });
+    expect(result.success).toBe(false);
+    expect(result.lostAnswer).toBeDefined();
+    expect(result.lostAnswer!.key).toBe(bodies()[0].p_idempotency_key);
+    // Kept: the answer is still to be found out.
+    expect(forgetUnfinishedSave).not.toHaveBeenCalled();
   });
 });
 

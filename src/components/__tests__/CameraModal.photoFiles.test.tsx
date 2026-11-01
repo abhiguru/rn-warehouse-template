@@ -78,6 +78,16 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe('CameraModal', () => {
+  it('draws the shutter and the top buttons next to the camera view, not inside it (expo-camera 58 takes no children)', () => {
+    const tree = render(<CameraModal visible onClose={jest.fn()} onCapture={jest.fn()} />);
+    const camera = tree.root.findByType('CameraView' as never);
+    expect(camera.props.children).toBeUndefined();
+    for (const label of ['Take photo', 'Close camera']) {
+      const control = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
+      expect(camera.findAll((node) => node === control)).toHaveLength(0);
+    }
+  });
+
   it('hands over the accepted shot with the size the camera reported, and keeps the file', async () => {
     const onCapture = jest.fn();
     const onClose = jest.fn();

@@ -117,14 +117,30 @@ export const FIRST_COLUMN_SHARE = 0.25;
 /** The least width the first column keeps at any text size, in em of its text: room for an ordinary word. */
 export const FIRST_COLUMN_EM = 5;
 
+/** What a table asks of its first column: a share of the row and a width in em of its text. */
+export interface FirstColumnRule {
+  share: number;
+  em: number;
+}
+
+/** The rule every table uses unless it passes its own. */
+export const DEFAULT_FIRST_COLUMN_RULE: FirstColumnRule = { share: FIRST_COLUMN_SHARE, em: FIRST_COLUMN_EM };
+
 /**
  * Whether columns of these widths, with the gaps before them, leave the first column less than
- * FIRST_COLUMN_SHARE of `row`, or less than FIRST_COLUMN_EM at text size `scale` (at font scale
+ * the rule's share of `row`, or less than its em at text size `scale` (at font scale
  * 2.0 a quarter of the row held only four or five letters, and words broke mid-word).
+ * The rule is FIRST_COLUMN_SHARE and FIRST_COLUMN_EM unless the table passes its own.
  */
-export function crowded(row: number, columns: readonly number[], lead: number = CHEVRON_LEAD, scale = 1): boolean {
+export function crowded(
+  row: number,
+  columns: readonly number[],
+  lead: number = CHEVRON_LEAD,
+  scale = 1,
+  rule: FirstColumnRule = DEFAULT_FIRST_COLUMN_RULE
+): boolean {
   const taken = columns.reduce((sum, width) => sum + width + space.sm, lead);
-  const least = Math.max(row * FIRST_COLUMN_SHARE, FIRST_COLUMN_EM * (typography.subhead.fontSize ?? 15) * scale);
+  const least = Math.max(row * rule.share, rule.em * (typography.subhead.fontSize ?? 15) * scale);
   return row - taken < least;
 }
 
@@ -132,8 +148,8 @@ export function crowded(row: number, columns: readonly number[], lead: number = 
 export const LAST_COLUMN_SHARE = 0.45;
 
 /** Whether the last column, alone beside the first, would crowd it or take more than LAST_COLUMN_SHARE of a nested row. */
-export const lastColumnAlone = (row: number, width: number, scale = 1): boolean =>
-  crowded(row, [width], 0, scale) || width > row * LAST_COLUMN_SHARE;
+export const lastColumnAlone = (row: number, width: number, scale = 1, rule: FirstColumnRule = DEFAULT_FIRST_COLUMN_RULE): boolean =>
+  crowded(row, [width], 0, scale, rule) || width > row * LAST_COLUMN_SHARE;
 
 /** The layout with the middle columns stacked when the table's own columns crowd the first one. */
 export function useStackedWhen(table: TableLayout, crowd: boolean): TableLayout {

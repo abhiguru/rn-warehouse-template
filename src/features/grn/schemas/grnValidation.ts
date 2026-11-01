@@ -1,4 +1,5 @@
 import * as yup from 'yup';
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import { normalizeDigits, t, type TranslationKey } from '@/i18n';
 import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
 
@@ -11,16 +12,16 @@ const msg = (key: TranslationKey) => () => t(key);
 // Step 1: GRN Header Schema
 export const step1Schema = yup.object().shape({
   // Empty is allowed: the number is then generated on save. The column holds
-  // twenty characters (migration 127), and "A0001 " must not be stored next to "A0001". The shape of the number
-  // is the facility's rule, which only the server knows (a refusal says it).
+  // twenty characters (migration 127). The field takes no spaces while typing (handleGrNoChange). The shape of the
+  // number is the facility's rule, which only the server knows (a refusal says it).
   gr_no: yup
     .string()
-    .max(DOCUMENT_NUMBER_MAX_LENGTH, msg('grn.validation.numberMax'))
-    .matches(/^\S*$/, msg('grn.validation.numberNoSpaces')),
+    .max(DOCUMENT_NUMBER_MAX_LENGTH, msg('grn.validation.numberMax')),
 
   // The column holds 20 characters (owner decision D13: the form matches the catalogue and the columns).
   registration: yup
     .string()
+    .transform((value: unknown) => (typeof value === 'string' ? normalizeVehicle(value) : value))
     .max(20, msg('grn.validation.registrationMax')),
 
   // "Today" is worked out when the form is checked. A limit fixed when this
@@ -134,7 +135,13 @@ const wholeNumberTransform = (_value: unknown, originalValue: unknown): unknown 
   }
   if (typeof originalValue === 'string') {
     if (originalValue.trim() === '') return undefined;
-    return parseWholeNumberInput(originalValue) ?? NaN;
+    const parsed = parseWholeNumberInput(originalValue);
+    if (parsed !== null) return parsed;
+    // Ten or more digits are still a whole number, only a too large one: it reaches `.max` and says so
+    // (a huge run of digits is capped so it stays an integer).
+    const digits = normalizeDigits(originalValue.trim());
+    if (/^\d+$/.test(digits)) return Math.min(Number(digits), Number.MAX_SAFE_INTEGER);
+    return NaN;
   }
   return NaN;
 };

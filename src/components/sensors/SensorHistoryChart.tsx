@@ -82,7 +82,7 @@ export function formatHumidity(value: number | null | undefined): string {
   return localizeDigits(`${Math.round(value)}%`);
 }
 
-/** "9 Oct 2026" or "9 Oct 2026, 4:05 pm" (guide §12.3) */
+/** "09/10/26" or "09/10/26, 4:05 pm" (guide §12.3) */
 function formatReadingTime(timestamp: string, withTime: boolean): string {
   return withTime ? formatDateTime(timestamp) : formatDate(timestamp);
 }
@@ -538,11 +538,11 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
     return indices;
   };
 
-  // Axis label: "9 Oct" for up to 90 days, then the month ("Oct", or "Oct 2026" full screen)
+  // Axis label: "09/10/26" for up to 90 days, then the month ("Oct", or "Oct 2026" full screen)
   const formatLabel = (timestamp: string, compact: boolean = true): string => {
     const date = toDate(timestamp);
     if (!date) return '';
-    if (periodDays <= 90) return formatDate(date, 'short');
+    if (periodDays <= 90) return formatDate(date);
     return formatMonth(date, compact ? 'narrow' : 'short');
   };
 
@@ -596,7 +596,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
   // The compact chart is sized from the card it sits in: the plot is the card's inner width
   // less the two value axes, so the humidity axis stays inside the card at any text size.
   const axisLabelWidth = Math.ceil(40 * fontScale);
-  const dateLabelWidth = Math.ceil(56 * fontScale);
+  const dateLabelWidth = Math.ceil(64 * fontScale);
   const COMPACT_START = 15;
   const COMPACT_END = 15;
   const chartWidth = Math.max(60, areaWidth - 2 * axisLabelWidth);

@@ -202,8 +202,16 @@ export function DataTable<TData extends RowData>({
     if (nested) {
       const rowStyles = [styles.nestedRow, rowStyle, index > 0 && styles.nestedDivider];
       if (!onRowPress) {
+        const nestedActions = rowActions?.(row);
         return (
-          <View key={row.id} accessible={!!rowLabel} accessibilityLabel={rowLabel?.(row)} testID={rowTestID?.(row)}>
+          <View
+            key={row.id}
+            accessible={!!rowLabel}
+            accessibilityLabel={rowLabel?.(row)}
+            accessibilityActions={nestedActions}
+            onAccessibilityAction={nestedActions && onRowAction ? (e: { nativeEvent: { actionName: string } }) => onRowAction(row, e.nativeEvent.actionName) : undefined}
+            testID={rowTestID?.(row)}
+          >
             <View style={rowStyles}>{cells(row)}</View>
           </View>
         );

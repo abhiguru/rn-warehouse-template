@@ -5,7 +5,7 @@ import { probe, readEnv, root, supportedNode } from './doctor-common.mjs';
 import { httpOrigin, validatePublicConfig } from '../src/config/bootstrapValidation.ts';
 
 export async function doctor({ backendOnly = false } = {}) {
-  if (!supportedNode()) throw new Error('Node.js 22.18+ required.');
+  if (!supportedNode()) throw new Error('Node.js 22.18+, 24.3+ or 26+ required.');
   if (!probe('npm', ['--version']).ok) throw new Error('npm is unavailable.');
   if (!existsSync(resolve(root, 'node_modules/expo/package.json'))) throw new Error('Dependencies missing; run npm ci.');
   const env = readEnv(resolve(root, '.env'));
@@ -13,7 +13,7 @@ export async function doctor({ backendOnly = false } = {}) {
   if (!backendOnly) {
     if (!probe('java', ['-version']).ok) throw new Error('JDK unavailable; install JDK 17 for Android builds.');
     const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
-    if (!sdk || !existsSync(resolve(sdk, 'platforms/android-36/android.jar'))) throw new Error('Android SDK platform 36 missing; configure ANDROID_HOME.');
+    if (!sdk || !existsSync(resolve(sdk, 'platforms/android-37.0/android.jar'))) throw new Error('Android SDK platform 37.0 (platforms;android-37.0) missing; configure ANDROID_HOME.');
     // Do not run `adb devices`: it can start a daemon. Read existing port reversals
     // only when explicitly requested by the developer outside this read-only check.
     if (!existsSync(resolve(sdk, 'platform-tools/adb'))) throw new Error('Android platform-tools missing.');

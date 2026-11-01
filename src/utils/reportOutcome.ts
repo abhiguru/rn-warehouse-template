@@ -99,7 +99,9 @@ export function markRefusal<E extends Error>(error: E, code?: string): E {
   return error;
 }
 
-function isServerRefusal(source: { name?: unknown; isServerRefusal?: unknown }): boolean {
+export function isServerRefusal(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const source = error as { name?: unknown; isServerRefusal?: unknown };
   return source.isServerRefusal === true || (typeof source.name === 'string' && REFUSAL_CLASS_NAMES.includes(source.name));
 }
 

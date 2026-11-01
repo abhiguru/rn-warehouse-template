@@ -37,7 +37,8 @@ import type { RpcGrnItemRate, RpcGrnItemRates } from '@/types/rpc-canonical.type
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
-import { failureText, serverText, transportText } from '@/utils/serverText';
+import { checkSubmission, isAbortError } from '@/utils/lostAnswer';
+import { emptyAnswerAsError, failureText, isLostAnswer, serverText, transportText } from '@/utils/serverText';
 
 import { rememberRateStartFloor } from './rateStartFloor';
 
@@ -324,7 +325,7 @@ const invalidDateText = (details: { earliest?: unknown }, startsOn?: string | nu
   // The server sends INVALID_DATE for a day too far ahead as well: that one is told apart by the day sent.
   if (startsOn && startsOn.slice(0, 10) > addDays(toCalendarDay(new Date()), 730)) return t('pricing.error.startTooFar');
   return typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)
-    ? t('pricing.error.invalidDate', { date: formatDate(details.earliest.slice(0, 10), 'medium') })
+    ? t('pricing.error.invalidDate', { date: formatDate(details.earliest.slice(0, 10)) })
     : t('pricing.error.invalidDateWindow');
 };
 
@@ -345,15 +346,62 @@ const rateFailure = (errorCode: RateErrorCode, message: string | undefined, extr
   ...extra,
 });
 
+/** The rate change as the server answered it (live, or as stored under its request key). */
+const replaceResultFromResponse = (raw: unknown, input: ReplaceRatesInput): ReplaceRatesResult => {
+  const response = raw as
+    | {
+        success?: unknown;
+        error_code?: unknown;
+        data?: { index?: unknown; field?: unknown; earliest?: unknown; later?: unknown; ended?: unknown; added?: unknown; kept_end?: unknown } | null;
+      }
+    | null;
+
+  if (!response || typeof response !== 'object') {
+    return rateFailure('UNKNOWN', t('pricing.error.generic'));
+  }
+
+  if (response.success !== true) {
+    handleGlobalAuthError(response);
+    const code = String(response.error_code ?? '') as RateErrorCode;
+    const key = RATE_ERROR_KEYS[code];
+    const details = response.data ?? {};
+    const extra: Partial<ReplaceRatesResult> = {};
+    if (typeof details.index === 'number') extra.bandIndex = details.index;
+    if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
+      extra.field = details.field as ReplaceRatesResult['field'];
+    }
+    if (typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)) extra.earliest = details.earliest.slice(0, 10);
+    if (Array.isArray(details.later)) extra.later = details.later as ReplaceRatesResult['later'];
+    if (code === 'LATER_RATES_EXIST') return rateFailure(code, undefined, extra);
+    if (code === 'INVALID_DATE') return rateFailure(code, invalidDateText(details, input.starts_on), extra);
+    if (code === 'PERMISSION_DENIED') return rateFailure(code, t('errors.parsed.noPermission'), extra);
+    if (key) return rateFailure(code, t(key), extra);
+    return rateFailure('UNKNOWN', t('pricing.error.generic'), extra);
+  }
+
+  const details = response.data ?? {};
+  return {
+    success: true,
+    // null is the server saying "no stop is kept"; a missing key is the server not saying.
+    ...(typeof details.kept_end === 'string' && details.kept_end
+      ? { keptEnd: details.kept_end.slice(0, 10) }
+      : 'kept_end' in details && details.kept_end === null
+        ? { keptEnd: null }
+        : {}),
+    ...(Array.isArray(details.ended) ? { ended: details.ended as ReplaceRatesResult['ended'] } : {}),
+    ...(Array.isArray(details.added) ? { added: details.added as ReplaceRatesResult['added'] } : {}),
+  };
+};
+
 /**
  * Replace the rates of one scope (item, customer or default, price type) from a day
  * (backend migration 76). `bands: []` stops the rate from `starts_on`. The server's English
  * text is never shown: a failure carries `errorCode` and the app's own `message`.
  */
-export const replaceItemRates = async (input: ReplaceRatesInput): Promise<ReplaceRatesResult> => {
+const sendReplaceItemRates = async (input: ReplaceRatesInput, withKey: boolean): Promise<ReplaceRatesResult> => {
   try {
     const client = await getAuthenticatedClient();
-    const { data, error } = await withTimeout(
+    const { data, error, status } = await withTimeout(
       Promise.resolve(client.rpc('replace_item_rates', {
         p_item_id: input.item_id,
         p_customer_id: input.customer_id,
@@ -365,6 +413,8 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
         p_move_from: input.move_from ?? null,
         // The rows the editor loaded: the server refuses (STALE_RATES) when it would change one that is not listed.
         ...(input.seen_rows ? { p_seen_rows: input.seen_rows } : {}),
+        // The request key of the save: the server stores a keyed save's answer, so a repeat is answered, not written again.
+        ...(withKey && input.request_key ? { p_request_key: input.request_key } : {}),
       })),
       RPC_TIMEOUT_MS,
       'Rate change'
@@ -379,49 +429,10 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
       return rateFailure(mapped.code, mapped.message);
     }
 
-    const response = unwrapArrayResponse(data) as
-      | {
-          success?: unknown;
-          error_code?: unknown;
-          data?: { index?: unknown; field?: unknown; earliest?: unknown; later?: unknown; ended?: unknown; added?: unknown; kept_end?: unknown } | null;
-        }
-      | null;
+    // An empty HTTP 200 is no answer of the server's: the rate may be saved (a lost answer, like a timeout).
+    if (emptyAnswerAsError({ data, error, status })) return outcomeUnknown();
 
-    if (!response || typeof response !== 'object') {
-      return rateFailure('UNKNOWN', t('pricing.error.generic'));
-    }
-
-    if (response.success !== true) {
-      handleGlobalAuthError(response);
-      const code = String(response.error_code ?? '') as RateErrorCode;
-      const key = RATE_ERROR_KEYS[code];
-      const details = response.data ?? {};
-      const extra: Partial<ReplaceRatesResult> = {};
-      if (typeof details.index === 'number') extra.bandIndex = details.index;
-      if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
-        extra.field = details.field as ReplaceRatesResult['field'];
-      }
-      if (typeof details.earliest === 'string' && /^\d{4}-\d{2}-\d{2}/.test(details.earliest)) extra.earliest = details.earliest.slice(0, 10);
-      if (Array.isArray(details.later)) extra.later = details.later as ReplaceRatesResult['later'];
-      if (code === 'LATER_RATES_EXIST') return rateFailure(code, undefined, extra);
-      if (code === 'INVALID_DATE') return rateFailure(code, invalidDateText(details, input.starts_on), extra);
-      if (code === 'PERMISSION_DENIED') return rateFailure(code, t('errors.parsed.noPermission'), extra);
-      if (key) return rateFailure(code, t(key), extra);
-      return rateFailure('UNKNOWN', t('pricing.error.generic'), extra);
-    }
-
-    const details = response.data ?? {};
-    return {
-      success: true,
-      // null is the server saying "no stop is kept"; a missing key is the server not saying.
-      ...(typeof details.kept_end === 'string' && details.kept_end
-        ? { keptEnd: details.kept_end.slice(0, 10) }
-        : 'kept_end' in details && details.kept_end === null
-          ? { keptEnd: null }
-          : {}),
-      ...(Array.isArray(details.ended) ? { ended: details.ended as ReplaceRatesResult['ended'] } : {}),
-      ...(Array.isArray(details.added) ? { added: details.added as ReplaceRatesResult['added'] } : {}),
-    };
+    return replaceResultFromResponse(unwrapArrayResponse(data), input);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     itemPricingLogger.error('Exception in replaceItemRates:', { error: errorMessage });
@@ -434,6 +445,79 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
   }
 };
 
+// ---------------------------------------------------------------------------
+// Lost answers of keyed rate saves (owner rule D22)
+// ---------------------------------------------------------------------------
+
+interface KeyedSave<R extends { success: boolean; outcomeUnknown?: boolean; errorCode?: RateErrorCode }> {
+  key: string | undefined;
+  send: (withKey: boolean) => Promise<R>;
+  /** The stored answer of the request as the screen's own result; null when it is no usable answer. */
+  fromStored: (response: unknown) => R | null;
+  signal: AbortSignal | undefined;
+}
+
+/**
+ * Sends a keyed save and, when its answer is lost, asks the server what became of that request (`get_submission_result`)
+ * instead of guessing: found, the stored answer is the result; not found, the identical request is sent again (same
+ * body, same key). A server that does not know `p_request_key` yet (an older backend) gets the save without it, once,
+ * and a lost answer there stays "could not be confirmed". When the signal is aborted the lost result is returned.
+ */
+async function sendKeyedSave<R extends { success: boolean; outcomeUnknown?: boolean; errorCode?: RateErrorCode }>(save: KeyedSave<R>): Promise<R> {
+  const { key, send, fromStored, signal } = save;
+  let keyed = Boolean(key);
+  let sentAt = Date.now();
+  let result = await send(keyed);
+  if (keyed && result.errorCode === 'SERVER_NEEDS_UPDATE') {
+    keyed = false;
+    sentAt = Date.now();
+    result = await send(false);
+  }
+  while (keyed && key && result.outcomeUnknown && !signal?.aborted) {
+    try {
+      const found = await checkSubmission(key, sentAt, signal);
+      if (found.found) {
+        const stored = fromStored(found.response);
+        if (stored) return stored;
+      }
+    } catch (error) {
+      if (isAbortError(error) || signal?.aborted) return result;
+      itemPricingLogger.warn('The check for a lost rate save failed:', error);
+    }
+    if (signal?.aborted) return result;
+    sentAt = Date.now();
+    result = await send(true);
+  }
+  return result;
+}
+
+export interface ReplaceRatesOptions {
+  /** Aborted when the person leaves the screen: a lost answer is then no longer asked about. */
+  signal?: AbortSignal;
+}
+
+export const replaceItemRates = (input: ReplaceRatesInput, options: ReplaceRatesOptions = {}): Promise<ReplaceRatesResult> =>
+  sendKeyedSave<ReplaceRatesResult>({
+    key: input.request_key,
+    send: withKey => sendReplaceItemRates(input, withKey),
+    fromStored: response => {
+      const result = replaceResultFromResponse(unwrapArrayResponse(response), input);
+      return result.success ? result : null;
+    },
+    signal: options.signal,
+  });
+
+export const setStandardRate = (tiers: StandardTier[], options: SetStandardRateOptions = {}): Promise<SetStandardRateResult> =>
+  sendKeyedSave<SetStandardRateResult>({
+    key: options.dryRun ? undefined : options.requestKey,
+    send: withKey => sendSetStandardRate(tiers, options, withKey),
+    fromStored: response => {
+      const result = standardResultFromResponse(unwrapArrayResponse(response), false);
+      return result.success ? result : null;
+    },
+    signal: options.signal,
+  });
+
 /**
  * Undo the change that starts on `startsOn` for one scope (backend migration 76): the rows
  * starting that day are removed and the rows that ended the day before run on again. Used by
@@ -441,9 +525,11 @@ export const replaceItemRates = async (input: ReplaceRatesInput): Promise<Replac
  */
 export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
   const failure = (errorCode: RateErrorCode, message: string): UndoRateChangeResult => ({ success: false, errorCode, message });
+  // The request may have reached the server and its answer did not come back: the rates are read again by the caller.
+  const unknown = (): UndoRateChangeResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.error.undoUnconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
-    const { data, error } = await withTimeout(
+    const { data, error, status } = await withTimeout(
       Promise.resolve(client.rpc('undo_rate_change', {
         p_item_id: input.itemId,
         p_customer_id: input.customerId,
@@ -460,8 +546,13 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
       itemPricingLogger.error('undo_rate_change RPC error:', error);
       handleGlobalAuthError(error);
       const mapped = mapRateError(error, 'undo_rate_change');
+      // An error with no database code is the connection failing (or a gateway's page): the change may have gone through.
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return unknown();
       return failure(mapped.code, mapped.message);
     }
+
+    // An empty HTTP 200 is no answer of the server's either.
+    if (emptyAnswerAsError({ data, error, status })) return unknown();
 
     const response = unwrapArrayResponse(data) as
       | { success?: unknown; error_code?: unknown; data?: { removed?: unknown; reopened?: unknown; earliest?: unknown } | null }
@@ -490,6 +581,8 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
     if (isMissingFunction(err as { code?: unknown } | null)) {
       return failure('SERVER_NEEDS_UPDATE', t('pricing.error.serverNeedsUpdate'));
     }
+    // The limit ran out, or the connection dropped after the request left: the change may have gone through.
+    if (isLostAnswer(err)) return unknown();
     return failure('UNKNOWN', t('pricing.error.generic'));
   }
 };
@@ -617,23 +710,61 @@ export interface SetStandardRateOptions {
   expectedUpdatedAt?: string | null;
   /** Check everything and count the items that would be priced; nothing is written. */
   dryRun?: boolean;
+  /** The request key of the save (kept by the screen across presses until the server's definite answer). */
+  requestKey?: string;
+  /** Aborted when the person leaves the screen: a lost answer is then no longer asked about. */
+  signal?: AbortSignal;
 }
+
+/** The standard-rate save as the server answered it (live, or as stored under its request key). */
+const standardResultFromResponse = (raw: unknown, dryRun: boolean): SetStandardRateResult => {
+  const response = raw as
+    | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown; updated_at?: unknown } | null }
+    | null;
+  if (!response || typeof response !== 'object') return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic') };
+
+  const details = response.data ?? {};
+  if (response.success !== true) {
+    handleGlobalAuthError(response);
+    const code = String(response.error_code ?? '') as RateErrorCode;
+    const key = RATE_ERROR_KEYS[code];
+    const extra: Partial<SetStandardRateResult> = {};
+    if (typeof details.index === 'number') extra.tierIndex = details.index;
+    if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
+      extra.field = details.field as SetStandardRateResult['field'];
+    }
+    if (code === 'PERMISSION_DENIED') return { success: false, errorCode: code, message: t('errors.parsed.noPermission'), ...extra };
+    if (key) return { success: false, errorCode: code, message: t(key), ...extra };
+    return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic'), ...extra };
+  }
+
+  return {
+    success: true,
+    tiers: toTiers(details.tiers),
+    itemsPriced: Number(details.items_priced ?? 0) || 0,
+    // The new version, exactly as the server wrote it.
+    updatedAt: typeof details.updated_at === 'string' ? details.updated_at : null,
+    dryRun: dryRun === true,
+  };
+};
 
 /**
  * Save the standard rate (administrators and supervisors). The server also gives the tiers to every
  * active item that has no default rate yet and says how many (`itemsPriced`). A failure carries
  * `errorCode` and the app's own `message`; the server's English text is never shown.
  */
-export const setStandardRate = async (tiers: StandardTier[], options: SetStandardRateOptions = {}): Promise<SetStandardRateResult> => {
+const sendSetStandardRate = async (tiers: StandardTier[], options: SetStandardRateOptions, withKey: boolean): Promise<SetStandardRateResult> => {
   const unconfirmed = (): SetStandardRateResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.standard.error.unconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
-    const { data, error } = await withTimeout(
+    const { data, error, status } = await withTimeout(
       Promise.resolve(client.rpc('set_standard_rate', {
         p_tiers: tiers,
         // The version the draft was built from, as the exact string the server sent (never through a Date: it would cut the microseconds).
         ...(options.expectedUpdatedAt !== undefined ? { p_expected_updated_at: options.expectedUpdatedAt } : {}),
         ...(options.dryRun ? { p_dry_run: true } : {}),
+        // The save's request key: a repeat of the same save is answered from the stored result, not written again.
+        ...(withKey && options.requestKey && !options.dryRun ? { p_request_key: options.requestKey } : {}),
       })),
       RPC_TIMEOUT_MS,
       'Standard rate'
@@ -649,34 +780,10 @@ export const setStandardRate = async (tiers: StandardTier[], options: SetStandar
       return { success: false, errorCode: mapped.code, message: mapped.message };
     }
 
-    const response = unwrapArrayResponse(data) as
-      | { success?: unknown; error_code?: unknown; data?: { index?: unknown; field?: unknown; tiers?: unknown; items_priced?: unknown; updated_at?: unknown } | null }
-      | null;
-    if (!response || typeof response !== 'object') return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic') };
+    // An empty HTTP 200 is no answer of the server's: the rate may be saved (a dry run writes nothing).
+    if (!options.dryRun && emptyAnswerAsError({ data, error, status })) return unconfirmed();
 
-    const details = response.data ?? {};
-    if (response.success !== true) {
-      handleGlobalAuthError(response);
-      const code = String(response.error_code ?? '') as RateErrorCode;
-      const key = RATE_ERROR_KEYS[code];
-      const extra: Partial<SetStandardRateResult> = {};
-      if (typeof details.index === 'number') extra.tierIndex = details.index;
-      if (typeof details.field === 'string' && (RATE_FIELDS as readonly string[]).includes(details.field)) {
-        extra.field = details.field as SetStandardRateResult['field'];
-      }
-      if (code === 'PERMISSION_DENIED') return { success: false, errorCode: code, message: t('errors.parsed.noPermission'), ...extra };
-      if (key) return { success: false, errorCode: code, message: t(key), ...extra };
-      return { success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic'), ...extra };
-    }
-
-    return {
-      success: true,
-      tiers: toTiers(details.tiers),
-      itemsPriced: Number(details.items_priced ?? 0) || 0,
-      // The new version, exactly as the server wrote it.
-      updatedAt: typeof details.updated_at === 'string' ? details.updated_at : null,
-      dryRun: options.dryRun === true,
-    };
+    return standardResultFromResponse(unwrapArrayResponse(data), options.dryRun === true);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     itemPricingLogger.error('Exception in setStandardRate:', { error: errorMessage });

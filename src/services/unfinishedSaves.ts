@@ -1,5 +1,5 @@
 /**
- * The creates that were in flight: a GRN or a dispatch whose save request was sent and whose answer had not come back.
+ * The creates that were in flight: a GRN, a dispatch or an invoice whose save request was sent and whose answer had not come back.
  *
  * Before a create is sent, the app writes down which request it is (the request code that is actually sent, the
  * document number and the customer's name). The entry is removed as soon as the server's answer is known: saved, refused
@@ -28,13 +28,13 @@ export const UNFINISHED_SAVE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 /** Per person and facility; the newest are kept. A person does not leave dozens of saves in doubt. */
 const MAX_PER_SCOPE = 20;
 
-export type UnfinishedSaveKind = 'grn' | 'dispatch';
+export type UnfinishedSaveKind = 'grn' | 'dispatch' | 'invoice';
 
 export interface UnfinishedSave {
   kind: UnfinishedSaveKind;
   /** The request code the save was sent with (the idempotency key): what the server is asked about. */
   requestKey: string;
-  /** The document number the form held (a GRN's gr_no, a dispatch's disp_no), as typed. */
+  /** The document number the form held (a GRN's gr_no, a dispatch's disp_no, an invoice's number), as typed. */
   number: string;
   customerName: string;
   /** When the request was written down (ms since the epoch). */
@@ -48,7 +48,7 @@ const isEntry = (value: unknown): value is UnfinishedSave => {
   if (typeof value !== 'object' || value === null) return false;
   const entry = value as Record<string, unknown>;
   return (
-    (entry.kind === 'grn' || entry.kind === 'dispatch') &&
+    (entry.kind === 'grn' || entry.kind === 'dispatch' || entry.kind === 'invoice') &&
     typeof entry.requestKey === 'string' &&
     entry.requestKey !== '' &&
     typeof entry.number === 'string' &&

@@ -21,7 +21,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCurrency, formatDate, toDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, formatSpokenDate, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import type { InvoiceRow, InvoiceTable } from './invoiceTable';
 import { makeTableStyles, useTableLayout, ONE_LINE, numberColumnWidth } from './DetailTable';
@@ -97,7 +97,7 @@ const makeStyles = (t: ThemeTokens) => ({
 export const invoiceAmount = (amount: number) =>
   formatCurrency(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const dateText = (date: string | null) => (toDate(date) ? formatDate(date, 'short') : '—');
+const dateText = (date: string | null) => (toDate(date) ? formatDate(date) : '—');
 
 const helper = createAppColumnHelper<InvoiceRow>();
 
@@ -218,7 +218,7 @@ export const InvoicesTable: React.FC<InvoicesTableProps> = ({
         rowPressable={(row) => !!(row.original.invoice_id && onViewInvoice)}
         rowLabel={(row) => {
           const r = row.original;
-          const spokenDate = toDate(r.invoice_date) ? formatDate(r.invoice_date, 'short') : tr('components.invoiceTable.dateUnavailable');
+          const spokenDate = toDate(r.invoice_date) ? formatSpokenDate(r.invoice_date) : tr('components.invoiceTable.dateUnavailable');
           return r.total === null
             ? tr('components.invoiceTable.numbered', { number: formatIdentifier(r.invoice_no) })
             : tr('components.invoiceTable.rowLabel', { number: formatIdentifier(r.invoice_no), date: spokenDate, amount: invoiceAmount(r.total) });
