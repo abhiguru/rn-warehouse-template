@@ -140,6 +140,7 @@ export async function getCustomerDispatchActivity(
         orig_qty: item.orig_qty, // Original quantity from source GRN
         package_mark: item.package_mark, // Package mark from source GRN
         rack: item.rack, // Rack location from source GRN
+        packaging: item.packaging, // passed through as sent: null and absent mean different things
       })),
     }));
 

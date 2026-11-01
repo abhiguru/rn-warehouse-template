@@ -301,6 +301,7 @@ export async function getCustomerActivityDetail(
       responseData?.top_stock_items ?? []
     ).map((item: any) => ({
       item_name: item.item_name,
+      packaging: item.packaging, // as sent: null means the item's lots differ, absent means an older server
       total_stock: item.total_stock ?? 0,
       grn_count: item.grn_count ?? 0,
     }));
