@@ -323,6 +323,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
   const styles = useThemedStyles(makeStyles);
   const filters = useReportFilters(CUSTOMER_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period } = filters.request;
+  const payments = filters.ctx.payments === true;
   const query = useReportQuery<CustomerActivityDetailData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerActivityDetail({ customerId, fromDate: period.from, toDate: period.to }),
@@ -392,10 +393,10 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
             </View>
           );
         case 'quick':
-          return <QuickAccessCard report={row.report} data={data} period={period} onOpen={openReport} />;
+          return <QuickAccessCard report={row.report} data={data} period={period} payments={payments} onOpen={openReport} />;
       }
     },
-    [data, styles, period, openReport]
+    [data, styles, period, payments, openReport]
   );
 
   return (
@@ -535,7 +536,8 @@ function quickAccessHead(
   }
 }
 
-function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailData): React.ReactNode[] {
+/** `payments`: the facility records payments, so an invoice shows Paid or Pending (a Cancelled tag is always shown). */
+function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailData, payments: boolean): React.ReactNode[] {
   switch (report) {
     case 'grn-activity':
       return data.recent_grns.slice(0, PREVIEWS).map(grn => (
@@ -579,7 +581,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           sublabel={formatIndiaDate(invoice.invoice_date)}
           spokenSublabel={formatIndiaSpokenDate(invoice.invoice_date)}
           value={formatCurrency(invoice.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          status={invoiceStatus(invoice.status)}
+          status={payments || invoice.status === 'cancelled' ? invoiceStatus(invoice.status) : undefined}
           onPress={invoice.invoice_id ? () => openDocument(`/invoice-details/${invoice.invoice_id}`) : undefined}
           accessibilityHint={tr('reports.invoiceHistory.openHint')}
         />
@@ -592,14 +594,16 @@ interface QuickAccessCardProps {
   data: CustomerActivityDetailData;
   /** The period of the dashboard: the count and the action name it. */
   period: ReportPeriod;
+  /** The facility records payments: an invoice preview shows Paid or Pending. */
+  payments: boolean;
   onOpen: (report: QuickReport) => void;
 }
 
-const QuickAccessCard = memo(function QuickAccessCard({ report, data, period, onOpen }: QuickAccessCardProps) {
+const QuickAccessCard = memo(function QuickAccessCard({ report, data, period, payments, onOpen }: QuickAccessCardProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const head = quickAccessHead(report, data, period);
-  const previews = quickAccessPreviews(report, data);
+  const previews = quickAccessPreviews(report, data, payments);
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>

@@ -20,6 +20,7 @@ import { resetReportExportAvailability } from '@/features/reports/useReportExpor
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { showAlert } from '@/utils/alert';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
+import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
 import CustomerActivityScreen from '../../../../app/reports/customer-activity';
 
 const mockPush = jest.fn();
@@ -132,7 +133,7 @@ const DETAIL = {
     { item_name: 'Garlic', total_stock: 200, grn_count: 2 },
     { item_name: 'Cumin', total_stock: 100, grn_count: 1 },
   ],
-  recent_invoices: [{ invoice_id: 'i1', invoice_number: '2026-0042', invoice_date: '2026-10-01', net_total: 1540, status: 'paid' as const }],
+  recent_invoices: [{ invoice_id: 'i1', invoice_number: '2026-0042', invoice_date: '2026-10-01', net_total: 1540, status: 'paid' as 'paid' | 'pending' | 'cancelled' }],
 };
 const answerDetail = (over: Partial<typeof DETAIL> = {}) => ({ success: true, message: '', data: { ...DETAIL, ...over } });
 
@@ -179,6 +180,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
+  resetFacilityCapabilities();
 });
 
 const textOf = (node: TestRenderer.ReactTestInstance) => [node.props.children].flat().join('');
@@ -458,6 +460,28 @@ describe('customer activity, one customer', () => {
     // The item rows are read as one element each, with nothing to press and no chevron.
     expect(screen.labels()).toContain('Garlic, 2 GRNs, 200 bags');
     expect(screen.controls(label => label.startsWith('Garlic'))).toEqual([]);
+  });
+
+  describe('the status tag of the latest invoices', () => {
+    const NORTH = { origin: 'https://warehouse.example.test', instanceId: 'instance-a' };
+    const invoiceLabel = (screen: Awaited<ReturnType<typeof open>>) => screen.labels().find(label => label.startsWith('Invoice 2026-0042, ')) ?? '';
+
+    it('says Paid where the facility records payments', async () => {
+      setFacilityCapabilities(NORTH, { payments: true });
+      openGreenValley();
+      const screen = await open(makeStore());
+      expect(invoiceLabel(screen)).toMatch(/, Paid$/);
+    });
+
+    it('says nothing of payment where it does not (the default), and still says Cancelled for a cancelled invoice', async () => {
+      openGreenValley();
+      const screen = await open(makeStore());
+      expect(invoiceLabel(screen)).not.toMatch(/Paid|Pending/);
+
+      detail.mockResolvedValue(answerDetail({ recent_invoices: [{ invoice_id: 'i1', invoice_number: '2026-0042', invoice_date: '2026-10-01', net_total: 1540, status: 'cancelled' as const }] }) as never);
+      const again = await open(makeStore());
+      expect(invoiceLabel(again)).toMatch(/, Cancelled$/);
+    });
   });
 
   it('draws the stock trend with axis numbers in the number format and a unit, and opens it as a chart or a table', async () => {
