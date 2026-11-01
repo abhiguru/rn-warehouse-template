@@ -16,7 +16,7 @@ import { store } from '@/store';
 import { retryStaleFacilityCleanup, switchOperatorServer } from '@/store/operatorSwitch';
 import { t } from '@/i18n';
 import { appTooOldInfo, isAppTooOld, type AppTooOldInfo } from './appTooOld';
-import { setFacilityRelease } from './backendFeatures';
+import { noteBackendRelease } from './backendTooOld';
 import { loadAllMyFacilities, type MyFacility } from './centralFacilities';
 import { getCentralState } from './centralState';
 import { setFacilityCapabilities } from './facilityCapabilities';
@@ -78,7 +78,7 @@ export async function prepareFacilityForCode(facility: MyFacility): Promise<Prep
     committed = true;
     initializeSupabase(discovery.config.supabaseUrl, discovery.config.anonKey);
     setFacilityCapabilities(discovery.server, discovery.config.capabilities);
-    setFacilityRelease(discovery.server, discovery.config);
+    noteBackendRelease(discovery.server, discovery.config);
     // A switch saves the server as discovery described it, without the address on the warehouse network.
     if (remembered && !getActiveOperatorServer()?.lan) await recordServerLanAddress(discovery.server.origin, remembered.lan);
     return { ok: true };

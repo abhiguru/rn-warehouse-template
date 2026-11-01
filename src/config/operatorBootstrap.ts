@@ -1,6 +1,6 @@
 import { discoverOperator, loadOperatorServer, saveOperatorServer, getActiveOperatorServer } from './operatorServer';
 import { setFacilityCapabilities } from './facilityCapabilities';
-import { setFacilityRelease } from './backendFeatures';
+import { noteBackendRelease } from './backendTooOld';
 import { clearAppTooOld, isAppTooOld, reportAppTooOld } from './appTooOld';
 import { noteDiscoveryAnswered, noteDiscoveryUpgrading } from './upgradeNotice';
 import { UPGRADING_CODE } from '@/utils/serverText';
@@ -43,7 +43,7 @@ export async function verifySelectedOperator(
   // Every active-server path passes here (cold start, server change, return to the
   // foreground), so the facility's capabilities are always those of its latest answer.
   setFacilityCapabilities(discovery.server, discovery.config.capabilities);
-  setFacilityRelease(discovery.server, discovery.config);
+  noteBackendRelease(discovery.server, discovery.config);
   if (!isCurrent()) return { kind: 'superseded' };
   return { kind: 'verified', discovery };
 }

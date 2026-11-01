@@ -74,6 +74,8 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
+import BackendTooOldScreen from '@/components/BackendTooOldScreen';
+import { clearBackendTooOld, getBackendTooOld, subscribeBackendTooOld } from '@/config/backendTooOld';
 import { clearAppTooOld, getAppTooOld, isAppTooOld, reportAppTooOld, subscribeAppTooOld } from '@/config/appTooOld';
 import { AlertHost } from '@/components/AlertHost';
 import { ToastHost } from '@/components/ToastHost';
@@ -534,6 +536,8 @@ function BootstrapApp() {
   // The selected facility needs a newer app: its own screen, not a connection error. Set by the facility check
   // (src/config/operatorBootstrap.ts) at the start and on every return to the foreground, so a phone resumed after an upgrade is told too.
   const appTooOld = useSyncExternalStore(subscribeAppTooOld, getAppTooOld, getAppTooOld);
+  // The facility's backend is older than this app works with (MIN_BACKEND_MIGRATION): its own screen, set by the same checks.
+  const backendTooOld = useSyncExternalStore(subscribeBackendTooOld, getBackendTooOld, getBackendTooOld);
   // The configuration error screen can open server selection. Credentials
   // stay untouched until the operator confirms a change there; a committed
   // change re-runs the bootstrap, which clears this flag.
@@ -596,6 +600,7 @@ function BootstrapApp() {
     setConfigError(null);
     setServerUpgrading(false);
     clearAppTooOld();
+    clearBackendTooOld();
     setIsReady(false);
     setNeedsSelection(false);
     setChangingServer(false);
@@ -704,7 +709,10 @@ function BootstrapApp() {
     const facility = currentFacilityLabel();
     void leaveFacility(store.dispatch, { localOnly: true }).then(outcome => {
       // The facility is left (or its cleanup is reported): the "Update the app" screen has done its part.
-      if (outcome !== 'busy') clearAppTooOld();
+      if (outcome !== 'busy') {
+        clearAppTooOld();
+        clearBackendTooOld();
+      }
       if (outcome === 'busy') showAlert(translate('auth.server.busyTitle'), translate('central.leave.saveInFlight'));
       else if (outcome === 'failed') showFacilityCleanupFailed(translate('central.leave.leftTitle', { facility }), facility);
     });
@@ -723,6 +731,15 @@ function BootstrapApp() {
             : () => setChangingServer(true)
         }
       />
+    );
+  }
+
+  if (backendTooOld) {
+    // "Back" is the way out, as for the "Update the app" screen.
+    return changingServer ? (
+      <OperatorServerSelection initial onCancel={() => setChangingServer(false)} />
+    ) : (
+      <BackendTooOldScreen onClose={centralLogin ? leaveForFacilities : () => setChangingServer(true)} />
     );
   }
 
