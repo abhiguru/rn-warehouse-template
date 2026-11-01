@@ -45,6 +45,7 @@ import {
   STEP_NUMBERS,
   getCompletedSteps,
   formatInvoiceDate,
+  formatSpokenInvoiceDate,
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -500,13 +501,18 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
               formatInvoiceDate(header.inv_date) || null,
               header.customer_name || null,
             ].filter(Boolean).join(' · ')}
+            spokenClosedLine={[
+              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(header.inv_no) }) : null,
+              formatSpokenInvoiceDate(header.inv_date) || null,
+              header.customer_name || null,
+            ].filter(Boolean).join(' · ')}
             open={openSection === 'details'}
             onToggle={toggleSection}
             first
           >
             <ReviewKeyValues>
               <ReviewKeyValue label={tr('common.invoiceNumber')} value={header.inv_no > 0 ? formatIdentifier(header.inv_no) : EMPTY} emphasized first />
-              <ReviewKeyValue label={tr('invoice.form.invoiceDate')} value={formatInvoiceDate(header.inv_date) || EMPTY} />
+              <ReviewKeyValue label={tr('invoice.form.invoiceDate')} value={formatInvoiceDate(header.inv_date) || EMPTY} spokenValue={formatSpokenInvoiceDate(header.inv_date) || EMPTY} />
               <ReviewKeyValue label={tr('invoice.label.financialYear')} value={header.inv_fin_year ? formatFinancialYear(header.inv_fin_year) : EMPTY} />
               <ReviewKeyValue label={tr('common.grn')} value={header.gr_no ? formatIdentifier(header.gr_no) : EMPTY} />
               <ReviewKeyValue label={tr('common.customer')} value={header.customer_name || EMPTY} />

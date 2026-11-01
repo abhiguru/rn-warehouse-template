@@ -259,6 +259,11 @@ describe('price history entries', () => {
       WHEN,
       'Kiran Shah (Supervisor)',
     ]);
+    // Read aloud, the same dates are words.
+    const spoken = cardLabel(tree, 13);
+    expect(spoken).toContain('Start date, 1 Jan 2026');
+    expect(spoken).toContain('End date, 31 Dec 2026');
+    expect(spoken).not.toMatch(/\d\d\/\d\d\/\d\d/);
     await unmount(tree);
   });
 

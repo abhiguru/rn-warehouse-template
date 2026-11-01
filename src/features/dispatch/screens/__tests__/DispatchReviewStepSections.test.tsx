@@ -93,7 +93,7 @@ describe('the sections of a new dispatch', () => {
     await render();
 
     expect(['details', 'photos', 'items'].map((section) => pressable(`dispatch-review-section-${section}`).props.accessibilityLabel)).toEqual([
-      'Dispatch details, I0042 · 01/10/26 · Fictional Traders',
+      'Dispatch details, I0042 · 1 Oct 2026 · Fictional Traders',
       'Photos, No photos yet',
       'Items, 2',
     ]);
@@ -114,6 +114,13 @@ describe('the sections of a new dispatch', () => {
     expect(tree.root.findAll((n) => n.props.testID === 'dispatch-review-section-items-line')).toHaveLength(0);
     await press('dispatch-review-section-details');
     expect(textOf(tree.root.find((n) => n.props.testID === 'dispatch-review-section-items-line'))).toEqual(['Total quantity 10']);
+  });
+
+  it('reads the date row in words, while the row shows 01/10/26', async () => {
+    await render();
+    await press('dispatch-review-section-details');
+    expect(tree.root.findAll((n) => n.props.accessibilityLabel === 'Date, 1 Oct 2026').length).toBeGreaterThan(0);
+    expect(textOf(tree.root.find((n) => n.props.testID === 'dispatch-review-body-details'))).toContain('01/10/26');
   });
 
   it('opens one at a time: DETAILS, then PHOTOS, then PHOTOS again to close all', async () => {

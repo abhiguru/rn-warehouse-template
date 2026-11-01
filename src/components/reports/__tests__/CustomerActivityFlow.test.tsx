@@ -415,7 +415,9 @@ describe('customer activity, one customer', () => {
     const texts = screen.texts();
     expect(texts.indexOf('GRNs in 01/09/26 – 30/09/26: 1')).toBeLessThan(texts.indexOf('Latest GRNs (any date)'));
     expect(texts.indexOf('Latest GRNs (any date)')).toBeLessThan(texts.indexOf('GRN A0012'));
-    expect(screen.labels()).toEqual(expect.arrayContaining(['GRN A0012, 09/10/26, 40 of 40 in stock', 'GRN A0010, 05/10/26, 60 of 100 in stock']));
+    expect(screen.labels()).toEqual(expect.arrayContaining(['GRN A0012, 9 Oct 2026, 40 of 40 in stock', 'GRN A0010, 5 Oct 2026, 60 of 100 in stock']));
+    // On screen the same rows keep DD/MM/YY.
+    expect(texts).toEqual(expect.arrayContaining(['09/10/26', '05/10/26']));
 
     // The action opens GRN activity with the period it names: the one period every report shares.
     await screen.press(card);

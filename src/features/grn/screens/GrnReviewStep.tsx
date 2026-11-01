@@ -84,7 +84,7 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { askAlert, showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { ReviewCard, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSections } from '@/components/review/ReviewSections';
-import { formatCount, formatDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
+import { formatCount, formatDate, formatSpokenDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
 import { ONE_LINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
@@ -126,6 +126,11 @@ const log = createLogger('grn');
 /** "09/10/26" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {
   return formatDate(value || new Date());
+}
+
+/** The same date in words for a screen reader: "9 Oct 2026". */
+function formatSpokenReviewDate(value: string | undefined): string {
+  return formatSpokenDate(value || new Date());
 }
 
 // Alert texts as functions, so they follow the app's language (docs/I18N.md rule 2).
@@ -1328,6 +1333,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             onEdit={handleNavigateToHeader}
             editLabel={tr('grn.review.editDetails')}
             closedLine={[header.gr_no, header.date ? formatReviewDate(header.date) : null, header.customer_name].filter(Boolean).join(' · ')}
+            spokenClosedLine={[header.gr_no, header.date ? formatSpokenReviewDate(header.date) : null, header.customer_name].filter(Boolean).join(' · ')}
             open={openSection === 'details'}
             onToggle={toggleSection}
             first
@@ -1335,7 +1341,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             <ReviewKeyValues>
               <ReviewKeyValue label={tr('common.grnNumber')} value={header.gr_no || tr('common.notSet')} emphasized first />
               {header.registration ? <ReviewKeyValue label={tr('grn.header.vehicleRegistration')} value={header.registration} /> : null}
-              <ReviewKeyValue label={tr('common.date')} value={formatReviewDate(header.date)} />
+              <ReviewKeyValue label={tr('common.date')} value={formatReviewDate(header.date)} spokenValue={formatSpokenReviewDate(header.date)} />
               <ReviewKeyValue label={tr('common.customer')} value={header.customer_name || tr('grn.review.notSelected')} />
               <ReviewKeyValue label={tr('grn.header.sender')} value={header.sender_name || tr('grn.review.notSelected')} />
               <ReviewKeyValue label={tr('grn.header.supervisor')} value={header.supervisor_name || tr('grn.review.notSelected')} />

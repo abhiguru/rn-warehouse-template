@@ -134,6 +134,9 @@ describe('the reasons of a discount and a zero charge', () => {
     await open();
     await showOverview();
     expect(texts()).toEqual(expect.arrayContaining(['Discount reason', 'Damaged bags', 'Set by Asha Patel, 02/10/26', 'Reason for zero charge', 'Sample lot', 'Set by Ravi Shah, 03/10/26']));
+    // A screen reader is given the date in words.
+    const labels = renderer.root.findAll(n => typeof n.props.accessibilityLabel === 'string').map(n => n.props.accessibilityLabel as string);
+    expect(labels).toEqual(expect.arrayContaining(['Discount reason, Damaged bags, Set by Asha Patel, 2 Oct 2026', 'Reason for zero charge, Sample lot, Set by Ravi Shah, 3 Oct 2026']));
   });
 
   it('show only the reasons that exist', async () => {

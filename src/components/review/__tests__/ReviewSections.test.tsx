@@ -231,3 +231,21 @@ describe('ReviewKeyBlock', () => {
     expect(borderTop('Address')).toBeGreaterThan(0);
   });
 });
+
+describe('dates read aloud', () => {
+  it('a screen reader gets the spoken closed line and the spoken value, the screen keeps the written date', () => {
+    const tree = render(
+      <ReviewCard>
+        <ReviewSection id="a" testIDPrefix="demo" title="Alpha" closedLine="I0042 · 01/10/26" spokenClosedLine="I0042 · 1 Oct 2026" open={false} onToggle={jest.fn()} first>
+          <ReviewKeyValues>
+            <ReviewKeyValue label="Date" value="01/10/26" spokenValue="1 Oct 2026" />
+          </ReviewKeyValues>
+        </ReviewSection>
+      </ReviewCard>,
+    );
+    expect(byId(tree, 'demo-section-a').props.accessibilityLabel).toBe('Alpha, I0042 · 1 Oct 2026');
+    expect(texts(tree.root)).toEqual(expect.arrayContaining(['I0042 · 01/10/26', '01/10/26']));
+    const row = tree.root.find(n => n.props.accessibilityLabel === 'Date, 1 Oct 2026');
+    expect(row).toBeTruthy();
+  });
+});

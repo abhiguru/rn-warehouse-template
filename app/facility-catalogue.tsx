@@ -149,6 +149,7 @@ export default function FacilityCatalogueScreen() {
     const status = view ? tr(view.label) : null;
     const place = placeText(item);
     const lastSeen = availability === 'offline' ? lastSeenText(item.lastSeenAt) : null;
+    const spokenLastSeen = availability === 'offline' ? lastSeenText(item.lastSeenAt, undefined, true) : null;
     const onList = item.origin !== null && mine.has(item.origin) ? tr('central.catalogue.onYourList') : null;
     return (
       <Pressable
@@ -159,7 +160,7 @@ export default function FacilityCatalogueScreen() {
         }}
         disabled={picking}
         accessibilityRole="button"
-        accessibilityLabel={[item.name, place, status, lastSeen, onList].filter(Boolean).join(', ')}
+        accessibilityLabel={[item.name, place, status, spokenLastSeen, onList].filter(Boolean).join(', ')}
         accessibilityHint={tr(noServer ? 'central.catalogue.noServerHint' : 'central.catalogue.cellHint')}
         testID={`catalogue-${item.id}`}
       >

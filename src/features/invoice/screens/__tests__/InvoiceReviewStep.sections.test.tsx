@@ -77,11 +77,17 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
     await open();
     expect(has('invoice-review')).toBe(true);
     ['details', 'items', 'charges'].forEach((id) => expect(has(`invoice-review-section-${id}`)).toBe(true));
-    expect(toggle('details').props.accessibilityLabel).toBe('Invoice details, Invoice 42 · 05/10/26 · Example Traders');
+    expect(toggle('details').props.accessibilityLabel).toBe('Invoice details, Invoice 42 · 5 Oct 2026 · Example Traders');
     expect(toggle('items').props.accessibilityLabel).toMatch(/^Items, 1, /);
     expect(toggle('charges').props.accessibilityLabel).toMatch(/^Charges/);
     // No title of its own inside the card (P0-11): the summary has no header role.
     expect(tree.root.findAll((node) => node.props.accessibilityRole === 'header')).toHaveLength(0);
+  });
+
+  it('reads the invoice date in words, while the row shows 05/10/26', async () => {
+    await open();
+    expect(tree.root.findAll((node) => node.props.accessibilityLabel === 'Invoice date, 5 Oct 2026').length).toBeGreaterThan(0);
+    expect(tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''))).toContain('05/10/26');
   });
 
   it('opens CHARGES first, with the others closed and one line under each closed heading', async () => {

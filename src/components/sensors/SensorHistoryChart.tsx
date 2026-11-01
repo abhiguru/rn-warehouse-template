@@ -46,6 +46,8 @@ import {
   formatMonth,
   formatTemperature as formatTemperatureValue,
   toDate,
+  formatSpokenDate,
+  formatSpokenDateTime,
 } from '@/utils/formatters';
 import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 
@@ -85,6 +87,11 @@ export function formatHumidity(value: number | null | undefined): string {
 /** "09/10/26" or "09/10/26, 4:05 pm" (guide §12.3) */
 function formatReadingTime(timestamp: string, withTime: boolean): string {
   return withTime ? formatDateTime(timestamp) : formatDate(timestamp);
+}
+
+/** The same moment in words for a screen reader: "9 Oct 2026" or "9 Oct 2026, 4:05 pm". */
+function formatSpokenReadingTime(timestamp: string, withTime: boolean): string {
+  return withTime ? formatSpokenDateTime(timestamp) : formatSpokenDate(timestamp);
 }
 
 /** A reading value, or null when the sensor sent nothing for that interval. */
@@ -211,7 +218,7 @@ function ReadingsTable({ readings, showTime }: { readings: SensorHistoryReading[
       list="flat"
       rowLabel={row =>
         tr('sensors.chart.rowLabel', {
-          time: formatReadingTime(row.original.timestamp, showTime),
+          time: formatSpokenReadingTime(row.original.timestamp, showTime),
           temperature: formatTemperature(row.original.temperature),
           humidity: formatHumidity(row.original.humidity),
         })

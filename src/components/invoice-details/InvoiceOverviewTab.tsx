@@ -372,8 +372,9 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   const renderReason = (label: string, reason?: string | null, by?: string | null, at?: string | null, testID?: string) => {
     if (!reason) return null;
     const setBy = by ? tr('invoice.details.setBy', { name: by, date: formatDisplayDate(at ?? undefined) }) : '';
+    const spokenSetBy = by ? tr('invoice.details.setBy', { name: by, date: toDate(at ?? undefined) ? formatSpokenDate(at) : '' }) : '';
     return (
-      <View style={styles.reasonRow} accessible accessibilityLabel={`${label}, ${reason}${setBy ? `, ${setBy}` : ''}`} testID={testID}>
+      <View style={styles.reasonRow} accessible accessibilityLabel={`${label}, ${reason}${spokenSetBy ? `, ${spokenSetBy}` : ''}`} testID={testID}>
         <Text style={styles.financialLabel}>{label}</Text>
         <Text style={styles.reasonText}>{reason}</Text>
         {setBy ? <Text style={styles.reasonMeta}>{setBy}</Text> : null}

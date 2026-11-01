@@ -63,7 +63,7 @@ import { useAppDispatch } from '@/store/hooks';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllCustomerActivityData, CustomerActivityDetailData, CustomerActivityRow } from '@/types/report.types';
-import { formatCount, formatCurrency, formatIndiaDate, formatNumber, indiaDay } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatIndiaDate, formatIndiaSpokenDate, formatNumber, indiaDay } from '@/utils/formatters';
 
 const REPORT_ID = 'customer-activity';
 
@@ -435,6 +435,8 @@ function invoiceStatus(status: string): { kind: StatusKind; label: string } {
 interface PreviewProps {
   label: string;
   sublabel: string;
+  /** What a screen reader says for the sublabel when it is a date ("9 Oct 2026"). */
+  spokenSublabel?: string;
   value: string;
   status?: { kind: StatusKind; label: string };
   /** Opens the document; a row without it is not a button and has no chevron. */
@@ -442,10 +444,10 @@ interface PreviewProps {
   accessibilityHint?: string;
 }
 
-function Preview({ label, sublabel, value, status, onPress, accessibilityHint }: PreviewProps) {
+function Preview({ label, sublabel, spokenSublabel, value, status, onPress, accessibilityHint }: PreviewProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const a11yLabel = [label, sublabel, value, status?.label].filter(Boolean).join(', ');
+  const a11yLabel = [label, spokenSublabel ?? sublabel, value, status?.label].filter(Boolean).join(', ');
   const content = (
     <>
       <View style={styles.previewContent}>
@@ -539,6 +541,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={grn.grn_id}
           label={tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
           sublabel={formatIndiaDate(grn.grn_date)}
+          spokenSublabel={formatIndiaSpokenDate(grn.grn_date)}
           value={tr('reports.customerActivity.stockOfTotal', { stock: formatNumber(grn.current_stock), total: formatNumber(grn.total_qty) })}
           onPress={grn.grn_id ? () => openDocument(`/grn-details/${grn.grn_id}`) : undefined}
           accessibilityHint={tr('reports.shared.opensGrnHint')}
@@ -550,6 +553,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={dispatch.dispatch_id}
           label={tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.dispatch_no) })}
           sublabel={formatIndiaDate(dispatch.dispatch_date)}
+          spokenSublabel={formatIndiaSpokenDate(dispatch.dispatch_date)}
           value={formatCount(dispatch.total_qty, 'bag')}
           onPress={dispatch.dispatch_id ? () => openDocument(`/dispatch-details/${dispatch.dispatch_id}`) : undefined}
           accessibilityHint={tr('grn.dispatches.openHint')}
@@ -571,6 +575,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={invoice.invoice_id}
           label={tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) })}
           sublabel={formatIndiaDate(invoice.invoice_date)}
+          spokenSublabel={formatIndiaSpokenDate(invoice.invoice_date)}
           value={formatCurrency(invoice.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           status={invoiceStatus(invoice.status)}
           onPress={invoice.invoice_id ? () => openDocument(`/invoice-details/${invoice.invoice_id}`) : undefined}

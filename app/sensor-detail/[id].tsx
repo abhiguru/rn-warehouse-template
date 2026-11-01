@@ -44,7 +44,7 @@ import {
   trackedText,
 } from '@/theme/tokens';
 import type { SensorHistoryPeriod, SensorHistorySummary } from '@/types/sensor-history.types';
-import { formatDateTime } from '@/utils/formatters';
+import { formatDateTime, formatSpokenDateTime } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { StatusTag } from '@/components/ui';
 import { batteryFact, chartThresholds, connectionStatus, isQuiet, lastKnownText, readingTime, rowStatus } from '@/features/sensors/sensorStatus';
@@ -327,11 +327,11 @@ const makeStyles = (t: ThemeTokens) =>
 
 type Styles = ReturnType<typeof makeStyles>;
 
-function KeyValue({ label, value, styles, accessory }: {
-  label: string; value: string; styles: Styles; accessory?: React.ReactNode;
+function KeyValue({ label, value, spokenValue, styles, accessory }: {
+  label: string; value: string; spokenValue?: string; styles: Styles; accessory?: React.ReactNode;
 }) {
   return (
-    <View style={styles.keyValueRow} accessible accessibilityLabel={tr('sensors.labelValue', { label, value })}>
+    <View style={styles.keyValueRow} accessible accessibilityLabel={tr('sensors.labelValue', { label, value: spokenValue ?? value })}>
       <Text style={styles.keyLabel}>{label}</Text>
       {accessory ?? <Text style={styles.keyValue}>{value}</Text>}
     </View>
@@ -592,6 +592,7 @@ const SensorDetailScreen: React.FC = () => {
               <KeyValue
                 label={tr('sensors.detail.lastReading')}
                 value={formatDateTime(lastReading)}
+                spokenValue={formatSpokenDateTime(lastReading)}
                 styles={styles}
               />
             ) : null}

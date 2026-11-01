@@ -43,13 +43,14 @@ const ChangeGroupCard = memo<Props>(({ entries, view }) => {
     rows: changes.map(change => {
       const label = priceHistoryFieldLabel(change.field);
       const after = priceHistoryValueText(change.field, change.after);
-      if (change.before === null) return { field: change.field, label, text: after, spoken: t('pricing.form.labelValue', { label, value: after }) };
+      const spokenAfter = priceHistoryValueText(change.field, change.after, true);
+      if (change.before === null) return { field: change.field, label, text: after, spoken: t('pricing.form.labelValue', { label, value: spokenAfter }) };
       const before = priceHistoryValueText(change.field, change.before);
       return {
         field: change.field,
         label,
         text: t('pricing.changes.arrow', { old: before, new: after }),
-        spoken: t('pricing.history.changeLabel', { label, old: before, new: after }),
+        spoken: t('pricing.history.changeLabel', { label, old: priceHistoryValueText(change.field, change.before, true), new: spokenAfter }),
       };
     }),
   }));

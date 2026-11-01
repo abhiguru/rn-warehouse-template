@@ -114,6 +114,9 @@ describe.each(THEMES)('SensorHistoryChart in %s %s', (brand, mode) => {
     expect(rows).toHaveLength(READINGS.length);
     // The last reading has no values: the row says so as the cells do, with the dash.
     expect(rows.map(row => String(row.props.accessibilityLabel).includes('−18.5°C'))).toEqual([true, false, false]);
+    // Each row is read with its date in words, never as 01/10/26.
+    expect(String(rows[0].props.accessibilityLabel)).toContain('1 Oct 2026');
+    expect(rows.map(row => String(row.props.accessibilityLabel)).join('|')).not.toMatch(/\d\d\/\d\d\/\d\d/);
     expect(texts(tree).filter(s => s === '—')).toHaveLength(2);
     expect(tree.root.findAll(n => String(n.props.testID).startsWith('sensor-history-table-sort-'))).toHaveLength(0);
     act(() => tree.unmount());
