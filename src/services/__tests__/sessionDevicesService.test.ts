@@ -86,4 +86,14 @@ describe('revokeSession', () => {
     expect(result).toMatchObject({ success: false, code: '42501' });
     expect(result).not.toHaveProperty('lostAnswer');
   });
+
+  it.each([[502], [504]])('treats a gateway answer %i as a lost answer', async (status) => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'Bad gateway', code: '' }, status });
+    expect(await revokeSession('s1')).toMatchObject({ success: false, lostAnswer: true });
+  });
+
+  it('treats an empty 200 as a lost answer', async () => {
+    rpc.mockResolvedValue({ data: null, error: null, status: 200 });
+    expect(await revokeSession('s1')).toMatchObject({ success: false, lostAnswer: true });
+  });
 });

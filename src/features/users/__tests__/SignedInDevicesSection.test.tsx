@@ -145,8 +145,38 @@ it('says Not signed out when, after a sign out with no answer, the session is st
   await open();
   await press('session-signout-s1');
   await confirmSignOut();
-  expect(showAlert).toHaveBeenLastCalledWith('Not signed out', expect.stringContaining('still signed in'));
+  expect(showAlert).toHaveBeenLastCalledWith('Not signed out', expect.stringContaining('may not have reached the server'));
+  expect(showAlert).not.toHaveBeenLastCalledWith('Not signed out', expect.stringContaining('allowed'));
   expect(showToast).not.toHaveBeenCalled();
+});
+
+it('signs out here when this phone\'s own sign out got no answer and the list no longer shows it', async () => {
+  jest.mocked(listUserSessions).mockResolvedValueOnce({ success: true, sessions: [row('s1', { is_current: true })] }).mockResolvedValueOnce({ success: true, sessions: [] });
+  jest.mocked(revokeSession).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' });
+  await open();
+  await press('session-signout-s1');
+  await confirmSignOut();
+  expect(logout).toHaveBeenCalledWith({ localOnly: true });
+  expect(showToast).not.toHaveBeenCalled();
+});
+
+it('signs out here when this phone\'s own sign out got no answer and the list cannot be read (the session has ended)', async () => {
+  jest.mocked(listUserSessions).mockResolvedValueOnce({ success: true, sessions: [row('s1', { is_current: true })] }).mockResolvedValueOnce({ success: false, message: 'JWT expired' });
+  jest.mocked(revokeSession).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' });
+  await open();
+  await press('session-signout-s1');
+  await confirmSignOut();
+  expect(logout).toHaveBeenCalledWith({ localOnly: true });
+});
+
+it('stays signed in and says so when this phone\'s own sign out got no answer and the session is still listed', async () => {
+  jest.mocked(listUserSessions).mockResolvedValue({ success: true, sessions: [row('s1', { is_current: true })] });
+  jest.mocked(revokeSession).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' });
+  await open();
+  await press('session-signout-s1');
+  await confirmSignOut();
+  expect(logout).not.toHaveBeenCalled();
+  expect(showAlert).toHaveBeenLastCalledWith('Not signed out', expect.stringContaining('may not have reached the server'));
 });
 
 it('says Not confirmed when the sign out got no answer and the list cannot be read either', async () => {

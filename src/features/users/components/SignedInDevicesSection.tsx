@@ -115,10 +115,18 @@ export function SignedInDevicesSection({ userId, onUnsupported }: SignedInDevice
           await dispatch(logout({ localOnly: true }));
           return;
         }
+        const lost = !result.success;
         const after = await load();
         const outcome = after ? revokeOutcome(false, after, session.id) : 'revoked';
+        // This phone's own session, answer lost: the person chose to be signed out here. Unless the list shows it is still
+        // there, it is cleared locally too: a re-read that fails is what a session the server already ended gives.
+        if (lost && session.is_current && outcome !== 'notSignedOut') {
+          await dispatch(logout({ localOnly: true }));
+          return;
+        }
         if (outcome === 'notSignedOut') {
-          showAlert(tr('users.devices.notSignedOutTitle'), tr('users.devices.notSignedOut'));
+          // After a lost answer the failure is the network's, not a refusal: no talk of permission.
+          showAlert(tr('users.devices.notSignedOutTitle'), tr(lost ? 'users.devices.notSignedOutLost' : 'users.devices.notSignedOut'));
         } else if (!after) {
           // The re-read failed: whether the device is gone is not known, so no success is claimed.
           showAlert(tr('users.devices.unconfirmedTitle'), tr('users.devices.unconfirmed'));

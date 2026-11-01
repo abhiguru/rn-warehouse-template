@@ -91,6 +91,7 @@ export const users = {
     unconfirmedTitle: 'Not confirmed',
     unconfirmed: 'The device list could not be read again, so it is not known whether the device was signed out. Tap Try again to check.',
     notSignedOutTitle: 'Not signed out',
+    notSignedOutLost: 'The device is still signed in. The sign out may not have reached the server. Try again.',
     notSignedOut: 'The device is still signed in. You may not be allowed to sign it out. The list shows what is true now.',
     signOutFailedTitle: "Couldn't sign out",
     signOutFailed: "Couldn't sign out this device. Try again.",

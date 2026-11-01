@@ -12,7 +12,7 @@ import { isMissingFunction, noteRpcSupport } from '@/config/facilityRpcSupport';
 import type { UserSession } from '@/features/users/sessionDevices';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
-import { isLostAnswer } from '@/utils/serverText';
+import { emptyAnswerAsError, isLostAnswer, withHttpStatus } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
@@ -98,7 +98,7 @@ export async function revokeSession(sessionId: string): Promise<RevokeSessionRes
   const generation = getSessionGeneration();
   try {
     const client = await getAuthenticatedClient();
-    const { data, error } = await client.rpc('revoke_session', { p_session_id: sessionId });
+    const { data, error, status } = await client.rpc('revoke_session', { p_session_id: sessionId });
     // A person who signed out of this phone meanwhile: the answer says nothing about the session on screen.
     if (generation !== getSessionGeneration()) throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
     if (error) {
@@ -106,9 +106,11 @@ export async function revokeSession(sessionId: string): Promise<RevokeSessionRes
         noteRpcSupport('userSessions', false);
         return { success: false, unsupported: true, message: t('users.devices.unsupported') };
       }
-      if (isLostAnswer(error)) return { success: false, lostAnswer: true, message: t('users.devices.signOutFailed') };
+      if (isLostAnswer(withHttpStatus(error, status))) return { success: false, lostAnswer: true, message: t('users.devices.signOutFailed') };
       return { success: false, code: error.code, message: refusalMessage(error.code, error.message, t('users.devices.signOutFailed')) };
     }
+    // An empty 200 is an answer that did not come through.
+    if (emptyAnswerAsError({ data, error, status })) return { success: false, lostAnswer: true, message: t('users.devices.signOutFailed') };
     if (data?.success === true) return { success: true, revokedCurrent: data.revoked_current === true };
     // An administrator signing out an id that is not there: `{success:false, error:'NOT_FOUND'}`.
     const code = text(data?.error) ?? text(data?.error_code) ?? undefined;
