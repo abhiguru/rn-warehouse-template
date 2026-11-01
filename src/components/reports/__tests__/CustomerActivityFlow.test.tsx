@@ -22,7 +22,7 @@ import { showAlert } from '@/utils/alert';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
 import CustomerActivityScreen from '../../../../app/reports/customer-activity';
-import type { StockItemPreview } from '@/types/report.types';
+import type { RecentDispatchPreview, RecentGRNPreview, StockItemPreview } from '@/types/report.types';
 
 const mockPush = jest.fn();
 const mockRouterPush = jest.fn();
@@ -780,12 +780,12 @@ describe('customer activity, what the stock is counted in (D18)', () => {
         recent_grns: [
           { grn_id: 'g1', gr_no: 'A0010', grn_date: '2026-10-05', total_qty: 100, current_stock: 60, is_invoiced: false, packaging: 'Box' },
           { grn_id: 'g2', gr_no: 'A0009', grn_date: '2026-09-28', total_qty: 50, current_stock: 50, is_invoiced: true, packaging: null },
-        ],
+        ] as RecentGRNPreview[] as typeof DETAIL.recent_grns,
         recent_dispatches: [
           { dispatch_id: 'd1', dispatch_no: 'D0005', dispatch_date: '2026-10-08', total_qty: 40, supervisor_name: 'Ravi', packaging: 'Box' },
           { dispatch_id: 'd2', dispatch_no: 'D0004', dispatch_date: '2026-10-07', total_qty: 30, supervisor_name: 'Ravi', packaging: null },
           { dispatch_id: 'd3', dispatch_no: 'D0003', dispatch_date: '2026-10-06', total_qty: 20, supervisor_name: 'Ravi' },
-        ],
+        ] as RecentDispatchPreview[] as typeof DETAIL.recent_dispatches,
       }) as never
     );
     const screen = await open(makeStore());
