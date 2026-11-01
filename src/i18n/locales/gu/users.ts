@@ -90,7 +90,7 @@ export const users: Translation<typeof source> = {
     confirm: 'લૉગઆઉટ કરો',
     signedOut: 'ઉપકરણ લૉગઆઉટ થયું.',
     // Draft for the owner's wording review (2026-11-01).
-    unconfirmedTitle: 'ખાતરી થઈ નથી',
+    unconfirmedTitle: 'પુષ્ટિ થઈ નથી',
     unconfirmed: 'ઉપકરણોની યાદી ફરી વાંચી શકાઈ નથી, એટલે ઉપકરણ લૉગઆઉટ થયું કે નહીં તે ખબર નથી. યાદી ફરી તાજી કરીને તપાસો.',
     notSignedOutTitle: 'લૉગઆઉટ થયું નથી',
     notSignedOut: 'ઉપકરણ હજુ લૉગિન છે. કદાચ તમને તેને લૉગઆઉટ કરવાની પરવાનગી નથી. યાદી અત્યારની સ્થિતિ બતાવે છે.',

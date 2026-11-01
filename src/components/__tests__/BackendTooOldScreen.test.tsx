@@ -21,5 +21,5 @@ it('says the facility\'s server needs an update, in both languages, and Back lea
   expect(texts()).toContain("This facility's server needs an update");
   act(() => { tree.root.find(n => n.props.accessibilityLabel === 'Back' && typeof n.props.onPress === 'function').props.onPress(); });
   expect(onClose).toHaveBeenCalledTimes(1);
-  expect(t('components.backendTooOld.title', undefined, 'gu')).toBe('આ સુવિધાના સર્વરને અપડેટ કરવાની જરૂર છે');
+  expect(t('components.backendTooOld.title', undefined, 'gu')).toBe('આ કોલ્ડ સ્ટોરેજના સર્વરને અપડેટ કરવાની જરૂર છે');
 });
