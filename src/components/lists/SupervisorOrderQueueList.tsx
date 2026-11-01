@@ -1,4 +1,5 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { mergeRefreshedOrders, refreshLimit } from '@/features/orders/refreshWindow';
 import { createLogger } from '@/utils/logger';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 import { OrderRefreshAction } from '@/components/OrderRefreshAction';
@@ -140,12 +141,14 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       // A retry does not make retained data current: the error clears only
       // after a successful response replaces the displayed orders.
 
-      // Fetch only orders with items. A refresh reloads every row already shown.
+      // Fetch only orders with items. A refresh reloads every row already shown, up to the 200 rows the server gives a page.
+      const loadedBefore = loadedCountRef.current;
+      const asked = refreshLimit(loadedBefore);
       const filters: OrderFilters = {
         has_items: true,
         search: searchText,
         offset: 0,
-        limit: Math.max(PAGINATION.DEFAULT_LIMIT, loadedCountRef.current),
+        limit: asked,
       };
 
       if (__DEV__) console.log('[SupervisorOrderQueueList] Fetching orders with filters:', filters);
@@ -172,8 +175,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         });
 
         if (__DEV__) console.log('[SupervisorOrderQueueList] Loaded orders:', ordersWithItems.length);
-        loadedCountRef.current = result.data.length;
-        setOrders(ordersWithItems);
+        loadedCountRef.current = loadedBefore > asked ? Math.max(loadedBefore, result.data.length) : result.data.length;
+        setOrders((current) => mergeRefreshedOrders(current, ordersWithItems, loadedBefore, asked));
         setError(null);
         setLoadMoreFailed(false);
         setLoadedAt(Date.now());
