@@ -22,8 +22,13 @@ jest.mock('@/config/supabaseConfig', () => ({
         return chain;
       };
     }
-    chain.order = async (...args: unknown[]) => {
+    chain.order = (...args: unknown[]) => {
       mockQuery('order', ...args);
+      return chain;
+    };
+    // The read is paged: the page is the end of the chain.
+    chain.range = async (...args: unknown[]) => {
+      mockQuery('range', ...args);
       mockOnAnswer();
       return mockAnswer;
     };
@@ -47,6 +52,8 @@ it('asks for the businesses in use, by name, and sends no list of ids', async ()
     // only a deleted one is left out.
     ['is', 'deleted_at', null],
     ['order', 'name'],
+    // Paged, 500 rows a request (a direct read is cut at 2,000 rows).
+    ['range', 0, 499],
   ]);
 });
 
@@ -94,4 +101,20 @@ it('hands back a deactivated business with active false, and treats a missing fl
   };
   const rows = await readOwnBusinesses();
   expect(rows.map(r => [r.id, r.active])).toEqual([['business-a', false], ['business-b', true]]);
+});
+
+it('pages a list of more than one page: a stable order from the second request on, every business once', async () => {
+  const page = (from: number) => Array.from({ length: 500 }, (_, i) => ({ id: `b${from + i}`, name: `N${from + i}`, city: null }));
+  const answers = [page(0), page(0), page(500), [{ id: 'b1000', name: 'N1000', city: null }]];
+  let call = 0;
+  // The fake chain answers from `mockAnswer`; hand it the next page on every request.
+  mockQuery.mockImplementation((step: string) => {
+    if (step === 'range') mockAnswer = { data: answers[call++] as never, error: null };
+  });
+  const rows = await readOwnBusinesses();
+  expect(rows).toHaveLength(1001);
+  expect(new Set(rows.map(r => r.id)).size).toBe(1001);
+  const ranges = mockQuery.mock.calls.filter(c => c[0] === 'range').map(c => [c[1], c[2]]);
+  expect(ranges).toEqual([[0, 499], [0, 499], [500, 999], [1000, 1499]]);
+  expect(mockQuery.mock.calls.filter(c => c[0] === 'order' && c[1] === 'id')).toHaveLength(3);
 });
