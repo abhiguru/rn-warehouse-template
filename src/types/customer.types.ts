@@ -166,6 +166,8 @@ export interface CustomerServiceResponse<T = Customer> {
   error?: string;
   /** The server's own error code (DUPLICATE_NAME ...), before any translation. */
   code?: string;
+  /** The change got no usable answer and may have been applied (an empty 200 or a dropped connection): read the record again. */
+  lostAnswer?: boolean;
   /** The form field the refusal is about (`name` or `mobile`), when the server names one. */
   field?: string;
   /** For DUPLICATE_NAME / DUPLICATE_MOBILE: the customer that already has the name or number. */

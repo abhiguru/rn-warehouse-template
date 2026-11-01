@@ -16,6 +16,8 @@ export const errors: Translation<typeof source> = {
     missingParameter: 'જરૂરી માહિતી મળી નથી',
     invalidParameters: 'આપેલી માહિતી બરાબર નથી',
     noDataFromServer: 'સર્વર પરથી કોઈ માહિતી મળી નથી',
+    // Draft from the glossary (save is સાચવો, list is યાદી): the server's answer to a change came back empty.
+    writeNotConfirmed: 'આ સચવાયું કે નહીં તે અમે ખાતરી કરી શક્યા નથી. ફરી પ્રયાસ કરતાં પહેલાં યાદી જુઓ.',
     noDataReturned: 'કોઈ માહિતી મળી નથી',
     noDataFromRpc: 'સર્વર પરથી કોઈ માહિતી મળી નથી',
     noDataAvailable: 'કોઈ માહિતી ઉપલબ્ધ નથી',

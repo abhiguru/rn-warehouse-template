@@ -13,6 +13,7 @@ export const errors = {
     missingParameter: 'Missing parameter',
     invalidParameters: 'Invalid parameters',
     noDataFromServer: 'No data returned from server',
+    writeNotConfirmed: "We couldn't confirm that this was saved. Check the list before trying again.",
     noDataReturned: 'No data returned',
     noDataFromRpc: 'No data returned from RPC',
     noDataAvailable: 'No data available',

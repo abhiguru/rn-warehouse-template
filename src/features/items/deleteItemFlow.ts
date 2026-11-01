@@ -27,6 +27,8 @@ export interface DeleteItemFlowOptions {
   onDeactivate: () => void | Promise<void>;
   /** True while the phone is offline: nothing is sent. */
   offline?: boolean;
+  /** The delete got no usable answer and may have been done: read the list or the item again (after the message). */
+  onUnconfirmed?: () => void;
   /** The caller is a form-like page (no pull to refresh): a timeout says to go back to the list and check. */
   form?: boolean;
 }
@@ -59,7 +61,7 @@ function usedInMessage({ grnLines, orderLines, grnRates }: UsedIn, offerDeactiva
  */
 export async function deleteItemFlow(
   item: { id: string; name: string; active?: boolean },
-  { onDeleted, onDeactivate, offline = false, form = false }: DeleteItemFlowOptions
+  { onDeleted, onDeactivate, onUnconfirmed, offline = false, form = false }: DeleteItemFlowOptions
 ): Promise<void> {
   if (offline) {
     showAlert(t('items.delete.couldNotDeleteTitle'), t('items.offline.connectToSave'));
@@ -151,6 +153,8 @@ export async function deleteItemFlow(
       showGone();
     } else {
       showAlert(t('items.delete.couldNotDeleteTitle'), serverText(result.message, t('items.list.tryAgainInAMoment'), { write: true, form, delete: true }));
+      // No usable answer: the item may be gone, so what is saved is read again.
+      if (result.lostAnswer) onUnconfirmed?.();
     }
   } catch (error) {
     log.error('deleteItem error', loggableError(error));

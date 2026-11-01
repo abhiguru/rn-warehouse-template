@@ -235,6 +235,8 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
         lastSaveTimedOut.current = !!customerId && !result.success && isTimeoutError(result) && !isStatementTimeout(result, result.code);
         if (!result.success) {
           showRefusal(result, afterTimeout);
+          // No usable answer to a change of a saved customer: it may have gone through, so the form shows what is saved now.
+          if (customerId && result.lostAnswer) editor.retry();
           return;
         }
         if (customerId) {

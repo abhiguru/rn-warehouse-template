@@ -423,6 +423,7 @@ class ItemService {
         message: result.message,
         error: result.error,
         code: result.errorCode,
+        ...(result.lostAnswer ? { lostAnswer: true } : {}),
       };
     }
 
@@ -499,6 +500,7 @@ class ItemService {
         message: result.message,
         error: result.error,
         code: result.errorCode,
+        ...(result.lostAnswer ? { lostAnswer: true } : {}),
       };
     }
 
@@ -563,6 +565,8 @@ class ItemService {
       {
         context: 'ItemService.deleteItem',
         write: true,
+        // A failure after the request went out reads "it may have been deleted", not "saved".
+        delete: true,
         errorMessage: t('errors.item.deleteFailed'),
         unwrapNested: false,
         validateSuccess: false,
@@ -573,6 +577,7 @@ class ItemService {
       return {
         success: false,
         message: result.message,
+        ...(result.lostAnswer ? { lostAnswer: true } : {}),
       };
     }
 

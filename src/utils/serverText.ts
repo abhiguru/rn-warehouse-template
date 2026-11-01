@@ -80,6 +80,7 @@ const APP_OWN_TEXT: TranslationKey[] = [
   'errors.parsed.timeoutDelete',
   'errors.parsed.timeoutDeleteForm',
   'errors.parsed.timeoutNotSaved',
+  'errors.general.writeNotConfirmed',
 ];
 
 /**

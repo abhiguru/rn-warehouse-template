@@ -422,6 +422,7 @@ export default function ItemsScreen() {
             if (canSeeRates) void reloadItemRatesCache();
           },
           onDeactivate: () => handleToggleActive(item, true),
+          onUnconfirmed: () => handleRefresh(),
           offline,
         });
       } finally {

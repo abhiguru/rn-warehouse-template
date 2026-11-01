@@ -230,6 +230,8 @@ const ItemEditScreen: React.FC = () => {
         ]);
       } else {
         showAlert(tr('items.form.couldNotSaveTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }));
+        // No usable answer: the change may have been saved, so the form shows what is saved now.
+        if (result.lostAnswer) void loadItemData();
       }
     } catch (err) {
       console.error('[ItemEdit] Save error:', err);

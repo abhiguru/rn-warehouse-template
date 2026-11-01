@@ -398,6 +398,7 @@ class CustomerService {
         message: result.message,
         error: result.error,
         code: result.errorCode,
+        ...(result.lostAnswer ? { lostAnswer: true } : {}),
       };
     }
 
@@ -513,6 +514,7 @@ class CustomerService {
         message: result.message,
         error: result.error,
         code: result.errorCode,
+        ...(result.lostAnswer ? { lostAnswer: true } : {}),
       };
     }
 
