@@ -152,8 +152,14 @@ export async function deleteItemFlow(
       // Deleted by someone else between the count and the tap (an older server has the text only).
       showGone();
     } else {
-      showAlert(t('items.delete.couldNotDeleteTitle'), serverText(result.message, t('items.list.tryAgainInAMoment'), { write: true, form, delete: true }));
-      // No usable answer: the item may be gone, so what is saved is read again.
+      // No usable answer: the item may be gone. The words fit the screen (a list is pulled down, a page is left), and what
+      // is saved is read again.
+      showAlert(
+        t('items.delete.couldNotDeleteTitle'),
+        result.lostAnswer
+          ? t(form ? 'errors.parsed.timeoutDeleteForm' : 'errors.parsed.timeoutDelete')
+          : serverText(result.message, t('items.list.tryAgainInAMoment'), { write: true, form, delete: true }),
+      );
       if (result.lostAnswer) onUnconfirmed?.();
     }
   } catch (error) {

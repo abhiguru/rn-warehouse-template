@@ -122,3 +122,27 @@ describe('delete an item that is in use', () => {
     expect(lastAlert().message).not.toContain('order line');
   });
 });
+
+describe('a delete that got no usable answer', () => {
+  it('says it may have been deleted, with the list wording (pull down), and reads the list again', async () => {
+    await renderItems();
+    jest.mocked(itemService.deleteItem).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' } as never);
+    await act(async () => { rowFor('Garlic').props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } }); });
+    const readsBefore = jest.mocked(itemService.getItemList).mock.calls.length;
+    await act(async () => { lastAlert().buttons.find(b => b.text === 'Delete item')!.onPress!(); });
+
+    expect(lastAlert().message).toBe('No answer from the server. It may have been deleted. Pull down to check.');
+    expect(jest.mocked(itemService.getItemList).mock.calls.length).toBeGreaterThan(readsBefore);
+  });
+
+  it('a page (form wording) says to go back to the list and check', async () => {
+    const { deleteItemFlow } = require('@/features/items/deleteItemFlow');
+    jest.mocked(itemService.deleteItem).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' } as never);
+    let flow!: Promise<void>;
+    await act(async () => {
+      flow = deleteItemFlow({ id: 'i2', name: 'Garlic', active: true }, { onDeleted: jest.fn(), onDeactivate: jest.fn(), form: true });
+    });
+    await act(async () => { lastAlert().buttons.find(b => b.text === 'Delete item')!.onPress!(); await flow; });
+    expect(lastAlert().message).toBe('No answer from the server. It may have been deleted. Go back to the list and check before trying again.');
+  });
+});

@@ -88,6 +88,18 @@ it('says the customer could not be saved, with the connection hint, when the ser
   expect(router.back).not.toHaveBeenCalled();
 });
 
+it('a saved customer whose save got no usable answer keeps what was typed and says so; the form is not read again', async () => {
+  jest.mocked(customerService.updateCustomer).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' } as never);
+  const screen = await mountEdit();
+  await type(screen, 'City', 'Rajkot X');
+  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+
+  expect(jest.mocked(showAlert).mock.calls[0][1]).toBe("We couldn't confirm the save. Your changes are still here: check them and tap Save again.");
+  expect(input(screen, 'City').props.value).toBe('Rajkot X');
+  expect(customerService.getCustomerById).toHaveBeenCalledTimes(1);
+  expect(router.back).not.toHaveBeenCalled();
+});
+
 it('shows "<name> added." after Add', async () => {
   jest.mocked(customerService.createCustomer).mockResolvedValue({ success: true, message: '', data: { id: 'new-id' } } as never);
   const screen = await mountAdd();

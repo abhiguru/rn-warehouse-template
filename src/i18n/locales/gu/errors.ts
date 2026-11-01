@@ -16,6 +16,8 @@ export const errors: Translation<typeof source> = {
     missingParameter: 'જરૂરી માહિતી મળી નથી',
     invalidParameters: 'આપેલી માહિતી બરાબર નથી',
     noDataFromServer: 'સર્વર પરથી કોઈ માહિતી મળી નથી',
+    // Draft from the glossary: a change of a saved record got no usable answer; the typed values stay on the form.
+    saveNotConfirmedKeepEditing: 'સાચવવાની ખાતરી થઈ શકી નથી. તમારા ફેરફાર અહીં જ છે: તપાસીને ફરી સાચવો દબાવો.',
     // Draft from the glossary (save is સાચવો, list is યાદી): the server's answer to a change came back empty.
     writeNotConfirmed: 'આ સચવાયું કે નહીં તે અમે ખાતરી કરી શક્યા નથી. ફરી પ્રયાસ કરતાં પહેલાં યાદી જુઓ.',
     noDataReturned: 'કોઈ માહિતી મળી નથી',

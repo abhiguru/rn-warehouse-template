@@ -232,11 +232,15 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
           result = await customerService.createCustomer(params);
         }
         const afterTimeout = lastSaveTimedOut.current;
-        lastSaveTimedOut.current = !!customerId && !result.success && isTimeoutError(result) && !isStatementTimeout(result, result.code);
+        lastSaveTimedOut.current = !!customerId && !result.success && (result.lostAnswer === true || (isTimeoutError(result) && !isStatementTimeout(result, result.code)));
         if (!result.success) {
+          // No usable answer to a change of a saved customer: the typed values stay, and a Save that meets its own
+          // change is told apart by the stale-record path (afterTimeout).
+          if (customerId && result.lostAnswer) {
+            showAlert(tr('customers.save.errorTitle'), tr('errors.general.saveNotConfirmedKeepEditing'));
+            return;
+          }
           showRefusal(result, afterTimeout);
-          // No usable answer to a change of a saved customer: it may have gone through, so the form shows what is saved now.
-          if (customerId && result.lostAnswer) editor.retry();
           return;
         }
         if (customerId) {

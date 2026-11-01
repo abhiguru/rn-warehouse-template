@@ -134,7 +134,14 @@ describe('what the device log shows for a refused save (App 5)', () => {
   it('an update whose answer was lost is information, not an error', async () => {
     mockRpc({ data: null, error: { message: 'TypeError: Network request failed' } });
     const result = await updateInvoice(INVOICE, payload);
-    expect(result.lostAnswer).toBeDefined();
+    expect(result.lostAnswer).toEqual({ sentAt: expect.any(Number) });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('a create whose answer was lost is information, not an error', async () => {
+    mockRpc({ data: null, error: { message: 'TypeError: Network request failed' } });
+    const result = await createInvoice(payload);
+    expect(result.lostAnswer).toEqual({ sentAt: expect.any(Number) });
     expect(console.error).not.toHaveBeenCalled();
   });
 

@@ -840,7 +840,7 @@ const sendCreateInvoice = async (
 
     if (error) {
       // A number taken is the server's answer, not a fault: info, no red banner.
-      (numberTakenFrom(error, payload.header.inv_no) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'RPC error:', errorForLog(error));
+      (numberTakenFrom(error, payload.header.inv_no) || isLostAnswer(error) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'RPC error:', errorForLog(error));
       // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
       if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);

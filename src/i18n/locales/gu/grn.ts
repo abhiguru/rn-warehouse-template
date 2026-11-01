@@ -693,7 +693,7 @@ export const grn: Translation<typeof source> = {
     dispatchedBags: 'જાવક {{bags}}',
     packaging: 'પેકિંગ {{packaging}}',
     itemRowLabel: '{{item}}{{details}}, આવક {{received}}, સ્ટોકમાં {{stock}}',
-    showItemDetails: 'જાવકની સંખ્યા, રેક અને પેકિંગ બતાવે છે',
+    showItemDetails: 'જાવકના નંગ, રેક અને પેકિંગ બતાવે છે',
     viewDispatches: 'જાવકની યાદી જુઓ',
     viewDispatchesHint: 'આ આવક પાવતીની જાવકની યાદી બતાવે છે',
     itemsTotalLabel: 'કુલ: {{lines}}, આવક {{received}}, સ્ટોકમાં {{stock}}',
