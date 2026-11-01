@@ -16,6 +16,7 @@
  */
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { readAllRows } from '@/utils/pagedRead';
 
 export interface OwnBusiness {
   id: string;
@@ -35,14 +36,14 @@ export interface OwnBusiness {
 export async function readOwnBusinesses(): Promise<OwnBusiness[]> {
   const session = getSessionGeneration();
   const client = await getAuthenticatedClient();
-  const { data, error } = await client
-    .from('customers')
-    .select('id, name, city, active')
-    .is('deleted_at', null)
-    .order('name');
-  if (error) throw error;
+  type Row = { id: string; name: string | null; city: string | null; active: boolean | null };
+  // Paged: a direct read is cut at 2,000 rows (a customer account with more businesses than that is unlikely, but the cut is silent).
+  const { rows } = await readAllRows<Row>((from, to, ordered) => {
+    const query = client.from('customers').select('id, name, city, active').is('deleted_at', null).order('name');
+    return (ordered ? query.order('id') : query).range(from, to);
+  });
   if (session !== getSessionGeneration()) throw new Error('Session changed');
-  return ((data ?? []) as { id: string; name: string | null; city: string | null; active: boolean | null }[]).map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     name: row.name ?? '',
     city: row.city ?? '',

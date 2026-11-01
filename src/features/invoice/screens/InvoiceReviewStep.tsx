@@ -18,6 +18,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import {
+  calculateInvoiceBreakdown,
   discountNeedsReason,
   formatInvoiceAmount,
   invoiceConfirmMessage,
@@ -30,6 +31,7 @@ import WizardBottomBar from '@/components/WizardBottomBar';
 import { ReviewCard, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSections } from '@/components/review/ReviewSections';
 import { InvoiceReviewItemsTable } from '@/features/invoice/components/review/InvoiceReviewItemsTable';
 import { InvoiceCalculationSummary } from '@/features/invoice/components/InvoiceCalculationSummary';
+import { discountFieldText, parseDiscountInput } from '@/features/invoice/utils/amountInput';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
 import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -45,10 +47,12 @@ import {
   STEP_NUMBERS,
   getCompletedSteps,
   formatInvoiceDate,
+  formatSpokenInvoiceDate,
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
 import { t as tr, formatIdentifier } from '@/i18n';
-import { formatCount, formatFinancialYear } from '@/utils/formatters';
+import { formatFinancialYear } from '@/utils/formatters';
+import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { createLogger } from '@/utils/logger';
 import { invoiceGroupKey } from '@/features/invoice/utils/groupInvoiceItems';
 import type { InvoiceStepProps } from './InvoiceDetailsStep';
@@ -219,11 +223,15 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
 
     // The discount field shows text that was not accepted, so the invoice
     // still holds the previous discount: saving now would not save what is shown.
-    if (discountError) {
+    // The discount the invoice holds is checked against the amount before discount as it stands now (a charge,
+    // labour or tax may have changed since it was typed), so a total of ₹0 from it is refused before the question.
+    const heldDiscountError = parseDiscountInput(discountFieldText(header.discount), calculateInvoiceBreakdown(items, header).base, formatInvoiceAmount).error;
+    const refusedDiscount = discountError ?? heldDiscountError;
+    if (refusedDiscount) {
       refuseSave();
       showError(
         tr('invoice.review.discountCheckTitle'),
-        `${discountError}\n${tr('invoice.review.discountNotApplied', { amount: formatInvoiceAmount(header.discount) })}`
+        `${refusedDiscount}\n${tr('invoice.review.discountNotApplied', { amount: formatInvoiceAmount(header.discount) })}`
       );
       return;
     }
@@ -500,13 +508,18 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
               formatInvoiceDate(header.inv_date) || null,
               header.customer_name || null,
             ].filter(Boolean).join(' · ')}
+            spokenClosedLine={[
+              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(header.inv_no) }) : null,
+              formatSpokenInvoiceDate(header.inv_date) || null,
+              header.customer_name || null,
+            ].filter(Boolean).join(' · ')}
             open={openSection === 'details'}
             onToggle={toggleSection}
             first
           >
             <ReviewKeyValues>
               <ReviewKeyValue label={tr('common.invoiceNumber')} value={header.inv_no > 0 ? formatIdentifier(header.inv_no) : EMPTY} emphasized first />
-              <ReviewKeyValue label={tr('invoice.form.invoiceDate')} value={formatInvoiceDate(header.inv_date) || EMPTY} />
+              <ReviewKeyValue label={tr('invoice.form.invoiceDate')} value={formatInvoiceDate(header.inv_date) || EMPTY} spokenValue={formatSpokenInvoiceDate(header.inv_date) || EMPTY} />
               <ReviewKeyValue label={tr('invoice.label.financialYear')} value={header.inv_fin_year ? formatFinancialYear(header.inv_fin_year) : EMPTY} />
               <ReviewKeyValue label={tr('common.grn')} value={header.gr_no ? formatIdentifier(header.gr_no) : EMPTY} />
               <ReviewKeyValue label={tr('common.customer')} value={header.customer_name || EMPTY} />
@@ -522,7 +535,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             count={groupCount}
             onEdit={lostAnswer || reloading ? undefined : () => handleStepPress(STEP_NUMBERS.ITEMS)}
             editLabel={tr('invoice.review.editItemsA11y')}
-            closedLine={formatCount(totalQty, 'bag')}
+            closedLine={formatPackages(totalQty, sharedPackaging(items.map((item) => item.packaging)))}
             open={openSection === 'items'}
             onToggle={toggleSection}
             deferBody

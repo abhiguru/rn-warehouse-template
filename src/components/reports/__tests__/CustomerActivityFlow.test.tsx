@@ -20,7 +20,9 @@ import { resetReportExportAvailability } from '@/features/reports/useReportExpor
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { showAlert } from '@/utils/alert';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
+import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
 import CustomerActivityScreen from '../../../../app/reports/customer-activity';
+import type { RecentDispatchPreview, RecentGRNPreview, StockItemPreview } from '@/types/report.types';
 
 const mockPush = jest.fn();
 const mockRouterPush = jest.fn();
@@ -132,7 +134,7 @@ const DETAIL = {
     { item_name: 'Garlic', total_stock: 200, grn_count: 2 },
     { item_name: 'Cumin', total_stock: 100, grn_count: 1 },
   ],
-  recent_invoices: [{ invoice_id: 'i1', invoice_number: '2026-0042', invoice_date: '2026-10-01', net_total: 1540, status: 'paid' as const }],
+  recent_invoices: [{ invoice_id: 'i1', invoice_number: '2026-0042', invoice_date: '2026-10-01', net_total: 1540, status: 'paid' as 'paid' | 'pending' | 'cancelled' }],
 };
 const answerDetail = (over: Partial<typeof DETAIL> = {}) => ({ success: true, message: '', data: { ...DETAIL, ...over } });
 
@@ -179,6 +181,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
+  resetFacilityCapabilities();
 });
 
 const textOf = (node: TestRenderer.ReactTestInstance) => [node.props.children].flat().join('');
@@ -415,7 +418,9 @@ describe('customer activity, one customer', () => {
     const texts = screen.texts();
     expect(texts.indexOf('GRNs in 01/09/26 – 30/09/26: 1')).toBeLessThan(texts.indexOf('Latest GRNs (any date)'));
     expect(texts.indexOf('Latest GRNs (any date)')).toBeLessThan(texts.indexOf('GRN A0012'));
-    expect(screen.labels()).toEqual(expect.arrayContaining(['GRN A0012, 09/10/26, 40 of 40 in stock', 'GRN A0010, 05/10/26, 60 of 100 in stock']));
+    expect(screen.labels()).toEqual(expect.arrayContaining(['GRN A0012, 9 Oct 2026, 40 of 40 in stock', 'GRN A0010, 5 Oct 2026, 60 of 100 in stock']));
+    // On screen the same rows keep DD/MM/YY.
+    expect(texts).toEqual(expect.arrayContaining(['09/10/26', '05/10/26']));
 
     // The action opens GRN activity with the period it names: the one period every report shares.
     await screen.press(card);
@@ -456,6 +461,28 @@ describe('customer activity, one customer', () => {
     // The item rows are read as one element each, with nothing to press and no chevron.
     expect(screen.labels()).toContain('Garlic, 2 GRNs, 200 bags');
     expect(screen.controls(label => label.startsWith('Garlic'))).toEqual([]);
+  });
+
+  describe('the status tag of the latest invoices', () => {
+    const NORTH = { origin: 'https://warehouse.example.test', instanceId: 'instance-a' };
+    const invoiceLabel = (screen: Awaited<ReturnType<typeof open>>) => screen.labels().find(label => label.startsWith('Invoice 2026-0042, ')) ?? '';
+
+    it('says Paid where the facility records payments', async () => {
+      setFacilityCapabilities(NORTH, { payments: true });
+      openGreenValley();
+      const screen = await open(makeStore());
+      expect(invoiceLabel(screen)).toMatch(/, Paid$/);
+    });
+
+    it('says nothing of payment where it does not (the default), and still says Cancelled for a cancelled invoice', async () => {
+      openGreenValley();
+      const screen = await open(makeStore());
+      expect(invoiceLabel(screen)).not.toMatch(/Paid|Pending/);
+
+      detail.mockResolvedValue(answerDetail({ recent_invoices: [{ invoice_id: 'i1', invoice_number: '2026-0042', invoice_date: '2026-10-01', net_total: 1540, status: 'cancelled' as const }] }) as never);
+      const again = await open(makeStore());
+      expect(invoiceLabel(again)).toMatch(/, Cancelled$/);
+    });
   });
 
   it('draws the stock trend with axis numbers in the number format and a unit, and opens it as a chart or a table', async () => {
@@ -671,5 +698,103 @@ describe('customer activity, the report PDF', () => {
       { report: 'customer-activity', customer_id: 'c2', from: '2026-02-15', to: '2026-10-12' },
       'Customer_activity_Green_Valley_Traders_2026_02_15_to_2026_10_12.pdf'
     );
+  });
+});
+
+describe('customer activity, what the stock is counted in (D18)', () => {
+  it('a Box item reads boxes, an item whose lots differ (null) reads units, one with none reads bags', async () => {
+    openGreenValley();
+    detail.mockResolvedValue(
+      answerDetail({
+        top_stock_items: [
+          { item_name: 'Garlic', total_stock: 200, grn_count: 2, packaging: 'Box' },
+          { item_name: 'Cumin', total_stock: 100, grn_count: 1, packaging: null },
+          { item_name: 'Ginger', total_stock: 50, grn_count: 1 },
+        ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
+      }) as never
+    );
+    const screen = await open(makeStore());
+    const labels = screen.labels();
+    expect(labels).toContain('Garlic, 2 GRNs, 200 boxes');
+    expect(labels).toContain('Cumin, 1 GRN, 100 units');
+    expect(labels).toContain('Ginger, 1 GRN, 50 bags');
+    // Not all one word: the card's total reads units.
+    expect(labels).toContain('Current stock: 300 units. View stock age');
+  });
+
+  it('the total reads boxes when the top rows are all Box and add up to the whole stock', async () => {
+    openGreenValley();
+    detail.mockResolvedValue(
+      answerDetail({
+        top_stock_items: [
+          { item_name: 'Garlic', total_stock: 200, grn_count: 2, packaging: 'Box' },
+          { item_name: 'Cumin', total_stock: 100, grn_count: 1, packaging: 'Box' },
+        ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
+      }) as never
+    );
+    const screen = await open(makeStore());
+    expect(screen.labels()).toContain('Current stock: 300 boxes. View stock age');
+  });
+
+  it('an older server (no current_stock_packaging): units when the top rows are all Box but stock outside them makes up the rest', async () => {
+    openGreenValley();
+    detail.mockResolvedValue(
+      answerDetail({
+        top_stock_items: [
+          { item_name: 'Garlic', total_stock: 200, grn_count: 2, packaging: 'Box' },
+          { item_name: 'Cumin', total_stock: 50, grn_count: 1, packaging: 'Box' },
+        ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
+      }) as never
+    );
+    const screen = await open(makeStore());
+    expect(screen.labels()).toContain('Current stock: 300 units. View stock age');
+  });
+
+  describe('current_stock_packaging from the server covers all stock, not only the top five items', () => {
+    const five = ['A', 'B', 'C', 'D', 'E'].map(name => ({ item_name: name, total_stock: 100, grn_count: 1, packaging: 'Bag' }));
+    const show = async (named: unknown) => {
+      openGreenValley();
+      const summary = { ...DETAIL.summary, current_stock: 1200, ...(named === undefined ? {} : { current_stock_packaging: named }) };
+      detail.mockResolvedValue(answerDetail({ summary, top_stock_items: five as StockItemPreview[] as typeof DETAIL.top_stock_items }) as never);
+      return (await open(makeStore())).labels();
+    };
+
+    it('six or more items all in bags: the total reads bags', async () => {
+      expect(await show('Bag')).toContain('Current stock: 1,200 bags. View stock age');
+    });
+    it('a word of its own is used as sent', async () => {
+      expect(await show('Box')).toContain('Current stock: 1,200 boxes. View stock age');
+    });
+    it('null (the lots differ) reads units', async () => {
+      expect(await show(null)).toContain('Current stock: 1,200 units. View stock age');
+    });
+    it('absent (an older server) keeps the coverage rule: the top five do not add up, so units', async () => {
+      expect(await show(undefined)).toContain('Current stock: 1,200 units. View stock age');
+    });
+  });
+
+  it('the GRN and dispatch preview rows read the word: given, units when null, as before when absent', async () => {
+    openGreenValley();
+    detail.mockResolvedValue(
+      answerDetail({
+        recent_grns: [
+          { grn_id: 'g1', gr_no: 'A0010', grn_date: '2026-10-05', total_qty: 100, current_stock: 60, is_invoiced: false, packaging: 'Box' },
+          { grn_id: 'g2', gr_no: 'A0009', grn_date: '2026-09-28', total_qty: 50, current_stock: 50, is_invoiced: true, packaging: null },
+        ] as RecentGRNPreview[] as typeof DETAIL.recent_grns,
+        recent_dispatches: [
+          { dispatch_id: 'd1', dispatch_no: 'D0005', dispatch_date: '2026-10-08', total_qty: 40, supervisor_name: 'Ravi', packaging: 'Box' },
+          { dispatch_id: 'd2', dispatch_no: 'D0004', dispatch_date: '2026-10-07', total_qty: 30, supervisor_name: 'Ravi', packaging: null },
+          { dispatch_id: 'd3', dispatch_no: 'D0003', dispatch_date: '2026-10-06', total_qty: 20, supervisor_name: 'Ravi' },
+        ] as RecentDispatchPreview[] as typeof DETAIL.recent_dispatches,
+      }) as never
+    );
+    const screen = await open(makeStore());
+    const labels = screen.labels();
+    expect(labels).toEqual(expect.arrayContaining([
+      expect.stringContaining('40 boxes'), expect.stringContaining('30 units'), expect.stringContaining('20 bags'),
+    ]));
+    expect(screen.labels()).toEqual(expect.arrayContaining([
+      expect.stringContaining('60 of 100 boxes in stock'), expect.stringContaining('50 of 50 units in stock'),
+    ]));
   });
 });

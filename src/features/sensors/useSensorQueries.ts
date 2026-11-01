@@ -8,6 +8,8 @@ import { useReportQuery, type ReportQuery } from '@/features/reports/useReportQu
 import { sensorKeys } from '@/features/sensors/sensorQueries';
 import { getDevice, getSnapshot } from '@/services/sensor-service';
 import { getSensorHistory } from '@/services/sensor-history-service';
+import { getSensorHistoryLong } from '@/services/sensor-hourly-service';
+import { isLongPeriod } from '@/features/sensors/sensorHourly';
 import type { SensorDeviceResult, SensorPollingResponse } from '@/types/sensor.types';
 import type { SensorHistoryData, SensorHistoryPeriod } from '@/types/sensor-history.types';
 import { t as tr } from '@/i18n';
@@ -38,7 +40,8 @@ export function useSensorDevice(id: string | undefined): ReportQuery<SensorDevic
 export function useSensorHistory(id: string | undefined, days: SensorHistoryPeriod): ReportQuery<SensorHistoryData> {
   return useReportQuery<SensorHistoryData>({
     key: sensorKeys.history(id ?? '', days),
-    fetch: () => getSensorHistory(id ?? '', days),
+    // 6 months and longer come from the hourly summary (migration 136); the year falls back to the older source without it.
+    fetch: () => (isLongPeriod(days) ? getSensorHistoryLong(id ?? '', days as 183 | 365 | 730) : getSensorHistory(id ?? '', days)),
     fallbackError: tr('sensors.detail.historyError'),
     enabled: Boolean(id),
   });

@@ -54,3 +54,15 @@ describe('the screen reader text names the item\'s packaging', () => {
     expect(rowA11y(priced(), false, '2026-10-12')).toContain('per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%');
   });
 });
+
+describe('the screen reader text gives the start date in words', () => {
+  it('reads "from 12 Oct 2026", never "12/10/26", for a rate that started by a change', () => {
+    const row = {
+      key: 'k', item_id: 'i', item_name: 'Fictional Gur', weight: 12, packaging: 'Bag',
+      rate: { source: 'change' as const, weight_min: 0, weight_max: 50, unit_price: 3.5, labour_rate: 1.5, tax_percent: 5 },
+    };
+    const spoken = rowA11y(row, false, '2026-10-12');
+    expect(spoken).toContain('12 Oct 2026');
+    expect(spoken).not.toMatch(/\d\d\/\d\d\/\d\d/);
+  });
+});

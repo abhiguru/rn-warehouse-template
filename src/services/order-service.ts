@@ -134,8 +134,7 @@ export class OrderService {
         { p_customer_id: customerId },
         {
           context: 'OrderService.getOrCreateOrder',
-          // It makes an open order when the customer has none, so a lost answer reads as one that may have gone through.
-          write: true,
+          // Not a write for the wording: it answers just the id of the cart, and an empty answer is "no data".
           errorMessage: t('errors.order.getOrCreateFailed'),
           // The RPC answers just the cart id.
           unwrapNested: false,

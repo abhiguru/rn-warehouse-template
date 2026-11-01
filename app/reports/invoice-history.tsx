@@ -38,7 +38,7 @@ import {
   invoiceRecordsView,
 } from '@/features/filters/configs/reports/invoiceHistory';
 import { invoiceMonths, invoiceMonthsHavePaise, invoiceMonthTotals, type InvoiceMonth, type InvoiceMonthTotals } from '@/features/filters/configs/reports/invoiceMonths';
-import { invoicePayment } from '@/features/filters/configs/reports/invoicePayment';
+import { invoicePayment, isCancelledInvoice } from '@/features/filters/configs/reports/invoicePayment';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
 import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
@@ -302,6 +302,8 @@ interface CustomerReportProps {
 
 function CustomerReport({ customerId, customerName, onChangeCustomer }: CustomerReportProps) {
   const filters = useReportFilters(INVOICE_HISTORY_CUSTOMER, { scope: customerId });
+  // Whether the facility records payments (capability `payments`), as the filter context has it.
+  const payments = filters.ctx.payments === true;
   const { period, view } = filters.request;
   const query = useReportQuery<InvoiceHistoryData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
@@ -328,22 +330,27 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       data && [
         // The count of the list, one invoice per row (the service merges the rows an older server sends per
         // payment), not the server's `summary.total_invoices`, which that server counts once per payment.
-        // Every invoice of the period, not the ones the search or the Payment choice leaves.
-        { icon: 'file-document-outline', value: data.invoices.length, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
-        {
-          icon: 'check-circle',
-          value: formatSummaryAmount(totals.paidAmount),
-          label: tr('reports.invoiceHistory.paidCount', { count: totals.paidCount }),
-          variant: 'success',
-        },
-        {
-          icon: 'alert',
-          value: formatSummaryAmount(totals.pendingAmount),
-          label: tr('reports.invoiceHistory.pendingCount', { count: totals.pendingCount }),
-          variant: 'warning',
-        },
+        // Every invoice of the period, not the ones the search or the Payment choice leaves; a cancelled one is not counted.
+        { icon: 'file-document-outline', value: data.invoices.filter(invoice => !isCancelledInvoice(invoice)).length, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
+        // The Paid and Pending tiles only where the facility records payments (capability `payments`).
+        ...(payments
+          ? ([
+              {
+                icon: 'check-circle',
+                value: formatSummaryAmount(totals.paidAmount),
+                label: tr('reports.invoiceHistory.paidCount', { count: totals.paidCount }),
+                variant: 'success',
+              },
+              {
+                icon: 'alert',
+                value: formatSummaryAmount(totals.pendingAmount),
+                label: tr('reports.invoiceHistory.pendingCount', { count: totals.pendingCount }),
+                variant: 'warning',
+              },
+            ] as KPIItem[])
+          : []),
       ],
-    [data, totals]
+    [data, totals, payments]
   );
   // The PDF follows the Payment choice (only the paid, or only the pending, invoices of the period, which
   // the server tells apart by the same rule) but not the search, which is the screen's own: the person is
@@ -376,9 +383,9 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       row.kind === 'date' ? (
         <ReportDateHeading date={row.date} />
       ) : (
-        <InvoiceCard invoice={row.invoice} words={view.words} showDate={!byDate} onOpen={openInvoice} />
+        <InvoiceCard invoice={row.invoice} words={view.words} showDate={!byDate} payments={payments} onOpen={openInvoice} />
       ),
-    [view.words, byDate]
+    [view.words, byDate, payments]
   );
 
   return (
@@ -390,7 +397,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       query={query}
       kpis={kpis}
       // As many tiles as the loaded figures: one customer has three.
-      kpiPlaceholders={3}
+      kpiPlaceholders={payments ? 3 : 1}
       status={{ range: period, shown: invoices.length, total: data?.invoices.length }}
       rows={rows}
       renderRow={renderRow}
@@ -401,7 +408,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.invoiceHistory.errorTitle')}
     >
-      {months.length > 0 ? <MonthlyBreakdown months={months} totals={totals} /> : null}
+      {months.length > 0 ? <MonthlyBreakdown months={months} totals={totals} payments={payments} /> : null}
     </ReportScaffold>
   );
 }
@@ -465,7 +472,7 @@ const monthHelper = createAppColumnHelper<MonthRow>();
  * Drawn by the shared `DataTable` (§13.7). Not sorted at first (newest month first); a tap on the Month, Amount, Paid
  * or Pending heading sorts by it, ascending then descending then back. The Total row stays the total of every month.
  */
-function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: InvoiceMonthTotals }) {
+function MonthlyBreakdown({ months, totals, payments }: { months: InvoiceMonth[]; totals: InvoiceMonthTotals; payments: boolean }) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const cell = useThemedStyles(makeTableStyles);
@@ -516,9 +523,11 @@ function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: 
       pending: widest(MONEY_COLUMN_WIDTH, row => money(row.pending), totalsText.pending),
     };
   }, [screen, rows, money, totalsText]);
-  const layoutName: MonthlyLayout = leavesMonth(screen, [widths.invoices, widths.amount, widths.paid, widths.pending])
+  // Without the payments capability the table has no Paid and Pending columns, lines or totals.
+  const paymentWidths = payments ? [widths.paid, widths.pending] : [];
+  const layoutName: MonthlyLayout = leavesMonth(screen, [widths.invoices, widths.amount, ...paymentWidths])
     ? 'full'
-    : leavesMonth(screen, [widths.amount, widths.paid, widths.pending])
+    : leavesMonth(screen, [widths.amount, ...paymentWidths])
       ? 'stacked'
       : 'compact';
 
@@ -535,7 +544,7 @@ function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: 
     // The lines under the month where its figures moved into it.
     const under = (row: MonthRow) => {
       const lines = [tr('reports.shared.labelValue', { label: labels.invoices, value: formatNumber(row.invoiceCount) })];
-      if (layoutName === 'compact') {
+      if (layoutName === 'compact' && payments) {
         lines.push(tr('reports.shared.labelValue', { label: labels.paid, value: money(row.paid) }));
         lines.push(tr('reports.shared.labelValue', { label: labels.pending, value: money(row.pending) }));
       }
@@ -574,10 +583,10 @@ function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: 
           ]
         : []),
       moneyColumn('amount', widths.amount),
-      ...(layoutName === 'compact' ? [] : [moneyColumn('paid', widths.paid), moneyColumn('pending', widths.pending)]),
+      ...(layoutName === 'compact' || !payments ? [] : [moneyColumn('paid', widths.paid), moneyColumn('pending', widths.pending)]),
     ]);
     // `labels` is rebuilt each render: its words are the dependencies.
-  }, [layoutName, widths, money, cell, labels.month, labels.invoices, labels.amount, labels.paid, labels.pending]);
+  }, [layoutName, payments, widths, money, cell, labels.month, labels.invoices, labels.amount, labels.paid, labels.pending]);
 
   // Sorted by nothing at first: the order the months came in. Month, Amount, Paid and Pending turn sorting on for
   // themselves (appTable's default column leaves it off); Invoices does not sort.
@@ -589,10 +598,14 @@ function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: 
       `${labels.month} ${row.month}`,
       `${labels.invoices} ${formatNumber(row.invoiceCount)}`,
       `${labels.amount} ${money(row.amount)}`,
-      `${labels.paid} ${money(row.paid)}`,
-      `${labels.pending} ${money(row.pending)}`,
+      ...(payments ? [`${labels.paid} ${money(row.paid)}`, `${labels.pending} ${money(row.pending)}`] : []),
     ].join(', ');
-  const totalsLabel = `${labels.month} ${totalsText.month}, ${labels.invoices} ${totalsText.invoices}, ${labels.amount} ${totalsText.amount}, ${labels.paid} ${totalsText.paid}, ${labels.pending} ${totalsText.pending}`;
+  const totalsLabel = [
+    `${labels.month} ${totalsText.month}`,
+    `${labels.invoices} ${totalsText.invoices}`,
+    `${labels.amount} ${totalsText.amount}`,
+    ...(payments ? [`${labels.paid} ${totalsText.paid}`, `${labels.pending} ${totalsText.pending}`] : []),
+  ].join(', ');
 
   // The Total row: one element for TalkBack, in the columns of the rows above it.
   const footer = (
@@ -600,7 +613,7 @@ function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: 
       <View style={cell.grow}>
         <Text style={cell.primaryStrong}>{totalsText.month}</Text>
         {layoutName === 'full' ? null : <Text style={cell.secondary}>{tr('reports.shared.labelValue', { label: labels.invoices, value: totalsText.invoices })}</Text>}
-        {layoutName === 'compact' ? (
+        {layoutName === 'compact' && payments ? (
           <>
             <Text style={cell.secondary}>{tr('reports.shared.labelValue', { label: labels.paid, value: totalsText.paid })}</Text>
             <Text style={cell.secondary}>{tr('reports.shared.labelValue', { label: labels.pending, value: totalsText.pending })}</Text>
@@ -609,7 +622,7 @@ function MonthlyBreakdown({ months, totals }: { months: InvoiceMonth[]; totals: 
       </View>
       {layoutName === 'full' ? <Text style={[cell.numberStrong, { width: widths.invoices }]} {...ONE_LINE}>{totalsText.invoices}</Text> : null}
       <Text style={[cell.numberStrong, { width: widths.amount }]} {...ONE_LINE}>{totalsText.amount}</Text>
-      {layoutName === 'compact' ? null : (
+      {layoutName === 'compact' || !payments ? null : (
         <>
           <Text style={[cell.numberStrong, { width: widths.paid }]} {...ONE_LINE}>{totalsText.paid}</Text>
           <Text style={[cell.numberStrong, { width: widths.pending }]} {...ONE_LINE}>{totalsText.pending}</Text>
@@ -674,22 +687,25 @@ interface InvoiceCardProps {
   words: string[];
   /** The date is on the card when no heading above it gives it. */
   showDate: boolean;
+  /** The facility records payments: the Paid / Pending tag and the part-paid lines are shown (a Cancelled tag always is). */
+  payments: boolean;
   onOpen: (invoiceId: string) => void;
 }
 
-const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen }: InvoiceCardProps) {
+const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, payments, onOpen }: InvoiceCardProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const number = tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) });
   const grn = invoice.grn_ref ? tr('reports.customerActivity.grnNumber', { number: formatIdentifier(invoice.grn_ref) }) : '';
   // Paid only when nothing is owed, whatever the server's word is; a part-paid invoice is Pending.
   const payment = invoicePayment(invoice);
-  const status = invoicePaymentStatus(payment.status);
+  const cancelled = payment.status === 'cancelled';
+  const status = payments || cancelled ? invoicePaymentStatus(payment.status) : null;
   const items = formatCount(invoice.item_count, 'item');
   const amount = formatAmount(invoice.total);
   // A part-paid invoice says what was received and what is still owed, in the words of the tiles and the
   // table, of which these two amounts are its share. The amount above stays the invoice's.
-  const paymentFacts = payment.partPaid
+  const paymentFacts = payments && payment.partPaid
     ? [
         tr('reports.shared.labelValue', { label: tr('reports.customerActivity.paid'), value: formatAmount(payment.received) }),
         tr('reports.shared.labelValue', { label: tr('common.pending'), value: formatAmount(payment.balance) }),
@@ -697,13 +713,13 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
     : [];
   const matched = hiddenMatches(invoice, words, [number, grn]);
   const label = [
-    tr('reports.invoiceHistory.cardLabel', {
+    tr(status ? 'reports.invoiceHistory.cardLabel' : 'reports.invoiceHistory.cardLabelPlain', {
       number: formatIdentifier(invoice.invoice_number),
       // The date is read with the card: a heading above it is not.
       subtitle: [formatIndiaSpokenDate(invoice.invoice_date), grn].filter(Boolean).join(' · '),
       amount,
       items,
-      status: status.label,
+      status: status?.label ?? '',
     }),
     ...paymentFacts,
     ...matched,
@@ -733,7 +749,7 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, onOpen
         <View style={styles.figures}>
           <Text style={styles.amount}>{amount}</Text>
           <Text style={styles.amountLabel}>{items}</Text>
-          <StatusTag status={status.kind} label={status.label} />
+          {status ? <StatusTag status={status.kind} label={status.label} /> : null}
         </View>
 
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />

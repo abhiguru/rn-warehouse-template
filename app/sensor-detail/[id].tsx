@@ -16,7 +16,7 @@
  * not update. An administrator has an Edit button in the header (app/sensor-edit/[id].tsx).
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import {
   View,
   Text,
@@ -44,7 +44,7 @@ import {
   trackedText,
 } from '@/theme/tokens';
 import type { SensorHistoryPeriod, SensorHistorySummary } from '@/types/sensor-history.types';
-import { formatDateTime } from '@/utils/formatters';
+import { formatDateTime, formatSpokenDateTime, toLocalISODate } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { StatusTag } from '@/components/ui';
 import { batteryFact, chartThresholds, connectionStatus, isQuiet, lastKnownText, readingTime, rowStatus } from '@/features/sensors/sensorStatus';
@@ -54,6 +54,11 @@ import { useFacilityCapabilities } from '@/hooks/useCapability';
 import { useAppSelector } from '@/store/hooks';
 import { useSensorDevice, useSensorHistory } from '@/features/sensors/useSensorQueries';
 import { useSensorLiveUpdates } from '@/hooks/useSensorLiveUpdates';
+import { rpcSupport, subscribeRpcSupport } from '@/config/facilityRpcSupport';
+import { buildSensorCsv, rangeOfLastDays, selectablePeriods } from '@/features/sensors/sensorHourly';
+import { getSensorHourlyRows } from '@/services/sensor-hourly-service';
+import { shareCsvFile } from '@/utils/shareDocument';
+import { showAlert } from '@/utils/alert';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -63,21 +68,39 @@ const ALL_PERIOD_OPTIONS: { value: SensorHistoryPeriod; days: number }[] = [
   { value: 14, days: 14 },
   { value: 30, days: 30 },
   { value: 90, days: 90 },
+  // 6 months and 2 years come from the hourly summary (backend migration 136); 1 year is read from it too when it is there.
+  { value: 183, days: 183 },
   { value: 365, days: 365 },
+  { value: 730, days: 730 },
 ];
 
+/** The words of a period that is not a count of days: `sensors.period.<name><Suffix>`. */
+const periodName = (days: SensorHistoryPeriod): 'Year' | 'Months6' | 'Years2' | null =>
+  days === 365 ? 'Year' : days === 183 ? 'Months6' : days === 730 ? 'Years2' : null;
+
 /** "7 days", "1 year": the chip of a period. */
-const periodLabel = (days: SensorHistoryPeriod): string =>
-  days === 365 ? tr('sensors.period.year') : tr('sensors.period.days', { days });
+const periodLabel = (days: SensorHistoryPeriod): string => {
+  const name = periodName(days);
+  return name === 'Year' ? tr('sensors.period.year') : name === 'Months6' ? tr('sensors.period.months6') : name === 'Years2' ? tr('sensors.period.years2') : tr('sensors.period.days', { days });
+};
 /** "Last 7 days": the spoken name of a period chip. */
-const lastPeriodLabel = (days: SensorHistoryPeriod): string =>
-  days === 365 ? tr('sensors.period.lastYear') : tr('sensors.period.lastDays', { days });
+const lastPeriodLabel = (days: SensorHistoryPeriod): string => {
+  const name = periodName(days);
+  return name === 'Year' ? tr('sensors.period.lastYear') : name === 'Months6' ? tr('sensors.period.lastMonths6') : name === 'Years2' ? tr('sensors.period.lastYears2') : tr('sensors.period.lastDays', { days });
+};
 /** "Summary, last 7 days". */
-const summaryTitle = (days: SensorHistoryPeriod): string =>
-  days === 365 ? tr('sensors.period.summaryYear') : tr('sensors.period.summaryDays', { days });
+const summaryTitle = (days: SensorHistoryPeriod): string => {
+  const name = periodName(days);
+  return name === 'Year' ? tr('sensors.period.summaryYear') : name === 'Months6' ? tr('sensors.period.summaryMonths6') : name === 'Years2' ? tr('sensors.period.summaryYears2') : tr('sensors.period.summaryDays', { days });
+};
 /** "Loading 7 days of history". */
-const loadingHistoryLabel = (days: SensorHistoryPeriod): string =>
-  days === 365 ? tr('sensors.period.loadingYear') : tr('sensors.period.loadingDays', { days });
+const loadingHistoryLabel = (days: SensorHistoryPeriod): string => {
+  const name = periodName(days);
+  return name === 'Year' ? tr('sensors.period.loadingYear') : name === 'Months6' ? tr('sensors.period.loadingMonths6') : name === 'Years2' ? tr('sensors.period.loadingYears2') : tr('sensors.period.loadingDays', { days });
+};
+
+/** The backend's answer about `get_sensor_hourly`: false once it has been seen not to have it. */
+const hourlySupport = (): boolean | undefined => rpcSupport('sensorHourly');
 
 /** Whole days of history the sensor has at `now`, from its first reading. */
 const daysOfData = (firstReadingAt: string | null | undefined, now: number): number => {
@@ -220,6 +243,28 @@ const makeStyles = (t: ThemeTokens) =>
     chipTextSelected: {
       color: t.brand.tint,
     },
+    exportRow: {
+      paddingHorizontal: layout.marginCompact,
+      alignItems: 'flex-start',
+    },
+    exportButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xs,
+      minHeight: touchTarget,
+      paddingHorizontal: space.md,
+      borderRadius: radius.button,
+      borderWidth: 1,
+      borderColor: t.border.button,
+    },
+    exportButtonPressed: {
+      backgroundColor: t.brand.subtle,
+    },
+    exportText: {
+      ...typography.footnote,
+      fontWeight: fontWeight.semibold,
+      color: t.brand.tint,
+    },
     noHistoryText: {
       ...typography.subhead,
       color: t.text.secondary,
@@ -327,11 +372,11 @@ const makeStyles = (t: ThemeTokens) =>
 
 type Styles = ReturnType<typeof makeStyles>;
 
-function KeyValue({ label, value, styles, accessory }: {
-  label: string; value: string; styles: Styles; accessory?: React.ReactNode;
+function KeyValue({ label, value, spokenValue, styles, accessory }: {
+  label: string; value: string; spokenValue?: string; styles: Styles; accessory?: React.ReactNode;
 }) {
   return (
-    <View style={styles.keyValueRow} accessible accessibilityLabel={tr('sensors.labelValue', { label, value })}>
+    <View style={styles.keyValueRow} accessible accessibilityLabel={tr('sensors.labelValue', { label, value: spokenValue ?? value })}>
       <Text style={styles.keyLabel}>{label}</Text>
       {accessory ?? <Text style={styles.keyValue}>{value}</Text>}
     </View>
@@ -363,10 +408,43 @@ const SensorDetailScreen: React.FC = () => {
   // 7 days always (the period asked on opening, even before a whole day of data);
   // the longer periods once the data since the first reading covers them.
   const firstReadingAt = device ? device.first_reading_at ?? device.earliest_reading_at : null;
+  // A backend without migration 136 has no hourly summary: 6 months and 2 years are left out, and so is the export.
+  const hourlyKnown = useSyncExternalStore(subscribeRpcSupport, hourlySupport, hourlySupport);
+  const hourlyMissing = hourlyKnown === false;
   const availablePeriods = useMemo(() => {
     const daysAvailable = daysOfData(firstReadingAt, now);
-    return ALL_PERIOD_OPTIONS.filter((opt) => opt.days <= daysAvailable || opt.days === 7);
-  }, [firstReadingAt, now]);
+    const offered = new Set(selectablePeriods(daysAvailable, hourlyMissing));
+    return ALL_PERIOD_OPTIONS.filter((opt) => offered.has(opt.value));
+  }, [firstReadingAt, now, hourlyMissing]);
+  // A period that has gone from the chips (the backend turned out to be older) is left for the week.
+  useEffect(() => {
+    if (!availablePeriods.some((opt) => opt.value === selectedPeriod)) setSelectedPeriod(7);
+  }, [availablePeriods, selectedPeriod]);
+
+  // Export CSV: the hourly figures of the chosen period, made on the phone and shared (no server file).
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = useCallback(async () => {
+    if (!id || exporting) return;
+    setExporting(true);
+    try {
+      const range = rangeOfLastDays(selectedPeriod, Date.now());
+      const result = await getSensorHourlyRows(id, range);
+      if (!result.success) {
+        showAlert(tr('sensors.hourly.exportFailedTitle'), result.message);
+        return;
+      }
+      if (result.rows.length === 0) {
+        showAlert(tr('sensors.hourly.exportEmptyTitle'), tr('sensors.hourly.exportEmpty'));
+        return;
+      }
+      const name = result.device.name || device?.device_name || 'sensor';
+      const day = (ms: number) => toLocalISODate(new Date(ms));
+      const shared = await shareCsvFile(buildSensorCsv(name, result.rows), `${name}_${day(range.fromMs)}_${day(range.toMs)}.csv`);
+      if (!shared.success) showAlert(tr('sensors.hourly.exportFailedTitle'), tr('sensors.hourly.shareFailed'));
+    } finally {
+      setExporting(false);
+    }
+  }, [id, exporting, selectedPeriod, device?.device_name]);
 
   // A period chip only selects the period; its own query asks for it.
   const handlePeriodChange = useCallback((period: SensorHistoryPeriod) => {
@@ -592,6 +670,7 @@ const SensorDetailScreen: React.FC = () => {
               <KeyValue
                 label={tr('sensors.detail.lastReading')}
                 value={formatDateTime(lastReading)}
+                spokenValue={formatSpokenDateTime(lastReading)}
                 styles={styles}
               />
             ) : null}
@@ -604,6 +683,28 @@ const SensorDetailScreen: React.FC = () => {
             {availablePeriods.length === 1 ? tr('sensors.detail.historyFor', { days: availablePeriods[0].days }) : tr('sensors.detail.history')}
           </Text>
           {availablePeriods.length > 1 ? renderPeriodSelector() : null}
+          {!hourlyMissing ? (
+            <View style={styles.exportRow}>
+              <Pressable
+                style={({ pressed }) => [styles.exportButton, pressed && styles.exportButtonPressed, exporting && { opacity: t.interaction.disabledOpacity }]}
+                onPress={() => void exportCsv()}
+                disabled={exporting}
+                accessibilityRole="button"
+                accessibilityLabel={tr('sensors.hourly.exportA11y', { period: lastPeriodLabel(selectedPeriod) })}
+                accessibilityState={{ disabled: exporting, busy: exporting }}
+                testID="sensor-export-csv"
+              >
+                {exporting ? (
+                  <ActivityIndicator size="small" color={t.brand.tint} />
+                ) : (
+                  <Icon name="file-delimited-outline" size={iconSize.md} color={t.brand.tint} />
+                )}
+                <Text style={styles.exportText} maxFontSizeMultiplier={1.6}>
+                  {exporting ? tr('sensors.hourly.exporting') : tr('sensors.hourly.export')}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         {failure && (

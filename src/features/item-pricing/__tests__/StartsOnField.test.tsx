@@ -124,3 +124,11 @@ it('shows the error of the field instead of the hint', () => {
   const t = mount({ choice: 'other', day: '2021-12-31', error: 'Choose a start date on or after 01/01/22.' });
   expect(textsOf(t)).toContain('Choose a start date on or after 01/01/22.');
 });
+
+it('each date chip is read aloud as a date in words, not as DD/MM/YY', () => {
+  const t = mount();
+  const radios = t.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function');
+  const spoken = radios.map(n => n.props.accessibilityLabel as string);
+  expect(spoken).toEqual(['Today', '1 Nov 2026', '1 Apr 2027', 'Other date']);
+  expect(textsOf(t)).toEqual(expect.arrayContaining(['01/11/26', '01/04/27']));
+});

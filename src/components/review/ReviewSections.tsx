@@ -37,6 +37,8 @@ export interface ReviewSectionProps {
   tag?: string;
   /** Shown under the heading while the section is closed. */
   closedLine?: string | null;
+  /** What a screen reader says for the closed line, when it holds a date ("9 Oct 2026"). */
+  spokenClosedLine?: string | null;
   /** Draws the icon-only pencil beside the chevron, as its own target. */
   onEdit?: () => void;
   editLabel?: string;
@@ -64,6 +66,7 @@ export function ReviewSection({
   count,
   tag,
   closedLine,
+  spokenClosedLine,
   onEdit,
   editLabel,
   open,
@@ -86,6 +89,7 @@ export function ReviewSection({
   const t = useTokens();
   const heading = `${title.toUpperCase()}${count !== undefined ? ` (${formatNumber(count)})` : ''}`;
   const line = !open && closedLine ? closedLine : null;
+  const spokenLine = !open && closedLine ? (spokenClosedLine ?? closedLine) : null;
   const prefix = `${testIDPrefix}-section-${id}`;
   // The whole heading opens and closes the section; the Edit pencil (icon only, the chevron's size, beside it)
   // sits on top of it as its own target (owner, 2026-10-17). The texts and the chevron let touches through to
@@ -102,7 +106,7 @@ export function ReviewSection({
           style={({ pressed }) => [StyleSheet.absoluteFill, pressed && styles.sectionTogglePressed]}
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
-          accessibilityLabel={[title, count !== undefined ? formatNumber(count) : null, tag, line].filter(Boolean).join(', ')}
+          accessibilityLabel={[title, count !== undefined ? formatNumber(count) : null, tag, spokenLine].filter(Boolean).join(', ')}
           testID={prefix}
         />
         <View style={styles.sectionTitleBlock} pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
@@ -169,7 +173,7 @@ export function ReviewKeyValues({ children }: { children: ReactNode }) {
 }
 
 /** A label and its value: side by side, or label over value from font scale 1.5 (§11.4). */
-export function ReviewKeyValue({ label, value, emphasized = false, first = false }: { label: string; value: ReactNode; emphasized?: boolean; first?: boolean }) {
+export function ReviewKeyValue({ label, value, spokenValue, emphasized = false, first = false }: { label: string; value: ReactNode; /** What a screen reader says in place of a text value (a date as "9 Oct 2026"). */ spokenValue?: string; emphasized?: boolean; first?: boolean }) {
   const styles = useThemedStyles(makeStyles);
   const table = useThemedStyles(makeTableStyles);
   const { stacked } = useTableLayout();
@@ -177,7 +181,7 @@ export function ReviewKeyValue({ label, value, emphasized = false, first = false
     <View
       style={[styles.keyValueRow, stacked && styles.keyValueRowStacked, !first && table.nestedDivider]}
       accessible
-      accessibilityLabel={typeof value === 'string' ? `${label}, ${value}` : undefined}
+      accessibilityLabel={typeof value === 'string' ? `${label}, ${spokenValue ?? value}` : undefined}
     >
       <Text style={styles.keyValueLabel}>{label}</Text>
       {typeof value === 'string' ? (

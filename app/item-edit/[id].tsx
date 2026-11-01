@@ -229,7 +229,11 @@ const ItemEditScreen: React.FC = () => {
           { text: tr('common.goBack'), onPress: () => leaveWithoutAsking(() => router.dismissTo('/items')) },
         ]);
       } else {
-        showAlert(tr('items.form.couldNotSaveTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }));
+        // No usable answer: the typed values stay on the form (a Save that meets its own change is a duplicate name or stale).
+        showAlert(
+          tr('items.form.couldNotSaveTitle'),
+          result.lostAnswer ? tr('errors.general.saveNotConfirmedKeepEditing') : serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }),
+        );
       }
     } catch (err) {
       console.error('[ItemEdit] Save error:', err);

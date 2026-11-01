@@ -82,6 +82,13 @@ export const REFUSAL = {
   DISCOUNT_TOTAL_ZERO: 'DISCOUNT_TOTAL_ZERO',
   /** A looked-up rate changed since the form opened (`lines`: disp_trl_id, fields, looked_up, current). */
   RATES_CHANGED: 'RATES_CHANGED',
+  // Backend migration 134 (an invoice is cancelled, never deleted).
+  /** The invoice is already cancelled (`invoice_id`, `cancelled_at`); a cancelled invoice also takes no edit. */
+  INVOICE_CANCELLED: 'INVOICE_CANCELLED',
+  /** A payment refers to the invoice, so it can't be cancelled (`invoice_id`, `payments`). */
+  INVOICE_HAS_PAYMENTS: 'INVOICE_HAS_PAYMENTS',
+  /** The cancel reason is missing, blank, under 3 or over 500 characters (`min`, `max`). */
+  CANCEL_REASON_INVALID: 'CANCEL_REASON_INVALID',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

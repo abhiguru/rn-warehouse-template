@@ -93,7 +93,7 @@ describe('the sections of a new dispatch', () => {
     await render();
 
     expect(['details', 'photos', 'items'].map((section) => pressable(`dispatch-review-section-${section}`).props.accessibilityLabel)).toEqual([
-      'Dispatch details, I0042 · 01/10/26 · Fictional Traders',
+      'Dispatch details, I0042 · 1 Oct 2026 · Fictional Traders',
       'Photos, No photos yet',
       'Items, 2',
     ]);
@@ -114,6 +114,13 @@ describe('the sections of a new dispatch', () => {
     expect(tree.root.findAll((n) => n.props.testID === 'dispatch-review-section-items-line')).toHaveLength(0);
     await press('dispatch-review-section-details');
     expect(textOf(tree.root.find((n) => n.props.testID === 'dispatch-review-section-items-line'))).toEqual(['Total quantity 10']);
+  });
+
+  it('reads the date row in words, while the row shows 01/10/26', async () => {
+    await render();
+    await press('dispatch-review-section-details');
+    expect(tree.root.findAll((n) => n.props.accessibilityLabel === 'Date, 1 Oct 2026').length).toBeGreaterThan(0);
+    expect(textOf(tree.root.find((n) => n.props.testID === 'dispatch-review-body-details'))).toContain('01/10/26');
   });
 
   it('opens one at a time: DETAILS, then PHOTOS, then PHOTOS again to close all', async () => {
@@ -204,5 +211,33 @@ describe('the sections of an edited dispatch', () => {
     const { router } = jest.requireMock('expo-router');
     expect(router.dismissTo).toHaveBeenCalledWith('/dispatch-details/route-dispatch');
     expect(router.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('the lots\' packaging (D18)', () => {
+  const withPackaging = (...packagings: string[]) => {
+    mockForm.items = packagings.map((packaging, n) => ({ ...reviewLine(n + 1), grnItems_packaging: packaging }));
+  };
+  afterEach(() => { mockForm.items = [reviewLine(1), reviewLine(2)]; });
+
+  const labels = () => tree.root.findAll((n) => typeof n.props.accessibilityLabel === 'string').map((n) => n.props.accessibilityLabel as string);
+
+  it('a Box line and the total read "boxes"', async () => {
+    withPackaging('Box', 'Box');
+    await render();
+    expect(labels()).toContain('Item 1, Fictional item 1, mark M1, GRN A101, quantity 5 boxes, 50 kg each, Rack R1, Received 100 boxes, 35 left');
+    expect(labels()).toContain('Total: 2 item lines from 2 GRNs, 10 boxes dispatched');
+  });
+
+  it('lots counted in different things total in "units"; a lot of another packaging stays a bag', async () => {
+    withPackaging('Box', 'Crate');
+    await render();
+    expect(labels()).toContain('Total: 2 item lines from 2 GRNs, 10 units dispatched');
+    expect(labels().some((label) => label.startsWith('Item 2,') && label.includes('quantity 5 crates'))).toBe(true);
+
+    withPackaging('Jute', 'Unit');
+    await act(async () => { tree.unmount(); });
+    await render();
+    expect(labels()).toContain('Total: 2 item lines from 2 GRNs, 10 bags dispatched');
   });
 });

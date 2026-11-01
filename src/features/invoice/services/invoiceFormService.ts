@@ -530,6 +530,7 @@ export const loadInvoiceFormData = async (
       const packageMark = item.grn_items_package_mark || item.package_mark || '';
       const rack = item.grn_items_rack || item.rack || '';
       const weight = item.grn_items_weight || item.weight || 0;
+      const packaging = item.grn_items_packaging || item.packaging || null;
 
       const dispatchId = item.dispatches_id || item.dispatch_id || '';
       const dispatchNo = item.dispatches_no || item.dispatch_no || '';
@@ -572,6 +573,7 @@ export const loadInvoiceFormData = async (
         package_mark: packageMark,
         rack: rack,
         weight: weight,
+        packaging,
 
         // Dispatch details
         dispatch_id: dispatchId,
@@ -840,7 +842,7 @@ const sendCreateInvoice = async (
 
     if (error) {
       // A number taken is the server's answer, not a fault: info, no red banner.
-      (numberTakenFrom(error, payload.header.inv_no) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'RPC error:', errorForLog(error));
+      (numberTakenFrom(error, payload.header.inv_no) || isLostAnswer(error) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'RPC error:', errorForLog(error));
       // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
       if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);
@@ -938,6 +940,17 @@ export const loadInvoiceData = async (
     // Backend returns: { success, invoice: {...}, items: [...] }
     const header = data.invoice;
     const items = data.items || [];
+
+    // A cancelled invoice cannot be changed (server migration 134): the edit wizard is not opened for it.
+    if (header?.cancelled_at) {
+      return {
+        success: false,
+        data: { header: { customer_id: '', customer_name: '', gr_id: '', gr_no: '' }, items: [] },
+        message: t('invoice.cancel.cannotChange'),
+        // Nothing a second try can change: the screen offers no Try again.
+        code: 'cancelled',
+      };
+    }
 
     // Defensive check: ensure we have the invoice header
     if (!header) {
@@ -1048,6 +1061,7 @@ export const loadInvoiceData = async (
         package_mark: item.package_mark || '',
         rack: item.rack || '',
         weight: item.weight || 0,
+        packaging: item.packaging || null,
 
         // Dispatch details - now available from backend
         dispatch_id: item.dispatch_id || '',
@@ -1173,7 +1187,8 @@ export const updateInvoice = async (
     });
 
     if (error) {
-      invoiceFormLogger.error('RPC error:', errorForLog(error));
+      // A number taken, or no answer at all, is not a fault of the app: info, no red banner (as createInvoice).
+      (numberTakenFrom(error, payload.header.inv_no) || isLostAnswer(error) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'RPC error:', errorForLog(error));
       // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
       if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);
@@ -1216,7 +1231,7 @@ export const updateInvoice = async (
     }
     return await updatedInvoice(authenticatedClient, result, invoiceId, payload);
   } catch (error: any) {
-    invoiceFormLogger.error('Error updating invoice:', errorForLog(error));
+    (error instanceof NumberTakenError || isServerRefusal(error) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'Error updating invoice:', errorForLog(error));
     // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
     if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now(), requestKey);
     reportSaveError(error, { requestKey });

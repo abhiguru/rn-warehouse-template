@@ -378,6 +378,8 @@ export const reports = {
     emptyDescription: 'Choose a longer period to see older invoices.',
     // Invoice and customer rows
     cardLabel: 'Invoice {{number}}, {{subtitle}}, {{amount}}, {{items}}, {{status}}',
+    // The same without a status, where the facility records no payments (a cancelled invoice keeps its status).
+    cardLabelPlain: 'Invoice {{number}}, {{subtitle}}, {{amount}}, {{items}}',
     openHint: 'Opens the invoice',
     customerHint: "Shows this customer's invoices",
     latestInvoice: 'Latest {{date}}',

@@ -24,6 +24,8 @@ export interface InvoicePaymentStatusInfo {
 
 export function invoicePaymentStatus(status: string | null | undefined): InvoicePaymentStatusInfo {
   if (status === 'paid') return { kind: 'positive', label: tr('reports.customerActivity.paid') };
+  // Backend migration 134: a cancelled invoice is told apart and counted in no sum.
+  if (status === 'cancelled') return { kind: 'negative', label: tr('invoice.cancel.tag') };
   if (status === 'pending') return { kind: 'critical', label: tr('common.pending') };
   return { kind: 'neutral', label: tr('common.unknown') };
 }

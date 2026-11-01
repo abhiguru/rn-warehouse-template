@@ -14,6 +14,7 @@ import { t as tr } from '@/i18n';
 import { iconSize, space, typography } from '@/theme/tokens';
 import { formatNumber, formatWeightEach } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { packNoun, sharedPackaging } from '@/utils/packagingWord';
 import type { InvoiceItemGroup } from '@/features/invoice/utils/groupInvoiceItems';
 import type { ItemsStyles } from './itemsStyles';
 
@@ -47,7 +48,7 @@ export const GroupHead = React.memo(function GroupHead({ group, groupKey, total,
   const mark = group.package_mark?.trim() ?? '';
   // One tag for each weight of the group's lots, lightest first; a group with no weight has none.
   const weights = [...new Set(group.weights_each.map((weight) => formatWeightEach(weight)).filter((text): text is string => text !== null))];
-  const dispatched = tr('invoice.items.dispatchedOf', { dispatched: formatNumber(group.total_dispatched), received: formatNumber(group.gr_quantity) });
+  const dispatched = tr('invoice.items.dispatchedOf', { dispatched: formatNumber(group.total_dispatched), received: formatNumber(group.gr_quantity), things: packNoun(sharedPackaging(group.allItems.map((line) => line.packaging))) });
   const spoken = [
     group.item_name,
     mark ? tr('invoice.items.markA11y', { mark }) : null,

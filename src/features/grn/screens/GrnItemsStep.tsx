@@ -373,6 +373,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
   const showFirstError = (errors: Record<string, string>) => {
     if (errors.item_table_id || errors.item_name) {
       formRef.current?.resetScroll();
+      formRef.current?.focusField('item');
       return;
     }
     const field = FIELDS_AFTER_ITEM.find((name) => errors[name]);

@@ -23,7 +23,7 @@ Prerequisites:
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
-npm ci                       # runs the two postinstall patches
+npm ci                       # runs the three postinstall patches
 node scripts/create-env.mjs  # creates .env only if it is absent
 npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
 # in .env set EXPO_PUBLIC_CONFIG_API_URL=https://… (the backend origin), then:
@@ -31,10 +31,11 @@ npm run doctor               # read-only check against an installed backend
 npm run android              # native debug build on a device or emulator
 ```
 
-`npm ci` applies two postinstall patches to installed packages
-(`scripts/patch-expo-metro.mjs` and
-`scripts/patch-security-backports.mjs`); `npm run verify:backports` re-checks
-them against `scripts/security-backports.json`. An install with npm scripts
+`npm ci` applies three postinstall patches to installed packages
+(`scripts/patch-expo-metro.mjs`, `scripts/patch-security-backports.mjs` and
+`scripts/patch-paper-dates.mjs`, whose edits are pinned in
+`scripts/paper-dates-patch.json`); `npm run verify:backports` re-checks
+the security backports against `scripts/security-backports.json`. An install with npm scripts
 turned off (`--ignore-scripts`) skips them silently, so `npm start`,
 `npm run android`, `npm run ios`, `npm run web` and `npm test` first run
 `scripts/check-install.mjs`, which stops when a patch is missing. `bash setup.sh` runs the same
@@ -54,7 +55,7 @@ The quickest look needs only Node.js (22.18+, 24.3+ or 26+) and npm: no JDK and 
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
-npm ci                       # keep npm scripts on: the two postinstall patches are needed
+npm ci                       # keep npm scripts on: the three postinstall patches are needed
 node scripts/create-env.mjs  # creates .env only if it is absent
 # in .env set EXPO_PUBLIC_CONFIG_API_URL=https://warehouse.example.com (the backend origin), then:
 npm run check:backend        # read-only check of that backend (no JDK or Android SDK needed)

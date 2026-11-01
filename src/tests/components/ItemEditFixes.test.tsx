@@ -110,3 +110,21 @@ describe('CR-64: the header is symmetric', () => {
     expect(title.flex).toBeUndefined();
   });
 });
+
+describe('an item save that got no usable answer', () => {
+  it('keeps what was typed, says so, and does not read the item again', async () => {
+    jest.mocked(itemService.getItemById).mockResolvedValue({
+      success: true, message: '', data: { id: 'i2', name: 'Garlic', packaging: 'Bag', description: '', active: true },
+    } as never);
+    jest.mocked(itemService.updateItem).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' } as never);
+    await act(async () => { tree = create(<ItemEditScreen />); });
+    const field = tree!.root.findAll((n) => typeof n.props.onChangeText === 'function' && n.props.value === 'Garlic')[0];
+    await act(async () => { field.props.onChangeText('Garlic Peeled'); });
+    const save = tree!.root.findAll((n) => typeof n.props.onPress === 'function' && /^Save/i.test(String(n.props.accessibilityLabel ?? '')))[0];
+    await act(async () => { await save.props.onPress(); });
+
+    expect(lastAlert().message).toBe("We couldn't confirm the save. Your changes are still here: check them and tap Save again.");
+    expect(itemService.getItemById).toHaveBeenCalledTimes(1);
+    expect(tree!.root.findAll((n) => typeof n.props.onChangeText === 'function' && n.props.value === 'Garlic Peeled').length).toBeGreaterThan(0);
+  });
+});

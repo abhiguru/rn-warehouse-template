@@ -92,3 +92,12 @@ describe('lastSeenText', () => {
     expect(lastSeenText(null, now)).toBe('હજુ સંપર્ક થયો નથી');
   });
 });
+
+describe('lastSeenText for a screen reader', () => {
+  it('a time older than a day is read as a date in words, while the screen keeps DD/MM/YY', () => {
+    const now = new Date('2026-10-14T12:00:00.000Z');
+    const old = new Date('2026-10-09T08:00:00.000Z').toISOString();
+    expect(lastSeenText(old, now)).toBe('Last seen 09/10/26');
+    expect(lastSeenText(old, now, true)).toBe('Last seen 9 Oct 2026');
+  });
+});

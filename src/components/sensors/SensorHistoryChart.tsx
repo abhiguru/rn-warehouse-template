@@ -46,6 +46,8 @@ import {
   formatMonth,
   formatTemperature as formatTemperatureValue,
   toDate,
+  formatSpokenDate,
+  formatSpokenDateTime,
 } from '@/utils/formatters';
 import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 
@@ -87,6 +89,11 @@ function formatReadingTime(timestamp: string, withTime: boolean): string {
   return withTime ? formatDateTime(timestamp) : formatDate(timestamp);
 }
 
+/** The same moment in words for a screen reader: "9 Oct 2026" or "9 Oct 2026, 4:05 pm". */
+function formatSpokenReadingTime(timestamp: string, withTime: boolean): string {
+  return withTime ? formatSpokenDateTime(timestamp) : formatSpokenDate(timestamp);
+}
+
 /** A reading value, or null when the sensor sent nothing for that interval. */
 function present(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && !isNaN(value);
@@ -110,7 +117,13 @@ export function temperatureDomain(
   thresholds: number[] = [],
   sections = 4
 ): TemperatureDomain {
-  const values = [...readings.map(r => r.temperature).filter(present), ...thresholds];
+  const values = [
+    ...readings.map(r => r.temperature).filter(present),
+    // A long period also draws each point's lowest and highest.
+    ...readings.map(r => r.temperature_min).filter(present),
+    ...readings.map(r => r.temperature_max).filter(present),
+    ...thresholds,
+  ];
   if (values.length === 0) return { min: 0, max: 10, sections };
   const lo = Math.min(...values);
   const hi = Math.max(...values);
@@ -211,7 +224,7 @@ function ReadingsTable({ readings, showTime }: { readings: SensorHistoryReading[
       list="flat"
       rowLabel={row =>
         tr('sensors.chart.rowLabel', {
-          time: formatReadingTime(row.original.timestamp, showTime),
+          time: formatSpokenReadingTime(row.original.timestamp, showTime),
           temperature: formatTemperature(row.original.temperature),
           humidity: formatHumidity(row.original.humidity),
         })
@@ -473,8 +486,8 @@ type Styles = ReturnType<typeof makeStyles>;
 // Pieces
 // ============================================================================
 
-function Legend({ styles, tempColour, humidityColour, withUnits }: {
-  styles: Styles; tempColour: string; humidityColour: string; withUnits?: boolean;
+function Legend({ styles, tempColour, humidityColour, withUnits, withRange }: {
+  styles: Styles; tempColour: string; humidityColour: string; withUnits?: boolean; withRange?: boolean;
 }) {
   return (
     <View style={styles.legend} accessible accessibilityLabel={tr('sensors.chart.legend')}>
@@ -488,6 +501,12 @@ function Legend({ styles, tempColour, humidityColour, withUnits }: {
           {withUnits ? tr('sensors.chart.legendHumidityUnit') : tr('sensors.humidity')}
         </Text>
       </View>
+      {withRange ? (
+        <View style={styles.legendItem}>
+          <View style={[styles.legendSwatch, { backgroundColor: tempColour, opacity: 0.5 }]} />
+          <Text style={styles.legendText}>{tr('sensors.chart.legendRange')}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -573,8 +592,12 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
       label: '', // Only show labels on temp line
       ...(compactLabels ? {} : { dataPointText: formatHumidity(r.humidity) }),
     }));
-    return { temp, humidity };
+    // A long period (from the hourly summary) also has the lowest and highest of each point: two thin dashed lines.
+    const tempRange = (pick: (r: SensorHistoryReading) => number | null | undefined): SensorChartDataPoint[] =>
+      readings.map(r => ({ value: present(pick(r)) ? (pick(r) as number) : undefined, label: '' }));
+    return { temp, humidity, tempMin: tempRange(r => r.temperature_min), tempMax: tempRange(r => r.temperature_max) };
   };
+  const hasRange = readings.some(r => present(r.temperature_min) || present(r.temperature_max));
 
   const compactData = useMemo(() => buildSeries(3, true), [readings, periodDays, domain, maxHumidity]);
   // Fullscreen data with more labels
@@ -623,6 +646,22 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
     });
     return props;
   };
+
+  const rangeProps = (series: { tempMin: SensorChartDataPoint[]; tempMax: SensorChartDataPoint[] }) =>
+    hasRange
+      ? {
+          data2: series.tempMin,
+          data3: series.tempMax,
+          color2: tempColour,
+          color3: tempColour,
+          thickness2: 1,
+          thickness3: 1,
+          strokeDashArray2: [4, 4],
+          strokeDashArray3: [4, 4],
+          hideDataPoints2: true,
+          hideDataPoints3: true,
+        }
+      : {};
 
   const sharedChartProps = {
     yAxisLabelWidth: axisLabelWidth,
@@ -692,7 +731,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
           </View>
         </View>
 
-        <Legend styles={styles} tempColour={tempColour} humidityColour={humidityColour} withUnits />
+        <Legend styles={styles} tempColour={tempColour} humidityColour={humidityColour} withUnits withRange={hasRange} />
 
         <View
           testID="sensor-chart-area"
@@ -703,6 +742,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
           <LineChart
             {...sharedChartProps}
             {...thresholdProps('compact')}
+            {...rangeProps(compactData)}
             xAxisLabelTextStyle={[styles.axisLabel, { width: dateLabelWidth, textAlign: 'center' }]}
             labelsExtraHeight={Math.max(0, Math.round(16 * (fontScale - 1)))}
             data={compactData.temp}
@@ -781,7 +821,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
             </View>
             {fullscreenView === 'chart' && (
               <>
-                <Legend styles={styles} tempColour={tempColour} humidityColour={humidityColour} withUnits />
+                <Legend styles={styles} tempColour={tempColour} humidityColour={humidityColour} withUnits withRange={hasRange} />
                 <View style={styles.instructions}>
                   <Icon name="gesture-swipe-horizontal" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={styles.instructionText}>{tr('sensors.chart.instructions')}</Text>
@@ -800,6 +840,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
                 <LineChart
                   {...sharedChartProps}
                   {...thresholdProps('full')}
+                  {...rangeProps(fullscreenData)}
                   data={fullscreenData.temp}
                   secondaryData={fullscreenData.humidity}
                   width={fsWidth}

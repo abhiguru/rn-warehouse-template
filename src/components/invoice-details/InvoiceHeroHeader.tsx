@@ -13,6 +13,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatNumber, formatSpokenDate, toDate } from '@/utils/formatters';
 import { t, formatIdentifier, getLanguage } from '@/i18n';
+import { StatusTag } from '@/components/ui/StatusTag';
 
 // ============================================================================
 // TYPES
@@ -24,6 +25,8 @@ interface InvoiceHeroHeaderProps {
   total_amount: number;
   tax_amount: number;
   customer_name?: string;
+  /** The invoice is cancelled (migration 134): a Cancelled tag under the number, for staff and customers. */
+  cancelled?: boolean;
 }
 
 const formatHeaderDate = (value: string) => (toDate(value) ? formatDate(value) : '');
@@ -92,6 +95,7 @@ const makeStyles = (t: ThemeTokens) => ({
   factsRowCompactNoTop: { marginTop: 0, borderTopWidth: 0, paddingTop: 0 },
   factsRowOne: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, gap: space.md },
   factOne: { flexDirection: 'column' as const, alignItems: 'flex-start' as const, justifyContent: 'flex-start' as const, gap: 0, flexShrink: 1 },
+  cancelledTag: { marginTop: space.sm },
   subtitleCompact: { marginTop: 0 },
 });
 
@@ -105,6 +109,7 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
   total_amount,
   tax_amount,
   customer_name,
+  cancelled = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const { fontScale, width: windowWidth } = useWindowDimensions();
@@ -152,6 +157,12 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
         {!compact && <Text style={styles.number} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{invoice_number}</Text>}
         {subtitle ? <Text style={[styles.subtitle, compact && styles.subtitleCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{subtitle}</Text> : null}
       </View>
+      )}
+
+      {cancelled && (
+        <View style={styles.cancelledTag}>
+          <StatusTag status="negative" label={t('invoice.cancel.tag')} icon="cancel" testID="invoice-cancelled-tag" />
+        </View>
       )}
 
       <View style={[styles.factsRow, compact && styles.factsRowCompact, compact && !subtitle && styles.factsRowCompactNoTop, oneRow && styles.factsRowOne]}>

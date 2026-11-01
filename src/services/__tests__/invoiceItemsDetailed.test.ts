@@ -90,3 +90,13 @@ it('does not take a tax amount for the tax rate when the rate is zero', async ()
   expect(line.tax).toBe(0);
   expect(line.taxAmount).toBe(175);
 });
+
+it('names the lot\'s own packaging word, not the catalog\'s; a lot with none reads blank (bag)', async () => {
+  const packagingOf = async (line: Record<string, unknown>) => {
+    mockAnswer({ success: true, data: { items: [line], summary: {} } });
+    return (await getInvoiceItemsDetailed('inv-1')).data!.items[0].packaging;
+  };
+  const lot = (packaging?: string) => ({ ...serverLine.grn_item, packaging });
+  expect(await packagingOf({ ...serverLine, catalog: { ...serverLine.catalog, packaging: 'Crate' }, grn_item: lot('Box') })).toBe('Box');
+  expect(await packagingOf({ ...serverLine, packaging: undefined, catalog: { ...serverLine.catalog, packaging: 'Box' }, grn_item: lot(undefined) })).toBe('');
+});

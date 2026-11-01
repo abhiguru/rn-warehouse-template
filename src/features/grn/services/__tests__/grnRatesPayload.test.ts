@@ -209,3 +209,18 @@ describe('updateGRN header values that were switched off or cleared', () => {
     expect(body.p_registration).toBe('GJ01AB1234');
   });
 });
+
+describe('createGRN vehicle number (App 94)', () => {
+  const createdWith = async (registration: string) => {
+    mockRpc.mockReset();
+    mockRpc.mockResolvedValue(created);
+    await createGRN({ header: { ...header, registration }, items, rates });
+    return mockRpc.mock.calls[0][1];
+  };
+
+  it('sends the vehicle number with its spaces tidied, and spaces only as null', async () => {
+    expect((await createdWith(' GJ01  AB1234 ')).p_registration).toBe('GJ01 AB1234');
+    expect((await createdWith('   ')).p_registration).toBeNull();
+    expect((await createdWith('')).p_registration).toBeNull();
+  });
+});

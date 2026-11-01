@@ -400,3 +400,17 @@ describe('D4: an invoiced GRN sends its stored set back unchanged', () => {
     expect(buildRates({ grnRates: [stored], changes: [change], ctx, lines })).toHaveLength(0);
   });
 });
+
+describe('a GRN dated before the item\'s first rate', () => {
+  it('is priced with that first rate, so nothing is missing; a customer\'s first rate does not reach back', () => {
+    const r = [row('gur', 0, 100, 3, '2026-10-20'), row('rice', 0, 100, 2, '2026-01-01'), row('rice', 0, 100, 2.5, '2026-10-20', null, CUST)];
+    const priced = priceRows([ROW('gur', 12), ROW('rice', 12)], { rates: r, ctx, grnRates: [], changes: [] });
+    expect(priced.map(p => [p.rate?.source, p.rate?.unit_price])).toEqual([['item', 3], ['item', 2]]);
+    expect(missingCount(priced)).toBe(0);
+  });
+
+  it('an item with a customer rate only still has no rate', () => {
+    const priced = priceRows([ROW('gur', 12)], { rates: [row('gur', 0, 100, 3, '2026-10-20', null, CUST)], ctx, grnRates: [], changes: [] });
+    expect(missingCount(priced)).toBe(1);
+  });
+});

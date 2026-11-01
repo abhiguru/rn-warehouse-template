@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — app 0.7.0: the backend audit follow-ups (needs backend migrations 134, 136, 139, 140; floor 127)
+
+- **Version 0.7.0.** `MIN_BACKEND_MIGRATION` is 127: a facility whose public config says its newest migration is lower sees "This facility's server
+  needs an update" and cannot be used; a backend that does not say is never blocked.
+- **An invoice is cancelled, not deleted (migration 134).** "Cancel invoice" asks for a reason of 3 to 500 characters; a cancelled invoice shows a
+  Cancelled tag, the date and reason, cannot be edited, and is left out of the Paid, Pending and month figures of the invoice reports.
+- **Payments (migration 139).** Paid and Pending figures, tags and the Payment filter show only where `capabilities.payments` is true (off by default).
+- **Sensor history (migration 136).** 6 months, 1 year and 2 years from the hourly summary, with the lowest and highest, and Export CSV.
+- **Signed-in devices (migration 140).** The administrator's user page lists a person's devices and signs one out.
+- **Order lists** keep rows beyond 200 on a silent refresh (the server's page is held to 200, migration 135).
+- **Direct reads** that can pass the 2,000-row cut (GRN lines, GRN photos, own businesses) are paged (migrations 137 and 138).
+
 ## Unreleased — follow-ups to the device re-test
 
 Needs backend migration 133 for the no-rate check, the dispatch list packaging and the prefix buttons (rate history is app-only); the app still works on older servers (each falls back as noted).

@@ -61,13 +61,13 @@ const ItemPriceHistoryCard = memo<ItemPriceHistoryCardProps>(({ entry }) => {
     if (sides === 'both' && !change.only) {
       const before = priceHistoryValueText(change.field, change.before);
       const after = priceHistoryValueText(change.field, change.after);
-      return { field: change.field, label, before, after, old: false, spoken: tr('pricing.history.changeLabel', { label, old: before, new: after }) };
+      return { field: change.field, label, before, after, old: false, spoken: tr('pricing.history.changeLabel', { label, old: priceHistoryValueText(change.field, change.before, true), new: priceHistoryValueText(change.field, change.after, true) }) };
     }
     // One value: of a price that was added (new) or deleted (old), or, when the price type
     // changed, the old price under the old type's label and the new one under the new.
     const old = change.only ? change.only === 'before' : sides === 'before';
     const value = priceHistoryValueText(change.field, old ? change.before : change.after);
-    return { field: change.field, label, before: null, after: value, old: !!change.only && old, spoken: tr('pricing.form.labelValue', { label, value }) };
+    return { field: change.field, label, before: null, after: value, old: !!change.only && old, spoken: tr('pricing.form.labelValue', { label, value: priceHistoryValueText(change.field, old ? change.before : change.after, true) }) };
   });
 
   const removed = isTruncate ? truncatedPriceCount(entry.old_values) : null;

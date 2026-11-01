@@ -21,7 +21,7 @@ export type CapabilityName = keyof FacilityCapabilities;
 
 type ServerIdentity = { origin: string; instanceId: string };
 
-const NAMES: readonly CapabilityName[] = ['printing', 'sensors', 'realtime', 'customerDocuments'];
+const NAMES: readonly CapabilityName[] = ['printing', 'sensors', 'realtime', 'customerDocuments', 'payments'];
 
 const byServer = new Map<string, FacilityCapabilities>();
 const listeners = new Set<() => void>();
@@ -29,7 +29,7 @@ const listeners = new Set<() => void>();
 const keyOf = (server: ServerIdentity): string => `${server.origin}|${server.instanceId}`;
 
 /**
- * The four capabilities from a config's `capabilities` value: each known key that is true
+ * The capabilities from a config's `capabilities` value: each known key that is true
  * or false is taken, anything else (a missing key, a string, a number, an unknown key, a
  * value that is not an object) leaves the demo default.
  */

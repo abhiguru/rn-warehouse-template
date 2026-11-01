@@ -352,6 +352,8 @@ export const reports: Translation<typeof source> = {
     emptyDescription: 'જૂના ઇન્વૉઇસ જોવા લાંબો સમયગાળો પસંદ કરો.',
     // Invoice and customer rows
     cardLabel: 'ઇન્વૉઇસ {{number}}, {{subtitle}}, {{amount}}, {{items}}, {{status}}',
+    // The same without a status, where the facility records no payments (a cancelled invoice keeps its status).
+    cardLabelPlain: 'ઇન્વૉઇસ {{number}}, {{subtitle}}, {{amount}}, {{items}}',
     openHint: 'ઇન્વૉઇસ ખોલે છે',
     customerHint: 'આ વેપારીના ઇન્વૉઇસ બતાવે છે',
     latestInvoice: 'છેલ્લું {{date}}',

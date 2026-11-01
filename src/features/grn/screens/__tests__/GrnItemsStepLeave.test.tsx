@@ -386,6 +386,24 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
     expect(mockFormRef.resetScroll).not.toHaveBeenCalled();
   });
 
+  it('a correction with no item: OK on the refusal scrolls the row back to the start and gives the Item field the cursor (D7)', async () => {
+    const tree = await render('edit', lines(10));
+    await openRow(tree, 5);
+    set(tree, 'item_table_id', '');
+    set(tree, 'item_name', '');
+    await pressNext(tree);
+    await answer('Save changes');
+    expect(lastAlert()?.[1]).toBe('Fix the highlighted fields, then save the item.');
+    expect(Object.keys(form(tree).props.currentItem.errors)).toContain('item_table_id');
+    // Not while the alert is still open.
+    expect(mockFormRef.focusField).not.toHaveBeenCalled();
+
+    await answer('OK');
+
+    expect(mockFormRef.resetScroll).toHaveBeenCalledTimes(1);
+    expect(mockFormRef.focusField.mock.calls).toEqual([['item']]);
+  });
+
   it('with several fields wrong, the first of the row is the one brought into view', async () => {
     const tree = await render('edit', lines(10));
     await openRow(tree, 5);

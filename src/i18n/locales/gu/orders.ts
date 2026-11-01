@@ -73,6 +73,8 @@ export const orders: Translation<typeof source> = {
     // Draft for the owner's wording review (2026-10-20): the warning on the order line, and the label of − and −10 above the stock.
     overStock: 'સ્ટોકમાં ફક્ત {{stock}} છે. તેને ઘટાડીને {{stock}} કે તેથી ઓછું કરો, અથવા કાઢી નાખો.',
     lowerTo: '{{name}} ને ઘટાડીને {{quantity}} કરો',
+    // Draft for the owner's wording review (2026-11-01): the lot has no stock left.
+    outOfStock: 'સ્ટોક નથી. તેને ઓર્ડરમાંથી કાઢી નાખો.',
   },
   // Drafts for the owner's wording review (2026-10-20): someone else changed the line after this screen read it; nothing was saved.
   refusal: {

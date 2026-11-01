@@ -16,7 +16,7 @@ import {
 } from '@/utils/invoiceCalculations';
 import { InlineValidation } from '@/components/fiori';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
-import { clampDiscount, parseDiscountInput, parseFinalAmountInput } from '@/features/invoice/utils/amountInput';
+import { clampDiscount, discountFieldText, parseDiscountInput, parseFinalAmountInput } from '@/features/invoice/utils/amountInput';
 import { useTableLayout } from '@/components/common/DetailTable';
 import type { TextInputRef } from '@/types/nativeRefs';
 
@@ -57,10 +57,6 @@ const ROUND_BUTTON_SIZE = 36;
 const ROUND_BUTTON_SLOP = Math.ceil((touchTarget - ROUND_BUTTON_SIZE) / 2);
 
 const tabular = { fontVariant: ['tabular-nums' as const] };
-
-/** The text of a discount field: the amount with two decimals ("12.00"), empty for 0 (the placeholder shows the zero). */
-export const discountFieldText = (value: number | null | undefined): string =>
-  typeof value === 'number' && Number.isFinite(value) && value !== 0 ? roundMoney(value).toFixed(2) : '';
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {
@@ -341,6 +337,21 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
     [items, labour, taxAmount, discount, total]
   );
   const hasFreeLine = useMemo(() => hasZeroChargeLine(items), [items]);
+
+  // The base moved, or the summary opened (a charge, labour or tax changed): the discount the invoice already has is checked against the new
+  // base, so a discount that now takes the total to ₹0 shows its sentence here and not only after the question.
+  // A message from text typed in the field stays until that text is corrected.
+  const checkedBase = useRef<number | null>(null);
+  const baseError = useRef(false);
+  useEffect(() => {
+    if (checkedBase.current === base) return;
+    checkedBase.current = base;
+    if (editing.current) return;
+    if (discountError && !baseError.current) return;
+    const parsed = parseDiscountInput(discountFieldText(header.discount), base, formatInvoiceAmount);
+    baseError.current = parsed.error !== null;
+    if (parsed.error !== discountError) setDiscountError(parsed.error);
+  }, [base]);
 
   const handleDiscountFocus = () => {
     editing.current = true;

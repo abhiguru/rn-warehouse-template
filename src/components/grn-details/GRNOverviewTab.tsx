@@ -55,6 +55,10 @@ interface GRNOverviewTabProps {
   is_print_loading?: boolean;
   /** Rates for this GRN only (backend migration 86). */
   rates?: RpcGrnRate[] | null;
+  /** What the GRN's items are counted in (see sharedPackaging): the rates note says "per box" for boxes. */
+  packaging?: string;
+  /** What each lot (GRN item id) is counted in, for the Your-rate page. */
+  packagingByLot?: Record<string, string | null | undefined>;
 }
 
 export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
@@ -76,6 +80,8 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   onPrint,
   is_print_loading = false,
   rates,
+  packaging,
+  packagingByLot,
 }) => {
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
@@ -147,7 +153,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       )}
 
       {/* SECTION: RATES (the rate each item is invoiced at; the GRN-only rates on a server without migration 88) */}
-      <GrnItemRates grnId={grn_id} grnNumber={gr_no} customerId={customer_details?.id} customerName={customer_details?.name} canEdit={can_edit} fallbackRates={rates} />
+      <GrnItemRates grnId={grn_id} grnNumber={gr_no} customerId={customer_details?.id} customerName={customer_details?.name} canEdit={can_edit} fallbackRates={rates} packaging={packaging} packagingByLot={packagingByLot} />
 
       {/* SECTION: NOTES */}
       {note && <NotesSection note={note} />}

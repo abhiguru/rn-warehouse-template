@@ -28,7 +28,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { calculateItemAmounts, roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatPackages, packNounCapital, sharedPackaging } from '@/utils/packagingWord';
 import { t as tr, formatIdentifier } from '@/i18n';
 import {
   ONE_LINE,
@@ -281,7 +282,6 @@ const makeStyles = (t: ThemeTokens) => ({
   loadingText: { ...typography.body, color: t.text.secondary },
 });
 
-const bags = (qty: number) => formatCount(qty, 'bag');
 
 /** "PM · 50 kg each", or null when the lot has neither. */
 const lotLine = (group: Pick<InvoiceLineItemGroupData, 'package_mark' | 'weight'>): string | null => {
@@ -311,6 +311,7 @@ const toReadOnlyLines = (group: InvoiceLineItemGroupData): ReadOnlyLine[] =>
     dispatchId: line.dispatch_id,
     dispatchDate: line.dispatch_date,
     qty: line.dispatch_qty,
+    packaging: group.packaging,
     days: line.no_of_days,
     months: line.duration,
     charge: line.charge_per_unit,
@@ -364,6 +365,9 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     [screen, groups, lotLines]
   );
   const totalBags = groups.reduce((sum, group) => sum + group.total_dispatch_qty, 0);
+  // What the invoice's lots are counted in: one word when they share it, "units" when they differ.
+  const packaging = useMemo(() => sharedPackaging(groups.map((group) => group.packaging)), [groups]);
+  const totalCount = (qty: number) => formatPackages(qty, packaging);
   const totalAmount = roundMoney(groups.reduce((sum, group) => sum + group.total_amount, 0));
   // Each column as wide as its widest value or total; amounts that leave the item column under
   // 25 % of the row move the bags under the item (owner, 2026-10-16), as large text does.
@@ -394,7 +398,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
                 <Text style={styles.primary}>{group.item_name}</Text>
                 {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
                 {table.stacked || rates !== '' ? (
-                  <Text style={styles.secondary}>{nb(table.stacked ? [rates, bags(group.total_dispatch_qty)].filter(Boolean).join(' · ') : rates)}</Text>
+                  <Text style={styles.secondary}>{nb(table.stacked ? [rates, formatPackages(group.total_dispatch_qty, group.packaging)].filter(Boolean).join(' · ') : rates)}</Text>
                 ) : null}
                 {amountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text> : null}
               </>
@@ -406,7 +410,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
           : [
               groupHelper.accessor('total_dispatch_qty', {
                 id: 'bags',
-                header: tr('invoice.detailsTable.bags'),
+                header: packNounCapital(packaging),
                 meta: { width: bagsWidth, numeric: true },
                 cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.total_dispatch_qty)}</Text>,
               }),
@@ -419,7 +423,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
           cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(info.row.original.total_amount)}</Text>,
         }),
       ]),
-    [table.stacked, amountUnder, bagsWidth, amountWidth, styles]
+    [table.stacked, amountUnder, bagsWidth, amountWidth, styles, packaging]
   );
   const grid = useAppTable({ data: groups, columns, getRowId: (group) => group.grn_item_id, getRowCanExpand: () => true, ...open });
 
@@ -456,7 +460,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
         accessibilityLabel={tr('invoice.detailsTable.totalLabel', {
           groups: groupCount,
           lines: lineCount,
-          bags: bags(totalBags),
+          bags: totalCount(totalBags),
           amount: formatInvoiceAmount(totalAmount),
         })}
         testID="invoice-lines-total"
@@ -465,7 +469,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
         <View style={styles.grow}>
           <Text style={styles.primaryStrong}>{tr('invoice.detailsTable.total')}</Text>
           <Text style={styles.secondary}>{nb(`${groupCount} · ${lineCount}`)}</Text>
-          {table.stacked ? <Text style={styles.secondary}>{nb(bags(totalBags))}</Text> : null}
+          {table.stacked ? <Text style={styles.secondary}>{nb(totalCount(totalBags))}</Text> : null}
           {amountUnder ? <Text style={styles.numberStrong} {...ONE_LINE}>{formatInvoiceAmount(totalAmount)}</Text> : null}
         </View>
         {!table.stacked ? (
@@ -511,7 +515,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
         return tr('invoice.detailsTable.groupRowLabel', {
           item: group.item_name,
           details: [lotLine(group), rateLine(group)].filter(Boolean).map((part) => `, ${part}`).join(''),
-          bags: bags(group.total_dispatch_qty),
+          bags: formatPackages(group.total_dispatch_qty, group.packaging),
           amount: formatInvoiceAmount(group.total_amount),
         });
       }}

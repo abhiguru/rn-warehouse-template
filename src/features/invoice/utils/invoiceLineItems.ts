@@ -58,7 +58,8 @@ export function buildInvoiceLineItems(
         grn_quantity: grnItem.original_quantity || 0,
         grn_date: invoice.grn?.date || '',
         weight: grnItem.weight || 0,
-        packaging: catalog.packaging || grnItem.packaging || '',
+        // The lot's own word (blank reads bag, as on the items step and on the server); the catalog's only when there is no lot.
+        packaging: item.grn_item ? grnItem.packaging || '' : catalog.packaging || '',
         // Rates for grouping calculations
         labour_rate: item.labour_rate || 0,
         charge_per_unit: item.charge || 0,

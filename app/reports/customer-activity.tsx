@@ -63,7 +63,8 @@ import { useAppDispatch } from '@/store/hooks';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllCustomerActivityData, CustomerActivityDetailData, CustomerActivityRow } from '@/types/report.types';
-import { formatCount, formatCurrency, formatIndiaDate, formatNumber, indiaDay } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatIndiaDate, formatIndiaSpokenDate, formatNumber, indiaDay } from '@/utils/formatters';
+import { formatPackages, MIXED_PACKAGING, sharedPackaging } from '@/utils/packagingWord';
 
 const REPORT_ID = 'customer-activity';
 
@@ -323,6 +324,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
   const styles = useThemedStyles(makeStyles);
   const filters = useReportFilters(CUSTOMER_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period } = filters.request;
+  const payments = filters.ctx.payments === true;
   const query = useReportQuery<CustomerActivityDetailData>({
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerActivityDetail({ customerId, fromDate: period.from, toDate: period.to }),
@@ -392,10 +394,10 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
             </View>
           );
         case 'quick':
-          return <QuickAccessCard report={row.report} data={data} period={period} onOpen={openReport} />;
+          return <QuickAccessCard report={row.report} data={data} period={period} payments={payments} onOpen={openReport} />;
       }
     },
-    [data, styles, period, openReport]
+    [data, styles, period, payments, openReport]
   );
 
   return (
@@ -428,13 +430,17 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
 function invoiceStatus(status: string): { kind: StatusKind; label: string } {
   if (status === 'paid') return { kind: 'positive', label: tr('reports.customerActivity.paid') };
   if (status === 'pending') return { kind: 'critical', label: tr('common.pending') };
-  // The backend sends only paid or pending; anything else is not a label (docs/I18N.md rule 9).
+  // Backend migration 134: a cancelled invoice is listed, tagged, and counted in no sum.
+  if (status === 'cancelled') return { kind: 'negative', label: tr('invoice.cancel.tag') };
+  // The backend sends only paid, pending or cancelled; anything else is not a label (docs/I18N.md rule 9).
   return { kind: 'neutral', label: tr('common.unknown') };
 }
 
 interface PreviewProps {
   label: string;
   sublabel: string;
+  /** What a screen reader says for the sublabel when it is a date ("9 Oct 2026"). */
+  spokenSublabel?: string;
   value: string;
   status?: { kind: StatusKind; label: string };
   /** Opens the document; a row without it is not a button and has no chevron. */
@@ -442,10 +448,10 @@ interface PreviewProps {
   accessibilityHint?: string;
 }
 
-function Preview({ label, sublabel, value, status, onPress, accessibilityHint }: PreviewProps) {
+function Preview({ label, sublabel, spokenSublabel, value, status, onPress, accessibilityHint }: PreviewProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const a11yLabel = [label, sublabel, value, status?.label].filter(Boolean).join(', ');
+  const a11yLabel = [label, spokenSublabel ?? sublabel, value, status?.label].filter(Boolean).join(', ');
   const content = (
     <>
       <View style={styles.previewContent}>
@@ -514,7 +520,7 @@ function quickAccessHead(
       // Today's stock, whatever the period; the report it opens is the customer's stock age.
       return {
         icon: 'cube-outline',
-        head: tr('reports.customerActivity.currentStockHead', { count: formatCount(s.current_stock, 'bag') }),
+        head: tr('reports.customerActivity.currentStockHead', { count: formatPackages(s.current_stock, currentStockPackaging(data)) }),
         action: tr('reports.customerActivity.viewStockAge'),
         previewHeading: tr('reports.customerActivity.topStockItems'),
       };
@@ -531,7 +537,25 @@ function quickAccessHead(
   }
 }
 
-function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailData): React.ReactNode[] {
+/** An item's stock packaging: null means its lots differ ("units"); absent (an older server) reads "bags". */
+const stockPackaging = (item: { packaging?: string | null }): string | undefined => (item.packaging === null ? MIXED_PACKAGING : item.packaging);
+
+/**
+ * What the Current stock total is counted in. The server names it for all the stock (`current_stock_packaging`: a word, or null when
+ * the lots differ, read as "units"). An older server does not send it; then the rows are only the top items (five), so one word is
+ * shown only when they account for the whole total and share that word, otherwise "units"; with no word on any row it reads "bags".
+ */
+function currentStockPackaging(data: CustomerActivityDetailData): string | undefined {
+  const named = data.summary.current_stock_packaging;
+  if (named !== undefined) return named === null ? MIXED_PACKAGING : named;
+  const rows = data.top_stock_items;
+  if (rows.every(row => row.packaging === undefined)) return undefined;
+  const covered = rows.reduce((sum, row) => sum + row.total_stock, 0) === data.summary.current_stock;
+  return covered ? sharedPackaging(rows.map(stockPackaging)) : MIXED_PACKAGING;
+}
+
+/** `payments`: the facility records payments, so an invoice shows Paid or Pending (a Cancelled tag is always shown). */
+function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailData, payments: boolean): React.ReactNode[] {
   switch (report) {
     case 'grn-activity':
       return data.recent_grns.slice(0, PREVIEWS).map(grn => (
@@ -539,7 +563,8 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={grn.grn_id}
           label={tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
           sublabel={formatIndiaDate(grn.grn_date)}
-          value={tr('reports.customerActivity.stockOfTotal', { stock: formatNumber(grn.current_stock), total: formatNumber(grn.total_qty) })}
+          spokenSublabel={formatIndiaSpokenDate(grn.grn_date)}
+          value={tr('reports.customerActivity.stockOfTotal', { stock: formatNumber(grn.current_stock), total: grn.packaging === undefined ? formatNumber(grn.total_qty) : formatPackages(grn.total_qty, stockPackaging(grn)) })}
           onPress={grn.grn_id ? () => openDocument(`/grn-details/${grn.grn_id}`) : undefined}
           accessibilityHint={tr('reports.shared.opensGrnHint')}
         />
@@ -550,7 +575,8 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={dispatch.dispatch_id}
           label={tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.dispatch_no) })}
           sublabel={formatIndiaDate(dispatch.dispatch_date)}
-          value={formatCount(dispatch.total_qty, 'bag')}
+          spokenSublabel={formatIndiaSpokenDate(dispatch.dispatch_date)}
+          value={formatPackages(dispatch.total_qty, stockPackaging(dispatch))}
           onPress={dispatch.dispatch_id ? () => openDocument(`/dispatch-details/${dispatch.dispatch_id}`) : undefined}
           accessibilityHint={tr('grn.dispatches.openHint')}
         />
@@ -562,7 +588,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={`${item.item_name}-${index}`}
           label={item.item_name}
           sublabel={formatCount(item.grn_count, 'GRN')}
-          value={formatCount(item.total_stock, 'bag')}
+          value={formatPackages(item.total_stock, stockPackaging(item))}
         />
       ));
     case 'invoice-history':
@@ -571,8 +597,9 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={invoice.invoice_id}
           label={tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) })}
           sublabel={formatIndiaDate(invoice.invoice_date)}
+          spokenSublabel={formatIndiaSpokenDate(invoice.invoice_date)}
           value={formatCurrency(invoice.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          status={invoiceStatus(invoice.status)}
+          status={payments || invoice.status === 'cancelled' ? invoiceStatus(invoice.status) : undefined}
           onPress={invoice.invoice_id ? () => openDocument(`/invoice-details/${invoice.invoice_id}`) : undefined}
           accessibilityHint={tr('reports.invoiceHistory.openHint')}
         />
@@ -585,14 +612,16 @@ interface QuickAccessCardProps {
   data: CustomerActivityDetailData;
   /** The period of the dashboard: the count and the action name it. */
   period: ReportPeriod;
+  /** The facility records payments: an invoice preview shows Paid or Pending. */
+  payments: boolean;
   onOpen: (report: QuickReport) => void;
 }
 
-const QuickAccessCard = memo(function QuickAccessCard({ report, data, period, onOpen }: QuickAccessCardProps) {
+const QuickAccessCard = memo(function QuickAccessCard({ report, data, period, payments, onOpen }: QuickAccessCardProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const head = quickAccessHead(report, data, period);
-  const previews = quickAccessPreviews(report, data);
+  const previews = quickAccessPreviews(report, data, payments);
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>

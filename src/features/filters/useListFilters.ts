@@ -5,6 +5,7 @@
  */
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { facilityPagesGrnsByReceipt, subscribeFacilityGrnPaging } from '@/config/facilityGrnPaging';
+import { hasCapability, subscribeFacilityCapabilities } from '@/config/facilityCapabilities';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { toLocalISODate } from '@/utils/formatters';
 import {
@@ -25,16 +26,20 @@ import {
   type SortState,
 } from './types';
 
+const paymentsOn = (): boolean => hasCapability('payments');
+
 export function useFilterContext(): FilterContext {
   const profile = useAppSelector(state => state.auth.userProfile);
   const pagesByReceipt = useSyncExternalStore(subscribeFacilityGrnPaging, facilityPagesGrnsByReceipt, facilityPagesGrnsByReceipt);
+  // The facility's capability, read from the store directly (a server change rebuilds the screens; `useCapability` also listens for it).
+  const payments = useSyncExternalStore(subscribeFacilityCapabilities, paymentsOn, paymentsOn);
   return useMemo(() => {
     const role = profile?.role ?? null;
     const isWarehouseRole = role === 'admin' || role === 'supervisor' || role === 'staff';
     const named = profile?.assignedCustomers?.map(customer => ({ id: customer.id, label: customer.name }));
     const assigned = named ?? (profile?.assignedCustomerIds ?? []).map(id => ({ id, label: '' }));
-    return { role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned, pagesByReceipt };
-  }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds, pagesByReceipt]);
+    return { role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned, pagesByReceipt, payments };
+  }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds, pagesByReceipt, payments]);
 }
 
 export interface UseListFiltersOptions {

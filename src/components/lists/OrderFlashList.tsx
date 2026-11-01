@@ -1,4 +1,5 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { mergeRefreshedOrders, refreshLimit } from '@/features/orders/refreshWindow';
 import { createLogger } from '@/utils/logger';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 import { OrderRefreshAction } from '@/components/OrderRefreshAction';
@@ -204,11 +205,13 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       // A retry does not make retained data current. Clear the warning only
       // after a successful response replaces the displayed orders.
 
-      // Reload every row already shown so live updates keep the whole window current.
+      // Reload every row already shown so live updates keep the window current, up to the 200 rows the server gives a page.
+      const loadedBefore = loadedCountRef.current;
+      const asked = refreshLimit(loadedBefore);
       const result = await OrderService.getOrdersList({
         ...buildFilters(),
         offset: 0,
-        limit: Math.max(PAGINATION.DEFAULT_LIMIT, loadedCountRef.current),
+        limit: asked,
       });
       if (sessionGeneration !== getSessionGeneration()) return;
 
@@ -232,8 +235,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
             return itemCount > 0;
           });
         }
-        loadedCountRef.current = result.data.length;
-        setOrders(filteredOrders);
+        // Beyond 200 shown rows the refresh reloads the first 200 only: the rows after them are kept, merged by id.
+        loadedCountRef.current = loadedBefore > asked ? Math.max(loadedBefore, result.data.length) : result.data.length;
+        setOrders((current) => mergeRefreshedOrders(current, filteredOrders, loadedBefore, asked));
         setError(null);
         setRefreshTimestamp(Date.now());
         setLoadMoreFailed(false);

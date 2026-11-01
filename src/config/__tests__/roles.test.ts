@@ -80,7 +80,7 @@ const SCREENS_WITHOUT_SENSORS: RoleGatedScreen[] = [
 ];
 
 describe('role and facility capabilities by screen', () => {
-  const ON = { printing: false, sensors: true, realtime: true, customerDocuments: false };
+  const ON = { printing: false, sensors: true, realtime: true, customerDocuments: false, payments: false };
   const OFF = { ...ON, sensors: false };
 
   it.each([
@@ -150,11 +150,11 @@ describe('settings feature rows', () => {
     ['staff', []],
     ['customer', []],
   ])('%s at a facility without sensors sees %j', (role, rows) => {
-    expect(settingsFeatureRows(role, { printing: true, sensors: false, realtime: true, customerDocuments: true })).toEqual(rows);
+    expect(settingsFeatureRows(role, { printing: true, sensors: false, realtime: true, customerDocuments: true, payments: false })).toEqual(rows);
   });
 
   it('a facility with sensors keeps the Sensors row of the role', () => {
-    const on = { printing: false, sensors: true, realtime: false, customerDocuments: false };
+    const on = { printing: false, sensors: true, realtime: false, customerDocuments: false, payments: false };
     expect(settingsFeatureRows('staff', on)).toEqual(['sensors']);
     expect(settingsFeatureRows('customer', on)).toEqual([]);
   });

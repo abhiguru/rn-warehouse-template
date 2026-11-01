@@ -69,6 +69,14 @@ describe('Your rate', () => {
     expect(all).not.toContain('Fictional Rice');
   });
 
+  it('counts a Box lot in boxes: "per box" in the figure and the labour; no pack, or Bag, stays "per bag"', async () => {
+    mockParams = { ...mockParams, pack: 'box' };
+    read.mockResolvedValue(answer([lot({ source: 'item' })]));
+    await open();
+    expect(texts()).toEqual(expect.arrayContaining(['  per box, per month', '₹1.50 per box']));
+    expect(texts().join(' ')).not.toContain('per bag');
+  });
+
   it('a customer rate and a GRN rate look the same as the default: no source is named', async () => {
     read.mockResolvedValue(answer([lot({ source: 'customer', unit_price: 3.75 })]));
     await open();
@@ -92,7 +100,7 @@ describe('Your rate', () => {
     await open();
     const s = texts();
     expect(s).toContain('₹4.30');
-    expect(s).toContain('Dispatches of these bags were invoiced at different rates. This is the rate of the first dispatch.');
+    expect(s).toContain('Dispatches of this lot were invoiced at different rates. This is the rate of the first dispatch.');
     expect(s).toContain('As charged on the invoice.');
   });
 

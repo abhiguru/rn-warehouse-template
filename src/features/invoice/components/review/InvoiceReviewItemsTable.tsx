@@ -12,7 +12,8 @@ import { space, touchTarget } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { t as tr } from '@/i18n';
 import {
   LAST_COLUMN_SHARE,
@@ -39,6 +40,8 @@ interface GroupRow {
   key: string;
   group: InvoiceItemGroup;
   qty: number;
+  /** What the group's lines are counted in (units when they differ). */
+  packaging: string | undefined;
   amount: number;
 }
 
@@ -82,11 +85,13 @@ export const InvoiceReviewItemsTable = React.memo(function InvoiceReviewItemsTab
         key: groupKeyOf(group),
         group,
         qty: group.allItems.reduce((sum, line) => sum + (line.qty || 0), 0),
+        packaging: sharedPackaging(group.allItems.map((line) => line.packaging)),
         amount: roundMoney(invoiceGroupTotal(group)),
       })),
     [items]
   );
   const totalQty = rows.reduce((sum, row) => sum + row.qty, 0);
+  const totalPackaging = useMemo(() => sharedPackaging(items.map((line) => line.packaging)), [items]);
 
   const qtyWidth = numberColumnWidth(screen, QTY_WIDTH, rows.map((row) => formatNumber(row.qty)), [formatNumber(totalQty)]) + space.xs;
   // The Total row shows the bags only: the one money total is in CHARGES, so two different totals never share a card.
@@ -105,13 +110,13 @@ export const InvoiceReviewItemsTable = React.memo(function InvoiceReviewItemsTab
           header: tr('common.item'),
           meta: { width: 'grow' },
           cell: (info) => {
-            const { group, qty, amount } = info.row.original;
+            const { group, qty, packaging, amount } = info.row.original;
             const lot = lotLine(group);
             return (
               <>
                 <Text style={table.primary}>{group.item_name}</Text>
                 {lot !== null ? <Text style={table.secondary}>{nb(lot)}</Text> : null}
-                {stacked ? <Text style={table.secondary}>{nb(formatCount(qty, 'bag'))}</Text> : null}
+                {stacked ? <Text style={table.secondary}>{nb(formatPackages(qty, packaging))}</Text> : null}
                 {amountUnder ? <Text style={table.number} {...FIGURE_LINE}>{formatInvoiceAmount(amount)}</Text> : null}
               </>
             );
@@ -147,12 +152,12 @@ export const InvoiceReviewItemsTable = React.memo(function InvoiceReviewItemsTab
       variant="nested"
       testID={testID}
       rowLabel={(r) => {
-        const { group, qty, amount } = r.original;
+        const { group, qty, packaging, amount } = r.original;
         const lot = lotLine(group);
         return tr('invoice.detailsTable.groupRowLabel', {
           item: group.item_name,
           details: lot ? `, ${lot}` : '',
-          bags: formatCount(qty, 'bag'),
+          bags: formatPackages(qty, packaging),
           amount: formatInvoiceAmount(amount),
         });
       }}
@@ -164,12 +169,12 @@ export const InvoiceReviewItemsTable = React.memo(function InvoiceReviewItemsTab
           accessibilityLabel={tr('invoice.review.itemsTotalLabel', {
             groups: groupCount,
             lines: lineCount,
-            bags: formatCount(totalQty, 'bag'),
+            bags: formatPackages(totalQty, totalPackaging),
           })}
           testID="invoice-review-items-total"
         >
           <Text style={[table.primaryStrong, !stacked && table.grow]}>{tr('common.total')}</Text>
-          {stacked ? <Text style={table.secondary}>{nb(formatCount(totalQty, 'bag'))}</Text> : null}
+          {stacked ? <Text style={table.secondary}>{nb(formatPackages(totalQty, totalPackaging))}</Text> : null}
           {!stacked ? <Text style={[table.numberStrong, { width: qtyWidth }]} {...FIGURE_LINE}>{formatNumber(totalQty)}</Text> : null}
           {/* Under the Amount column, where the amounts of the rows above end, nothing: the money total is in CHARGES. */}
           {!stacked ? <View style={{ width: amountWidth }} /> : null}

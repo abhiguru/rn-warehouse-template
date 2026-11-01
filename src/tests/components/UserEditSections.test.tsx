@@ -61,6 +61,11 @@ jest.mock('@/services/admin-user-service', () => ({
     assignCustomerToUser: jest.fn(), removeCustomerAssignment: jest.fn(),
   },
 }));
+// An older backend has no signed-in devices list: the section is left out, and these tests are about the others.
+jest.mock('@/services/session-devices-service', () => ({
+  listUserSessions: jest.fn(async () => ({ success: false, unsupported: true, message: '' })),
+  revokeSession: jest.fn(),
+}));
 jest.mock('@/services/customer-service', () => ({ customerService: { searchCustomers: jest.fn() } }));
 let mockPicker: { onSelect: (role: string) => void } | undefined;
 jest.mock('@/components/RolePickerBottomSheet', () => ({ RolePickerBottomSheet: (props: { onSelect: (role: string) => void }) => { mockPicker = props; return null; } }));
@@ -119,5 +124,25 @@ describe('Edit user for a connection', () => {
     const labels = tree!.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string);
     expect(labels.some(label => label.includes('00000'))).toBe(false);
     expect(labels).toContain('FAS sync');
+  });
+});
+
+describe('Edit user: signed-in devices', () => {
+  const { listUserSessions } = jest.requireMock('@/services/session-devices-service');
+  const showsDevices = () => tree!.root.findAll(node => node.props.testID === 'signed-in-devices').length > 0;
+
+  it('is shown to an administrator for a staff user when the backend lists them', async () => {
+    listUserSessions.mockResolvedValueOnce({ success: true, sessions: [] });
+    await loadUser();
+    expect(showsDevices()).toBe(true);
+  });
+
+  it('is not asked for a supervisor looking at an administrator', async () => {
+    mockState = { ...mockState, auth: { userProfile: { id: 'u1', role: 'supervisor', name: 'Dev Supervisor' } } };
+    listUserSessions.mockClear();
+    await loadUser({ ...STAFF, role: 'admin' });
+    expect(listUserSessions).not.toHaveBeenCalled();
+    expect(showsDevices()).toBe(false);
+    mockState = { ...mockState, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
   });
 });

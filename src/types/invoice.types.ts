@@ -65,6 +65,8 @@ export interface InvoiceItemData {
   package_mark: string;
   rack: string;
   weight: number;
+  /** What the lot is counted in (Bag, Box, Crate); missing on a server that does not send it (read as bags). */
+  packaging?: string | null;
 
   // Dispatch details
   dispatch_id: string;
@@ -257,7 +259,7 @@ export interface InvoiceFormDataResponse {
   };
   message?: string;
   /** Set when the server refused the GRN itself: not fully dispatched, or already invoiced. */
-  code?: 'not_invoiceable';
+  code?: 'not_invoiceable' | 'cancelled';
 }
 
 export interface CreateInvoiceResponse {

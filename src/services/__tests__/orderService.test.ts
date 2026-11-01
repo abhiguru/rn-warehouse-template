@@ -182,3 +182,17 @@ describe('getOrderWithItems keeps the order number', () => {
     expect(result.data?.order_no).toBe('ORD-5');
   });
 });
+
+describe('an empty answer to a change of an order line is a lost answer (owner decision 3, 2026-11-01)', () => {
+  beforeEach(() => rpc.mockResolvedValue({ data: null, error: null }));
+
+  it.each([
+    ['adds a line', () => OrderService.addItemToOrder('o1', 'g1', 4)],
+    ['changes a quantity', () => OrderService.updateOrderItemQuantity('i1', 'o1', 3)],
+    ['removes a line', () => OrderService.removeItemFromOrder('i1', 'o1')],
+  ])('%s: the order is read again, never worded as "no data"', async (_name, run) => {
+    const result = await run();
+    expect(result).toMatchObject({ success: false, lostAnswer: true });
+    expect(result.message).not.toMatch(/no data/i);
+  });
+});

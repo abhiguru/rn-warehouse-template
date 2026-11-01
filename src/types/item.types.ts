@@ -90,6 +90,8 @@ export interface ItemServiceResponse<T = Item> {
   error?: string;
   /** The failure's code (Postgres, PostgREST or the server's own), before any translation. */
   code?: string;
+  /** The change got no usable answer and may have been applied: read the item again. */
+  lostAnswer?: boolean;
   /** update_item: 'standard' when activating gave the item the standard rate (backend Items screens 2026-10-20). */
   rateSource?: string;
 }
@@ -192,6 +194,8 @@ export interface GetItemsParams {
 export interface DeleteItemResponse {
   success: boolean;
   message: string;
+  /** The delete got no usable answer and may have been done: read the list again. */
+  lostAnswer?: boolean;
   /** The server's error_code on a refusal (NOT_FOUND when the item no longer exists). */
   code?: string;
   /** The server's own text on a refusal, before translation (an older server has no code, only text). */

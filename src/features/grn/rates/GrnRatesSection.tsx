@@ -23,7 +23,7 @@ import { RateStrip } from '@/features/item-pricing/components/RateStrip';
 import { LABOUR_WIDTH, RENT_WIDTH, TAX_WIDTH, amountText, taxText } from './rateFigures';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
-import { bandText, dateText, money, unitText } from '@/features/item-pricing/rateText';
+import { bandText, dateText, money, spokenDateText, unitText } from '@/features/item-pricing/rateText';
 import { packageUnit } from '@/utils/packagingWord';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatWeightEach } from '@/utils/formatters';
@@ -114,7 +114,7 @@ export function rowA11y(row: PricedRow, oneTime: boolean, day: string): string {
     }),
     ...tagsOf(rate).map(tag => tag.label),
   ];
-  if (rate.source === 'change') parts.push(t('grn.rates.fromDate', { date: dateText(day) }));
+  if (rate.source === 'change') parts.push(t('grn.rates.fromDate', { date: spokenDateText(day) }));
   const was = replacedRent(rate);
   if (was !== null) parts.push(t('grn.rates.wasA11y', { amount: money(was) }));
   return parts.join(', ');

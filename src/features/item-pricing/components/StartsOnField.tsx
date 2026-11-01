@@ -13,7 +13,7 @@ import { t } from '@/i18n';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
 import { parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { START_DAYS_AHEAD, startChips, startFloor, type StartsOnChoice } from '../editModel';
-import { addDays, dateText } from '../rateText';
+import { addDays, dateText, spokenDateText } from '../rateText';
 
 interface Props {
   choice: StartsOnChoice | null;
@@ -68,7 +68,7 @@ export function StartsOnField({ choice, day, today, earliest, canStartInPast, fi
 
   const options = [
     { value: 'today' as const, label: t('pricing.edit.today') },
-    ...chips.filter(c => c.id !== 'today').map(c => ({ value: c.id, label: dateText(c.day) })),
+    ...chips.filter(c => c.id !== 'today').map(c => ({ value: c.id, label: dateText(c.day), a11yLabel: spokenDateText(c.day) })),
     { value: 'other' as const, label: t('pricing.edit.otherDate') },
   ];
 

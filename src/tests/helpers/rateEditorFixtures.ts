@@ -60,11 +60,16 @@ export const textsOf = (tree: ReactTestRenderer): string[] =>
 export const inputsWithLabel = (tree: ReactTestRenderer, label: string) =>
   tree.root.findAllByType(Input).filter(n => n.props.label === label);
 
-/** The chip of a radio group (ChoiceChips). */
-export const chip = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAll(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
+/** The words a chip shows (its accessibilityLabel can be a date in words instead: "1 Nov 2026" for "01/11/26"). */
+const chipText = (node: { findAllByType: (type: typeof Text) => { props: { children?: unknown } }[] }) =>
+  node.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join('')).join('');
 
+/** The chip of a radio group (ChoiceChips), found by the words it shows. */
+export const chip = (tree: ReactTestRenderer, label: string) =>
+  tree.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function' && chipText(n) === label)[0];
+
+/** The shown label of each chip and whether it is on. */
 export const chipState = (tree: ReactTestRenderer) =>
   tree.root
     .findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function')
-    .map(n => `${n.props.accessibilityLabel}:${n.props.accessibilityState?.selected ? 'on' : 'off'}`);
+    .map(n => `${chipText(n)}:${n.props.accessibilityState?.selected ? 'on' : 'off'}`);

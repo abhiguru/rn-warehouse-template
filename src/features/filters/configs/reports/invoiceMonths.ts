@@ -22,11 +22,11 @@
  * invoice date is an instant (timestamptz, sent in UTC), and the facility's
  * months are India's, so 2026-09-30T20:00:00+00:00 belongs to October. The date
  * headings between the invoice cards use the same day (`indiaDay`). Newest month
- * first.
+ * first. A cancelled invoice is left out (`isCancelledInvoice`).
  */
 import type { InvoiceHistoryRecord } from '@/types/report.types';
 import { indiaDay } from '@/utils/formatters';
-import { invoicePayment, toPaise, toRupees, type PayableInvoice } from './invoicePayment';
+import { invoicePayment, isCancelledInvoice, toPaise, toRupees, type PayableInvoice } from './invoicePayment';
 
 /** The parts of an invoice a month needs. */
 export type MonthlyInvoice = Pick<InvoiceHistoryRecord, 'invoice_date'> & PayableInvoice;
@@ -84,6 +84,8 @@ const finish = (sums: Sums): InvoiceMonthTotals => ({
 export function invoiceMonths(invoices: readonly MonthlyInvoice[]): InvoiceMonth[] {
   const byMonth = new Map<string, Sums>();
   for (const invoice of invoices) {
+    // A cancelled invoice is in no month, no count and no sum (backend migration 134).
+    if (isCancelledInvoice(invoice)) continue;
     const key = invoiceMonthKey(invoice.invoice_date);
     const sums = byMonth.get(key) ?? emptySums();
     const payment = invoicePayment(invoice);

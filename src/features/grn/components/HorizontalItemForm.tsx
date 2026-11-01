@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
-import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
+import { RemoteAutocompleteInput, type RemoteAutocompleteInputHandle } from '@/components/RemoteAutocompleteInput';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -93,7 +93,7 @@ export interface HorizontalItemFormRef {
      * FOCUS_AFTER_DIALOG_MS). A field that still has the cursor lets go of it
      * first, or the keyboard would not be asked for.
      */
-    focusField: (field: Exclude<ItemFormFieldName, 'item'>) => void;
+    focusField: (field: ItemFormFieldName) => void;
     resetScroll: () => void;
     /** Scrolls the row to a field, as when it takes focus, so the error under it is in view. */
     revealField: (field: ItemFormFieldName) => void;
@@ -165,6 +165,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const weightInputRef = useRef<TextInputRef>(null);
         const rackInputRef = useRef<TextInputRef>(null);
         const packageMarkInputRef = useRef<TextInputRef>(null);
+        const itemInputRef = useRef<RemoteAutocompleteInputHandle>(null);
 
         // Scroll to keep focused field visible
         const scrollToField = useCallback((offset: number) => {
@@ -174,7 +175,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         // Expose methods to parent via ref
         useImperativeHandle(ref, () => ({
             focusField: (field) => {
-                const inputRef = { qty: qtyInputRef, weight: weightInputRef, rack: rackInputRef, package_mark: packageMarkInputRef }[field];
+                const inputRef = { item: itemInputRef, qty: qtyInputRef, weight: weightInputRef, rack: rackInputRef, package_mark: packageMarkInputRef }[field];
                 // A field keeps the cursor while a dialog is open over it, so to
                 // React Native it is still the focused field, and focus() on the
                 // focused field does nothing: no keyboard is asked for.
@@ -414,6 +415,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             </Pressable>
                         ) : (
                         <RemoteAutocompleteInput<{ id: string; name: string; packaging?: string }>
+                            ref={itemInputRef}
                             value={currentItem.item_name}
                             placeholder={tr('grn.item.searchPlaceholder')}
                             fetchData={searchItems}

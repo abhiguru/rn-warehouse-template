@@ -154,7 +154,7 @@ export default function RackPresetsScreen() {
               onPress={() => move(list, index, -1)}
               disabled={index === 0}
               accessibilityRole="button"
-              accessibilityLabel={tr('settings.rackPresets.moveUpLabel', { label: label || String(index + 1) })}
+              accessibilityLabel={tr('settings.rackPresets.moveUpLabel', { label: label || index + 1 })}
               accessibilityState={{ disabled: index === 0 }}
             >
               <Icon name="arrow-up" size={iconSize.md} color={index === 0 ? t.text.disabled : t.icon.primary} />
@@ -164,7 +164,7 @@ export default function RackPresetsScreen() {
               onPress={() => move(list, index, 1)}
               disabled={index === labels.length - 1}
               accessibilityRole="button"
-              accessibilityLabel={tr('settings.rackPresets.moveDownLabel', { label: label || String(index + 1) })}
+              accessibilityLabel={tr('settings.rackPresets.moveDownLabel', { label: label || index + 1 })}
               accessibilityState={{ disabled: index === labels.length - 1 }}
             >
               <Icon name="arrow-down" size={iconSize.md} color={index === labels.length - 1 ? t.text.disabled : t.icon.primary} />
@@ -173,7 +173,7 @@ export default function RackPresetsScreen() {
               style={styles.iconButton}
               onPress={() => change(list, current => current.filter((_, at) => at !== index))}
               accessibilityRole="button"
-              accessibilityLabel={tr('settings.rackPresets.removeLabel', { label: label || String(index + 1) })}
+              accessibilityLabel={tr('settings.rackPresets.removeLabel', { label: label || index + 1 })}
               testID={`rack-presets-${list}-${index}-remove`}
             >
               <Icon name="close" size={iconSize.md} color={t.icon.primary} />

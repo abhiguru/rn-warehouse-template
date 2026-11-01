@@ -301,6 +301,21 @@ describe('a line above its stock', () => {
     await act(async () => { tree.unmount(); });
   });
 
+  it('with no stock left, the warning says to remove the line, not to lower it', async () => {
+    const tree = await mount(noStock, jest.fn(() => Promise.resolve(true)));
+    expect(warning(tree)).toHaveLength(1);
+    expect(texts(tree)).toContain('Out of stock. Remove it from the order.');
+    expect(texts(tree).some(text => text.includes('Lower it to'))).toBe(false);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('with negative stock, the warning also says to remove the line', async () => {
+    const negative: OrderItem = { ...noStock, grn_item: { ...noStock.grn_item!, current_stock: -2 } };
+    const tree = await mount(negative, jest.fn(() => Promise.resolve(true)));
+    expect(texts(tree)).toContain('Out of stock. Remove it from the order.');
+    await act(async () => { tree.unmount(); });
+  });
+
   it('shows no warning, and leaves + on, for a line within its stock', async () => {
     const tree = await mount(item, jest.fn(() => Promise.resolve(true)));
     expect(warning(tree)).toHaveLength(0);

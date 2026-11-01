@@ -130,6 +130,8 @@ export interface DispatchItemDetail {
   orig_qty?: number; // Original quantity from source GRN
   package_mark?: string; // Package mark from source GRN
   rack?: string; // Rack location from source GRN
+  /** What the line is counted in (Bag, Box, Crate); absent on a server that does not send it (read as bags). */
+  packaging?: string | null;
 }
 
 /**
@@ -403,7 +405,8 @@ export interface GRNDispatchSummary {
  */
 export interface GRNActivityItem {
   item_name: string;
-  packaging: string;
+  /** What the lot is counted in; absent on an older server (read as bags). */
+  packaging?: string | null;
   quantity: number;
   current_stock: number;
   dispatched_qty: number;
@@ -507,7 +510,7 @@ export interface InvoicePaymentStatus {
    * for a part payment, so the invoice history report does not show it: it works Paid and Pending out from
    * `amount` and the invoice's `total` (`invoicePayment` in src/features/filters/configs/reports).
    */
-  status: 'paid' | 'pending';
+  status: 'paid' | 'pending' | 'cancelled';
   paid_date: string | null;
   payment_ref: string | null;
   /**
@@ -573,6 +576,9 @@ export interface InvoiceHistoryRecord {
   notes: string | null;
   payment_status: InvoicePaymentStatus;
   line_items: InvoiceLineItem[];
+  /** Backend migration 134: set when the invoice is cancelled (its status is then `cancelled`). Absent on an older server. */
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
 }
 
 /**
@@ -707,6 +713,8 @@ export interface RecentGRNPreview {
   total_qty: number;
   current_stock: number;
   is_invoiced: boolean;
+  /** What the receipt's or dispatch's lots are counted in; null when they differ (read as units); absent on an older server. */
+  packaging?: string | null;
 }
 
 /**
@@ -718,6 +726,8 @@ export interface RecentDispatchPreview {
   dispatch_date: string;
   total_qty: number;
   supervisor_name: string;
+  /** What the receipt's or dispatch's lots are counted in; null when they differ (read as units); absent on an older server. */
+  packaging?: string | null;
 }
 
 /**
@@ -725,6 +735,8 @@ export interface RecentDispatchPreview {
  */
 export interface StockItemPreview {
   item_name: string;
+  /** What the stock is counted in; null when the item's lots differ (read as units); absent on an older server (read as bags). */
+  packaging?: string | null;
   total_stock: number;
   grn_count: number;
 }
@@ -737,7 +749,8 @@ export interface RecentInvoicePreview {
   invoice_number: string;
   invoice_date: string;
   net_total: number;
-  status: 'paid' | 'pending';
+  /** `cancelled` from backend migration 134: such an invoice is in no sum. */
+  status: 'paid' | 'pending' | 'cancelled';
 }
 
 /**
@@ -745,6 +758,8 @@ export interface RecentInvoicePreview {
  */
 export interface CustomerActivityDetailKPIs {
   current_stock: number;
+  /** What all the customer's stock is counted in; null when the lots differ (read as units); absent on an older server. */
+  current_stock_packaging?: string | null;
   total_grns: number;
   total_grn_quantity: number;
   total_dispatches: number;

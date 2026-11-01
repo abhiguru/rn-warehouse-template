@@ -1,7 +1,7 @@
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
-import { getLanguage, t, type AppLanguage } from '@/i18n';
+import { t } from '@/i18n';
 import { serverText, upgradingBody } from '@/utils/serverText';
 
 /**
@@ -425,8 +425,6 @@ interface ReportPdfRequestBase {
   bucket?: ReportPdfBucket;
   /** Only the items this search finds: sent with `report: 'item-stock-summary'` only, as `reportPdfSearch` gives it. */
   search?: string;
-  /** Language of the PDF's labels; the app's current language when absent. */
-  lang?: AppLanguage;
 }
 
 /**
@@ -489,7 +487,8 @@ export function withoutReportFilters(request: ReportPdfRequest): ReportPdfReques
 }
 
 /**
- * The JSON body sent for a request: only the contract's fields, dates only for a
+ * The JSON body sent for a request: only the contract's fields (no language: printed and PDF documents are English
+ * only, the server's default), dates only for a
  * period report, and each filter only where the server accepts it (any other is
  * left out, as the server would refuse the request).
  */
@@ -516,7 +515,6 @@ export function reportPdfRequestBody(request: ReportPdfRequest): Record<string, 
     body.to = request.to;
   }
   if (request.sort) body.sort = { field: request.sort.field, order: request.sort.order };
-  body.lang = request.lang ?? getLanguage();
   return body;
 }
 

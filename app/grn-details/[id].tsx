@@ -62,6 +62,7 @@ import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUpl
 
 import { showAlert } from '@/utils/alert';
 import { formatCount } from '@/utils/formatters';
+import { sharedPackaging } from '@/utils/packagingWord';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText, failureText } from '@/utils/serverText';
 import { deleteBlockedText } from '@/features/grn/utils/deleteRefusal';
@@ -879,6 +880,8 @@ function GRNDetailScreen() {
               registration={grn.registration}
               note={grn.note}
               rates={(grn as { rates?: RpcGrnRate[] }).rates}
+              packaging={sharedPackaging(items.map((item) => item.packaging))}
+              packagingByLot={Object.fromEntries(items.map((item) => [item.id, item.packaging]))}
               pricing_mode={grn.pricing_mode}
               grn_id={grn.id}
               gr_no={grn.gr_no}

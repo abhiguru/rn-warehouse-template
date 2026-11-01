@@ -17,7 +17,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
-import { formatCount, formatDate, toDate, formatWeightEach, formatNumber, formatMobile } from '@/utils/formatters';
+import { formatCount, formatDate, formatSpokenDate, toDate, formatWeightEach, formatNumber, formatMobile } from '@/utils/formatters';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { showAlert } from '@/utils/alert';
@@ -261,6 +261,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     const formatDisplayDate = (isoDate: string) => {
         return toDate(isoDate) ? formatDate(isoDate) : '';
     };
+
+    const formatSpokenDisplayDate = (isoDate: string) => (toDate(isoDate) ? formatSpokenDate(isoDate) : '');
 
     // What waits for the dialog that is closing: the success dialog, "Photos not uploaded", "Dispatch saved" or the alert
     // for a refused save. A Modal cannot be presented over another that is still closing on iOS (nothing would appear,
@@ -705,13 +707,14 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             onEdit={stepsLocked ? undefined : () => navigateToStep(DISPATCH_STEP_NUMBERS.INFO)}
                             editLabel={tr('dispatch.review.editDetails')}
                             closedLine={[header.disp_no, formatDisplayDate(header.disp_date), header.customer_name].filter(Boolean).join(' · ')}
+                            spokenClosedLine={[header.disp_no, formatSpokenDisplayDate(header.disp_date), header.customer_name].filter(Boolean).join(' · ')}
                             open={openSection === 'details'}
                             onToggle={toggleSection}
                             first
                         >
                             <ReviewKeyValues>
                                 <ReviewKeyValue label={tr('common.dispatchNumber')} value={header.disp_no || EMPTY} emphasized first />
-                                <ReviewKeyValue label={tr('common.date')} value={formatDisplayDate(header.disp_date) || EMPTY} />
+                                <ReviewKeyValue label={tr('common.date')} value={formatDisplayDate(header.disp_date) || EMPTY} spokenValue={formatSpokenDisplayDate(header.disp_date) || EMPTY} />
                                 <ReviewKeyValue label={tr('common.customer')} value={header.customer_name || EMPTY} />
                                 <ReviewKeyBlock label={tr('dispatch.review.address')} value={address || EMPTY} />
                                 <ReviewKeyValue label={tr('common.mobileNumber')} value={header.customer_mobile ? formatMobile(header.customer_mobile) : EMPTY} />

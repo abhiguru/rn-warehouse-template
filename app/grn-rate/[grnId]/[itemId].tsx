@@ -21,6 +21,7 @@ import { groupRates, type RateGroup } from '@/features/grn/rates/GrnItemRates';
 import { useGrnItemRates } from '@/features/grn/rates/useGrnItemRates';
 import { RatesState } from '@/features/item-pricing/components/RatesState';
 import { dateText, money, unitText } from '@/features/item-pricing/rateText';
+import { packageUnit } from '@/utils/packagingWord';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { formatIdentifier, localizeDigits, t } from '@/i18n';
 import { layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
@@ -50,7 +51,7 @@ const makeStyles = (th: ThemeTokens) => ({
   skeleton: { gap: space.md, paddingTop: space.md },
 });
 
-function YourRateCard({ group, oneTime }: { group: RateGroup; oneTime: boolean }) {
+function YourRateCard({ group, oneTime, packaging }: { group: RateGroup; oneTime: boolean; packaging?: string }) {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const kv = fontScale >= 1.3 ? 'stacked' : 'inline';
@@ -60,12 +61,12 @@ function YourRateCard({ group, oneTime }: { group: RateGroup; oneTime: boolean }
     <View style={styles.card} testID={`your-rate-card-${rate.grn_item_id}`}>
       <Text accessibilityRole="header">
         <Text style={styles.figure}>{money(rate.unit_price ?? 0)}</Text>
-        <Text style={styles.unit}>{`  ${unitText(oneTime ? 'one_time' : 'monthly')}`}</Text>
+        <Text style={styles.unit}>{`  ${unitText(oneTime ? 'one_time' : 'monthly', packaging)}`}</Text>
       </Text>
       <View>
         {weight ? <KeyValueCell layout={kv} keyLabel={t('pricing.band.weightEach')} value={weight} showDivider /> : null}
         {oneTime ? null : (
-          <KeyValueCell layout={kv} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourShort', { amount: money(rate.labour_rate ?? 0) })} showDivider />
+          <KeyValueCell layout={kv} keyLabel={t('pricing.item.labour')} value={t('pricing.item.labourShort', { amount: money(rate.labour_rate ?? 0), unit: packageUnit(packaging) })} showDivider />
         )}
         <KeyValueCell layout={kv} keyLabel={t('pricing.item.tax')} value={t('pricing.item.taxShort', { percent: localizeDigits(String(rate.tax_percent ?? 0)) })} />
       </View>
@@ -77,7 +78,7 @@ function YourRateCard({ group, oneTime }: { group: RateGroup; oneTime: boolean }
 export default function YourRatePage() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ grnId: string; itemId: string; no?: string }>();
+  const params = useLocalSearchParams<{ grnId: string; itemId: string; no?: string; pack?: string }>();
   const grnId = String(params.grnId ?? '');
   const itemId = String(params.itemId ?? '');
   const { rates, priceType, grnDate, status, retry } = useGrnItemRates(grnId || null);
@@ -137,7 +138,7 @@ export default function YourRatePage() {
         <ScrollView contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.huge + insets.bottom }}>
           <SectionHeader title={t('grn.rates.yourRateTitle')} />
           <View style={styles.block}>
-            {groups.map(group => <YourRateCard key={group.key} group={group} oneTime={oneTime} />)}
+            {groups.map(group => <YourRateCard key={group.key} group={group} oneTime={oneTime} packaging={params.pack} />)}
           </View>
           {onInvoice ? <Text style={styles.foot}>{t('grn.rates.yourRateInvoice')}</Text> : null}
         </ScrollView>

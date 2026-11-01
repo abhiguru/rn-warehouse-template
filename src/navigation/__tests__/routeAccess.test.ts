@@ -131,7 +131,7 @@ describe('signed in', () => {
 });
 
 describe('by facility capability', () => {
-  const ON = { printing: false, sensors: true, realtime: true, customerDocuments: false };
+  const ON = { printing: false, sensors: true, realtime: true, customerDocuments: false, payments: false };
   const OFF = { ...ON, sensors: false };
   const withCapabilities = (role: string, capabilities: typeof ON) => ({ isSignedIn: true, role, capabilities });
 

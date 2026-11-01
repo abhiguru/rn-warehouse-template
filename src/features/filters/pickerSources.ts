@@ -6,6 +6,7 @@
  * staff-only customer search.
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { readAllRows } from '@/utils/pagedRead';
 import { searchService } from '@/services/search-service';
 import type { FilterContext, PickedOption, PickerSource } from './types';
 
@@ -16,13 +17,13 @@ async function ownCustomers(ctx: FilterContext): Promise<PickedOption[]> {
   if (known.length === ctx.assignedCustomers.length) return known;
   // The profile carried ids only: read the names (row-level security keeps this to own customers).
   const client = await getAuthenticatedClient();
-  const { data, error } = await client
-    .from('customers')
-    .select('id, name, city')
-    .in('id', ctx.assignedCustomers.map(customer => customer.id))
-    .order('name');
-  if (error) throw error;
-  return (data ?? []).map(row => ({ id: row.id, label: row.name, detail: row.city ?? undefined }));
+  const ids = ctx.assignedCustomers.map(customer => customer.id);
+  // Paged: a direct read is cut at 2,000 rows.
+  const { rows } = await readAllRows<{ id: string; name: string; city: string | null }>((from, to, ordered) => {
+    const query = client.from('customers').select('id, name, city').in('id', ids).order('name');
+    return (ordered ? query.order('id') : query).range(from, to);
+  });
+  return rows.map(row => ({ id: row.id, label: row.name, detail: row.city ?? undefined }));
 }
 
 export const customerSource: PickerSource = {
