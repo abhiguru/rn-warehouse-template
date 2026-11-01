@@ -160,6 +160,15 @@ describe('when the invoice cannot be loaded', () => {
     expect(text()).not.toContain("Couldn't open the invoice");
   });
 
+  it('a cancelled invoice offers Close only: Try again could never work', async () => {
+    load.mockResolvedValue({ success: false, code: 'cancelled', message: 'A cancelled invoice cannot be changed.' } as never);
+    await render();
+
+    expect(text()).toContain("Couldn't open the invoice");
+    expect(text()).toContain('Close');
+    expect(text()).not.toContain('Try again');
+  });
+
   it('Close goes to the invoice\'s page', async () => {
     load.mockRejectedValue(new Error('Network request failed'));
     await render();

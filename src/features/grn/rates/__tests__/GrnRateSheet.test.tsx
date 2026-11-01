@@ -73,7 +73,8 @@ afterEach(() => { act(() => tree?.unmount()); tree = undefined; mockFontScale = 
 describe('Add rate', () => {
   it('starts with the band and figures of the rate that starts later, ending the day before it, scope Everyone', () => {
     mockFontScale = 1;
-    open([stored(11, 20, 4, '2026-11-01')], 12);
+    // An earlier rate that has ended makes this a real gap: before an item's first rate that rate covers the day.
+    open([stored(0, 100, 3, '2026-01-01', null, '2026-02-28'), stored(11, 20, 4, '2026-11-01')], 12);
     expect(hostText('rate-sheet-kicker')).toBe('Add rate · 12 kg each · Monthly');
     expect(hostText('rate-sheet-item')).toBe('Fictional Gur');
     expect(input('From (kg)')!.props.value).toBe('11');

@@ -54,6 +54,8 @@ import { roleLabel as roleName } from '@/utils/roleLabel';
 import { serverText } from '@/utils/serverText';
 import { publishUserListChange } from '@/utils/userListSync';
 import { normalizeRole, userManagementActions, userPageKind } from '@/config/roles';
+import { SignedInDevicesSection } from '@/features/users/components/SignedInDevicesSection';
+import { mayListSessions } from '@/features/users/sessionDevices';
 
 /** "… is now an admin." is one sentence per role: the article and word order differ by language. */
 const ROLE_CHANGED_KEYS: Record<UserRole, TranslationKey> = {
@@ -908,6 +910,11 @@ export default function UserEditScreen() {
               </View>
             )}
           </View>
+
+          {/* Signed-in devices (backend migration 140): administrators, and supervisors for anyone but an administrator. */}
+          {mayListSessions(normalizeRole(userProfile?.role), user?.role) && user?.id ? (
+            <SignedInDevicesSection userId={user.id} />
+          ) : null}
           </>
         )}
 

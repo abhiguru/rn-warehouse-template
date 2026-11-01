@@ -61,7 +61,7 @@ export const LineRow = React.memo(function LineRow({ item, groupKey, table, scro
           onFocus={() => actions.focus(key)}
           onBlur={() => actions.blur(key)}
           onSubmitEditing={() => actions.submit(key)}
-          label={cellLabel(field, number, oneTime)}
+          label={cellLabel(field, number, oneTime, item.packaging)}
           error={shownError}
           testID={key}
         />

@@ -12,9 +12,9 @@ import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
-import { formatDate, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { START_DAYS_AHEAD, stopChips } from '../editModel';
-import { addDays, dateText } from '../rateText';
+import { addDays, dateText, spokenDateText } from '../rateText';
 import { EditorStrip } from './EditorStrip';
 
 export type StopChoice = 'today' | 'monthEnd' | 'yearEnd' | 'other';
@@ -54,6 +54,7 @@ export function StopRateForm({ body, today, choice, day, onChange, strip, busy, 
     ...chips.map(c => ({
       value: c.id as StopChoice,
       label: c.id === 'today' ? t('pricing.stop.today', { date: formatDate(c.day) }) : dateText(c.day),
+      a11yLabel: c.id === 'today' ? t('pricing.stop.today', { date: formatSpokenDate(c.day) }) : spokenDateText(c.day),
     })),
     { value: 'other' as StopChoice, label: t('pricing.edit.otherDate') },
   ];

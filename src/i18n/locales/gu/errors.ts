@@ -16,6 +16,10 @@ export const errors: Translation<typeof source> = {
     missingParameter: 'જરૂરી માહિતી મળી નથી',
     invalidParameters: 'આપેલી માહિતી બરાબર નથી',
     noDataFromServer: 'સર્વર પરથી કોઈ માહિતી મળી નથી',
+    // Draft from the glossary: a change of a saved record got no usable answer; the typed values stay on the form.
+    saveNotConfirmedKeepEditing: 'સાચવવાની ખાતરી થઈ શકી નથી. તમારા ફેરફાર અહીં જ છે: તપાસીને ફરી સાચવો દબાવો.',
+    // Draft from the glossary (save is સાચવો, list is યાદી): the server's answer to a change came back empty.
+    writeNotConfirmed: 'આ સચવાયું કે નહીં તે અમે ખાતરી કરી શક્યા નથી. ફરી પ્રયાસ કરતાં પહેલાં યાદી જુઓ.',
     noDataReturned: 'કોઈ માહિતી મળી નથી',
     noDataFromRpc: 'સર્વર પરથી કોઈ માહિતી મળી નથી',
     noDataAvailable: 'કોઈ માહિતી ઉપલબ્ધ નથી',
@@ -504,7 +508,9 @@ export const errors: Translation<typeof source> = {
       days14: '૧૪ દિવસ',
       days30: '૩૦ દિવસ',
       days90: '૯૦ દિવસ',
+      months6: '૬ મહિના',
       year1: '૧ વર્ષ',
+      years2: '૨ વર્ષ',
     },
   },
   pdf: {
@@ -515,6 +521,11 @@ export const errors: Translation<typeof source> = {
     downloadFailedStatus: 'PDF ડાઉનલોડ કરી શકાયું નથી (સ્થિતિ: {{status}})',
     downloadFailed: 'PDF ડાઉનલોડ કરી શકાયું નથી',
     shareFailed: 'PDF શેર કરી શકાયું નથી',
+    // Drafts for the owner's wording review (2026-11-01): the PDF functions' refusals (limits, changed meanwhile, service down).
+    tooManyLines: 'આ દસ્તાવેજમાં લીટીઓ વધારે છે, તેથી એક PDF તરીકે છાપી શકાતો નથી.',
+    tooManyPages: 'આ દસ્તાવેજ બહુ લાંબો છે, તેથી એક PDF તરીકે છાપી શકાતો નથી.',
+    changedWhilePrinting: 'દસ્તાવેજ બનતો હતો ત્યારે તે બદલાઈ ગયો. ફરી પ્રયાસ કરો.',
+    rendererUnavailable: 'PDF બનાવવાની સેવા હમણાં ઉપલબ્ધ નથી. થોડી વારમાં ફરી પ્રયાસ કરો.',
     tooLarge: 'આ દસ્તાવેજ ૨૫ MB થી મોટો છે, તેથી ઍપમાંથી શેર કરી શકાતો નથી.',
     sharingUnavailable: 'આ ફોનમાં શેર કરવાની સુવિધા નથી',
     shareDialogTitle: '{{name}} શેર કરો',

@@ -5,7 +5,10 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
-import { isNetworkError, isStatementTimeout, isTimeoutError, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
+import { isNetworkError, isStatementTimeout, isTimeoutError, serverReason, serverText } from '@/utils/serverText';
+import { REFUSAL } from '@/utils/serverRefusal';
+import { formatNumber } from '@/utils/formatters';
+import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/features/invoice/utils/cancelReason';
 import { createLogger } from '@/utils/logger';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
@@ -35,6 +38,9 @@ export interface Invoice {
   one_time_charge: boolean;
   is_auto_generated: boolean;
   invoice_pricing_mode: string | null;
+  /** Migration 134: set when the invoice is cancelled; a cancelled invoice is not counted in any sum. */
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
   customer: {
     id: string;
     name: string;
@@ -221,6 +227,8 @@ interface CustomerInvoiceRow {
   discount: number | null;
   tax_amount: number | null;
   notes: string | null;
+  /** Migration 134: set when the invoice is cancelled; absent on an older server. */
+  cancelled_at?: string | null;
 }
 
 /** The list RPC returns NULL for an amount an invoice never had (every auto-generated invoice has no discount): 0, as on the details screen. */
@@ -246,6 +254,7 @@ const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, cust
     discount: Number(row.discount) || 0,
     tax_amount: Number(row.tax_amount) || 0,
     notes: row.notes ?? null,
+    cancelled_at: row.cancelled_at ?? null,
     inv_name: null,
     created_by: '',
     one_time_charge: false,
@@ -506,6 +515,13 @@ export interface InvoiceDetail {
   gr_no: string;
   notes: string | null;
   invoice_customer_name: string;
+  /** The version token `cancel_invoice` is sent as `p_expected_updated_at` (`get_invoice_data` header). */
+  updated_at?: string | null;
+  /** Migration 134. Null (or absent on an older server) when the invoice is not cancelled. */
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
+  /** Administrators, supervisors and staff only. */
+  cancelled_by_name?: string | null;
 }
 
 export interface InvoiceItem {
@@ -827,7 +843,8 @@ function mapDetailedInvoiceItem(item: RpcInvoiceItemRaw): InvoiceItemDetailed {
     rack: grnItem.rack || item.rack || '',
     // Additional fields that might be useful
     weight: grnItem.weight || item.weight || 0,
-    packaging: catalog.packaging || grnItem.packaging || item.packaging || '',
+    // The lot's own word (blank reads bag); the flat field or the catalog's only when there is no lot.
+    packaging: item.grn_item ? grnItem.packaging || '' : item.packaging || catalog.packaging || '',
     labourRate: item.labour_rate || item.labourRate || 0,
   };
 }
@@ -919,105 +936,85 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
 };
 
 /**
- * Delete an invoice
- * Calls delete_invoice RPC which handles:
- * - Authorization (Admin or Supervisor only)
- * - Atomic deletion of invoice and line items
- * - Automatic GRN flag reset (invoiced = false)
- * - Returns detailed deletion info
+ * Cancel an invoice (server migration 134, review finding H5). An invoice is cancelled, never deleted: it keeps its
+ * number and lines, stays visible (marked Cancelled) and can no longer be edited. `cancel_invoice` is for
+ * administrators and supervisors, needs a reason of 3 to 500 characters and refuses by `reason` code.
  */
-export interface DeleteInvoiceResponse {
+export interface CancelInvoiceResponse {
   success: boolean;
+  /** The worded message for a refusal or a failure, in the app's language. */
   message?: string;
-  invoice_info?: {
-    inv_fin_year: number;
-    inv_no: number;
-    gr_no: string;
-    customer_name: string;
-    inv_date: string;
-    total: number;
-  };
-  deleted_counts?: {
-    invoice_trl_items: number;
-    orphaned_auto_errors: number;
-  };
-  gr_id?: string;
   error?: string;
+  /** The server's refusal code (INVOICE_CANCELLED, INVOICE_HAS_PAYMENTS, CANCEL_REASON_INVALID, STALE_RECORD). */
+  reason?: string;
+  cancelledAt?: string;
+  /** The invoice's new version token. */
+  updatedAt?: string;
   /**
-   * The request may have reached the server, but no answer came back (owner rule D22): the invoice may be deleted
-   * already. `sentAt` is when it was sent (ms since 1970). No worded message goes with it: the caller waits for the
-   * connection, reads the invoice, and sends the delete again only if the invoice is still there.
+   * No answer came and the request may have reached the server: the invoice may be cancelled. The caller reads the
+   * invoice again to see (a second cancel would only be refused with INVOICE_CANCELLED, so nothing is sent twice).
    */
   lostAnswer?: boolean;
-  sentAt?: number;
-  /** The server answered "Invoice not found": someone else deleted it, so it is gone, as the person wanted. */
-  notFound?: boolean;
 }
 
-/**
- * Asks the server whether an invoice is still there (a lost delete, owner rule D22). `gone`: the server says "Invoice
- * not found", so the delete went through, and an open report is told as after any delete (I6). `there`: the invoice
- * was read. `unknown`: the question itself got no usable answer (no connection, an error): ask again later.
- */
-export const invoiceDeleteState = async (invoiceId: string): Promise<'gone' | 'there' | 'unknown'> => {
-  const check = await getInvoiceDetails(invoiceId).catch(() => null);
-  if (check?.success && check.data) return 'there';
-  if (!check?.notFound) return 'unknown';
-  void invalidateReportQueries();
-  return 'gone';
+/** The app's own words for each refusal of `cancel_invoice`. */
+export const cancelRefusalMessage = (reason: string | undefined): string | undefined => {
+  switch (reason) {
+    case REFUSAL.INVOICE_CANCELLED:
+      return t('invoice.cancel.alreadyCancelled');
+    case REFUSAL.INVOICE_HAS_PAYMENTS:
+      return t('invoice.cancel.hasPayments');
+    case REFUSAL.CANCEL_REASON_INVALID:
+      return t('invoice.cancel.reasonInvalid', { min: formatNumber(CANCEL_REASON_MIN), max: formatNumber(CANCEL_REASON_MAX) });
+    case REFUSAL.STALE_RECORD:
+      return t('invoice.cancel.stale');
+    default:
+      return undefined;
+  }
 };
 
-// M3 Fix: Using executeRPC wrapper
-/**
- * `options.resend`: this is the delete sent again after one whose answer was lost (owner rule D22). Any failure of it
- * that is not the server's answer (a statement timeout while it waits behind the first delete, a failure before
- * sending, a changed session) leaves the attempt unsettled, so the result says `lostAnswer` and the caller goes back to
- * the check instead of unlocking the page. "Invoice not found" is `notFound`: deleted, as asked.
- */
-export const deleteInvoice = async (invoiceId: string, options: { resend?: boolean } = {}): Promise<DeleteInvoiceResponse> => {
-  const sentAt = Date.now();
+export const cancelInvoice = async (
+  invoiceId: string,
+  reason: string,
+  expectedUpdatedAt?: string | null
+): Promise<CancelInvoiceResponse> => {
   const result = await executeRPC<{
-    message: string;
-    invoice_info: DeleteInvoiceResponse['invoice_info'];
-    deleted_counts: DeleteInvoiceResponse['deleted_counts'];
-    gr_id: string;
+    cancelled_at?: string;
+    updated_at?: string;
   }>(
     getAuthenticatedClient,
-    'delete_invoice',
-    { p_invoice_id: invoiceId },
-    // `delete`: a timeout or a dropped connection says the invoice may have been deleted (not saved).
-    { context: 'InvoiceService.deleteInvoice', write: true, delete: true, errorMessage: t('errors.invoice.deleteFailed'), unwrapNested: false, validateSuccess: true }
+    'cancel_invoice',
+    { p_invoice_id: invoiceId, p_reason: trimCancelReason(reason), p_expected_updated_at: expectedUpdatedAt ?? null },
+    { context: 'InvoiceService.cancelInvoice', write: true, errorMessage: t('invoice.cancel.failed'), unwrapNested: false, validateSuccess: true }
   );
 
   if (!result.success) {
-    // "Invoice not found" is the server's own raw text: the invoice is gone (deleted on another phone). The caller
-    // tells the person it is deleted, and an open report must stop listing it as after any delete (I6).
+    // "Invoice not found": deleted by an older flow or no longer visible; the caller reads the page again.
     if (INVOICE_NOT_FOUND.test(result.error ?? '')) {
       void invalidateReportQueries();
-      return { success: false, message: result.message, error: result.error, notFound: true };
+      return { success: false, message: t('invoice.cancel.notFound'), error: result.error, reason: 'NOT_FOUND' };
     }
-    // The request may have reached the server and no answer came: the invoice may be gone already. Nothing is worded
-    // for the person; the caller waits, reads the invoice, and sends the delete again only if it is still there (D22).
-    // (Not the server's own statement timeout, 57014: it rolled back, so nothing was deleted.)
-    if (result.lostAnswer || (options.resend && isUnsettledFailure(result, result.errorCode))) {
-      return { success: false, error: result.error, lostAnswer: true, sentAt };
+    if (result.lostAnswer) return { success: false, error: result.error, lostAnswer: true };
+    const refusalText = cancelRefusalMessage(result.reason);
+    if (refusalText) {
+      // The invoice changed or is already cancelled: a report under it may be out of date too.
+      if (result.reason === REFUSAL.INVOICE_CANCELLED) void invalidateReportQueries();
+      return { success: false, message: refusalText, error: result.error, reason: result.reason };
     }
-    // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in
-    // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.
+    // A failure of the connection keeps executeRPC's words; a refusal the app can word (old regexes) is worded; anything
+    // else says "Couldn't cancel the invoice. Try again.": a server sentence the app has no wording for stays hidden.
     const transportFailure = !isStatementTimeout(result) && (isTimeoutError(result) || isNetworkError(result));
-    const refusal = transportFailure ? undefined : serverReason(result.error ?? '');
-    // Any other failure says "Couldn't delete the invoice. Try again.": a server sentence the app has no wording for stays hidden.
-    return { success: false, message: refusal ?? (transportFailure ? result.message : t('errors.invoice.deleteFailed')), error: result.error };
+    const worded = transportFailure ? undefined : serverReason(result.error ?? '');
+    return {
+      success: false,
+      message: worded ?? (transportFailure ? result.message : t('invoice.cancel.failed')),
+      error: result.error,
+      ...(result.reason ? { reason: result.reason } : {}),
+    };
   }
 
-  // A report left open under the invoice must not keep listing it (SR-10, as for every other write).
+  // A report left open under the invoice must not keep counting it (SR-10, as for every other write).
   void invalidateReportQueries();
 
-  return {
-    success: true,
-    message: result.data?.message,
-    invoice_info: result.data?.invoice_info,
-    deleted_counts: result.data?.deleted_counts,
-    gr_id: result.data?.gr_id,
-  };
+  return { success: true, cancelledAt: result.data?.cancelled_at, updatedAt: result.data?.updated_at };
 };

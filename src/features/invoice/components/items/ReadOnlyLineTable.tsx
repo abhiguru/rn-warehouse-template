@@ -29,6 +29,7 @@ import { rowWidth, TABLE_OUTLINE, makeTableStyles, useTableLayout, type TableLay
 import { useAppTable } from '@/components/table/appTable';
 import { space, touchTarget, typography } from '@/theme/tokens';
 import { formatCount, toDate } from '@/utils/formatters';
+import { formatPackages } from '@/utils/packagingWord';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { itemsLayout, type ItemsLayout } from './itemsLayout';
@@ -47,6 +48,8 @@ export interface ReadOnlyLine {
   /** The stored dispatch date; empty or invalid shows a dash. */
   dispatchDate?: string;
   qty: number;
+  /** What the lot is counted in (Bag, Box, Crate); the screen-reader text says "boxes" for Box. Absent reads "bags". */
+  packaging?: string | null;
   days: number;
   /** The saved duration in months. */
   months: number;
@@ -191,7 +194,7 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
       date: line.dispatchDate && toDate(line.dispatchDate) ? spokenDateText(line.dispatchDate) : '—',
       months: oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(line.months * 10) / 10, 'month'),
       days: formatCount(line.days, 'day'),
-      bags: formatCount(line.qty, 'bag'),
+      bags: formatPackages(line.qty, line.packaging),
       charge: formatInvoiceAmount(line.charge),
       labour: formatInvoiceAmount(line.labour),
       tax: localizeDigits(rateText('tax', line.taxRate)),

@@ -27,6 +27,8 @@ const STACK_FONT_SCALE = 1.3;
 interface KeyValueCellProps {
   keyLabel: string;
   value: string | number;
+  /** What a screen reader says in place of `value` (a date as "9 Oct 2026"). */
+  spokenValue?: string;
   layout?: KeyValueLayout;
   actionable?: boolean;
   onPress?: () => void;
@@ -39,6 +41,7 @@ interface KeyValueCellProps {
 export const KeyValueCell: React.FC<KeyValueCellProps> = ({
   keyLabel,
   value,
+  spokenValue,
   layout = 'inline',
   actionable = false,
   onPress,
@@ -52,6 +55,7 @@ export const KeyValueCell: React.FC<KeyValueCellProps> = ({
   const { fontScale } = useWindowDimensions();
   const isStacked = layout === 'stacked' || fontScale > STACK_FONT_SCALE;
   const formattedValue = `${valuePrefix || ''}${value}${valueSuffix || ''}`;
+  const spokenText = spokenValue !== undefined ? `${valuePrefix || ''}${spokenValue}${valueSuffix || ''}` : formattedValue;
   const isPressable = actionable && !!onPress;
 
   const renderContent = (pressed: boolean) => (
@@ -87,12 +91,12 @@ export const KeyValueCell: React.FC<KeyValueCellProps> = ({
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
-          accessibilityLabel={`${keyLabel}, ${formattedValue}`}
+          accessibilityLabel={`${keyLabel}, ${spokenText}`}
         >
           {({ pressed }) => renderContent(pressed)}
         </Pressable>
       ) : (
-        <View accessible accessibilityLabel={`${keyLabel}, ${formattedValue}`}>
+        <View accessible accessibilityLabel={`${keyLabel}, ${spokenText}`}>
           {renderContent(false)}
         </View>
       )}
@@ -106,6 +110,7 @@ interface KeyValueGroupProps {
   items: Array<{
     key: string;
     value: string | number;
+    spokenValue?: string;
     emphasized?: boolean;
     actionable?: boolean;
     onPress?: () => void;
@@ -130,6 +135,7 @@ export const KeyValueGroup: React.FC<KeyValueGroupProps> = ({
           key={item.key}
           keyLabel={item.key}
           value={item.value}
+          spokenValue={item.spokenValue}
           layout={layout}
           emphasized={item.emphasized}
           actionable={item.actionable}

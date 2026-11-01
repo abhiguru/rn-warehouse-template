@@ -90,6 +90,10 @@ export const components = {
     opensPlayStore: 'Opens the Play Store',
     securityNotice: 'This update includes important security improvements.',
   },
+  backendTooOld: {
+    title: "This facility's server needs an update",
+    message: "The facility's server is older than this version of the app works with. Ask the facility to update its server, then try again.",
+  },
   appTooOld: {
     title: 'Update the app',
     message: 'This facility needs app version {{minimum}} or newer. You have {{current}}.',

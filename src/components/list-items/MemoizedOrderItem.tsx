@@ -13,7 +13,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { formatCount, formatNumber, formatRelativeTime } from '@/utils/formatters';
+import { formatCount, formatNumber, formatRelativeTime, formatSpokenDate } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import { StatusTag, type StatusKind, Avatar } from '@/components/ui';
 import type { Order } from '@/types/order.types';
@@ -98,6 +98,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
 
   // Build footnote: "Mumbai · 2h ago" or just "2h ago"
   const timeText = order.updated_at ? formatRelativeTime(order.updated_at) : translate('lists.order.recently');
+  const spokenTimeText = order.updated_at ? formatRelativeTime(order.updated_at, formatSpokenDate) : timeText;
   const footnote = order.customer?.city
     ? `${order.customer.city} · ${timeText}`
     : timeText;
@@ -116,7 +117,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
     summary,
     showTag ? statusConfig.label : null,
     order.customer?.city ? translate('lists.order.location', { city: order.customer.city }) : null,
-    timeText,
+    spokenTimeText,
     deactivated ? translate('lists.order.accessibilityDeactivated') : null,
     matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
   ].filter(Boolean).join(', ');

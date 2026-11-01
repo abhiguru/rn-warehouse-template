@@ -49,6 +49,12 @@ export interface ConfirmInputField {
   textContentType?: TextInputProps['textContentType'];
   /** Shown under the field and read out when it appears. */
   error?: string | null;
+  /** A longer text (a reason): several lines, the keyboard's return key adds a line. */
+  multiline?: boolean;
+  maxLength?: number;
+  /** A quiet line under the field (a character counter); the error, when there is one, is drawn after it. */
+  helper?: string;
+  testID?: string;
 }
 
 export interface ConfirmInputDialogProps extends ConfirmDialogProps {
@@ -121,6 +127,8 @@ const makeStyles = (t: ThemeTokens) => ({
     borderColor: t.border.field,
     color: t.text.primary,
   },
+  inputMultiline: { minHeight: touchTarget * 2, textAlignVertical: 'top' as const, paddingVertical: space.sm },
+  helperText: { ...typography.footnote, alignSelf: 'flex-end' as const, marginTop: space.xs, color: t.text.secondary },
   inputFocused: { borderWidth: 2, borderColor: t.border.fieldFocus },
   inputError: { borderWidth: 2, borderColor: t.status.negative.border },
   errorRow: {
@@ -242,7 +250,7 @@ export const ConfirmInputDialog: React.FC<ConfirmInputDialogProps> = ({
               {field ? (
                 <>
                   <TextInput
-                    style={[styles.input, focused && styles.inputFocused, !!field.error && styles.inputError]}
+                    style={[styles.input, field.multiline && styles.inputMultiline, focused && styles.inputFocused, !!field.error && styles.inputError]}
                     value={field.value}
                     onChangeText={field.onChangeText}
                     placeholder={field.placeholder}
@@ -251,11 +259,15 @@ export const ConfirmInputDialog: React.FC<ConfirmInputDialogProps> = ({
                     keyboardType={field.keyboardType}
                     autoComplete={field.autoComplete}
                     textContentType={field.textContentType}
-                    returnKeyType="done"
+                    returnKeyType={field.multiline ? 'default' : 'done'}
+                    multiline={field.multiline}
+                    maxLength={field.maxLength}
+                    testID={field.testID}
                     editable={!busy}
                     onFocus={() => setFocused(true)}
                     onBlur={() => setFocused(false)}
                   />
+                  {field.helper ? <Text style={styles.helperText}>{field.helper}</Text> : null}
                   {field.error ? (
                     <View style={styles.errorRow} accessibilityLiveRegion="polite">
                       <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />

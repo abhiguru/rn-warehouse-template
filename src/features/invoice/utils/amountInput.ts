@@ -9,6 +9,11 @@
  */
 import { normalizeDigits, t } from '@/i18n';
 import { RENT_MAX } from '@/utils/priceNumbers';
+import { roundMoney } from '@/utils/invoiceCalculations';
+
+/** The text of a discount field: the amount with two decimals ("12.00"), empty for 0 (the placeholder shows the zero). */
+export const discountFieldText = (value: number | null | undefined): string =>
+  typeof value === 'number' && Number.isFinite(value) && value !== 0 ? roundMoney(value).toFixed(2) : '';
 
 export type RateField = 'charge' | 'labour_rate' | 'tax';
 

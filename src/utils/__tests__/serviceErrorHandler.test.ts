@@ -103,6 +103,35 @@ describe('executeRPC wording of a failed call', () => {
   const call = (client: () => Promise<unknown>, options: { write?: boolean; delete?: boolean; errorMessage?: string } = {}) =>
     executeRPC(client, 'fictional_rpc', {}, { context: 'test', ...options });
 
+  describe('an empty 200 (owner decision 3, 2026-11-01)', () => {
+    const empty = answering({ data: null, error: null });
+
+    it.each([[null], [undefined]])('on a write (%s) is a lost answer: the caller reads the record again; the words ask to check the list first', async (data) => {
+      const result = await call(answering({ data, error: null }), { write: true, errorMessage: 'Could not save' });
+      expect(result).toMatchObject({ success: false, lostAnswer: true, error: 'EMPTY_RESPONSE', message: t('errors.general.writeNotConfirmed') });
+      expect(result.message).not.toBe(t('errors.general.noDataFromServer'));
+      expect(t('errors.general.writeNotConfirmed')).toBe("We couldn't confirm that this was saved. Check the list before trying again.");
+    });
+
+    it('on a delete says it may have been deleted', async () => {
+      const result = await call(empty, { write: true, delete: true });
+      expect(result).toMatchObject({ lostAnswer: true, message: t('errors.parsed.timeoutDeleteForm') });
+    });
+
+    it('in Gujarati the words are Gujarati', async () => {
+      setLanguage('gu');
+      const result = await call(empty, { write: true });
+      expect(result.message).toBe(t('errors.general.writeNotConfirmed'));
+      expect(result.message).toMatch(/[઀-૿]/);
+    });
+
+    it('on a read keeps its own words and is not a lost answer', async () => {
+      const result = await call(empty, { errorMessage: 'Could not load' });
+      expect(result).toMatchObject({ success: false, error: 'EMPTY_RESPONSE', message: 'Could not load' });
+      expect(result.lostAnswer).toBeUndefined();
+    });
+  });
+
   it('a delete that timed out says it may have been deleted, with the detail screen wording', async () => {
     const result = await call(failing('TimeoutError: Request timeout'), { delete: true });
     expect(result).toMatchObject({

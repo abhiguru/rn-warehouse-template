@@ -61,6 +61,23 @@ describe('the ITEMS table of the Review step', () => {
     expect(allTexts().filter((text) => text.startsWith('₹'))).toHaveLength(2);
   });
 
+  it('counts a Box lot in boxes, a mixed total in units, and an older server\'s lot (no packaging) in bags', () => {
+    setWindow(411, 1);
+    render([invoiceLine({ qty: 12, item_id: 'a', item_name: 'Example A', packaging: 'Box' }, 0)]);
+    expect(rows()[0].props.accessibilityLabel).toContain('12 boxes');
+    expect(total().props.accessibilityLabel).toContain('12 boxes');
+    act(() => tree.unmount());
+
+    render([invoiceLine({ qty: 12, item_id: 'a', item_name: 'Example A', packaging: 'Box' }, 0), invoiceLine({ qty: 3, item_id: 'b', item_name: 'Example B', packaging: 'Bag' }, 1)]);
+    expect(rows()[0].props.accessibilityLabel).toContain('12 boxes');
+    expect(rows()[1].props.accessibilityLabel).toContain('3 bags');
+    expect(total().props.accessibilityLabel).toContain('15 units');
+    act(() => tree.unmount());
+
+    render([invoiceLine({ qty: 1, item_id: 'a', item_name: 'Example A' }, 0)]);
+    expect(total().props.accessibilityLabel).toContain('1 bag');
+  });
+
   it('counts 125 lines of one group as one row', () => {
     setWindow(411, 1);
     render([...groupLines(125, { item_name: 'Example Rai', package_mark: 'BULK-125', qty: 12 }), invoiceLine({ item_id: 'o', item_name: 'Example Onion' }, 200)]);

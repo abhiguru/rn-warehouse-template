@@ -21,6 +21,7 @@ import { resetReportExportAvailability } from '@/features/reports/useReportExpor
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { invoicePaymentStatus } from '@/components/reports/invoicePaymentStatus';
 import { setLanguage } from '@/i18n';
+import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
 import { getAllInvoiceHistory, getCustomerInvoiceHistory } from '@/services/reporting/invoice-history-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
@@ -276,6 +277,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockParams = {};
   mockTableWindow = { width: 1000, scale: 1 };
+  // The facility records payments (capability `payments`); the tests of a facility without them turn it off.
+  setFacilityCapabilities({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }, { payments: true });
   allHistory.mockImplementation(async ({ fromDate }) => answerCustomers(fromDate < '2026-06-15' ? [...CUSTOMERS, OLD_MILL] : CUSTOMERS) as never);
   customerHistory.mockResolvedValue(answerInvoices as never);
   resetReportExportAvailability();
@@ -283,6 +286,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+  resetFacilityCapabilities();
   jest.useRealTimers();
   setLanguage('en');
 });
@@ -1955,5 +1959,68 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(countCells.length).toBeGreaterThanOrEqual(1 + 2);
     // Fits the window: no part of the table scrolls sideways.
     expect(table.findAll(node => node.props.horizontal === true).length).toBe(0);
+  });
+});
+
+describe('invoice history in a facility that records no payments (capability payments off)', () => {
+  const NORTH = { origin: 'https://warehouse.example.test', instanceId: 'instance-a' };
+  const payOff = () => setFacilityCapabilities(NORTH, { payments: false });
+  const ALL_TEXT = (screen: Awaited<ReturnType<typeof open>>) => screen.texts().join('|');
+
+  it('shows the Invoices tile only: no Paid or Pending tile, no Payment filter, no Paid or Pending tag on a card', async () => {
+    payOff();
+    mockParams = GREEN;
+    const screen = await open(makeStore());
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Invoices', '4']));
+    expect(ALL_TEXT(screen)).not.toMatch(/Paid|Pending/);
+    expect(() => screen.control('Filter by payment')).toThrow();
+    expect(screen.invoiceRows()).toEqual(BY_DATE);
+  });
+
+  it('draws the monthly table without Paid and Pending: headings, rows, spoken summaries and the Total row', async () => {
+    payOff();
+    mockParams = GREEN;
+    customerHistory.mockResolvedValue(answerMonthly as never);
+    const screen = await open(makeStore());
+    await screen.press('Monthly breakdown');
+    const table = screen.monthTable()!;
+    expect(table.headers).toEqual(['Month', 'Invoices', 'Amount']);
+    expect(table.rows[0]).toEqual(expect.not.arrayContaining(['Paid', 'Pending']));
+    expect(table.summaries.join('|')).not.toMatch(/Paid|Pending/);
+    expect(table.totalLabel).not.toMatch(/Paid|Pending/);
+    expect(table.totalLabel).toMatch(/Amount/);
+  });
+
+  it('forgets a Payment choice stored while payments were on: the list is not narrowed by it', async () => {
+    mockParams = GREEN;
+    const store = makeStore();
+    const screen = await open(store);
+    await screen.press('Filter by payment');
+    await screen.press('Paid');
+    expect(screen.invoiceRows()).toEqual(['Today', 'Invoice 2026/0010', 'Yesterday', 'Invoice 2026/0100']);
+
+    await act(async () => { payOff(); });
+    expect(screen.invoiceRows()).toEqual(BY_DATE);
+    expect(ALL_TEXT(screen)).not.toMatch(/Payment: Paid/);
+  });
+
+  it('a cancelled invoice still shows its Cancelled tag', async () => {
+    payOff();
+    mockParams = GREEN;
+    const cancelled = {
+      ...answerInvoices,
+      data: {
+        ...answerInvoices.data,
+        invoices: [
+          ...INVOICES,
+          { ...INVOICES[0], invoice_id: 'inv-x', invoice_number: '2026/0011', cancelled_at: '2026-10-11T05:00:00Z', payment_status: { status: 'cancelled', paid_date: null, payment_ref: null, amount: 0 } },
+        ],
+      },
+    };
+    customerHistory.mockResolvedValue(cancelled as never);
+    const screen = await open(makeStore());
+    expect(screen.texts()).toContain('Cancelled');
+    // The cancelled invoice is listed but not counted.
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Invoices', '4']));
   });
 });

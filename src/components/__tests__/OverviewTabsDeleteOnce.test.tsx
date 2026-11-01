@@ -59,24 +59,24 @@ describe('the Delete button of the Overview tab', () => {
     expect(texts()).toContain('Deleting…');
   });
 
-  it('invoice: hands over to the page at once, with no question of its own', () => {
-    const onDelete = jest.fn();
+  it('invoice: the button says Cancel invoice and hands over to the page at once (the page asks for the reason)', () => {
+    const onCancel = jest.fn();
     render(
       <InvoiceOverviewTab
         invoice_id="i1"
         invoice_number="42"
         financial_summary={{ subtotal: 100, discount: 0, labour: 0, tax_amount: 0, total: 100 }}
         can_edit
-        can_delete
+        can_cancel
         on_edit_invoice={jest.fn()}
-        on_delete_invoice={onDelete}
+        on_cancel_invoice={onCancel}
       />
     );
 
-    press('Delete Invoice');
+    press('Cancel invoice');
 
     expect(showAlert).not.toHaveBeenCalled();
-    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
   it('dispatch: the tab asks once, and deletes only when that question is answered Delete', () => {

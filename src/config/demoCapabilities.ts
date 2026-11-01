@@ -12,6 +12,11 @@ export interface FacilityCapabilities {
   /** Live updates of orders and carts. */
   realtime: boolean;
   customerDocuments: boolean;
+  /**
+   * The facility records payments: the Paid and Pending figures, tags and filters of the invoice reports are shown only
+   * when it does (backend migration 139; the app has no payment entry). Off unless the config says true.
+   */
+  payments: boolean;
 }
 
 /**
@@ -25,4 +30,5 @@ export const DEMO_CAPABILITIES: FacilityCapabilities = {
   sensors: false,
   realtime: true,
   customerDocuments: false,
+  payments: false,
 };

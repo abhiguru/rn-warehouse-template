@@ -114,6 +114,9 @@ describe.each(THEMES)('SensorHistoryChart in %s %s', (brand, mode) => {
     expect(rows).toHaveLength(READINGS.length);
     // The last reading has no values: the row says so as the cells do, with the dash.
     expect(rows.map(row => String(row.props.accessibilityLabel).includes('−18.5°C'))).toEqual([true, false, false]);
+    // Each row is read with its date in words, never as 01/10/26.
+    expect(String(rows[0].props.accessibilityLabel)).toContain('1 Oct 2026');
+    expect(rows.map(row => String(row.props.accessibilityLabel)).join('|')).not.toMatch(/\d\d\/\d\d\/\d\d/);
     expect(texts(tree).filter(s => s === '—')).toHaveLength(2);
     expect(tree.root.findAll(n => String(n.props.testID).startsWith('sensor-history-table-sort-'))).toHaveLength(0);
     act(() => tree.unmount());
@@ -171,5 +174,34 @@ describe('temperature axis and missing readings', () => {
     expect(chart.props.formatYLabel('-20')).toBe('\u221220');
     expect(chart.props.data[0].label).toBe('01/10/26');
     act(() => tree.unmount());
+  });
+});
+
+describe('a long period with the lowest and highest of each point', () => {
+  const RANGED: SensorHistoryReading[] = [
+    { timestamp: '2026-10-01T00:00:00Z', temperature: 2, humidity: 80, temperature_min: -3, temperature_max: 9, humidity_min: 70, humidity_max: 90 },
+    { timestamp: '2026-10-02T00:00:00Z', temperature: 3, humidity: 82, temperature_min: 0, temperature_max: 12, humidity_min: 71, humidity_max: 91 },
+  ];
+  const charts = (tree: ReactTestRenderer) => tree.root.findAll(n => (n.type as unknown) === 'LineChart');
+
+  it('puts the extremes on the temperature axis, not only the averages', () => {
+    const domain = temperatureDomain(RANGED);
+    expect(domain.min).toBeLessThanOrEqual(-3);
+    expect(domain.max).toBeGreaterThanOrEqual(12);
+  });
+
+  it('draws two thin dashed lines for them, and the legend says so', () => {
+    const tree = render('orange', 'light', <SensorHistoryChart readings={RANGED} aggregationInterval="1 day" periodDays={183} />);
+    const props = charts(tree)[0].props;
+    expect(props.data2.map((p: { value?: number }) => p.value)).toEqual([-3, 0]);
+    expect(props.data3.map((p: { value?: number }) => p.value)).toEqual([9, 12]);
+    expect(props.strokeDashArray2).toBeDefined();
+    expect(texts(tree)).toContain('Lowest and highest temperature (dashed)');
+  });
+
+  it('draws none for an ordinary period', () => {
+    const tree = render('orange', 'light', <SensorHistoryChart readings={READINGS} aggregationInterval="1 day" periodDays={7} />);
+    expect(charts(tree)[0].props.data2).toBeUndefined();
+    expect(texts(tree)).not.toContain('Lowest and highest temperature (dashed)');
   });
 });

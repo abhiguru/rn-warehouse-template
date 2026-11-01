@@ -74,6 +74,8 @@ export const INVOICE_HISTORY_CUSTOMER: FilterListConfig<InvoiceRecordsRequest> =
       key: 'payment',
       get label() { return t('reports.filters.payment'); },
       icon: 'cash-check',
+      // Without the payments capability there is nothing paid or pending to choose, and a stored choice is dropped.
+      visibleTo: ctx => ctx.payments === true,
       defaultValue: 'all',
       options: [
         { value: 'all', get label() { return t('common.all'); } },

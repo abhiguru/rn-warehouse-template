@@ -10,9 +10,9 @@ import { loadGRNData } from '../grnFormService';
 import { grnUpdateIdempotencyKey } from '@/utils/submissionIdempotency';
 
 type Row = Record<string, unknown>;
-type Query = { table: string; filters: Array<[string, string, unknown]> };
+type Query = { table: string; filters: Array<[string, string, unknown]>; range?: [number, number]; orders?: string[] };
 const mockQueries: Query[] = [];
-let mockAnswer: (query: Query) => { data: unknown; error: unknown };
+let mockAnswer: (query: Query) => { data: unknown; error: unknown; count?: number };
 let mockDetails: { data: unknown; error: unknown } = { data: { success: true, data: { grn: { rates: [] } } }, error: null };
 
 jest.mock('@/config/supabaseConfig', () => {
@@ -20,7 +20,8 @@ jest.mock('@/config/supabaseConfig', () => {
     const query: Query = { table, filters: [] };
     const chain: Record<string, unknown> = {
       select: () => chain,
-      order: () => chain,
+      order: (column: string) => { (query.orders ??= []).push(column); return chain; },
+      range: (from: number, to: number) => { query.range = [from, to]; return chain; },
       eq: (column: string, value: unknown) => { query.filters.push(['eq', column, value]); return chain; },
       in: (column: string, value: unknown) => { query.filters.push(['in', column, value]); return chain; },
       single: () => chain,
@@ -171,5 +172,42 @@ describe('opening a GRN for editing', () => {
     const photoQueries = mockQueries.filter((query) => query.table === 'grn_images');
     expect(photoQueries).toHaveLength(2);
     for (const query of photoQueries) expect(query.filters).toContainEqual(['eq', 'status', 'confirmed']);
+  });
+});
+
+// A direct read is cut at 2,000 rows (backend migrations 137 and 138): the lines and photos of a big GRN are paged.
+describe('opening a GRN with more lines than one page', () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => ({ ...lineRow, id: `line-${String(i).padStart(5, '0')}` }));
+  /** The lines table as PostgREST answers a range, cut at `cap` rows per answer; the other tables as `server()`. */
+  const paged = (all: Row[], cap = Infinity) => (query: Query) => {
+    if (query.table !== 'goodsreceived_trl') return server()(query);
+    const [from, to] = query.range ?? [0, Infinity];
+    return { data: all.slice(from, Math.min(to + 1, from + cap)), error: null, count: all.length };
+  };
+
+  it('reads 1,046 lines in pages and opens the GRN with every one of them', async () => {
+    mockAnswer = paged(lines(1046));
+    const result = await loadGRNData(GRN_ID);
+    expect(result.success).toBe(true);
+    expect(result.data?.items).toHaveLength(1046);
+    const lineQueries = mockQueries.filter(q => q.table === 'goodsreceived_trl');
+    expect(lineQueries.map(q => q.range)).toEqual([[0, 499], [0, 499], [500, 999], [1000, 1499]]);
+    // The pages after the first are in a stable order.
+    expect(lineQueries.slice(1).every(q => q.orders?.includes('id'))).toBe(true);
+  });
+
+  it('keeps the order the lines always came in for a GRN of one page', async () => {
+    mockAnswer = paged(lines(3));
+    const result = await loadGRNData(GRN_ID);
+    expect(result.data?.items).toHaveLength(3);
+    expect(mockQueries.filter(q => q.table === 'goodsreceived_trl')).toHaveLength(1);
+    expect(mockQueries.find(q => q.table === 'goodsreceived_trl')?.orders).toBeUndefined();
+  });
+
+  it('refuses to open when fewer lines came than the server counts, so Save cannot remove the rest', async () => {
+    mockAnswer = paged(lines(1046), 300);
+    const result = await loadGRNData(GRN_ID);
+    expect(result.success).toBe(false);
+    expect(result.data).toBeUndefined();
   });
 });

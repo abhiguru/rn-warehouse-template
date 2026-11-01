@@ -30,6 +30,20 @@ const INTRODUCED_BY_MIGRATION = {
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 
+/**
+ * The oldest backend this app works with: its newest applied migration (`schemaHead`). An app 0.7.0 calls functions that
+ * migration 127 and earlier releases still have, and drops the fallbacks for older ones. A backend below it gets the
+ * "server needs an update" screen. A backend that does not say (no `schemaHead`) is never blocked: the check is only for
+ * a backend that says it is older, unlike the feature table above, which counts a silent backend as older.
+ */
+export const MIN_BACKEND_MIGRATION = 127;
+
+/** The migration number of a backend that says it is below the floor; null when it is at or above it, or does not say. */
+export function backendBelowFloor(schemaHead: string | null | undefined): number | null {
+  const head = migrationNumber(schemaHead);
+  return head !== null && head < MIN_BACKEND_MIGRATION ? head : null;
+}
+
 const byServer = new Map<string, BackendRelease>();
 const keyOf = (server: ServerIdentity): string => `${server.origin}|${server.instanceId}`;
 

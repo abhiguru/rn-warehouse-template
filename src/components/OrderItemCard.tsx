@@ -548,7 +548,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         {overStock ? (
           <View style={styles.overStockRow} testID="order-line-over-stock">
-            <InlineValidation variant="warning" message={tr('orders.item.overStock', { stock: digits(stock) })} />
+            <InlineValidation variant="warning" message={stock <= 0 ? tr('orders.item.outOfStock') : tr('orders.item.overStock', { stock: digits(stock) })} />
           </View>
         ) : null}
       </View>

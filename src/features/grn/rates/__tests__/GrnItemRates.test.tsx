@@ -3,6 +3,8 @@ import React from 'react';
 import { Text } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { GrnItemRates, groupRates } from '../GrnItemRates';
+import { router } from 'expo-router';
+import { MIXED_PACKAGING } from '@/utils/packagingWord';
 import { GRNOverviewTab } from '@/components/grn-details/GRNOverviewTab';
 import { getGrnItemRates } from '@/services/item-pricing-service';
 import type { RpcGrnItemRate, RpcGrnRate } from '@/types/rpc-canonical.types';
@@ -289,5 +291,33 @@ describe('GRNOverviewTab Rates section', () => {
     await mount(<GRNOverviewTab grn_id="g1" pricing_mode="MONTHLY" can_edit={false} can_delete={false} />);
     expect(texts()).toContain('RATES');
     expect(texts()).toContain('Rent (₹)');
+  });
+});
+
+describe('the note under the table names what the GRN is counted in (D18)', () => {
+  it('says per box for boxes, per unit when the lots are counted in different things, per bag otherwise', async () => {
+    read.mockResolvedValue(answer([lot({})]));
+    await mount(<GrnItemRates grnId="g1" packaging="box" />);
+    expect(texts()).toContain('Rent and labour per box, per month.');
+    act(() => tree.unmount());
+
+    await mount(<GrnItemRates grnId="g1" packaging={MIXED_PACKAGING} />);
+    expect(texts()).toContain('Rent and labour per unit, per month.');
+    act(() => tree.unmount());
+
+    await mount(<GrnItemRates grnId="g1" packaging="crate" />);
+    expect(texts()).toContain('Rent and labour per crate, per month.');
+    act(() => tree.unmount());
+
+    await mount(<GrnItemRates grnId="g1" />);
+    expect(texts()).toContain('Rent and labour per bag, per month.');
+  });
+
+  it('the Your-rate link carries the lot\'s own packaging', async () => {
+    mockRole = 'customer';
+    read.mockResolvedValue(answer([lot({ grn_item_id: 'lot-a' })]));
+    await mount(<GrnItemRates grnId="g1" grnNumber="A1" packagingByLot={{ 'lot-a': 'Box' }} />);
+    act(() => links()[0].props.onPress());
+    expect(jest.mocked(router.push)).toHaveBeenCalledWith(expect.objectContaining({ params: expect.objectContaining({ pack: 'box' }) }));
   });
 });

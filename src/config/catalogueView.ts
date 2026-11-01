@@ -4,7 +4,7 @@
  * list, the place line and the "last seen" line. Pure: no network and no React.
  */
 import type { CatalogueFacility } from './centralSession';
-import { formatRelativeTime } from '@/utils/formatters';
+import { formatRelativeTime, formatSpokenDate } from '@/utils/formatters';
 import { t } from '@/i18n';
 
 /**
@@ -58,8 +58,8 @@ export function placeText(facility: Pick<CatalogueFacility, 'town' | 'city' | 'd
  * Under a minute is its own sentence because the relative time is written as a sentence
  * start ("Just now").
  */
-export function lastSeenText(iso: string | null, now: Date = new Date()): string {
+export function lastSeenText(iso: string | null, now: Date = new Date(), spoken = false): string {
   if (!iso || !Number.isFinite(Date.parse(iso))) return t('central.catalogue.neverSeen');
   if (now.getTime() - Date.parse(iso) < 60 * 1000) return t('central.catalogue.lastSeenJustNow');
-  return t('central.catalogue.lastSeen', { time: formatRelativeTime(iso, undefined, now) });
+  return t('central.catalogue.lastSeen', { time: formatRelativeTime(iso, spoken ? formatSpokenDate : undefined, now) });
 }

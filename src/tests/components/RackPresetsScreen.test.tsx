@@ -3,6 +3,7 @@ import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import RackPresetsScreen from '../../../app/rack-presets';
 import { getRackPresets, setRackPresets } from '@/services/rackPresetsService';
+import { setLanguage } from '@/i18n/language';
 
 let mockRole = 'admin';
 jest.mock('@/store/hooks', () => ({
@@ -32,6 +33,7 @@ beforeEach(() => {
   (getRackPresets as jest.Mock).mockResolvedValue(loaded);
 });
 afterEach(async () => {
+  setLanguage('en');
   if (tree) await act(async () => { tree!.unmount(); });
   tree = undefined;
 });
@@ -80,4 +82,15 @@ it('tells staff it is for administrators and supervisors, and reads nothing', as
   await mount();
   expect(getRackPresets).not.toHaveBeenCalled();
   expect(tree!.root.findAll((n) => n.props.testID === 'rack-presets-floor')).toHaveLength(0);
+});
+
+it('a button with no text is called by its position, in Gujarati digits in Gujarati and 0-9 in English', async () => {
+  await mount();
+  await act(async () => { tree!.root.find((n) => n.props.testID === 'rack-presets-chamber-add' && typeof n.props.onPress === 'function').props.onPress(); });
+  const remove = () => tree!.root.find((n) => n.props.testID === 'rack-presets-chamber-1-remove' && typeof n.props.onPress === 'function');
+  expect(remove().props.accessibilityLabel).toContain('2');
+  await act(async () => { setLanguage('gu'); });
+  await act(async () => { tree!.update(<RackPresetsScreen />); });
+  expect(remove().props.accessibilityLabel).toContain('૨');
+  expect(remove().props.accessibilityLabel).not.toMatch(/[0-9]/);
 });

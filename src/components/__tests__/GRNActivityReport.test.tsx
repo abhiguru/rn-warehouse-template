@@ -154,7 +154,7 @@ describe('the GRN card', () => {
     signIn(STAFF);
     await open();
     expect(grnCard('311').props.accessibilityLabel).toBe(
-      'GRN 311, 8 Oct 2025, Fictional Farms · Asha Example, 80 of 100 bags in stock, Invoice 2026-0042, 1 dispatch, 2 photos'
+      'GRN 311, 8 Oct 2025, Fictional Farms · Asha Example, 80 of 100 units in stock, Invoice 2026-0042, 1 dispatch, 2 photos'
     );
     expect(grnCard('312').props.accessibilityLabel).toBe('GRN 312, 8 Oct 2025, Sender not recorded · Ravi Example, 20 of 20 bags in stock, Not invoiced');
     // A document number is never cut short.

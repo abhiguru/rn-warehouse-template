@@ -409,9 +409,9 @@ describe('customer activity', () => {
 
   it('dates a customer\'s latest GRN, dispatch and invoice by the day in India', async () => {
     const screen = await open(CustomerActivityScreen, GREEN);
-    expect(screen.label('GRN A0012,')).toContain('GRN A0012, 12/10/26, ');
-    expect(screen.label('Dispatch D0011,')).toContain('Dispatch D0011, 11/10/26, ');
-    expect(screen.label('Invoice 2026-0001,')).toContain('Invoice 2026-0001, 01/10/26, ');
+    expect(screen.label('GRN A0012,')).toContain('GRN A0012, 12 Oct 2026, ');
+    expect(screen.label('Dispatch D0011,')).toContain('Dispatch D0011, 11 Oct 2026, ');
+    expect(screen.label('Invoice 2026-0001,')).toContain('Invoice 2026-0001, 1 Oct 2026, ');
     expect(watch.reads).toEqual([]);
   });
 });

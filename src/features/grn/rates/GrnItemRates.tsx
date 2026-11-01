@@ -46,6 +46,7 @@ import { customerPricingPath, itemRatesPath } from '@/features/item-pricing/cont
 import { useAppSelector } from '@/store/hooks';
 import { t } from '@/i18n';
 import { money } from '@/features/item-pricing/rateText';
+import { packageUnit, packagingWord } from '@/utils/packagingWord';
 import { space, type ThemeTokens } from '@/theme/tokens';
 import { formatWeightEach } from '@/utils/formatters';
 import type { RpcGrnItemRate, RpcGrnRate } from '@/types/rpc-canonical.types';
@@ -112,9 +113,13 @@ export interface GrnItemRatesProps {
   /** The person may edit this GRN: a manager's tap on a rate typed on this GRN opens its Rates block. */
   canEdit?: boolean;
   fallbackRates?: RpcGrnRate[] | null;
+  /** What the GRN's items are counted in (sharedPackaging): the note says "per box"; undefined reads "per bag". */
+  packaging?: string;
+  /** What each lot (GRN item id) is counted in: the Your-rate page says "per box" for a box lot. */
+  packagingByLot?: Record<string, string | null | undefined>;
 }
 
-export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEdit = false, fallbackRates }: GrnItemRatesProps) {
+export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEdit = false, fallbackRates, packaging, packagingByLot }: GrnItemRatesProps) {
   const table = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const th = useTokens();
@@ -288,7 +293,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                           ? customerPricingPath(customerId as string, rate.item_id)
                           : managerTarget === 'grn'
                             ? grnRatesStepPath(grnId as string)
-                            : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined),
+                            : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined, packagingByLot?.[rate.grn_item_id] ? packagingWord(packagingByLot[rate.grn_item_id]) : undefined),
                     )
                   }
                   style={({ pressed }) => [table.row, pressed && table.rowPressed]}
@@ -315,7 +320,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
             })}
             <View style={own.note}>
               <Text style={table.secondary} testID="grn-item-rates-note">
-                {t(oneTime ? 'grn.rates.tableNoteOneTime' : 'grn.rates.tableNoteMonthly')}
+                {t(oneTime ? 'grn.rates.tableNoteOneTime' : 'grn.rates.tableNoteMonthly', { unit: packageUnit(packaging) })}
               </Text>
             </View>
           </>

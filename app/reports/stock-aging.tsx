@@ -621,7 +621,7 @@ const StockLineRow = memo(function StockLineRow({ line, groupKey, words, expande
                 })}
               />
               {dispatch.last_dispatch_date ? (
-                <KeyValueCell keyLabel={tr('reports.stockAging.lastDispatch')} value={formatIndiaDate(dispatch.last_dispatch_date)} />
+                <KeyValueCell keyLabel={tr('reports.stockAging.lastDispatch')} value={formatIndiaDate(dispatch.last_dispatch_date)} spokenValue={formatIndiaSpokenDate(dispatch.last_dispatch_date)} />
               ) : null}
               {dispatch.avg_days_between_dispatches ? (
                 <KeyValueCell keyLabel={tr('reports.stockAging.averageBetweenDispatches')} value={days(Math.round(dispatch.avg_days_between_dispatches))} />

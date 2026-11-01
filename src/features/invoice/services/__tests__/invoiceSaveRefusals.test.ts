@@ -116,6 +116,46 @@ describe('a refused invoice number (I4)', () => {
   });
 });
 
+describe('what the device log shows for a refused save (App 5)', () => {
+  const INVOICE = '33333333-3333-4444-8555-666666666666';
+  const taken = { data: { success: false, error_code: 'WH409', reason: 'NUMBER_TAKEN', number: 15, error: 'Invoice number 15 is already used' }, error: null };
+  const takenAsRequestError = { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "unique_inv_no_per_year"' } };
+
+  it.each([
+    ['named in the answer', taken],
+    ['as the request error', takenAsRequestError],
+  ])('a number taken is information on create and on update, not an error (%s)', async (_name, answer) => {
+    mockRpc(answer);
+    await createInvoice(payload);
+    await updateInvoice(INVOICE, payload);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('an update whose answer was lost is information, not an error', async () => {
+    mockRpc({ data: null, error: { message: 'TypeError: Network request failed' } });
+    const result = await updateInvoice(INVOICE, payload);
+    expect(result.lostAnswer).toEqual({ sentAt: expect.any(Number) });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('a create whose answer was lost is information, not an error', async () => {
+    mockRpc({ data: null, error: { message: 'TypeError: Network request failed' } });
+    const result = await createInvoice(payload);
+    expect(result.lostAnswer).toEqual({ sentAt: expect.any(Number) });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('a refusal the server worded is information on update; an unexpected failure is still an error', async () => {
+    mockRpc({ data: { success: false, error: 'GRN is already invoiced', error_code: 'WH409' }, error: null });
+    await updateInvoice(INVOICE, payload);
+    expect(console.error).not.toHaveBeenCalled();
+
+    mockRpc({ data: null, error: { code: 'XX000', message: 'boom' } });
+    await updateInvoice(INVOICE, payload);
+    expect(console.error).toHaveBeenCalled();
+  });
+});
+
 describe('opening an invoice to edit it (I13)', () => {
   const detail = (inv_date: string) => ({
     data: {
@@ -207,7 +247,8 @@ describe('what a failed invoice call writes to the device log', () => {
     await createInvoice(payload);
     await updateInvoice('33333333-3333-4444-8555-666666666666', payload);
 
-    const text = logged(errorLog);
+    // A number taken is information (console.log), not an error, on create and on update alike.
+    const text = `${logged(errorLog)}\n${logged(otherLogs[0])}`;
     expect(text).toContain('23505');
     expect(text).toContain('unique_inv_no_per_year');
     for (const spy of [errorLog, ...otherLogs]) {

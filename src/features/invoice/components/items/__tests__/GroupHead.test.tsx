@@ -56,6 +56,13 @@ describe('the head of a group', () => {
     expect(spoken(tree)).toBe('Example Potatoes, mark M1, 50 kg each, 120 of 150 bags dispatched, total ₹882.00');
   });
 
+  it('counts the dispatched in the lot\'s packaging word: boxes for Box, units when mixed, bags when the server sends none (D18)', async () => {
+    expect(textsOf(await render([invoiceLine({ qty: 120, grn_original_qty: 150, packaging: 'Box' })]))).toContain('120 of 150 boxes dispatched');
+    const mixed = await render([invoiceLine({ qty: 100, grn_original_qty: 100, packaging: 'Box' }, 0), invoiceLine({ qty: 20, grn_original_qty: 100, packaging: 'Bag' }, 1)]);
+    expect(textsOf(mixed).some((text) => text.endsWith('units dispatched'))).toBe(true);
+    expect(textsOf(await render([invoiceLine({ qty: 120, grn_original_qty: 150, packaging: undefined })]))).toContain('120 of 150 bags dispatched');
+  });
+
   it('gives lots of 25 kg and 50 kg in one group a tag for each, lightest first', async () => {
     const tree = await render([invoiceLine({ weight: 50 }, 0), invoiceLine({ weight: 25 }, 1)]);
     expect(spoken(tree)).toContain('25 kg each, 50 kg each');

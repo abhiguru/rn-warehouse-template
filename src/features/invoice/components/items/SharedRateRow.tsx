@@ -47,6 +47,8 @@ const FIELD_CONTAINER = { marginBottom: 0 };
 interface BlockProps {
   groupKey: string;
   itemName: string;
+  /** What the group's lots are counted in (shared by its lines); absent reads "bag". */
+  packaging?: string;
   /** The item with its mark, as a screen reader says it (the buttons' labels and the announcement). */
   spokenItem: string;
   fields: RateField[];
@@ -78,7 +80,7 @@ const stepAmount = (field: RateField): string =>
     ? tr('invoice.items.stepAmountTax', { amount: localizeDigits(String(STEP.tax)) })
     : tr('invoice.items.stepAmountMoney', { amount: localizeDigits(String(STEP[field])) });
 
-export const SharedBlock = React.memo(function SharedBlock({ groupKey, itemName, spokenItem, fields, lineCount, oneTime, views, charge, labour, tax, heading, sideBySide, lastKey, actions, styles }: BlockProps) {
+export const SharedBlock = React.memo(function SharedBlock({ groupKey, itemName, packaging, spokenItem, fields, lineCount, oneTime, views, charge, labour, tax, heading, sideBySide, lastKey, actions, styles }: BlockProps) {
   const states = { charge, labour_rate: labour, tax };
   const t = useTokens();
   // How far a stacked field starts below the top of the part: the stack's place in the block plus the field's in the stack.
@@ -126,7 +128,7 @@ export const SharedBlock = React.memo(function SharedBlock({ groupKey, itemName,
                   placeholderTextColor={t.text.placeholder}
                   helperText={view.average ? averageNote(lineCount, view.keepOwn) : view.keepOwn > 0 ? keepOwnNote(field, view.keepOwn) : undefined}
                   error={state?.shown ? state.error ?? undefined : undefined}
-                  accessibilityLabel={groupCellLabel(field, itemName, oneTime, view.average)}
+                  accessibilityLabel={groupCellLabel(field, itemName, oneTime, view.average, packaging)}
                   testID={key}
                 />
                 <View style={styles.sharedButtons}>

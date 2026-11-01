@@ -516,6 +516,8 @@ describe('stock aging, one customer', () => {
       ['Last dispatch', '01/09/26'],
       ['Average time between dispatches', '12 days'],
     ]);
+    // A screen reader is given the date in words.
+    expect(screen.tree.root.findAllByType(KeyValueCell).find(cell => cell.props.keyLabel === 'Last dispatch')!.props.spokenValue).toBe('1 Sep 2026');
 
     await screen.pressStarting('GRN A0030 · Rack R1, ');
     expect(screen.lines()).toEqual(['GRN A0030 · Rack R1 (open)', 'GRN A0030 · Rack R2 (open)']);

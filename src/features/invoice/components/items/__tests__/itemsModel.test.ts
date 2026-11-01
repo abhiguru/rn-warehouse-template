@@ -1,6 +1,6 @@
 import { groupInvoiceItems } from '@/features/invoice/utils/groupInvoiceItems';
 import { invoiceLine } from '@/tests/helpers/invoiceFixtures';
-import { groupView, weightedCharge } from '../itemsModel';
+import { cellLabel, groupCellLabel, groupView, weightedCharge } from '../itemsModel';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -72,5 +72,16 @@ describe('groupView: the average and what the steppers step from', () => {
     const g = groupInvoiceItems(lines)[0];
     expect(groupView(g, undefined, {}).labour_rate).toMatchObject({ mixed: true, text: '', stepFrom: null });
     expect(groupView(g, undefined, { edit_0_0: ['labour_rate'] }).labour_rate).toMatchObject({ mixed: false, text: '2.00', stepFrom: 2, keepOwn: 1 });
+  });
+});
+
+describe('the unit a rate cell is spoken in (D18)', () => {
+  it('says per box for Box, per unit for mixed, per bag when the server sends no packaging', () => {
+    expect(cellLabel('labour_rate', 'I0042', false, 'Box')).toContain('rupees per box');
+    expect(cellLabel('charge', 'I0042', false, 'Box')).toContain('rupees per box, per month');
+    expect(groupCellLabel('charge', 'Potatoes', true, false, 'Crate')).toContain('rupees per crate');
+    expect(groupCellLabel('charge', 'Potatoes', true, false, '\u0000mixed')).toContain('rupees per unit');
+    expect(cellLabel('labour_rate', 'I0042', false)).toContain('rupees per bag');
+    expect(cellLabel('labour_rate', 'I0042', false, null)).toContain('rupees per bag');
   });
 });

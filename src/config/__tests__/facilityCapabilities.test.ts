@@ -37,11 +37,12 @@ describe('normalizeCapabilities', () => {
   });
 
   it('takes each known key that is true or false', () => {
-    expect(normalizeCapabilities({ printing: true, sensors: true, realtime: false, customerDocuments: true })).toEqual({
+    expect(normalizeCapabilities({ printing: true, sensors: true, realtime: false, customerDocuments: true, payments: true })).toEqual({
       printing: true,
       sensors: true,
       realtime: false,
       customerDocuments: true,
+      payments: true,
     });
   });
 
@@ -49,8 +50,15 @@ describe('normalizeCapabilities', () => {
     expect(normalizeCapabilities({ sensors: 'true', printing: 1, realtime: null, telegram: true })).toEqual(DEMO_CAPABILITIES);
     expect(normalizeCapabilities({ sensors: true })).toEqual({ ...DEMO_CAPABILITIES, sensors: true });
     expect(Object.keys(normalizeCapabilities({ telegram: true })).sort()).toEqual(
-      ['customerDocuments', 'printing', 'realtime', 'sensors']
+      ['customerDocuments', 'payments', 'printing', 'realtime', 'sensors']
     );
+  });
+
+  it('has payments off unless the config says true', () => {
+    expect(DEMO_CAPABILITIES.payments).toBe(false);
+    expect(normalizeCapabilities({}).payments).toBe(false);
+    expect(normalizeCapabilities({ payments: 'true' }).payments).toBe(false);
+    expect(normalizeCapabilities({ payments: true }).payments).toBe(true);
   });
 
   it('never hands out the demo object itself', () => {

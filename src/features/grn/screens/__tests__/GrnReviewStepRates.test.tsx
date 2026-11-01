@@ -161,7 +161,7 @@ describe('the rows', () => {
       'Undo change', 'Change',
     ]);
     expect(tree.root.find(n => n.props.testID === 'grn-rate-was-0' && n.type === Text).props.style).toEqual(expect.objectContaining({ textDecorationLine: 'line-through' }));
-    expect(rowA11y(tree, 0)).toBe('Fictional Gur, 12 kg, ₹4.00 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Changed · This customer, From 12/10/26, was ₹3.50');
+    expect(rowA11y(tree, 0)).toBe('Fictional Gur, 12 kg, ₹4.00 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Changed · This customer, From 12 Oct 2026, was ₹3.50');
     await act(async () => { byId(tree, 'grn-rate-undo-0')[0].props.onPress(); });
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([]));
@@ -219,6 +219,15 @@ describe('Create is blocked without a rate', () => {
     const tree = await render('create');
     await press(tree);
     expect(showAlert).not.toHaveBeenCalled();
+    expect(dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.visible).toBe(true);
+  });
+
+  it('an administrator saving a GRN dated before the items\' first rates is not stopped: the first rate covers the day (D16)', async () => {
+    mockRates = [{ ...stored('gur', 0, 50, 3), effective_from: '2026-12-01' }, { ...stored('rice', 0, 100, 2), effective_from: '2026-12-01' }];
+    const tree = await render('create');
+    expect(texts(tree)).not.toContain('No rate');
+    await press(tree);
+    expect(showAlert).not.toHaveBeenCalledWith('Add the missing rates', expect.anything());
     expect(dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.visible).toBe(true);
   });
 });
@@ -549,8 +558,17 @@ describe('the sections fold, one open at a time (owner, 2026-10-17)', () => {
     // Rice has no rate: the red tag says so and no line repeats it.
     expect(line(tree, 'rates')).toBeNull();
     expect(toggle(tree, 'rates').props.accessibilityLabel).toBe('Rates, 1 without a rate');
+    // The closed DETAILS line is read with the date in words.
+    expect(toggle(tree, 'details').props.accessibilityLabel).toBe('GRN details, A0010 · 12 Oct 2026 · Fictional Traders');
     expect(toggle(tree, 'items').props.accessibilityState).toEqual({ expanded: true });
     expect(toggle(tree, 'details').props.accessibilityState).toEqual({ expanded: false });
+  });
+
+  it('reads the date row of DETAILS in words, while the row shows 12/10/26', async () => {
+    const tree = await render('edit');
+    act(() => { toggle(tree, 'details').props.onPress(); });
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Date, 12 Oct 2026').length).toBeGreaterThan(0);
+    expect(tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''))).toContain('12/10/26');
   });
 
   it('the Edit pencil is an icon only, the chevron\'s size, beside the chevron, and is its own button', async () => {

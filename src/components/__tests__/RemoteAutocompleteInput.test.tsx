@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Text, TextInput } from 'react-native';
 import { act, create } from 'react-test-renderer';
-import { RemoteAutocompleteInput } from '../RemoteAutocompleteInput';
+import { RemoteAutocompleteInput, type RemoteAutocompleteInputHandle } from '../RemoteAutocompleteInput';
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/store/hooks', () => ({
@@ -136,4 +136,24 @@ it('does not fetch after unmounting before the debounce elapses', async () => {
   await input.unmount();
   await act(async () => { jest.advanceTimersByTime(250); });
   expect(fetchData).not.toHaveBeenCalled();
+});
+
+it('gives its text field the cursor through a ref (focus), and lets go of it (blur)', async () => {
+  const ref = React.createRef<RemoteAutocompleteInputHandle>();
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => {
+    renderer = create(
+      <RemoteAutocompleteInput ref={ref} value="" fetchData={async () => []} onSelect={jest.fn()} renderItem={() => <Text>x</Text>} keyExtractor={(i: Item) => i.id} />,
+    );
+  });
+  const proto = TextInput.prototype as unknown as Record<'focus' | 'blur', jest.Mock>;
+  proto.focus.mockClear();
+  proto.blur.mockClear();
+
+  act(() => ref.current!.focus());
+  expect(proto.focus).toHaveBeenCalledTimes(1);
+  expect(proto.focus.mock.contexts[0]).toBe(renderer.root.findByType(TextInput).instance);
+  act(() => ref.current!.blur());
+  expect(proto.blur).toHaveBeenCalledTimes(1);
+  await act(async () => { renderer.unmount(); });
 });

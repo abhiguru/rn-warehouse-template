@@ -38,6 +38,10 @@ import { invalidateReportQueries } from '@/lib/queryClient';
 import type { RatesPayloadEntry } from '@/features/grn/rates/types';
 import { grnRatesFromDetails } from '@/features/grn/rates/grnRateModel';
 import { RateRefusal, isRateRefusalCode, serverNeedsUpdateForRates } from '@/features/grn/rates/rateErrors';
+import { readAllRows } from '@/utils/pagedRead';
+
+/** A row of goodsreceived_trl as the edit load reads it. */
+type GrnLineRow = Record<string, any>;
 
 // Identifiers, counts and error codes only: a GRN's names, notes, photo
 // addresses and the server's messages never reach the device log.
@@ -1087,9 +1091,12 @@ export const loadGRNData = async (grnId: string) => {
     if (headerError) throw headerError;
 
     // Fetch items with explicit field selection to ensure ID is returned
-    const { data: itemsData, error: itemsError } = await authenticatedClient
-      .from('goodsreceived_trl')
-      .select(`
+    // Paged (a direct read is cut at 2,000 rows) and counted: a GRN with more lines than were read must not open, because
+    // Save sends back the lines on the form and the server removes the ones it does not get.
+    const { rows: itemsData } = await readAllRows<GrnLineRow>((from, to, ordered) => {
+      const query = authenticatedClient
+        .from('goodsreceived_trl')
+        .select(`
         id,
         gr_id,
         item_id,
@@ -1101,10 +1108,10 @@ export const loadGRNData = async (grnId: string) => {
         rack,
         package_mark,
         trl_img_url
-      `)
-      .eq('gr_id', grnId);
-
-    if (itemsError) throw itemsError;
+      `, { count: 'exact' })
+        .eq('gr_id', grnId);
+      return (ordered ? query.order('id') : query).range(from, to);
+    });
 
     // ✅ CRITICAL: Verify each item has required ID
     if (itemsData && itemsData.length > 0) {
@@ -1116,17 +1123,21 @@ export const loadGRNData = async (grnId: string) => {
 
     // Fetch GRN images. Only confirmed rows are photos: a row left 'pending' by
     // an upload that could not be cancelled has no file behind it.
-    const { data: imagesData, error: imagesError } = await authenticatedClient
-      .from('grn_images')
-      .select('*')
-      .eq('grn_id', grnId)
-      .eq('image_type', 'header')
-      .eq('status', 'confirmed')
-      .order('display_order', { ascending: true });
-
-    // A photo list that could not be read is not an empty one: the next Save
+    // A photo list that could not be read, or read only in part, is not the whole one: the next Save
     // would tell update_grn to delete every photo this form did not load.
-    if (imagesError) {
+    let imagesData: any[];
+    try {
+      ({ rows: imagesData } = await readAllRows<any>((from, to, ordered) => {
+        const query = authenticatedClient
+          .from('grn_images')
+          .select('*', { count: 'exact' })
+          .eq('grn_id', grnId)
+          .eq('image_type', 'header')
+          .eq('status', 'confirmed')
+          .order('display_order', { ascending: true });
+        return (ordered ? query.order('id') : query).range(from, to);
+      }));
+    } catch (imagesError) {
       log.error('Failed to fetch images', loggableError(imagesError));
       throw imagesError;
     }
@@ -1183,20 +1194,22 @@ export const loadGRNData = async (grnId: string) => {
     let itemImagesData: any[] = [];
 
     if (itemIds.length > 0) {
-      const { data: itemImages, error: itemImagesError } = await authenticatedClient
-        .from('grn_images')
-        .select('*')
-        .in('grn_item_id', itemIds)
-        .eq('image_type', 'item')
-        .eq('status', 'confirmed')
-        .order('display_order', { ascending: true });
-
-      // As for the header photos: an unread list fails the load.
-      if (itemImagesError) {
+      // As for the header photos: a list that is not whole fails the load.
+      try {
+        ({ rows: itemImagesData } = await readAllRows<any>((from, to, ordered) => {
+          const query = authenticatedClient
+            .from('grn_images')
+            .select('*', { count: 'exact' })
+            .in('grn_item_id', itemIds)
+            .eq('image_type', 'item')
+            .eq('status', 'confirmed')
+            .order('display_order', { ascending: true });
+          return (ordered ? query.order('id') : query).range(from, to);
+        }));
+      } catch (itemImagesError) {
         log.error('Failed to fetch item images', loggableError(itemImagesError));
         throw itemImagesError;
       }
-      itemImagesData = itemImages || [];
     }
 
     // Get signed URLs for item images

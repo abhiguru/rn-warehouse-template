@@ -4,7 +4,7 @@
  * Call while rendering (docs/I18N.md rule 2).
  */
 import { localizeDigits, t, type TranslationKey } from '@/i18n';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, formatSpokenDate } from '@/utils/formatters';
 import { roleLabel } from '@/utils/roleLabel';
 import { normalizeRole } from '@/config/roles';
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
@@ -37,8 +37,10 @@ export const priceHistoryFieldLabel = (field: PriceHistoryField): string => t(FI
 export const priceHistoryActionLabel = (action: string): string =>
   t(ACTION_KEYS[action] ?? 'pricing.history.action.update');
 
-/** One value of a field as the pricing screens write it; "—" when it is not there. */
-export function priceHistoryValueText(field: PriceHistoryField, value: PriceHistoryValue): string {
+/** One value of a field as the pricing screens write it; "—" when it is not there. `spoken` writes dates in words for a screen reader. */
+export function priceHistoryValueText(field: PriceHistoryField, value: PriceHistoryValue, spoken = false): string {
+  // A screen reader is given a date in words ("9 Oct 2026"), never "09/10/26".
+  const date = spoken ? formatSpokenDate : formatDate;
   switch (field) {
     case 'priceType':
       // A stored value is never shown itself (docs/I18N.md rule 9).
@@ -52,10 +54,10 @@ export function priceHistoryValueText(field: PriceHistoryField, value: PriceHist
         ? t('pricing.history.percentValue', { percent: localizeDigits(String(value)) })
         : MISSING;
     case 'effectiveFrom':
-      return typeof value === 'string' ? formatDate(value) : MISSING;
+      return typeof value === 'string' ? date(value) : MISSING;
     case 'effectiveTo':
       // A price with no end date runs until it is changed.
-      return typeof value === 'string' ? formatDate(value) : t('pricing.form.noEndDate');
+      return typeof value === 'string' ? date(value) : t('pricing.form.noEndDate');
     default:
       // Money always has two decimals: ₹3.50, ₹10.00 (never ₹3.5 or ₹10).
       return typeof value === 'number' ? formatCurrency(value, { minimumFractionDigits: 2 }) : MISSING;

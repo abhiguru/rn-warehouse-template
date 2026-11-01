@@ -86,6 +86,20 @@ export function scopeView(rows: ItemStoragePrice[], day: string): ScopeView {
   return { inForce, upcoming, ended, overlap, stopsAfter: only && !followed ? only : null };
 }
 
+/**
+ * The day the item's first default rate starts, when `day` is before it: that first rate also covers every earlier day
+ * (mirror of the server's lookup, migration 129). Null when the item has a default rate starting on or before `day`
+ * (later changes never reach back), or none. A customer's own rate never reaches back.
+ */
+export function firstDefaultStart(rows: ItemStoragePrice[], itemId: string, day: string, priceType?: PriceType): string | null {
+  let first: string | null = null;
+  for (const r of rows) {
+    if (r.item_id !== itemId || r.customer_id !== null || (priceType && r.price_type !== priceType)) continue;
+    if (first === null || r.effective_from < first) first = r.effective_from;
+  }
+  return first !== null && day < first ? first : null;
+}
+
 /** The rate an invoice uses for one bag of `weight` kg (mirror of find_storage_price). */
 export function applicableRate(
   rows: ItemStoragePrice[],
@@ -99,5 +113,16 @@ export function applicableRate(
     const own = rows.filter(r => r.customer_id === q.customer_id && holds(r));
     if (own.length > 0) return pick(own);
   }
-  return pick(rows.filter(r => r.customer_id === null && holds(r)));
+  const standard = pick(rows.filter(r => r.customer_id === null && holds(r)));
+  if (standard) return standard;
+  // No standard rate holds on the day: before the item's first one, that first rate covers the day.
+  const covering = rows.filter(
+    r =>
+      r.customer_id === null &&
+      r.price_type === q.price_type &&
+      r.weight_min <= q.weight &&
+      q.weight <= r.weight_max &&
+      r.effective_from === firstDefaultStart(rows, r.item_id, q.day, q.price_type),
+  );
+  return pick(covering);
 }

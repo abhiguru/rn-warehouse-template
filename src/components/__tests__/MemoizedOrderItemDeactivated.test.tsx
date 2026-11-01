@@ -83,7 +83,9 @@ describe('Orders tab card: value column and TalkBack label', () => {
   });
 
   it('reads the card in order: customer, items and units, city, date; the status only when its tag shows', async () => {
-    const date = texts(await render(order({}))).find(text => text.startsWith('Fictional Town · '))!.slice('Fictional Town · '.length);
+    // The card shows the date as 16/10/26; a screen reader is given it in words.
+    expect(texts(await render(order({})))).toContain('Fictional Town · 16/10/26');
+    const date = '16 Oct 2026';
     expect(label(await render(order({})))).toBe(`Order for Fictional Traders, 3 items · 120 units, Location: Fictional Town, ${date}`);
     expect(label(await render(order({ status: 'DISPATCHED' }))))
       .toBe(`Order for Fictional Traders, 3 items · 120 units, Dispatched, Location: Fictional Town, ${date}`);
@@ -97,5 +99,15 @@ describe('Orders tab card: value column and TalkBack label', () => {
       return r;
     })();
     expect(label(tree).endsWith(', Matched Fictional Garlic')).toBe(true);
+  });
+});
+
+describe('Orders tab card read aloud for an order older than a day', () => {
+  it('says the date in words ("9 Oct 2026"), while the card shows DD/MM/YY', async () => {
+    const old = { ...orderWith({}), updated_at: '2020-10-09T08:00:00.000Z' } as Order;
+    const tree = await render(old);
+    expect(texts(tree)).toContain('Fictional Town · 09/10/20');
+    expect(label(tree)).toContain('9 Oct 2020');
+    expect(label(tree)).not.toMatch(/\d\d\/\d\d\/\d\d/);
   });
 });

@@ -102,7 +102,7 @@ export const LineCard = React.memo(function LineCard({ item, oneTime, last, char
           onSubmitEditing={() => actions.submit(key)}
           blurOnSubmit={false}
           error={state?.shown ? state.error ?? undefined : undefined}
-          accessibilityLabel={cellLabel(name, number, oneTime)}
+          accessibilityLabel={cellLabel(name, number, oneTime, item.packaging)}
           testID={key}
         />
         )}

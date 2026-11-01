@@ -43,7 +43,7 @@ import { appTooOldInfo, isAppTooOld, type AppTooOldInfo } from './appTooOld';
 import { discoverOperator, getActiveOperatorServer, type OperatorServer } from './operatorServer';
 import { DISCOVERY_BUSY_CODE, UPGRADING_CODE } from '@/utils/serverText';
 import { setFacilityCapabilities } from './facilityCapabilities';
-import { setFacilityRelease } from './backendFeatures';
+import { noteBackendRelease } from './backendTooOld';
 import { clearStaleFacility, forgetStaleGeneration, isStaleFacility, markStaleFacility } from './staleFacilitySession';
 import { getSessionGeneration } from './sessionLifecycle';
 import {
@@ -330,7 +330,7 @@ async function switchAndExchange(ticket: Ticket, discovery: Discovery): Promise<
   // nothing.
   initializeSupabase(config.supabaseUrl, config.anonKey);
   setFacilityCapabilities(server, config.capabilities);
-  setFacilityRelease(server, config);
+  noteBackendRelease(server, config);
   return settle(ticket, server, await exchange(ticket, server.origin), false);
 }
 
@@ -480,7 +480,7 @@ export async function beginFacilitySmsSignIn(origin: string, name: string): Prom
     return failed('switch_failed', t('central.open.switchFailed', { facility: facilityNameOf(discovery.server) }));
   initializeSupabase(discovery.config.supabaseUrl, discovery.config.anonKey);
   setFacilityCapabilities(discovery.server, discovery.config.capabilities);
-  setFacilityRelease(discovery.server, discovery.config);
+  noteBackendRelease(discovery.server, discovery.config);
   if (!isCurrent(ticket)) return ended();
   setCentralState({ facilitySmsOrigin: discovery.server.origin, autoOpenSpent: true });
   return { kind: 'sms_offer' };

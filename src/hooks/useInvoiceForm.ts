@@ -82,7 +82,8 @@ import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 import { REFUSAL, refusalNumber, refusalString } from '@/utils/serverRefusal';
-import { formatCount, formatDate, formatFinancialYear, toCalendarDay } from '@/utils/formatters';
+import { formatDate, formatFinancialYear, toCalendarDay } from '@/utils/formatters';
+import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { calculateFinancialYear, formatInvoiceAmount, serverLineDurations, serverLineRates } from '@/utils/invoiceCalculations';
 
 const log = createLogger('useInvoiceForm');
@@ -888,7 +889,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         // D9: the GRN still has stock. A new invoice goes back to step 1 with the GRN field marked; an edit stays here.
         const message = t('invoice.refusal.hasStock', {
           grn: formatIdentifier(refusalString(refusal, 'gr_no') ?? header.gr_no),
-          stock: formatCount(stock, 'bag'),
+          stock: formatPackages(stock, sharedPackaging(store.getState().invoiceForm.items.map((line) => line.packaging))),
         });
         if (isCreateMode) dispatch(setValidationError({ field: 'gr_id', message }));
         report(t(failedTitleKey), message, isCreateMode ? { grnHasStock: true } : undefined);

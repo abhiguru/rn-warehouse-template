@@ -730,6 +730,18 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
     // Handle null/undefined response
     if (data === null || data === undefined) {
+      // A write that came back with nothing (an empty 200): the server may have applied it and the answer is no
+      // answer of the server's. A lost answer like a timeout: the caller reads the record again and shows what is
+      // saved; a create with no request key says it could not confirm and asks to check the list first. A read
+      // keeps its own words.
+      if (write || deleting) {
+        return {
+          success: false,
+          lostAnswer: true,
+          message: deleting ? t('errors.parsed.timeoutDeleteForm') : t('errors.general.writeNotConfirmed'),
+          error: 'EMPTY_RESPONSE',
+        };
+      }
       return {
         success: false,
         message: errorMessage || t('errors.general.noDataFromServer'),

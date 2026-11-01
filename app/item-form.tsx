@@ -185,7 +185,7 @@ const ItemFormScreen: React.FC = () => {
         }
       } else {
         // No answer in time or a dropped connection: the item may have been saved. A server cancel (57014) rolled back.
-        if ((isTimeoutError(result) && !isStatementTimeout(result)) || isNetworkError(result)) timedOutName.current = formData.name.trim().toLowerCase();
+        if (result.lostAnswer || (isTimeoutError(result) && !isStatementTimeout(result)) || isNetworkError(result)) timedOutName.current = formData.name.trim().toLowerCase();
         showAlert(tr('items.form.couldNotAddTitle'), serverText(result, tr('items.list.tryAgainInAMoment'), { write: true, form: true }));
       }
     } catch (err) {

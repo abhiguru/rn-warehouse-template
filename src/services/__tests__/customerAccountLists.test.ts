@@ -168,6 +168,26 @@ describe('invoice list for a customer account', () => {
     });
   });
 
+  it('keeps cancelled_at of a cancelled invoice and leaves a live one without it', async () => {
+    const cancelledRpc = jest.fn(async () => ({
+      data: {
+        success: true,
+        data: {
+          invoices: [
+            { invoice_id: 'i1', invoice_number: '2026-0001', invoice_date: '2026-08-10', financial_year: '2026-2027', grn_ref: 'DV0001', grn_id: 'g1', total: 1906, labour: 360, discount: 0, tax_amount: 91, notes: null, cancelled_at: '2026-08-12T10:00:00Z' },
+            { invoice_id: 'i2', invoice_number: '2026-0002', invoice_date: '2026-08-11', financial_year: '2026-2027', grn_ref: 'DV0002', grn_id: 'g2', total: 500, labour: 0, discount: 0, tax_amount: 25, notes: null },
+          ],
+        },
+      },
+      error: null,
+    }));
+    mockClient(cancelledRpc, customers);
+    const result = await getAssignedCustomerInvoices([CUSTOMER_A]);
+    const byId = Object.fromEntries(result.data.invoices.map(invoice => [invoice.invoice_id, invoice]));
+    expect(byId.i1.cancelled_at).toBe('2026-08-12T10:00:00Z');
+    expect(byId.i2.cancelled_at).toBeNull();
+  });
+
   it('filters by invoice number and GRN number in the app', async () => {
     mockClient(rpc, customers);
     const byNumber = await getAssignedCustomerInvoices([CUSTOMER_A, CUSTOMER_B], { p_inv_no_from: 5 });

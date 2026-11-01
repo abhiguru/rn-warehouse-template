@@ -77,6 +77,8 @@ export const orders = {
     // The spoken label of − and −10 on a line above its stock: they lower it ({{quantity}} is the quantity it gets, at most the
     // stock); with no stock left they ask to remove it.
     lowerTo: 'Lower {{name}} to {{quantity}}',
+    // The lot has no stock left (stock 0 or below): lowering is no way out, the line has to go.
+    outOfStock: 'Out of stock. Remove it from the order.',
   },
   // What the server's refusals say on the order screen (wave B, owner decision D1).
   refusal: {

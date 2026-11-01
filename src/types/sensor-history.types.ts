@@ -1,11 +1,17 @@
 // Sensor Historical Data Type Definitions
 
-export type SensorHistoryPeriod = 7 | 14 | 30 | 90 | 365;
+/** Days back. 183 (6 months), 365 and 730 (2 years) are read from the hourly summary when the backend has it (migration 136). */
+export type SensorHistoryPeriod = 7 | 14 | 30 | 90 | 183 | 365 | 730;
 
 export interface SensorHistoryReading {
   timestamp: string;
   temperature: number | null;
   humidity: number | null;
+  /** The lowest and highest of the point's interval, for a long period read from the hourly summary. */
+  temperature_min?: number | null;
+  temperature_max?: number | null;
+  humidity_min?: number | null;
+  humidity_max?: number | null;
 }
 
 export interface SensorHistorySummary {

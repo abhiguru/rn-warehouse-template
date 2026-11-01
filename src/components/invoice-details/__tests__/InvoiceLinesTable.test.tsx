@@ -308,3 +308,26 @@ describe('invoice Items table', () => {
     expect(textOf(tree.root)).toBe('Loading items…');
   });
 });
+
+describe('invoice Items table counts in the lots\' packaging (D18)', () => {
+  const boxed = line({ id: '04', item_name: 'Fresh Figs', grn_item_id: 'lot-figs', packaging: 'Box', dispatch_qty: 3 });
+
+  it('a Box invoice heads the column Boxes and reads "boxes" in the total and the row label', () => {
+    render(<InvoiceLineItemsTab items={[boxed]} />);
+
+    expect(textOf(byTestId('invoice-lines-table'))).toMatch(/^Item\|Boxes\|Amount\|/);
+    expect(byTestId('invoice-group-row-lot-figs').props.accessibilityLabel).toContain('3 boxes');
+    expect(byTestId('invoice-lines-total').props.accessibilityLabel).toContain('3 boxes');
+  });
+
+  it('lots counted in different things are "units"; plain bag lots stay bags', () => {
+    render(<InvoiceLineItemsTab items={[boxed, cumin1]} />);
+    expect(textOf(byTestId('invoice-lines-table'))).toMatch(/^Item\|Units\|Amount\|/);
+    expect(byTestId('invoice-lines-total').props.accessibilityLabel).toContain('13 units');
+    act(() => tree.unmount());
+
+    render(<InvoiceLineItemsTab items={[cumin1]} />);
+    expect(textOf(byTestId('invoice-lines-table'))).toMatch(/^Item\|Bags\|Amount\|/);
+    expect(byTestId('invoice-lines-total').props.accessibilityLabel).toContain('10 bags');
+  });
+});

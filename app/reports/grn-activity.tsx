@@ -47,6 +47,7 @@ import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllGRNActivityData, CustomerGRNSummary, GRNActivityData, GRNActivityRecord } from '@/types/report.types';
 import { formatCount, formatIndiaDate, formatIndiaSpokenDate, formatNumber, indiaDay } from '@/utils/formatters';
+import { formatPackages, packNounCapital, sharedPackaging } from '@/utils/packagingWord';
 
 const REPORT_ID = 'grn-activity';
 
@@ -276,7 +277,13 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     () =>
       data && [
         { icon: 'package-down', value: data.summary.total_grns, label: tr('reports.customerActivity.grns'), variant: 'primary' },
-        { icon: 'package-variant', value: data.summary.total_quantity, label: tr('common.bags'), variant: 'secondary' },
+        {
+          icon: 'package-variant',
+          value: data.summary.total_quantity,
+          // Every GRN of the period is listed (no limit), so their items decide the word; mixed reads "units".
+          label: packNounCapital(sharedPackaging(data.grns.flatMap(grn => grn.items).map(item => item.packaging))),
+          variant: 'secondary',
+        },
         {
           icon: 'file-document-outline',
           value: tr('reports.grnActivity.invoicedOfTotal', {
@@ -383,7 +390,7 @@ const GRNCard = memo(function GRNCard({ grn, words, showDate, onOpen }: GRNCardP
   const people = [grn.sender_name || tr('reports.grnActivity.senderNotRecorded'), grn.supervisor_name].filter(Boolean).join(' · ');
   const stockLabel = tr('reports.grnActivity.stockLabel', {
     stock: formatNumber(grn.dispatch_summary.current_stock),
-    bags: formatCount(grn.total_qty, 'bag'),
+    bags: formatPackages(grn.total_qty, sharedPackaging((grn.items ?? []).map(item => item.packaging))),
   });
   const photos = grn.image_count > 0 ? formatCount(grn.image_count, 'photo') : null;
   const matched = hiddenMatches(grn, words, [number, people, invoiceLabel]);

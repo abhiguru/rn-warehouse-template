@@ -7,7 +7,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Order } from '@/types/order.types';
-import { formatCount, formatRelativeTime } from '@/utils/formatters';
+import { formatCount, formatRelativeTime, formatSpokenDate } from '@/utils/formatters';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -64,10 +64,15 @@ const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) =>
 
   // Relative time under 24 hours, then the date (style guide §12.3)
   const relative = formatRelativeTime(order.updated_at || order.created_at);
+  const spokenRelative = formatRelativeTime(order.updated_at || order.created_at, formatSpokenDate);
   // "Just now" sits inside a sentence here: lower case where the language has it.
   const justNow = commonWords(getLanguage()).justNow;
   const timeAgo = relative === justNow ? justNow.toLowerCase() : relative;
   const updatedBy = order.updated_by_display_name || order.updated_by_name;
+  const spokenTimeAgo = spokenRelative === justNow ? justNow.toLowerCase() : spokenRelative;
+  const spokenSaved = updatedBy
+    ? tr('components.orderSummary.savedBy', { time: spokenTimeAgo, name: updatedBy })
+    : tr('components.orderSummary.saved', { time: spokenTimeAgo });
   const savedOnly = tr('components.orderSummary.saved', { time: timeAgo });
   const savedText = updatedBy
     ? tr('components.orderSummary.savedBy', { time: timeAgo, name: updatedBy })
@@ -83,7 +88,7 @@ const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) =>
     <View
       style={[styles.toolbar, { paddingBottom: Math.min(insets.bottom, space.sm) || space.xs }]}
       accessible
-      accessibilityLabel={`${savedText}. ${itemsText}, ${quantityText}`}
+      accessibilityLabel={`${spokenSaved}. ${itemsText}, ${quantityText}`}
     >
       {/* Left: Auto-save status */}
       <View style={styles.helperSection}>
