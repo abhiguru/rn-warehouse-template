@@ -843,7 +843,8 @@ function mapDetailedInvoiceItem(item: RpcInvoiceItemRaw): InvoiceItemDetailed {
     rack: grnItem.rack || item.rack || '',
     // Additional fields that might be useful
     weight: grnItem.weight || item.weight || 0,
-    packaging: catalog.packaging || grnItem.packaging || item.packaging || '',
+    // The lot's own word (blank reads bag); the flat field or the catalog's only when there is no lot.
+    packaging: item.grn_item ? grnItem.packaging || '' : item.packaging || catalog.packaging || '',
     labourRate: item.labour_rate || item.labourRate || 0,
   };
 }
