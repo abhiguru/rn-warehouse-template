@@ -113,7 +113,7 @@ export interface GRNPrefixWithStock {
  * Used for dynamic quick-search buttons in GRNAutocompleteBottomSheet
  */
 export const getGRNPrefixesWithStock = async (
-  customerId?: string
+  customerId?: string | null
 ): Promise<GRNPrefixWithStock[]> => {
   try {
     console.log('[GRNDetailService] Fetching GRN prefixes with stock, customerId:', customerId);
