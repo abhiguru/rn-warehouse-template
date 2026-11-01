@@ -499,7 +499,9 @@ export const errors = {
       days14: '14 days',
       days30: '30 days',
       days90: '90 days',
+      months6: '6 months',
       year1: '1 year',
+      years2: '2 years',
     },
   },
   pdf: {

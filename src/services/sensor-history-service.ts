@@ -115,7 +115,9 @@ export function getPeriodLabel(days: SensorHistoryPeriod): string {
     14: t('errors.sensor.period.days14'),
     30: t('errors.sensor.period.days30'),
     90: t('errors.sensor.period.days90'),
+    183: t('errors.sensor.period.months6'),
     365: t('errors.sensor.period.year1'),
+    730: t('errors.sensor.period.years2'),
   };
   return labels[days];
 }

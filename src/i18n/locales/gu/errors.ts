@@ -508,7 +508,9 @@ export const errors: Translation<typeof source> = {
       days14: '૧૪ દિવસ',
       days30: '૩૦ દિવસ',
       days90: '૯૦ દિવસ',
+      months6: '૬ મહિના',
       year1: '૧ વર્ષ',
+      years2: '૨ વર્ષ',
     },
   },
   pdf: {

@@ -8,7 +8,7 @@ import { join } from 'path';
 const WRITE_RPCS = [
   'add_item_to_order', 'update_order_item_quantity', 'remove_item_from_order', 'create_customer', 'update_customer',
   'set_customer_active', 'create_item', 'update_item', 'delete_item_safe', 'delete_dispatch_with_order_cleanup',
-  'delete_invoice', 'delete_grn_safe', 'delete_user_account', 'assign_customer_to_user', 'remove_customer_assignment',
+  'cancel_invoice', 'delete_grn_safe', 'delete_user_account', 'assign_customer_to_user', 'remove_customer_assignment',
 ];
 
 const ROOT = join(__dirname, '..', '..');
@@ -50,7 +50,7 @@ describe('executeRPC calls for write RPCs', () => {
 
   it('finds the writes it is meant to watch', () => {
     const names = new Set(all.map((call) => call.rpc));
-    for (const rpc of ['add_item_to_order', 'update_order_item_quantity', 'remove_item_from_order', 'create_customer', 'update_customer', 'create_item', 'update_item', 'delete_item_safe', 'delete_dispatch_with_order_cleanup', 'delete_invoice']) {
+    for (const rpc of ['add_item_to_order', 'update_order_item_quantity', 'remove_item_from_order', 'create_customer', 'update_customer', 'create_item', 'update_item', 'delete_item_safe', 'delete_dispatch_with_order_cleanup', 'cancel_invoice']) {
       expect(names).toContain(rpc);
     }
   });

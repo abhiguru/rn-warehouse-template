@@ -314,6 +314,50 @@ export async function downloadAndSharePDF(
   }
 }
 
+/** The byte order mark that makes a spreadsheet read a CSV as UTF-8 (a Gujarati device name stays readable). */
+const UTF8_BOM = String.fromCharCode(0xfeff);
+
+/**
+ * Writes a CSV made on the phone to the shared-documents cache and opens the native share sheet for it, as
+ * `downloadAndSharePDF` does for a PDF: the same directory (swept at app start and on sign-out), the same file name
+ * rules (the name always ends in '.csv') and the same cleanup after the share. Nothing is sent to a server.
+ */
+export async function shareCsvFile(csv: string, filename: string): Promise<ShareResult> {
+  let written: File | undefined;
+  try {
+    if (!(await Sharing.isAvailableAsync())) {
+      log.warn('Sharing not available on this device');
+      return { success: false, error: t('errors.pdf.sharingUnavailable') };
+    }
+    const name = sanitizeDocumentFilename(filename.replace(/\.csv$/i, ''), 'export.pdf').replace(/\.pdf$/, '.csv');
+    const file = new File(ensureSharedDocumentsDirectory(), name);
+    // A file shared a moment ago under the same name is being replaced: its cleanup must not delete this one.
+    const pendingCleanup = pendingCleanups.get(file.uri);
+    if (pendingCleanup) {
+      clearTimeout(pendingCleanup);
+      pendingCleanups.delete(file.uri);
+    }
+    if (file.exists) file.delete();
+    file.create();
+    written = file;
+    file.write(UTF8_BOM + csv);
+
+    await withNativeHandoff(() =>
+      Sharing.shareAsync(file.uri, {
+        mimeType: 'text/csv',
+        dialogTitle: t('errors.pdf.shareDialogTitle', { name }),
+        UTI: 'public.comma-separated-values-text', // iOS specific
+      })
+    );
+    scheduleCleanup(file);
+    return { success: true };
+  } catch (error) {
+    log.error('CSV share failed');
+    deleteQuietly(written);
+    return { success: false, error: error instanceof Error ? error.message : t('errors.pdf.shareFailed') };
+  }
+}
+
 /**
  * Downloads a PDF without sharing (save to device)
  * Note: This saves to the app's shared-documents cache directory, which the
