@@ -24,7 +24,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
-import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatPackages } from '@/utils/packagingWord';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { t as tr } from '@/i18n';
 import {
@@ -154,7 +155,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-const bags = (qty: number) => formatCount(qty, 'bag');
 
 /** Bags dispatched from the lot: the server's summary, else received less stock. */
 export const dispatchedOf = (item: GRNItem): number =>
@@ -297,7 +297,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
       <>
         <View style={own.detailLine}>
           <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
-          <Text style={styles.secondary}>{tr('grn.detailsTable.dispatchedBags', { bags: bags(dispatched) })}</Text>
+          <Text style={styles.secondary}>{tr('grn.detailsTable.dispatchedBags', { bags: formatPackages(dispatched, item.packaging) })}</Text>
         </View>
         {item.rack ? (
           <View style={own.detailLine}>

@@ -117,6 +117,18 @@ describe('titles from the action code', () => {
     expect(texts.filter(text => text.startsWith('→')).join('|')).not.toContain('Quantity changed');
   });
 
+  it('counts a Box lot in boxes in the dispatch titles (D18)', () => {
+    const box = { ...grn, packaging: 'Box' };
+    const texts = render([
+      entry('d', { action: 'quantity_reduced_by_dispatch', grn_details: box, dispatch_no: 'D0007', dispatch_impact: { dispatched_quantity: 5 }, quantity_change: qty('decreased', 20, 15) }),
+      entry('e', { action: 'dispatch_deleted', grn_details: box, dispatch_no: 'D0007', restoration_details: { quantity_restored: 1 } }),
+    ]);
+    expect(texts).toEqual(expect.arrayContaining([
+      'Dispatch D0007 took 5 boxes from Fictional Onions',
+      'Dispatch D0007 deleted: 1 box given back to Fictional Onions',
+    ]));
+  });
+
   it('writes the bags in Gujarati digits and keeps the dispatch number as typed', () => {
     setLanguage('gu');
     const texts = render([

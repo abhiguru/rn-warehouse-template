@@ -48,7 +48,7 @@ export const pricing: Translation<typeof source> = {
     status: '{{date}} ના રોજ આવેલા જથ્થાના દર',
     labour: 'મજૂરી',
     labourValue: '{{unit}} દીઠ {{amount}}, માલ મોકલતી વખતે એક વાર લેવાય છે',
-    labourShort: 'નંગ દીઠ {{amount}}',
+    labourShort: '{{unit}} દીઠ {{amount}}',
     taxShort: '{{percent}}%',
     tax: 'ટેક્સ',
     taxValue: 'ભાડું અને મજૂરી પર {{percent}}%',

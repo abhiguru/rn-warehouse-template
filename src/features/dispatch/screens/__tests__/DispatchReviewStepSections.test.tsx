@@ -213,3 +213,31 @@ describe('the sections of an edited dispatch', () => {
     expect(router.replace).not.toHaveBeenCalled();
   });
 });
+
+describe('the lots\' packaging (D18)', () => {
+  const withPackaging = (...packagings: string[]) => {
+    mockForm.items = packagings.map((packaging, n) => ({ ...reviewLine(n + 1), grnItems_packaging: packaging }));
+  };
+  afterEach(() => { mockForm.items = [reviewLine(1), reviewLine(2)]; });
+
+  const labels = () => tree.root.findAll((n) => typeof n.props.accessibilityLabel === 'string').map((n) => n.props.accessibilityLabel as string);
+
+  it('a Box line and the total read "boxes"', async () => {
+    withPackaging('Box', 'Box');
+    await render();
+    expect(labels()).toContain('Item 1, Fictional item 1, mark M1, GRN A101, quantity 5 boxes, 50 kg each, Rack R1, Received 100 boxes, 35 left');
+    expect(labels()).toContain('Total: 2 item lines from 2 GRNs, 10 boxes dispatched');
+  });
+
+  it('lots counted in different things total in "units"; a lot of another packaging stays a bag', async () => {
+    withPackaging('Box', 'Crate');
+    await render();
+    expect(labels()).toContain('Total: 2 item lines from 2 GRNs, 10 units dispatched');
+    expect(labels().some((label) => label.startsWith('Item 2,') && label.includes('quantity 5 crates'))).toBe(true);
+
+    withPackaging('Jute', 'Unit');
+    await act(async () => { tree.unmount(); });
+    await render();
+    expect(labels()).toContain('Total: 2 item lines from 2 GRNs, 10 bags dispatched');
+  });
+});

@@ -95,6 +95,20 @@ describe('GRN Items table', () => {
     expect(onViewItemDispatches).toHaveBeenCalledWith(potatoes);
   });
 
+  it('counts a Box lot in boxes, a Crate lot in crates, and any other packaging in bags (D18)', () => {
+    const box = lot({ id: 'bx', stock: 77, packaging: 'Box' });
+    const crate = lot({ id: 'cr', stock: 97, packaging: 'Crates' });
+    const unit = lot({ id: 'un', stock: 99, packaging: 'Unit' });
+    render(<GRNItemsTab items={[box, crate, unit]} onViewItemDispatches={jest.fn()} />);
+    press('grn-item-row-bx');
+    press('grn-item-row-cr');
+    press('grn-item-row-un');
+
+    expect(textOf(byTestId('grn-item-details-bx'))).toMatch(/^Dispatched 23 boxes\|/);
+    expect(textOf(byTestId('grn-item-details-cr'))).toMatch(/^Dispatched 3 crates\|/);
+    expect(textOf(byTestId('grn-item-details-un'))).toMatch(/^Dispatched 1 bag\|/);
+  });
+
   it('uses the dispatch summary when it is there, and offers no View dispatches for a lot not dispatched', () => {
     render(<GRNItemsTab items={[lot({ id: 'x', stock: 100, dispatch_summary: { total_dispatched: 0 } }), lot({ id: 'y', stock: 70, dispatch_summary: { total_dispatched: 25 } })]} onViewItemDispatches={jest.fn()} />);
 

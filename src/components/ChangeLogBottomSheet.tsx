@@ -29,7 +29,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { ChangeLogEntry, CustomerSummary, ChangeLogAnalytics } from '@/types/order.types';
-import { formatCount, formatRelativeTime, formatWeightEach } from '@/utils/formatters';
+import { formatRelativeTime, formatWeightEach } from '@/utils/formatters';
+import { formatPackages } from '@/utils/packagingWord';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 
@@ -141,6 +142,8 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
     const lineName: string = details.grn_details?.grn_item_name || details.item_details?.item_name || entry.item_name;
     const itemName = entry.item_name;
     const quantity = details.quantity_change;
+    // What the lot is counted in, when the entry says (item_details or grn_details); otherwise bags.
+    const packaging: string | undefined = details.item_details?.packaging || details.grn_details?.packaging || details.grn_details?.grn_item_packaging || undefined;
 
     switch (action) {
       // A change of an order line, told by what it did to the line (added, removed, or the quantity).
@@ -154,14 +157,14 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
         const taken = Number(details.dispatch_impact?.dispatched_quantity ?? Math.abs(Number(quantity?.change_amount ?? 0)));
         // A dispatch that was deleted gives its bags back: the quantity went up.
         if (quantity?.change_type === 'increased' || taken < 0) {
-          return tr('components.changeLog.dispatchDeletedGaveBack', { number: formatIdentifier(details.dispatch_no || tr('common.unknown')), bags: formatCount(Math.abs(taken), 'bag'), item: lineName });
+          return tr('components.changeLog.dispatchDeletedGaveBack', { number: formatIdentifier(details.dispatch_no || tr('common.unknown')), bags: formatPackages(Math.abs(taken), packaging), item: lineName });
         }
-        return tr('components.changeLog.dispatchTook', { number: formatIdentifier(details.dispatch_no || tr('common.unknown')), bags: formatCount(taken, 'bag'), item: lineName });
+        return tr('components.changeLog.dispatchTook', { number: formatIdentifier(details.dispatch_no || tr('common.unknown')), bags: formatPackages(taken, packaging), item: lineName });
       }
       case 'dispatch_deleted':
         return tr('components.changeLog.dispatchDeletedGaveBack', {
           number: formatIdentifier(details.dispatch_no || tr('common.unknown')),
-          bags: formatCount(Number(details.restoration_details?.quantity_restored ?? details.total_quantity_restored ?? 0), 'bag'),
+          bags: formatPackages(Number(details.restoration_details?.quantity_restored ?? details.total_quantity_restored ?? 0), packaging),
           item: lineName,
         });
       case 'quantity_updated':

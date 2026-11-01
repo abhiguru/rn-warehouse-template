@@ -48,7 +48,7 @@ export const pricing = {
     labour: 'Labour',
     labourValue: '{{amount}} per {{unit}}, charged once at dispatch',
     // Short values of the GRN rate cards (For GRNs only, Your rate).
-    labourShort: '{{amount}} per bag',
+    labourShort: '{{amount}} per {{unit}}',
     taxShort: '{{percent}}%',
     tax: 'Tax',
     taxValue: '{{percent}}% on rent and labour',
