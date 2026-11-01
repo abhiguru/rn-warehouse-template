@@ -221,6 +221,15 @@ describe('Create is blocked without a rate', () => {
     expect(showAlert).not.toHaveBeenCalled();
     expect(dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.visible).toBe(true);
   });
+
+  it('an administrator saving a GRN dated before the items\' first rates is not stopped: the first rate covers the day (D16)', async () => {
+    mockRates = [{ ...stored('gur', 0, 50, 3), effective_from: '2026-12-01' }, { ...stored('rice', 0, 100, 2), effective_from: '2026-12-01' }];
+    const tree = await render('create');
+    expect(texts(tree)).not.toContain('No rate');
+    await press(tree);
+    expect(showAlert).not.toHaveBeenCalledWith('Add the missing rates', expect.anything());
+    expect(dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.visible).toBe(true);
+  });
 });
 
 describe('Add rate and the sheet', () => {

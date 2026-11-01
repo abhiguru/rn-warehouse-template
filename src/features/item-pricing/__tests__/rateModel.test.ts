@@ -113,6 +113,56 @@ describe('rateModel', () => {
     expect(ask('orchard-a')).toBe(3.5);
   });
 
+  describe('before the first default rate (D16)', () => {
+    const ask = (rows: ReturnType<typeof row>[], day: string, customer_id: string | null = null) =>
+      applicableRate(rows, { customer_id, weight: 50, price_type: 'monthly', day })?.unit_price;
+
+    it('the first default rate also covers every earlier day', () => {
+      const rows = [row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 5, effective_from: '2026-06-01' })];
+      expect(ask(rows, '2026-05-31')).toBe(5);
+      expect(ask(rows, '2020-01-01')).toBe(5);
+      expect(ask(rows, '2026-06-01')).toBe(5);
+    });
+
+    it('a later change starts on its own day and does not reach back', () => {
+      const rows = [
+        row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 5, effective_from: '2026-06-01', effective_to: '2026-08-31' }),
+        row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 6, effective_from: '2026-09-01' }),
+      ];
+      expect(ask(rows, '2026-01-01')).toBe(5);
+      expect(ask(rows, '2026-09-01')).toBe(6);
+      // Between two rates there is a gap: the first rate is behind, the second is not reached back.
+      const gap = [
+        row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 5, effective_from: '2026-01-01', effective_to: '2026-02-28' }),
+        row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 6, effective_from: '2026-05-01' }),
+      ];
+      expect(ask(gap, '2026-03-15')).toBeUndefined();
+    });
+
+    it("a customer's first rate does not reach back: the day falls to the default", () => {
+      const rows = [
+        row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3.5, effective_from: '2026-01-01' }),
+        row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3, effective_from: '2026-06-01', ...ORCHARD_B }),
+      ];
+      expect(ask(rows, '2026-03-01', 'orchard-b')).toBe(3.5);
+    });
+
+    it("a customer's rate alone gives no default rate to reach back to", () => {
+      const rows = [row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3, effective_from: '2026-06-01', ...ORCHARD_B })];
+      expect(ask(rows, '2026-03-01', 'orchard-b')).toBeUndefined();
+      expect(ask(rows, '2026-03-01')).toBeUndefined();
+    });
+
+    it('keeps the price types apart', () => {
+      const rows = [
+        row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 5, effective_from: '2026-06-01' }),
+        row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 20, effective_from: '2026-08-01', price_type: 'one_time' }),
+      ];
+      expect(applicableRate(rows, { customer_id: null, weight: 50, price_type: 'one_time', day: '2026-03-01' })?.unit_price).toBe(20);
+      expect(applicableRate(rows, { customer_id: null, weight: 50, price_type: 'monthly', day: '2026-03-01' })?.unit_price).toBe(5);
+    });
+  });
+
   it('keeps the price type apart', () => {
     const rows = [
       row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 5, effective_from: '2026-01-01' }),
