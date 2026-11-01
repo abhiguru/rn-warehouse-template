@@ -132,6 +132,9 @@ const ALLOWED: Record<string, { why: string; clearedBy?: readonly string[] }> = 
   'src/config/facilityGrnPaging.ts': {
     why: "byServer, learnedFrom: a fact about the facility server (paging support), by server; listeners: subscriptions",
   },
+  'src/config/facilityRpcSupport.ts': {
+    why: "byServer: a fact about the facility server (which functions its backend has), by server; listeners: subscriptions",
+  },
   'src/config/operatorServer.ts': {
     why: "activeServer, listeners: the facility in use and subscriptions to it (file owned by another PR)",
   },
