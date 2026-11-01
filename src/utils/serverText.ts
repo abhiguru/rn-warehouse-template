@@ -31,6 +31,11 @@ const REASONS: [RegExp, TranslationKey][] = [
   // Stock, a lot or an item that is not the document's customer's.
   [/(another|different|other) customer/, 'errors.parsed.otherCustomer'],
   [/cannot change the customer of a grn/, 'errors.parsed.grnCustomerLocked'],
+  // The PDF functions' own refusals (limits, lines changed while printing, renderer down). All are worded in English too.
+  [/^document exceeds the limit of [\d,]+ lines/, 'errors.pdf.tooManyLines'],
+  [/^document is too long to print/, 'errors.pdf.tooManyPages'],
+  [/^the document changed while printing/, 'errors.pdf.changedWhilePrinting'],
+  [/^pdf renderer unavailable/, 'errors.pdf.rendererUnavailable'],
   // Invoice rules (server migration 41). "Already invoiced" is not a duplicate number.
   [/line charge must be between/, 'errors.parsed.invoiceChargeRange'],
   [/line labour rate must be between/, 'errors.parsed.invoiceLabourRange'],
@@ -72,7 +77,14 @@ const REASONS: [RegExp, TranslationKey][] = [
 /**
  * Server sentences the app words itself in English too: the bare "Business is not active" says little.
  */
-const APP_WORDED: TranslationKey[] = ['errors.parsed.businessDeactivated', 'errors.parsed.businessNotActive'];
+const APP_WORDED: TranslationKey[] = [
+  'errors.parsed.businessDeactivated',
+  'errors.parsed.businessNotActive',
+  'errors.pdf.tooManyLines',
+  'errors.pdf.tooManyPages',
+  'errors.pdf.changedWhilePrinting',
+  'errors.pdf.rendererUnavailable',
+];
 
 /** Sentences the app wrote itself that may reach serverText again; they would look like developer text ("violates"). */
 const APP_OWN_TEXT: TranslationKey[] = [

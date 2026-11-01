@@ -521,6 +521,11 @@ export const errors: Translation<typeof source> = {
     downloadFailedStatus: 'PDF ડાઉનલોડ કરી શકાયું નથી (સ્થિતિ: {{status}})',
     downloadFailed: 'PDF ડાઉનલોડ કરી શકાયું નથી',
     shareFailed: 'PDF શેર કરી શકાયું નથી',
+    // Drafts for the owner's wording review (2026-11-01): the PDF functions' refusals (limits, changed meanwhile, service down).
+    tooManyLines: 'આ દસ્તાવેજમાં લીટીઓ વધારે છે, તેથી એક PDF તરીકે છાપી શકાતો નથી.',
+    tooManyPages: 'આ દસ્તાવેજ બહુ લાંબો છે, તેથી એક PDF તરીકે છાપી શકાતો નથી.',
+    changedWhilePrinting: 'દસ્તાવેજ બનતો હતો ત્યારે તે બદલાઈ ગયો. ફરી પ્રયાસ કરો.',
+    rendererUnavailable: 'PDF બનાવવાની સેવા હમણાં ઉપલબ્ધ નથી. થોડી વારમાં ફરી પ્રયાસ કરો.',
     tooLarge: 'આ દસ્તાવેજ ૨૫ MB થી મોટો છે, તેથી ઍપમાંથી શેર કરી શકાતો નથી.',
     sharingUnavailable: 'આ ફોનમાં શેર કરવાની સુવિધા નથી',
     shareDialogTitle: '{{name}} શેર કરો',

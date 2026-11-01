@@ -551,3 +551,28 @@ describe('an HTTP 200 that did not come through', () => {
     expect(emptyAnswerAsError({ data: null, error: null, status: 204 })).toBeNull();
   });
 });
+
+describe('the PDF functions\' own refusals (400 limit, 503 changed while printing, 503 renderer down)', () => {
+  const cases: [string, string, string][] = [
+    ['Document exceeds the limit of 3,500 lines', 'errors.pdf.tooManyLines', 'This document has too many lines to print as one PDF.'],
+    ['Document is too long to print (about 150 pages; the limit is 120)', 'errors.pdf.tooManyPages', 'This document is too long to print as one PDF.'],
+    ['The document changed while printing. Try again.', 'errors.pdf.changedWhilePrinting', 'The document changed while it was being made. Try again.'],
+    ['PDF renderer unavailable', 'errors.pdf.rendererUnavailable', 'The PDF service is not available right now. Try again in a moment.'],
+  ];
+
+  it.each(cases)('English: "%s" is worded by the app', (text, _key, english) => {
+    expect(serverText(text, 'Failed to generate PDF')).toBe(english);
+  });
+
+  it.each(cases)('Gujarati: "%s" is worded in Gujarati', (text, key) => {
+    setLanguage('gu');
+    const shown = serverText(text, 'Failed to generate PDF');
+    expect(shown).toBe(t(key as never));
+    expect(shown).toMatch(/[઀-૿]/);
+  });
+
+  it('the two that can pass by ask for another try', () => {
+    expect(t('errors.pdf.changedWhilePrinting')).toMatch(/Try again/);
+    expect(t('errors.pdf.rendererUnavailable')).toMatch(/Try again/);
+  });
+});
