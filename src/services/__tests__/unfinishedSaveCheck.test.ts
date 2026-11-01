@@ -407,8 +407,10 @@ describe('the session changing under a check', () => {
   it('tells nobody when the session ends while the note is being removed', async () => {
     await fromEarlierRun(grn);
     ask.mockResolvedValue({ found: false });
-    const remove = AsyncStorage.removeItem.bind(AsyncStorage);
-    jest.spyOn(AsyncStorage, 'removeItem').mockImplementation(async (key: string) => {
+    // AsyncStorage.removeItem is already a jest mock, so spyOn returns that same mock: keep its implementation first,
+    // otherwise the replacement would call itself.
+    const remove = jest.mocked(AsyncStorage.removeItem).getMockImplementation() as (key: string) => Promise<void>;
+    jest.mocked(AsyncStorage.removeItem).mockImplementationOnce(async (key: string) => {
       generation = 2;
       return remove(key);
     });
