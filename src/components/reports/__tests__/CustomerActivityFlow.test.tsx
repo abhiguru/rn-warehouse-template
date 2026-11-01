@@ -699,3 +699,25 @@ describe('customer activity, the report PDF', () => {
     );
   });
 });
+
+describe('customer activity, what the stock is counted in (D18)', () => {
+  it('a Box item reads boxes, an item whose lots differ (null) reads units, one with none reads bags', async () => {
+    openGreenValley();
+    detail.mockResolvedValue(
+      answerDetail({
+        top_stock_items: [
+          { item_name: 'Garlic', total_stock: 200, grn_count: 2, packaging: 'Box' },
+          { item_name: 'Cumin', total_stock: 100, grn_count: 1, packaging: null },
+          { item_name: 'Ginger', total_stock: 50, grn_count: 1 },
+        ],
+      }) as never
+    );
+    const screen = await open(makeStore());
+    const labels = screen.labels();
+    expect(labels).toContain('Garlic, 2 GRNs, 200 boxes');
+    expect(labels).toContain('Cumin, 1 GRN, 100 units');
+    expect(labels).toContain('Ginger, 1 GRN, 50 bags');
+    // Not all one word: the card's total reads units.
+    expect(labels).toContain('Current stock: 300 units. View stock age');
+  });
+});

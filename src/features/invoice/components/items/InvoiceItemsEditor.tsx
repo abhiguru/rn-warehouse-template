@@ -52,6 +52,7 @@ import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import type { GroupRates, InvoiceItemData } from '@/types/invoice.types';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { parseRateInput } from '@/features/invoice/utils/amountInput';
+import { sharedPackaging } from '@/utils/packagingWord';
 import {
   groupInvoiceItems,
   groupKeyOf,
@@ -758,6 +759,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
             <SharedBlock
               groupKey={row.groupKey}
               itemName={group.item_name}
+              packaging={sharedPackaging(group.allItems.map((line) => line.packaging))}
               fields={row.fields}
               lineCount={row.lines}
               spokenItem={spokenItemOf(group)}

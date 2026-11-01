@@ -6,6 +6,7 @@
  */
 import { formatIdentifier, localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 import { roundMoney } from '@/utils/invoiceCalculations';
+import { packageUnit } from '@/utils/packagingWord';
 import { parseRateInput, rateRangeMessage, RATE_MAX, type RateField } from '@/features/invoice/utils/amountInput';
 import { groupKeyOf, type InvoiceItemGroup } from '@/features/invoice/utils/groupInvoiceItems';
 import type { GroupRates, InvoiceItemData } from '@/types/invoice.types';
@@ -303,16 +304,22 @@ const FIELD_NAME: Record<RateField, TranslationKey> = {
   labour_rate: 'invoice.label.labour',
   tax: 'invoice.label.tax',
 };
-const unitOf = (field: RateField, oneTime: boolean): string =>
-  field === 'tax' ? tr('invoice.items.unitTax') : field === 'labour_rate' ? tr('invoice.items.unitLabour') : tr(oneTime ? 'invoice.items.unitChargeOneTime' : 'invoice.items.unitCharge');
+const unitOf = (field: RateField, oneTime: boolean, packaging?: string | null): string => {
+  const unit = packageUnit(packaging);
+  return field === 'tax'
+    ? tr('invoice.items.unitTax')
+    : field === 'labour_rate'
+      ? tr('invoice.items.unitLabour', { unit })
+      : tr(oneTime ? 'invoice.items.unitChargeOneTime' : 'invoice.items.unitCharge', { unit });
+};
 
-/** "Charge, dispatch I0042, rupees per bag per month" */
-export const cellLabel = (field: RateField, dispatchNo: string, oneTime: boolean): string =>
-  tr('invoice.items.cellA11y', { field: tr(FIELD_NAME[field]), number: formatIdentifier(dispatchNo), unit: unitOf(field, oneTime) });
+/** "Charge, dispatch I0042, rupees per bag per month" ("per box" for a Box lot; "bag" when the server sends no packaging). */
+export const cellLabel = (field: RateField, dispatchNo: string, oneTime: boolean, packaging?: string | null): string =>
+  tr('invoice.items.cellA11y', { field: tr(FIELD_NAME[field]), number: formatIdentifier(dispatchNo), unit: unitOf(field, oneTime, packaging) });
 
 /** "Charge, Example Potatoes, all lines, rupees per bag per month" */
-export const groupCellLabel = (field: RateField, itemName: string, oneTime: boolean, average = false): string =>
-  tr(average ? 'invoice.items.groupAverageA11y' : 'invoice.items.groupCellA11y', { field: tr(FIELD_NAME[field]), item: itemName, unit: unitOf(field, oneTime) });
+export const groupCellLabel = (field: RateField, itemName: string, oneTime: boolean, average = false, packaging?: string | null): string =>
+  tr(average ? 'invoice.items.groupAverageA11y' : 'invoice.items.groupCellA11y', { field: tr(FIELD_NAME[field]), item: itemName, unit: unitOf(field, oneTime, packaging) });
 
 /** Tax has no cell of its own, so no line keeps its own tax and it has no note. */
 const KEEP_OWN: Partial<Record<RateField, TranslationKey>> = {

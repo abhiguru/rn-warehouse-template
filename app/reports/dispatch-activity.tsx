@@ -45,6 +45,7 @@ import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllDispatchActivityData, CustomerDispatchRow, DispatchActivityData, DispatchActivityRecord, DispatchItemDetail } from '@/types/report.types';
 import { formatCount, formatDate, formatNumber, formatSpokenDate } from '@/utils/formatters';
+import { formatPackages, packNounFor, sharedPackaging } from '@/utils/packagingWord';
 
 const REPORT_ID = 'dispatch-activity';
 
@@ -418,6 +419,8 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
   const title = tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.disp_no) });
   const supervisor = dispatch.supervisor_name || '—';
   const items = dispatch.items ?? [];
+  // The word the dispatch is counted in: the one its items share, "units" when they differ, "bags" when the server sends none.
+  const packaging = sharedPackaging(items.map(item => item.packaging));
   // No weight: the one the server sends for a dispatch is a total (bags × the weight of one bag),
   // and total weights are not shown (style guide §12.3).
   // With the items open, the search's words show in them; closed, the card names the items it found.
@@ -427,7 +430,7 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
       number: formatIdentifier(dispatch.disp_no),
       date: formatSpokenDate(dispatch.disp_date),
       supervisor,
-      bags: formatCount(dispatch.total_qty, 'bag'),
+      bags: formatPackages(dispatch.total_qty, packaging),
     }),
     ...matched,
   ]
@@ -443,7 +446,7 @@ const DispatchCard = memo(function DispatchCard({ dispatch, rowKey, words, showD
   const bags = (
     <View style={styles.figures}>
       <Text style={styles.figureValue}>{formatNumber(dispatch.total_qty)}</Text>
-      <Text style={styles.figureLabel}>{tr('reports.dispatchActivity.bagUnit', { count: dispatch.total_qty })}</Text>
+      <Text style={styles.figureLabel}>{packNounFor(dispatch.total_qty, packaging)}</Text>
     </View>
   );
 
@@ -510,7 +513,7 @@ function ItemRow({ item, words, isLast, onOpenGrn }: ItemRowProps) {
   const grn = tr('reports.shared.grnNumber', { number: formatIdentifier(item.source_grn) });
   // Numbers are compared, never used as the left side of &&: 0 would be drawn as text.
   const ofQuantity = Number(item.orig_qty) > 0 && item.orig_qty !== item.qty ? formatNumber(item.orig_qty) : null;
-  const bags = formatCount(item.qty, 'bag');
+  const bags = formatPackages(item.qty, item.packaging);
   // Everything the row shows, in the order it shows it. The line's weight is not among it: the
   // server sends the line's total (bags × the weight of one bag), and total weights are not shown.
   const label = [

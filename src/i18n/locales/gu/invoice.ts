@@ -193,7 +193,7 @@ export const invoice: Translation<typeof source> = {
     keepOwnLabour: { one: '{{count}} લાઇનની મજૂરી તેની પોતાની રહે છે', other: '{{count}} લાઇનની મજૂરી તેમની પોતાની રહે છે' },
     oneTime: 'એક વખત',
     qtyOf: 'નંગ {{qty}}',
-    dispatchedOf: '{{received}} માંથી {{dispatched}} નંગ જાવક થયા',
+    dispatchedOf: '{{received}} માંથી {{dispatched}} {{things}} જાવક થયા',
     markA11y: 'માર્કો {{mark}}',
     totalA11y: 'કુલ {{total}}',
     // Draft for the owner's wording review (items toggle 2026-10-19): showLines to linesToFix; the count is in Gujarati digits.
@@ -208,9 +208,9 @@ export const invoice: Translation<typeof source> = {
     cellA11y: '{{field}}, જાવક {{number}}, {{unit}}',
     groupAverageA11y: '{{field}}, {{item}}, બધી લાઇન, સરેરાશ, {{unit}}',
     groupCellA11y: '{{field}}, {{item}}, બધી લાઇન, {{unit}}',
-    unitCharge: 'નંગદીઠ રૂપિયા, દર મહિને',
-    unitChargeOneTime: 'રૂપિયા, નંગ દીઠ',
-    unitLabour: 'રૂપિયા, નંગ દીઠ',
+    unitCharge: '{{unit}} દીઠ રૂપિયા, દર મહિને',
+    unitChargeOneTime: 'રૂપિયા, {{unit}} દીઠ',
+    unitLabour: 'રૂપિયા, {{unit}} દીઠ',
     unitTax: 'ટકા',
   },
   // The calculation summary on the review step

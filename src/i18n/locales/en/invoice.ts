@@ -187,7 +187,7 @@ export const invoice = {
     keepOwnLabour: { one: '{{count}} line keeps its own labour', other: '{{count}} lines keep their own labour' },
     oneTime: 'One-time',
     qtyOf: 'Qty {{qty}}',
-    dispatchedOf: '{{dispatched}} of {{received}} bags dispatched',
+    dispatchedOf: '{{dispatched}} of {{received}} {{things}} dispatched',
     markA11y: 'mark {{mark}}',
     totalA11y: 'total {{total}}',
     // Toggle at the bottom of a group's card (the count is formatted in the language's digits).
@@ -203,9 +203,9 @@ export const invoice = {
     cellA11y: '{{field}}, dispatch {{number}}, {{unit}}',
     groupAverageA11y: '{{field}}, {{item}}, all lines, average, {{unit}}',
     groupCellA11y: '{{field}}, {{item}}, all lines, {{unit}}',
-    unitCharge: 'rupees per bag, per month',
-    unitChargeOneTime: 'rupees per bag',
-    unitLabour: 'rupees per bag',
+    unitCharge: 'rupees per {{unit}}, per month',
+    unitChargeOneTime: 'rupees per {{unit}}',
+    unitLabour: 'rupees per {{unit}}',
     unitTax: 'percent',
   },
   // The calculation summary on the review step

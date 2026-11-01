@@ -802,3 +802,34 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(card.length).toBeGreaterThan(0);
   });
 });
+
+describe('dispatch activity, what a dispatch is counted in (D18)', () => {
+  const PACKED = {
+    success: true,
+    message: '',
+    data: {
+      summary: { total_dispatches: 3, total_quantity: 90, total_weight: 0 },
+      dispatches: [
+        dispatch('d1', 'DD0010', '2026-10-12', 50, 'Asha Example', 0, [item('Garlic', { qty: 50, orig_qty: 60, source_grn: 'A0010', source_grn_id: 'g1', packaging: 'Box' })]),
+        dispatch('d2', 'DD0009', '2026-10-11', 30, 'Ravi Example', 0, [
+          item('Cumin', { qty: 10, source_grn: 'A0100', packaging: 'Box' }),
+          item('Turmeric', { qty: 20, source_grn: 'A0050', packaging: 'Bag' }),
+        ]),
+        dispatch('d3', 'DD0008', '2026-10-10', 10, 'Meera Example', 0, [item('Ginger', { qty: 10, source_grn: 'A0001' })]),
+      ],
+    },
+  };
+
+  it('a Box dispatch reads boxes, a dispatch of mixed packaging reads units, one with none reads bags', async () => {
+    mockParams = GREEN;
+    customerActivity.mockResolvedValue(PACKED as never);
+    const screen = await open(makeStore());
+    expect(screen.cardLabels()).toEqual([
+      'Dispatch DD0010, 12 Oct 2026, Asha Example, 50 boxes',
+      'Dispatch DD0009, 11 Oct 2026, Ravi Example, 30 units',
+      'Dispatch DD0008, 10 Oct 2026, Meera Example, 10 bags',
+    ]);
+    await screen.press('Dispatch DD0010, 12 Oct 2026, Asha Example, 50 boxes');
+    expect(screen.has('Garlic, 50 boxes of 60, GRN A0010')).toBe(true);
+  });
+});

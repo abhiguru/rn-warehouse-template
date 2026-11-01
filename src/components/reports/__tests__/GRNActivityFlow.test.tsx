@@ -654,3 +654,22 @@ describe('GRN activity, nothing in the period', () => {
     expect(screen.has('Show last 420 days')).toBe(false);
   });
 });
+
+describe('GRN activity, what a GRN is counted in (D18)', () => {
+  it('a Box GRN reads boxes, a GRN of mixed packaging reads units, one with none reads bags', async () => {
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    const line = (packaging?: string) => ({ item_name: 'Garlic', quantity: 1, current_stock: 1, dispatched_qty: 0, weight: 0, rack: '', package_mark: '', ...(packaging ? { packaging } : {}) });
+    const rows = [
+      { ...grn('g1', 'A0010', '2026-10-12', 50, 60, true), items: [line('Box')] },
+      { ...grn('g2', 'A0009', '2026-10-11', 200, 5, false), items: [line('Box'), line('Bag')] },
+      { ...grn('g3', 'A0100', '2026-10-11', 120, 90, true), items: [line()] },
+    ];
+    customerActivity.mockResolvedValue({ success: true, message: '', data: { ...answerGrns.data, grns: rows } } as never);
+    const screen = await open(makeStore());
+    const labels = (tree: TestRenderer.ReactTestRenderer) => tree.root.findAll(node => typeof node.props.accessibilityLabel === "string").map(node => node.props.accessibilityLabel as string);
+    const all = labels(screen.tree);
+    expect(all.some(label => label.includes('60 of 50 boxes in stock'))).toBe(true);
+    expect(all.some(label => label.includes('5 of 200 units in stock'))).toBe(true);
+    expect(all.some(label => label.includes('90 of 120 bags in stock'))).toBe(true);
+  });
+});

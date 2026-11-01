@@ -106,3 +106,15 @@ describe('the dispatches listed with an invoice', () => {
     expect(relatedDispatchDocuments(lines)).toEqual([]);
   });
 });
+
+describe('what an invoice line is counted in (D18)', () => {
+  const packagingOf = (catalogPackaging: string | undefined, grnPackaging: string | undefined) => {
+    const line = dataLine('l1', 20, DISPATCH_1, 'I0001');
+    const row = { ...line, catalog: { ...line.catalog, packaging: catalogPackaging }, grn_item: { ...line.grn_item, packaging: grnPackaging } };
+    return buildInvoiceLineItems(invoice, [row] as unknown as Details['items'], [])[0].packaging;
+  };
+  it('carries Box through, and nothing when the server sends none (read as bags)', () => {
+    expect(packagingOf('Box', 'Box')).toBe('Box');
+    expect(packagingOf(undefined, undefined)).toBe('');
+  });
+});

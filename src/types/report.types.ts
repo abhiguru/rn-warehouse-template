@@ -130,6 +130,8 @@ export interface DispatchItemDetail {
   orig_qty?: number; // Original quantity from source GRN
   package_mark?: string; // Package mark from source GRN
   rack?: string; // Rack location from source GRN
+  /** What the line is counted in (Bag, Box, Crate); absent on a server that does not send it (read as bags). */
+  packaging?: string | null;
 }
 
 /**
@@ -403,7 +405,8 @@ export interface GRNDispatchSummary {
  */
 export interface GRNActivityItem {
   item_name: string;
-  packaging: string;
+  /** What the lot is counted in; absent on an older server (read as bags). */
+  packaging?: string | null;
   quantity: number;
   current_stock: number;
   dispatched_qty: number;
@@ -728,6 +731,8 @@ export interface RecentDispatchPreview {
  */
 export interface StockItemPreview {
   item_name: string;
+  /** What the stock is counted in; null when the item's lots differ (read as units); absent on an older server (read as bags). */
+  packaging?: string | null;
   total_stock: number;
   grn_count: number;
 }

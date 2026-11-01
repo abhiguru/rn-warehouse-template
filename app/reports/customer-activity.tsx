@@ -64,6 +64,7 @@ import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllCustomerActivityData, CustomerActivityDetailData, CustomerActivityRow } from '@/types/report.types';
 import { formatCount, formatCurrency, formatIndiaDate, formatIndiaSpokenDate, formatNumber, indiaDay } from '@/utils/formatters';
+import { formatPackages, MIXED_PACKAGING, sharedPackaging } from '@/utils/packagingWord';
 
 const REPORT_ID = 'customer-activity';
 
@@ -519,7 +520,7 @@ function quickAccessHead(
       // Today's stock, whatever the period; the report it opens is the customer's stock age.
       return {
         icon: 'cube-outline',
-        head: tr('reports.customerActivity.currentStockHead', { count: formatCount(s.current_stock, 'bag') }),
+        head: tr('reports.customerActivity.currentStockHead', { count: formatPackages(s.current_stock, sharedPackaging(data.top_stock_items.map(stockPackaging))) }),
         action: tr('reports.customerActivity.viewStockAge'),
         previewHeading: tr('reports.customerActivity.topStockItems'),
       };
@@ -535,6 +536,9 @@ function quickAccessHead(
       };
   }
 }
+
+/** An item's stock packaging: null means its lots differ ("units"); absent (an older server) reads "bags". */
+const stockPackaging = (item: { packaging?: string | null }): string | undefined => (item.packaging === null ? MIXED_PACKAGING : item.packaging);
 
 /** `payments`: the facility records payments, so an invoice shows Paid or Pending (a Cancelled tag is always shown). */
 function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailData, payments: boolean): React.ReactNode[] {
@@ -570,7 +574,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           key={`${item.item_name}-${index}`}
           label={item.item_name}
           sublabel={formatCount(item.grn_count, 'GRN')}
-          value={formatCount(item.total_stock, 'bag')}
+          value={formatPackages(item.total_stock, stockPackaging(item))}
         />
       ));
     case 'invoice-history':
