@@ -22,6 +22,7 @@ import { showAlert } from '@/utils/alert';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
 import CustomerActivityScreen from '../../../../app/reports/customer-activity';
+import type { StockItemPreview } from '@/types/report.types';
 
 const mockPush = jest.fn();
 const mockRouterPush = jest.fn();
@@ -709,7 +710,7 @@ describe('customer activity, what the stock is counted in (D18)', () => {
           { item_name: 'Garlic', total_stock: 200, grn_count: 2, packaging: 'Box' },
           { item_name: 'Cumin', total_stock: 100, grn_count: 1, packaging: null },
           { item_name: 'Ginger', total_stock: 50, grn_count: 1 },
-        ],
+        ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
       }) as never
     );
     const screen = await open(makeStore());
