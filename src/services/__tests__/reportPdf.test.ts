@@ -65,7 +65,7 @@ const sentBody = () => JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as s
 const nothingLogged = () => logs.forEach(log => expect(log).not.toHaveBeenCalled());
 
 describe('the request', () => {
-  it('sends a period report with its customer, dates, sort and language to generate-report-pdf', async () => {
+  it('sends a period report with its customer, dates and sort to generate-report-pdf', async () => {
     jest.mocked(fetch).mockResolvedValue(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
     await generateReportPDF(periodRequest);
 
@@ -82,25 +82,24 @@ describe('the request', () => {
       from: '2026-09-01',
       to: '2026-09-30',
       sort: { field: 'date', order: 'desc' },
-      lang: 'en',
     });
   });
 
   it('sends a stock report without dates and without a customer at the all-customers level', async () => {
     jest.mocked(fetch).mockResolvedValue(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
     await generateReportPDF(stockRequest);
-    expect(sentBody()).toEqual({ report: 'stock-summary', lang: 'en' });
+    expect(sentBody()).toEqual({ report: 'stock-summary' });
   });
 
   it('never sends dates for a stock report, even when a caller slips them in', () => {
     const smuggled = { report: 'stock-aging', from: '2026-09-01', to: '2026-09-30', customer_id: null } as unknown as ReportPdfRequest;
-    expect(reportPdfRequestBody(smuggled)).toEqual({ report: 'stock-aging', lang: 'en' });
+    expect(reportPdfRequestBody(smuggled)).toEqual({ report: 'stock-aging' });
   });
 
-  it("takes the app's language unless the request names one", () => {
+  it('never sends a language: report PDFs are English only, in Gujarati mode and whatever a caller slips in', () => {
     setLanguage('gu');
-    expect(reportPdfRequestBody(stockRequest).lang).toBe('gu');
-    expect(reportPdfRequestBody({ ...stockRequest, lang: 'en' }).lang).toBe('en');
+    expect(reportPdfRequestBody(stockRequest)).not.toHaveProperty('lang');
+    expect(reportPdfRequestBody({ ...stockRequest, lang: 'gu' } as unknown as ReportPdfRequest)).not.toHaveProperty('lang');
   });
 
   it('goes through the gated fetch of the session', async () => {
@@ -237,7 +236,6 @@ describe("the payment status of one customer's invoice history", () => {
       from: '2026-09-01',
       to: '2026-09-30',
       sort: { field: 'date', order: 'desc' },
-      lang: 'en',
     });
   });
 
@@ -392,7 +390,6 @@ describe('the Invoicing choice of one customer\'s GRN activity', () => {
       from: '2026-09-01',
       to: '2026-09-30',
       sort: { field: 'date', order: 'desc' },
-      lang: 'en',
     });
   });
 
@@ -416,7 +413,7 @@ describe("the Stock age choice of one customer's stock aging", () => {
   it.each(['0-120', '121-240', '241-364', 'over-364'] as const)('is sent as "%s" with the customer and the sort, without dates', async bucket => {
     jest.mocked(fetch).mockResolvedValue(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
     await generateReportPDF({ ...agingRequest, bucket });
-    expect(sentBody()).toEqual({ report: 'stock-aging', customer_id: CUSTOMER_ID, bucket, sort: { field: 'age', order: 'desc' }, lang: 'en' });
+    expect(sentBody()).toEqual({ report: 'stock-aging', customer_id: CUSTOMER_ID, bucket, sort: { field: 'age', order: 'desc' } });
   });
 
   it('is left out with none, at the all-customers level, for another report and for any other value', () => {
@@ -437,7 +434,7 @@ describe('the search of the item stock summary', () => {
   it('is sent trimmed, at either level, with the sort and without dates', async () => {
     jest.mocked(fetch).mockResolvedValue(answer(200, { success: true, pdf_url: SIGNED_URL, expires_in: 3600 }));
     await generateReportPDF({ ...itemRequest, search: '  onion bags ' });
-    expect(sentBody()).toEqual({ report: 'item-stock-summary', search: 'onion bags', sort: { field: 'item', order: 'asc' }, lang: 'en' });
+    expect(sentBody()).toEqual({ report: 'item-stock-summary', search: 'onion bags', sort: { field: 'item', order: 'asc' } });
     expect(reportPdfRequestBody({ ...itemRequest, customer_id: CUSTOMER_ID, search: 'ડુંગળી' })).toMatchObject({ customer_id: CUSTOMER_ID, search: 'ડુંગળી' });
   });
 
@@ -464,9 +461,9 @@ describe('the search of the item stock summary', () => {
 });
 
 describe('the request without its filters', () => {
-  it('keeps the report, customer, period, sort and language, and drops every filter field', () => {
-    const narrowed = { ...periodRequest, lang: 'gu', status: 'paid', invoicing: 'invoiced', bucket: 'over-364', search: 'onion' } as ReportPdfRequest;
-    expect(withoutReportFilters(narrowed)).toEqual({ ...periodRequest, lang: 'gu' });
+  it('keeps the report, customer, period and sort, and drops every filter field', () => {
+    const narrowed = { ...periodRequest, status: 'paid', invoicing: 'invoiced', bucket: 'over-364', search: 'onion' } as ReportPdfRequest;
+    expect(withoutReportFilters(narrowed)).toEqual(periodRequest);
     expect([...REPORT_PDF_FILTER_FIELDS]).toEqual(['status', 'invoicing', 'bucket', 'search']);
   });
 });
