@@ -150,7 +150,7 @@ export const invoice = {
     hint: 'Tap a figure to change it.',
     howPricingWorks: 'How pricing works',
     helpMessage:
-      '• Each card is one item and mark. Its lines are the dispatches.\n• Tap a figure to change it. A charge typed on a line stays that line\'s own.\n• The rows marked (all lines) set a rate for every line that has not been given its own.\n• Charge is the storage rate per bag per month, or once for a one-time GRN. Labour is the handling charge per bag. Tax is a percent.\n• Amounts are calculated for you.',
+      '• Each card is one item and mark. Its lines are the dispatches.\n• Tap a figure to change it. A charge typed on a line stays that line\'s own.\n• The rows marked (all lines) set a rate for every line that has not been given its own.\n• Charge is the storage rate per package per month, or once for a one-time GRN. Labour is the handling charge per package. Tax is a percent.\n• Amounts are calculated for you.',
     colCharge: 'Charge (₹)',
     colLabour: 'Labour (₹)',
     colTax: 'Tax (%)',

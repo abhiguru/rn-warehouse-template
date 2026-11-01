@@ -117,4 +117,8 @@ describe('what an invoice line is counted in (D18)', () => {
     expect(packagingOf('Box', 'Box')).toBe('Box');
     expect(packagingOf(undefined, undefined)).toBe('');
   });
+  it('takes the lot\'s own word over the catalog\'s, and the catalog\'s only when the lot has none', () => {
+    expect(packagingOf('Crate', 'Box')).toBe('Box');
+    expect(packagingOf('Crate', undefined)).toBe('Crate');
+  });
 });
