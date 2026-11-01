@@ -22,6 +22,10 @@
  * applies this rule on the server and sends more keys per invoice; none of them
  * is read, so the screen shows the same on a server with or without it.
  *
+ * A cancelled invoice (backend migration 134: `cancelled_at` set, or the status "cancelled") is neither: it owes
+ * nothing, was never received, and is left out of every sum, count, tile and Paid / Pending choice. Its card says
+ * Cancelled.
+ *
  * One calculation for the tiles, the monthly table, the Payment choice and the
  * tag and line on a card, in whole paise so that sums of decimals add up:
  * received + balance is the total for every invoice, so Paid + Pending is the
@@ -35,11 +39,18 @@ export const PAID_TOLERANCE_PAISE = 50;
 /** The parts of an invoice the rule reads. */
 export type PayableInvoice = Pick<InvoiceHistoryRecord, 'total'> & {
   payment_status?: { status?: string | null; amount?: unknown } | null;
+  /** Set when the invoice is cancelled (backend migration 134). */
+  cancelled_at?: string | null;
 };
+
+/** Whether the invoice is cancelled: `cancelled_at`, or the server's own status for it. */
+export function isCancelledInvoice(invoice: Pick<PayableInvoice, 'payment_status' | 'cancelled_at'>): boolean {
+  return !!invoice.cancelled_at || invoice.payment_status?.status === 'cancelled';
+}
 
 export interface InvoicePayment {
   /** By the rule above, whatever the server's word is. */
-  status: 'paid' | 'pending';
+  status: 'paid' | 'pending' | 'cancelled';
   /** Money was received and a balance is still owed: the invoice is Pending, and its card says how much of each. */
   partPaid: boolean;
   /** The money received, in rupees. */
@@ -63,6 +74,9 @@ function recordedPaise(amount: unknown): number | null {
 }
 
 export function invoicePayment(invoice: PayableInvoice): InvoicePayment {
+  if (isCancelledInvoice(invoice)) {
+    return { status: 'cancelled', partPaid: false, received: 0, balance: 0, totalPaise: 0, receivedPaise: 0, balancePaise: 0 };
+  }
   const totalPaise = toPaise(invoice.total);
   const recorded = recordedPaise(invoice.payment_status?.amount);
   // No amount: nothing is recorded, unless an older server says "paid", which is then paid in full.

@@ -66,10 +66,15 @@ interface InvoiceOverviewTabProps {
   invoice_id?: string;
   on_view_grn?: (grn_id: string) => void;
   on_edit_invoice?: () => void;
-  on_delete_invoice?: () => void;
+  /** Cancel the invoice (administrators and supervisors; the page asks for the reason). */
+  on_cancel_invoice?: () => void;
   can_edit?: boolean;
-  can_delete?: boolean;
-  is_deleting?: boolean;
+  can_cancel?: boolean;
+  is_cancelling?: boolean;
+  /** Migration 134: when and why the invoice was cancelled (null or absent when it is not); who, for staff and up. */
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
+  cancelled_by_name?: string | null;
   on_share_pdf?: () => void;
   is_share_loading?: boolean;
   on_print?: () => void;
@@ -192,10 +197,13 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   invoice_id,
   on_view_grn,
   on_edit_invoice,
-  on_delete_invoice,
+  on_cancel_invoice,
   can_edit = false,
-  can_delete,
-  is_deleting = false,
+  can_cancel = false,
+  is_cancelling = false,
+  cancelled_at,
+  cancel_reason,
+  cancelled_by_name,
   on_share_pdf,
   is_share_loading = false,
   on_print,
@@ -427,12 +435,32 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
     </View>
   );
 
+  const cancelledOn = cancelled_at
+    ? cancelled_by_name
+      ? tr('invoice.cancel.onBy', { date: formatDisplayDate(cancelled_at), name: cancelled_by_name })
+      : tr('invoice.cancel.on', { date: formatDisplayDate(cancelled_at) })
+    : '';
+  const cancelledSpoken = cancelled_at
+    ? [tr('invoice.cancel.banner'), cancelledOn, cancel_reason ? tr('invoice.cancel.reasonLabel', { reason: cancel_reason }) : ''].filter(Boolean).join('. ')
+    : '';
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
+      {/* SECTION: CANCELLED (migration 134) */}
+      {cancelled_at ? (
+        <View style={styles.card} accessible accessibilityLabel={cancelledSpoken} testID="invoice-cancelled-card">
+          <View style={styles.detailsContainer}>
+            <Text style={styles.reasonText}>{tr('invoice.cancel.banner')}</Text>
+            <Text style={styles.reasonMeta}>{cancelledOn}</Text>
+            {cancel_reason ? <Text style={styles.reasonText}>{tr('invoice.cancel.reasonLabel', { reason: cancel_reason })}</Text> : null}
+          </View>
+        </View>
+      ) : null}
+
       {/* SECTION: CUSTOMER */}
       {customer_details && (
         <>
@@ -467,10 +495,13 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         isPrintLoading={is_print_loading}
         onEdit={on_edit_invoice}
         canEdit={can_edit}
-        canDelete={can_delete}
-        onDelete={on_delete_invoice}
-        isDeleting={is_deleting}
-        // The invoice page asks its own question (invoice number and customer): one confirmation, as for dispatch and GRN.
+        canDelete={can_cancel}
+        onDelete={on_cancel_invoice}
+        isDeleting={is_cancelling}
+        deleteLabel={tr('invoice.cancel.action')}
+        deleteIcon="cancel"
+        deleteBusyLabel={tr('invoice.cancel.busy')}
+        // The invoice page opens its own sheet (the reason is asked there): no second question.
         confirmDelete={false}
       />
 

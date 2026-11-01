@@ -38,7 +38,7 @@ import {
   invoiceRecordsView,
 } from '@/features/filters/configs/reports/invoiceHistory';
 import { invoiceMonths, invoiceMonthsHavePaise, invoiceMonthTotals, type InvoiceMonth, type InvoiceMonthTotals } from '@/features/filters/configs/reports/invoiceMonths';
-import { invoicePayment } from '@/features/filters/configs/reports/invoicePayment';
+import { invoicePayment, isCancelledInvoice } from '@/features/filters/configs/reports/invoicePayment';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
 import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
@@ -328,8 +328,8 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       data && [
         // The count of the list, one invoice per row (the service merges the rows an older server sends per
         // payment), not the server's `summary.total_invoices`, which that server counts once per payment.
-        // Every invoice of the period, not the ones the search or the Payment choice leaves.
-        { icon: 'file-document-outline', value: data.invoices.length, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
+        // Every invoice of the period, not the ones the search or the Payment choice leaves; a cancelled one is not counted.
+        { icon: 'file-document-outline', value: data.invoices.filter(invoice => !isCancelledInvoice(invoice)).length, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
         {
           icon: 'check-circle',
           value: formatSummaryAmount(totals.paidAmount),

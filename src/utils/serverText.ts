@@ -38,6 +38,10 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/grn is already invoiced/, 'errors.parsed.grnAlreadyInvoiced'],
   [/already on another invoice/, 'errors.parsed.lineOnOtherInvoice'],
   [/invoice that has payments/, 'errors.parsed.invoiceHasPayments'],
+  // Server migration 134: an invoice is cancelled, not deleted ("This invoice has payments and can not be cancelled.").
+  [/invoice has payments and can not be cancelled/, 'invoice.cancel.hasPayments'],
+  [/invoice is already cancelled/, 'invoice.cancel.alreadyCancelled'],
+  [/invoice is cancelled and can not be changed/, 'invoice.cancel.cannotChange'],
   // Invoice line checks (assert_invoice_lines). The first sentence has the word
   // "duplicate" in it and is not "this entry already exists".
   [/missing, duplicate or unrelated dispatch line/, 'errors.parsed.invoiceLinesChanged'],

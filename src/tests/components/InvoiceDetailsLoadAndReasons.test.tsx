@@ -39,7 +39,7 @@ jest.mock('@/services/print-service', () => ({ printInvoiceRange: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ ...jest.requireActual('@/utils/alert'), showAlert: jest.fn() }));
 jest.mock('@/services/invoice-service', () => ({
-  getInvoiceDetails: jest.fn(), getInvoiceItemsDetailed: jest.fn(), getInvoiceReasons: jest.fn(), deleteInvoice: jest.fn(),
+  getInvoiceDetails: jest.fn(), getInvoiceItemsDetailed: jest.fn(), getInvoiceReasons: jest.fn(), cancelInvoice: jest.fn(),
 }));
 jest.mock('@/components/invoice-details', () => ({
   InvoiceHeroHeader: () => null,

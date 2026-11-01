@@ -428,7 +428,9 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
 function invoiceStatus(status: string): { kind: StatusKind; label: string } {
   if (status === 'paid') return { kind: 'positive', label: tr('reports.customerActivity.paid') };
   if (status === 'pending') return { kind: 'critical', label: tr('common.pending') };
-  // The backend sends only paid or pending; anything else is not a label (docs/I18N.md rule 9).
+  // Backend migration 134: a cancelled invoice is listed, tagged, and counted in no sum.
+  if (status === 'cancelled') return { kind: 'negative', label: tr('invoice.cancel.tag') };
+  // The backend sends only paid, pending or cancelled; anything else is not a label (docs/I18N.md rule 9).
   return { kind: 'neutral', label: tr('common.unknown') };
 }
 

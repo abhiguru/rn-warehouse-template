@@ -507,7 +507,7 @@ export interface InvoicePaymentStatus {
    * for a part payment, so the invoice history report does not show it: it works Paid and Pending out from
    * `amount` and the invoice's `total` (`invoicePayment` in src/features/filters/configs/reports).
    */
-  status: 'paid' | 'pending';
+  status: 'paid' | 'pending' | 'cancelled';
   paid_date: string | null;
   payment_ref: string | null;
   /**
@@ -573,6 +573,9 @@ export interface InvoiceHistoryRecord {
   notes: string | null;
   payment_status: InvoicePaymentStatus;
   line_items: InvoiceLineItem[];
+  /** Backend migration 134: set when the invoice is cancelled (its status is then `cancelled`). Absent on an older server. */
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
 }
 
 /**
@@ -737,7 +740,8 @@ export interface RecentInvoicePreview {
   invoice_number: string;
   invoice_date: string;
   net_total: number;
-  status: 'paid' | 'pending';
+  /** `cancelled` from backend migration 134: such an invoice is in no sum. */
+  status: 'paid' | 'pending' | 'cancelled';
 }
 
 /**

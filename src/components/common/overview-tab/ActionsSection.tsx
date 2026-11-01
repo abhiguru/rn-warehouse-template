@@ -16,6 +16,7 @@ import { SectionHeader } from './SectionHeader';
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 import type { DocumentEntity } from '@/i18n/entities';
+import type { IconName } from '@/types/icon.types';
 
 interface ActionsSectionProps {
   /** Which document the actions are for. Selects whole-sentence texts in both languages. */
@@ -55,6 +56,9 @@ interface ActionsSectionProps {
    * person is asked once, not twice.
    */
   confirmDelete?: boolean;
+  /** Words and icon for the button when it does not delete (an invoice is cancelled, not deleted). */
+  deleteLabel?: string;
+  deleteIcon?: IconName;
 }
 
 export const ActionsSection: React.FC<ActionsSectionProps> = ({
@@ -74,6 +78,8 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   isDeleting = false,
   deleteBusyLabel,
   confirmDelete = true,
+  deleteLabel,
+  deleteIcon = 'trash-can-outline',
 }) => {
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
@@ -214,16 +220,16 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             onPress={handleDeletePress}
             disabled={isDeleting}
             accessibilityRole="button"
-            accessibilityLabel={labels.delete}
+            accessibilityLabel={deleteLabel ?? labels.delete}
             accessibilityState={{ disabled: isDeleting, busy: isDeleting }}
           >
             {isDeleting ? (
               <ActivityIndicator size="small" color={colorStyles.iconError} />
             ) : (
-              <Icon name="trash-can-outline" size={iconSize.lg} color={colorStyles.iconError} />
+              <Icon name={deleteIcon} size={iconSize.lg} color={colorStyles.iconError} />
             )}
             <Text style={[overviewStyles.secondaryNegativeButtonText, colorStyles.secondaryNegativeButtonText]}>
-              {isDeleting ? deleteBusyLabel ?? t('common.deleting') : labels.delete}
+              {isDeleting ? deleteBusyLabel ?? t('common.deleting') : deleteLabel ?? labels.delete}
             </Text>
           </Pressable>
         )}

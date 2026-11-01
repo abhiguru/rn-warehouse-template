@@ -85,6 +85,10 @@ describe('server text in Gujarati', () => {
     ['GRN is already invoiced', 'errors.parsed.grnAlreadyInvoiced'],
     ['A dispatch line is already on another invoice', 'errors.parsed.lineOnOtherInvoice'],
     ['Cannot delete an invoice that has payments', 'errors.parsed.invoiceHasPayments'],
+    // Server migration 134: an invoice is cancelled, not deleted.
+    ['This invoice has payments and can not be cancelled.', 'invoice.cancel.hasPayments'],
+    ['This invoice is already cancelled.', 'invoice.cancel.alreadyCancelled'],
+    ['This invoice is cancelled and can not be changed.', 'invoice.cancel.cannotChange'],
     // save_invoice(jsonb) wraps the text of every refusal.
     ['Database error: GRN is already invoiced (SQLState: WH409)', 'errors.parsed.grnAlreadyInvoiced'],
     ['Database error: A dispatch line is already on another invoice (SQLState: WH409)', 'errors.parsed.lineOnOtherInvoice'],

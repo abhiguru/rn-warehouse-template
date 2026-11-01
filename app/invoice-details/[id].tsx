@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, Pressable, Platform, BackHandler } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
@@ -19,10 +19,10 @@ import {
   InvoiceItemDetailed,
   InvoiceItemsSummary,
   InvoiceReasons,
-  deleteInvoice,
+  cancelInvoice,
 } from '@/services/invoice-service';
-import { resolveLostInvoiceDelete } from '@/features/invoice/services/invoiceDeleteCheck';
-import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
+import { CancelInvoiceDialog } from '@/features/invoice/components/CancelInvoiceDialog';
+import { REFUSAL } from '@/utils/serverRefusal';
 import { getUserFriendlyError, parseErrorToFriendly } from '@/utils/errorHandler';
 import { generateInvoicePDF } from '@/services/pdf-service';
 import { printInvoiceRange } from '@/services/print-service';
@@ -115,38 +115,11 @@ function InvoiceDetailScreen() {
   const [data, setData] = useState<InvoiceDetailsResponse['data'] | null>(null);
   const [detailedItems, setDetailedItems] = useState<InvoiceItemDetailed[]>([]);
   const [itemsSummary, setItemsSummary] = useState<InvoiceItemsSummary | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  // A delete is on its way, from the first Delete press to its result. A ref, set before the next render, so a double
-  // tap on Delete cannot queue a second question, and Edit cannot open over the delete (I7).
-  const deleteLock = useRef(false);
-  // The delete's answer was lost (owner rule D22): the page is locked while the server is asked whether the invoice
-  // is gone. The controller ends the asking when the person leaves, so a delete is never sent from a page that is gone.
-  const [lostDelete, setLostDelete] = useState(false);
-  const deleteAbort = useRef<AbortController | null>(null);
-  useEffect(() => () => deleteAbort.current?.abort(), []);
-  // The one way off the page while the answer is lost: the header's Back and the Android Back key ask first, with the
-  // warning that the invoice may have been deleted. Leaving stops the asking, and no delete is sent after that.
-  const askLeaveLostDelete = useCallback(() => {
-    showAlert(tr('invoice.steps.lostLeaveTitle'), tr('errors.lostAnswer.leaveWarningDelete'), [
-      { text: tr('common.cancel'), style: 'cancel' },
-      {
-        text: tr('common.goBack'),
-        style: 'destructive',
-        onPress: () => {
-          deleteAbort.current?.abort();
-          router.back();
-        },
-      },
-    ]);
-  }, []);
-  useEffect(() => {
-    if (!lostDelete || Platform.OS !== 'android') return;
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      askLeaveLostDelete();
-      return true;
-    });
-    return () => subscription.remove();
-  }, [lostDelete, askLeaveLostDelete]);
+  const [isCancelling, setIsCancelling] = useState(false);
+  // The cancel question is open or its request is on its way, from the first press to its result. A ref, set before
+  // the next render, so a double tap cannot queue a second question, and Edit cannot open over the cancel.
+  const cancelLock = useRef(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   // The server says the invoice is not there any more: it was deleted (J5).
   const [gone, setGone] = useState(false);
   // The invoice was on this page before. A first load that finds nothing is "not found", not "deleted" (J5).
@@ -270,95 +243,58 @@ function InvoiceDetailScreen() {
 
   // Handle Edit Invoice
   const handleEditInvoice = () => {
-    if (!id || deleteLock.current) return;
+    if (!id || cancelLock.current) return;
     const invoiceId = Array.isArray(id) ? id[0] : id;
     router.push(`/invoice-edit/${invoiceId}/step1`);
   };
 
-  // Handle Delete Invoice
-  const handleDeleteInvoice = async () => {
-    if (!id || !data?.header) return;
-    // The page's Delete invoice button pressed twice calls this twice: the second call finds the first one's question.
-    if (deleteLock.current) return;
-    deleteLock.current = true;
+  // Handle Cancel Invoice: the sheet asks for the reason, then cancel_invoice is sent with the version this page read.
+  const handleCancelInvoice = () => {
+    if (!id || !data?.header || cancelLock.current) return;
+    cancelLock.current = true;
+    setCancelOpen(true);
+  };
 
+  const closeCancel = () => {
+    setCancelOpen(false);
+    cancelLock.current = false;
+  };
+
+  const runCancel = async (reason: string) => {
+    if (!id || !data?.header || isCancelling) return;
     const invoiceId = Array.isArray(id) ? id[0] : id;
     const invoiceNumber = data.header.invoice_number;
-    const customerName = data.header.customer?.name || data.header.invoice_customer_name;
-
-    // The invoice is gone: told once, and Done leaves for the list only if this screen is still the one in front.
-    const reportDeleted = () => {
-      showAlert(
-        tr('invoice.details.deletedTitle', { number: formatIdentifier(invoiceNumber) }),
-        undefined,
-        [
-          {
-            text: tr('common.done'),
-            onPress: () => {
-              if (focusedRef.current) router.back();
-            },
-          },
-        ]
-      );
-    };
-
-    // The question's Delete pressed twice calls this twice: only the first one deletes (I7).
-    let started = false;
-    const runDelete = async () => {
-      if (started) return;
-      started = true;
-      setIsDeleting(true);
-      const controller = new AbortController();
-      deleteAbort.current = controller;
-      try {
-        let result = await deleteInvoice(invoiceId);
-
-        // No answer came, and the request may have reached the server (D22): the page is locked, the app waits for the
-        // connection and for the server, and reads the invoice. Gone: it was deleted, as the person wanted. Still
-        // there: the delete is sent once more, and its answer is handled as any answer (a lost one goes round again).
-        while (result.lostAnswer) {
-          setLostDelete(true);
-          const state = await resolveLostInvoiceDelete(invoiceId, result.sentAt ?? Date.now(), controller.signal);
-          if (state === 'left') return;
-          if (state === 'gone') {
-            reportDeleted();
-            return;
-          }
-          // A failure of the resend that is not the server's answer comes back as a lost answer too (`resend`): the
-          // page stays locked and goes back to the check. "Invoice not found" is `notFound`: deleted, as asked.
-          result = await deleteInvoice(invoiceId, { resend: true });
-          if (controller.signal.aborted) return;
-        }
-
-        // Done, or the server says the invoice is not there: someone else deleted it, and the person is told it is gone.
-        if (result.success || result.notFound) {
-          reportDeleted();
-          return;
-        }
-        // The worded message: a refusal in the app's words, or the connection failing before the request was sent.
-        showAlert(tr('invoice.details.deleteFailedTitle'), result.message || getUserFriendlyError('invoice', 'delete'));
-      } catch (error) {
-        console.error('[InvoiceDetailScreen] Delete error:', error);
-        showAlert(tr('invoice.details.deleteFailedTitle'), getUserFriendlyError('invoice', 'delete'));
-      } finally {
-        deleteAbort.current = null;
-        setLostDelete(false);
-        setIsDeleting(false);
-        deleteLock.current = false;
+    setIsCancelling(true);
+    try {
+      const result = await cancelInvoice(invoiceId, reason, data.header.updated_at);
+      if (result.success) {
+        closeCancel();
+        await fetchInvoiceDetails();
+        showAlert(tr('invoice.cancel.done', { number: formatIdentifier(invoiceNumber) }));
+        return;
       }
-    };
-
-    showAlert(
-      tr('invoice.details.deleteTitle', { number: formatIdentifier(invoiceNumber) }),
-      customerName
-        ? tr('invoice.details.deleteMessageFor', { number: formatIdentifier(invoiceNumber), customer: customerName })
-        : tr('invoice.details.deleteMessage', { number: formatIdentifier(invoiceNumber) }),
-      [
-        // Cancel, the Android Back key and a tap outside all end here: the next Delete may start again.
-        { text: tr('common.cancel'), style: 'cancel', onPress: () => { deleteLock.current = false; } },
-        { text: tr('invoice.details.deleteConfirm'), style: 'destructive', onPress: runDelete },
-      ]
-    );
+      if (result.lostAnswer) {
+        // No answer: the invoice may be cancelled. It is read again and the page shows which it is; the cancel is not
+        // sent a second time (it would only be refused as already cancelled).
+        closeCancel();
+        await fetchInvoiceDetails();
+        showAlert(tr('invoice.cancel.unconfirmedTitle'), tr('invoice.cancel.unconfirmed'));
+        return;
+      }
+      // Changed by someone else, already cancelled or gone: the page reads the invoice again and shows what it is now.
+      if (result.reason === REFUSAL.STALE_RECORD || result.reason === REFUSAL.INVOICE_CANCELLED || result.reason === 'NOT_FOUND') {
+        closeCancel();
+        await fetchInvoiceDetails();
+      } else if (result.reason === REFUSAL.INVOICE_HAS_PAYMENTS) {
+        closeCancel();
+      }
+      showAlert(tr('invoice.cancel.failedTitle'), result.message || tr('invoice.cancel.failed'));
+    } catch (error) {
+      console.error('[InvoiceDetailScreen] Cancel error:', error);
+      showAlert(tr('invoice.cancel.failedTitle'), tr('invoice.cancel.failed'));
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   // Handle Share PDF
@@ -540,6 +476,7 @@ function InvoiceDetailScreen() {
 
   const grnNumber = invoice.gr_no || invoice.grn?.number;
   const customerName = invoice.customer?.name || invoice.invoice_customer_name;
+  const isCancelled = !!invoice.cancelled_at;
 
   return (
     <>
@@ -549,12 +486,8 @@ function InvoiceDetailScreen() {
           headerStyle: styles.navBar,
           headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
-          // No swipe back while the answer of a delete is lost (D22): Back asks first.
-          gestureEnabled: !lostDelete,
           // Custom back button to ensure it always works
-          headerLeft: () => (
-            <HeaderBackButton onPress={lostDelete ? askLeaveLostDelete : undefined} />
-          ),
+          headerLeft: () => <HeaderBackButton />,
           headerTitle: () => (
             <View
               style={styles.headerTitleContainer}
@@ -574,11 +507,9 @@ function InvoiceDetailScreen() {
         }}
       />
 
-      {/* The answer of a delete is lost (D22): what is being done, and nothing on the page can be pressed meanwhile. */}
-      {lostDelete && <LostAnswerNotice deleting />}
       <View
         style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
-        pointerEvents={lostDelete ? 'none' : 'auto'}
+        pointerEvents={isCancelling ? 'none' : 'auto'}
       >
         {/* Hero header */}
         <InvoiceHeroHeader
@@ -588,6 +519,7 @@ function InvoiceDetailScreen() {
           total_amount={total}
           tax_amount={tax_amount}
           customer_name={customerName}
+          cancelled={isCancelled}
         />
 
         {/* Tab Navigator */}
@@ -614,10 +546,13 @@ function InvoiceDetailScreen() {
               invoice_id={id}
               on_view_grn={handleViewGRN}
               on_edit_invoice={handleEditInvoice}
-              on_delete_invoice={handleDeleteInvoice}
-              can_edit={canUpdate}
-              can_delete={canDelete}
-              is_deleting={isDeleting}
+              on_cancel_invoice={handleCancelInvoice}
+              can_edit={canUpdate && !isCancelled}
+              can_cancel={canDelete && !isCancelled}
+              is_cancelling={isCancelling}
+              cancelled_at={invoice.cancelled_at}
+              cancel_reason={invoice.cancel_reason}
+              cancelled_by_name={!isCustomer ? invoice.cancelled_by_name : undefined}
               on_share_pdf={handleSharePDF}
               is_share_loading={isShareLoading}
               on_print={!isCustomer ? handlePrint : undefined}
@@ -643,6 +578,15 @@ function InvoiceDetailScreen() {
           )}
         </View>
       </View>
+
+      <CancelInvoiceDialog
+        visible={cancelOpen}
+        invoiceNumber={invoice.invoice_number}
+        customerName={customerName}
+        busy={isCancelling}
+        onConfirm={(reason) => void runCancel(reason)}
+        onCancel={closeCancel}
+      />
 
       {/* Print Dialog */}
       <PrintRangeDialog
