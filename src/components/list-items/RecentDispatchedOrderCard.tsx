@@ -23,8 +23,8 @@ import {
   Pressable,
   LayoutAnimation,
 } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { formatDate, formatSpokenDate, formatCount } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
@@ -33,7 +33,6 @@ import {
   fontWeight,
   iconSize,
   layout,
-  motion,
   radius,
   space,
   touchTarget,
@@ -191,7 +190,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
   const hasItems = dispatch.items && dispatch.items.length > 0;
   const itemCount = dispatch.item_count || dispatch.items?.length || 0;
   const itemsLabel = formatCount(itemCount, 'item');
-  const bagsLabel = formatCount(dispatch.total_qty, 'bag');
+  const bagsLabel = formatPackages(dispatch.total_qty, sharedPackaging((dispatch.items ?? []).map((item) => item.packaging)));
   const dateLabel = formatDate(dispatch.disp_date);
 
   const handleToggleExpand = useCallback(() => {
@@ -278,7 +277,9 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
 
       {/* Expanded Items Table */}
       {isExpanded && hasItems && (
-        <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
+        // No `entering` animation: the card opens with a layout animation, and a second opacity animation on a recycled
+        // list cell can leave the first expand blank (as on the dispatch list card).
+        <View style={styles.expandedSection}>
           <DispatchLinesTable
             items={dispatch.items}
             words={NO_WORDS}
@@ -286,7 +287,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
             testID={`recent-dispatch-lines-${dispatch.dispatch_id}`}
             onViewGRN={onViewGRN}
           />
-        </Animated.View>
+        </View>
       )}
 
       {/* Expand/Collapse Button */}

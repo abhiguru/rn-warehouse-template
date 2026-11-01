@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — follow-ups to the device re-test
+
+Needs backend migration 133 for the no-rate check, the dispatch list packaging and the prefix buttons (rate history is app-only); the app still works on older servers (each falls back as noted).
+
+- **Staff are told before the save which items have no rate yet.** Review calls `get_items_without_rate` with each line's item and weight, the GRN's
+  pricing mode, the GRN date and (on an edit) the GRN id. An older server (no function) or any failure falls back to the notice after the save, which is
+  still shown when Review showed it. Administrators and supervisors never call it.
+- **Boxes and crates on dispatch lists.** The dispatch list cards count in the packaging the server sends per line (`packaging`, migration 133); an older
+  server sends none and the card says bags. A total over lines of different packaging says "units" (Gujarati નંગ) instead of bags, also in the item chooser.
+- **Rate history.** A new rate is shown against the rate in force on its start day (else the earliest); a same-day correction shows "₹11 → ₹12";
+  rates a save deleted and no new band took over are listed under Removed.
+- Prefix buttons for dispatch GRN search work with a single digit as prefix, and a tapped prefix searches from the start of the number (any characters, digits too, may lie
+  between the prefix and the digits typed after it; backspacing past it or Clear goes back to "contains").
+- Review skips the no-rate check and notice for an invoiced GRN (the server skips the rate check for it too).
+- Removed the unused `GRNDispatchTimeline` component and the Reanimated dependency arrays in the invoice sideways viewport.
+
 ## Unreleased — Expo SDK 58
 
 - **The app is on Expo SDK 58** (React Native 0.88, React 19.3, Expo Router 58 with React Navigation 8, Jest 30). Compile SDK is 37 (build tools 37.0.0,

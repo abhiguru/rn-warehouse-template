@@ -1206,7 +1206,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                         ((currentItem.disp_quantity ?? 0) > 0 ? localizeDigits((currentItem.disp_quantity ?? 0).toString()) : '')
                                     }
                                     onChangeText={handleQuantityChange}
-                                    placeholder={tr('common.bags')}
+                                    placeholder={packNounCapital(currentItem.grnItems_packaging)}
                                     placeholderTextColor={t.text.placeholder}
                                     keyboardType="numeric"
                                     editable={!!currentItem.grnItems_id}

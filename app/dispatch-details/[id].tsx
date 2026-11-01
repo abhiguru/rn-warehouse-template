@@ -567,8 +567,8 @@ function DispatchDetailScreen() {
       if (!result.success) {
         // As the GRN screen words it; after a lost answer the photo may be attached, so the photos are read again.
         const failure = photoAddFailure(result.error, tr('dispatch.photos.uploadFailedRetry'));
-        setSnackbarMessage(failure.message);
-        setSnackbarVisible(true);
+        // A dialog, not the 4 s toast: offline the toast was gone before anyone could read it (device re-test 2026-11-01).
+        showAlert(tr('dispatch.photos.uploadFailedTitle'), failure.message);
         if (failure.reread) await fetchDispatchDetails();
         return;
       }
@@ -577,8 +577,7 @@ function DispatchDetailScreen() {
       setSnackbarVisible(true);
     } catch (error) {
       const failure = photoAddFailure(error, tr('dispatch.photos.uploadFailedRetry'));
-      setSnackbarMessage(failure.message);
-      setSnackbarVisible(true);
+      showAlert(tr('dispatch.photos.uploadFailedTitle'), failure.message);
       if (failure.reread) await fetchDispatchDetails();
     } finally {
       setIsUploadingImage(false);
@@ -665,6 +664,7 @@ function DispatchDetailScreen() {
           date={dispatch.disp_date}
           total_items={statistics.total_items}
           total_quantity={statistics.total_dispatched_qty}
+          packaging={itemTotals(items).packaging}
           customer_name={dispatch.customer_details?.name}
         />
 

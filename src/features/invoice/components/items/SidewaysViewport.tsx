@@ -145,7 +145,8 @@ export function SidewaysViewport({ scroll, content, fill, rowStyle, testID, pinn
         }),
     [offset, viewport, start, flinging, content]
   );
-  // The content or the viewport shrinks (text size, rotation, a column left out): the offset is held in range.
+  // The content or the viewport shrinks (text size, rotation, a column left out): the offset is held in range. No
+  // dependency array: Reanimated tracks `content` through the worklet closure, and warns about an array on native.
   useAnimatedReaction(
     () => Math.max(0, content - viewport.value),
     (max) => {
@@ -153,15 +154,13 @@ export function SidewaysViewport({ scroll, content, fill, rowStyle, testID, pinn
         cancelAnimation(offset);
         offset.value = max;
       }
-    },
-    [content]
+    }
   );
-  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: -offset.value }] }), [offset]);
-  const leftCue = useAnimatedStyle(() => ({ opacity: Math.min(1, Math.max(0, offset.value / CUE_RAMP)) }), [offset]);
-  const rightCue = useAnimatedStyle(
-    () => ({ opacity: viewport.value > 0 ? Math.min(1, Math.max(0, (content - viewport.value - offset.value) / CUE_RAMP)) : 0 }),
-    [offset, viewport, content]
-  );
+  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: -offset.value }] }));
+  const leftCue = useAnimatedStyle(() => ({ opacity: Math.min(1, Math.max(0, offset.value / CUE_RAMP)) }));
+  const rightCue = useAnimatedStyle(() => ({
+    opacity: viewport.value > 0 ? Math.min(1, Math.max(0, (content - viewport.value - offset.value) / CUE_RAMP)) : 0,
+  }));
   const onLayout = (event: LayoutChangeEvent) => {
     viewport.value = event.nativeEvent.layout.width;
   };

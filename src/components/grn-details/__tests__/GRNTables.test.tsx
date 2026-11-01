@@ -9,6 +9,7 @@ import { GRNDispatchesTab } from '../GRNDispatchesTab';
 import { GRNInvoicesTab } from '../GRNInvoicesTab';
 import type { InvoiceTable } from '@/components/common/invoiceTable';
 import type { DispatchRecord } from '@/services/grn-detail-service';
+import { setLanguage } from '@/i18n';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -53,6 +54,7 @@ afterEach(() => {
   act(() => tree?.unmount());
   mockFontScale = 1;
   mockWidth = 360;
+  setLanguage('en');
 });
 
 const textOf = (node: ReactTestInstance): string =>
@@ -193,6 +195,36 @@ describe('GRN Dispatches table', () => {
     expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Bags dispatched\|/);
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
     expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Bags|DD0041|09/10/26|12|DD0042|11/10/26|8');
+  });
+
+  it('counts in the packaging of the lot instead of fixed bags', () => {
+    const boxes = lot({ id: 'p', packaging: 'Box' });
+    render(<GRNDispatchesTab items={[boxes]} dispatchesByItem={{ p: byItem.p }} />);
+
+    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Boxes dispatched\|/);
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toMatch(/^Dispatch\|Date\|Boxes\|/);
+    expect(byTestId('grn-dispatches-total').props.accessibilityLabel).toBe('Total: 2 dispatches, 20 boxes dispatched');
+    expect(byTestId('grn-dispatch-line-r1').props.accessibilityLabel).toMatch(/, 12 boxes$/);
+    expect(byTestId('grn-dispatch-row-p').props.accessibilityLabel).toBe(
+      'Potatoes, PM · 50 kg each, 2 dispatches, 20 of 100 boxes dispatched'
+    );
+  });
+
+  it('says units when the lots are counted in different things', () => {
+    render(<GRNDispatchesTab items={[lot({ id: 'p', packaging: 'Box' }), garlic]} dispatchesByItem={byItem} />);
+
+    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Units dispatched\|/);
+    expect(byTestId('grn-dispatches-total').props.accessibilityLabel).toBe('Total: 2 dispatches, 30 units dispatched');
+  });
+
+  it('writes the packaging in Gujarati', () => {
+    setLanguage('gu');
+    render(<GRNDispatchesTab items={[lot({ id: 'p', packaging: 'Crate' })]} dispatchesByItem={{ p: byItem.p }} />);
+
+    expect(textOf(byTestId('grn-dispatches-table'))).toContain('જાવકના ક્રેટ');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toContain('ક્રેટ');
+    expect(byTestId('grn-dispatches-total').props.accessibilityLabel).toBe('કુલ: ૨ જાવક, ૨૦ ક્રેટ જાવક થઈ');
+    expect(byTestId('grn-dispatch-row-p').props.accessibilityLabel).toContain('૧૦૦ માંથી ૨૦ ક્રેટની જાવક થઈ');
   });
 
   it('keeps the loading, failure and empty states', () => {

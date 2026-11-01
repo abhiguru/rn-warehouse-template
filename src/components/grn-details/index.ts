@@ -8,7 +8,6 @@ export { GRNHeroHeader } from './GRNHeroHeader';
 export { GRNTabNavigator, type TabKey } from './GRNTabNavigator';
 export { GRNOverviewTab } from './GRNOverviewTab';
 export { GRNItemsTab, type GRNItem } from './GRNItemsTab';
-export { GRNDispatchTimeline, type DispatchRecord } from './GRNDispatchTimeline';
 export { GRNDispatchesTab } from './GRNDispatchesTab';
 export { GRNImagesTab, type GRNImageData } from './GRNImagesTab';
 export { GRNInvoicesTab } from './GRNInvoicesTab';

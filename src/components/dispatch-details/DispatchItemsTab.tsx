@@ -22,7 +22,8 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
+import { formatPackages, packNounCapital } from '@/utils/packagingWord';
+import { formatDate, formatNumber, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { itemTotals, type DispatchItem } from './dispatchDetailsModel';
 import {
@@ -97,7 +98,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-const bags = (qty: number) => formatCount(qty, 'bag');
+const bags = (qty: number, packaging?: string | null) => formatPackages(qty, packaging);
 
 /** "0161/100": the GRN number and the bags received on the lot; "—" without a number. */
 export function sourceText(item: Pick<DispatchItem, 'grn_no' | 'original_quantity'>): string {
@@ -131,12 +132,12 @@ export function sourceColumnWidth(
 export const grnDateText = (date: string | null): string => (toDate(date) ? formatDate(date) : '—');
 
 /** "GRN 0161, Received 100 bags, Mark PM" for a screen reader. */
-function sourceSpoken(item: Pick<DispatchItem, 'grn_no' | 'original_quantity' | 'package_mark'>): string {
+function sourceSpoken(item: Pick<DispatchItem, 'grn_no' | 'original_quantity' | 'package_mark' | 'packaging'>): string {
   return [
     item.grn_no
       ? tr('dispatch.details.table.grnNumbered', { number: formatIdentifier(item.grn_no) })
       : tr('dispatch.details.table.grnUnavailable'),
-    item.original_quantity !== undefined ? tr('dispatch.details.received', { bags: bags(item.original_quantity) }) : null,
+    item.original_quantity !== undefined ? tr('dispatch.details.received', { bags: bags(item.original_quantity, item.packaging) }) : null,
     item.package_mark ? tr('grn.item.markWithValue', { mark: item.package_mark }) : null,
   ]
     .filter(Boolean)
@@ -219,14 +220,14 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
             ]),
         helper.accessor('dispatch_quantity', {
           id: 'bags',
-          header: tr('dispatch.details.table.bagsDispatched'),
+          header: tr('dispatch.details.table.bagsDispatched', { things: packNounCapital(totals.packaging) }),
           enableSorting: true,
           sortFn: 'basic',
           meta: { width: bagsWidth, numeric: true },
           cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.dispatch_quantity)}</Text>,
         }),
       ]),
-    [stacked, grnWidth, bagsWidth, grnHeading, styles, own, onViewGRN]
+    [stacked, grnWidth, bagsWidth, grnHeading, styles, own, onViewGRN, totals.packaging]
   );
   const grid = useAppTable({ data: items, columns, getRowId: (item) => item.id });
 
@@ -235,7 +236,7 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
       <View
         style={styles.footerRow}
         accessible
-        accessibilityLabel={tr('dispatch.details.table.itemsTotalLabel', { lines: lineCount, grns: grnCount, bags: bags(totals.bags) })}
+        accessibilityLabel={tr('dispatch.details.table.itemsTotalLabel', { lines: lineCount, grns: grnCount, bags: bags(totals.bags, totals.packaging) })}
         testID="dispatch-items-total"
       >
         <View style={styles.grow}>
@@ -288,7 +289,7 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
           item: item.item_name,
           details: weight ? `, ${weight}` : '',
           source: sourceSpoken(item),
-          bags: bags(item.dispatch_quantity),
+          bags: bags(item.dispatch_quantity, item.packaging),
         });
       }}
       rowActions={(row) =>

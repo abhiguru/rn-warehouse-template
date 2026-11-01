@@ -118,7 +118,7 @@ import { serverText } from '@/utils/serverText';
 import { lineLock, LOCK_A11Y, LOCK_TAG, type LineLock } from '@/features/grn/utils/lineLock';
 import { isNumberFormatRefusal, numberFormatText } from '@/utils/numberFormatRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
-import { getGrnItemRates } from '@/services/item-pricing-service';
+import { getGrnItemRates, getItemsWithoutRate } from '@/services/item-pricing-service';
 import type { ScrollViewRef } from '@/types/nativeRefs';
 
 const log = createLogger('grn');
@@ -254,6 +254,34 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const rateRowList = useMemo(() => groupRows(items), [items]);
   const stored = useGrnRates(canSetRates ? rateRowList.map((r) => r.item_id) : [], ctxKey);
   const standard = useStandardRate(canSetRates);
+  // Staff cannot read rates, so the server says which items have none for this customer and day (migration 133). Null:
+  // not asked, or an older server; the notice after the save then tells them (noteItemsWithoutRate).
+  const [noRateNames, setNoRateNames] = useState<string[] | null>(null);
+  // An invoiced GRN is not asked: the save's own rate check skips it, so a strip would mislead.
+  const noRateItemKey = canSetRates || grnInvoiced ? '' : JSON.stringify([rateCtx.customerId, rateCtx.day, rateCtx.priceType, rateRowList.map((r) => [r.item_id, r.weight]), mode === 'edit' ? grnId : null]);
+  useEffect(() => {
+    if (canSetRates || grnInvoiced || !rateCtx.customerId || rateRowList.length === 0) {
+      setNoRateNames(null);
+      return;
+    }
+    let current = true;
+    // The answer for the earlier items, customer or day no longer stands; a save before the new one arrives falls back to the notice after the save.
+    setNoRateNames(null);
+    const lines = rateRowList.map((r) => ({ itemId: r.item_id, weight: r.weight }));
+    void (async () => {
+      let missing: string[] | null = null;
+      try {
+        missing = await getItemsWithoutRate(rateCtx.customerId as string, lines, rateCtx.day, rateCtx.priceType, mode === 'edit' ? grnId : null);
+      } catch {
+        missing = null;
+      }
+      if (!current) return;
+      setNoRateNames(missing === null ? null : [...new Set(rateRowList.filter((r) => missing.includes(r.item_id)).map((r) => r.item_name))]);
+    })();
+    return () => {
+      current = false;
+    };
+  }, [noRateItemKey]);
   const pricedRows = useMemo(
     () => priceRows(rateRowList, { rates: stored.rates, ctx: rateCtx, grnRates, changes: rateChanges }),
     [rateRowList, stored.rates, rateCtx, grnRates, rateChanges],
@@ -554,7 +582,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    * items have none. A failed or missing read says nothing; the save is not affected.
    */
   const noteItemsWithoutRate = async (savedGrnId: string | undefined) => {
-    if (canSetRates || !savedGrnId) return;
+    // Said again after the save even when Review showed it: the success dialog is what staff keep in front of them.
+    if (canSetRates || grnInvoiced || !savedGrnId) return;
     try {
       const answer = await getGrnItemRates(savedGrnId);
       const names = [...new Set((answer?.rates ?? []).filter((rate) => rate.source === null).map((rate) => rate.item_name))];
@@ -1466,6 +1495,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             </ReviewSection>
           ) : null}
           </ReviewCard>
+          {!canSetRates && noRateNames && noRateNames.length > 0 ? (
+            <View testID="grn-review-no-rate" style={{ margin: space.sm }}>
+              <InlineValidation variant="warning" message={tr('grn.review.noRateYet', { items: noRateNames.join(', ') })} />
+            </View>
+          ) : null}
           {!isCreateMode && orderEffectsNotice(orderEffects) ? (
             <View testID="grn-review-order-effects" style={{ margin: space.sm }}>
               <InlineValidation variant="warning" message={orderEffectsNotice(orderEffects)} />

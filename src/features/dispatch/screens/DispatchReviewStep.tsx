@@ -16,6 +16,7 @@ import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoF
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { formatCount, formatDate, toDate, formatWeightEach, formatNumber, formatMobile } from '@/utils/formatters';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -819,7 +820,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                                             accessibilityLabel={tr('dispatch.details.table.itemsTotalLabel', {
                                                 lines: lineCount,
                                                 grns: grnCount,
-                                                bags: formatCount(totals.totalQuantity, 'bag'),
+                                                bags: formatPackages(totals.totalQuantity, sharedPackaging(items.map((item) => item.grnItems_packaging))),
                                             })}
                                             testID="dispatch-review-items-total"
                                         >
@@ -1027,11 +1028,11 @@ function lineFactsCache() {
                         item: item.grnItems_item_name,
                         mark: item.grnItems_package_mark,
                         grn: formatIdentifier(item.grns_gr_no),
-                        quantity: formatCount(item.disp_quantity, 'bag'),
+                        quantity: formatPackages(item.disp_quantity, item.grnItems_packaging),
                     }),
                     formatWeightEach(item.grnItems_weight),
                     tr('grn.item.rackWithValue', { rack: item.grnItems_rack?.trim() || EMPTY }),
-                    tr('dispatch.details.received', { bags: formatCount(item.grnItems_quantity, 'bag') }),
+                    tr('dispatch.details.received', { bags: formatPackages(item.grnItems_quantity, item.grnItems_packaging) }),
                     stockText,
                 ]
                     .filter(Boolean)

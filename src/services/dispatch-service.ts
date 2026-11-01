@@ -170,6 +170,8 @@ export interface DispatchItemDetail {
   rack?: string | null;
   /** The GRN the line was taken from (backend 0.7.x and newer); absent from an older backend. */
   grn_id?: string | null;
+  /** What the lot is counted in (Bag, Box, Crate), when the backend sends it. */
+  packaging?: string | null;
 }
 
 /**
@@ -277,6 +279,10 @@ export const mapBackendDispatch = (dispatch: BackendDispatchData): Dispatch => {
       package_mark: item.packageMark || item.package_mark || null,
       grn_qty: Number(item.grnQty || item.grn_qty) || 0,
       rack: item.rack || null,
+      // The GRN cell of the list opens it from this id; an older backend sends none.
+      grn_id: item.grnId || item.grn_id || null,
+      // Boxes and crates are counted as such on the list card; an older backend sends none (counted as bags).
+      packaging: item.packaging || null,
     })),
     created_at: dispatch.createdAt || dispatch.created_at || '',
     updated_at: dispatch.updatedAt || dispatch.updated_at || '',

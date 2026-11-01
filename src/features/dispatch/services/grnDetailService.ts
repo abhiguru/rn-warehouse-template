@@ -4,7 +4,7 @@
  * Provides autocomplete search for GRN numbers
  */
 
-import { containsPattern } from '@/utils/postgrestFilter';
+import { containsPattern, escapeLike } from '@/utils/postgrestFilter';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
 import type {
@@ -21,13 +21,34 @@ import { rpcRefusal } from '@/utils/rpcRefusal';
 // ============================================================================
 
 /**
+ * The LIKE pattern for typed GRN text. The prefix buttons give one letter and the keypad only digits, but a number may
+ * carry a longer letter prefix ("DV0102"): letters then digits ("D0102", "DV0102") match any letters in between, so
+ * "D" + "0102" finds "DV0102". Anything else is a plain "contains".
+ */
+export const grnSearchPattern = (query: string): string => {
+  const typed = query.trim();
+  const split = /^([A-Za-z]+)(\d+)$/.exec(typed);
+  return split ? `%${escapeLike(split[1])}%${escapeLike(split[2])}%` : containsPattern(query);
+};
+
+/** `<prefix>%<digits>%`: starts with the tapped prefix, any characters (digits too) may lie between it and the digits typed after it. */
+export const anchoredPattern = (query: string, prefix: string): string => {
+  const typed = query.trim();
+  const rest = typed.startsWith(prefix) ? typed.slice(prefix.length) : '';
+  return rest ? `${escapeLike(prefix)}%${escapeLike(rest)}%` : `${escapeLike(prefix)}%`;
+};
+
+/**
  * Search GRN numbers with autocomplete
  * Used in GRNAutocompleteBottomSheet, which always passes the dispatch's
- * customer: a dispatch may only take that customer's stock.
+ * customer: a dispatch may only take that customer's stock. With `startsWith` (the prefix button tapped) the number
+ * must begin with that prefix, then any letters, then the digits typed after it ("D" + "0102" finds "DV0102", also on
+ * older servers whose prefix is one letter); otherwise the text only has to be contained.
  */
 export const searchGRNNumbers = async (
   query: string,
-  customerId?: string
+  customerId?: string,
+  options?: { startsWith?: string }
 ): Promise<GRNAutocompleteItem[]> => {
   try {
     console.log('[GRNDetailService] Searching GRN numbers with query:', query);
@@ -42,7 +63,7 @@ export const searchGRNNumbers = async (
     let queryBuilder = authenticatedClient
       .from('goodsreceived')
       .select('id, gr_no, date, customer_name')
-      .ilike('gr_no', containsPattern(query))
+      .ilike('gr_no', options?.startsWith ? anchoredPattern(query, options.startsWith) : grnSearchPattern(query))
       // Like the default list: only GRNs that still have stock to dispatch.
       .eq('out_of_stock', false)
       .order('gr_no', { ascending: false })

@@ -73,6 +73,12 @@ describe('titles from the action code', () => {
     expect(texts.join('|')).not.toContain('Quantity changed:');
   });
 
+  it('says added for a line put back after it was removed (the server says increased from 0)', () => {
+    const texts = render([entry('f', { action: 'quantity_changed', grn_details: grn, quantity_change: qty('increased', 0, 20) })]);
+    expect(texts).toContain('Added: Fictional Onions');
+    expect(texts.join('|')).not.toContain('Item quantity updated');
+  });
+
   it('names the dispatch and the bags it took, or gave back when it was deleted', () => {
     const texts = render([
       entry('d', { action: 'quantity_reduced_by_dispatch', grn_details: grn, dispatch_no: 'D0007', dispatch_impact: { dispatched_quantity: 5 }, quantity_change: qty('decreased', 20, 15) }, 'Dispatch reduced quantity: Fictional Onions'),

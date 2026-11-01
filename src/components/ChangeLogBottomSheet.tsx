@@ -145,7 +145,8 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
     switch (action) {
       // A change of an order line, told by what it did to the line (added, removed, or the quantity).
       case 'quantity_changed':
-        if (quantity?.change_type === 'added') return tr('components.changeLog.lineAdded', { item: lineName });
+        // A line put back after it was removed starts again from 0: the server calls that "increased", the worker "added".
+        if (quantity?.change_type === 'added' || (Number(quantity?.previous_quantity) === 0 && Number(quantity?.new_quantity) > 0)) return tr('components.changeLog.lineAdded', { item: lineName });
         if (quantity?.change_type === 'removed') return tr('components.changeLog.lineRemoved', { item: lineName });
         return tr('components.changeLog.quantityUpdated', { item: lineName });
       // A dispatch took bags from the line.

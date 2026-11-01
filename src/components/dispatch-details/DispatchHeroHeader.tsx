@@ -12,6 +12,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatPackages, packLabel } from '@/utils/packagingWord';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 
@@ -24,6 +25,8 @@ interface DispatchHeroHeaderProps {
   date: string;
   total_items: number;
   total_quantity: number;
+  /** What every line is counted in (Bag, Box, Crate); omitted counts bags. */
+  packaging?: string;
   customer_name?: string;
 }
 
@@ -96,6 +99,7 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
   date,
   total_items,
   total_quantity,
+  packaging,
   customer_name,
 }) => {
   const styles = useThemedStyles(makeStyles);
@@ -138,14 +142,14 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
         <View
           style={styles.statChip}
           accessible
-          accessibilityLabel={tr('dispatch.details.bagsDispatched', { bags: formatCount(safeQuantity, 'bag') })}
+          accessibilityLabel={tr('dispatch.details.bagsDispatched', { bags: formatPackages(safeQuantity, packaging) })}
         >
           <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} />
           <View style={styles.statContent}>
             <Text style={styles.statValue} maxFontSizeMultiplier={HEADER_TEXT_CAP} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
               {formatNumber(safeQuantity)}
             </Text>
-            <Text style={styles.statLabel} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('dispatch.count.bagsLabel', { count: safeQuantity })}</Text>
+            <Text style={styles.statLabel} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{packLabel(safeQuantity, packaging)}</Text>
           </View>
         </View>
       </View>

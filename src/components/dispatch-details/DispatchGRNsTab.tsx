@@ -21,7 +21,8 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatNumber, formatSpokenDate, formatWeightEach, toDate } from '@/utils/formatters';
+import { formatPackages, packNounCapital } from '@/utils/packagingWord';
+import { formatNumber, formatSpokenDate, formatWeightEach, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { groupBySourceGrn, itemTotals, type DispatchItem, type GrnGroup } from './dispatchDetailsModel';
 import { grnDateText } from './DispatchItemsTab';
@@ -107,7 +108,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-const bags = (qty: number) => formatCount(qty, 'bag');
+const bags = (qty: number, packaging?: string | null) => formatPackages(qty, packaging);
 
 function grnSpoken(group: Pick<GrnGroup, 'grn_no' | 'grn_date'>): string {
   if (!group.grn_no) return tr('dispatch.details.table.grnUnavailable');
@@ -175,12 +176,12 @@ const GrnLines: React.FC<GrnLinesProps> = ({ group, widths, onViewGRN }) => {
             ]),
         lineHelper.accessor('dispatch_quantity', {
           id: 'bags',
-          header: tr('dispatch.details.table.bagsDispatched'),
+          header: tr('dispatch.details.table.bagsDispatched', { things: packNounCapital(group.packaging) }),
           meta: { width: lineBagsWidth, numeric: true },
           cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.dispatch_quantity)}</Text>,
         }),
       ]),
-    [nestedStacked, markWidth, lineBagsWidth, styles, own]
+    [nestedStacked, markWidth, lineBagsWidth, styles, own, group.packaging]
   );
   const grid = useAppTable({ data: group.lines, columns, getRowId: (line) => line.id });
 
@@ -198,7 +199,7 @@ const GrnLines: React.FC<GrnLinesProps> = ({ group, widths, onViewGRN }) => {
           return tr('dispatch.details.table.lineRowLabel', {
             item: line.item_name,
             details: [mark, weight].filter(Boolean).map((part) => `, ${part}`).join(''),
-            bags: bags(line.dispatch_quantity),
+            bags: bags(line.dispatch_quantity, line.packaging),
           });
         }}
         rowTestID={(row) => `dispatch-grn-line-${row.original.id}`}
@@ -283,12 +284,12 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
             ]),
         groupHelper.accessor('bags', {
           id: 'bags',
-          header: tr('dispatch.details.table.bagsDispatched'),
+          header: tr('dispatch.details.table.bagsDispatched', { things: packNounCapital(totals.packaging) }),
           meta: { width: bagsWidth, numeric: true },
           cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.bags)}</Text>,
         }),
       ]),
-    [stacked, linesWidth, bagsWidth, styles]
+    [stacked, linesWidth, bagsWidth, styles, totals.packaging]
   );
   const grid = useAppTable({ data: groups, columns, getRowId: (group) => group.key, getRowCanExpand: () => true, ...open });
 
@@ -309,7 +310,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
     <View
         style={styles.footerRow}
         accessible
-        accessibilityLabel={tr('dispatch.details.table.grnsTotalLabel', { grns: grnCount, lines: lineCount, bags: bags(totals.bags) })}
+        accessibilityLabel={tr('dispatch.details.table.grnsTotalLabel', { grns: grnCount, lines: lineCount, bags: bags(totals.bags, totals.packaging) })}
         testID="dispatch-grns-total"
       >
         <RowChevron expandable={false} expanded={false} />
@@ -333,7 +334,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
         tr('dispatch.details.table.grnRowLabel', {
           source: grnSpoken(row.original),
           lines: tr('dispatch.details.table.lineCount', { count: row.original.lines.length }),
-          bags: bags(row.original.bags),
+          bags: bags(row.original.bags, row.original.packaging),
         })
       }
       rowHint={() => tr('dispatch.details.table.showLines')}

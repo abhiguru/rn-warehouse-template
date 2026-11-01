@@ -260,14 +260,32 @@ export function groupChanges(entries: ItemPriceHistoryEntry[]): GroupView {
   const accounted = new Set<ItemPriceHistoryEntry>([...inserts, ...updates.filter(onlyEnded), ...deletes]);
   if (entries.some(e => !accounted.has(e))) return other;
 
-  // The rates this save replaced: the ones it ended and the ones it removed.
-  const pool = [...ended, ...deletes].map(e => valuesOf(e, 'old') as ItemPriceHistoryValues);
-  const deletedValues = new Set(deletes.map(e => valuesOf(e, 'old') as ItemPriceHistoryValues));
+  // The rates this save replaced are the ones it ended or deleted (a 'correct' save deletes the row that began on the
+  // new start day and inserts the new one). A new band shows its change against the row of its own band that was in force
+  // on its start day or, when none was, the one with the earliest start. A deleted row no new band took over is listed
+  // under Removed with its own start day, so a planned rate does not pass for the rate that was in force.
+  const pool = [
+    ...ended.map(e => ({ values: valuesOf(e, 'old') as ItemPriceHistoryValues, deleted: false })),
+    ...deletes.map(e => ({ values: valuesOf(e, 'old') as ItemPriceHistoryValues, deleted: true })),
+  ];
+  const fromOf = (v: ItemPriceHistoryValues) => textOf(v.effective_from) ?? '';
+  const inForce = (v: ItemPriceHistoryValues, day: string) => {
+    const to = textOf(v.effective_to);
+    return fromOf(v) !== '' && fromOf(v) <= day && (!to || to >= day);
+  };
+  const takeFor = (now: ItemPriceHistoryValues) => {
+    const day = textOf(now.effective_from) ?? '';
+    const same = pool.filter(c => sameBand(c.values, now));
+    if (same.length === 0) return null;
+    const inForceNow = same.filter(c => day !== '' && inForce(c.values, day)).sort((x, y) => fromOf(y.values).localeCompare(fromOf(x.values)));
+    const pick = inForceNow[0] ?? [...same].sort((x, y) => fromOf(x.values).localeCompare(fromOf(y.values)))[0];
+    pool.splice(pool.indexOf(pick), 1);
+    return pick.values;
+  };
   const bands: GroupBand[] = inserts
     .map(e => valuesOf(e, 'new') as ItemPriceHistoryValues)
     .map(now => {
-      const at = pool.findIndex(old => sameBand(old, now));
-      const old = at >= 0 ? pool.splice(at, 1)[0] : null;
+      const old = takeFor(now);
       const changes = (old ? priceHistoryChanges('update', old, now) : priceHistoryChanges('insert', null, now)).filter(c => SHOWN_FIELDS.includes(c.field));
       return { band: read(now).weightBand as WeightBand, changes };
     })
@@ -275,9 +293,9 @@ export function groupChanges(entries: ItemPriceHistoryEntry[]): GroupView {
   // Deleted rows no inserted band took over were removed by this save: say so.
   const saveDay = entries.length > 0 ? indiaDay(entries[0].changed_at) : '';
   const removed: RemovedBand[] = pool
-    .filter(old => deletedValues.has(old))
-    .map(old => {
-      const r = read(old);
+    .filter(c => c.deleted)
+    .map(c => {
+      const r = read(c.values);
       return { band: r.weightBand as WeightBand, field: r.priceField, price: r.price, from: r.effectiveFrom as string | null, begun: !!r.effectiveFrom && !!saveDay && (r.effectiveFrom as string) <= saveDay };
     })
     .sort((a, b) => (a.from ?? '').localeCompare(b.from ?? '') || (a.band.min ?? 0) - (b.band.min ?? 0));

@@ -220,16 +220,17 @@ describe('the `item` link', () => {
 });
 
 describe('an item that is deactivated', () => {
-  it('lists the customer\'s rate tagged Deactivated, read only (no press target), and is not the empty state', async () => {
+  it('lists the customer\'s rate tagged Deactivated, opening the item\'s own Pricing tab (no rate box), and is not the empty state', async () => {
     const gone = row({ item_id: 'gone', item_name: 'Review Gone Seed', weight_min: 0, weight_max: 100, unit_price: 12.5, effective_from: '2026-09-01', ...ORCHARD_B });
     jest.mocked(useItemRates).mockReturnValue(result({ rates: [gone] }));
     await mount();
     expect(host(tree, 'customer-pricing-empty')).toHaveLength(0);
     expect(texts(tree)).toEqual(expect.arrayContaining(['Review Gone Seed', 'Deactivated']));
-    const rowNode = host(tree, 'customer-item-row-gone')[0];
-    expect(rowNode.props.onPress).toBeUndefined();
+    const rowNode = pressable(tree, n => n.props.testID === 'customer-item-row-gone');
     expect(rowNode.props.accessibilityLabel).toContain('Deactivated');
-    expect(tree.root.findAll(n => n.props.testID === 'customer-item-row-gone' && typeof n.props.onPress === 'function')).toHaveLength(0);
+    await act(async () => { rowNode.props.onPress(); });
+    expect(router.push).toHaveBeenCalledTimes(1);
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/item/[id]', params: { id: 'gone', tab: 'pricing' } });
   });
 });
 

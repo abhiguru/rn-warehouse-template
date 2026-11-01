@@ -338,3 +338,19 @@ describe('Dispatch card lines: figures and long marks (phone run GL, 2026-10-18)
     });
   }
 });
+
+describe('Dispatch list card total', () => {
+  const totalOf = (extra: Record<string, unknown>) => {
+    act(() => {
+      tree = create(<MemoizedDispatchItem dispatch={dispatchOf(5, extra)} onPress={jest.fn()} />);
+    });
+    return tree!.root.findAll(isText).map(textOf);
+  };
+
+  it('counts in boxes when every line is a Box lot, in bags otherwise', () => {
+    expect(totalOf({ packaging: 'Box' })).toContain('5 boxes');
+    act(() => tree?.unmount());
+    expect(totalOf({})).toContain('5 bags');
+  });
+});
+

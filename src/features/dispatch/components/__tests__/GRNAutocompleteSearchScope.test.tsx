@@ -68,6 +68,17 @@ describe('GRN picker search', () => {
     await act(async () => { tree.unmount(); });
   });
 
+  it('a prefix button with several letters ("DV") searches that prefix, and digits go after it', async () => {
+    jest.mocked(getGRNPrefixesWithStock).mockResolvedValueOnce([{ prefix: 'DV', grnCount: 2 }, { prefix: 'A', grnCount: 1 }]);
+    const tree = await open(CUSTOMER_A);
+
+    await tapKey(tree, 'Use GRN prefix DV, 2 GRNs');
+    expect(searchGRNNumbers).toHaveBeenLastCalledWith('DV', CUSTOMER_A, { startsWith: 'DV' });
+    await tapKey(tree, 'Enter GRN digit 1');
+    expect(searchGRNNumbers).toHaveBeenLastCalledWith('DV1', CUSTOMER_A, { startsWith: 'DV' });
+    await act(async () => { tree.unmount(); });
+  });
+
   it('does not search every customer when the dispatch has no customer yet', async () => {
     const tree = await open(undefined);
 
@@ -113,6 +124,41 @@ describe('GRN picker search', () => {
 
     await pressRetry(tree);
     expect(searchGRNNumbers).toHaveBeenCalledTimes(2);
+    await act(async () => { tree.unmount(); });
+  });
+  const pressLabelled = async (tree: ReactTestRenderer, label: string) => {
+    const node = tree.root.find((n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === label);
+    await act(async () => { node.props.onPress(); await jest.advanceTimersByTimeAsync(200); });
+  };
+
+  it('backspacing past the prefix, or Clear, goes back to a plain "contains" search', async () => {
+    jest.mocked(getGRNPrefixesWithStock).mockResolvedValue([{ prefix: 'DV', grnCount: 2 }]);
+    const tree = await open(CUSTOMER_A);
+
+    await tapKey(tree, 'Use GRN prefix DV, 2 GRNs');
+    await tapKey(tree, 'Enter GRN digit 1');
+    await pressLabelled(tree, 'Delete last character');
+    expect(searchGRNNumbers).toHaveBeenLastCalledWith('DV', CUSTOMER_A, { startsWith: 'DV' });
+    await pressLabelled(tree, 'Delete last character');
+    expect(searchGRNNumbers).toHaveBeenLastCalledWith('D', CUSTOMER_A);
+
+    await tapKey(tree, 'Use GRN prefix DV, 2 GRNs');
+    await pressLabelled(tree, 'Clear search');
+    await tapKey(tree, 'Enter GRN digit 5');
+    expect(searchGRNNumbers).toHaveBeenLastCalledWith('5', CUSTOMER_A);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('"Try again" after an anchored search keeps the anchored mode', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.mocked(getGRNPrefixesWithStock).mockResolvedValue([{ prefix: 'DV', grnCount: 2 }]);
+    const tree = await open(CUSTOMER_A);
+    jest.mocked(searchGRNNumbers).mockRejectedValueOnce(new Error('500'));
+
+    await tapKey(tree, 'Use GRN prefix DV, 2 GRNs');
+    await pressRetry(tree);
+    expect(searchGRNNumbers).toHaveBeenCalledTimes(2);
+    expect(searchGRNNumbers).toHaveBeenLastCalledWith('DV', CUSTOMER_A, { startsWith: 'DV' });
     await act(async () => { tree.unmount(); });
   });
 });

@@ -76,6 +76,7 @@ import { HighlightedText, matchesAnyWord, searchWords } from '@/features/filters
 import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
+import { formatPackages, packNounCapital, sharedPackaging } from '@/utils/packagingWord';
 import { formatSectionDate, formatNumber, formatCount, formatDate, formatSpokenDate, formatTime, formatWeightEach } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
@@ -97,11 +98,11 @@ const stockStatusFor = (stock: number, qty: number): GRNStockStatus =>
   getGRNStockStatus(stock, qty) ?? noQuantityStatus();
 
 /** "120 of 200 bags": what is left of what was received (style guide 13.5, StockIndicator). */
-const stockText = (stock: number, qty: number) =>
+const stockText = (stock: number, qty: number, packaging?: string | null) =>
   qty > 0
     // "9,999 bags" keeps its unit at a line break: a wrap falls after "of" (phone run GL, 2026-10-18).
-    ? translate('components.stock.currentOfTotal', { current: formatNumber(stock), total: nb(formatCount(qty, 'bag')) })
-    : nb(formatCount(stock, 'bag'));
+    ? translate('components.stock.currentOfTotal', { current: formatNumber(stock), total: nb(formatPackages(qty, packaging)) })
+    : nb(formatPackages(stock, packaging));
 
 /** Whole kilograms, as the column always showed. A line without a weight has none to show or say. */
 const kgEachOf = (item: GRNItem) => Math.round(item.weight || 0);
@@ -196,7 +197,7 @@ const GRNLinesTable = memo<{ items: GRNItem[]; styles: GRNListStyles; testID?: s
                 {/* A long mark is cut at the normal size, never wrapped by letters (§13.7); the full mark is in the row's label. */}
                 {mark ? <Text style={table.secondary} {...CUT_LINE}>{nb(mark)}</Text> : null}
                 {weight ? <Text style={table.secondary}>{nb(weight)}</Text> : null}
-                {bagsUnder ? <Text style={table.secondary} numberOfLines={1}>{nb(formatCount(item.qty || 0, 'bag'))}</Text> : null}
+                {bagsUnder ? <Text style={table.secondary} numberOfLines={1}>{nb(formatPackages(item.qty || 0, item.packaging))}</Text> : null}
                 {/* The line's status only when it is not In stock: a word under the item, never a cut figure. */}
                 {status.status !== 'positive' ? (
                   <StatusTag status={status.status} label={status.label} icon={status.icon} wrap style={styles.lineTag} />
@@ -211,7 +212,7 @@ const GRNLinesTable = memo<{ items: GRNItem[]; styles: GRNListStyles; testID?: s
           : [
               lineHelper.display({
                 id: 'bags',
-                header: translate('common.bags'),
+                header: packNounCapital(sharedPackaging(items.map((item) => item.packaging))),
                 meta: { width: bagsWidth + space.xs, numeric: true },
                 cell: ({ row }) => <Text style={table.number} numberOfLines={1}>{formatNumber(row.original.qty || 0)}</Text>,
               }),
@@ -251,7 +252,7 @@ const GRNLinesTable = memo<{ items: GRNItem[]; styles: GRNListStyles; testID?: s
         return [
           item.item_name,
           item.package_mark,
-          formatCount(item.qty || 0, 'bag'),
+          formatPackages(item.qty || 0, item.packaging),
           formatWeightEach(kgEachOf(item)),
           translate('lists.grn.itemStock', { stock: formatNumber(item.stock || 0), status: status.label }),
         ].filter(Boolean).join(', ');
@@ -305,7 +306,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const totalStock = group.items.reduce((sum, item) => sum + (item.stock || 0), 0);
 
   const stockStatus = stockStatusFor(totalStock, totalQty);
-  const stock = stockText(totalStock, totalQty);
+  const stock = stockText(totalStock, totalQty, sharedPackaging(group.items.map((item) => item.packaging)));
   const displayDate = formatDate(group.date);
   // Under a line-level filter the items, bags and tag are those of the matching lines only, and the card says so.
   const itemCountLabel = linesHidden

@@ -1,5 +1,5 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import { getGrnItemRates } from '../item-pricing-service';
+import { getGrnItemRates, getItemsWithoutRate } from '../item-pricing-service';
 
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSessionIdentity: jest.fn() }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
@@ -50,3 +50,39 @@ describe('getGrnItemRates', () => {
     await expect(getGrnItemRates('g1')).rejects.toThrow();
   });
 });
+
+describe('getItemsWithoutRate', () => {
+  it('sends the customer, the items and the day, and returns the ids without a rate', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: { item_ids: ['rice'] } }, error: null });
+    await expect(getItemsWithoutRate('c1', [{ itemId: 'gur', weight: 50 }, { itemId: 'rice', weight: 0 }, { itemId: 'gur', weight: 120.4 }], '2026-10-01', 'one_time')).resolves.toEqual(['rice']);
+    expect(rpc).toHaveBeenCalledWith('get_items_without_rate', {
+      p_customer_id: 'c1',
+      p_item_ids: ['gur', 'rice', 'gur'],
+      p_on: '2026-10-01',
+      p_weights: [50, 0, 120],
+      p_pricing_mode: 'one_time',
+    });
+  });
+
+  it('sends the GRN id on an edit only', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: { item_ids: [] } }, error: null });
+    await getItemsWithoutRate('c1', [{ itemId: 'gur', weight: 0 }], '2026-10-01', 'monthly', 'g1');
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_grn_id: 'g1' });
+    rpc.mockClear();
+    await getItemsWithoutRate('c1', [{ itemId: 'gur', weight: 0 }], '2026-10-01', 'monthly', null);
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_grn_id');
+  });
+
+  it('gives null on an older server or any failure, and asks nothing for no items', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202', message: 'not found' } });
+    await expect(getItemsWithoutRate('c1', [{ itemId: 'gur', weight: 0 }], '2026-10-01', 'monthly')).resolves.toBeNull();
+    rpc.mockRejectedValueOnce(new Error('offline'));
+    await expect(getItemsWithoutRate('c1', [{ itemId: 'gur', weight: 0 }], '2026-10-01', 'monthly')).resolves.toBeNull();
+    rpc.mockResolvedValueOnce({ data: { success: false }, error: null });
+    await expect(getItemsWithoutRate('c1', [{ itemId: 'gur', weight: 0 }], '2026-10-01', 'monthly')).resolves.toBeNull();
+    rpc.mockClear();
+    await expect(getItemsWithoutRate('c1', [], '2026-10-01', 'monthly')).resolves.toEqual([]);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+

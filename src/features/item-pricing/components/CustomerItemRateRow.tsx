@@ -1,7 +1,9 @@
 /**
  * One item the customer has an own rate for, on the customer's Pricing tab: the item name, since when, one line per
  * weight band (band, rent, labour, tax), the default rate beside it, tags only when true, and a chevron. A single
- * press target that reads as one sentence to a screen reader; it opens the item's rate box for this customer.
+ * press target that reads as one sentence to a screen reader. It opens the item's rate box for this customer; for a
+ * deactivated item (its rate is for reading only) the press target is the same row, and the screen it belongs to opens
+ * the item's own page, where the deactivated state is shown.
  */
 import React, { memo } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -88,18 +90,9 @@ function CustomerItemRateRowBase({ entry, onPress, testID }: CustomerItemRateRow
           </View>
         ) : null}
       </View>
-      {entry.deactivated ? null : <Icon name="chevron-right" size={iconSize.md} color={th.icon.secondary} />}
+      <Icon name="chevron-right" size={iconSize.md} color={th.icon.secondary} />
     </>
   );
-  // A deactivated item's rate is for reading only: no press target, no chevron.
-  if (entry.deactivated) {
-    return (
-      <View>
-        <View style={styles.row} accessible accessibilityLabel={spoken} testID={testID ?? `customer-item-row-${entry.itemId}`}>{content}</View>
-        <View style={styles.divider} />
-      </View>
-    );
-  }
   return (
     <View>
       <Pressable

@@ -2,6 +2,7 @@
  * The rows behind the dispatch page's Items, GRNs and Invoices tables (dispatchDetailsModel).
  * The lines have the shape get_dispatch_details sends (checked against the live function).
  */
+import { MIXED_PACKAGING } from '@/utils/packagingWord';
 import {
   buildInvoiceTable,
   groupBySourceGrn,
@@ -67,6 +68,13 @@ describe('mapDispatchItems', () => {
 
     expect(bare).toMatchObject({ weight: null, package_mark: null, original_quantity: 100 });
     expect(noLot).toMatchObject({ item_name: 'Unknown Item', weight: null, package_mark: null, original_quantity: undefined });
+  });
+
+  it('reads the packaging of the lot, then of the item, else none', () => {
+    const rows = mapDispatchItems([line({ id: 'a', lot: { packaging: 'Box' } }), line({ id: 'b' })], 'Unknown Item');
+    expect(rows.map((row) => row.packaging)).toEqual(['Box', null]);
+    expect(itemTotals(rows).packaging).toBe(MIXED_PACKAGING);
+    expect(itemTotals([rows[0]]).packaging).toBe('box');
   });
 
   it('falls back to the lot name when the item master is missing', () => {
@@ -151,11 +159,11 @@ describe('itemTotals', () => {
       ],
       'Unknown Item'
     );
-    expect(itemTotals(items)).toEqual({ bags: 120, lines: 4, grns: 3 });
+    expect(itemTotals(items)).toEqual({ bags: 120, lines: 4, grns: 3, packaging: 'bag' });
   });
 
   it('is zero for no lines', () => {
-    expect(itemTotals([])).toEqual({ bags: 0, lines: 0, grns: 0 });
+    expect(itemTotals([])).toEqual({ bags: 0, lines: 0, grns: 0, packaging: undefined });
   });
 });
 

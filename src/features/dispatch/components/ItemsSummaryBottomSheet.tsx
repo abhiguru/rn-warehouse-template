@@ -18,7 +18,8 @@ import {
   ItemsSummaryBottomSheet as GenericItemsSummaryBottomSheet,
   TotalBadge,
 } from '@/components/common/ItemsSummaryBottomSheet';
-import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatPackages, packNounCapital, sharedPackaging } from '@/utils/packagingWord';
+import { formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
 interface DispatchItemsSummaryBottomSheetProps {
@@ -148,7 +149,7 @@ const DispatchItemCard: React.FC<{
   const onInvoice = invoicedLineText(item);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const bags = formatCount(item.disp_quantity, 'bag');
+  const bags = formatPackages(item.disp_quantity, item.grnItems_packaging);
   // The weight of one bag of the lot ("50 kg each"); null when the lot has none.
   const weightEach = formatWeightEach(item.grnItems_weight);
   const hasDetails = !!item.grnItems_package_mark || !!item.grnItems_rack || weightEach !== null || !!orderAsks || !!onInvoice;
@@ -269,7 +270,7 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
       {
         icon: 'cube-outline',
         iconColor: t.icon.secondary,
-        label: tr('common.bags'),
+        label: packNounCapital(sharedPackaging(itemsList.map((item) => item.grnItems_packaging))),
         value: formatNumber(totalQuantity),
       },
       {
@@ -289,7 +290,7 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
         index={index}
         isLast={index === items.length - 1}
         isEditing={isEditing}
-        orderAsks={orderLots?.[item.grnItems_id] ? tr('dispatch.items.orderAsks', { bags: formatCount(orderLots[item.grnItems_id].requested, 'bag') }) : undefined}
+        orderAsks={orderLots?.[item.grnItems_id] ? tr('dispatch.items.orderAsks', { bags: formatPackages(orderLots[item.grnItems_id].requested, item.grnItems_packaging) }) : undefined}
       />
     ),
     [items.length, orderLots]

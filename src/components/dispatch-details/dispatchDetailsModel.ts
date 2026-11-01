@@ -14,6 +14,7 @@ import type {
   RpcDispatchInvoicesSummary,
   RpcDispatchItemDetails,
 } from '@/types/rpc-canonical.types';
+import { sharedPackaging } from '@/utils/packagingWord';
 import { invoiceTableFrom, type InvoiceTable } from '@/components/common/invoiceTable';
 
 export interface DispatchItem {
@@ -32,6 +33,8 @@ export interface DispatchItem {
   /** Weight of one bag of the lot, in kg. */
   weight?: number | null;
   package_mark?: string | null;
+  /** What the lot is counted in (Bag, Box, Crate ...); null when the server does not say. */
+  packaging?: string | null;
 }
 
 export interface GrnGroup {
@@ -42,6 +45,8 @@ export interface GrnGroup {
   grn_date: string | null;
   lines: DispatchItem[];
   bags: number;
+  /** What every line of the GRN is counted in, undefined (bags) when they differ. */
+  packaging?: string;
 }
 
 export type { InvoiceRow, InvoiceTable } from '@/components/common/invoiceTable';
@@ -75,6 +80,7 @@ export function mapDispatchItems(lines: readonly RpcDispatchItemDetails[] | null
     original_quantity: optionalNumber(line.grn_item_details?.qty),
     weight: line.grn_item_details?.weight ?? null,
     package_mark: text(line.grn_item_details?.package_mark),
+    packaging: text(line.grn_item_details?.packaging) ?? text(line.item_details?.packaging),
   }));
 }
 
@@ -94,7 +100,7 @@ export function groupBySourceGrn(items: readonly DispatchItem[]): GrnGroup[] {
     group.lines.push(item);
     group.bags += item.dispatch_quantity;
   }
-  return Array.from(groups.values());
+  return Array.from(groups.values()).map((group) => ({ ...group, packaging: sharedPackaging(group.lines.map((line) => line.packaging)) }));
 }
 
 export interface ItemTotals {
@@ -102,6 +108,8 @@ export interface ItemTotals {
   lines: number;
   /** Distinct source GRNs, a line without a GRN id counted on its own. */
   grns: number;
+  /** What every line is counted in: MIXED_PACKAGING (units) when the lines differ, undefined (bags) with no lines. */
+  packaging: string | undefined;
 }
 
 export function itemTotals(items: readonly DispatchItem[]): ItemTotals {
@@ -109,6 +117,7 @@ export function itemTotals(items: readonly DispatchItem[]): ItemTotals {
     bags: items.reduce((sum, item) => sum + item.dispatch_quantity, 0),
     lines: items.length,
     grns: new Set(items.map((item) => item.grn_id ?? `line:${item.id}`)).size,
+    packaging: sharedPackaging(items.map((item) => item.packaging)),
   };
 }
 

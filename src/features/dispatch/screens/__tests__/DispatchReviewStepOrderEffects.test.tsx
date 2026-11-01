@@ -72,7 +72,7 @@ jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 const effect = (over: Partial<OrderEffect>): OrderEffect => ({
   customerId: 'c1', customerName: 'Lakeview Spices', orderId: 'o1', orderNo: 'ORD-1', orderItemId: 'oi1', grnItemId: 'l1',
   itemName: 'Onions', packageMark: null, grnNo: 'X0001', oldQuantity: 20, newQuantity: 15, removed: false, change: 'reduced',
-  availableStock: null, orderLinesLeft: 2, ...over,
+  availableStock: null, orderLinesLeft: 2, packaging: null, ...over,
 });
 
 let tree: ReactTestRenderer;

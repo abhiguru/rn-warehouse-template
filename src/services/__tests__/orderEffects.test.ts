@@ -14,7 +14,7 @@ beforeEach(() => {
 const effect = (over: Partial<OrderEffect>): OrderEffect => ({
   customerId: 'c1', customerName: 'Fictional Spices', orderId: 'o1', orderNo: 'ORD-1', orderItemId: 'oi1', grnItemId: 'g1',
   itemName: 'Onions', packageMark: null, grnNo: 'X0001', oldQuantity: 20, newQuantity: 15, removed: false, change: 'reduced',
-  availableStock: null, orderLinesLeft: 2, ...over,
+  availableStock: null, orderLinesLeft: 2, packaging: null, ...over,
 });
 
 const header = {
@@ -45,6 +45,14 @@ describe('texts', () => {
     expect(orderEffectLines([effect({ change: 'removed', removed: true, newQuantity: 0, orderLinesLeft: 0 })])[0]).toMatch(/is removed from .*No line is left, so the order is removed\.$/);
     expect(orderEffectLines([effect({ change: 'exceeds_stock', oldQuantity: 5, newQuantity: 5, availableStock: 3 })])).toEqual(["Fictional Spices' order: Onions (X0001) asks for 5 bags, but only 3 bags will be in stock."]);
     expect(orderEffectLines([effect({ change: 'added', oldQuantity: 0, newQuantity: 4 })])[0]).toContain('is added, 4 bags');
+  });
+
+  it('counts in the packaging the server names, bags when it names none', () => {
+    expect(orderEffectLines([effect({ packaging: 'Box' })])).toEqual(["Fictional Spices' order: Onions (X0001) 20 → 15 boxes"]);
+    expect(orderEffectLines([effect({ packaging: 'Crate', change: 'exceeds_stock', newQuantity: 5, availableStock: 1 })])).toEqual(["Fictional Spices' order: Onions (X0001) asks for 5 crates, but only 1 crate will be in stock."]);
+    expect(orderEffectLines([effect({ packaging: 'Box', change: 'added', newQuantity: 1 })])[0]).toContain('is added, 1 box');
+    expect(orderEffectLines([effect({ packaging: null })])[0]).toContain('15 bags');
+    expect(parseOrderEffects([{ change: 'reduced', packaging: 'Box' }, { change: 'reduced', packaging: '' }, { change: 'reduced' }]).map((e) => e.packaging)).toEqual(['Box', null, null]);
   });
 
   it('uses Gujarati words and digits for counts, identifiers stay 0-9', () => {

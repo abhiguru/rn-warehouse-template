@@ -25,8 +25,9 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
-import { formatCount, formatDate, formatNumber, formatSpokenDate, toDate } from '@/utils/formatters';
+import { formatDate, formatNumber, formatSpokenDate, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { formatPackages, packNoun, packNounCapital, sharedPackaging } from '@/utils/packagingWord';
 import {
   ONE_LINE,
   RowChevron,
@@ -109,7 +110,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-const bags = (qty: number) => formatCount(qty, 'bag');
+const bags = (qty: number, packaging?: string | null) => formatPackages(qty, packaging);
 const dateText = (date: string | null | undefined) => (toDate(date) ? formatDate(date) : '—');
 const openDispatch = (dispatchId: string) => router.push(`/dispatch-details/${dispatchId}`);
 
@@ -137,12 +138,14 @@ const lineHelper = createAppColumnHelper<DispatchRecord>();
 
 interface DispatchLinesProps {
   dispatches: DispatchRecord[];
+  /** The GRN item's packaging: what the quantities are counted in. */
+  packaging?: string | null;
   widths: Widths;
   onViewDispatch: (dispatch_id: string) => void;
 }
 
 /** The lines under an open item: Dispatch | Date | Bags (the date under the number when stacked), each opens the dispatch. */
-const DispatchLines: React.FC<DispatchLinesProps> = ({ dispatches, widths, onViewDispatch }) => {
+const DispatchLines: React.FC<DispatchLinesProps> = ({ dispatches, packaging, widths, onViewDispatch }) => {
   const styles = useThemedStyles(makeTableStyles);
   const { date: dateWidth, lineBags: lineBagsWidth, nestedStacked } = widths;
 
@@ -172,12 +175,12 @@ const DispatchLines: React.FC<DispatchLinesProps> = ({ dispatches, widths, onVie
             ]),
         lineHelper.accessor('disp_quantity', {
           id: 'bags',
-          header: tr('grn.detailsTable.bags'),
+          header: packNounCapital(packaging),
           meta: { width: lineBagsWidth, numeric: true },
           cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.disp_quantity)}</Text>,
         }),
       ]),
-    [nestedStacked, dateWidth, lineBagsWidth, styles]
+    [nestedStacked, dateWidth, lineBagsWidth, packaging, styles]
   );
   const grid = useAppTable({ data: dispatches, columns, getRowId: (dispatch) => dispatch.id });
 
@@ -191,7 +194,7 @@ const DispatchLines: React.FC<DispatchLinesProps> = ({ dispatches, widths, onVie
         tr('grn.dispatches.rowLabelDateFirst', {
           number: formatIdentifier(row.original.disp_no),
           date: toDate(row.original.disp_date) ? formatSpokenDate(row.original.disp_date) : '—',
-          bags: bags(row.original.disp_quantity),
+          bags: bags(row.original.disp_quantity, packaging),
         })
       }
       rowHint={() => tr('grn.dispatches.openHint')}
@@ -221,6 +224,8 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
       }),
     [items, dispatchesByItem]
   );
+  // One word for the footer and the column heading when every line is counted in the same thing, else bags.
+  const packaging = sharedPackaging(items.map((item) => item.packaging));
   const totalBags = groups.reduce((sum, group) => sum + group.bags, 0);
   // Every column as wide as its widest value; big numbers move the middle column under the first.
   const bagsWidth = numberColumnWidth(screen, BAGS_WIDTH, groups.map((group) => formatNumber(group.bags)), [formatNumber(totalBags)]);
@@ -273,12 +278,12 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
             ]),
         groupHelper.accessor('bags', {
           id: 'bags',
-          header: tr('grn.detailsTable.bagsDispatched'),
+          header: tr('dispatch.details.table.bagsDispatched', { things: packNounCapital(packaging) }),
           meta: { width: bagsWidth, numeric: true },
           cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.bags)}</Text>,
         }),
       ]),
-    [shownCount, bagsWidth, styles]
+    [shownCount, bagsWidth, packaging, styles]
   );
   // The first line with dispatches starts open; a tap flips any line. A line with no dispatches does not open.
   const open = useDefaultOpen(firstWithDispatches === undefined ? [] : [firstWithDispatches]);
@@ -338,7 +343,7 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
     <View
         style={styles.footerRow}
         accessible
-        accessibilityLabel={tr('grn.detailsTable.dispatchesTotalLabel', { dispatches: dispatchCount, bags: bags(totalBags) })}
+        accessibilityLabel={tr('grn.detailsTable.dispatchesTotalLabel', { dispatches: dispatchCount, bags: bags(totalBags, packaging) })}
         testID="grn-dispatches-total"
       >
         <RowChevron expandable={false} expanded={false} />
@@ -355,7 +360,7 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
     <DataTable
       table={grid}
       list="flat"
-      renderDetail={(row) => <DispatchLines dispatches={row.original.dispatches} widths={widths} onViewDispatch={onViewDispatch} />}
+      renderDetail={(row) => <DispatchLines dispatches={row.original.dispatches} packaging={row.original.item.packaging} widths={widths} onViewDispatch={onViewDispatch} />}
       rowLabel={(row) => {
         const { item, dispatches } = row.original;
         const details = lotLine(item);
@@ -364,6 +369,7 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
           details: details ? `, ${details}` : '',
           dispatches: tr('grn.detailsTable.dispatchCount', { count: dispatches.length }),
           dispatched: formatNumber(row.original.bags),
+          things: packNoun(item.packaging),
           received: formatNumber(item.qty),
         });
       }}
