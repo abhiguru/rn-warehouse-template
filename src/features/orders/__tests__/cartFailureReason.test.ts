@@ -82,6 +82,18 @@ it('answers for a missing failure', () => {
   expect(cartFailureReason(null)).toBe(NOT_SAVED.en);
 });
 
+describe("the lot's packaging word", () => {
+  it('counts the stock and the dispatched quantity in boxes', () => {
+    expect(cartFailureReason(refused('Insufficient stock. Available: 3, Requested: 10'), { packaging: 'Box' })).toBe('Only 3 boxes in stock.');
+    expect(cartFailureReason(refused('Quantity cannot be below the 1 already dispatched'), { packaging: 'Box' })).toBe('1 box already dispatched. Choose that many or more.');
+    expect(cartFailureReason(refused('Order item not found'), { lineKnown: true, chosen: 8, packaging: 'Crate' })).toBe('Removed by someone else. Tap Add again to add 8 crates.');
+  });
+  it('counts in Gujarati with Gujarati digits', () => {
+    setLanguage('gu');
+    expect(cartFailureReason(refused('Insufficient stock. Available: 3, Requested: 10'), { packaging: 'Box' })).toMatch(/^સ્ટોકમાં ફક્ત ૩ /);
+  });
+});
+
 describe('a line that is gone (review 2026-10-20, A12)', () => {
   const REMOVED = {
     en: 'Removed by someone else. Tap Add again to add 8 bags.',

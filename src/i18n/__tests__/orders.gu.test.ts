@@ -1,11 +1,20 @@
-import { t } from '..';
+import { setLanguage, t } from '..';
+import { formatPackages } from '@/utils/packagingWord';
 
 describe('orders in Gujarati', () => {
+  afterEach(() => setLanguage('en'));
   it('counts bags without changing the noun', () => {
-    expect(t('orders.catalog.addBags', { count: 1, name: 'બટાકા' }, 'gu')).toBe('બટાકા ના ૧ નંગ ઉમેરો');
-    expect(t('orders.catalog.addBags', { count: 10, name: 'બટાકા' }, 'gu')).toBe('બટાકા ના ૧૦ નંગ ઉમેરો');
-    expect(t('orders.catalog.addBags', { count: 10, name: 'Potato' })).toBe('Add 10 bags of Potato');
-    expect(t('orders.catalog.addBags', { count: 1, name: 'Potato' })).toBe('Add 1 bag of Potato');
+    // The count word follows the app's language, the sentence the one asked for.
+    const add = (count: number, name: string, packaging: string | null, lng?: 'gu') => {
+      setLanguage(lng ?? 'en');
+      return t('orders.catalog.addPacks', { packs: formatPackages(count, packaging), name }, lng);
+    };
+    expect(add(1, 'બટાકા', 'Bag', 'gu')).toBe('બટાકા ના ૧ નંગ ઉમેરો');
+    expect(add(10, 'બટાકા', 'Bag', 'gu')).toBe('બટાકા ના ૧૦ નંગ ઉમેરો');
+    expect(add(10, 'Potato', 'Bag')).toBe('Add 10 bags of Potato');
+    expect(add(1, 'Potato', null)).toBe('Add 1 bag of Potato');
+    expect(add(10, 'Tamarind', 'Box')).toBe('Add 10 boxes of Tamarind');
+    expect(t('orders.catalog.removePacks', { packs: formatPackages(1, 'Crate'), name: 'Tamarind' })).toBe('Remove 1 crate of Tamarind');
   });
   it('puts the customer name first in the screen title', () => {
     expect(t('orders.screen.title', { name: 'રમેશ ટ્રેડર્સ' }, 'gu')).toBe('ઑર્ડર: રમેશ ટ્રેડર્સ');

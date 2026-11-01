@@ -655,6 +655,18 @@ describe('a refusal is an answer: the next lot is sent', () => {
   });
 });
 
+it('counts the reasons of a box lot in boxes', async () => {
+  await openPicker();
+  service.addItemToOrder
+    .mockResolvedValueOnce(refusal('Insufficient stock. Available: 3, Requested: 10'))
+    .mockResolvedValueOnce(refusal('Insufficient stock. Available: 1, Requested: 10'));
+  const results = await send([
+    { grnItemId: 'lot-one', quantity: 10, packaging: 'Box' },
+    { grnItemId: 'lot-two', quantity: 10, packaging: 'Box' },
+  ]);
+  expect(results.map(result => result.reason)).toEqual(['Only 3 boxes in stock.', 'Only 1 box in stock.']);
+});
+
 it('finds a lot saved on the next Add when the write that timed out was in fact applied', async () => {
   await openPicker();
   // The server stores the line; its answer never arrives.

@@ -151,7 +151,7 @@ describe('what was chosen is seeded once', () => {
     // Add sends the one lot the user chose: not the other user's line, and no removal of it.
     await pressAdd();
     expect(onAddItems).toHaveBeenCalledTimes(1);
-    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0 }]);
+    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0, packaging: 'Bag' }]);
   });
 
   it('shows the "In order" badge from the saved lines as they are now', async () => {
@@ -175,8 +175,8 @@ describe('what was chosen is seeded once', () => {
     expect(addButtonText()).toBe('Add (2)');
     await pressAdd();
     expect(onAddItems.mock.calls[0][0]).toEqual([
-      { grnItemId: 'lot-c', quantity: 1, expected: 0 },
-      { grnItemId: 'lot-a', quantity: 0, expected: 2 },
+      { grnItemId: 'lot-c', quantity: 1, expected: 0, packaging: 'Bag' },
+      { grnItemId: 'lot-a', quantity: 0, expected: 2, packaging: 'Bag' },
     ]);
   });
 
@@ -200,6 +200,19 @@ describe('what was chosen is seeded once', () => {
     expect(stored[0][0]).toBe('customer-fictional');
     expect(stored[0][1].map(item => item.name)).toEqual(['Fictional potatoes']);
   });
+});
+
+it('names a box lot in boxes in the unsaved-changes question', async () => {
+  const potatoes = LOTS[0];
+  potatoes.packaging = 'Box';
+  try {
+    await open([]);
+    await pressLabel('Add 10 boxes of Fictional potatoes');
+    await leaveBy('Cancel');
+    expect(alertTexts(jest.mocked(showAlert))[0][1]).toContain('Fictional potatoes · mark FX · GRN FXG001 · 50 kg each — add 10 boxes');
+  } finally {
+    potatoes.packaging = 'Bag';
+  }
 });
 
 describe.each(Object.keys(WAYS))('leaving by %s', way => {
@@ -269,7 +282,7 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     await leaveBy(way);
     await answer('Add to order');
     expect(onAddItems).toHaveBeenCalledTimes(1);
-    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0 }]);
+    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0, packaging: 'Bag' }]);
     expect(showAlert).toHaveBeenCalledTimes(1);
   });
 
@@ -370,7 +383,7 @@ describe('Add waits for the server', () => {
     await pressAdd();
 
     expect(onAddItems).toHaveBeenCalledTimes(1);
-    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0 }, { grnItemId: 'lot-b', quantity: 1, expected: 0 }]);
+    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0, packaging: 'Bag' }, { grnItemId: 'lot-b', quantity: 1, expected: 0, packaging: 'Bag' }]);
     expect(onClose).not.toHaveBeenCalled();
     expect(addButtonText()).toBe('Saving 1 of 2…');
     // The Add button is a busy, polite live region with nothing to press: a second tap cannot send again.
@@ -432,7 +445,7 @@ describe('Add waits for the server', () => {
 
     await pressAdd();
     expect(onAddItems).toHaveBeenCalledTimes(2);
-    expect(onAddItems.mock.calls[1][0]).toEqual([{ grnItemId: 'lot-b', quantity: 1, expected: 0 }]);
+    expect(onAddItems.mock.calls[1][0]).toEqual([{ grnItemId: 'lot-b', quantity: 1, expected: 0, packaging: 'Bag' }]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -443,13 +456,13 @@ describe('Add waits for the server', () => {
     await open([saved('lot-b', 30)]);
     await choose('Fictional onions');
     await pressAdd();
-    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-b', quantity: 31, expected: 30 }]);
+    expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-b', quantity: 31, expected: 30, packaging: 'Bag' }]);
     expect(onClose).not.toHaveBeenCalled();
     expect(textOf(node('catalog-reason-lot-b'))).toBe('Changed by someone else: now 29 bags.');
 
     await pressAdd();
     expect(onAddItems).toHaveBeenCalledTimes(2);
-    expect(onAddItems.mock.calls[1][0]).toEqual([{ grnItemId: 'lot-b', quantity: 31, expected: 29 }]);
+    expect(onAddItems.mock.calls[1][0]).toEqual([{ grnItemId: 'lot-b', quantity: 31, expected: 29, packaging: 'Bag' }]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

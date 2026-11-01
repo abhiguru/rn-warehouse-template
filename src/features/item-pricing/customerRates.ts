@@ -7,6 +7,8 @@ export interface CustomerItemEntry {
   itemId: string;
   name: string;
   priceType: PriceType;
+  /** The item's packaging (free text; null for a deactivated item or one without), for the unit word (bag, box, crate). */
+  packaging: string | null;
   /** The customer's bands in force on the day or, with only a later rate, the later rows. */
   bands: ItemStoragePrice[];
   /** The item's default bands of the same price type in force on the day (empty: no default rate). */
@@ -40,11 +42,11 @@ export function customerItemRows(
     byItem.set(r.item_id, [...(byItem.get(r.item_id) ?? []), r]);
   }
   const known = new Set(items.map(item => item.id));
-  const named: { id: string; name: string; deactivated: boolean }[] = [
-    ...items.filter(item => byItem.has(item.id)).map(item => ({ id: item.id, name: item.name, deactivated: false })),
+  const named: { id: string; name: string; deactivated: boolean; packaging: string | null }[] = [
+    ...items.filter(item => byItem.has(item.id)).map(item => ({ id: item.id, name: item.name, deactivated: false, packaging: item.packaging })),
     ...[...byItem.keys()]
       .filter(id => !known.has(id))
-      .map(id => ({ id, name: (byItem.get(id) as ItemStoragePrice[])[0].item_name, deactivated: true })),
+      .map(id => ({ id, name: (byItem.get(id) as ItemStoragePrice[])[0].item_name, deactivated: true, packaging: null })),
   ];
   return named
     .map((item): CustomerItemEntry | null => {
@@ -57,6 +59,7 @@ export function customerItemRows(
         itemId: item.id,
         name: item.name,
         priceType: first.priceType,
+        packaging: item.packaging,
         bands,
         defaultBands: defaults?.view.inForce ?? [],
         since: bands[0]?.effective_from ?? null,

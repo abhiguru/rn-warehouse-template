@@ -29,6 +29,7 @@ import {
   type ThemeTokens,
   singleLineText,
 } from '@/theme/tokens';
+import { formatPackages } from '@/utils/packagingWord';
 import { formatCount, formatDate, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { OrderService } from '@/services/order-service';
@@ -59,7 +60,6 @@ type StockStatus = 'positive' | 'critical' | 'negative';
 // Status words and icons per guide §3.5 (stock level: low stock is critical).
 const stockLabel = (status: StockStatus): string =>
   status === 'negative' ? tr('common.outOfStock') : status === 'critical' ? tr('common.lowStock') : tr('common.inStock');
-const formatBags = (n: number) => formatCount(n, 'bag');
 
 /** The answers of the "leaving with unsaved changes" question. */
 type UnsavedAnswer = 'add' | 'keep' | 'discard';
@@ -82,13 +82,13 @@ const lotParts = (item: GRNItem): string[] =>
 /** A lot as the leave question names it: the parts of the row's name, set apart by dots. */
 const lotLabel = (item: GRNItem): string => lotParts(item).join(' \u00B7 ');
 
-/** What Add would do to one lot: put it on the order, change its bags, or take it off. */
+/** What Add would do to one lot: put it on the order, change its count, or take it off. */
 const changeLine = (draft: PickerDraft, change: PickerChange): string => {
   const item = draft.selection.get(change.grnItemId)?.item ?? draft.base.get(change.grnItemId)?.item;
   const lot = item ? lotLabel(item) : '';
-  if (change.quantity === 0) return tr('orders.catalog.changeRemove', { lot, count: change.expected });
-  if (change.expected === 0) return tr('orders.catalog.changeAdd', { lot, count: change.quantity });
-  return tr('orders.catalog.changeSet', { lot, from: change.expected, count: change.quantity });
+  if (change.quantity === 0) return tr('orders.catalog.changeRemove', { lot, packs: formatPackages(change.expected, item?.packaging) });
+  if (change.expected === 0) return tr('orders.catalog.changeAdd', { lot, packs: formatPackages(change.quantity, item?.packaging) });
+  return tr('orders.catalog.changeSet', { lot, from: formatNumber(change.expected), packs: formatPackages(change.quantity, item?.packaging) });
 };
 
 /**
@@ -1035,17 +1035,17 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const weightText = formatWeightEach(item.weight);
     const rowLabel = [
       ...lotParts(item),
-      tr('orders.catalog.rowStock', { status: stockWord, current: formatBags(item.current_stock), total: formatBags(item.original_quantity) }),
+      tr('orders.catalog.rowStock', { status: stockWord, current: formatNumber(item.current_stock), total: formatPackages(item.original_quantity, item.packaging) }),
       isInExistingOrder ? tr('orders.catalog.rowAlreadyInOrder') : null,
-      quantity > 0 ? tr('orders.catalog.rowSelected', { bags: formatBags(quantity) }) : null,
+      quantity > 0 ? tr('orders.catalog.rowSelected', { bags: formatPackages(quantity, item.packaging) }) : null,
     ].filter(Boolean).join(', ');
 
-    const addBags = (count: number) => tr('orders.catalog.addBags', { count, name: item.name });
-    const removeBags = (count: number) => tr('orders.catalog.removeBags', { count, name: item.name });
+    const addPacks = (count: number) => tr('orders.catalog.addPacks', { packs: formatPackages(count, item.packaging), name: item.name });
+    const removePacks = (count: number) => tr('orders.catalog.removePacks', { packs: formatPackages(count, item.packaging), name: item.name });
     // What − and −10 give a lot above its stock: the quantity it is lowered to (never above the stock, never below 1; 0 when
     // there is no stock, which takes it off), and the spoken label that says so.
     const loweredTo = (amount: number) => item.current_stock <= 0 ? 0 : Math.min(item.current_stock, Math.max(1, quantity - amount));
-    const lowerBags = (amount: number) => loweredTo(amount) === 0
+    const lowerPacks = (amount: number) => loweredTo(amount) === 0
       ? tr('orders.item.removeFromOrder', { name: item.name })
       : tr('orders.item.lowerTo', { name: item.name, quantity: formatNumber(loweredTo(amount)) });
 
@@ -1137,7 +1137,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
               ]}>
                 {formatNumber(item.current_stock)}
               </Animated.Text>
-              <Text style={styles.stockLabel}>{tr('orders.catalog.ofTotal', { total: formatBags(item.original_quantity) })}</Text>
+              <Text style={styles.stockLabel}>{tr('orders.catalog.ofTotal', { total: formatPackages(item.original_quantity, item.packaging) })}</Text>
             </View>
             <StatusTag status={stockStatus} label={stockWord} style={styles.statusBadge} />
           </View>
@@ -1169,10 +1169,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           {/* Preset Buttons Row */}
           {quantity === 0 && (
             <View style={styles.presetButtonsRow}>
-              {preset(10, '+10', addBags(10), item.current_stock < 10)}
-              {preset(50, '+50', addBags(50), item.current_stock < 50)}
-              {preset(100, '+100', addBags(100), item.current_stock < 100)}
-              {preset(1, '+1', addBags(1))}
+              {preset(10, '+10', addPacks(10), item.current_stock < 10)}
+              {preset(50, '+50', addPacks(50), item.current_stock < 50)}
+              {preset(100, '+100', addPacks(100), item.current_stock < 100)}
+              {preset(1, '+1', addPacks(1))}
             </View>
           )}
 
@@ -1181,21 +1181,21 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
             <View style={styles.quantityControlsContainer}>
               <View style={styles.quantityControls}>
                 {overStock
-                  ? stepper(loweredTo(10), '−10', lowerBags(10), false)
-                  : stepper(Math.max(0, quantity - 10), '−10', removeBags(10), quantity < 10)}
-                {stepper(overStock ? loweredTo(1) : quantity - 1, '−', overStock ? lowerBags(1) : removeBags(1), quantity === 0)}
+                  ? stepper(loweredTo(10), '−10', lowerPacks(10), false)
+                  : stepper(Math.max(0, quantity - 10), '−10', removePacks(10), quantity < 10)}
+                {stepper(overStock ? loweredTo(1) : quantity - 1, '−', overStock ? lowerPacks(1) : removePacks(1), quantity === 0)}
                 <Text
                   style={styles.quantity}
-                  accessibilityLabel={tr('orders.catalog.selectedOf', { bags: formatBags(quantity), name: item.name })}
+                  accessibilityLabel={tr('orders.catalog.selectedOf', { bags: formatPackages(quantity, item.packaging), name: item.name })}
                   accessibilityLiveRegion="polite"
                 >
                   {formatNumber(quantity)}
                 </Text>
-                {stepper(quantity + 1, '+', addBags(1), item.current_stock === 0)}
+                {stepper(quantity + 1, '+', addPacks(1), item.current_stock === 0)}
                 {stepper(
                   Math.min(item.current_stock, quantity + 10),
                   '+10',
-                  addBags(10),
+                  addPacks(10),
                   quantity + 10 > item.current_stock || item.current_stock === 0
                 )}
               </View>

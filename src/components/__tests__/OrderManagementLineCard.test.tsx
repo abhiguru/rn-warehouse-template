@@ -189,6 +189,24 @@ describe('a change of the quantity of a line', () => {
     await act(async () => { finishQuestion('cancel'); await removal; });
   });
 
+  it("a change someone else made first (STALE_RECORD) counts in the lot's packaging word", async () => {
+    const card = await openOrder();
+    service.updateOrderItemQuantity.mockResolvedValueOnce({ success: false, message: '', refusal: { reason: 'STALE_RECORD' } } as never);
+    service.getOrderWithItems.mockImplementation(async () => {
+      const order = copy(makeOrder());
+      const open = order.items!.find(item => item.id === LINE)!;
+      open.requested_quantity = 7;
+      open.grn_item!.packaging = 'Box';
+      return { success: true, data: order } as never;
+    });
+    await act(async () => { await card.onQuantityChange(LINE, 6, ORDER_ID); });
+    await settle();
+    expect(showAlert).toHaveBeenCalledWith(
+      'Someone else changed this order line',
+      'It now shows 7 boxes. You wanted 6 boxes. Change it again if you still want that.',
+    );
+  });
+
   it('any other refusal keeps its own title and is followed by a read as well', async () => {
     const card = await openOrder();
     service.updateOrderItemQuantity.mockResolvedValueOnce(refusal('Quantity cannot be below the 4 already dispatched'));

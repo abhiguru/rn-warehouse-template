@@ -1,4 +1,5 @@
-import { photoAddFailure, photoUploadFailureText } from '../photoUploadError';
+import { createLogger } from '@/utils/logger';
+import { logPhotoFailure, photoAddFailure, photoUploadFailureText } from '../photoUploadError';
 
 const FALLBACK = "Couldn't upload the photo. Try again.";
 
@@ -27,5 +28,25 @@ describe('photoAddFailure', () => {
 
   it('a plain failure (M25): the app\'s retry sentence, nothing read again', () => {
     expect(photoAddFailure(FALLBACK, FALLBACK)).toEqual({ message: FALLBACK, reread: false });
+  });
+});
+
+describe('logPhotoFailure', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('logs no connection and a lost answer at info, with no console.error', () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    const log = createLogger('grn-photos');
+    logPhotoFailure(log, 'Registration failed', { message: 'Network request failed' });
+    logPhotoFailure(log, 'Confirmation failed', { message: 'Bad Gateway', status: 502 });
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps console.error for an unexpected failure', () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    logPhotoFailure(createLogger('grn-photos'), 'Registration failed', { message: 'permission denied', code: '42501' });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 });

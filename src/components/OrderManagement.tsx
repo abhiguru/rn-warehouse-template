@@ -41,7 +41,7 @@ import { searchService, SearchResult } from '@/services/search-service';
 
 import { askAlert, showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
-import { formatCount } from '@/utils/formatters';
+import { formatPackages } from '@/utils/packagingWord';
 import { serverText } from '@/utils/serverText';
 import {
   accessRefusalText,
@@ -524,8 +524,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           showAlert(
             tr('orders.refusal.staleTitle'),
             tr('orders.refusal.stale', {
-              current: formatCount(stored.requested_quantity, 'bag'),
-              chosen: formatCount(newQuantity, 'bag'),
+              current: formatPackages(stored.requested_quantity, stored.grn_item?.packaging),
+              chosen: formatPackages(newQuantity, stored.grn_item?.packaging),
             })
           );
         } else if (read) {
@@ -741,8 +741,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       const reason = removal
         ? tr('orders.catalog.reasonCheckedNotRemoved')
         : stored === 0
-          ? tr('orders.catalog.reasonCheckedNotSaved', { chosen: formatCount(change.quantity, 'bag') })
-          : tr('orders.catalog.reasonCheckedOther', { bags: formatCount(stored, 'bag'), chosen: formatCount(change.quantity, 'bag') });
+          ? tr('orders.catalog.reasonCheckedNotSaved', { chosen: formatPackages(change.quantity, change.packaging) })
+          : tr('orders.catalog.reasonCheckedOther', { packs: formatPackages(stored, change.packaging), chosen: formatPackages(change.quantity, change.packaging) });
       return { grnItemId: change.grnItemId, ok: false, reason, savedQuantity: stored };
     };
     // A lot whose answer was lost: locked, named to the picker, checked, and answered with the server's state.
@@ -771,12 +771,12 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     // What a lot says when the order holds another quantity than the one the picker started from: someone else changed
     // it, nothing was overwritten, and the person taps Add again to apply their number knowingly.
     const changedMeanwhile = (change: PickerChange, savedQuantity: number): string => {
-      const bagsNow = formatCount(savedQuantity, 'bag');
+      const packsNow = formatPackages(savedQuantity, change.packaging);
       return change.quantity <= 0
-        ? tr('orders.catalog.reasonChangedMeanwhileRemove', { bags: bagsNow })
+        ? tr('orders.catalog.reasonChangedMeanwhileRemove', { packs: packsNow })
         : savedQuantity === 0
-          ? tr('orders.catalog.reasonRemovedMeanwhile', { chosen: formatCount(change.quantity, 'bag') })
-          : tr('orders.catalog.reasonChangedMeanwhile', { bags: bagsNow, chosen: formatCount(change.quantity, 'bag') });
+          ? tr('orders.catalog.reasonRemovedMeanwhile', { chosen: formatPackages(change.quantity, change.packaging) })
+          : tr('orders.catalog.reasonChangedMeanwhile', { packs: packsNow, chosen: formatPackages(change.quantity, change.packaging) });
     };
     // The server refused a change or removal of a line with STALE_RECORD (owner decision D1): the line was changed by
     // someone else after the order was last read, and nothing was written. The order is read again and the lot says what
@@ -863,7 +863,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         results.set(first.grnItemId, {
           grnItemId: first.grnItemId,
           ok: false,
-          reason: isBusinessInactive(created) ? tr('orders.manage.businessInactive') : cartFailureReason(created),
+          reason: isBusinessInactive(created) ? tr('orders.manage.businessInactive') : cartFailureReason(created, { packaging: first.packaging }),
         });
         if (isConnectionFailure(created)) {
           noAnswer = true;
@@ -941,7 +941,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             : {
                 grnItemId: change.grnItemId,
                 ok: false,
-                reason: cartFailureReason(result, line ? { lineKnown: true, lineConfirmedGone, chosen: change.quantity } : undefined),
+                reason: cartFailureReason(result, line ? { lineKnown: true, lineConfirmedGone, chosen: change.quantity, packaging: change.packaging } : { packaging: change.packaging }),
                 ...(lineGone ? { savedQuantity: 0 } : {}),
               });
           if (!result.success && isConnectionFailure(result)) {
