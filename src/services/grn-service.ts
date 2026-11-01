@@ -1,7 +1,7 @@
 import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { compareDocumentNumbers } from '@/utils/documentNumber';
 import { unwrapArrayResponse } from '@/utils/responseUtils';
-import { createErrorResponse } from '@/utils/serviceErrorHandler';
+import { createErrorResponse, isJWTSignatureError, isSessionInvalidationError } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import type { RpcGrnItemRow, RpcPagination } from '@/types/rpc-canonical.types';
 import { hasMoreItems } from '@/utils/paginationUtils';
@@ -212,7 +212,8 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
     }
 
     if (error) {
-      console.error('[GRN Service] Failed to fetch GRN items:', error.message);
+      // After a forced sign-out the read fails with the ended session: expected, not a fault.
+      (isJWTSignatureError(error) || isSessionInvalidationError(error) ? console.log : console.error)('[GRN Service] Failed to fetch GRN items:', error.message);
       return {
         ...createErrorResponse(error, t('errors.grn.fetchItemsFailed'), 'GRNService.getAllGRNItems'),
         data: EMPTY_GRN_RESPONSE_DATA

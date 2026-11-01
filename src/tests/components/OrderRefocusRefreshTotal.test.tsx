@@ -35,7 +35,7 @@ jest.mock('@/config/supabaseConfig', () => ({
 }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true }), useIsOffline: () => false }));
 jest.mock('@/services/order-service', () => ({
-  OrderService: { getOrCreateOrder: jest.fn(), getOrderWithItems: jest.fn(), getOrdersList: jest.fn() },
+  OrderService: { getOrCreateOrder: jest.fn(), getCustomerOrder: jest.fn(), getOrderWithItems: jest.fn(), getOrdersList: jest.fn() },
 }));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn() } }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
@@ -97,6 +97,8 @@ beforeEach(() => {
     return { remove: () => { appStateListeners.delete(listener); } };
   });
   resetScreenFocus();
+  // These tests are about an older facility's way of opening an order (get_or_create_cart); the new way is in OrderManagementOpen.
+  service.getCustomerOrder.mockReset().mockResolvedValue({ success: false, message: '', notAvailable: true } as never);
   service.getOrCreateOrder.mockReset().mockResolvedValue({ success: true, data: { cart_id: order.id } } as never);
   service.getOrderWithItems.mockReset().mockResolvedValue({ success: true, data: order } as never);
   service.getOrdersList.mockReset().mockResolvedValue({ success: true, data: [order], metadata: { has_more: false } } as never);

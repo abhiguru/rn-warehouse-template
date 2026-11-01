@@ -9,7 +9,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import { formatDate, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { DATE_PRESETS, resolveDateRange } from '../../datePresets';
 import type { DatePreset, DatePresetId, DateRangeValue } from '../../types';
 import { ChoiceChips } from '../ChoiceChips';
@@ -95,7 +95,7 @@ export function DateRangeEditor({ value, onChange, presets = DATE_PRESETS, requi
         accessibilityRole="button"
         accessibilityLabel={
           range[end]
-            ? translate(`filters.date.${end}Set`, { date: formatDate(parseLocalISODate(range[end] as string)) })
+            ? translate(`filters.date.${end}Set`, { date: formatSpokenDate(parseLocalISODate(range[end] as string)) })
             : translate(`filters.date.${end}NotSet`)
         }
       >

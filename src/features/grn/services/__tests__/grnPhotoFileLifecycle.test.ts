@@ -189,3 +189,20 @@ it('deletes the copies when the photos are given up after a failed upload (conti
   await localPhotoFilesIdle();
   expect(mockFiles.has(photo.image.imageUrl)).toBe(false);
 });
+
+describe('the sentence of a failed upload is the app\'s own', () => {
+  it('a storage refusal with any English sentence is shown as the generic text, never the library\'s sentence', async () => {
+    const photo = await preparedPhoto();
+    const refusal = Object.assign(new Error('The object exceeded the maximum allowed size'), { name: 'StorageApiError', status: 413 });
+    mockUploadHook = async () => ({ error: refusal });
+    const outcome = await uploadGRNPhotos(GRN_ID, [photo]);
+    expect(outcome.failed[0].error).toBe("Couldn't upload the photo. Try again.");
+  });
+
+  it('a dropped connection says the photo change may have gone through', async () => {
+    const photo = await preparedPhoto();
+    mockUploadHook = async () => ({ error: new Error('Network request failed') });
+    const outcome = await uploadGRNPhotos(GRN_ID, [photo]);
+    expect(outcome.failed[0].error).toBe('No answer from the server. The photo change may have gone through. Check the photos on this screen before trying again.');
+  });
+});

@@ -85,7 +85,7 @@ describe.each(THEMES)('GRN item form components in %s %s', (brand, mode) => {
         index={0}
         item={{ name: 'Potatoes', packaging: '50 kg bag', quantity: '1200', weight: 1250.5, rack: 'F1/C4', packageMark: 'M1', images: [image] }}
         isEditing
-        isProtected
+        lock="quantity"
       />
     ));
     const used = colours(tree);
@@ -93,7 +93,7 @@ describe.each(THEMES)('GRN item form components in %s %s', (brand, mode) => {
     expect(used).toContain(t.status.critical.text);
     expect(used).toContain(t.text.primary);
     const texts = tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
-    expect(texts).toEqual(expect.arrayContaining(['1,200', '1,250.5 kg each', '1 photo', 'Editing', 'Quantity locked']));
+    expect(texts).toEqual(expect.arrayContaining(['1,200', '1,250.5 kg each', '1', 'Editing', 'Quantity locked']));
     expect(texts).not.toContain('1,250.5 kg');
   });
 

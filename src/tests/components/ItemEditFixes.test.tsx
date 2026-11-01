@@ -1,6 +1,7 @@
 /** Code-review fixes CR-27, CR-31 and CR-64 for Edit item and Add item. */
 import React from 'react';
 import { StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import ItemFormScreen from '../../../app/item-form';
 import ItemEditScreen from '../../../app/item-edit/[id]';
@@ -78,7 +79,7 @@ describe('CR-31: deactivating from the refused delete says so', () => {
       data: { item_id: 'i2', name: 'Garlic', active: true, in_use: true, grn_lines: 2, order_lines: 0, grn_rates: 0, price_rows: 0, rate_count: 0 },
     } as never);
     jest.mocked(itemService.toggleItemActive).mockResolvedValue({ success: true, message: '' } as never);
-    await act(async () => { tree = create(<ItemsScreen />); });
+    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     const row = tree!.root.find(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Garlic') && n.props.accessibilityActions);
     await act(async () => { row.props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } }); });
     await act(async () => { lastAlert().buttons.find(b => b.text === 'Deactivate item')!.onPress!(); });

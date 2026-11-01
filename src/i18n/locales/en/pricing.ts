@@ -22,7 +22,7 @@ export const pricing = {
   row: {
     labour: 'Labour {{amount}}',
     tax: 'Tax {{percent}}%',
-    a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, labour {{labour}} per bag, tax {{percent}}%',
+    a11y: '{{item}}, {{amount}} {{unit}}, {{band}}, labour {{labour}} per {{pack}}, tax {{percent}}%',
     a11yOneTime: '{{item}}, {{amount}} {{unit}}, {{band}}, tax {{percent}}%',
   },
   otherDay: {
@@ -34,8 +34,9 @@ export const pricing = {
     rateEnds: 'Rate ends {{date}}',
   },
   unit: {
-    monthly: 'per bag, per month',
-    oneTime: 'per bag, once',
+    // {{unit}}: bag, box or crate, by the item's packaging.
+    monthly: 'per {{unit}}, per month',
+    oneTime: 'per {{unit}}, once',
   },
   band: {
     weightEach: 'Weight each',
@@ -45,7 +46,7 @@ export const pricing = {
   item: {
     status: 'Rates for lots received on {{date}}',
     labour: 'Labour',
-    labourValue: '{{amount}} per bag, charged once at dispatch',
+    labourValue: '{{amount}} per {{unit}}, charged once at dispatch',
     // Short values of the GRN rate cards (For GRNs only, Your rate).
     labourShort: '{{amount}} per bag',
     taxShort: '{{percent}}%',
@@ -91,7 +92,7 @@ export const pricing = {
     discard: 'Discard',
     locked: 'Save or discard the other change first.',
     unitRupees: 'rupees {{unit}}',
-    unitLabour: 'rupees per bag',
+    unitLabour: 'rupees per {{unit}}',
     unitKg: 'kilograms',
     unitPercent: 'percent',
     bandLine: 'Weight band {{range}}',
@@ -105,6 +106,8 @@ export const pricing = {
   },
   how: {
     title: 'How an invoice picks a rate',
+    l0a: 'A saved invoice keeps its own figures.',
+    l0b: "A rate set for that GRN only comes before the customer's rate.",
     l1: "The customer's own rate, if there is one for that bag weight.",
     l2: 'Otherwise the default rate.',
     l3: 'The narrowest weight band that holds the weight of one bag.',
@@ -183,6 +186,11 @@ export const pricing = {
     },
     giveMessage: 'They are charged it for lots received from their first GRN.',
     giveConfirm: 'Save and give it',
+    // Save on a facility that already has a standard rate first asks this, naming the old and the new figures.
+    changeTitle: 'Change the standard rate?',
+    changeMessage: 'Now:\n{{old}}\n\nNew:\n{{new}}',
+    changeConfirm: 'Save the change',
+    changeTier: '{{band}}: rent {{rent}}, labour {{labour}}, tax {{tax}}%',
     reload: 'Reload',
     lastTierHint: 'Bags heavier than {{kg}} kg get no standard rate.',
     loading: 'Loading the standard rate',
@@ -251,6 +259,8 @@ export const pricing = {
   error: {
     generic: "Couldn't save the rate. Try again.",
     unconfirmed: "We couldn't confirm that the rate was saved. Close this screen and check the item page before you try again.",
+    // Cancel new rate / Undo stop: the rates on the page are read again after every undo.
+    undoUnconfirmed: "We couldn't confirm the change. Check the rates on this page before you try again.",
     invalidDate: 'Choose a start date on or after {{date}}.',
     invalidDateWindow: 'Choose a start date within three years before today and two years after.',
     startTooFar: 'Choose a start date within two years after today.',

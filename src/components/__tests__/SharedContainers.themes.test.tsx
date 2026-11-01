@@ -10,7 +10,6 @@ import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { ForceUpdateModal } from '../ForceUpdateModal';
 import { UpdatePrompt } from '../UpdatePrompt';
-import { TokenExpiryBanner } from '../TokenExpiryBanner';
 import { CachedImage } from '../CachedImage';
 import { ImageOverlay } from '../ImageOverlay';
 import { CameraModal } from '../CameraModal';
@@ -29,7 +28,7 @@ import { formatContactPhone } from '../common/overview-tab/ContactCard';
 
 type MockState = {
   theme: { preference: string; brand: string };
-  auth: { tokenExpiryWarning: boolean; tokenExpired: boolean; error: string | null; configFetchFailed: boolean };
+  auth: { error: string | null };
 };
 let mockState: MockState;
 jest.mock('@/store/hooks', () => ({
@@ -51,10 +50,8 @@ jest.mock('react-native-paper', () => {
 });
 jest.mock('expo-router', () => ({ useRouter: () => ({ replace: jest.fn(), push: jest.fn() }) }));
 jest.mock('@/store/slices/authSlice', () => ({
-  clearTokenExpiryStates: jest.fn(),
   clearAuthError: jest.fn(),
   logout: jest.fn(),
-  setConfigFetchFailed: jest.fn(),
 }));
 jest.mock('@/hooks/useForceUpdate', () => ({
   useForceUpdate: () => ({
@@ -112,7 +109,7 @@ const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)
 function setTheme(brand: Brand, mode: Mode, auth: Partial<MockState['auth']> = {}) {
   mockState = {
     theme: { preference: mode, brand },
-    auth: { tokenExpiryWarning: false, tokenExpired: false, error: null, configFetchFailed: false, ...auth },
+    auth: { error: null, ...auth },
   };
 }
 
@@ -178,19 +175,6 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
     expect(texts(prompt).join(' ')).not.toContain('HTTP 500');
     expect(texts(prompt)).toEqual(expect.arrayContaining(['Update ready', 'Restart app', 'Later']));
     act(() => prompt.unmount());
-  });
-
-  it('TokenExpiryBanner uses status backgrounds', () => {
-    setTheme(brand, mode, { tokenExpiryWarning: true });
-    const warning = render(<TokenExpiryBanner />);
-    expect(hasBackground(warning, t.status.critical.background)).toBe(true);
-    expect(texts(warning)).toContain('Sign in again');
-    act(() => warning.unmount());
-
-    setTheme(brand, mode, { tokenExpired: true });
-    const expired = render(<TokenExpiryBanner />);
-    expect(hasBackground(expired, t.status.negative.background)).toBe(true);
-    act(() => expired.unmount());
   });
 
   it('media components use the placeholder and photo tokens', () => {

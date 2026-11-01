@@ -110,3 +110,18 @@ describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => 
     });
   },
 );
+
+it('lists only orders with lines, under one heading: no "Empty orders" section', async () => {
+  const getOrdersList = jest.mocked(OrderService.getOrdersList);
+  getOrdersList.mockReset();
+  const withLines = page(0, 2);
+  const empty = [{ id: 'order-empty', customer_id: 'customer-empty', status: 'OPEN', item_count: 0 }] as Order[];
+  getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: [...withLines, ...empty], metadata: { has_more: false } });
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<OrderFlashList />); });
+  const rows = renderer.root.findByType('FlashList' as unknown as React.ElementType).props.data as Array<{ type: string; title?: string; data?: Order }>;
+  expect(rows.filter(row => row.type === 'header')).toHaveLength(1);
+  expect(rows.filter(row => row.type === 'header').map(row => row.title)).not.toContain('Empty orders');
+  expect(rows.filter(row => row.data).map(row => row.data!.id)).toEqual(['order-0', 'order-1']);
+  await act(async () => { renderer.unmount(); });
+});

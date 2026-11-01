@@ -10,6 +10,10 @@
 import { t, type TranslationKey } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 import { getAppErrorCode } from '@/utils/appError';
+import { sessionWasJustRenewed } from '@/config/sessionRenewal';
+
+/** "Cannot modify invoiced items: Potatoes, Onions" (a dispatch edit, migration 41): the names are kept. */
+const INVOICED_ITEMS = /^cannot modify invoiced items:\s*(.+)$/i;
 
 /** Reasons the server gives, by the words it uses for them. The first match wins. */
 const REASONS: [RegExp, TranslationKey][] = [
@@ -340,7 +344,28 @@ export function requestMayHaveBeenSent(error: unknown, code?: string): boolean {
  * and ask here. Nothing else re-classifies a failure from its text.
  */
 export function isLostAnswer(error: unknown, code?: string): boolean {
-  return requestMayHaveBeenSent(error, code);
+  return requestMayHaveBeenSent(error, code) || isUnreadableAnswer(error);
+}
+
+/**
+ * True for an HTTP 200 whose body the app could not read: not JSON (postgrest-js hands the text back as the error's
+ * message, with no code) or empty (see `emptyAnswerAsError`). The server may have applied the write and the answer that
+ * came back is no answer of the server's: a LOST ANSWER, checked by its request key like a timeout. An error that has a
+ * code is the server's own refusal, never this.
+ */
+export function isUnreadableAnswer(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { status, code } = error as { status?: unknown; code?: unknown };
+  return status === 200 && (code === undefined || code === null || code === '');
+}
+
+/**
+ * The error that stands for an empty HTTP 200 to a write (no body at all: `data` and `error` are both null). Every write
+ * of these services answers with a JSON document, so an empty one is an answer that did not come through.
+ */
+export function emptyAnswerAsError(answer: { data?: unknown; error?: unknown; status?: number }): { message: string; code: string; status: number } | null {
+  if (answer.error || answer.status !== 200 || (answer.data !== null && answer.data !== undefined)) return null;
+  return { message: '', code: '', status: 200 };
 }
 
 /**
@@ -379,6 +404,7 @@ export function isUnsettledFailure(error: unknown, code?: string): boolean {
   if (isUpgradingAnswer(error)) return true;
   if (isStatementTimeout(error, code)) return true;
   if (isTimeoutError(error) || isNetworkError(error)) return true;
+  if (isUnreadableAnswer(error)) return true;
   if (isSessionExpiredError(error, code)) return true;
   return textsOf(error).some(text => NOT_SENT_TEXT.test(text));
 }
@@ -398,14 +424,16 @@ export function isSessionExpiredError(error: unknown, code?: string): boolean {
  *
  * The app renews the session by itself, but a request that was refused for an expired token is not sent
  * again. For a change (`write` or `delete`) that was refused with PGRST303 or the bare text "JWT expired"
- * the session is already renewed, so the person is told to press the button again. PGRST301 and a read
+ * the session is renewed meanwhile (`sessionRenewal.ts`), so the person is told to press the button again;
+ * when it could not be renewed the text is the session-ended one. PGRST301 and a read
  * keep the "session expired, sign in again" text; a session that could not be renewed at all ends in the
  * sign-in screen, not here.
  */
 export function expiredSessionText(error: unknown, options: ServerTextOptions = {}): string | undefined {
   if (!isSessionExpiredError(error, options.code)) return undefined;
   const code = options.code ?? errorCodeOf(error);
-  if ((options.write || options.delete) && code !== 'PGRST301') {
+  // "Renewed" only when the session really was; otherwise it is the session-ended text.
+  if ((options.write || options.delete) && code !== 'PGRST301' && sessionWasJustRenewed()) {
     return t(options.delete ? 'errors.code.signInRenewedDelete' : 'errors.code.signInRenewed');
   }
   return t('errors.code.sessionExpired');
@@ -546,6 +574,13 @@ export function serverText(text: unknown, fallback: string, options: ServerTextO
   if (writtenInGujarati(bare)) return bare;
   // The app's own English sentences that pass through twice (a service result shown by a screen) stay as they are.
   if (APP_OWN_TEXT.some(key => bare.trim() === t(key))) return bare;
+  // A dispatch edit that touches a line another person put on an invoice: the app's sentence, naming the items.
+  const invoicedItems = INVOICED_ITEMS.exec(unwrapDatabaseError(bare).trim());
+  if (invoicedItems) {
+    const items = invoicedItems[1].trim();
+    // The names are separated by ", "; a name that has a comma itself makes the count a best guess.
+    return t('errors.parsed.invoicedItems', { items, count: items.split(', ').length });
+  }
   const code = options.code ?? errorCodeOf(text);
   const byCode = code ? REASON_BY_CODE[code] : undefined;
   if (byCode) return t(byCode);

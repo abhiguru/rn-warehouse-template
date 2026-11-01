@@ -5,6 +5,7 @@
  * "Discard this dispatch?"). The header is the real one here.
  */
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
@@ -87,7 +88,7 @@ afterEach(() => jest.restoreAllMocks());
 
 async function render(element: React.ReactElement) {
   let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
+  await act(async () => { tree = create(<GestureHandlerRootView>{element}</GestureHandlerRootView>); });
   return tree;
 }
 const pressX = async (tree: ReactTestRenderer, label: string) => {

@@ -1,3 +1,5 @@
+import { parseOrderEffects } from '@/services/orderEffects';
+import { normalizeVehicle } from '@/utils/vehicleNumber';
 import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { viaCurrentPath } from '@/config/lanTransport';
@@ -21,15 +23,15 @@ import { isTemporaryGRNImageId } from './imageId';
 // M3 Fix: Import executeRPC for potential future refactoring
 // Note: Current RPC methods have custom error handling (E5 fix) or extensive debug logging
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { isLostAnswer } from '@/utils/lostAnswer';
-import { reportSaveError } from '@/utils/reportOutcome';
+import { isServerRefusal, reportSaveError } from '@/utils/reportOutcome';
 import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
 import { t, formatIdentifier } from '@/i18n';
-import { refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
+import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { isNumberFormatRefusal } from '@/utils/numberFormatRefusal';
-import { isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
+import { emptyAnswerAsError, isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
 import { invalidateReportQueries } from '@/lib/queryClient';
@@ -126,6 +128,8 @@ export interface GRNPhotoSaveReport {
   failed: FailedGRNPhoto[];
   /** Photos removed in the form that are still on the GRN. */
   removalFailures: number;
+  /** Set when the server kept a photo because it is the GRN's last (GRN_PHOTO_REQUIRED): the app's sentence for it. */
+  removalRefusal?: string;
 }
 
 /** A line whose quantity `update_grn` left unchanged because it already has dispatches (migration 86). */
@@ -406,7 +410,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         p_sender_name: payload.header.sender_name || null,
         p_supervisor_id: payload.header.supervisor_id || null,
         p_supervisor_name: payload.header.supervisor_name || null,
-        p_registration: payload.header.registration || null,
+        p_registration: normalizeVehicle(payload.header.registration ?? '') || null,
         p_note: payload.header.note || null,
         p_leon: payload.header.leon || false,
         p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
@@ -462,8 +466,12 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         }
       }
 
+      // An empty HTTP 200 is no answer of the server's: a lost answer (checked by the request key).
+      error ??= emptyAnswerAsError({ data: answer, error, status });
       if (error) {
         log.error('save_grn failed', loggableError(error));
+        // An ended session ends the sign-in here too, with its reason (the same as on a list read).
+        handleGlobalAuthError(error);
         if (payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
         // Sent and not answered (a dropped connection, the 60 s timeout, a gateway's 502 / 504): the GRN may be saved.
         // A statement timeout is an answer: nothing was saved. The HTTP status goes with the error, so a gateway's
@@ -478,7 +486,11 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     }
 
     if (!data || !data.success) {
-      log.error('save_grn returned failure', { errorCode: data?.error_code });
+      // The server's own refusals (a likely duplicate, a number taken, a rate or numbering rule) are answers, not
+      // faults: info, so no red banner. Anything else stays an error.
+      const expected = !!data && (!!possibleDuplicateOf(data, 'grn') || isNumberTaken(data) || isRateRefusalCode(data.error_code) || !!refusalOf(data));
+      (expected ? log.info : log.error).call(log, 'save_grn returned failure', { errorCode: data?.error_code });
+      handleGlobalAuthError(data);
       const refusalCode = data?.error_code;
       if (isRateRefusalCode(refusalCode)) throw new RateRefusal(refusalCode, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }), data?.data);
       // A likely duplicate (migration 124): a warning the person answers; nothing was saved. It is the server's answer to
@@ -488,7 +500,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       // The number does not follow the facility's numbering rule (migration 127): nothing was saved, and the screen words
       // it from the pattern and takes the person to the number. It comes before the number-taken check, so it is no lost answer.
       const formatRefusal = refusalOf(data);
-      if (isNumberFormatRefusal(formatRefusal)) {
+      if (formatRefusal && [REFUSAL.NUMBER_FORMAT, REFUSAL.GRN_DATE_FUTURE, REFUSAL.GRN_NUMBER_SPACES].some((reason) => reason === formatRefusal.reason)) {
+        // The date in the future and a number with a space (migration 130) are refused the same way: nothing was saved.
         throw new ServerRefusalError(formatRefusal, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }));
       }
       // Another GRN holds the number (it was taken since the form got it): the screen offers the next free one. On a
@@ -539,7 +552,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       },
     };
   } catch (error) {
-    log.error('Error creating GRN with enhanced RPC', loggableError(error));
+    (isServerRefusal(error) ? log.info : log.error).call(log, 'Error creating GRN with enhanced RPC', loggableError(error));
     // A resend whose session client could not be got is not settled either: the lock stays.
     if (!lostAnswer && payload.resend && !(error instanceof PossibleDuplicateRefusal) && isUnsettledFailure(error)) lostAnswer = payload.resend;
     // A refusal, or a failure before the request left: the server did not apply it, so nothing is left in doubt. A lost
@@ -565,7 +578,7 @@ const isUnknownFunctionSignature = (error: { code?: string; message?: string }):
   error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
 
 /** The update_grn body for a form, and the form's lines under the ids that body uses. */
-const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
+export const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload, removedImages: RemovedGRNImage[] = []) => {
   // ✅ CRITICAL: Normalize field names - support both legacy and new field names
   // Legacy: id, item_id | New: grn_trl_id, item_table_id
   // Helper to check if an ID is a valid UUID (not a temporary ID)
@@ -682,6 +695,25 @@ const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
     }
   });
 
+  // update_grn deletes every photo row not in p_images (when p_images is not empty) and refuses a GRN left without a
+  // GRN-book photo. New photos go up only after the save, so when every saved GRN-book photo was removed and new ones
+  // are waiting, the removed ones stay in the list now; the loop in updateGRN deletes them once the new ones are up.
+  const sendsHeader = rpcImages.some(img => img.image_type === 'header');
+  const newHeaderWaiting = (payload.header.gr_images || []).some(img => !img.storagePath);
+  if (rpcImages.length > 0 && !sendsHeader && newHeaderWaiting) {
+    for (const removed of removedImages) {
+      if (!removed.header || !removed.storagePath || isTemporaryGRNImageId(removed.id)) continue;
+      rpcImages.push({
+        id: removed.id,
+        storage_path: removed.storagePath,
+        image_type: 'header',
+        original_filename: removed.header.fileName || null,
+        file_size: removed.header.fileSize || 0,
+        mime_type: removed.header.mimeType || 'image/jpeg'
+      });
+    }
+  }
+
   // ==========================================================================
   // 🖼️ IMAGE SUMMARY - What's being sent to backend
   // ==========================================================================
@@ -707,7 +739,7 @@ const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
     p_supervisor_name: payload.header.supervisor_name || null,
     // A cleared text goes as '' (update_grn keeps the old value for null, and the
     // screens show '' and null alike); only a missing one is null.
-    p_registration: payload.header.registration ?? null,
+    p_registration: payload.header.registration == null ? null : normalizeVehicle(payload.header.registration),
     p_note: payload.header.note ?? null,
     // Always a boolean: null would keep the old value, so Leon could not be switched off.
     p_leon: payload.header.leon === true,
@@ -759,7 +791,7 @@ export const updateGRN = async (
   try {
     finishMutation = beginOperatorMutation();
 
-    const { normalizedItems, rpcImages, rpcRequest } = buildUpdateGRNRequest(grnId, payload);
+    const { normalizedItems, rpcImages, rpcRequest } = buildUpdateGRNRequest(grnId, payload, options.removedImages);
 
     const authenticatedClient = await getAuthenticatedClient();
     // The answer is either the stored answer of an earlier Save (found by its request code: nothing is sent) or
@@ -817,8 +849,10 @@ export const updateGRN = async (
       // With rates set, a server that still refuses the call has no p_rates (migration 86 missing).
       if (error && payload.rates && payload.rates.length > 0 && isUnknownFunctionSignature(error)) throw serverNeedsUpdateForRates();
 
+      error ??= emptyAnswerAsError({ data: answer, error, status });
       if (error) {
         log.error('update_grn failed', loggableError(error));
+        handleGlobalAuthError(error);
         // Sent and not answered (a dropped connection, the 60 s timeout, a gateway's 502 / 504): the save may be
         // applied. A statement timeout is an answer: nothing was saved. The HTTP status goes with the error, so a
         // gateway's answer is told from the server's own refusals. A RESEND is settled only by the server's answer:
@@ -841,7 +875,9 @@ export const updateGRN = async (
     const rpcResult = Array.isArray(data) && data.length > 0 ? data[0] : (Array.isArray(data) ? null : data);
 
     if (!rpcResult || !rpcResult.success) {
-      log.error('update_grn returned failure', { errorCode: rpcResult?.error_code });
+      // A refusal by the server's rules is an answer, not a fault (see save_grn above).
+      (rpcResult && (isRateRefusalCode(rpcResult.error_code) || refusalOf(rpcResult)) ? log.info : log.error).call(log, 'update_grn returned failure', { errorCode: rpcResult?.error_code });
+      handleGlobalAuthError(rpcResult);
 
       // Handle stock protection from RPC response
       if (rpcResult?.error_code === 'STOCK_PROTECTED') {
@@ -875,26 +911,6 @@ export const updateGRN = async (
     const remainingImageIds: Set<string> | null = Array.isArray(rpcResult.grn?.images)
       ? new Set(rpcResult.grn.images.map((image: { id: string }) => image.id))
       : null;
-    let removalFailures = 0;
-    const orphanedPaths: string[] = [];
-    for (const removed of options.removedImages || []) {
-      const stillOnGrn = remainingImageIds ? remainingImageIds.has(removed.id) : rpcImages.length === 0;
-      if (stillOnGrn) {
-        const deletion = await deleteGRNImage(removed.id, '');
-        if (!deletion.success) removalFailures++;
-      } else if (remainingImageIds && removed.storagePath) {
-        orphanedPaths.push(removed.storagePath);
-      }
-    }
-    if (orphanedPaths.length > 0) {
-      // The rows are gone; the stored files are removed on a best effort.
-      try {
-        await authenticatedClient.storage.from('grn-images').remove(orphanedPaths);
-      } catch (removeError) {
-        log.warn('Could not remove the files of deleted photos', loggableError(removeError));
-      }
-    }
-
     // ✅ Photos picked in the form are uploaded now that the update succeeded.
     // A line added in this edit gets its id from update_grn's item_mapping
     // (index = position in p_items); before the save it only had a local id.
@@ -912,12 +928,39 @@ export const updateGRN = async (
       }))
     );
 
+    // The new photos go up and are confirmed BEFORE the removed ones are deleted: the server keeps a GRN's last
+    // photo (migration 130), so replacing the only photo must never pass through a moment with none.
+    const photoUpload0 = await uploadPhotosOfSavedGRN(grnId, pendingPhotos);
+    let removalFailures = 0;
+    let removalRefusal: string | undefined;
+    const orphanedPaths: string[] = [];
+    for (const removed of options.removedImages || []) {
+      const stillOnGrn = remainingImageIds ? remainingImageIds.has(removed.id) : rpcImages.length === 0;
+      if (stillOnGrn) {
+        const deletion = await deleteGRNImage(removed.id, '');
+        if (!deletion.success) {
+          removalFailures++;
+          if (deletion.error === t('grn.refusal.lastPhoto')) removalRefusal = deletion.error;
+        }
+      } else if (remainingImageIds && removed.storagePath) {
+        orphanedPaths.push(removed.storagePath);
+      }
+    }
+    if (orphanedPaths.length > 0) {
+      // The rows are gone; the stored files are removed on a best effort.
+      try {
+        await authenticatedClient.storage.from('grn-images').remove(orphanedPaths);
+      } catch (removeError) {
+        log.warn('Could not remove the files of deleted photos', loggableError(removeError));
+      }
+    }
+
     // The GRN is updated whatever happens to its photos; the caller is told which ones failed.
-    const photoUpload = await uploadPhotosOfSavedGRN(grnId, pendingPhotos);
+    const photoUpload = photoUpload0;
     if (photoUpload.failed.length > 0) {
       log.warn('Photos not uploaded during update', photoUpload.failed.length);
     }
-    const photos: GRNPhotoSaveReport = { ...photoUpload, removalFailures };
+    const photos: GRNPhotoSaveReport = { ...photoUpload, removalFailures, ...(removalRefusal ? { removalRefusal } : {}) };
 
     return {
       success: true,
@@ -925,11 +968,13 @@ export const updateGRN = async (
         id: rpcResult.gr_id || grnId,
         message: rpcResult.message,
         stats: rpcResult.stats as GRNUpdateStats | undefined,
+        // Migration 128: the order lines this edit changed. Absent on an older server.
+        orderEffects: Array.isArray(rpcResult.order_effects) ? parseOrderEffects(rpcResult.order_effects) : undefined,
         photos,
       },
     };
   } catch (error) {
-    log.error('Error updating GRN with RPC', loggableError(error));
+    (isServerRefusal(error) ? log.info : log.error).call(log, 'Error updating GRN with RPC', loggableError(error));
     // A resend whose session client could not be got is not settled either: the lock stays.
     if (!lostAnswer && options.resend && isUnsettledFailure(error)) lostAnswer = options.resend;
     reportSaveError(error, { lost: !!lostAnswer, requestKey: (lostAnswer ?? sent.last)?.key });

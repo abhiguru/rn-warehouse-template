@@ -43,7 +43,8 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
-import { formatCount, formatWeightEach } from '@/utils/formatters';
+import { formatWeightEach } from '@/utils/formatters';
+import { formatPackages } from '@/utils/packagingWord';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { useModalSheet } from '@/hooks/useModalSheet';
@@ -436,7 +437,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
                 <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
                 <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
                 <Text style={styles.detailValue}>
-                  {formatCount(isOutOfStock ? 0 : item.stock, 'bag')}
+                  {formatPackages(isOutOfStock ? 0 : item.stock, item.packaging)}
                 </Text>
               </View>
 

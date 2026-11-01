@@ -319,9 +319,11 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         }
         // The invoice number is taken (I4): the step with the number field, which holds the next free number.
         // The GRN still has stock (D9): the step with the GRN field, which is marked.
-        if (info?.numberTaken || info?.grnHasStock) void navigateToStep(STEP_NUMBERS.HEADER);
+        // The server refused the invoice date (D10, App 15): the step with the date field, which says why.
+        if (info?.numberTaken || info?.grnHasStock || info?.dateRefused) void navigateToStep(STEP_NUMBERS.HEADER);
         // The server's total differs (D18): the Charges section is open, with the figures worked out again.
-        if (info?.totalChanged) show('charges');
+        // A looked-up rate changed (D12): the lines now show the new figures; the Charges section shows them.
+        if (info?.totalChanged || info?.ratesChanged) show('charges');
       });
     });
     if (result === 'busy') return;

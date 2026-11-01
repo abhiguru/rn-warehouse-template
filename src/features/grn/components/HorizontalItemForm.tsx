@@ -20,6 +20,8 @@ import { searchItems } from '@/services/item-search-service';
 import { parseReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 
 import { showAlert } from '@/utils/alert';
+import { buildRackValue, parseRackValue, type RackPresets } from '../rackPresets';
+import { useRackPresets } from '../useRackPresets';
 import { formatNumber } from '@/utils/formatters';
 import { normalizeDigits, t as tr, localizeDigits, identifierInput } from '@/i18n';
 import type { ScrollViewRef, TextInputRef } from '@/types/nativeRefs';
@@ -53,46 +55,7 @@ const scrollOffsetOf = (field: ItemFormFieldName): number =>
  */
 const FOCUS_AFTER_DIALOG_MS = 250;
 
-// Floor and Chamber options
-const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
-const CHAMBER_OPTIONS = ['C4', 'C7', 'C2', 'Anti-Ch'];
-
-// A rack is free text. The floor and chamber chips are optional help: each
-// chosen chip adds its own "/Floor" or "/Chamber" after the typed text, and a
-// second tap takes it off again. The chips never take characters out of the
-// text field.
-//
-// A rack is split into text and chips only when a line is put into the form
-// (never while it is typed), and only when it ends in a floor and a chamber
-// from the lists above; any other rack ("C3", "20B/F1", "A/1/2") is shown
-// whole in the text field. Text plus chips always give the stored rack back,
-// so a line that is opened and saved without a change keeps its rack.
-const parseRackValue = (rack: string): { userInput: string; floor: string; chamber: string } => {
-    if (!rack || rack.trim() === '') {
-        return { userInput: '', floor: '', chamber: '' };
-    }
-    const parts = rack.split('/');
-    if (parts.length >= 2) {
-        const chamber = parts[parts.length - 1];
-        const floor = parts[parts.length - 2];
-        if (FLOOR_OPTIONS.includes(floor) && CHAMBER_OPTIONS.includes(chamber)) {
-            return { userInput: parts.slice(0, parts.length - 2).join('/'), floor, chamber };
-        }
-    }
-    return { userInput: rack, floor: '', chamber: '' };
-};
-
-// Build the rack from the typed text and the chosen chips: the text exactly as
-// typed, then "/Floor" and "/Chamber" for the chips that are chosen. A chip
-// shown as chosen is always part of the rack. Without a chip the text is
-// passed on as typed (the items step drops the spaces at its ends when the
-// line is saved); before a chip the spaces at its ends are dropped here, as
-// they would otherwise be left in the middle of the rack ("ROW 3 /F1").
-const buildRackValue = (userInput: string, floor: string, chamber: string): string => {
-    const chips = [floor, chamber].filter(Boolean).join('/');
-    if (userInput.trim() === '') return chips;
-    return chips ? `${userInput.trim()}/${chips}` : userInput;
-};
+// The Floor and Chamber buttons are the facility's (rackPresets.ts, useRackPresets); the rack text rules live there.
 
 /** The rack of the line in the form: the text field, the chips, and the rack they make. */
 interface RackEdit {
@@ -101,11 +64,13 @@ interface RackEdit {
     text: string;
     floor: string;
     chamber: string;
+    /** The lists the text and chips were read with; other lists (the facility's arrived) read them again. */
+    presets: RackPresets;
 }
 
-const loadRackEdit = (lineId: string, rack: string): RackEdit => {
-    const parsed = parseRackValue(rack);
-    return { lineId, rack, text: parsed.userInput, floor: parsed.floor, chamber: parsed.chamber };
+const loadRackEdit = (lineId: string, rack: string, presets: RackPresets): RackEdit => {
+    const parsed = parseRackValue(rack, presets);
+    return { lineId, rack, text: parsed.userInput, floor: parsed.floor, chamber: parsed.chamber, presets };
 };
 
 export interface ItemFormData {
@@ -259,19 +224,20 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         // rack at every key would move a typed "/F2/C2" out of the text field
         // and into the chips, and the next key would land in the wrong place.
         const lineRack = currentItem.rack ?? '';
-        const [storedRackEdit, setRackEdit] = useState(() => loadRackEdit(currentItem.grn_trl_id, lineRack));
+        const rackPresets = useRackPresets();
+        const [storedRackEdit, setRackEdit] = useState(() => loadRackEdit(currentItem.grn_trl_id, lineRack, rackPresets));
         let rackEdit = storedRackEdit;
-        if (rackEdit.lineId !== currentItem.grn_trl_id || rackEdit.rack !== lineRack) {
-            rackEdit = loadRackEdit(currentItem.grn_trl_id, lineRack);
+        if (rackEdit.lineId !== currentItem.grn_trl_id || rackEdit.rack !== lineRack || rackEdit.presets !== rackPresets) {
+            rackEdit = loadRackEdit(currentItem.grn_trl_id, lineRack, rackPresets);
             setRackEdit(rackEdit);
         }
         const { text: rackText, floor: selectedFloor, chamber: selectedChamber } = rackEdit;
 
         const changeRack = useCallback((text: string, floor: string, chamber: string) => {
             const rack = buildRackValue(text, floor, chamber);
-            setRackEdit({ lineId: currentItem.grn_trl_id, rack, text, floor, chamber });
+            setRackEdit({ lineId: currentItem.grn_trl_id, rack, text, floor, chamber, presets: rackPresets });
             onFieldChange('rack', rack);
-        }, [currentItem.grn_trl_id, onFieldChange]);
+        }, [currentItem.grn_trl_id, onFieldChange, rackPresets]);
 
         // The text field: whatever is typed is the text, character for character.
         const handleRackTextChange = useCallback((text: string) => {
@@ -290,8 +256,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const imageCount = currentItem.trl_images?.length || 0;
         const canViewAll = savedItemsCount > 0 && !!onViewAll;
         const itemNumber = isEditing ? editingItemNumber : savedItemsCount + 1;
-        // A GRN that takes no new line has nothing to save (blockedNotice).
-        const saveEnabled = isValid && !blockedNotice;
+        // A GRN that takes no new line has nothing to save (blockedNotice). An incomplete line does not grey the check
+        // mark out (style guide §10): a tap shows what is missing and moves to the first field (owner decision D7).
+        const saveEnabled = !blockedNotice;
 
         // The fixed strip names the line in the form: which item and how many of
         // what. Rack and Mark are a screen's width away from Item and Quantity,
@@ -450,6 +417,15 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             value={currentItem.item_name}
                             placeholder={tr('grn.item.searchPlaceholder')}
                             fetchData={searchItems}
+                            // Typing after a pick (or emptying the field) unchooses the item: the form must not keep
+                            // the earlier item while the field shows other text.
+                            onTextChange={(text) => {
+                                if (currentItem.item_table_id) {
+                                    onFieldChange('item_table_id', '');
+                                    onFieldChange('packaging', '');
+                                }
+                                onFieldChange('item_name', text);
+                            }}
                             suggestionPlacement="inline"
                             getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: item.name })}
                             onSelect={(item) => {
@@ -639,7 +615,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         <View style={styles.chipSection}>
                             <Text style={styles.chipLabel} accessibilityRole="header">{tr('grn.item.floor')}</Text>
                             <View style={styles.chipWrap} accessibilityRole="radiogroup">
-                                {FLOOR_OPTIONS.map((floor) =>
+                                {rackPresets.floor.map((floor) =>
                                     renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), tr('grn.item.floor'))
                                 )}
                             </View>
@@ -649,7 +625,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         <View style={styles.chipSection}>
                             <Text style={styles.chipLabel} accessibilityRole="header">{tr('common.chamber')}</Text>
                             <View style={styles.chipWrap} accessibilityRole="radiogroup">
-                                {CHAMBER_OPTIONS.map((chamber) =>
+                                {rackPresets.chamber.map((chamber) =>
                                     renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), tr('common.chamber'))
                                 )}
                             </View>

@@ -42,6 +42,8 @@ export interface RateBoxProps {
   /** The other box is being edited: show the figures, say why they cannot be typed in. */
   locked?: boolean;
   readOnly?: boolean;
+  /** The item's packaging (Bag, Box, Crate), for "per box" in the unit line and the field labels. */
+  packaging?: string | null;
   /**
    * Draw the unit line ("per bag, per month") above the table (default: yes). The customer's page passes false when the
    * "Default rate: ₹3.00–₹6.00 per bag, per month" line is right above the box: the unit would be said twice in a row.
@@ -57,7 +59,7 @@ const makeStyles = (th: ThemeTokens) => ({
   note: { ...typography.footnote, color: th.text.secondary },
 });
 
-export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, locked = false, readOnly = false, showUnit = true, testID }: RateBoxProps) {
+export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, locked = false, readOnly = false, showUnit = true, packaging, testID }: RateBoxProps) {
   const styles = useThemedStyles(makeStyles);
   const offline = useIsOffline();
   const [copyOpen, setCopyOpen] = useState(false);
@@ -87,7 +89,7 @@ export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, l
           ]}
         />
       ) : null}
-      {showUnit ? <Text style={styles.unit}>{unitText(priceType)}</Text> : null}
+      {showUnit ? <Text style={styles.unit}>{unitText(priceType, packaging)}</Text> : null}
       <RateStartLine
         day={draft.startsOn}
         choice={draft.startsOnChoice}
@@ -122,6 +124,7 @@ export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, l
         fields={fields}
         tags={editor.dirty ? null : tags}
         readOnly={disabled}
+        packaging={packaging}
         testID={`${testID}-table`}
       />
 

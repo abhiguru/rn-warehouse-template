@@ -798,6 +798,15 @@ describe('catalogue', () => {
     expect((call[1] as RequestInit).redirect).toBe('error');
   });
 
+  it.each([[401, 'invalid_token'], [403, 'forbidden']])('answers %s on the public list as unavailable, never as an ended session', async (status, code) => {
+    serve({ 'GET /v1/facilities': { status, body: { error: { code, message: 'English text for a developer' } } } });
+    expect(await fetchFacilityCatalogue({ force: true })).toMatchObject({
+      ok: false,
+      code: 'unavailable',
+      message: "The association's sign-in service is not available right now. Try again later.",
+    });
+  });
+
   it('is asked once a minute unless a retry forces it', async () => {
     const start = Date.now();
     const clock = jest.spyOn(Date, 'now').mockReturnValue(start);

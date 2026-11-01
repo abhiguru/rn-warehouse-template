@@ -10,7 +10,7 @@ import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
-import { formatDateTime } from '@/utils/formatters';
+import { formatDateTime, formatSpokenDateTime } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { priceHistoryChanges, priceHistorySides, truncatedPriceCount } from '@/features/item-pricing/utils/priceHistory';
 import {
@@ -81,7 +81,7 @@ const ItemPriceHistoryCard = memo<ItemPriceHistoryCardProps>(({ entry }) => {
 
   const when = formatDateTime(entry.changed_at);
   const who = priceHistoryAuthor(entry);
-  const spoken = [actionLabel, itemName, customerName, ...rows.map((row) => row.spoken), note, when, who]
+  const spoken = [actionLabel, itemName, customerName, ...rows.map((row) => row.spoken), note, formatSpokenDateTime(entry.changed_at), who]
     .filter(Boolean)
     .join(', ');
 

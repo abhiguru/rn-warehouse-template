@@ -1,6 +1,12 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
+import { checkSubmission } from '@/utils/lostAnswer';
 import { getStandardRate, setStandardRate } from '../item-pricing-service';
+
+jest.mock('@/utils/lostAnswer', () => ({
+  ...jest.requireActual('@/utils/lostAnswer'),
+  checkSubmission: jest.fn(),
+}));
 
 jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(),
@@ -93,5 +99,32 @@ describe('setStandardRate', () => {
   it('says the save may have gone through when the answer never came', async () => {
     rpc.mockRejectedValue(new Error('Network request failed'));
     expect(await setStandardRate(tiers)).toMatchObject({ success: false, outcomeUnknown: true, message: t('pricing.standard.error.unconfirmed') });
+  });
+});
+
+describe('setStandardRate with a request key and a lost answer', () => {
+  const tiers = [tier(0, 10, 3)];
+  const lost = { data: null, error: null, status: 200 };
+
+  it('sends p_request_key on a real save only', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: { tiers, items_priced: 0, updated_at: 'v1' } }, error: null });
+    await setStandardRate(tiers, { requestKey: 'k-9', dryRun: true });
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_request_key');
+    await setStandardRate(tiers, { requestKey: 'k-9' });
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_request_key: 'k-9' });
+  });
+
+  it('found: the stored answer is the result and nothing is sent again', async () => {
+    rpc.mockResolvedValueOnce(lost);
+    jest.mocked(checkSubmission).mockResolvedValue({ found: true, response: { success: true, data: { tiers, items_priced: 4, updated_at: 'v2' } } });
+    expect(await setStandardRate(tiers, { requestKey: 'k-9' })).toMatchObject({ success: true, itemsPriced: 4, updatedAt: 'v2' });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('not found: the identical request is sent again with the same key', async () => {
+    rpc.mockResolvedValueOnce(lost).mockResolvedValueOnce({ data: { success: true, data: { tiers, items_priced: 0, updated_at: 'v3' } }, error: null });
+    jest.mocked(checkSubmission).mockResolvedValue({ found: false });
+    expect(await setStandardRate(tiers, { requestKey: 'k-9', expectedUpdatedAt: 'v0' })).toMatchObject({ success: true, updatedAt: 'v3' });
+    expect(rpc.mock.calls[1][1]).toEqual(rpc.mock.calls[0][1]);
   });
 });

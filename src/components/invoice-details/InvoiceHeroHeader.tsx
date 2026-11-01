@@ -11,7 +11,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatSpokenDate, toDate } from '@/utils/formatters';
 import { t, formatIdentifier, getLanguage } from '@/i18n';
 
 // ============================================================================
@@ -116,6 +116,7 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
   const safeTax = Number(tax_amount) || 0;
   const formattedDate = formatHeaderDate(date);
   const subtitle = [customer_name, formattedDate].filter(Boolean).join(' · ');
+  const spokenSubtitle = [customer_name, formattedDate ? formatSpokenDate(date) : ''].filter(Boolean).join(' · ');
 
   const facts = [
     {
@@ -146,7 +147,7 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
       {(!compact || !!subtitle) && (
-      <View accessible accessibilityRole="header" accessibilityLabel={`${t('invoice.details.titleNumber', { number: formatIdentifier(invoice_number) })}${subtitle ? `, ${subtitle}` : ''}`}>
+      <View accessible accessibilityRole="header" accessibilityLabel={`${t('invoice.details.titleNumber', { number: formatIdentifier(invoice_number) })}${subtitle ? `, ${spokenSubtitle}` : ''}`}>
         {!compact && <Text style={styles.docType} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{t('common.invoice')}</Text>}
         {!compact && <Text style={styles.number} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{invoice_number}</Text>}
         {subtitle ? <Text style={[styles.subtitle, compact && styles.subtitleCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{subtitle}</Text> : null}

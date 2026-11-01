@@ -2,7 +2,7 @@
  * Editing a saved invoice, start to finish, on the real stack: the invoice's page, "Edit", the load, the three steps,
  * "Update invoice" and "View invoice"; and the load that fails. Only the facility's `rpc` is a stand-in.
  *
- * The saved invoice 42 (GRN A0010, customer Example Traders, 5 Oct 2026) has the lines of flowLines.grnA() with the
+ * The saved invoice 42 (GRN A0010, customer Example Traders, 05/10/26) has the lines of flowLines.grnA() with the
  * first potato line free (charge 0) and the reason "Sample lot" stored for it:
  * storage 0 + 500 + 200, labour 450, tax 45, total 1,195.
  */
@@ -60,7 +60,7 @@ beforeEach(async () => {
   server = makeFlowServer();
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc: server.rpc } as never);
   server.setInvoice(savedLines(), { labour: 450, tax_amount: 45, total: 1195, zero_charge_reason: 'Sample lot' });
-  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync() });
+  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
 });
 
 afterEach(async () => {
@@ -91,7 +91,7 @@ describe('opening the edit form', () => {
     expect(server.callsOf('get_invoice_data').map((call) => call.args)).toEqual([{ p_invoice_id: EDIT_ID }]);
     expect(app.valueOf(NUMBER_FIELD)).toBe('42');
     expect(textOf(app.byTestID('invoice-grn-value'))).toBe('GRN A0010');
-    expect(app.texts()).toEqual(expect.arrayContaining(['5 Oct 2026', '2026-27', 'Example Traders', 'Edit invoice']));
+    expect(app.texts()).toEqual(expect.arrayContaining(['05/10/26', '2026-27', 'Example Traders', 'Edit invoice']));
     expect(form().invoice_id).toBe(EDIT_ID);
     expect(form().items).toHaveLength(3);
     expect(form().header.zero_charge_reason).toBe('Sample lot');

@@ -17,6 +17,8 @@ export interface GrnLine {
   item_table_id: string;
   item_name: string;
   weight?: number | null;
+  /** The item's packaging (Bag, Box, Crate ...), for "per box" in the row's texts. */
+  packaging?: string | null;
 }
 
 /** One row of the section: an item and the weight of one bag. Two lines of the same item and weight share a row. */
@@ -25,6 +27,7 @@ export interface RateRow {
   item_id: string;
   item_name: string;
   weight: number;
+  packaging?: string | null;
 }
 
 /** Where a row's rate comes from. 'change' is a change of the item's rate waiting in the form. */
@@ -82,7 +85,7 @@ export function groupRows(lines: GrnLine[]): RateRow[] {
     if (!line.item_table_id) continue;
     const weight = lineWeight(line);
     const key = `${line.item_table_id}|${weight}`;
-    if (!rows.has(key)) rows.set(key, { key, item_id: line.item_table_id, item_name: line.item_name, weight });
+    if (!rows.has(key)) rows.set(key, { key, item_id: line.item_table_id, item_name: line.item_name, weight, packaging: line.packaging });
   }
   return [...rows.values()];
 }

@@ -23,14 +23,14 @@ import { wholeKg } from '@/features/item-pricing/editModel';
 import { figuresStack } from '@/features/item-pricing/figureRow';
 import { addDays, bandText, dateText, money } from '@/features/item-pricing/rateText';
 import { RateChangeDialog, rateChangeSummary } from './RateChangeDialog';
-import { acceptRentText, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
+import { acceptRentText, labourNumber, priceNumber, rentNumber, RENT_MAX } from '@/utils/priceNumbers';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { showAlert } from '@/utils/alert';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatIdentifier, localizeDigits, t } from '@/i18n';
 import { ONE_LINE, makeTableStyles } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
-import { amountText, taxText } from './GrnItemRates';
+import { amountText, taxText } from './rateFigures';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatWeightEach, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { rowWeightText } from './GrnRatesSection';
@@ -247,6 +247,9 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
   const [facts, setFacts] = useState<{ facts: ChangeFacts; entry: SheetEntry } | null>(null);
   const [explainOpen, setExplainOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  // "Discard changes?" is drawn inside the rate screen: on iPhone a Modal opened from outside (the root alert host) is
+  // refused while this full-screen Modal is up, so ✕ would do nothing.
+  const [discardOpen, setDiscardOpen] = useState(false);
   // Where the dates, the weights and the figures sit in the scroll, to bring the first wrong one into view when a save
   // is refused (style guide §14.4).
   const scrollRef = useRef<ScrollViewRef>(null);
@@ -268,6 +271,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     setFacts(null);
     setExplainOpen(false);
     setReferenceOpen(false);
+    setDiscardOpen(false);
   }, [preload, visible]);
 
   if (!row || !preload) return null;
@@ -286,7 +290,7 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     const max = wholeKg(upTo);
     const unit = rentNumber(rent);
     if (unit === null) next.rent = t('pricing.edit.err.rent');
-    const labourRate = oneTime ? 0 : priceNumber(labour, 2);
+    const labourRate = oneTime ? 0 : labourNumber(labour);
     if (labourRate === null) next.labour = t('pricing.edit.err.labour');
     const taxPercent = priceNumber(tax, 2);
     if (taxPercent === null || taxPercent > 100) next.tax = tax.trim() === '' ? t('pricing.edit.err.taxRequired') : t('pricing.edit.err.tax');
@@ -327,20 +331,16 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
     labour !== rupees(preload.figures.labour_rate) ||
     tax !== text(preload.figures.tax_percent) ||
     to !== preload.to;
+  // A row whose rate is a pending Everyone / This customer change: "This GRN" with the same figures is a change
+  // of that (it turns the pending change into a rate for this GRN only), so Save rate is on for it.
+  const pendingBroad = !adding && !!row.rate?.entry && 'scope' in row.rate.entry;
+  const canSave = adding || dirty || (pendingBroad && scope === 'grn');
   const requestClose = () => {
     if (!dirty) {
       onClose();
       return;
     }
-    showAlert(
-      t('common.discardChangesTitle'),
-      t('common.discardChangesMessage'),
-      [
-        { text: t('common.keepEditing'), style: 'cancel' },
-        { text: t('common.discard'), style: 'destructive', onPress: onClose },
-      ],
-      { cancelable: true },
-    );
+    setDiscardOpen(true);
   };
 
   const weightEach = row.weight > 0 ? formatWeightEach(row.weight) : t('grn.rates.noWeightTag');
@@ -617,22 +617,34 @@ export function GrnRateSheet({ visible, onClose, row, input, customerName, price
             <View style={[styles.footer, { paddingBottom: space.sm + insets.bottom }]} testID="rate-footer">
               {/* Changing a rate, nothing to save until something differs; adding, there is nothing to compare with
                   (owner, 2026-10-17: an untouched save stored a copy as this GRN's own rate). */}
-              <Button type="primary" size="fullWidth" onPress={save} disabled={!adding && !dirty} testID="rate-save">
+              <Button type="primary" size="fullWidth" onPress={save} disabled={!canSave} testID="rate-save">
                 {t('grn.rates.sheet.save')}
               </Button>
             </View>
           </KeyboardAvoidingView>
+
+          {/* Both questions are inside this screen's Modal: a Modal opened from outside it is not shown on iPhone. */}
+          <RateChangeDialog
+            summary={summary}
+            scope={facts?.facts.scope ?? 'everyone'}
+            onChangeRate={() => { if (facts) onSave(facts.entry); setFacts(null); }}
+            onOnlyGrn={() => { if (facts) onSave({ ...facts.entry, scope: 'grn', to: null }); setFacts(null); }}
+            onBack={() => setFacts(null)}
+            testID="rate-confirm"
+          />
+          <ConfirmDialog
+            visible={discardOpen}
+            title={t('common.discardChangesTitle')}
+            message={t('common.discardChangesMessage')}
+            confirmText={t('common.discard')}
+            cancelText={t('common.keepEditing')}
+            variant="danger"
+            onConfirm={() => { setDiscardOpen(false); onClose(); }}
+            onCancel={() => setDiscardOpen(false)}
+            testID="rate-discard"
+          />
         </View>
       </Modal>
-
-      <RateChangeDialog
-        summary={summary}
-        scope={facts?.facts.scope ?? 'everyone'}
-        onChangeRate={() => { if (facts) onSave(facts.entry); setFacts(null); }}
-        onOnlyGrn={() => { if (facts) onSave({ ...facts.entry, scope: 'grn', to: null }); setFacts(null); }}
-        onBack={() => setFacts(null)}
-        testID="rate-confirm"
-      />
     </>
   );
 }

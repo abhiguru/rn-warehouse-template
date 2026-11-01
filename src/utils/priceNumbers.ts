@@ -26,6 +26,15 @@ export function rentNumber(text: string | null | undefined): number | null {
   return n !== null && n <= RENT_MAX ? n : null;
 }
 
+/** The most a labour rate may be (the server's limit and the invoice's). */
+export const LABOUR_MAX = 999999;
+
+/** The labour rate in a price-form field, or null when it is not a number with at most 2 decimals from 0 to LABOUR_MAX. */
+export function labourNumber(text: string | null | undefined): number | null {
+  const n = priceNumber(text, 2);
+  return n !== null && n <= LABOUR_MAX ? n : null;
+}
+
 /**
  * What a rent field holds after a key press: the typed text when it is still on its way to a rent (digits and one
  * point, at most 2 decimals, not above RENT_MAX), else the text it held before, so the extra digit is not taken.

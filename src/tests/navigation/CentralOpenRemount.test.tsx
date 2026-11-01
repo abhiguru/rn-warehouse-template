@@ -47,8 +47,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Slot, Stack, router } from 'expo-router';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
-import { store as routerStore } from 'expo-router/build/global-state/router-store';
-import { routingQueue } from 'expo-router/build/global-state/routingQueue';
+import { routerStore } from '@/tests/helpers/routerStore';
 import FacilitiesScreen from '../../../app/facilities';
 import PendingEnrollmentScreen from '../../../app/pending-enrollment';
 import FacilityLinkScreen from '../../../app/facility-link';
@@ -65,6 +64,25 @@ import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { showAlert } from '@/utils/alert';
 
 require('expo-router/build/testing-library/mocks');
+
+// Expo Router 58 has no shared routing queue to wrap. Every navigation (the imperative `router`
+// and `useRouter()`) reaches the router through the `enqueue` that `createImperativeRouter` is
+// given, so that is where each request is recorded before it goes on unchanged.
+let mockRecordNavigation: ((kind: string, href: string) => void) | undefined;
+jest.mock('expo-router/build/global-state/router', () => {
+  const actual = jest.requireActual('expo-router/build/global-state/router');
+  return {
+    ...actual,
+    createImperativeRouter: (enqueue: (intent: unknown) => void, setTransitionMode: unknown) =>
+      actual.createImperativeRouter((intent: { type: string; payload?: { href?: unknown; options?: { event?: string }; action?: { type?: string } } }) => {
+        mockRecordNavigation?.(
+          String(intent.payload?.options?.event ?? intent.payload?.action?.type ?? intent.type),
+          String(intent.payload?.href ?? ''),
+        );
+        enqueue(intent);
+      }, setTransitionMode),
+  };
+});
 
 const ISSUER = 'https://identity.example.test';
 jest.mock('@/config/envConfig', () => ({
@@ -211,7 +229,6 @@ const ROUTES = {
 let tree: ReactTestRenderer | undefined;
 /** Every navigation asked of the router, in order: [kind, href]. */
 let navigations: Array<[string, string]> = [];
-const originalAdd = routingQueue.add;
 
 type NavState = { routes: Array<{ name: string; key?: string; state?: NavState }> };
 const pathname = () => routerStore.getRouteInfo().pathname;
@@ -298,16 +315,13 @@ beforeEach(async () => {
   // A test that holds the facility sign-out back replaces this; the next one starts with it returning at once.
   jest.mocked(signOutPendingEnrollment).mockImplementation(async () => undefined);
   navigations = [];
-  routingQueue.add = (action: { type: string; payload?: { href?: unknown; options?: { event?: string } } }) => {
-    navigations.push([String(action.payload?.options?.event ?? action.type), String(action.payload?.href ?? '')]);
-    originalAdd(action as never);
-  };
+  mockRecordNavigation = (kind, href) => { navigations.push([kind, href]); };
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(async () => {
   if (tree) await act(async () => { tree!.unmount(); });
   tree = undefined;
-  routingQueue.add = originalAdd;
+  mockRecordNavigation = undefined;
   jest.useRealTimers();
   jest.restoreAllMocks();
 });

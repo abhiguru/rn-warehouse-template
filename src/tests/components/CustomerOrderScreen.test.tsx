@@ -25,7 +25,7 @@ jest.mock('@/components/ChangeLogBottomSheet', () => ({ __esModule: true, defaul
 jest.mock('@/services/change-log-service', () => ({ ChangeLogService: { getCustomerChangeLog: jest.fn() } }));
 
 // The editor is a stand-in that counts how often it is mounted and unmounted.
-const mockEditor = { mounts: 0, unmounts: 0, props: undefined as undefined | { customerId?: string; itemCatalogOpen?: boolean; staffView?: boolean; businessDeactivated?: boolean; businessRecordUnread?: boolean; onBusinessDeleted?: () => void } };
+const mockEditor = { mounts: 0, unmounts: 0, props: undefined as undefined | { customerId?: string; itemCatalogOpen?: boolean; staffView?: boolean; businessDeactivated?: boolean; businessRecordUnread?: boolean; onBusinessDeleted?: () => void; onOrderNumber?: (orderNo: string | undefined) => void } };
 jest.mock('@/components/OrderManagement', () => {
   const ReactActual = jest.requireActual('react');
   return {
@@ -256,4 +256,18 @@ describe('a business that is deactivated or deleted', () => {
     await act(async () => { renderer = create(<CustomerOrderScreen />); });
     expect(mockEditor.props?.staffView).toBe(false);
   });
+});
+
+it('shows the order number under "Order for …" once the editor has read the order, and drops it for another business', async () => {
+  await act(async () => { renderer = create(<CustomerOrderScreen />); });
+  const numbers = () => renderer!.root.findAll(node => node.props.testID === 'order-screen-number');
+  expect(numbers()).toHaveLength(0);
+
+  await act(async () => { mockEditor.props!.onOrderNumber!('ORD-0042'); });
+  expect(JSON.stringify(numbers()[0].props.children)).toContain('ORD-0042');
+  expect(JSON.stringify(numbers()[0].props.children)).toContain('Order');
+
+  mockParams.customerId = 'customer-fictional-2';
+  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  expect(numbers()).toHaveLength(0);
 });

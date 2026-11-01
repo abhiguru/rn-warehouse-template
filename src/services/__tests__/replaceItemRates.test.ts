@@ -1,7 +1,13 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
+import { checkSubmission } from '@/utils/lostAnswer';
 import { replaceItemRates, getItemPriceHistory } from '../item-pricing-service';
+
+jest.mock('@/utils/lostAnswer', () => ({
+  ...jest.requireActual('@/utils/lostAnswer'),
+  checkSubmission: jest.fn(),
+}));
 
 jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(),
@@ -31,6 +37,26 @@ beforeEach(() => {
   logs = ['log', 'warn', 'error'].map(m => jest.spyOn(console, m as 'log').mockImplementation(() => {}));
 });
 afterEach(() => logs.forEach(l => l.mockRestore()));
+
+describe('replaceItemRates and an answer that did not come through', () => {
+  it('an empty HTTP 200 is outcome unknown, not a failure', async () => {
+    rpc.mockResolvedValue({ data: null, error: null, status: 200 });
+    expect(await replaceItemRates(input)).toMatchObject({ success: false, outcomeUnknown: true, message: t('pricing.error.unconfirmed') });
+  });
+
+  it('a non-JSON HTTP 200 is outcome unknown too', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: '<html>Maintenance</html>' }, status: 200 });
+    expect(await replaceItemRates(input)).toMatchObject({ success: false, outcomeUnknown: true });
+  });
+
+  it('sends a request key only when one is given', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: {} }, error: null });
+    await replaceItemRates(input);
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_request_key');
+    await replaceItemRates({ ...input, request_key: 'k-1' });
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_request_key: 'k-1' });
+  });
+});
 
 describe('replaceItemRates', () => {
   it('calls replace_item_rates with the p_ parameters and replace_later false by default', async () => {
@@ -91,7 +117,7 @@ describe('replaceItemRates', () => {
     expect(await replaceItemRates(input)).toMatchObject({
       errorCode: 'INVALID_DATE',
       earliest: '2022-01-01',
-      message: 'Choose a start date on or after 1 Jan 2022.',
+      message: 'Choose a start date on or after 01/01/22.',
     });
   });
 
@@ -168,5 +194,45 @@ describe('replaceItemRates: outcome and kept stop (F29, F62, STALE_RATES)', () =
   it('STALE_RATES carries the app text', async () => {
     rpc.mockResolvedValueOnce(refused('STALE_RATES', { ids: ['x'] }));
     expect(await replaceItemRates(input)).toMatchObject({ errorCode: 'STALE_RATES', message: t('pricing.error.staleRates') });
+  });
+});
+
+describe('replaceItemRates with a request key and a lost answer', () => {
+  const lost = { data: null, error: null, status: 200 };
+  const saved = { data: { success: true, data: { ended: [], added: [] } }, error: null };
+
+  it('asks the server what became of the key; found means saved and nothing is sent again', async () => {
+    rpc.mockResolvedValueOnce(lost);
+    jest.mocked(checkSubmission).mockResolvedValue({ found: true, response: { success: true, data: { kept_end: '2027-03-01' } } });
+    expect(await replaceItemRates({ ...input, request_key: 'k-1' })).toEqual({ success: true, keptEnd: '2027-03-01' });
+    expect(checkSubmission).toHaveBeenCalledWith('k-1', expect.any(Number), undefined);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('not found: sends the identical request again with the same key', async () => {
+    rpc.mockResolvedValueOnce(lost).mockResolvedValueOnce(saved);
+    jest.mocked(checkSubmission).mockResolvedValue({ found: false });
+    expect(await replaceItemRates({ ...input, request_key: 'k-1' })).toMatchObject({ success: true });
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc.mock.calls[1][1]).toEqual(rpc.mock.calls[0][1]);
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_request_key: 'k-1' });
+  });
+
+  it('an aborted wait returns the unconfirmed result', async () => {
+    rpc.mockResolvedValueOnce(lost);
+    const controller = new AbortController();
+    jest.mocked(checkSubmission).mockImplementation(async () => {
+      controller.abort();
+      throw Object.assign(new Error('Aborted'), { name: 'AbortError' });
+    });
+    expect(await replaceItemRates({ ...input, request_key: 'k-1' }, { signal: controller.signal })).toMatchObject({ success: false, outcomeUnknown: true });
+  });
+
+  it('an older server without p_request_key gets the save once without it, and a lost answer there is not asked about', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }).mockResolvedValueOnce(lost);
+    expect(await replaceItemRates({ ...input, request_key: 'k-1' })).toMatchObject({ success: false, outcomeUnknown: true });
+    expect(rpc.mock.calls[0][1]).toHaveProperty('p_request_key');
+    expect(rpc.mock.calls[1][1]).not.toHaveProperty('p_request_key');
+    expect(checkSubmission).not.toHaveBeenCalled();
   });
 });

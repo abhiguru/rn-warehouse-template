@@ -17,13 +17,16 @@ export interface CustomerItemEntry {
   newRateFrom: string | null;
   /** The last day of a rate that stops. */
   rateEnds: string | null;
+  /** The item is deactivated: its rate is shown for reading only (the item's rate box cannot be opened). */
+  deactivated: boolean;
 }
 
 /**
- * One entry per active item the customer has an own rate in force or coming on `day`, by item name. `rates` holds
+ * One entry per item the customer has an own rate in force or coming on `day`, by item name. `rates` holds
  * every row of every item (the session cache); the first price type of the customer (monthly before one-time)
  * is the one shown, and the default rate beside it is of the same type. An item that is not among `items` (no
- * longer active) has no entry, since its box cannot be opened.
+ * longer active) still has its entry, marked `deactivated` and named by its rate rows: GRNs of it that are not
+ * invoiced yet still invoice at this rate. Its box cannot be opened, so the entry is for reading only.
  */
 export function customerItemRows(
   rates: ItemStoragePrice[],
@@ -36,8 +39,14 @@ export function customerItemRows(
     if (r.customer_id !== customerId) continue;
     byItem.set(r.item_id, [...(byItem.get(r.item_id) ?? []), r]);
   }
-  return items
-    .filter(item => byItem.has(item.id))
+  const known = new Set(items.map(item => item.id));
+  const named: { id: string; name: string; deactivated: boolean }[] = [
+    ...items.filter(item => byItem.has(item.id)).map(item => ({ id: item.id, name: item.name, deactivated: false })),
+    ...[...byItem.keys()]
+      .filter(id => !known.has(id))
+      .map(id => ({ id, name: (byItem.get(id) as ItemStoragePrice[])[0].item_name, deactivated: true })),
+  ];
+  return named
     .map((item): CustomerItemEntry | null => {
       const first = planScope(byItem.get(item.id) as ItemStoragePrice[], day).plans[0];
       if (!first) return null;
@@ -53,6 +62,7 @@ export function customerItemRows(
         since: bands[0]?.effective_from ?? null,
         newRateFrom: first.view.upcoming?.startsOn ?? null,
         rateEnds: first.view.stopsAfter ?? null,
+        deactivated: item.deactivated,
       };
     })
     .filter((e): e is CustomerItemEntry => e !== null)

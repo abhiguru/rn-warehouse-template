@@ -30,7 +30,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCurrency, formatFinancialYear } from '@/utils/formatters';
+import { formatCurrency, formatFinancialYear, formatNumber } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import type { DocumentEntity } from '@/i18n/entities';
 
@@ -43,6 +43,12 @@ export interface DocumentData {
   totalAmount?: number;
   finYear?: string;
   itemCount?: number;
+  /** The quantity in all the lines (GRN created or updated, dispatch created); drawn after Items. */
+  totalQuantity?: number;
+  /** The order lines this save changed (orders.effect texts); drawn under the message when there are any. */
+  orderNotes?: string[];
+  /** Plain notices drawn under the message as one warning strip (a GRN saved by staff: items without a rate yet). */
+  notices?: string[];
 }
 
 interface DocumentSuccessDialogProps {
@@ -120,6 +126,9 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.body,
     color: t.text.secondary,
     textAlign: 'center' as const,
+    marginBottom: space.xl,
+  },
+  orderNotes: {
     marginBottom: space.xl,
   },
   detailsContainer: {
@@ -253,6 +262,20 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
               {config.title}
             </Text>
             <Text style={styles.message}>{config.message}</Text>
+            {documentData.orderNotes && documentData.orderNotes.length > 0 ? (
+              <View style={styles.orderNotes} testID="document-success-order-notes">
+                <InlineValidation
+                  variant="warning"
+                  message={`${tr('orders.effect.doneLead')}\n${documentData.orderNotes.map((line) => `• ${line}`).join('\n')}`}
+                />
+              </View>
+            ) : null}
+
+            {documentData.notices && documentData.notices.length > 0 ? (
+              <View style={styles.orderNotes} testID="document-success-notices">
+                <InlineValidation variant="warning" message={documentData.notices.join('\n')} />
+              </View>
+            ) : null}
 
             {/* Document details */}
             <View style={styles.detailsContainer}>
@@ -286,6 +309,13 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>{tr('common.items')}</Text>
                   <Text style={styles.detailValue}>{localizeDigits(String(documentData.itemCount))}</Text>
+                </View>
+              )}
+
+              {documentData.totalQuantity !== undefined && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>{tr('components.documentSuccess.totalQuantity')}</Text>
+                  <Text style={styles.detailValue}>{formatNumber(documentData.totalQuantity)}</Text>
                 </View>
               )}
 

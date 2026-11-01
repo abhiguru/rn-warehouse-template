@@ -29,6 +29,9 @@ interface ValidationResult {
 
 type ValidatorFn = (payload: unknown, state: RootState) => ValidationResult;
 
+/** The GRN vehicle field's limit (GrnHeaderStep, grnValidation, goodsreceived.registration). */
+export const GRN_REGISTRATION_MAX_LENGTH = 20;
+
 // ============================================================================
 // HELPER FUNCTIONS - DRY utilities for common validation patterns
 // ============================================================================
@@ -84,8 +87,8 @@ const validateGRNHeader: ValidatorFn = (payload) => {
   const data = payload as Record<string, unknown>;
   const sanitized = { ...data };
 
-  // Validate string lengths
-  truncateString(data, sanitized, 'registration', 12, errors, 'Registration');
+  // Validate string lengths. The vehicle limit is the field's and the column's: 20.
+  truncateString(data, sanitized, 'registration', GRN_REGISTRATION_MAX_LENGTH, errors, 'Registration');
   truncateString(data, sanitized, 'note', 280, errors, 'Note');
   truncateString(data, sanitized, 'sender_name', 200, errors, 'Sender name');
   truncateString(data, sanitized, 'supervisor_name', 30, errors, 'Supervisor name');

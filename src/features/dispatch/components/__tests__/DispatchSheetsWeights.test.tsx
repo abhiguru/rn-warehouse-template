@@ -141,6 +141,29 @@ describe('the lot picker', () => {
   });
 });
 
+describe('the lot picker counts a lot in its packaging', () => {
+  const boxes = (packaging: string, stock = 40) => (
+    <LotBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} lots={[{ ...lot(50), packaging, stock }]} grnInfo={{ id: 'grn-1', gr_no: 'G0311' }} />
+  );
+
+  it('says boxes for a Box lot, and bags for other packaging', () => {
+    render(boxes('Box'));
+    expect(texts(tree)).toContain('40 boxes');
+    act(() => tree.unmount());
+    render(boxes('Tin'));
+    expect(texts(tree)).toContain('40 bags');
+  });
+
+  it('says one box and, in Gujarati, બૉક્સ with Gujarati digits', () => {
+    render(boxes('Box', 1));
+    expect(texts(tree)).toContain('1 box');
+    act(() => tree.unmount());
+    setLanguage('gu');
+    render(boxes('Box'));
+    expect(texts(tree)).toContain('૪૦ બૉક્સ');
+  });
+});
+
 describe('the saved-items sheet', () => {
   const badges = () => tree.root.findAll((node) => (node.type as unknown) === 'Badge').map((node) => `${node.props.label} ${node.props.value}`);
   const sheet = (weight: number | null) => (

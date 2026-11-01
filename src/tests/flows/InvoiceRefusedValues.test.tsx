@@ -63,7 +63,7 @@ beforeEach(async () => {
   server = makeFlowServer();
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc: server.rpc } as never);
   server.addGrn(IDS.grn, 'A0010', smallLines());
-  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync() });
+  app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
   await openNewInvoice(app);
   await pickGrn(app, 'A0010');
 });
@@ -185,9 +185,12 @@ describe('step 3', () => {
     await app.tapDialog('Close');
     expect(app.dialogs()).toHaveLength(0);
 
-    // Leaving the field puts the discount the invoice really has into it; a valid discount and its reason let Save go on.
+    // Leaving the field keeps the refused text and its message (the invoice keeps its discount); Save stays refused.
     await app.blur(DISCOUNT);
-    expect(app.valueOf(DISCOUNT)).toBe('');
+    expect(app.valueOf(DISCOUNT)).toBe('99999999');
+    expect(app.texts().some((text) => /^The discount can't be more than ₹/.test(text))).toBe(true);
+    expect(form().header.discount).toBe(0);
+    // A valid discount and its reason let Save go on.
     await app.typeKeys(DISCOUNT, '5');
     expect(form().header.discount).toBe(5);
     await app.typeKeys(DISCOUNT_REASON, 'Damaged bags');

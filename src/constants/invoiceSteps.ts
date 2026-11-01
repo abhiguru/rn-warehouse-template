@@ -9,7 +9,7 @@ import {
   type ThemeTokens,
   trackedText,
 } from '@/theme/tokens';
-import { formatDate, toDate } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, toDate } from '@/utils/formatters';
 
 // The step names are text: `invoiceSteps()` in src/components/InvoiceStepIndicator.tsx.
 export const STEP_NUMBERS = {
@@ -27,11 +27,16 @@ export function getCompletedSteps(currentStep: number): number[] {
 }
 
 /**
- * An invoice date for display (style guide §12.3): "9 Oct 2026".
+ * An invoice date for display (style guide §12.3): "09/10/26".
  * Date-only strings are read in local time so the day never shifts.
  */
 export function formatInvoiceDate(value: string | null | undefined): string {
   return toDate(value) ? formatDate(value) : '';
+}
+
+/** The same date in words for a screen reader: "9 Oct 2026". */
+export function formatSpokenInvoiceDate(value: string | null | undefined): string {
+  return toDate(value) ? formatSpokenDate(value) : '';
 }
 
 /**

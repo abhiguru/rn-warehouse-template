@@ -45,6 +45,7 @@
  *
  */
 
+import type { OrderEffect } from '@/services/orderEffects';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { router } from 'expo-router';
@@ -171,6 +172,8 @@ export type DispatchSubmitResult = {
   dispatchId?: string;
   error?: string;
   orderLinesLeft?: number | null;
+  /** Migration 128: the order lines the save changed. */
+  orderEffects?: OrderEffect[];
   failedPhotos?: DispatchImageData[];
   numberTaken?: { message: string };
   /**
@@ -292,6 +295,9 @@ export interface UseDispatchFormReturn {
    * the person is on stays. False when it could not be read (the person was told; the form is as it was).
    */
   reloadDispatch: () => Promise<boolean>;
+
+  /** Edit: the server's updated_at of the dispatch as loaded (null when none), for the stale-edit check. */
+  getLoadedUpdatedAt: () => string | null;
 
   // Reset
   resetFormState: () => void;
@@ -1006,6 +1012,15 @@ export function useDispatchForm({
           return { success: false, error: message, numberTaken: { message } };
         }
 
+        case REFUSAL.DISPATCH_NUMBER_SPACES: {
+          // The number field already removes spaces while typing; an older form state or a pasted value can still get here.
+          const message = t('dispatch.validation.dispNoSpaces');
+          dispatch(setTakenNumberError(message));
+          setLocalValidationErrors((prev) => ({ ...prev, disp_no: message }));
+          report(t('dispatch.wizard.errorTitle'), message);
+          return { success: false, error: message, numberTaken: { message } };
+        }
+
         default:
           return undefined;
       }
@@ -1076,6 +1091,7 @@ export function useDispatchForm({
           success: true,
           dispatchId: result.dispatch_id,
           orderLinesLeft: result.order_lines_left,
+          ...(result.order_effects ? { orderEffects: result.order_effects } : {}),
           failedPhotos: result.failed_photos ?? [],
           ...(result.order_sync && result.order_sync.given_back + result.order_sync.taken > 0 ? { orderSynced: true } : {}),
         };
@@ -1218,6 +1234,8 @@ export function useDispatchForm({
     items,
     images,
     dispatchId,
+    // The version the edit read, read when asked (the order preview carries it like the save does).
+    getLoadedUpdatedAt: (): string | null => store.getState().dispatchForm.loadedUpdatedAt ?? null,
     isGeneratingNumber,
     numberHint: numberOffer?.hint ?? null,
     numberReason: numberOffer?.reason ?? null,

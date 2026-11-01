@@ -106,6 +106,7 @@ const SIGN_IN_PATHS: readonly string[] = [
   // Central login (docs/CENTRAL_LOGIN.md): its sign-in, the address entry and the linking step.
   '/central-login',
   '/central-otp',
+  '/facility-code',
   '/facility-address',
   '/facility-link',
 ];

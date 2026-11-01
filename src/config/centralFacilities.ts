@@ -27,6 +27,10 @@ export type MyFacility = {
   /** ISO time of the last sign-in or access request there; null when never opened. */
   lastOpenedAt: string | null;
   addedAt: string;
+  /** How it got on the list: from the association's catalogue, from a typed address, or null for an entry saved before this was recorded. */
+  source: 'catalogue' | 'address' | null;
+  /** The association's catalogue no longer lists it with an app server address. Shown as Unavailable, never opened by itself. */
+  gone: boolean;
 };
 
 const STATUSES: readonly FacilityStatus[] = ['approved', 'requested', 'revoked', 'link_needed', 'unavailable'];
@@ -64,6 +68,8 @@ function clean(value: unknown): MyFacility | null {
     status: STATUSES.includes(entry.status as FacilityStatus) ? (entry.status as FacilityStatus) : 'unavailable',
     lastOpenedAt: typeof entry.lastOpenedAt === 'string' && entry.lastOpenedAt ? entry.lastOpenedAt : null,
     addedAt: typeof entry.addedAt === 'string' ? entry.addedAt : '',
+    source: entry.source === 'catalogue' || entry.source === 'address' ? entry.source : null,
+    gone: entry.gone === true,
   };
 }
 
@@ -105,13 +111,30 @@ export async function loadMyFacilities(userId: string): Promise<MyFacility[]> {
 }
 
 /**
+ * The facilities of every person's list on this phone, each once, in the order of `sortMyFacilities`. For the sign-in
+ * with a code from the facility (src/config/breakGlass.ts), where nobody is signed in with the association and so no
+ * single person's list can be named. A list holds only an address, a name and a city (see above).
+ */
+export async function loadAllMyFacilities(): Promise<MyFacility[]> {
+  let keys: readonly string[];
+  try {
+    keys = (await AsyncStorage.getAllKeys()).filter(key => key.startsWith(CENTRAL_FACILITIES_PREFIX));
+  } catch {
+    return [];
+  }
+  const lists = await serialize(() => Promise.all(keys.map(key => read(key.slice(CENTRAL_FACILITIES_PREFIX.length)))));
+  const seen = new Set<string>();
+  return sortMyFacilities(lists.flat().filter(entry => !seen.has(entry.origin) && seen.add(entry.origin)));
+}
+
+/**
  * Adds a facility, or updates the name and city of one already on the list.
  * A new entry starts as `unavailable`: nothing is known about it until it has
  * been opened once.
  */
 export async function addMyFacility(
   userId: string,
-  facility: { origin: string; name: string; city?: string; instanceId?: string | null }
+  facility: { origin: string; name: string; city?: string; instanceId?: string | null; source?: 'catalogue' | 'address' }
 ): Promise<void> {
   if (!userId) return;
   await serialize(async () => {
@@ -121,6 +144,9 @@ export async function addMyFacility(
       existing.name = facility.name || existing.name;
       if (facility.city !== undefined && facility.city !== '') existing.city = facility.city;
       if (facility.instanceId) existing.instanceId = facility.instanceId;
+      // Added again on purpose: from the catalogue it is listed right now; by address it is not tied to the catalogue.
+      if (facility.source) existing.source = facility.source;
+      if (facility.source) existing.gone = false;
     } else {
       list.push({
         origin: facility.origin,
@@ -130,6 +156,8 @@ export async function addMyFacility(
         status: 'unavailable',
         lastOpenedAt: null,
         addedAt: new Date().toISOString(),
+        source: facility.source ?? null,
+        gone: false,
       });
     }
     await write(userId, list);
@@ -161,6 +189,38 @@ export async function updateMyFacility(
   if (found) changed();
 }
 
+/**
+ * After a read of the association's catalogue: a facility that was added from the catalogue and is
+ * not listed with an app server address any more is marked gone; one that is listed again is not.
+ * Only such an entry can ever be marked gone. A facility added by typed address, and one saved before
+ * the source was recorded (it may have been added by address, and may be working), is never marked: an
+ * entry of unknown source that the catalogue lists is noted as a catalogue one from then on, and one
+ * that an earlier build marked gone is cleared. Nothing is contacted and nothing is changed on a
+ * failed read (the caller passes only a successful one).
+ */
+export async function noteCatalogueRead(userId: string, listedOrigins: readonly (string | null)[]): Promise<void> {
+  if (!userId) return;
+  const listed = new Set(listedOrigins.filter((origin): origin is string => origin !== null));
+  const modified = await serialize(async () => {
+    const list = await read(userId);
+    let touched = false;
+    for (const entry of list) {
+      if (entry.source === 'address') continue;
+      if (entry.source === null) {
+        // Unknown source: never marked gone. Listed, it is a catalogue entry from now on.
+        if (listed.has(entry.origin)) { entry.source = 'catalogue'; touched = true; }
+        if (entry.gone) { entry.gone = false; touched = true; }
+        continue;
+      }
+      const gone = !listed.has(entry.origin);
+      if (entry.gone !== gone) { entry.gone = gone; touched = true; }
+    }
+    if (touched) await write(userId, list);
+    return touched;
+  });
+  if (modified) changed();
+}
+
 export async function removeMyFacility(userId: string, origin: string): Promise<void> {
   if (!userId) return;
   await serialize(async () => {
@@ -183,7 +243,7 @@ export async function deleteMyFacilities(userId: string): Promise<void> {
  * opened) and no request pending. Two openable facilities keep the list.
  */
 export function soleApprovedFacility(list: readonly MyFacility[]): MyFacility | null {
-  const openable = list.filter(entry => entry.status === 'approved' || entry.status === 'link_needed');
+  const openable = list.filter(entry => !entry.gone && (entry.status === 'approved' || entry.status === 'link_needed'));
   const waiting = list.some(entry => entry.status === 'requested');
   return openable.length === 1 && !waiting ? openable[0] : null;
 }

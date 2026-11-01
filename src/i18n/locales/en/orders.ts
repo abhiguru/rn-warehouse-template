@@ -4,13 +4,39 @@ export const orders = {
   screen: {
     title: 'Order for {{name}}',
     viewHistory: 'View order history',
+    // Under "Order for …": the order's number (an identifier, 0-9).
+    orderNumber: 'Order {{number}}',
     addItemsToOrder: 'Add items to order',
     historyError: "Couldn't load the order history. Check your connection and try again.",
+  },
+  // What a save does to customers' open orders (shown before and after a dispatch or GRN is saved or a GRN is deleted).
+  effect: {
+    // Heading of the note on a Review step.
+    noticeTitle: 'These orders change when you save',
+    // Added to the question before a save.
+    questionLead: 'This also changes orders:',
+    checking: 'Checking orders…',
+    // Added to the message after a save.
+    doneLead: 'Orders changed:',
+    orderOf: "{{name}}'s order",
+    // A name that ends in s takes only the apostrophe.
+    orderOfS: "{{name}}' order",
+    // {{from}} → {{count}} bags: the line's old and new quantity.
+    reduced: { one: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bags' },
+    increased: { one: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) {{from}} → {{count}} bags' },
+    added: { one: '{{order}}: {{item}} ({{grn}}) is added, {{count}} bag', other: '{{order}}: {{item}} ({{grn}}) is added, {{count}} bags' },
+    removed: '{{item}} ({{grn}}) is removed from {{order}}.',
+    removedLast: '{{item}} ({{grn}}) is removed from {{order}}. No line is left, so the order is removed.',
+    exceedsStock: {
+      one: '{{order}}: {{item}} ({{grn}}) asks for {{wanted}} bags, but only {{count}} bag will be in stock.',
+      other: '{{order}}: {{item}} ({{grn}}) asks for {{wanted}} bags, but only {{count}} bags will be in stock.',
+    },
   },
   manage: {
     loading: 'Loading order…',
     loadingLabel: 'Loading order',
     couldNotOpenTitle: "Couldn't open the order",
+    couldNotOpenMessage: "Couldn't open the order. Check your connection and try again.",
     businessInactive: 'This business is no longer active. Ask your cold storage.',
     businessDeactivatedStaff: 'This business is deactivated. Turn it on in Customers to take orders.',
     deactivatedTitle: 'Deactivated at the cold storage',

@@ -30,6 +30,8 @@ export interface StatusTagProps {
   style?: StyleProp<ViewStyle>;
   /** The label wraps onto more lines instead of ending in "…" (a tag in a narrow table column). */
   wrap?: boolean;
+  /** What a screen reader says when it differs from the label: a tag whose icon names the field shows only the value (§13.5). */
+  accessibilityLabel?: string;
   testID?: string;
 }
 
@@ -52,7 +54,7 @@ const makeStyles = (_t: ThemeTokens) => ({
   },
 });
 
-export function StatusTag({ status, label, icon, style, wrap = false, testID }: StatusTagProps) {
+export function StatusTag({ status, label, icon, style, wrap = false, accessibilityLabel, testID }: StatusTagProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const tone = t.status[status];
@@ -61,7 +63,7 @@ export function StatusTag({ status, label, icon, style, wrap = false, testID }: 
     <View
       style={[styles.tag, { backgroundColor: tone.background }, style]}
       accessible
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       testID={testID}
     >
       {glyph ? <Icon name={glyph} size={iconSize.xs} color={tone.text} /> : null}

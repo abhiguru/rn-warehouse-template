@@ -118,7 +118,7 @@ describe('grnForm removed photos', () => {
     expect(state.header.gr_images).toEqual([]);
     expect(state.items[0].trl_images).toEqual([]);
     expect(state.removedImages).toEqual([
-      { id: SAVED_HEADER, storagePath: 'headers/g/book.webp' },
+      { id: SAVED_HEADER, storagePath: 'headers/g/book.webp', header: { fileName: 'book.webp' } },
       { id: SAVED_ITEM, storagePath: 'items/g/l/mark.webp' },
     ]);
   });

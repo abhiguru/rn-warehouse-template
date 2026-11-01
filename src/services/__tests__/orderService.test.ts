@@ -127,3 +127,58 @@ describe('getAvailableItems', () => {
     expect(result.metadata?.has_more).toBe(false);
   });
 });
+
+describe('getCustomerOrder (an order is made by its first line)', () => {
+  it('reads the order of a business and never makes one', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: { exists: true, order_id: 'o1', order_no: 'ORD-3', status: 'PENDING', item_count: 2, updated_at: 't' } }, error: null });
+    const result = await OrderService.getCustomerOrder('c1');
+    expect(rpc).toHaveBeenCalledWith('get_customer_order', { p_customer_id: 'c1' });
+    expect(result).toMatchObject({ success: true, data: { order_id: 'o1', order_no: 'ORD-3', item_count: 2 } });
+  });
+
+  it('answers no order id when the business has none', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: { exists: false, order_id: null, order_no: null, status: null, item_count: 0, updated_at: null } }, error: null });
+    expect(await OrderService.getCustomerOrder('c1')).toMatchObject({ success: true, data: { order_id: null, item_count: 0 } });
+  });
+
+  it('says notAvailable on a facility without the function, so the older way of opening is used', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.get_customer_order(p_customer_id) in the schema cache' } });
+    const result = await OrderService.getCustomerOrder('c1');
+    expect(result).toMatchObject({ success: false, notAvailable: true });
+  });
+
+  it('is a plain failure, not notAvailable, for a lost answer or a refusal', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'TimeoutError: Request timeout', status: 504 } });
+    const lost = await OrderService.getCustomerOrder('c1');
+    expect(lost.success).toBe(false);
+    expect(lost.notAvailable).toBeUndefined();
+    expect(lost.lostAnswer).toBe(true);
+    expect(lost.message).toMatch(/\S/);
+  });
+});
+
+describe('addItemToOrder with no order yet', () => {
+  it('sends the business instead of the order, and the answer carries the order made', async () => {
+    rpc.mockResolvedValue({ data: { success: true, message: 'ok', data: { order_id: 'o9', order_created: true } }, error: null });
+    const result = await OrderService.addItemToOrder(null, 'g1', 4, 'c1');
+    expect(rpc).toHaveBeenCalledWith('add_item_to_order', { p_grn_item_id: 'g1', p_customer_id: 'c1', p_quantity: 4 });
+    expect(result.data?.data?.order_id).toBe('o9');
+  });
+
+  it('still sends the order for a line of an existing order, and refuses a call with neither', async () => {
+    rpc.mockResolvedValue({ data: { success: true, message: 'ok', data: {} }, error: null });
+    await OrderService.addItemToOrder('o1', 'g1', 2);
+    expect(rpc).toHaveBeenLastCalledWith('add_item_to_order', { p_grn_item_id: 'g1', p_order_id: 'o1', p_quantity: 2 });
+    rpc.mockClear();
+    expect((await OrderService.addItemToOrder(null, 'g1', 2)).success).toBe(false);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('getOrderWithItems keeps the order number', () => {
+  it('maps order_data.order_no', async () => {
+    rpc.mockResolvedValue({ data: { success: true, data: { order_data: { id: 'o1', order_no: 'ORD-5', customer_id: 'c1', customer_name: 'A' }, items: [] } }, error: null });
+    const result = await OrderService.getOrderWithItems('o1');
+    expect(result.data?.order_no).toBe('ORD-5');
+  });
+});

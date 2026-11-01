@@ -45,7 +45,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { searchGRNNumbers, getGRNPrefixesWithStock, getCustomerGRNsWithStock, type GRNPrefixWithStock } from '../services/grnDetailService';
 import type { GRNAutocompleteItem } from '@/types/dispatch.types';
-import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatSpokenDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -152,6 +152,23 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
     marginTop: space.sm,
     textAlign: 'center' as const,
+  },
+  retryButton: {
+    minHeight: touchTarget,
+    marginTop: space.lg,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  retryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  retryText: {
+    ...typography.callout,
+    color: t.brand.tint,
   },
   scrollView: {
     flex: 1,
@@ -538,7 +555,7 @@ const GRNListItem = memo<GRNListItemProps>(({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  const grnDate = useMemo(() => formatDate(item.date, 'short'), [item.date]);
+  const grnDate = useMemo(() => formatDate(item.date), [item.date]);
 
   const handlePress = useCallback(() => onSelect(item), [item, onSelect]);
   const handleViewDetails = useCallback(() => onViewDetails(item), [item, onViewDetails]);
@@ -571,7 +588,7 @@ const GRNListItem = memo<GRNListItemProps>(({
           isSelected && styles.grnCardSelected,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={tr('dispatch.grnSheet.rowLabel', { number: formatIdentifier(item.gr_no), date: grnDate, customer: item.customer_name })}
+        accessibilityLabel={tr('dispatch.grnSheet.rowLabel', { number: formatIdentifier(item.gr_no), date: formatSpokenDate(item.date), customer: item.customer_name })}
         accessibilityState={{ selected: isSelected }}
         accessibilityActions={[{ name: 'viewGRN', label: tr('dispatch.grnSheet.viewGrn') }]}
         onAccessibilityAction={(e) => {
@@ -638,6 +655,11 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   const [prefixes, setPrefixes] = useState<GRNPrefixWithStock[]>([]);
   const [isPrefixesLoading, setIsPrefixesLoading] = useState(false);
   const [hasSearchQuery, setHasSearchQuery] = useState(false); // Track if there's a search query
+  // A read that failed is not an empty answer: the sheet says so and offers another try, never "no GRNs with stock".
+  const [defaultsFailed, setDefaultsFailed] = useState(false);
+  const [prefixesFailed, setPrefixesFailed] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const lastQueryRef = useRef('');
 
   // Fetch prefixes and default GRNs when modal opens
   useEffect(() => {
@@ -658,6 +680,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
     }
 
     setIsLoadingDefaults(true);
+    setDefaultsFailed(false);
     try {
       const results = await getCustomerGRNsWithStock(customerId, 20, 0);
       const converted: GRNAutocompleteItem[] = results.map(item => ({
@@ -670,6 +693,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
     } catch (error) {
       if (__DEV__) console.error('[GRNAutocompleteBottomSheet] Error loading default GRNs:', error);
       setDefaultGrnList([]);
+      setDefaultsFailed(true);
     } finally {
       setIsLoadingDefaults(false);
     }
@@ -678,12 +702,14 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   // Load GRN prefixes with stock
   const loadPrefixes = useCallback(async () => {
     setIsPrefixesLoading(true);
+    setPrefixesFailed(false);
     try {
       const result = await getGRNPrefixesWithStock();
       setPrefixes(result);
     } catch (error) {
       if (__DEV__) console.error('[GRNAutocompleteBottomSheet] Error loading prefixes:', error);
       setPrefixes([]);
+      setPrefixesFailed(true);
     } finally {
       setIsPrefixesLoading(false);
     }
@@ -692,6 +718,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   // Handle search from CustomKeyboard - called with debounced query
   const handleSearch = useCallback(async (query: string) => {
     setHasSearchQuery(query.length > 0);
+    lastQueryRef.current = query;
+    setSearchFailed(false);
 
     if (query.trim().length < 1) {
       setGrnList([]);
@@ -711,6 +739,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
     } catch (error) {
       if (__DEV__) console.error('[GRNAutocompleteBottomSheet] Search error:', error);
       setGrnList([]);
+      setSearchFailed(true);
     } finally {
       setIsLoading(false);
     }
@@ -718,6 +747,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
 
   // Handle clear from CustomKeyboard
   const handleClear = useCallback(() => {
+    lastQueryRef.current = '';
+    setSearchFailed(false);
     setHasSearchQuery(false);
     setGrnList([]);
   }, []);
@@ -760,6 +791,13 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   // FlatList keyExtractor
   const keyExtractor = useCallback((item: GRNAutocompleteItem) => item.id, []);
 
+  // Both reads again (the sheet's lists and the prefix buttons), and the search that failed.
+  const handleRetry = useCallback(() => {
+    loadPrefixes();
+    loadDefaultGRNs();
+    if (lastQueryRef.current.trim().length > 0) void handleSearch(lastQueryRef.current);
+  }, [loadPrefixes, loadDefaultGRNs, handleSearch]);
+
   // Empty component for FlatList
   const ListEmptyComponent = useMemo(() => {
     if (isLoading || isLoadingDefaults) {
@@ -769,6 +807,24 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
           <Text style={styles.emptySubtext}>
             {isLoading ? tr('dispatch.grnSheet.searching') : tr('dispatch.grnSheet.loading')}
           </Text>
+        </View>
+      );
+    }
+
+    const readFailed = hasSearchQuery ? searchFailed : defaultsFailed || prefixesFailed;
+    if (readFailed) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.emptyText}>{tr('dispatch.grnSheet.loadFailed')}</Text>
+          <Pressable
+            onPress={handleRetry}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={tr('common.retry')}
+          >
+            <Text style={styles.retryText}>{tr('common.retry')}</Text>
+          </Pressable>
         </View>
       );
     }
@@ -802,7 +858,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
         <Text style={styles.emptySubtext}>{tr('dispatch.grnSheet.noStockMessage')}</Text>
       </View>
     );
-  }, [isLoading, isLoadingDefaults, hasSearchQuery, grnList.length, defaultGrnList.length, customerId, styles, t]);
+  }, [isLoading, isLoadingDefaults, hasSearchQuery, grnList.length, defaultGrnList.length, customerId, searchFailed, defaultsFailed, prefixesFailed, handleRetry, styles, t]);
 
   return (
     <Modal

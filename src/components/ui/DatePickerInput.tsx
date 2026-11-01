@@ -34,7 +34,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-import { formatDate, formatDateTime, formatTime } from '@/utils/formatters';
+import { formatDate, formatDateTime, formatSpokenDate, formatSpokenDateTime, formatTime } from '@/utils/formatters';
 import { getLanguage, t as tr } from '@/i18n';
 
 const IOS_PICKER_HEIGHT = 216;
@@ -76,11 +76,18 @@ export interface DatePickerInputProps {
 // FORMATTING (style guide §12.3)
 // ============================================================================
 
-/** "9 Oct 2026", "4:05 pm" or "9 Oct 2026, 4:05 pm". */
+/** "09/10/26", "4:05 pm" or "09/10/26, 4:05 pm". */
 export function formatPickerValue(date: Date, mode: 'date' | 'time' | 'datetime'): string {
   if (mode === 'time') return formatTime(date);
   if (mode === 'datetime') return formatDateTime(date);
   return formatDate(date);
+}
+
+/** The same value in words for a screen reader: "9 Oct 2026", "4:05 pm" or "9 Oct 2026, 4:05 pm". */
+export function formatSpokenPickerValue(date: Date, mode: 'date' | 'time' | 'datetime'): string {
+  if (mode === 'time') return formatTime(date);
+  if (mode === 'datetime') return formatSpokenDateTime(date);
+  return formatSpokenDate(date);
 }
 
 // ============================================================================
@@ -184,7 +191,7 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
         disabled={isDisabled || isReadOnly}
         accessibilityLabel={tr(required ? 'components.datePicker.fieldLabelRequired' : 'components.datePicker.fieldLabel', {
           label: fieldLabel,
-          value: displayValue ?? tr('components.datePicker.notSet'),
+          value: value ? formatSpokenPickerValue(value, mode) : tr('components.datePicker.notSet'),
         })}
         accessibilityHint={
           isReadOnly

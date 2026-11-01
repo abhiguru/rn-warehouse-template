@@ -27,18 +27,11 @@ jest.mock('react-native', () => {
         ...props,
         testID: 'auth-restore-spinner',
       }),
-    ImageBackground: ({
-      children,
-      style,
-    }: {
-      children?: React.ReactNode;
-      style?: Record<string, unknown>;
-    }) =>
-      React.createElement(
-        View,
-        { style, testID: 'tabs-background' },
-        children
-      ),
+    Image: (props: Record<string, unknown>) =>
+      React.createElement(View, { ...props, testID: 'tabs-background' }),
+    StyleSheet: {
+      absoluteFill: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+    },
     Platform: {
       OS: 'ios',
     },

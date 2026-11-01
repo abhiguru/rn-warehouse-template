@@ -29,6 +29,10 @@ export interface ConfigErrorScreenProps {
    * untouched until the operator confirms a change there.
    */
   onChangeServer?: () => void;
+  /** Central login: the second button leads to My facilities, not to server selection. */
+  toFacilities?: boolean;
+  /** The facility answered that its server is being updated: its own title and text, no technical detail, no footer. */
+  upgrading?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -76,6 +80,8 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
   error,
   onRetry,
   onChangeServer,
+  toFacilities = false,
+  upgrading = false,
 }) => {
   const [isRetrying, setIsRetrying] = useState(false);
   const styles = useThemedStyles(makeStyles);
@@ -100,7 +106,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.column}>
           <MaterialCommunityIcons
-            name="cloud-off-outline"
+            name={upgrading ? 'wrench-outline' : 'cloud-off-outline'}
             size={iconSize.hero}
             color={t.status.negative.text}
             style={styles.icon}
@@ -109,14 +115,14 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
           />
 
           <Text style={styles.title} accessibilityRole="header">
-            {tr('components.configError.title')}
+            {upgrading ? tr('components.upgrading.title') : tr('components.configError.title')}
           </Text>
 
           <Text style={styles.message}>
-            {tr('components.configError.message')}
+            {upgrading ? tr('components.upgrading.message') : tr('components.configError.message')}
           </Text>
 
-          {__DEV__ && error ? (
+          {__DEV__ && error && !upgrading ? (
             <View style={styles.devStrip}>
               <MaterialCommunityIcons name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
               <View style={styles.devContent}>
@@ -145,20 +151,22 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
               <StateActionButton
                 fullWidth
                 variant="secondary"
-                icon="server"
-                label={tr('components.configError.changeServer')}
+                icon={toFacilities ? 'arrow-left' : 'server'}
+                label={toFacilities ? tr('nav.screens.myFacilities') : tr('components.configError.changeServer')}
                 onPress={onChangeServer}
                 disabled={isRetrying}
-                accessibilityLabel={tr('components.configError.changeServerLabel')}
+                accessibilityLabel={toFacilities ? tr('components.configError.backToFacilitiesLabel') : tr('components.configError.changeServerLabel')}
               />
             )}
           </View>
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>{tr('components.configError.footer')}</Text>
-      </View>
+      {upgrading ? null : (
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>{tr('components.configError.footer')}</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 };

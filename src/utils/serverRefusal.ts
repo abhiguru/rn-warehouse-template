@@ -64,6 +64,24 @@ export const REFUSAL = {
    * `pattern`); with the pattern null, a number of more than 20 characters. Nothing was saved.
    */
   NUMBER_FORMAT: 'NUMBER_FORMAT',
+  // Backend migration 130 (GRN rules).
+  /** A GRN dated after today (`date`, `today`). */
+  GRN_DATE_FUTURE: 'GRN_DATE_FUTURE',
+  /** A GRN's last photo can't be deleted, nor can an edit leave none (`gr_no`). */
+  GRN_PHOTO_REQUIRED: 'GRN_PHOTO_REQUIRED',
+  /** A GRN number with a space in it (`gr_no`). */
+  GRN_NUMBER_SPACES: 'GRN_NUMBER_SPACES',
+  /** A dispatch number with a space in it (`number`). Nothing was saved. */
+  DISPATCH_NUMBER_SPACES: 'DISPATCH_NUMBER_SPACES',
+  // Backend migration 129 (invoices).
+  /** An invoice dated after today in India (`date`, `today`). */
+  INVOICE_DATE_FUTURE: 'INVOICE_DATE_FUTURE',
+  /** An invoice dated before the dispatch of one of its lines (`invoice_date`, `dispatch_no`, `dispatch_date`); the same day is allowed. */
+  INVOICE_BEFORE_DISPATCH: 'INVOICE_BEFORE_DISPATCH',
+  /** A discount that takes a charged invoice to exactly 0 (`discount`, `total_before_discount`). */
+  DISCOUNT_TOTAL_ZERO: 'DISCOUNT_TOTAL_ZERO',
+  /** A looked-up rate changed since the form opened (`lines`: disp_trl_id, fields, looked_up, current). */
+  RATES_CHANGED: 'RATES_CHANGED',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

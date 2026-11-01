@@ -93,7 +93,7 @@ describe('the sections of a new dispatch', () => {
     await render();
 
     expect(['details', 'photos', 'items'].map((section) => pressable(`dispatch-review-section-${section}`).props.accessibilityLabel)).toEqual([
-      'Dispatch details, I0042 · 1 Oct 2026 · Fictional Traders',
+      'Dispatch details, I0042 · 01/10/26 · Fictional Traders',
       'Photos, No photos yet',
       'Items, 2',
     ]);
@@ -108,7 +108,7 @@ describe('the sections of a new dispatch', () => {
     await render();
 
     const line = (section: string) => textOf(tree.root.find((n) => n.props.testID === `dispatch-review-section-${section}-line`));
-    expect(line('details')).toEqual(['I0042 · 1 Oct 2026 · Fictional Traders']);
+    expect(line('details')).toEqual(['I0042 · 01/10/26 · Fictional Traders']);
     expect(line('photos')).toEqual(['No photos yet']);
     // ITEMS is open: no summary line under its heading.
     expect(tree.root.findAll((n) => n.props.testID === 'dispatch-review-section-items-line')).toHaveLength(0);

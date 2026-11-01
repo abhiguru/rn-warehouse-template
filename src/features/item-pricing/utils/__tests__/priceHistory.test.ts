@@ -179,7 +179,7 @@ describe('words and formats', () => {
     expect(priceHistoryValueText('labourRate', 2)).toBe('₹2.00');
     expect(priceHistoryValueText('tax', 18)).toBe('18%');
     expect(priceHistoryValueText('weightBand', { min: 0, max: 100 })).toBe('0–100 kg');
-    expect(priceHistoryValueText('effectiveFrom', '2026-01-01')).toBe('1 Jan 2026');
+    expect(priceHistoryValueText('effectiveFrom', '2026-01-01')).toBe('01/01/26');
     expect(priceHistoryValueText('effectiveTo', null)).toBe('No end date');
   });
 
@@ -210,7 +210,7 @@ describe('words and formats', () => {
     expect(priceHistoryValueText('monthlyPrice', 6)).toBe('₹૬.૦૦');
     expect(priceHistoryValueText('tax', 18)).toBe('૧૮%');
     expect(priceHistoryValueText('weightBand', { min: 0, max: 100 })).toBe('૦–૧૦૦ કિલો');
-    expect(priceHistoryValueText('effectiveFrom', '2026-01-01')).toBe('૧ જાન્યુ ૨૦૨૬');
+    expect(priceHistoryValueText('effectiveFrom', '2026-01-01')).toBe('૦૧/૦૧/૨૬');
     expect(priceHistoryAuthor({ changed_by: 'u1', changed_by_name: 'Meera Joshi', changed_by_role: 'staff' })).toBe('Meera Joshi (સ્ટાફ)');
     expect(priceHistoryAuthor({ changed_by: null, changed_by_name: null, changed_by_role: null })).toBe('ઍપનો યુઝર નથી');
   });
@@ -234,7 +234,7 @@ describe('rows written by one save', () => {
     changed_by_role: 'admin',
     ...more,
   });
-  // Job (b): the rate in force is ended on 31 Dec 2026 and the new one is added from 1 Jan 2027.
+  // Job (b): the rate in force is ended on 31/12/26 and the new one is added from 01/01/27.
   const ended = (id: number, extra: Partial<ItemPriceHistoryEntry> = {}) =>
     entry(id, { action: 'update', old_values: monthly(11, { effective_from: '2026-04-01' }), new_values: monthly(11, { effective_from: '2026-04-01', effective_to: '2026-12-31' }), ...extra });
   const added = (id: number, rent: number, extra: Partial<ItemPriceHistoryEntry> = {}) =>
@@ -266,7 +266,7 @@ describe('rows written by one save', () => {
     expect(groupBySave([t1, t2])).toHaveLength(2);
   });
 
-  it('describes job (b): rate changed from 1 Jan 2027, 11 to 12 on the price only', () => {
+  it('describes job (b): rate changed from 01/01/27, 11 to 12 on the price only', () => {
     const [group] = groupBySave([added(3, 12), ended(2)]);
     const view = groupChanges(group.entries);
     expect(view).toMatchObject({ kind: 'changed', day: '2027-01-01' });

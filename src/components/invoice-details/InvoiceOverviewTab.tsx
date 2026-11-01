@@ -18,8 +18,9 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
-import { formatDate, toDate, formatFinancialYear, formatMobile } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, toDate, formatFinancialYear, formatMobile } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
+import type { InvoiceReasons } from '@/services/invoice-service';
 
 // ============================================================================
 // TYPES
@@ -58,6 +59,8 @@ interface InvoiceOverviewTabProps {
   grn_details?: GRNDetails;
   financial_summary: FinancialSummary;
   financial_year?: string;
+  /** Why the discount or zero charge was given and who set it (staff and up). */
+  reasons?: InvoiceReasons;
   notes?: string;
   invoice_number?: string;
   invoice_id?: string;
@@ -157,6 +160,9 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
   discountValue: { color: t.status.positive.text },
+  reasonRow: { paddingVertical: space.sm, gap: space.xs },
+  reasonText: { ...typography.body, color: t.text.primary },
+  reasonMeta: { ...typography.footnote, color: t.text.secondary },
   financialRowTotal: {
     paddingTop: space.md,
     marginTop: space.sm,
@@ -180,6 +186,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   grn_details,
   financial_summary,
   financial_year,
+  reasons,
   notes,
   invoice_number,
   invoice_id,
@@ -306,7 +313,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         onPress={handleGRNPress}
         disabled={!on_view_grn}
         accessibilityRole={on_view_grn ? 'button' : undefined}
-        accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(grn_details.number) })}${grnDate ? `, ${grnDate}` : ''}`}
+        accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(grn_details.number) })}${grnDate ? `, ${formatSpokenDate(grn_details.date)}` : ''}`}
         accessibilityHint={on_view_grn ? tr('invoice.details.opensGrnHint') : undefined}
       >
         <View style={styles.objectCellHeader}>
@@ -361,6 +368,19 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
     </View>
   );
 
+  // The reason of a discount or a zero charge, and who set it when (staff and up; nothing when there is none).
+  const renderReason = (label: string, reason?: string | null, by?: string | null, at?: string | null, testID?: string) => {
+    if (!reason) return null;
+    const setBy = by ? tr('invoice.details.setBy', { name: by, date: formatDisplayDate(at ?? undefined) }) : '';
+    return (
+      <View style={styles.reasonRow} accessible accessibilityLabel={`${label}, ${reason}${setBy ? `, ${setBy}` : ''}`} testID={testID}>
+        <Text style={styles.financialLabel}>{label}</Text>
+        <Text style={styles.reasonText}>{reason}</Text>
+        {setBy ? <Text style={styles.reasonMeta}>{setBy}</Text> : null}
+      </View>
+    );
+  };
+
   // Financial Summary Card
   const renderFinancialSummaryCard = () => (
     <View style={styles.card}>
@@ -399,6 +419,9 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
           <Text style={styles.financialLabelTotal}>{tr('invoice.label.totalAmount')}</Text>
           <Text style={styles.financialValueTotal}>{formatInvoiceAmount(financial_summary.total)}</Text>
         </View>
+
+        {renderReason(tr('invoice.label.discountReason'), reasons?.discountReason, reasons?.discountSetByName, reasons?.discountSetAt, 'invoice-discount-reason')}
+        {renderReason(tr('invoice.label.zeroChargeReason'), reasons?.zeroChargeReason, reasons?.zeroChargeSetByName, reasons?.zeroChargeSetAt, 'invoice-zero-charge-reason')}
       </View>
     </View>
   );

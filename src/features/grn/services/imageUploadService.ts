@@ -24,6 +24,7 @@ import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 import { createLimiter } from '@/utils/concurrency';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
+import { photoUploadFailureText } from '@/utils/photoUploadError';
 import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
 import {
   holdLocalPhoto,
@@ -391,10 +392,7 @@ export const uploadGRNImage = async (
       } else {
         return {
           success: false,
-          error:
-            uploadOrConfirmError instanceof Error
-              ? uploadOrConfirmError.message
-              : t('grn.photos.uploadFailed'),
+          error: photoUploadFailureText(uploadOrConfirmError, t('grn.details.imageUploadFailed')),
         };
       }
     }
@@ -403,20 +401,14 @@ export const uploadGRNImage = async (
   } catch (error) {
     log.error('Upload exception', loggableError(error));
 
-    let errorMessage = t('grn.photos.uploadFailed');
-    if (error instanceof Error) {
-      if (error.message.includes('Network request failed')) {
-        errorMessage =
-          t('grn.upload.networkFailed');
-      } else if (
-        error.message.includes('Failed to read image') ||
-        error.message === PHOTO_PROCESSING_FAILED
-      ) {
-        errorMessage =
-          t('grn.upload.processFailed');
-      } else {
-        errorMessage = error.message;
-      }
+    // Only the photo being unreadable has a sentence of its own; a failure to reach the server is worded by
+    // photoUploadFailureText, and anything else is the app's generic text (never a library's English message).
+    let errorMessage = photoUploadFailureText(error, t('grn.details.imageUploadFailed'));
+    if (
+      error instanceof Error &&
+      (error.message.includes('Failed to read image') || error.message === PHOTO_PROCESSING_FAILED)
+    ) {
+      errorMessage = t('grn.upload.processFailed');
     }
 
     return {
@@ -632,7 +624,7 @@ const uploadSingleDeferredImage = async (
 
     if (regError) {
       log.error(`Registration failed for deferred ${imageType} image`, loggableError(regError));
-      return { success: false, error: regError.message };
+      return { success: false, error: photoUploadFailureText(regError, t('grn.details.imageUploadFailed')) };
     }
 
     if (!regResult?.success) {
@@ -710,17 +702,14 @@ const uploadSingleDeferredImage = async (
 
       return {
         success: false,
-        error:
-          uploadOrConfirmError instanceof Error
-            ? uploadOrConfirmError.message
-            : t('grn.photos.uploadFailed'),
+        error: photoUploadFailureText(uploadOrConfirmError, t('grn.details.imageUploadFailed')),
       };
     }
   } catch (err) {
     log.error(`Error uploading deferred ${imageType} image`, loggableError(err));
     return {
       success: false,
-      error: err instanceof Error ? err.message : t('grn.photos.uploadFailed'),
+      error: photoUploadFailureText(err, t('grn.details.imageUploadFailed')),
     };
   }
 };

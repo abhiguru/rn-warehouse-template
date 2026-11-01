@@ -393,6 +393,8 @@ export interface DeleteGRNResponse {
    * lost went through, or someone else deleted it). Returned as a success; the counts are not known.
    */
   alreadyGone?: boolean;
+  /** Migration 128: the order lines the delete removed (raw; read with parseOrderEffects). Absent on an older server. */
+  order_effects?: unknown;
   grn_info?: {
     gr_no: string;
     customer_name: string;

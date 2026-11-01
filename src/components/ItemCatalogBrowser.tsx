@@ -751,6 +751,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     savingRef.current = false;
     checkingRef.current = null;
     addAbortRef.current = null;
+    // The busy header never outlives the save, also when the picker was closed or unmounted meanwhile.
+    setSaving(null);
     // Also when the person left through X while a lot was being checked: nothing is shown or presented again.
     if (!isMountedRef.current || closedRef.current) return;
     setChecking(null);
@@ -760,7 +762,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const results = changes.map(change => {
       const answer = answered.find(candidate => candidate.grnItemId === change.grnItemId);
       if (answer?.ok) return answer;
-      return { grnItemId: change.grnItemId, ok: false, reason: answer?.reason || tr('orders.catalog.reasonNotSaved') };
+      // Keep the rest of the answer (the saved quantity of a lot that changed meanwhile), so the next Add applies it knowingly.
+      return { ...answer, grnItemId: change.grnItemId, ok: false, reason: answer?.reason || tr('orders.catalog.reasonNotSaved') };
     });
     const next = applyResults(sent, results);
     setDraft(next);
@@ -839,9 +842,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       if (sheetIsDown) presentSheet();
       return;
     }
-    // Add to order: the same Add as the header's. The sheet comes back first, so the progress and
-    // any lot that was not saved are seen; with everything saved the picker closes as it does after the header's Add.
-    if (sheetIsDown) presentSheet();
+    // Add to order: the same Add as the header's. The save runs first and the sheet comes back only when a lot
+    // was not saved (handleAddItems presents it then); with everything saved the picker closes as after the header's Add.
     await handleAddItems();
   }, [finishClose, presentSheet, handleAddItems]);
 
@@ -1028,7 +1030,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const stockStatus = getStockStatus(item.current_stock, item.original_quantity);
     const status = t.status[stockStatus];
     const stockWord = stockLabel(stockStatus);
-    const grnDate = item.grn_date ? formatDate(item.grn_date, 'short') : null;
+    const grnDate = item.grn_date ? formatDate(item.grn_date) : null;
     // The weight of one package, "50 kg each"; none for a lot without a weight.
     const weightText = formatWeightEach(item.weight);
     const rowLabel = [

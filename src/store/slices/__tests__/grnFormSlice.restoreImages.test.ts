@@ -79,7 +79,7 @@ describe('grnForm restoreItemImages', () => {
     const restored = reducer(state, restoreItemImages({ itemId: LINE, images: before }));
 
     expect(restored.removedImages).toEqual([
-      { id: SAVED_HEADER, storagePath: 'headers/g/book.webp' },
+      { id: SAVED_HEADER, storagePath: 'headers/g/book.webp', header: { fileName: 'book.webp' } },
       { id: OTHER.id, storagePath: OTHER.storagePath },
     ]);
     expect(restored.items[1]).toBe(otherLine);

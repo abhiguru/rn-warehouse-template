@@ -15,9 +15,11 @@ import { t } from '@/i18n';
 
 import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
-import { expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
+import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
+import { emptyAnswerAsError, expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
-import { markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
+import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
+import { isServerRefusal, markRefusal, reportOutcome, reportSaveError } from '@/utils/reportOutcome';
 import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { createLogger } from '@/utils/logger';
 import { escapeLike } from '@/utils/postgrestFilter';
@@ -99,6 +101,17 @@ function zeroChargeHeader(payload: CreateInvoicePayload): { zero_charge_reason?:
 }
 
 /**
+ * The figures the rates lookup gave a line and the fields the person typed (D12, backend migration 129): sent only when the
+ * line has them, so an older server (which ignores unknown keys of a line) and an invoice read for editing are unchanged.
+ */
+function lookedUpFields(item: CreateInvoicePayload['items'][number]): Pick<CreateInvoicePayload['items'][number], 'looked_up' | 'typed'> {
+  return {
+    ...(item.looked_up ? { looked_up: item.looked_up } : {}),
+    ...(item.typed && item.typed.length > 0 ? { typed: item.typed } : {}),
+  };
+}
+
+/**
  * An invoice number outside 1 to 99999999 (backend migration 73, SQLSTATE
  * WH422). The three-argument save_invoice sends it as the error's code,
  * update_invoice as `error_code` in its answer, save_invoice(jsonb) inside its
@@ -162,7 +175,16 @@ class NumberTakenError extends Error {
  * request code is replayed, so a resend of this same save (same payload, same code) is answered with the stored answer
  * and never refused as STALE_RECORD or TOTAL_CHANGED because of its own first send.
  */
-const ACTED_ON_REASONS: ReadonlySet<string> = new Set([REFUSAL.STALE_RECORD, REFUSAL.GRN_HAS_STOCK, REFUSAL.TOTAL_CHANGED]);
+const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
+  REFUSAL.STALE_RECORD,
+  REFUSAL.GRN_HAS_STOCK,
+  REFUSAL.TOTAL_CHANGED,
+  // Migration 129: the date, the discount and the looked-up rates are worded by the form from the fields.
+  REFUSAL.INVOICE_DATE_FUTURE,
+  REFUSAL.INVOICE_BEFORE_DISPATCH,
+  REFUSAL.DISCOUNT_TOTAL_ZERO,
+  REFUSAL.RATES_CHANGED,
+]);
 function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
   const refusal = refusalOf(answer);
   return refusal && ACTED_ON_REASONS.has(refusal.reason) ? refusal : undefined;
@@ -207,13 +229,19 @@ async function sendSave(
 ): Promise<{ data: any; error: any; sentAt: number }> {
   const sentAt = Date.now();
   try {
-    const { data, error, status } = await client.rpc(name, args);
+    const answered = await client.rpc(name, args);
+    const { data, status } = answered;
+    // An empty HTTP 200 is no answer of the server's: a lost answer (checked by the request key).
+    const error = answered.error ?? emptyAnswerAsError(answered);
+    // An ended session ends the sign-in here too, with its reason (create and update both come through here).
+    handleGlobalAuthError(error ?? (data?.success === false ? data : null));
     if (error && typeof status === 'number') {
       const { message, code, details, hint } = error as { message?: string; code?: string; details?: string; hint?: string };
       return { data, error: { message, code, details, hint, status }, sentAt };
     }
     return { data, error, sentAt };
   } catch (thrown) {
+    handleGlobalAuthError(thrown);
     return { data: null, error: thrown, sentAt };
   }
 }
@@ -704,6 +732,29 @@ export const createInvoice = async (
   requestKey?: string,
   options: InvoiceSaveOptions = {}
 ): Promise<CreateInvoiceResponse> => {
+  // Written down before the request goes out: if the app dies with the answer still lost, the next start asks the
+  // server about this code (src/services/unfinishedSaves.ts), as for a GRN and a dispatch.
+  if (requestKey && !options.resend) {
+    await rememberUnfinishedSave({
+      kind: 'invoice',
+      requestKey,
+      number: String(payload.header.inv_no),
+      customerName: payload.header.customer_name,
+    });
+  }
+  const result = await sendCreateInvoice(payload, requestKey, options);
+  // The server's own answer (saved or refused), or a failure before the request left: nothing is left in doubt. A lost
+  // answer keeps its note, and so does a number refused on a resend (the first send may have saved it): the caller's
+  // check settles those.
+  if (requestKey && !result.lostAnswer && !(options.resend && result.numberTaken)) await forgetUnfinishedSave(requestKey);
+  return result;
+};
+
+const sendCreateInvoice = async (
+  payload: CreateInvoicePayload,
+  requestKey?: string,
+  options: InvoiceSaveOptions = {}
+): Promise<CreateInvoiceResponse> => {
   try {
     const authenticatedClient = await getAuthenticatedClient();
 
@@ -769,6 +820,7 @@ export const createInvoice = async (
         tax: item.tax || 0, // Tax percentage (e.g., 18 for 18%)
         duration: item.duration, // Duration in months
         no_of_days: item.no_of_days, // Number of days
+        ...lookedUpFields(item),
       };
     });
 
@@ -787,7 +839,8 @@ export const createInvoice = async (
     const { data, error, sentAt } = await sendSave(authenticatedClient, 'save_invoice', rpcPayload);
 
     if (error) {
-      invoiceFormLogger.error('RPC error:', errorForLog(error));
+      // A number taken is the server's answer, not a fault: info, no red banner.
+      (numberTakenFrom(error, payload.header.inv_no) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'RPC error:', errorForLog(error));
       // No answer came, and the request may have reached the server: nothing is worded for the person (D22). Nor is
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
       if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);
@@ -807,7 +860,7 @@ export const createInvoice = async (
     }
     return await createdInvoice(authenticatedClient, data, payload);
   } catch (error: any) {
-    invoiceFormLogger.error('Error in createInvoice:', errorForLog(error));
+    (error instanceof NumberTakenError || isServerRefusal(error) ? invoiceFormLogger.info : invoiceFormLogger.error).call(invoiceFormLogger, 'Error in createInvoice:', errorForLog(error));
     // A resend whose session client or request could not be got is not settled either: the lock stays (D22).
     if (options.resend && isUnsettledFailure(error)) return lostAnswerResponse(Date.now(), requestKey);
     reportSaveError(error, { requestKey });
@@ -1109,6 +1162,7 @@ export const updateInvoice = async (
       charge: item.charge,
       tax: item.tax,
       labour_rate: item.labour_rate,
+      ...lookedUpFields(item),
     }));
 
     // Call update_invoice RPC

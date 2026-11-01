@@ -195,7 +195,7 @@ describe('the sensor and its history', () => {
     });
     await flush();
     expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'Chamber 7', 'Sensor OK', 'All readings, last 7 days', 'Based on 7 readings']));
-    expect(screen.facts()).toEqual(['Connection: Online', 'Battery: Good', 'Last reading: 12 Oct 2026, 9:55 am']);
+    expect(screen.facts()).toEqual(['Connection: Online', 'Battery: Good', 'Last reading: 12/10/26, 9:55 am']);
   });
 
   it('a period chip asks for that period\'s history only, and keeps the sensor on screen', async () => {

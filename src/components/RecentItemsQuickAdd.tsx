@@ -188,7 +188,6 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         scrollEnabled={true}
-        waitFor={undefined}
         onScroll={handleScroll}
         scrollEventThrottle={16}
         onScrollBeginDrag={handleScrollBeginDrag}

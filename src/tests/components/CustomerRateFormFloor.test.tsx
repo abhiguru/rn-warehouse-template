@@ -108,7 +108,7 @@ it('a day before the oldest GRN is refused at the field, naming the date, and no
   expect(save(t).props.disabled).toBe(false);
   await act(async () => { save(t).props.onPress(); });
   expect(replaceItemRates).not.toHaveBeenCalled();
-  expect(textsOf(t)).toContain('Choose a start date on or after 1 Jan 2022.');
+  expect(textsOf(t)).toContain('Choose a start date on or after 01/01/22.');
 });
 
 it('the oldest GRN day itself is accepted', async () => {
@@ -119,8 +119,8 @@ it('the oldest GRN day itself is accepted', async () => {
   jest.mocked(replaceItemRates).mockResolvedValue({ success: true });
   await act(async () => { save(t).props.onPress(); });
   expect(replaceItemRates).toHaveBeenCalledTimes(1);
-  expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ starts_on: '2022-01-01' }));
-  expect(textsOf(t)).not.toContain('Choose a start date on or after 1 Jan 2022.');
+  expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ starts_on: '2022-01-01' }), expect.anything());
+  expect(textsOf(t)).not.toContain('Choose a start date on or after 01/01/22.');
 });
 
 it("the server's INVALID_DATE shows the same text at the field and moves the floor", async () => {
@@ -131,10 +131,10 @@ it("the server's INVALID_DATE shows the same text at the field and moves the flo
     success: false,
     errorCode: 'INVALID_DATE',
     earliest: '2026-11-02',
-    message: 'Choose a start date on or after 2 Nov 2026.',
+    message: 'Choose a start date on or after 02/11/26.',
   });
   await act(async () => { save(t).props.onPress(); });
-  expect(textsOf(t)).toContain('Choose a start date on or after 2 Nov 2026.');
+  expect(textsOf(t)).toContain('Choose a start date on or after 02/11/26.');
   // The typed rent is still there, and the calendar now starts on the day the server named.
   expect(inputsWithLabel(t, 'Rent ₹/month')[0].props.value).toBe('3.9');
   expect(day((await openCalendar(t)).minimumDate as Date)).toBe('2026-11-02');

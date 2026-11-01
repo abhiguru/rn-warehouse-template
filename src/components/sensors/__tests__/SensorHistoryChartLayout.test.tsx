@@ -92,9 +92,9 @@ describe('the compact history chart', () => {
     measure(tree, 340);
     const chart = lineChart(tree);
     const labels = chart.props.data.map((p: { label: string }) => p.label).filter((l: string) => l !== '');
-    expect(labels).toEqual(['1 Oct', '8 Oct', '14 Oct']);
+    expect(labels).toEqual(['01/10/26', '08/10/26', '14/10/26']);
     const style = [chart.props.xAxisLabelTextStyle].flat(3).reduce((a: object, s: object) => ({ ...a, ...s }), {});
-    expect((style as { width: number }).width).toBe(Math.ceil(56 * 1.3));
+    expect((style as { width: number }).width).toBe(Math.ceil(64 * 1.3));
   });
 
   it('CR-66: below font scale 1 the extra label height is zero, not negative', () => {

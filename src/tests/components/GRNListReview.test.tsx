@@ -14,7 +14,7 @@ import React from 'react';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
-import GRNListFiori from '@/components/GRNListFiori';
+import { grnListElement } from '../helpers/grnListElement';
 import { nb } from '@/components/common/DetailTable';
 import { getAllGRNItems, getAssignedCustomerGRNItems } from '@/services/grn-service';
 import { resetFlashListWindow, setFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
@@ -98,7 +98,7 @@ const mounted: ReactTestRenderer[] = [];
 async function renderList() {
   let tree!: ReactTestRenderer;
   await act(async () => {
-    tree = create(<GRNListFiori />);
+    tree = create(grnListElement());
   });
   mounted.push(tree);
   return tree;
@@ -187,6 +187,22 @@ describe('load errors (style guide 14.9)', () => {
     expect(host(tree, 'grn-stale-strip')).toBeUndefined();
   });
 
+  it('shows the skeleton, never the empty state, while a new first page is pending', async () => {
+    jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([]) as never);
+    const tree = await renderList();
+    expect(texts(tree)).toContain('No GRNs yet');
+
+    let release!: (value: unknown) => void;
+    jest.mocked(getAllGRNItems).mockReturnValueOnce(new Promise((resolve) => { release = resolve; }) as never);
+    mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'low_stock' } } };
+    await act(async () => { tree.update(grnListElement()); });
+
+    const busy = tree.root.findAll((node) => node.props.accessibilityState?.busy === true && node.props.accessibilityLabel);
+    expect(busy.length).toBeGreaterThan(0);
+    expect(texts(tree)).not.toContain('No GRNs yet');
+    await act(async () => { release(answer([]) as never); });
+  });
+
   it('a failed first page is the error state with Try again', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(failure as never);
     const tree = await renderList();
@@ -199,7 +215,7 @@ describe('load errors (style guide 14.9)', () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1)) as never).mockResolvedValueOnce(failure as never);
     const tree = await renderList();
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'low_stock' } } };
-    await act(async () => { tree.update(<GRNListFiori />); });
+    await act(async () => { tree.update(grnListElement()); });
 
     expect(card(tree, 1)).toBeUndefined();
     expect(host(tree, 'grn-stale-strip')).toBeUndefined();
@@ -316,7 +332,7 @@ describe('a next page that is no longer wanted (R1-08)', () => {
     const tree = await renderList();
     await act(async () => { list(tree).props.onEndReached(); });
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'in_stock' } } };
-    await act(async () => { tree.update(<GRNListFiori />); });
+    await act(async () => { tree.update(grnListElement()); });
     await act(async () => { later.finish(answer(receipt(2))); });
 
     expect(card(tree, 2)).toBeUndefined();
@@ -366,9 +382,9 @@ describe('a reload that fails on a list with no rows (R1-05)', () => {
 
     // The filter is changed and changed back before the answer: the same request is asked again, and fails.
     mockFilters = { ...mockFilters, request: { ...requestA, p_filters: { stock_status: 'in_stock' } } };
-    await act(async () => { tree.update(<GRNListFiori />); });
+    await act(async () => { tree.update(grnListElement()); });
     mockFilters = { ...mockFilters, request: { ...requestA } };
-    await act(async () => { tree.update(<GRNListFiori />); });
+    await act(async () => { tree.update(grnListElement()); });
 
     expect(texts(tree)).toContain("Couldn't load GRNs");
     expect(texts(tree)).not.toContain('No GRNs yet');
@@ -457,7 +473,7 @@ describe('the header', () => {
     let finish!: (value: unknown) => void;
     jest.mocked(getAllGRNItems).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }) as never);
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'in_stock' } } };
-    await act(async () => { tree.update(<GRNListFiori />); });
+    await act(async () => { tree.update(grnListElement()); });
     expect(header(tree).props.busy).toBe(true);
 
     await act(async () => { finish(answer(receipt(1))); });

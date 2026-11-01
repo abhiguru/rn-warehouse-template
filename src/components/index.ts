@@ -83,7 +83,6 @@ export { ListErrorBoundary, ListErrorFallback } from './list';
 export { default as ConfigErrorScreen } from './ConfigErrorScreen';
 export { default as AppTooOldScreen } from './AppTooOldScreen';
 export { default as UpgradingBanner } from './UpgradingBanner';
-export { TokenExpiryBanner } from './TokenExpiryBanner';
 export { AppVersionFooter, getAppVersionInfo, buildDiagnostics } from './AppVersionFooter';
 export type { AppVersionFooterProps, AppVersionInfo } from './AppVersionFooter';
 

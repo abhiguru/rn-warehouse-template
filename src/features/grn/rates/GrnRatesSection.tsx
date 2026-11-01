@@ -20,10 +20,11 @@ import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui';
 import { HeaderCell, ONE_LINE, crowded, makeTableStyles, nb, nestedRowWidth, numberColumnWidth, useStackedWhen, useTableLayout } from '@/components/common/DetailTable';
 import { RateStrip } from '@/features/item-pricing/components/RateStrip';
-import { LABOUR_WIDTH, RENT_WIDTH, TAX_WIDTH, amountText, taxText } from './GrnItemRates';
+import { LABOUR_WIDTH, RENT_WIDTH, TAX_WIDTH, amountText, taxText } from './rateFigures';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { bandText, dateText, money, unitText } from '@/features/item-pricing/rateText';
+import { packageUnit } from '@/utils/packagingWord';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatWeightEach } from '@/utils/formatters';
 import type { GrnRatesStatus } from './useGrnRates';
@@ -105,7 +106,8 @@ export function rowA11y(row: PricedRow, oneTime: boolean, day: string): string {
     t(oneTime ? 'pricing.row.a11yOneTime' : 'pricing.row.a11y', {
       item: name,
       amount: money(rate.unit_price),
-      unit: unitText(oneTime ? 'one_time' : 'monthly'),
+      unit: unitText(oneTime ? 'one_time' : 'monthly', row.packaging),
+      pack: packageUnit(row.packaging),
       band: bandText(rate.weight_min, rate.weight_max),
       labour: money(rate.labour_rate),
       percent: localizeDigits(String(rate.tax_percent)),

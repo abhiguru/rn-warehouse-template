@@ -125,6 +125,18 @@ describe('a possible duplicate', () => {
     expect(mockRpc).toHaveBeenCalledTimes(1);
   });
 
+  it('is logged as information, not as an error (no red banner); a number taken and an unexpected failure differ', async () => {
+    mockRpc.mockResolvedValueOnce(duplicate);
+    await createDispatch(direct);
+    mockRpc.mockResolvedValueOnce({ data: { success: false, reason: 'DISPATCH_DATE_FUTURE', error: 'Date is in the future' }, error: null });
+    await createDispatch({ ...direct, submissionNonce: 'form-b' });
+    expect(console.error).not.toHaveBeenCalled();
+
+    mockRpc.mockResolvedValueOnce({ data: { success: false, error: 'Something broke' }, error: null });
+    await createDispatch({ ...direct, submissionNonce: 'form-c' });
+    expect(console.error).toHaveBeenCalled();
+  });
+
   it('Save anyway after it creates the dispatch', async () => {
     mockRpc.mockResolvedValueOnce(duplicate).mockResolvedValueOnce(saved);
 

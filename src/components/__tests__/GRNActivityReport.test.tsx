@@ -139,7 +139,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
   it('every customer: one card per customer on theme tokens', async () => {
     signIn(STAFF, { brand, mode });
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(['GRN activity', 'All customers', 'GRNs', 'Green Valley Traders', '4 GRNs · Latest 1 Oct 2025']));
+    expect(texts()).toEqual(expect.arrayContaining(['GRN activity', 'All customers', 'GRNs', 'Green Valley Traders', '4 GRNs · Latest 01/10/25']));
     const row = pressables(label => label.startsWith('Green Valley Traders,'))[0];
     expect(flat(row.props.style).backgroundColor).toBe(t.surface.card);
   });

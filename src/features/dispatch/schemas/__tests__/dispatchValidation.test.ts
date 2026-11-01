@@ -41,6 +41,20 @@ describe('dispatch Step 1 generated-number contract', () => {
   });
 });
 
+describe('dispatch vehicle number spaces', () => {
+  it('counts a field of spaces as empty', async () => {
+    const result = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: '   ' });
+    expect(result.errors.registration).toBe(t('dispatch.validation.registrationRequired'));
+  });
+
+  it('accepts a number with a space at either end, and checks the length after they are removed', async () => {
+    const padded = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: ' T31 X18 ' });
+    expect(padded.errors.registration).toBeUndefined();
+    const full = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: ` ${'A'.repeat(20)}` });
+    expect(full.errors.registration).toBeUndefined();
+  });
+});
+
 describe('dispatch Step 1 messages for empty fields', () => {
   it('says the vehicle number is required, not that its format is wrong', async () => {
     const result = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: '' });
@@ -54,6 +68,13 @@ describe('dispatch Step 1 messages for empty fields', () => {
     const result = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: 'gj-01' });
 
     expect(result.errors.registration).toBe(t('dispatch.validation.registrationFormat'));
+  });
+
+  it('takes a vehicle number of 20 characters and refuses 21', async () => {
+    const ok = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: 'A'.repeat(20) });
+    expect(ok.errors.registration).toBeUndefined();
+    const long = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: 'A'.repeat(21) });
+    expect(long.errors.registration).toBe(t('dispatch.validation.registrationMax'));
   });
 
   it('lists a missing customer once in the summary, although two fields fail', async () => {

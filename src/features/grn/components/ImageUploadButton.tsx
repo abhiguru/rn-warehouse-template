@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { File } from 'expo-file-system';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { CameraView } from 'expo-camera';
 import { CameraModal, type CapturedPhotoSize } from '@/components/CameraModal';
 import { FioriLinearProgress } from '@/components/FioriLinearProgress';
 import {
@@ -28,7 +29,7 @@ import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 import { mapWithConcurrency } from '@/utils/concurrency';
-import { releaseLocalPhotos } from '@/utils/localPhotoFiles';
+import { LOCAL_PHOTO_OWNERS, registerLocalPhoto, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
 const log = createLogger('grn-photos');
 /** Photos prepared at the same time after a pick from the library. */
@@ -89,6 +90,13 @@ interface ImageUploadButtonProps {
   // Custom upload function (for dispatch or other contexts)
   // When provided, this function is used instead of the default GRN upload
   customUploadFunction?: CustomUploadFunction;
+
+  /**
+   * The photos are documents (the GRN book entry, the dispatch paper): offer "Scan document" first, where the phone has
+   * a document scanner (CameraView.isDocumentScannerAvailable). Each scanned page is one photo. Take photo and Choose
+   * from library stay as they are.
+   */
+  documentScan?: boolean;
 }
 
 export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
@@ -111,6 +119,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
   showProgress = true,
   allowMultiple = true,
   customUploadFunction,
+  documentScan = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -331,11 +340,52 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
     }
   };
 
+  // The system document scanner (Apple VisionKit, Google ML Kit): straightened, cleaned pages. Whether it is there is
+  // known only at run time (Expo Go, an old phone or the web may not have it); then the menu has no such entry.
+  const scannerAvailable = documentScan && CameraView.isDocumentScannerAvailable === true;
+
+  const scanDocument = async () => {
+    if (remainingSlots <= 0) {
+      showAlert(tr('grn.photos.limitTitle'), tr('grn.photos.limitMessage', { max: maxImages }));
+      return;
+    }
+    try {
+      const scan = await withNativeHandoff(() => CameraView.scanDocumentAsync());
+      // Cancelled, or the scanner is not there after all: nothing to add.
+      if (!scan || scan.pages.length === 0) return;
+      const pages = scan.pages;
+      // The scanner wrote these files in the cache: they are the app's own, deleted once they are used or dropped.
+      await Promise.all(pages.map(uri => registerLocalPhoto(uri, LOCAL_PHOTO_OWNERS.camera, 'capture')));
+      const kept = pages.slice(0, remainingSlots);
+      const dropped = pages.slice(remainingSlots);
+      if (dropped.length > 0) {
+        void releaseLocalPhotos(dropped);
+        showAlert(
+          tr('grn.photos.limitTitle'),
+          tr('grn.photos.scanPagesSkipped', { added: kept.length, count: pages.length, max: maxImages })
+        );
+      }
+      const assets: ImagePicker.ImagePickerAsset[] = kept.map((uri, index) => ({
+        uri,
+        width: 0,
+        height: 0,
+        type: 'image',
+        fileName: `scan_${Date.now()}_${index + 1}.jpg`,
+        mimeType: 'image/jpeg',
+      }));
+      await uploadImages(assets);
+    } catch (error) {
+      log.error('Error scanning the document', loggableError(error));
+      showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
+    }
+  };
+
   const showImageOptions = () => {
     showAlert(
       tr('grn.photos.addPhotoTitle'),
-      tr('grn.photos.addPhotoMessage'),
+      tr(scannerAvailable ? 'grn.photos.addPhotoMessageScan' : 'grn.photos.addPhotoMessage'),
       [
+        ...(scannerAvailable ? [{ text: tr('grn.photos.scanDocument'), onPress: scanDocument }] : []),
         { text: tr('grn.photos.takePhoto'), onPress: takePhoto },
         { text: tr('grn.photos.chooseFromLibrary'), onPress: pickImages },
         { text: tr('common.cancel'), style: 'cancel' },

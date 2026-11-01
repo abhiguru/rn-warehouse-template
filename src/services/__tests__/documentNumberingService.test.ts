@@ -11,6 +11,7 @@ import {
   setDocumentNumbering,
   suggestDocumentNumber,
 } from '../documentNumberingService';
+import { NumberingUnconfirmedError } from '../documentNumberingUnconfirmed';
 
 const mockRpc = jest.fn();
 jest.mock('@/config/supabaseConfig', () => ({
@@ -139,9 +140,41 @@ describe('the rules', () => {
     expect(result).toMatchObject({ changed: true, next_number: 'GRN/26-27/0001', not_following: 2, existing_documents: 12 });
   });
 
-  it('throws the server sentence of a refusal', async () => {
+  it('words a refusal in the app\'s own text, never the server\'s sentence', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'The prefix can have up to 10 characters: capital letters, digits, / and -.' } });
-    await expect(setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' })).rejects.toThrow('The prefix can have up to 10 characters');
+    const failure = await setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' }).catch((error: Error) => error);
+    expect((failure as Error).message).toBe(tr('numbering.edit.refused'));
+  });
+
+  it('words any other failure of a save, and of a read, in the app\'s own text', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'duplicate key value violates unique constraint "x"' }, status: 409 });
+    const save = await setDocumentNumbering('grn', { scheme: 'year', prefix: 'x' }).catch((error: Error) => error);
+    expect((save as Error).message).toBe(tr('numbering.edit.saveFailed'));
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'relation "numbering" does not exist' } });
+    const read = await getDocumentNumbering().catch((error: Error) => error);
+    expect((read as Error).message).toBe(tr('numbering.screen.loadFailed'));
+  });
+});
+
+describe('a set_document_numbering whose answer did not come through', () => {
+  const rule = { scheme: 'year' as const, prefix: 'x' };
+  it.each([
+    ['a dropped connection', { data: null, error: { message: 'TypeError: Network request failed', code: '' } }],
+    ['a timeout', { data: null, error: { message: 'TimeoutError: Request timeout', code: 'ABORT_ERR' } }],
+    ['a gateway 502', { data: null, error: { message: '<html>Bad Gateway</html>', code: '' }, status: 502 }],
+    ['a 5xx', { data: null, error: { message: 'internal', code: 'XX000' }, status: 500 }],
+    ['an empty 200', { data: null, error: null, status: 200 }],
+    ['a non-JSON 200', { data: null, error: { message: '<html>Maintenance</html>' }, status: 200 }],
+  ])('%s is unconfirmed, with no raw server text', async (_name, answer) => {
+    mockRpc.mockResolvedValue(answer);
+    const failure = await setDocumentNumbering('grn', rule).catch((error: Error) => error);
+    expect(failure).toBeInstanceOf(NumberingUnconfirmedError);
+    expect((failure as Error).message).toBe(tr('numbering.edit.unconfirmed'));
+  });
+
+  it('a refusal with a code is not unconfirmed', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'The prefix is wrong.' }, status: 400 });
+    await expect(setDocumentNumbering('grn', rule)).rejects.not.toBeInstanceOf(NumberingUnconfirmedError);
   });
 });
 

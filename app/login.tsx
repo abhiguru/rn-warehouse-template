@@ -23,6 +23,7 @@ import { showAlert } from '@/utils/alert';
 import { getLanguage, localizeDigits, t as tr } from '@/i18n';
 import { clearSignInDraft, readSignInDraft, saveSignInDraft } from '@/utils/signInDraft';
 import { serverText } from '@/utils/serverText';
+import { SignOutReasonStrip } from '@/components/central/SignOutReasonStrip';
 
 export default function LoginScreen() {
   const dispatch = useAppDispatch();
@@ -125,6 +126,7 @@ export default function LoginScreen() {
 
   return (
     <PhoneSignInForm
+      banner={isCentralLoginConfigured() ? undefined : <SignOutReasonStrip />}
       facility={{
         name: facility?.companyName ?? '',
         host: facilityHost,

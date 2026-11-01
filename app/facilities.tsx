@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { CentralHeader } from '@/components/central/CentralHeader';
+import { SignOutReasonStrip } from '@/components/central/SignOutReasonStrip';
 import { Button } from '@/components/ui/Button';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 import { useAppDispatch } from '@/store/hooks';
@@ -20,10 +21,12 @@ import { signOutPhoneWithMessages } from '@/features/account/useAccountActions';
 import { useCentralState } from '@/hooks/useCentralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { setCentralState, type FacilityStatus, type OpenFailureReason } from '@/config/centralState';
-import { fetchCentralProfile } from '@/config/centralSession';
+import { fetchCentralProfile, fetchFacilityCatalogue } from '@/config/centralSession';
 import {
   loadMyFacilities,
+  noteCatalogueRead,
   onMyFacilitiesChange,
+  removeMyFacility,
   soleApprovedFacility,
   type MyFacility,
 } from '@/config/centralFacilities';
@@ -84,6 +87,28 @@ export default function FacilitiesScreen() {
     return onMyFacilitiesChange(() => { void load(); });
   }, [load]);
 
+  // The association's list is read (central only; no facility is contacted) so that a facility it no
+  // longer lists is tagged Unavailable. The start-up open below waits for this read, so a facility that
+  // is gone is never opened by itself; a failed read changes nothing.
+  const [catalogueChecked, setCatalogueChecked] = useState(false);
+  const checkCatalogue = useCallback(async (force: boolean) => {
+    if (!userId) return;
+    try {
+      const result = await fetchFacilityCatalogue({ force });
+      if (result.ok) {
+        await noteCatalogueRead(userId, result.facilities.map(f => f.origin));
+        await load();
+      }
+    } catch {
+      // A failed read leaves the list as it was.
+    }
+  }, [userId, load]);
+  useEffect(() => {
+    let alive = true;
+    void checkCatalogue(false).finally(() => { if (alive) setCatalogueChecked(true); });
+    return () => { alive = false; };
+  }, [checkCatalogue]);
+
   // At start, exactly one approved facility and nothing else waiting: open it without
   // showing the list. One chance per start; "Switch facility" spends it before coming here.
   const autoOpenSpent = central.autoOpenSpent;
@@ -91,7 +116,7 @@ export default function FacilitiesScreen() {
   const leaving = central.leaving > 0;
   const focused = useIsFocused();
   useEffect(() => {
-    if (list === null || autoOpenSpent) return;
+    if (list === null || !catalogueChecked || autoOpenSpent) return;
     if (!focused) {
       // Left for another screen while a sign-out was finishing: the chance is gone.
       if (leaving) setCentralState({ autoOpenSpent: true });
@@ -102,7 +127,7 @@ export default function FacilitiesScreen() {
     setCentralState({ autoOpenSpent: true });
     const sole = soleApprovedFacility(list);
     if (sole && !opening && !hasOutcome) void openFacility(sole.origin, sole.name);
-  }, [list, autoOpenSpent, leaving, focused, opening, hasOutcome]);
+  }, [list, catalogueChecked, autoOpenSpent, leaving, focused, opening, hasOutcome]);
 
   // The answer of an open. It is held outside this screen, because opening a facility
   // rebuilds the navigation tree and the screen that started it may be gone.
@@ -143,7 +168,7 @@ export default function FacilitiesScreen() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([load(), fetchCentralProfile()]);
+      await Promise.all([load(), fetchCentralProfile(), checkCatalogue(true)]);
     } finally {
       setRefreshing(false);
     }
@@ -180,7 +205,7 @@ export default function FacilitiesScreen() {
   const personPhone = formatMobile(central.user?.phoneNumber);
 
   const renderFacility = ({ item }: { item: MyFacility }) => {
-    const view = FACILITY_STATUS_VIEW[item.status];
+    const view = FACILITY_STATUS_VIEW[item.gone ? 'unavailable' : item.status];
     const status = tr(view.label);
     const isOpening = opening === item.origin;
     // The other rows wait while one opens: dimmed and busy like the whole screen while signing out.
@@ -189,6 +214,14 @@ export default function FacilitiesScreen() {
       <Pressable
         style={({ pressed }) => [styles.cell, waitingRow && styles.cellDimmed, pressed && styles.cellPressed]}
         onPress={() => {
+          if (item.gone) {
+            // No longer listed by the association: nothing to open, only to remove from the list.
+            showAlert(tr('central.facilities.status.unavailable'), tr('central.facilities.goneMessage', { facility: item.name }), [
+              { text: tr('common.cancel'), style: 'cancel' },
+              { text: tr('central.facilities.goneRemove'), style: 'destructive', onPress: () => { void removeMyFacility(userId, item.origin); } },
+            ]);
+            return;
+          }
           // A tap during the wait is the person's own choice: the automatic open is not for them any more.
           setCentralState({ autoOpenSpent: true });
           void openFacility(item.origin, item.name);
@@ -229,6 +262,7 @@ export default function FacilitiesScreen() {
     <View style={styles.screen}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <CentralHeader title={tr('central.facilities.title')} />
+      <SignOutReasonStrip />
       {leaving ? (
         <View style={styles.strip} accessibilityRole="alert" accessibilityLiveRegion="polite" testID="facilities-signing-out">
           <ActivityIndicator size="small" color={t.status.neutral.text} />

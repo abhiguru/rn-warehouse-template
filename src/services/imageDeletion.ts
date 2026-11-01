@@ -25,6 +25,10 @@ export async function deleteWarehouseImage(
       p_image_id: imageId,
     });
     if (error || data?.success !== true) {
+      // The last photo of a GRN stays (migration 130): said in the app's words, whatever the server's English.
+      if (data?.reason === 'GRN_PHOTO_REQUIRED') {
+        return { success: false, error: t('grn.refusal.lastPhoto') };
+      }
       // Name the server's reason (no permission, not found) when it gave one the app knows.
       const reason = serverReason(String(error?.message ?? data?.message ?? data?.error ?? ''));
       return { success: false, error: reason ?? t('errors.image.deletionRejected') };

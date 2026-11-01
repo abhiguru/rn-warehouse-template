@@ -9,7 +9,7 @@ are real MSG91 SMS; a test installation that must send nothing uses the
 
 ## Fresh checkout
 
-Use macOS with full Xcode, CocoaPods and Node.js 22.18+. Clone this repository
+Use macOS with full Xcode, CocoaPods and Node.js 22.18+, 24.3+ or 26+. Clone this repository
 and `supabase-warehouse-template` as siblings. Follow the backend's
 `docs/CLEAN_INSTALL.md` to create an isolated checkout-owned Compose project,
 unused loopback ports and new configuration. Do not copy credentials, native

@@ -115,7 +115,7 @@ describe('today, a manager', () => {
 
   it('shows the later rate as a strip with Edit new rate and Cancel new rate, never as the box figure', async () => {
     await mount(baseProps(CUMIN));
-    expect(shown()).toContain('From 1 Jan 2027: ₹12.00 per bag, per month');
+    expect(shown()).toContain('From 01/01/27: ₹12.00 per bag, per month');
     expect(pressable('edit-upcoming')).toBeDefined();
     expect(pressable('cancel-upcoming')).toBeDefined();
     expect(cell('band-0-rent').props.value).toBe('11.00');
@@ -153,7 +153,7 @@ describe('today, a manager', () => {
     await press('cancel-upcoming');
     const dialog = tree!.root.find(n => n.props.testID === 'cancel-rate-dialog');
     expect(dialog.props.visible).toBe(true);
-    expect(dialog.props.title).toBe('Cancel the rate from 1 Jan 2027?');
+    expect(dialog.props.title).toBe('Cancel the rate from 01/01/27?');
     await act(async () => { dialog.props.onConfirm(); });
     expect(undoRateChange).toHaveBeenCalledWith({ itemId: 'cumin', customerId: CUST.customer_id, priceType: 'monthly', startsOn: '2027-01-01', seenRows: expect.arrayContaining(monthlyIds(CUMIN)) });
     expect(notifyRatesChanged).toHaveBeenCalledWith('cumin');
@@ -163,7 +163,7 @@ describe('today, a manager', () => {
     await mount(baseProps(CUMIN));
     await press('rate-correct');
     expect(host('correct-warning').length).toBeGreaterThan(0);
-    expect(shown()).toContain('This changes the rate since 1 Apr 2026.');
+    expect(shown()).toContain('This changes the rate since 01/04/26.');
     expect(host('rate-correct')).toHaveLength(0);
     await type('band-0-rent', '11.50');
     const bar = lastBar()!;
@@ -185,7 +185,7 @@ describe('today, a manager', () => {
     jest.mocked(undoRateChange).mockResolvedValue({ success: true });
     const stopping = [row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3.5, labour_rate: 1.5, effective_from: '2025-01-01', effective_to: '2027-03-31' })];
     await mount(baseProps(stopping, 'onion'));
-    expect(shown()).toContain('This rate stops after 31 Mar 2027.');
+    expect(shown()).toContain('This rate stops after 31/03/27.');
     await press('undo-stop');
     expect(undoRateChange).toHaveBeenCalledWith({ itemId: 'onion', customerId: CUST.customer_id, priceType: 'monthly', startsOn: '2027-04-01', seenRows: expect.arrayContaining(monthlyIds(stopping)) });
     expect(showToast).toHaveBeenCalledWith('The rate continues.');
@@ -239,8 +239,8 @@ describe('the Save bar', () => {
     const next = lastBar()!;
     expect(next.save.disabled).toBe(false);
     expect(next.helper).toBeNull();
-    expect(next.rule).toBe('Lots received from 1 Nov 2026 are charged the new rate. Lots received before keep ₹11.00.');
-    expect(next.summaryLines).toEqual(['Until 31 Oct 2026: ₹11.00 per bag, per month', 'From 1 Nov 2026: ₹12.00 per bag, per month']);
+    expect(next.rule).toBe('Lots received from 01/11/26 are charged the new rate. Lots received before keep ₹11.00.');
+    expect(next.summaryLines).toEqual(['Until 31/10/26: ₹11.00 per bag, per month', 'From 01/11/26: ₹12.00 per bag, per month']);
 
     // Discard asks first when figures were typed.
     await act(async () => { next.discard.onPress(); });
@@ -273,7 +273,7 @@ describe('the Save bar', () => {
     await mount(baseProps(CUMIN));
     await type('band-0-rent', '12');
     await act(async () => { lastBar()!.startsOn.onChange('other', '2026-09-01'); });
-    expect(lastBar()!.warning).toBe("This date is in the past. Lots received since 1 Sep 2026 that aren't invoiced yet will be charged the new rate.");
+    expect(lastBar()!.warning).toBe("This date is in the past. Lots received since 01/09/26 that aren't invoiced yet will be charged the new rate.");
   });
 
   it('renders the bar with ScopeSaveBar: day chips, rule, summary, Discard and Save', async () => {
@@ -307,9 +307,10 @@ describe('saving', () => {
       price_type: 'monthly',
       starts_on: '2026-11-01',
       bands: [{ weight_min: 0, weight_max: 100, unit_price: 12.5, labour_rate: 3, tax_percent: 5 }],
-    });
+      request_key: expect.stringMatching(/^warehouse-rate-replace-/),
+    }, { signal: expect.anything() });
     expect(notifyRatesChanged).toHaveBeenCalledWith('cumin');
-    expect(showToast).toHaveBeenCalledWith('New rate saved. Starts 1 Nov 2026.');
+    expect(showToast).toHaveBeenCalledWith('New rate saved. Starts 01/11/26.');
     // Saved: the bar goes and the page is not dirty, before the rows even come back.
     expect(lastBar()).toBeNull();
     expect(lastDirty()).toBe(false);
@@ -318,7 +319,7 @@ describe('saving', () => {
     const saved = [...CUMIN, row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 12.5, labour_rate: 3, effective_from: '2026-11-01' })];
     await rerender(baseProps(saved));
     expect(cell('band-0-rent').props.value).toBe('11.00');
-    expect(shown()).toContain('From 1 Nov 2026: ₹12.50 per bag, per month');
+    expect(shown()).toContain('From 01/11/26: ₹12.50 per bag, per month');
     expect(lastBar()).toBeNull();
   });
 
@@ -340,7 +341,7 @@ describe('saving', () => {
     await press('rate-correct');
     await type('band-0-rent', '11.25');
     await act(async () => { lastBar()!.save.onPress(); });
-    expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ mode: 'correct', starts_on: '2026-04-01' }));
+    expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ mode: 'correct', starts_on: '2026-04-01' }), { signal: expect.anything() });
     expect(showToast).toHaveBeenCalledWith('Correction saved.');
     const corrected = CUMIN.map(r => (r.unit_price === 11 ? { ...r, unit_price: 11.25 } : r));
     await rerender(baseProps(corrected));

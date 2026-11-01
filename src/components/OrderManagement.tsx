@@ -126,6 +126,8 @@ interface OrderManagementProps {
   businessRecordUnread?: boolean;
   /** The facility refused to open an order because the business was deleted. */
   onBusinessDeleted?: () => void;
+  /** The open order's number as it is read (undefined while there is no order). */
+  onOrderNumber?: (orderNo: string | undefined) => void;
 }
 
 const OrderManagement: React.FC<OrderManagementProps> = ({
@@ -137,6 +139,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   businessDeactivated = false,
   businessRecordUnread = false,
   onBusinessDeleted,
+  onOrderNumber,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -153,6 +156,16 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // The facility refused to open an order because the business was deleted.
   const [businessRefused, setBusinessRefused] = useState(false);
   const businessDeleted = businessRefused;
+  // Opening the order failed: what to tell the person (the server's sentence, or that no answer came), with Try again.
+  // Never "No items in this order": that says the order was read and is empty.
+  const [openError, setOpenError] = useState<string | null>(null);
+  // The business that has no order yet (no line was ever added, or its last order went with its last line). An order is
+  // made by its first line (migration 128): until then there is nothing to read, change or remove.
+  const [noOrderFor, setNoOrderFor] = useState<string | null>(null);
+  const noOrderForRef = useRef<string | null>(null);
+  noOrderForRef.current = noOrderFor;
+  // The business the editor was last asked to open (the prop, or one picked in the search), for Try again.
+  const openedFor = useRef<string | undefined>(customerId);
 
   // Each start of an order read is numbered; an answer that is not the latest one is dropped,
   // so a slow answer for a business the screen has left never becomes the order shown.
@@ -167,6 +180,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     setOrder(null);
     setSelectedCustomer(null);
     setBusinessRefused(false);
+    setOpenError(null);
+    setNoOrderFor(null);
     setLoading(Boolean(customerId));
   }
 
@@ -179,55 +194,60 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       }
     : setShowItemCatalogInternal;
 
-  // Initialize order for customer
+  // Initialize order for customer. Opening never makes an order: the first line does (migration 128). A facility that
+  // has no get_customer_order is an older release, and its order is opened the way that release does (get_or_create_cart).
   const initializeOrder = useCallback(async (custId: string) => {
     initRun.current += 1;
     const run = initRun.current;
+    openedFor.current = custId;
     try {
       setLoading(true);
       setBusinessRefused(false);
+      setOpenError(null);
+      setNoOrderFor(null);
       if (__DEV__) console.log('[OrderManagement] Initializing order for customer:', custId);
 
-      // Get or create order
-      const orderResult = await OrderService.getOrCreateOrder(custId);
-      if (run !== initRun.current) return;
-
-      if (!orderResult.success) {
-        if (isBusinessInactive(orderResult)) {
+      // The failure of an open: a deleted business gets its own screen, anything else the error state with Try again.
+      const refuse = (failure: Parameters<typeof isBusinessInactive>[0] & { message?: string }) => {
+        if (isBusinessInactive(failure)) {
           setBusinessRefused(true);
           onBusinessDeleted?.();
           return;
         }
-        showAlert(tr('orders.manage.couldNotOpenTitle'), serverText(orderResult.message, tr('common.checkConnection')));
+        setOpenError(serverText(failure?.message, tr('orders.manage.couldNotOpenMessage')));
+      };
+
+      let orderId: string | null;
+      const existing = await OrderService.getCustomerOrder(custId);
+      if (run !== initRun.current) return;
+      if (existing.success) {
+        orderId = existing.data?.order_id ?? null;
+      } else if (existing.notAvailable) {
+        const orderResult = await OrderService.getOrCreateOrder(custId);
+        if (run !== initRun.current) return;
+        if (!orderResult.success) {
+          refuse(orderResult);
+          return;
+        }
+        orderId = orderResult.data!.cart_id;
+      } else {
+        refuse(existing);
         return;
       }
 
-      if (__DEV__) console.log('[OrderManagement] About to fetch order details with cart_id:', orderResult.data!.cart_id);
+      if (orderId === null) {
+        // No order, and none is made by looking: an empty screen with the Add button, which makes it with the first line.
+        setOrder(null);
+        setSelectedCustomer(null);
+        setNoOrderFor(custId);
+        return;
+      }
 
       // Fetch order with items
-      const orderDetailsResult = await OrderService.getOrderWithItems(orderResult.data!.cart_id);
+      const orderDetailsResult = await OrderService.getOrderWithItems(orderId);
       if (run !== initRun.current) return;
 
-      if (__DEV__) console.log('[OrderManagement] Order details result:', {
-        success: orderDetailsResult.success,
-        hasData: !!orderDetailsResult.data,
-        error: orderDetailsResult.error,
-        message: orderDetailsResult.message
-      });
-
       if (orderDetailsResult.success && orderDetailsResult.data) {
-        if (__DEV__) console.log('[OrderManagement] Setting order data:', {
-          orderId: orderDetailsResult.data.id,
-          customer: orderDetailsResult.data.customer?.name,
-          itemCount: orderDetailsResult.data.total_items,
-          totalQuantity: orderDetailsResult.data.total_quantity,
-          hasItems: !!orderDetailsResult.data.items,
-          itemsLength: orderDetailsResult.data.items?.length || 0,
-          updated_at: orderDetailsResult.data.updated_at,
-          created_at: orderDetailsResult.data.created_at,
-          updated_by: orderDetailsResult.data.updated_by_display_name,
-        });
-
         setOrder(orderDetailsResult.data);
         setSelectedCustomer(orderDetailsResult.data.customer || null);
       } else {
@@ -236,12 +256,12 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           error: orderDetailsResult.error,
           message: orderDetailsResult.message
         });
-        showAlert(tr('orders.manage.couldNotLoadTitle'), tr('common.checkConnection'));
+        refuse(orderDetailsResult);
       }
     } catch (error) {
       if (run !== initRun.current) return;
       console.error('[OrderManagement] Error initializing order:', error);
-      showAlert(tr('orders.manage.couldNotOpenTitle'), tr('common.checkConnection'));
+      setOpenError(tr('orders.manage.couldNotOpenMessage'));
     } finally {
       if (run === initRun.current) setLoading(false);
     }
@@ -293,6 +313,10 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     await initializeOrder(customer.value);
   }, [initializeOrder]);
 
+  // The order's number goes to the screen's header.
+  const orderNo = order?.order_no;
+  useEffect(() => { onOrderNumber?.(orderNo); }, [orderNo]);
+
   const activeOrderId = useRef(order?.id);
   activeOrderId.current = order?.id;
   useEffect(() => () => { activeOrderId.current = undefined; }, []);
@@ -307,12 +331,49 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const refreshApplied = useRef(0);
   const refreshesRunning = useRef(0);
 
+  // The business had no order and now may have one (a pull to refresh, or its first line was just added): reads it and,
+  // if it exists, makes it the order on screen. Resolves the order, or null (none yet, no answer, the screen moved on).
+  // `orderId` is given when it is known (the answer of the first line); otherwise the business is asked.
+  const adoptCustomerOrder = useCallback(async (custId: string, showSpinner: boolean, orderId?: string): Promise<Order | null> => {
+    const sessionGeneration = getSessionGeneration();
+    const run = initRun.current;
+    if (showSpinner !== false) setRefreshing(true);
+    try {
+      let id = orderId ?? null;
+      if (!id) {
+        const found = await OrderService.getCustomerOrder(custId);
+        if (!found.success) return null;
+        id = found.data?.order_id ?? null;
+      }
+      if (!id) return null;
+      const result = await OrderService.getOrderWithItems(id);
+      if (sessionGeneration !== getSessionGeneration() || run !== initRun.current || !result.success || !result.data) return null;
+      // The refs the handlers read are set now, before the next render: the lots that follow the first one go to this order.
+      orderRef.current = result.data;
+      activeOrderId.current = result.data.id;
+      setOrder(result.data);
+      setSelectedCustomer(result.data.customer || null);
+      setNoOrderFor(null);
+      return result.data;
+    } catch (error) {
+      console.error('[OrderManagement] Reading the new order failed:', error);
+      return null;
+    } finally {
+      if (showSpinner !== false) setRefreshing(false);
+    }
+  }, []);
+
   // Reads the order again. Stable, so the line cards keep their props while it runs. Resolves the order that was
   // read, also when a newer read has been applied meanwhile (it still says what the order held after the call that
   // asked for it); null when nothing was read (no order, a failed read, the screen has moved on).
   const rereadOrder = useCallback(async (showSpinner: boolean = true): Promise<Order | null> => {
     const current = orderRef.current;
-    if (!current) return null;
+    if (!current) {
+      // No order yet: another login may have made one meanwhile (a read; nothing is made here).
+      const waiting = noOrderForRef.current;
+      if (!waiting) return null;
+      return adoptCustomerOrder(waiting, showSpinner);
+    }
 
     const sessionGeneration = getSessionGeneration();
     refreshStarted.current += 1;
@@ -336,7 +397,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       refreshesRunning.current -= 1;
       if (refreshesRunning.current === 0) setRefreshing(false);
     }
-  }, []);
+  }, [adoptCustomerOrder]);
 
   // Handle refresh (pull to refresh, the timed read, after a save).
   const onRefresh = useCallback(async (showSpinner: boolean = true): Promise<void> => {
@@ -672,6 +733,18 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   ): Promise<PickerResult[]> => {
     const notSaved = (grnItemId: string): PickerResult =>
       ({ grnItemId, ok: false, reason: tr('orders.catalog.reasonNotSaved') });
+    // What a check found for a lot whose answer was lost: the server has what was asked (it was saved after all), or the lot
+    // shows what the server has and the person decides whether to tap Add again.
+    const checkedVerdict = (change: PickerChange, stored: number): PickerResult => {
+      const removal = change.quantity <= 0;
+      if (stored === change.quantity || (removal && stored === 0)) return { grnItemId: change.grnItemId, ok: true };
+      const reason = removal
+        ? tr('orders.catalog.reasonCheckedNotRemoved')
+        : stored === 0
+          ? tr('orders.catalog.reasonCheckedNotSaved', { chosen: formatCount(change.quantity, 'bag') })
+          : tr('orders.catalog.reasonCheckedOther', { bags: formatCount(stored, 'bag'), chosen: formatCount(change.quantity, 'bag') });
+      return { grnItemId: change.grnItemId, ok: false, reason, savedQuantity: stored };
+    };
     // A lot whose answer was lost: locked, named to the picker, checked, and answered with the server's state.
     // `stopped` is true when the check could not finish (the picker was left, the screen moved on).
     const checkLot = async (
@@ -693,17 +766,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         return { stopped: true, result: { grnItemId: change.grnItemId, ok: false, reason: tr('errors.lostAnswer.leaveWarning') } };
       }
       const stored = read.items?.find(item => item.grn_item_id === change.grnItemId && isOpenLine(item))?.requested_quantity ?? 0;
-      // The server has what was asked: the lost answer was a saved lot after all.
-      if (stored === change.quantity || (removal && stored === 0)) {
-        return { stopped: false, result: { grnItemId: change.grnItemId, ok: true } };
-      }
-      // Not applied: the lot shows what the server has, and the person decides whether to tap Add again.
-      const reason = removal
-        ? tr('orders.catalog.reasonCheckedNotRemoved')
-        : stored === 0
-          ? tr('orders.catalog.reasonCheckedNotSaved', { chosen: formatCount(change.quantity, 'bag') })
-          : tr('orders.catalog.reasonCheckedOther', { bags: formatCount(stored, 'bag'), chosen: formatCount(change.quantity, 'bag') });
-      return { stopped: false, result: { grnItemId: change.grnItemId, ok: false, reason, savedQuantity: stored } };
+      return { stopped: false, result: checkedVerdict(change, stored) };
     };
     // What a lot says when the order holds another quantity than the one the picker started from: someone else changed
     // it, nothing was overwritten, and the person taps Add again to apply their number knowingly.
@@ -729,7 +792,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     const sessionGeneration = getSessionGeneration();
     // The order the picker was opened for. Every lot goes to it, and the save stops when the
     // editor has moved on (another business, or the screen closed: `activeOrderId` is cleared).
-    const startOrderId = orderRef.current?.id;
+    let startOrderId = orderRef.current?.id;
     // Quantities first, removals last.
     const ordered = [...changes.filter(change => change.quantity > 0), ...changes.filter(change => change.quantity <= 0)];
     const results = new Map<string, PickerResult>();
@@ -737,11 +800,85 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     // The save ended for want of a connection, before its last lot.
     let noAnswer = false;
 
+    // No order yet: the first lot that is accepted makes it (migration 128), and the lots after it go to the order that
+    // line made. A lot the server refuses is answered and the next one tries to make the order; a lost answer or a
+    // failure for want of a connection ends the save.
+    const newOrderFor = startOrderId ? null : noOrderForRef.current;
+    if (!startOrderId && newOrderFor) {
+      const additions = ordered.filter(change => change.quantity > 0);
+      // Only removals, and there is no order to remove from: nothing to do.
+      if (additions.length === 0) ordered.forEach(change => results.set(change.grnItemId, { grnItemId: change.grnItemId, ok: true }));
+      for (const first of additions) {
+        if (options?.signal?.aborted || sessionGeneration !== getSessionGeneration() || noOrderForRef.current !== newOrderFor) break;
+        if (noNetworkRef.current) {
+          noAnswer = true;
+          break;
+        }
+        onProgress?.(ordered.indexOf(first) + 1, ordered.length);
+        anyCall = true;
+        const sentAt = Date.now();
+        const created = await OrderService.addItemToOrder(null, first.grnItemId, first.quantity, newOrderFor);
+        if (created.success) {
+          const adopted = await adoptCustomerOrder(newOrderFor, false, created.data?.data?.order_id);
+          results.set(first.grnItemId, { grnItemId: first.grnItemId, ok: true });
+          if (adopted) startOrderId = adopted.id;
+          else noAnswer = true;
+          break;
+        }
+        if (mayHaveBeenSaved(created)) {
+          // The answer was lost: the line may have made the order. Waits, then asks the business for its order; nothing
+          // is sent again by this check.
+          options?.onChecking?.({ grnItemId: first.grnItemId, removal: false });
+          const stop = new AbortController();
+          const abort = () => stop.abort();
+          const sources = [screenAbort.current?.signal, options?.signal].filter((source): source is AbortSignal => source !== undefined);
+          sources.forEach(source => {
+            if (source.aborted) abort();
+            else source.addEventListener('abort', abort);
+          });
+          try {
+            await waitForServer(sentAt, stop.signal);
+            const found = await readUntilAnswered(async () => {
+              if (sessionGeneration !== getSessionGeneration() || noOrderForRef.current !== newOrderFor) throw abortedError();
+              const answer = await OrderService.getCustomerOrder(newOrderFor);
+              return answer.success ? answer : null;
+            }, stop.signal);
+            const orderId = found.data?.order_id ?? null;
+            const read = orderId ? await adoptCustomerOrder(newOrderFor, false, orderId) : null;
+            const stored = read?.items?.find(item => item.grn_item_id === first.grnItemId && isOpenLine(item))?.requested_quantity ?? 0;
+            results.set(first.grnItemId, checkedVerdict(first, stored));
+            if (read) startOrderId = read.id;
+            else noAnswer = true;
+          } catch (error) {
+            if (!isAbortError(error)) throw error;
+            results.set(first.grnItemId, { grnItemId: first.grnItemId, ok: false, reason: tr('errors.lostAnswer.leaveWarning') });
+            noAnswer = true;
+          } finally {
+            sources.forEach(source => source.removeEventListener('abort', abort));
+            options?.onChecking?.(null);
+          }
+          break;
+        }
+        console.error('[OrderManagement] First item not saved:', created.message, created.error);
+        results.set(first.grnItemId, {
+          grnItemId: first.grnItemId,
+          ok: false,
+          reason: isBusinessInactive(created) ? tr('orders.manage.businessInactive') : cartFailureReason(created),
+        });
+        if (isConnectionFailure(created)) {
+          noAnswer = true;
+          break;
+        }
+      }
+    }
+
     for (let index = 0; index < ordered.length; index += 1) {
       // The person chose "Leave anyway" (the picker's X, after its warning): no further lot is sent. The lots not sent
       // come back not saved.
       if (options?.signal?.aborted) break;
       const change = ordered[index];
+      // Already answered above (a first line the server refused).
+      if (results.has(change.grnItemId)) continue;
       const current = orderRef.current;
       // A sign-out or a change of facility ends the save; the rest is not sent.
       if (!current || current.id !== startOrderId || activeOrderId.current !== startOrderId || sessionGeneration !== getSessionGeneration()) break;
@@ -875,7 +1012,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     }
 
     return changes.map(change => results.get(change.grnItemId) ?? notSaved(change.grnItemId));
-  }, [onRefresh, rereadOrder, checkAfterLostAnswer]);
+  }, [onRefresh, rereadOrder, checkAfterLostAnswer, adoptCustomerOrder]);
 
 
   // The open lines, kept while the order's lines are unchanged.
@@ -896,6 +1033,27 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel={tr('orders.manage.loadingLabel')} />
         <Text style={styles.loadingText}>{tr('orders.manage.loading')}</Text>
+      </View>
+    );
+  }
+
+  // Opening failed: say so, with Try again that runs the open again. Not "No items in this order" (that says it was read).
+  if (openError && !order) {
+    return (
+      <View style={styles.emptyState} testID="order-open-error">
+        <Icon name="alert-circle-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyText} accessibilityRole="header">{tr('orders.manage.couldNotOpenTitle')}</Text>
+        <Text style={styles.emptySubtext}>{openError}</Text>
+        <Button
+          type="primary"
+          size="standalone"
+          leftIcon="refresh"
+          onPress={() => { if (openedFor.current) void initializeOrder(openedFor.current); }}
+          accessibilityLabel={tr('common.retry')}
+          testID="order-open-retry"
+        >
+          {tr('common.retry')}
+        </Button>
       </View>
     );
   }
@@ -1062,14 +1220,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       </Modal>
 
       {/* Item Catalog Modal */}
-      {showItemCatalog && order && selectedCustomer && (
+      {showItemCatalog && (order ? selectedCustomer : noOrderFor) && (
         <ItemCatalogBrowser
           isVisible={showItemCatalog}
           onClose={() => setShowItemCatalog(false)}
           onAddItems={handleItemsAdded}
           offline={disconnected}
-          currentOrderId={order.id}
-          customerId={selectedCustomer.id}
+          currentOrderId={order?.id}
+          customerId={order ? selectedCustomer!.id : noOrderFor!}
           currentOrderItems={pickerLines}
         />
       )}

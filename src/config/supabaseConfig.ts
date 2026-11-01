@@ -24,11 +24,14 @@ import {
 } from './sessionLifecycle';
 import { AppError, getAppErrorCode } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
-import { isUpgradingAnswer, serverText, UPGRADING_CODE, upgradingBody } from '@/utils/serverText';
+import { isNetworkError, isUpgradingAnswer, serverText, UPGRADING_CODE, upgradingBody } from '@/utils/serverText';
 import { DISCARD_BODY, discardBody } from './discardBody';
 import { isGatewayKeyRejection } from './gatewayRejection';
 import { isUpgrading, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from './upgradeNotice';
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
+import { noteRequestNetworkFailure } from './netReachability';
+import { noteExpiredTokenRenewal } from './sessionRenewal';
+import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
 
 const authLogger = createLogger('Auth');
 
@@ -90,6 +93,8 @@ type GatedFetchOptions = {
   honorSwitch: boolean;
   /** Set on the one repeat of a read after the gateway's "upgrading" answer; there is no second wait. */
   afterUpgradeWait?: boolean;
+  /** Set on the one repeat of a read after a 429 (too many requests); there is no second wait. */
+  afterRateLimitWait?: boolean;
 };
 
 // Every credentialed request waits for the foreground identity check, then
@@ -194,10 +199,17 @@ function abortedRead(): Error {
   return error;
 }
 
+/** The seconds a 429 asks to wait (its Retry-After header as whole seconds); one second when it names none. */
+export function rateLimitWaitSeconds(response: Response): number {
+  const header = typeof response.headers?.get === 'function' ? response.headers.get('Retry-After') : null;
+  const seconds = typeof header === 'string' && /^\d+$/.test(header.trim()) ? Number(header) : NaN;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 1;
+}
+
 async function gatedFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  { generation, mutation, honorSwitch, afterUpgradeWait }: GatedFetchOptions
+  { generation, mutation, honorSwitch, afterUpgradeWait, afterRateLimitWait }: GatedFetchOptions
 ): Promise<Response> {
   // A verified identity is the common case; keep it synchronous so a server
   // switch sees this request registered before the first await.
@@ -258,6 +270,8 @@ async function gatedFetch(
     ]);
   } catch (error) {
     release();
+    // No answer at all: the offline banner should follow now, not at the next scheduled check (src/config/netReachability.ts).
+    if (isNetworkError(error)) noteRequestNetworkFailure();
     throw error;
   }
   // A copy, read outside the request's tracked life: it must not hold a switch back.
@@ -285,7 +299,16 @@ async function gatedFetch(
     await waitForRetry(Math.min(upgrade.retryAfter, REQUEST_TIME_LIMIT_MS.read / 1000), init?.signal);
     // The caller's own limit (a sign-in check's 15 s) can end the wait: its error still says "being updated".
     if (init?.signal?.aborted) throw Object.assign(abortedRead(), { code: UPGRADING_CODE });
-    return gatedFetch(input, init, { generation, mutation, honorSwitch, afterUpgradeWait: true });
+    return gatedFetch(input, init, { generation, mutation, honorSwitch, afterUpgradeWait: true, afterRateLimitWait });
+  }
+  // "Too many requests": a read waits the server's Retry-After (never longer than a read's own limit) and goes out once
+  // more; a write never does, the person decides. Whatever the repeat is answered stands.
+  if (response.status === 429 && !mutation && !afterRateLimitWait) {
+    controller.abort();
+    release();
+    await waitForRetry(Math.min(rateLimitWaitSeconds(response), REQUEST_TIME_LIMIT_MS.read / 1000), init?.signal);
+    if (init?.signal?.aborted) throw abortedRead();
+    return gatedFetch(input, init, { generation, mutation, honorSwitch, afterUpgradeWait, afterRateLimitWait: true });
   }
   if (honorSwitch && invalidated()) {
     release();
@@ -411,6 +434,8 @@ async function sessionFetch(
   const refused = bearerOf(init);
   if (!refused || !(await isExpiredTokenResponse(response))) return response;
   const renewed = await accessTokenAfterExpiry(refused, generation);
+  // A change is not sent again: whether its error may say "sign-in renewed" depends on this outcome (serverText).
+  noteExpiredTokenRenewal(renewed !== null);
   if (!renewed || mutation) return response;
   // The refused answer is set aside: its request ends now, not at its limit.
   discardBody(response);
@@ -687,7 +712,15 @@ async function operatorFunctionPost(
       body: JSON.stringify(body),
     };
     const response = await gatedFetch(request, options, { generation, ...gate });
-    const result = (await response.json()) as OperatorEnvelope & { code?: unknown };
+    // A refusal whose body is not JSON (a rate-limit or maintenance page, a gateway that is down) is still a refusal:
+    // the callers read its status. A 2xx that is not JSON stays an error.
+    let result: OperatorEnvelope & { code?: unknown };
+    try {
+      result = (await response.json()) as OperatorEnvelope & { code?: unknown };
+    } catch (error) {
+      if (response.ok) throw error;
+      result = {} as OperatorEnvelope & { code?: unknown };
+    }
     return { response, result };
   } finally {
     clearTimeout(timeout);
@@ -1184,6 +1217,88 @@ export const exchangeCentralIdentity = async (
   } catch (error) {
     if (isGateSignal(error) || getAppErrorCode(error) === 'SESSION_CHANGED') return { success: false, code: 'session_changed' };
     return { success: false, code: 'network' };
+  }
+};
+
+/** Why a sign-in with a code from the facility did not happen. */
+export type BreakGlassFailure =
+  /** The code is wrong, used, expired or locked (the facility does not say which). */
+  | 'refused'
+  /** A customer: facility codes are for facility staff. */
+  | 'customer'
+  | 'rate_limited'
+  /** The facility is not in operator mode, or its database is down (503), or it does not know the function. */
+  | 'unavailable'
+  /** No answer from the facility. */
+  | 'network'
+  /** The session was replaced while the answer was on its way. */
+  | 'session_changed'
+  | 'failed';
+
+export type BreakGlassResult = AuthSuccessResult | { success: false; reason: BreakGlassFailure };
+
+const BREAK_GLASS_REFUSALS: readonly string[] = ['invalid_code', 'code_used', 'code_expired', 'code_locked'];
+
+/**
+ * Signs in with a code the facility's operator made on the facility's own server (`POST
+ * operator-otp/break-glass`, backend migration 132): no session is needed, and the call goes over the warehouse
+ * network when the public address does not answer (src/config/lanTransport.ts). The answer is the shape of
+ * `operator-otp/verify` plus `session_ends_at`, which is stored with the session and ends it (src/config/sessionEnd.ts).
+ * A session whose end cannot be stored is not kept: it would not end.
+ */
+export const breakGlassSignIn = async (phone: string, code: string): Promise<BreakGlassResult> => {
+  const generation = await startNewSession();
+  try {
+    const { response, result } = await operatorFunctionPost(
+      'operator-otp/break-glass',
+      { phone_number: formatPhoneNumber(phone), code },
+      { mutation: true, honorSwitch: true },
+      generation
+    );
+    if (generation !== getSessionGeneration()) {
+      const refresh = (result?.data?.session as { refresh_token?: unknown } | undefined)?.refresh_token;
+      if (typeof refresh === 'string') await revokeSession(refresh);
+      return { success: false, reason: 'session_changed' };
+    }
+    if (!response.ok || result?.success !== true || !result.data) {
+      const failureCode = typeof result?.code === 'string' ? result.code : '';
+      if (response.status === 429) return { success: false, reason: 'rate_limited' };
+      if (response.status === 503 || response.status === 404) return { success: false, reason: 'unavailable' };
+      if (failureCode === 'customer_not_allowed') return { success: false, reason: 'customer' };
+      if (BREAK_GLASS_REFUSALS.includes(failureCode)) return { success: false, reason: 'refused' };
+      return { success: false, reason: 'failed' };
+    }
+    const session = result.data.session as { session_ends_at?: unknown } | undefined;
+    const endsAt = parseSessionEnd(session?.session_ends_at);
+    // A code session without an end is not one the facility made: nothing here would sign it out.
+    if (result.data.action !== 'login' || endsAt === null) {
+      const refresh = (result.data.session as { refresh_token?: unknown } | undefined)?.refresh_token;
+      if (typeof refresh === 'string') void revokeSession(refresh);
+      return { success: false, reason: 'failed' };
+    }
+    // The end is written before the tokens, so a session that is stored always has its end. If it cannot be written
+    // the session is revoked on the server (it was made, but nothing here would sign it out).
+    const refreshToken = (result.data.session as { refresh_token?: unknown } | undefined)?.refresh_token;
+    try {
+      await storeSessionEnd(endsAt);
+    } catch {
+      if (typeof refreshToken === 'string') await revokeSession(refreshToken);
+      return { success: false, reason: 'failed' };
+    }
+    const completed = await completeOperatorSignIn(result.data, generation).catch(() => null);
+    if (!completed?.success) {
+      // The tokens may already be stored (a later step failed). Remove them, and the stored end with them, and end the
+      // session on the server, so a sign-in that was reported as failed leaves no session behind.
+      if (generation === getSessionGeneration()) {
+        await clearStoredTokens().catch(() => {});
+        if (typeof refreshToken === 'string') await revokeSession(refreshToken);
+      }
+      return { success: false, reason: generation !== getSessionGeneration() ? 'session_changed' : 'failed' };
+    }
+    return completed as AuthSuccessResult;
+  } catch (error) {
+    if (isGateSignal(error) || getAppErrorCode(error) === 'SESSION_CHANGED') return { success: false, reason: 'session_changed' };
+    return { success: false, reason: 'network' };
   }
 };
 
@@ -1877,6 +1992,8 @@ const clearStoredTokensRaw = async (): Promise<boolean> => {
     SECURE_KEYS.REFRESH_TOKEN,
     SECURE_KEYS.TOKEN_EXPIRES,
     SECURE_KEYS.OPERATOR_IDENTITY,
+    // The end of a session started with a code from the facility (src/config/sessionEnd.ts).
+    SESSION_ENDS_AT_KEY,
     // Obsolete alternate helper used this expiry spelling.
     'secure_token_expires_at',
     'cached_user_profile',

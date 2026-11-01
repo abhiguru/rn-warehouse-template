@@ -102,3 +102,8 @@ it('says it in Gujarati too', async () => {
   await mount();
   expect(allText()).toContain('એડમિનને નંબરિંગ બદલવા કહો');
 });
+
+it('stops the number box at the twenty characters the column holds', async () => {
+  await mount();
+  expect(box()?.props.maxLength).toBe(20);
+});

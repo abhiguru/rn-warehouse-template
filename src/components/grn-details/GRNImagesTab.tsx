@@ -107,6 +107,7 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     backgroundColor: t.surface.cardActive,
   },
+  missingText: { ...typography.caption2, color: t.text.secondary, textAlign: 'center' as const, marginTop: space.xs },
   badge: {
     position: 'absolute' as const,
     top: space.xs,
@@ -247,6 +248,11 @@ const ImageTile: React.FC<{
                   size={iconSize.lg}
                   color={t.icon.secondary}
                 />
+                {hasError ? (
+                  <Text style={styles.missingText} maxFontSizeMultiplier={1.4} testID="photo-missing">
+                    {tr('common.photoMissing')}
+                  </Text>
+                ) : null}
               </View>
             )}
 

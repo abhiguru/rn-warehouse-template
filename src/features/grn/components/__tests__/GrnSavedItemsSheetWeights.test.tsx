@@ -159,3 +159,29 @@ describe('SavedItemCard weight', () => {
     expect(cardLabels(tree)).toEqual(['Item 1, Potato, Bag, quantity 100, rack B-14']);
   });
 });
+
+describe('GRN saved-items sheet lock tags', () => {
+  const renderLocked = (lineLocks: Map<string, 'invoiced' | 'dispatched' | 'quantity'>) =>
+    mount(
+      <ItemsSummaryBottomSheet
+        isVisible
+        onClose={jest.fn()}
+        items={[saved(1), saved(2), saved(3), saved(4)]}
+        onRemoveItem={jest.fn()}
+        onEditItem={jest.fn()}
+        lineLocks={lineLocks}
+      />
+    );
+
+  it('tags a line as the review step does: invoiced, dispatched, or (an older server) quantity only', () => {
+    const tree = renderLocked(new Map([['line-1', 'invoiced'], ['line-2', 'dispatched'], ['line-3', 'quantity']]));
+
+    expect(texts(tree).filter((text) => /locked/.test(text))).toEqual([
+      'Quantity, item, packing and weight locked',
+      'Quantity, item and packing locked',
+      'Quantity locked',
+    ]);
+    expect(cardLabels(tree)[0]).toContain('on an invoice, quantity, item, packing and weight locked');
+    expect(cardLabels(tree)[3]).not.toMatch(/locked/);
+  });
+});

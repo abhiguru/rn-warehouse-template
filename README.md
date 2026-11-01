@@ -1,7 +1,7 @@
 # rn-warehouse-template
 
-Open-source React Native warehouse client built with Expo SDK 57 / React Native
-0.86, Expo Router and Redux Toolkit. It connects to one installation of the
+Open-source React Native warehouse client built with Expo SDK 58 / React Native
+0.88, Expo Router and Redux Toolkit. It connects to one installation of the
 companion backend, [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template),
 through that installation's canonical HTTPS origin. MIT licensed.
 
@@ -9,9 +9,9 @@ through that installation's canonical HTTPS origin. MIT licensed.
 
 Prerequisites:
 
-- Node.js **22.18+** and npm.
+- Node.js **22.18+, 24.3+ or 26+** (not 23 or 25) and npm.
 - For native builds only (not needed for [Expo Go](#try-the-app-on-a-phone-with-expo-go)): JDK 17 (Temurin) and an Android SDK with exactly the packages CI pins:
-  `platform-tools`, `platforms;android-36`, `build-tools;36.0.0`,
+  `platform-tools`, `platforms;android-37.0`, `build-tools;37.0.0`,
   `build-tools;35.0.0`, `ndk;27.1.12297006`, `ndk;27.0.12077973` and
   `cmake;3.22.1`. Set `ANDROID_HOME` to the SDK root;
   `node scripts/check-android-sdk.mjs` verifies the set.
@@ -23,15 +23,16 @@ Prerequisites:
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
-npm ci                       # runs the three postinstall patches
+npm ci                       # runs the two postinstall patches
 node scripts/create-env.mjs  # creates .env only if it is absent
 npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup
+# in .env set EXPO_PUBLIC_CONFIG_API_URL=https://… (the backend origin), then:
 npm run doctor               # read-only check against an installed backend
 npm run android              # native debug build on a device or emulator
 ```
 
-`npm ci` applies three postinstall patches to installed packages
-(`scripts/patch-expo-metro.mjs`, `scripts/patch-navigation-decoder.mjs` and
+`npm ci` applies two postinstall patches to installed packages
+(`scripts/patch-expo-metro.mjs` and
 `scripts/patch-security-backports.mjs`); `npm run verify:backports` re-checks
 them against `scripts/security-backports.json`. An install with npm scripts
 turned off (`--ignore-scripts`) skips them silently, so `npm start`,
@@ -48,12 +49,12 @@ copied into the app: it fetches its public anon key dynamically.
 
 ## Try the app on a phone with Expo Go
 
-The quickest look needs only Node.js 22.18+ and npm: no JDK and no Android SDK. It also needs an installed backend and its HTTPS origin.
+The quickest look needs only Node.js (22.18+, 24.3+ or 26+) and npm: no JDK and no Android SDK. It also needs an installed backend and its HTTPS origin.
 
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
-npm ci                       # keep npm scripts on: the three postinstall patches are needed
+npm ci                       # keep npm scripts on: the two postinstall patches are needed
 node scripts/create-env.mjs  # creates .env only if it is absent
 # in .env set EXPO_PUBLIC_CONFIG_API_URL=https://warehouse.example.com (the backend origin), then:
 npm run check:backend        # read-only check of that backend (no JDK or Android SDK needed)
@@ -62,7 +63,9 @@ npm start -- --lan --clear
 
 - Set `EXPO_PUBLIC_CENTRAL_ORIGIN` in `.env` only if the facility was set up with central sign-in (see `.env.example`).
 - The phone must be on the same Wi-Fi as the Metro host (a NAT'd virtual machine is not reachable: bridge its adapter); with `ufw`, allow port 8081 from the LAN only (the rule needs `sudo`: an agent gives the operator the command).
-- An agent keeps Metro running in `tmux` (or in the background) and gives the operator the `exp://<LAN IP>:8081` address to enter in Expo Go. Do not use `--tunnel` or any public tunnel without the operator's say-so.
+- An agent keeps Metro running in `tmux` and gives the operator the `exp://<LAN IP>:8081` address to enter in Expo Go. Do not use `--tunnel` or any public tunnel without the operator's say-so.
+- Do not pipe Metro through `tee` or any other command: Metro then sees no terminal and prints no QR code. Start it in `tmux` and keep a log with `tmux pipe-pane -o -t <session> 'cat >> metro.log'`.
+- Expo Go signs in to an Expo account. On the Metro host run `BROWSER=none npx expo login` with the Expo account that is signed in on the phone; `BROWSER=none` stops it from trying to open a browser on a host that has none.
 - Scan the QR code with Expo Go, whose SDK (Settings in Expo Go) must match `expo` in `package.json`. On the first screen enter the backend's HTTPS origin and sign in (SMS code, or the central sign-in when it is set).
 - Limits: Expo Go never applies the config plugins in `app.config.js` and `plugins/` and uses its own permission strings, and it may not support this SDK. Native builds
   ([below](#native-builds)) are the baseline. Errors: [Running Metro for a phone](docs/DEVICE_ACCEPTANCE.md#running-metro-for-a-phone).
@@ -156,7 +159,7 @@ unless the build sets `EXPO_PUBLIC_CENTRAL_ORIGIN`; see
 GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs expo-doctor (a locked
 devDependency), lint (it fails above a fixed warning count), typecheck, the
 test-file typecheck, Jest, the setup tests and an Android bundle export with an
-audit of the exported directory, a pinned JDK 17 / SDK 36 debug build with an
+audit of the exported directory, a pinned JDK 17 / compile SDK 37 (target SDK 36) debug build with an
 APK audit, the dependency gate and a secrets scan on pushes and pull requests to
 `main`. There are no git hooks; CI enforces lint and typecheck.
 [release.yml](.github/workflows/release.yml) validates any semantic `v*` tag

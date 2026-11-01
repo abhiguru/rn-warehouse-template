@@ -8,6 +8,7 @@ import { Modal, ScrollView, StyleSheet, Text } from 'react-native';
 import { Input } from '@/components/ui/Input';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { showAlert } from '@/utils/alert';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { GrnRateSheet } from '../GrnRateSheet';
 import { contextKey, priceRows, type RateContext } from '../grnRateModel';
 import type { GrnRate, RateChange } from '../types';
@@ -83,12 +84,23 @@ describe('Add rate', () => {
     expect(input('Tax')!.props.value).toBe('5');
     expect(chip('Everyone').props.accessibilityState.selected).toBe(true);
     // A rate starts later in the band, so the last day is set: the chips show "Until a date" and a date field is open.
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26');
     expect(chip('Until a date').props.accessibilityState.selected).toBe(true);
     expect(chip('No end date').props.accessibilityState.selected).toBe(false);
     expect(tree!.root.findAllByType(DatePickerInput)).toHaveLength(1);
     expect(tree!.root.findByType(DatePickerInput).props.value).toEqual(new Date(2026, 9, 31));
     mockFontScale = 2;
+  });
+
+  it('refuses a labour above 999999 and takes 999999', async () => {
+    open([], 12);
+    await type('Rent ₹/month', '3'); await type('Tax', '5');
+    await type('Labour ₹', '1000000');
+    await save();
+    expect(input('Labour ₹')!.props.error).toBe('Enter a labour rate from 0 to 999999.');
+    await type('Labour ₹', '999999');
+    await save();
+    expect(input('Labour ₹')!.props.error).toBeUndefined();
   });
 
   it('refuses blank figures, a band that does not hold the weight and shows nothing saved', async () => {
@@ -97,7 +109,7 @@ describe('Add rate', () => {
     await save();
     expect(onSave).not.toHaveBeenCalled();
     expect(input('Rent ₹/month')!.props.error).toBe('Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.');
-    expect(input('Labour ₹')!.props.error).toBe('Enter a labour rate of 0 or more.');
+    expect(input('Labour ₹')!.props.error).toBe('Enter a labour rate from 0 to 999999.');
     expect(input('Tax')!.props.error).toBe('Enter the tax rate for this item.');
     await type('Rent ₹/month', '3'); await type('Labour ₹', '1'); await type('Tax', '5');
     await save();
@@ -158,7 +170,7 @@ describe('Change', () => {
     expect(input('From (kg)')!.props.value).toBe('0');
     expect(input('Up to (kg)')!.props.value).toBe('50');
     // This GRN has no end: the dates line says so and there is no end choice.
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026 · No end date');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26 · No end date');
     expect(tree!.root.findAll(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'Until a date')).toHaveLength(0);
     expect(input('Rent ₹/month')!.props.value).toBe('4.00');
     expect(input('Labour ₹')!.props.value).toBe('1.50');
@@ -189,11 +201,11 @@ describe('Change', () => {
     expect(figureRow('labour')).toEqual({ cells: ['Labour', '₹1.50', '₹1.50'], a11y: 'Labour: ₹1.50, no change' });
     expect(figureRow('tax')).toEqual({ cells: ['Tax', '5%', '5%'], a11y: 'Tax: 5%, no change' });
     expect(part('rate-confirm-period')).toEqual([
-      'From 12 Oct 2026 to 14 Nov 2026',
-      'The ₹4.00 rate ends on 11 Oct 2026.',
-      'The ₹4.00 rate applies again from 15 Nov 2026.',
+      'From 12/10/26 to 14/11/26',
+      'The ₹4.00 rate ends on 11/10/26.',
+      'The ₹4.00 rate applies again from 15/11/26.',
     ]);
-    expect(part('rate-confirm-reach')).toEqual(['GRNs of every customer from 12 Oct 2026 that are not invoiced yet will use it. Saved invoices keep their figures.']);
+    expect(part('rate-confirm-reach')).toEqual(['GRNs of every customer from 12/10/26 that are not invoiced yet will use it. Saved invoices keep their figures.']);
     const buttons = ['rate-confirm-change', 'rate-confirm-only-grn', 'rate-confirm-back'].map(id => tree!.root.find(n => n.props.testID === id && typeof n.props.onPress === 'function'));
     expect(buttons.map(b => [b.props.type, b.props.children])).toEqual([['primary', 'Change the rate'], ['secondary', 'Only this GRN'], ['secondary', 'Back']]);
   });
@@ -235,8 +247,8 @@ describe('Change', () => {
     await save();
     // Who pays it, with what it means for the others, sits together; the period has no note about the old rate.
     expect(part('rate-confirm-audience')).toEqual(['For: Fictional Traders only', 'Fictional Traders pays the new rate. The ₹4.00 rate stays for other customers.']);
-    expect(part('rate-confirm-period')).toEqual(['From 12 Oct 2026, no end date']);
-    expect(part('rate-confirm-reach')).toEqual(['GRNs of Fictional Traders from 12 Oct 2026 that are not invoiced yet will use it. Saved invoices keep their figures.']);
+    expect(part('rate-confirm-period')).toEqual(['From 12/10/26, no end date']);
+    expect(part('rate-confirm-reach')).toEqual(['GRNs of Fictional Traders from 12/10/26 that are not invoiced yet will use it. Saved invoices keep their figures.']);
   });
 
   it('a last day before the planned rate is the only one accepted: clearing the end is refused', async () => {
@@ -245,7 +257,7 @@ describe('Change', () => {
     await act(async () => { chip('No end date').props.onPress(); });
     await save();
     expect(onSave).not.toHaveBeenCalled();
-    expect(texts()).toContain('A rate for this band starts on 15 Nov 2026. Choose a last day before it.');
+    expect(texts()).toContain('A rate for this band starts on 15/11/26. Choose a last day before it.');
   });
 });
 
@@ -266,10 +278,10 @@ describe('round 3', () => {
     await act(async () => { chip('No end date').props.onPress(); });
     await save();
     expect(onSave).not.toHaveBeenCalled();
-    expect(texts()).toContain('A rate for this band starts on 1 Nov 2026. Choose a last day before it.');
+    expect(texts()).toContain('A rate for this band starts on 01/11/26. Choose a last day before it.');
     await act(async () => { chip('Until a date').props.onPress(); });
     await save();
-    expect(part('rate-confirm-period')[0]).toBe('From 12 Oct 2026 to 31 Oct 2026');
+    expect(part('rate-confirm-period')[0]).toBe('From 12/10/26 to 31/10/26');
   });
 
 });
@@ -381,11 +393,11 @@ describe('dates (owner, 2026-10-17)', () => {
 
   it('This GRN: one line, "No end date", and no end choice; Customer and Everyone: the start and the chips, always visible', async () => {
     open([stored(0, 50, 4, '2026-01-01')], 12);
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026 · No end date');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26 · No end date');
     expect(tree!.root.findAll(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'No end date')).toHaveLength(0);
     expect(tree!.root.findAllByType(DatePickerInput)).toHaveLength(0);
     await act(async () => { chip('Customer').props.onPress(); });
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26');
     expect(chip('No end date').props.accessibilityState.selected).toBe(true);
     expect(chip('Until a date').props.accessibilityState.selected).toBe(false);
     expect(tree!.root.findAllByType(DatePickerInput)).toHaveLength(0);
@@ -396,7 +408,7 @@ describe('dates (owner, 2026-10-17)', () => {
     expect(tree!.root.findAllByType(DatePickerInput)).toHaveLength(0);
     // Back to This GRN: the chips go and the line says "No end date" again.
     await act(async () => { chip('This GRN').props.onPress(); });
-    expect(hostText('rate-from-date')).toBe('From 12 Oct 2026 · No end date');
+    expect(hostText('rate-from-date')).toBe('From 12/10/26 · No end date');
     expect(tree!.root.findAll(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'Until a date')).toHaveLength(0);
   });
 
@@ -504,7 +516,7 @@ describe('rates in force (owner, 2026-10-17)', () => {
     expect(has('rate-ref-everyone')).toBe(false);
     await tap('rate-ref-toggle');
     expect(toggle().props.accessibilityState).toEqual({ expanded: true });
-    expect(hostText('rate-ref-date')).toBe('In force on 12 Oct 2026');
+    expect(hostText('rate-ref-date')).toBe('In force on 12/10/26');
     for (const id of ['rate-ref-date', 'rate-ref-customer', 'rate-ref-everyone']) {
       expect(at('rate-reference').findAll(n => n.props.testID === id && typeof n.type === 'string')).toHaveLength(1);
     }
@@ -651,39 +663,63 @@ describe('Save and leaving (owner, 2026-10-17)', () => {
     expect(saveButton().props.disabled).toBe(false);
   });
 
+  it('on Change of a row with a pending Everyone change, Save is on for "This GRN" with the same figures', async () => {
+    const change: RateChange = { item_id: 'gur', price_type: 'monthly', weight_min: 0, weight_max: 50, unit_price: 3.5, labour_rate: 1, tax_percent: 5, scope: 'everyone', to: null, ctx: contextKey(ctx) };
+    open(rates, 12, ctx, 'A0010', { changes: [change] });
+    expect(chip('This GRN, A0010').props.accessibilityState?.selected).toBe(true);
+    expect(saveButton().props.disabled).toBe(false);
+    await save();
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ scope: 'grn', unit_price: 3.5 }));
+  });
+
   it('on Add, Save is enabled before anything is typed', () => {
     open([], 12);
     expect(saveButton().props.disabled).toBeFalsy();
   });
 
-  it('✕ with changes asks "Discard changes?"; Keep editing stays, Discard closes', async () => {
+  // The question is drawn inside the rate screen (a Modal opened from outside it is not shown on iPhone).
+  const discard = () => tree!.root.findByType(ConfirmDialog);
+
+  it('✕ with changes asks "Discard changes?" inside the screen; Keep editing stays, Discard closes', async () => {
     open(rates, 12);
+    expect(discard().props.visible).toBe(false);
     await type('Rent ₹/month', '5');
     await closeX();
     expect(onClose).not.toHaveBeenCalled();
-    expect(showAlert).toHaveBeenCalledTimes(1);
-    const [title, message, buttons, options] = (showAlert as jest.Mock).mock.calls[0];
-    expect(title).toBe('Discard changes?');
-    expect(message).toBe('Your changes have not been saved.');
-    expect(buttons.map((b: { text: string; style?: string }) => [b.text, b.style])).toEqual([['Keep editing', 'cancel'], ['Discard', 'destructive']]);
-    expect(buttons[0].onPress).toBeUndefined();
-    expect(options).toEqual({ cancelable: true });
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(discard().props).toMatchObject({
+      visible: true,
+      title: 'Discard changes?',
+      message: 'Your changes have not been saved.',
+      cancelText: 'Keep editing',
+      confirmText: 'Discard',
+      testID: 'rate-discard',
+    });
+    expect(modalNode().findAll(n => n.type === ConfirmDialog)).toHaveLength(1);
+    await act(async () => { discard().props.onCancel(); });
+    expect(discard().props.visible).toBe(false);
     expect(onClose).not.toHaveBeenCalled();
-    buttons[1].onPress();
+    await closeX();
+    await act(async () => { discard().props.onConfirm(); });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('Android Back (the Modal\'s onRequestClose) asks the same, and closes at once when nothing changed', async () => {
     open(rates, 12);
     await act(async () => { modalNode().props.onRequestClose(); });
-    expect(showAlert).not.toHaveBeenCalled();
+    expect(discard().props.visible).toBe(false);
     expect(onClose).toHaveBeenCalledTimes(1);
     jest.clearAllMocks();
     await type('Tax', '6');
     await act(async () => { modalNode().props.onRequestClose(); });
     expect(onClose).not.toHaveBeenCalled();
-    expect(showAlert).toHaveBeenCalledTimes(1);
-    expect((showAlert as jest.Mock).mock.calls[0][0]).toBe('Discard changes?');
+    expect(discard().props.visible).toBe(true);
+    expect(discard().props.title).toBe('Discard changes?');
+  });
+
+  it('the "Change the rate?" question is inside the rate screen too', async () => {
+    open(rates, 12);
+    expect(modalNode().findAll(n => typeof n.props.onOnlyGrn === 'function').length).toBeGreaterThan(0);
   });
 
   it('✕ without changes closes at once, without a question', async () => {

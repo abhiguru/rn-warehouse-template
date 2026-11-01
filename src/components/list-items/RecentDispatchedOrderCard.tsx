@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { formatDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
+import { formatDate, formatSpokenDate, formatCount } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -41,6 +41,9 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui/StatusTag';
+import { DispatchLinesTable } from './MemoizedDispatchItem';
+
+const NO_WORDS: string[] = [];
 
 // ============================================================================
 // TYPES
@@ -51,6 +54,8 @@ export interface RecentDispatchedOrderCardProps {
   dispatch: RecentDispatchedOrder;
   /** Callback when card is pressed (navigates to dispatch details) */
   onPress: (dispatch: RecentDispatchedOrder) => void;
+  /** Open a GRN (its id) from the GRN cell of a line; without it, or for a line without a GRN id, the cell is plain text. */
+  onViewGRN?: (grnId: string) => void;
 }
 
 // ============================================================================
@@ -142,96 +147,13 @@ const makeStyles = (t: ThemeTokens) => ({
   statusTag: {
     marginTop: space.xs,
   },
-  // Data table (guide §13.7)
+  // The nested lines table (guide §13.7): the padding `nestedRowWidth` allows for, as on the dispatch list.
   expandedSection: {
+    paddingHorizontal: space.md,
+    paddingTop: space.xs,
+    paddingBottom: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: t.border.divider,
-  },
-  tableHeader: {
-    flexDirection: 'row' as const,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-    minHeight: layout.rowMinHeight,
-    alignItems: 'center' as const,
-    backgroundColor: t.background.base,
-  },
-  tableHeaderCell: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
-  },
-  // A row grows with its item cell (a two-line name, the rack, the mark); the
-  // cells beside it are centred on it, as on the GRN list.
-  tableRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.lg,
-    minHeight: layout.rowMinHeight,
-    backgroundColor: t.surface.card,
-  },
-  tableRowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
-  },
-  tableCell: {
-    justifyContent: 'center' as const,
-  },
-  colItem: {
-    flex: 1,
-    paddingRight: space.sm,
-  },
-  // Wide enough for its heading on one line at font scales 1.0 and 1.3, "Kg each" and
-  // the Gujarati "દરેકના kg" (72 dp to write in, as on the GRN list: padding inside the
-  // column left 64 dp, and the Gujarati heading wrapped); the number under it is the
-  // weight of one bag. The GRN cell beside it is centred, so the two stay apart.
-  colWeight: {
-    width: 72,
-    textAlign: 'right' as const,
-  },
-  // As wide as on the dispatch card. At 60 dp (52 to write in) "RV15001" needs
-  // about 77 dp at font scale 1.3, more than shrinking to 0.7 could make room
-  // for; here it has 92 dp, and at larger text it wraps rather than being cut.
-  // GRN numbers keep the digits 0-9 in Gujarati too.
-  colGrn: {
-    width: 96,
-    textAlign: 'center' as const,
-    paddingRight: space.xs,
-  },
-  colQty: {
-    width: 48,
-    textAlign: 'right' as const,
-  },
-  tableCellValue: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  tableCellQty: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    color: t.text.primary,
-    fontVariant: ['tabular-nums' as const],
-  },
-  // The item cell is a column: the name (up to two lines), then the rack on its
-  // own line, then the mark. The rack never shares the name's line: beside it,
-  // the name was drawn as one letter at large text sizes. A long rack wraps.
-  tableCellItemName: {
-    ...typography.subhead,
-    fontWeight: fontWeight.medium,
-    color: t.text.primary,
-  },
-  tableCellRack: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    marginTop: space.xxs,
-  },
-  tableCellItemMark: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    marginTop: space.xxs,
   },
   expandButton: {
     flexDirection: 'row' as const,
@@ -260,6 +182,7 @@ const makeStyles = (t: ThemeTokens) => ({
 const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps> = ({
   dispatch,
   onPress,
+  onViewGRN,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -269,7 +192,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
   const itemCount = dispatch.item_count || dispatch.items?.length || 0;
   const itemsLabel = formatCount(itemCount, 'item');
   const bagsLabel = formatCount(dispatch.total_qty, 'bag');
-  const dateLabel = formatDate(dispatch.disp_date, 'short');
+  const dateLabel = formatDate(dispatch.disp_date);
 
   const handleToggleExpand = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -285,7 +208,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
     bagsLabel,
     dispatch.registration ? translate('lists.card.vehicle', { number: formatIdentifier(dispatch.registration) }) : null,
     translate('lists.recent.createdBy', { name: dispatch.created_by_name }),
-    dateLabel,
+    formatSpokenDate(dispatch.disp_date),
     translate('lists.order.statusDispatched'),
   ]
     .filter(Boolean)
@@ -356,63 +279,13 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
       {/* Expanded Items Table */}
       {isExpanded && hasItems && (
         <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKgEach')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colGrn]}>{translate('lists.card.colGrn')}</Text>
-            <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('lists.card.colQty')}</Text>
-          </View>
-
-          {dispatch.items.map((item, idx) => {
-            // Whole kilograms of one bag, as the column shows them. A lot without a
-            // weight shows a dash and is read without one.
-            const kg = Math.round(Number(item.weight) || 0);
-            const weightEach = formatWeightEach(kg);
-            return (
-              <View
-                key={`${dispatch.dispatch_id}-item-${idx}`}
-                style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
-                accessible
-                accessibilityLabel={
-                  weightEach === null
-                    ? translate(item.rack ? 'dispatch.listRow.noWeightRack' : 'dispatch.listRow.noWeight', {
-                      item: item.item_name,
-                      rack: item.rack,
-                      grn: formatIdentifier(item.gr_no),
-                      quantity: item.disp_qty,
-                    })
-                    : translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
-                      item: item.item_name,
-                      rack: item.rack,
-                      weight: weightEach,
-                      grn: formatIdentifier(item.gr_no),
-                      quantity: item.disp_qty,
-                    })
-                }
-              >
-                <View style={[styles.tableCell, styles.colItem]}>
-                  <Text style={styles.tableCellItemName} numberOfLines={2} ellipsizeMode="tail">
-                    {item.item_name}
-                  </Text>
-                  {item.rack ? <Text style={styles.tableCellRack}>({item.rack})</Text> : null}
-                  {item.package_mark ? (
-                    <Text style={styles.tableCellItemMark}>
-                      {item.package_mark}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
-                  {weightEach === null ? '—' : formatNumber(kg)}
-                </Text>
-                <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
-                  {item.gr_no}
-                </Text>
-                <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>
-                  {formatNumber(item.disp_qty)}
-                </Text>
-              </View>
-            );
-          })}
+          <DispatchLinesTable
+            items={dispatch.items}
+            words={NO_WORDS}
+            rowKey={String(dispatch.dispatch_id)}
+            testID={`recent-dispatch-lines-${dispatch.dispatch_id}`}
+            onViewGRN={onViewGRN}
+          />
         </Animated.View>
       )}
 
