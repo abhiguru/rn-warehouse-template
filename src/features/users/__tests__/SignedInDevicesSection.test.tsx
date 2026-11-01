@@ -160,13 +160,23 @@ it('signs out here when this phone\'s own sign out got no answer and the list no
   expect(showToast).not.toHaveBeenCalled();
 });
 
-it('signs out here when this phone\'s own sign out got no answer and the list cannot be read (the session has ended)', async () => {
-  jest.mocked(listUserSessions).mockResolvedValueOnce({ success: true, sessions: [row('s1', { is_current: true })] }).mockResolvedValueOnce({ success: false, message: 'JWT expired' });
+it('signs out here when this phone\'s own sign out got no answer and the list cannot be read (the server refused the read, 42501: the session has ended)', async () => {
+  jest.mocked(listUserSessions).mockResolvedValueOnce({ success: true, sessions: [row('s1', { is_current: true })] }).mockResolvedValueOnce({ success: false, code: '42501', message: 'x' });
   jest.mocked(revokeSession).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' });
   await open();
   await press('session-signout-s1');
   await confirmSignOut();
   expect(logout).toHaveBeenCalledWith({ localOnly: true });
+});
+
+it('signs out here and asks the server once when this phone\'s own sign out got no answer and the list failed for the network', async () => {
+  jest.mocked(listUserSessions).mockResolvedValueOnce({ success: true, sessions: [row('s1', { is_current: true })] }).mockResolvedValueOnce({ success: false, message: 'Network request failed' });
+  jest.mocked(revokeSession).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' });
+  await open();
+  await press('session-signout-s1');
+  await confirmSignOut();
+  expect(logout).toHaveBeenCalledWith();
+  expect(logout).not.toHaveBeenCalledWith({ localOnly: true });
 });
 
 it('stays signed in and says so when this phone\'s own sign out got no answer and the session is still listed', async () => {

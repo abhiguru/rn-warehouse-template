@@ -65,10 +65,13 @@ export function SignedInDevicesSection({ userId, onUnsupported }: SignedInDevice
   // The person whose list is on screen: an answer for another person (the page opened on someone else) is dropped.
   const currentUser = useRef(userId);
   currentUser.current = userId;
+  // The code of the last list read that failed (undefined when it worked or had none).
+  const lastFailureCode = useRef<string | undefined>(undefined);
 
   const load = useCallback(async (): Promise<UserSession[] | null> => {
     const result = await listUserSessions(userId);
     if (currentUser.current !== userId) return null;
+    lastFailureCode.current = result.success ? undefined : result.code;
     if (result.success) {
       setSessions(result.sessions);
       setPhase('ready');
@@ -119,9 +122,10 @@ export function SignedInDevicesSection({ userId, onUnsupported }: SignedInDevice
         const after = await load();
         const outcome = after ? revokeOutcome(false, after, session.id) : 'revoked';
         // This phone's own session, answer lost: the person chose to be signed out here. Unless the list shows it is still
-        // there, it is cleared locally too: a re-read that fails is what a session the server already ended gives.
+        // there, it is cleared here too. A refused read (42501) means the server already ended the session: local only.
+        // Any other failed read (a network failure) says nothing about the server, so the sign out also asks it once.
         if (lost && session.is_current && outcome !== 'notSignedOut') {
-          await dispatch(logout({ localOnly: true }));
+          await dispatch(after || lastFailureCode.current === '42501' ? logout({ localOnly: true }) : logout());
           return;
         }
         if (outcome === 'notSignedOut') {
