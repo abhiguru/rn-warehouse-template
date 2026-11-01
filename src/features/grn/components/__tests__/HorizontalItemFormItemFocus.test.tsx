@@ -32,7 +32,7 @@ const mount = () => {
   const ref = React.createRef<HorizontalItemFormRef>();
   let tree!: ReturnType<typeof create>;
   act(() => {
-    tree = create(<HorizontalItemForm ref={ref} currentItem={EMPTY} onFieldChange={jest.fn()} onImagePick={jest.fn()} onImageRemove={jest.fn()} onSaveItem={jest.fn()} isValid />);
+    tree = create(<HorizontalItemForm ref={ref} currentItem={EMPTY} onFieldChange={jest.fn()} onImagePick={jest.fn()} onImageRemove={jest.fn()} onSaveItem={jest.fn()} isValid isEditing editingItemNumber={1} savedItemsCount={1} />);
   });
   return { ref, tree };
 };
