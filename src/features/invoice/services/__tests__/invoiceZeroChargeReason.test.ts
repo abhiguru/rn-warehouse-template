@@ -183,6 +183,7 @@ describe('the invoice opened for editing', () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toBe('This invoice is cancelled and cannot be changed.');
+    expect(result.code).toBe('cancelled');
     expect(result.data.items).toEqual([]);
   });
 

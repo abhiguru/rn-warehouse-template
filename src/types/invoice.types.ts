@@ -259,7 +259,7 @@ export interface InvoiceFormDataResponse {
   };
   message?: string;
   /** Set when the server refused the GRN itself: not fully dispatched, or already invoiced. */
-  code?: 'not_invoiceable';
+  code?: 'not_invoiceable' | 'cancelled';
 }
 
 export interface CreateInvoiceResponse {

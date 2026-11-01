@@ -58,6 +58,8 @@ export default function InvoiceEditLayout() {
     blocker ? 'blocked' : id && invoiceId === id && baseline ? 'ready' : 'loading'
   );
   const [errorMessage, setErrorMessage] = useState('');
+  // The invoice is cancelled: opening it again can never work, so the error offers Close only.
+  const [retryable, setRetryable] = useState(true);
 
   // Protect edit routes - redirect if user cannot update
   useEffect(() => {
@@ -83,6 +85,7 @@ export default function InvoiceEditLayout() {
       return;
     }
     const request = ++loadRequest.current;
+    setRetryable(true);
     setPhase('loading');
 
     // Reset form state synchronously before async operation
@@ -105,6 +108,7 @@ export default function InvoiceEditLayout() {
         setPhase('ready');
       } else {
         setErrorMessage(serverText(result.message, tr('common.checkConnection')));
+        setRetryable(result.code !== 'cancelled');
         setPhase('error');
       }
     } catch (error) {
@@ -174,7 +178,7 @@ export default function InvoiceEditLayout() {
       <ErrorStateView
         title={tr('invoice.edit.openFailedTitle')}
         message={errorMessage}
-        onRetry={id ? () => { void load(); } : undefined}
+        onRetry={id && retryable ? () => { void load(); } : undefined}
         secondaryActionLabel={tr('common.close')}
         onSecondaryAction={() => router.dismissTo((id ? `/invoice-details/${id}` : '/(tabs)/invoices') as Href)}
       />

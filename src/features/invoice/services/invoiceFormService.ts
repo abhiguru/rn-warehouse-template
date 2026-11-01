@@ -947,6 +947,8 @@ export const loadInvoiceData = async (
         success: false,
         data: { header: { customer_id: '', customer_name: '', gr_id: '', gr_no: '' }, items: [] },
         message: t('invoice.cancel.cannotChange'),
+        // Nothing a second try can change: the screen offers no Try again.
+        code: 'cancelled',
       };
     }
 
