@@ -555,7 +555,7 @@ function InvoiceDetailScreen() {
               cancelled_by_name={!isCustomer ? invoice.cancelled_by_name : undefined}
               on_share_pdf={handleSharePDF}
               is_share_loading={isShareLoading}
-              on_print={!isCustomer ? handlePrint : undefined}
+              on_print={!isCustomer && !isCancelled ? handlePrint : undefined}
             />
           )}
 

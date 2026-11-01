@@ -78,6 +78,18 @@ it('revokes, reads the list again, and says Device signed out when the session i
   expect(showAlert).toHaveBeenCalledTimes(1);
 });
 
+it('claims no success when the list cannot be read again after the revoke: Not confirmed', async () => {
+  jest.mocked(listUserSessions)
+    .mockResolvedValueOnce({ success: true, sessions: [row('s1')] })
+    .mockResolvedValueOnce({ success: false, message: "Couldn't load the signed-in devices." });
+  jest.mocked(revokeSession).mockResolvedValue({ success: true, revokedCurrent: false });
+  await open();
+  await press('session-signout-s1');
+  await confirmSignOut();
+  expect(showAlert).toHaveBeenLastCalledWith('Not confirmed', expect.stringContaining('not known'));
+  expect(showToast).not.toHaveBeenCalled();
+});
+
 it('says "Not signed out" when the server answered done but the session is still listed', async () => {
   jest.mocked(listUserSessions).mockResolvedValue({ success: true, sessions: [row('s1')] });
   jest.mocked(revokeSession).mockResolvedValue({ success: true, revokedCurrent: false });

@@ -95,8 +95,8 @@ export const components: Translation<typeof source> = {
   },
   // Drafts for the owner's wording review (the version gate and the upgrade notice).
   backendTooOld: {
-    title: 'આ સુવિધાના સર્વરને અપડેટ કરવાની જરૂર છે',
-    message: 'સુવિધાનું સર્વર આ એપ્લિકેશનના વર્ઝન સાથે ચાલવા માટે બહુ જૂનું છે. સુવિધાને તેનું સર્વર અપડેટ કરવા કહો, પછી ફરી પ્રયાસ કરો.',
+    title: 'આ કોલ્ડ સ્ટોરેજના સર્વરને અપડેટ કરવાની જરૂર છે',
+    message: 'કોલ્ડ સ્ટોરેજનું સર્વર આ એપ્લિકેશનના વર્ઝન સાથે ચાલવા માટે બહુ જૂનું છે. કોલ્ડ સ્ટોરેજને તેનું સર્વર અપડેટ કરવા કહો, પછી ફરી પ્રયાસ કરો.',
   },
   appTooOld: {
     title: 'ઍપ અપડેટ કરો',

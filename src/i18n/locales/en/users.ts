@@ -88,6 +88,8 @@ export const users = {
     confirmCurrent: 'This is the device you are using now. You will be signed out here.',
     confirm: 'Sign out',
     signedOut: 'Device signed out.',
+    unconfirmedTitle: 'Not confirmed',
+    unconfirmed: 'The device list could not be read again, so it is not known whether the device was signed out. Pull to refresh and check.',
     notSignedOutTitle: 'Not signed out',
     notSignedOut: 'The device is still signed in. You may not be allowed to sign it out. The list shows what is true now.',
     signOutFailedTitle: "Couldn't sign out",

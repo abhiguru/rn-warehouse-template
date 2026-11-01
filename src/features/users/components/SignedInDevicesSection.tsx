@@ -118,6 +118,9 @@ export function SignedInDevicesSection({ userId, onUnsupported }: SignedInDevice
         const outcome = after ? revokeOutcome(false, after, session.id) : 'revoked';
         if (outcome === 'notSignedOut') {
           showAlert(tr('users.devices.notSignedOutTitle'), tr('users.devices.notSignedOut'));
+        } else if (!after) {
+          // The re-read failed: whether the device is gone is not known, so no success is claimed.
+          showAlert(tr('users.devices.unconfirmedTitle'), tr('users.devices.unconfirmed'));
         } else {
           showToast(tr('users.devices.signedOut'));
         }

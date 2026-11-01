@@ -941,6 +941,15 @@ export const loadInvoiceData = async (
     const header = data.invoice;
     const items = data.items || [];
 
+    // A cancelled invoice cannot be changed (server migration 134): the edit wizard is not opened for it.
+    if (header?.cancelled_at) {
+      return {
+        success: false,
+        data: { header: { customer_id: '', customer_name: '', gr_id: '', gr_no: '' }, items: [] },
+        message: t('invoice.cancel.cannotChange'),
+      };
+    }
+
     // Defensive check: ensure we have the invoice header
     if (!header) {
       return {

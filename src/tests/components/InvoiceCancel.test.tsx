@@ -178,6 +178,17 @@ describe('a cancelled invoice', () => {
     expect(JSON.stringify(renderer.toJSON())).toContain('HeroCancelled');
   });
 
+  it('offers Print on a live invoice and not on a cancelled one', async () => {
+    const printButtons = () => renderer.root.findAll(n => typeof n.props.onPress === 'function' && /^print/i.test(String(n.props.accessibilityLabel ?? '')));
+    jest.mocked(getInvoiceDetails).mockResolvedValue(detail({}));
+    await open();
+    expect(printButtons().length).toBeGreaterThan(0);
+    await act(async () => { renderer.unmount(); });
+    jest.mocked(getInvoiceDetails).mockResolvedValue(detail(cancelled));
+    await open();
+    expect(printButtons()).toHaveLength(0);
+  });
+
   it('shows a customer the date and reason, not who cancelled it', async () => {
     mockIsCustomer = true;
     mockCanDelete = false;

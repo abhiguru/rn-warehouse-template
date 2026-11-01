@@ -174,6 +174,18 @@ describe('the invoice opened for editing', () => {
     expect(result.data.items.map((item) => item.charge)).toEqual([0, 5.5]);
   });
 
+  it('is refused for a cancelled invoice, with the cannot-change text', async () => {
+    const live = detail('Sample lot');
+    answers.get_invoice_detail = { ...live, data: { ...live.data, invoice: { ...live.data.invoice, cancelled_at: '2026-10-06T10:00:00Z' } } };
+    answers.get_invoice_data = noGrnMode;
+
+    const result = await loadInvoiceData(INVOICE);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe('This invoice is cancelled and cannot be changed.');
+    expect(result.data.items).toEqual([]);
+  });
+
   it.each([[null], [undefined]])('has an empty reason when the server stored %p', async (stored) => {
     answers.get_invoice_detail = detail(stored);
     answers.get_invoice_data = noGrnMode;

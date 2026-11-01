@@ -89,6 +89,9 @@ export const users: Translation<typeof source> = {
     confirmCurrent: 'આ તમે અત્યારે વાપરો છો તે ઉપકરણ છે. અહીંથી તમે લૉગઆઉટ થઈ જશો.',
     confirm: 'લૉગઆઉટ કરો',
     signedOut: 'ઉપકરણ લૉગઆઉટ થયું.',
+    // Draft for the owner's wording review (2026-11-01).
+    unconfirmedTitle: 'ખાતરી થઈ નથી',
+    unconfirmed: 'ઉપકરણોની યાદી ફરી વાંચી શકાઈ નથી, એટલે ઉપકરણ લૉગઆઉટ થયું કે નહીં તે ખબર નથી. યાદી ફરી તાજી કરીને તપાસો.',
     notSignedOutTitle: 'લૉગઆઉટ થયું નથી',
     notSignedOut: 'ઉપકરણ હજુ લૉગિન છે. કદાચ તમને તેને લૉગઆઉટ કરવાની પરવાનગી નથી. યાદી અત્યારની સ્થિતિ બતાવે છે.',
     signOutFailedTitle: 'લૉગઆઉટ થઈ શક્યું નથી',
@@ -96,7 +99,7 @@ export const users: Translation<typeof source> = {
     loadFailed: 'લૉગિન થયેલા ઉપકરણો લોડ થઈ શક્યા નથી.',
     notAllowed: 'તમને આની પરવાનગી નથી.',
     gone: 'તે ઉપકરણ હવે લૉગિન નથી.',
-    unsupported: 'આ સુવિધાનું સર્વર લૉગિન થયેલા ઉપકરણોની યાદી આપી શકતું નથી.',
+    unsupported: 'આ કોલ્ડ સ્ટોરેજનું સર્વર લૉગિન થયેલા ઉપકરણોની યાદી આપી શકતું નથી.',
   },
   edit: {
     title: 'યુઝરમાં ફેરફાર',

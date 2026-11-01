@@ -7,6 +7,7 @@ import {
   type MemoizedInvoiceItemProps,
 } from '../list-items/MemoizedInvoiceItem';
 import type { Invoice } from '@/services/invoice-service';
+import { StatusTag } from '@/components/ui/StatusTag';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
@@ -66,6 +67,29 @@ it('re-renders when the customer name, GRN number, callback or print flag change
   expect(invoiceItemPropsAreEqual(props(), props({ grn: { gr_no: 'FXG002' } } as Partial<Invoice>))).toBe(false);
   expect(invoiceItemPropsAreEqual(props(), { ...props(), onPress: jest.fn() })).toBe(false);
   expect(invoiceItemPropsAreEqual(props(), { ...props(), canPrint: false })).toBe(false);
+});
+
+describe('a cancelled invoice', () => {
+  const render = (overrides: Partial<Invoice>) => {
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<MemoizedInvoiceItem {...props(overrides)} />); });
+    return tree;
+  };
+  const labelOf = (tree: ReactTestRenderer) => tree.root.findAll(n => n.props.accessibilityRole === 'button')[0].props.accessibilityLabel as string;
+
+  it('shows a Cancelled tag and speaks it', () => {
+    const tree = render({ cancelled_at: '2026-10-05T10:00:00Z' });
+    expect(tree.root.findAllByType(StatusTag).map(tag => tag.props.label)).toContain('Cancelled');
+    expect(labelOf(tree)).toContain('Cancelled');
+    act(() => tree.unmount());
+  });
+
+  it('shows no tag for a live invoice, and re-renders when it becomes cancelled', () => {
+    const tree = render({});
+    expect(tree.root.findAllByType(StatusTag).map(tag => tag.props.label)).not.toContain('Cancelled');
+    expect(invoiceItemPropsAreEqual(props(), props({ cancelled_at: '2026-10-05T10:00:00Z' }))).toBe(false);
+    act(() => tree.unmount());
+  });
 });
 
 describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const)))(
