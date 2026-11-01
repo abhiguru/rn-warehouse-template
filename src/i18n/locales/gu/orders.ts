@@ -14,7 +14,7 @@ export const orders: Translation<typeof source> = {
   },
   // What a save does to customers' open orders (shown before and after a dispatch or GRN is saved or a GRN is deleted).
   effect: {
-    noticeTitle: 'સેવ કરતાં આ ઑર્ડર બદલાશે',
+    noticeTitle: 'સાચવતાં આ ઑર્ડર બદલાશે',
     questionLead: 'આથી આ ઑર્ડર પણ બદલાશે:',
     checking: 'ઑર્ડર તપાસી રહ્યા છીએ…',
     doneLead: 'બદલાયેલા ઑર્ડર:',
@@ -25,7 +25,7 @@ export const orders: Translation<typeof source> = {
     added: '{{order}}: {{item}} ({{grn}}) ઉમેરાય છે, {{packs}}',
     removed: '{{item}} ({{grn}}) {{order}}માંથી નીકળી જાય છે.',
     removedLast: '{{item}} ({{grn}}) {{order}}માંથી નીકળી જાય છે. કોઈ લાઇન બાકી રહેતી નથી, તેથી ઑર્ડર નીકળી જાય છે.',
-    exceedsStock: '{{order}}: {{item}} ({{grn}}) માં {{wanted}} માગ્યા છે, પણ સ્ટૉકમાં {{packs}} જ રહેશે.',
+    exceedsStock: '{{order}}: {{item}} ({{grn}}) માં {{wanted}} માગ્યા છે, પણ સ્ટોકમાં {{packs}} જ રહેશે.',
   },
   manage: {
     loading: 'ઑર્ડર લોડ થઈ રહ્યો છે…',
