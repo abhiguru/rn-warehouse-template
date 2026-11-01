@@ -736,7 +736,7 @@ describe('customer activity, what the stock is counted in (D18)', () => {
     expect(screen.labels()).toContain('Current stock: 300 boxes. View stock age');
   });
 
-  it('the total reads units when the top rows are all Box but stock outside them makes up the rest', async () => {
+  it('an older server (no current_stock_packaging): units when the top rows are all Box but stock outside them makes up the rest', async () => {
     openGreenValley();
     detail.mockResolvedValue(
       answerDetail({
@@ -748,6 +748,29 @@ describe('customer activity, what the stock is counted in (D18)', () => {
     );
     const screen = await open(makeStore());
     expect(screen.labels()).toContain('Current stock: 300 units. View stock age');
+  });
+
+  describe('current_stock_packaging from the server covers all stock, not only the top five items', () => {
+    const five = ['A', 'B', 'C', 'D', 'E'].map(name => ({ item_name: name, total_stock: 100, grn_count: 1, packaging: 'Bag' }));
+    const show = async (named: unknown) => {
+      openGreenValley();
+      const summary = { ...DETAIL.summary, current_stock: 1200, ...(named === undefined ? {} : { current_stock_packaging: named }) };
+      detail.mockResolvedValue(answerDetail({ summary, top_stock_items: five as StockItemPreview[] as typeof DETAIL.top_stock_items }) as never);
+      return (await open(makeStore())).labels();
+    };
+
+    it('six or more items all in bags: the total reads bags', async () => {
+      expect(await show('Bag')).toContain('Current stock: 1,200 bags. View stock age');
+    });
+    it('a word of its own is used as sent', async () => {
+      expect(await show('Box')).toContain('Current stock: 1,200 boxes. View stock age');
+    });
+    it('null (the lots differ) reads units', async () => {
+      expect(await show(null)).toContain('Current stock: 1,200 units. View stock age');
+    });
+    it('absent (an older server) keeps the coverage rule: the top five do not add up, so units', async () => {
+      expect(await show(undefined)).toContain('Current stock: 1,200 units. View stock age');
+    });
   });
 
   it('the GRN and dispatch preview rows read the word: given, units when null, as before when absent', async () => {

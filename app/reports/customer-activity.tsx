@@ -541,11 +541,13 @@ function quickAccessHead(
 const stockPackaging = (item: { packaging?: string | null }): string | undefined => (item.packaging === null ? MIXED_PACKAGING : item.packaging);
 
 /**
- * What the Current stock total is counted in. The rows are only the top items (the server sends five), the total covers all stock:
- * one word is shown only when the rows account for the whole total and share that word; otherwise "units". With no word on any
- * row (an older server) it reads "bags".
+ * What the Current stock total is counted in. The server names it for all the stock (`current_stock_packaging`: a word, or null when
+ * the lots differ, read as "units"). An older server does not send it; then the rows are only the top items (five), so one word is
+ * shown only when they account for the whole total and share that word, otherwise "units"; with no word on any row it reads "bags".
  */
 function currentStockPackaging(data: CustomerActivityDetailData): string | undefined {
+  const named = data.summary.current_stock_packaging;
+  if (named !== undefined) return named === null ? MIXED_PACKAGING : named;
   const rows = data.top_stock_items;
   if (rows.every(row => row.packaging === undefined)) return undefined;
   const covered = rows.reduce((sum, row) => sum + row.total_stock, 0) === data.summary.current_stock;

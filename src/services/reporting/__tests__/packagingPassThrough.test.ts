@@ -94,3 +94,15 @@ describe('customer activity recent GRN and dispatch previews', () => {
     expect(data.recent_dispatches.map(r => r.packaging)).toEqual(['Crate', null, undefined]);
   });
 });
+
+describe('customer activity current stock packaging', () => {
+  it('keeps the word, null for differing lots, and absent for an older server', async () => {
+    const read = async (summary: Record<string, unknown>) => {
+      rpc.mockResolvedValue({ error: null, data: { success: true, summary } });
+      return (await getCustomerActivityDetail({ customerId: CUSTOMER, ...RANGE })).data.summary.current_stock_packaging;
+    };
+    expect(await read({ current_stock: 5, current_stock_packaging: 'Box' })).toBe('Box');
+    expect(await read({ current_stock: 5, current_stock_packaging: null })).toBeNull();
+    expect(await read({ current_stock: 5 })).toBeUndefined();
+  });
+});

@@ -758,6 +758,8 @@ export interface RecentInvoicePreview {
  */
 export interface CustomerActivityDetailKPIs {
   current_stock: number;
+  /** What all the customer's stock is counted in; null when the lots differ (read as units); absent on an older server. */
+  current_stock_packaging?: string | null;
   total_grns: number;
   total_grn_quantity: number;
   total_dispatches: number;

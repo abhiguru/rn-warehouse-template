@@ -248,6 +248,7 @@ export async function getCustomerActivityDetail(
     // Map summary KPIs
     const summary: CustomerActivityDetailKPIs = {
       current_stock: responseData?.summary?.current_stock ?? 0,
+      current_stock_packaging: responseData?.summary?.current_stock_packaging, // as sent: null means the lots differ
       total_grns: responseData?.summary?.total_grns ?? 0,
       total_grn_quantity: responseData?.summary?.total_grn_quantity ?? 0,
       total_dispatches: responseData?.summary?.total_dispatches ?? 0,
