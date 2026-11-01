@@ -21,6 +21,7 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { checkGrnStillInvoiceable, createInvoice, updateInvoice } from '@/features/invoice/services/invoiceFormService';
 import { fillNewInvoice, makeInvoiceStore, openForEdit, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { updateHeader } from '@/store/slices/invoiceFormSlice';
+import { calculateInvoiceBreakdown } from '@/utils/invoiceCalculations';
 import InvoiceFormStep3 from '../../../../../app/invoice-form/step3';
 import InvoiceEditStep3 from '../../../../../app/invoice-edit/[id]/step3';
 
@@ -159,6 +160,19 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
     expect(tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)).toHaveLength(0);
     expect(success().props.isVisible).toBe(false);
     expect(showAlert).toHaveBeenCalledWith(expect.any(String), 'No number left');
+  });
+
+  it('refuses a discount that takes the total to zero before the question (D8): the sentence, no question, nothing sent', async () => {
+    const { invoiceForm } = mockStore.getState();
+    const base = calculateInvoiceBreakdown(invoiceForm.items, invoiceForm.header).base;
+    await act(async () => { mockStore.dispatch(updateHeader({ discount: base })); });
+    await pressSave();
+
+    // The only dialog is the refusal with the D8 sentence, not the question of the save.
+    const open = tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible);
+    expect(open.map((dialog) => dialog.props.title)).toEqual(['Check the discount']);
+    expect(open[0].props.message).toContain("A discount can't take the total to ₹0.");
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('Cancel in the print question returns to the invoice dialog', async () => {

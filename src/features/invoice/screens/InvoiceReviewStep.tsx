@@ -18,6 +18,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import {
+  calculateInvoiceBreakdown,
   discountNeedsReason,
   formatInvoiceAmount,
   invoiceConfirmMessage,
@@ -30,6 +31,7 @@ import WizardBottomBar from '@/components/WizardBottomBar';
 import { ReviewCard, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSections } from '@/components/review/ReviewSections';
 import { InvoiceReviewItemsTable } from '@/features/invoice/components/review/InvoiceReviewItemsTable';
 import { InvoiceCalculationSummary } from '@/features/invoice/components/InvoiceCalculationSummary';
+import { discountFieldText, parseDiscountInput } from '@/features/invoice/utils/amountInput';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
 import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -220,11 +222,15 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
 
     // The discount field shows text that was not accepted, so the invoice
     // still holds the previous discount: saving now would not save what is shown.
-    if (discountError) {
+    // The discount the invoice holds is checked against the amount before discount as it stands now (a charge,
+    // labour or tax may have changed since it was typed), so a total of ₹0 from it is refused before the question.
+    const heldDiscountError = parseDiscountInput(discountFieldText(header.discount), calculateInvoiceBreakdown(items, header).base, formatInvoiceAmount).error;
+    const refusedDiscount = discountError ?? heldDiscountError;
+    if (refusedDiscount) {
       refuseSave();
       showError(
         tr('invoice.review.discountCheckTitle'),
-        `${discountError}\n${tr('invoice.review.discountNotApplied', { amount: formatInvoiceAmount(header.discount) })}`
+        `${refusedDiscount}\n${tr('invoice.review.discountNotApplied', { amount: formatInvoiceAmount(header.discount) })}`
       );
       return;
     }

@@ -163,6 +163,20 @@ describe('the discount the invoice already has, when the amount before discount 
     expect(onDiscountErrorChange).toHaveBeenLastCalledWith(t('invoice.summary.discountTotalZero'));
   });
 
+  it('shows the D8 sentence at once when the summary opens with a discount equal to the amount', async () => {
+    const { tree, onDiscountErrorChange } = await mount();
+    act(() => tree.unmount());
+    let opened!: ReactTestRenderer;
+    await act(async () => {
+      opened = create(
+        <InvoiceCalculationSummary header={{ ...withDiscount, discount: 735 }} items={[item]} onDiscountChange={jest.fn()} onDiscountErrorChange={onDiscountErrorChange} />,
+      );
+    });
+    expect(shownErrors(opened)).toEqual([t('invoice.summary.discountTotalZero')]);
+    expect(onDiscountErrorChange).toHaveBeenLastCalledWith(t('invoice.summary.discountTotalZero'));
+    act(() => opened.unmount());
+  });
+
   it('clears the message when the amount goes back up', async () => {
     const { tree, element, onDiscountErrorChange } = await mount();
     await act(async () => { tree.update(element({ ...withDiscount, labour: 0, tax_amount: 0 })); });
