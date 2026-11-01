@@ -23,7 +23,7 @@
  * database text and no stored status value ("DISPATCHED") reaches the screen.
  */
 import { t } from '@/i18n';
-import { formatCount } from '@/utils/formatters';
+import { formatPackages } from '@/utils/packagingWord';
 import { serverReason } from '@/utils/serverText';
 import { isOfflineFailure } from '@/utils/serviceErrorHandler';
 
@@ -67,7 +67,9 @@ function codeOf(error: unknown): string | undefined {
   return undefined;
 }
 
-const bags = (count: string) => formatCount(Math.max(0, parseInt(count, 10)), 'bag');
+/** A count the server's sentence carries, in the lot's packaging word ("bags" when the lot does not say). */
+const packs = (count: string, packaging: string | null | undefined) =>
+  formatPackages(Math.max(0, parseInt(count, 10)), packaging);
 
 /** What the caller knows about the call that failed. */
 export interface CartFailureContext {
@@ -82,8 +84,10 @@ export interface CartFailureContext {
    * line); only this read tells that from a real refusal, so without it the sentence is a refusal.
    */
   lineConfirmedGone?: boolean;
-  /** The bags the person chose, for the "removed by someone else" sentence of a change. */
+  /** The packs the person chose, for the "removed by someone else" sentence of a change. */
   chosen?: number;
+  /** What the lot is counted in (Bag, Box, Crate): the word of every count in the reason. */
+  packaging?: string | null;
   /** The call took the lot off the order: a lost answer is then "checking whether it was deleted", not saved. */
   removal?: boolean;
 }
@@ -100,14 +104,14 @@ export function cartFailureReason(failure: CartFailure | null | undefined, conte
   };
 
   const stock = match(STOCK);
-  if (stock) return t('orders.catalog.reasonStock', { bags: bags(stock[1]) });
+  if (stock) return t('orders.catalog.reasonStock', { packs: packs(stock[1], context?.packaging) });
   if (match(ALREADY_IN_ORDER)) return t('orders.catalog.reasonAlreadyInOrder');
   const dispatched = match(BELOW_DISPATCHED);
-  if (dispatched) return t('orders.catalog.reasonBelowDispatched', { bags: bags(dispatched[1]) });
+  if (dispatched) return t('orders.catalog.reasonBelowDispatched', { packs: packs(dispatched[1], context?.packaging) });
   if (codeOf(failure?.error) === 'ORDER_NOT_OPEN' || match(ORDER_CLOSED)) return t('orders.catalog.reasonOrderClosed');
   if (context?.lineKnown && (isAlreadyRemoved(failure) || (context.lineConfirmedGone && isCustomerAccessDenied(failure)))) {
     return context.chosen !== undefined && context.chosen > 0
-      ? t('orders.catalog.reasonRemovedMeanwhile', { chosen: bags(String(context.chosen)) })
+      ? t('orders.catalog.reasonRemovedMeanwhile', { chosen: packs(String(context.chosen), context.packaging) })
       : t('orders.catalog.reasonLineGone');
   }
   // The request went out and no answer came (a timeout, a connection that dropped): the lot may be on the order

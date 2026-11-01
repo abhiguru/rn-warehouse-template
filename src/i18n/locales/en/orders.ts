@@ -80,7 +80,7 @@ export const orders = {
   },
   // What the server's refusals say on the order screen (wave B, owner decision D1).
   refusal: {
-    // Someone else changed the line after this screen read it; nothing was saved. {{current}} and {{chosen}} are bags.
+    // Someone else changed the line after this screen read it; nothing was saved. {{current}} and {{chosen}} are counts in the lot's packaging word ("7 boxes").
     staleTitle: 'Someone else changed this order line',
     stale: 'It now shows {{current}}. You wanted {{chosen}}. Change it again if you still want that.',
     staleRemove: 'Someone else changed this order line, so it was not removed. Check it and try again.',
@@ -110,8 +110,9 @@ export const orders = {
     rowSelected: '{{bags}} selected',
     inOrder: 'In order',
     ofTotal: 'of {{total}}',
-    addBags: { one: 'Add {{count}} bag of {{name}}', other: 'Add {{count}} bags of {{name}}' },
-    removeBags: { one: 'Remove {{count}} bag of {{name}}', other: 'Remove {{count}} bags of {{name}}' },
+    // {{packs}} is the count in the lot's packaging word: "10 bags", "1 box".
+    addPacks: 'Add {{packs}} of {{name}}',
+    removePacks: 'Remove {{packs}} of {{name}}',
     selectedOf: '{{bags}} of {{name}} selected',
     noStockForTitle: 'No stock available for "{{search}}"',
     noStockForMessage: 'Try fewer letters, another package mark or a weight range such as 10-20.',
@@ -130,12 +131,13 @@ export const orders = {
     // The same question when Add would send something: it lists the changes and offers Add to order.
     addChangesTitle: 'Add these changes to the order?',
     addToOrder: 'Add to order',
-    // One line per changed lot; {{lot}} is "name · mark · GRN · weight", {{count}} the bags after the change.
+    // One line per changed lot; {{lot}} is "name · mark · GRN · weight", {{packs}} the count after the change in the
+    // lot's packaging word ("10 bags", "1 box"), {{from}} the count before.
     // The changed quantity is in words, not "→", so a screen reader says it right.
-    changeAdd: { one: '{{lot}} — add {{count}} bag', other: '{{lot}} — add {{count}} bags' },
-    changeSet: { one: '{{lot}} — from {{from}} to {{count}} bag', other: '{{lot}} — from {{from}} to {{count}} bags' },
-    // {{count}} is the bags on the order that would be taken off.
-    changeRemove: { one: '{{lot}} — remove ({{count}} bag)', other: '{{lot}} — remove ({{count}} bags)' },
+    changeAdd: '{{lot}} — add {{packs}}',
+    changeSet: '{{lot}} — from {{from}} to {{packs}}',
+    // {{packs}} is what is on the order and would be taken off.
+    changeRemove: '{{lot}} — remove ({{packs}})',
     // Last line of the question when Add is not offered (every lot already on the order was taken off, none chosen).
     discardOnlyNote: 'Discard keeps the order as it is. To take every lot off, remove the lines on the order page.',
     // Add waits for the server; a lot that was not saved keeps its reason.
@@ -144,21 +146,21 @@ export const orders = {
       one: '{{count}} lot was not saved. See the reason on it.',
       other: '{{count}} lots were not saved. See the reason on each.',
     },
-    reasonStock: 'Only {{bags}} in stock.',
+    reasonStock: 'Only {{packs}} in stock.',
     reasonAlreadyInOrder: 'This lot is already in the order.',
-    reasonBelowDispatched: '{{bags}} already dispatched. Choose that many or more.',
+    reasonBelowDispatched: '{{packs}} already dispatched. Choose that many or more.',
     reasonOrderClosed: 'This order is closed. Go back and open it again.',
     reasonNotSaved: 'Not saved. Check your connection and try again.',
     // The line the lot was saved on is no longer on the order.
     reasonLineGone: 'This item is no longer on the order.',
     // Someone else changed the lot while the picker was open; nothing was overwritten.
-    reasonChangedMeanwhile: 'Changed by someone else: now {{bags}} in the order. Tap Add again to make it {{chosen}}.',
+    reasonChangedMeanwhile: 'Changed by someone else: now {{packs}} in the order. Tap Add again to make it {{chosen}}.',
     reasonRemovedMeanwhile: 'Removed by someone else. Tap Add again to add {{chosen}}.',
-    reasonChangedMeanwhileRemove: 'Changed by someone else: now {{bags}} in the order. Tap Add again to remove it.',
+    reasonChangedMeanwhileRemove: 'Changed by someone else: now {{packs}} in the order. Tap Add again to remove it.',
     // The answer was lost, the lot was locked while the order was read again, and the server's state is not what was asked.
     // Nothing is sent again by itself: the person taps Add.
     reasonCheckedNotSaved: 'Checked: it was not saved. Tap Add again to add {{chosen}}.',
-    reasonCheckedOther: 'Checked: the order has {{bags}} now. Tap Add again to make it {{chosen}}.',
+    reasonCheckedOther: 'Checked: the order has {{packs}} now. Tap Add again to make it {{chosen}}.',
     reasonCheckedNotRemoved: 'Checked: it was not removed. Tap Add again to remove it.',
     // The lot's line is being checked after an answer of its own card was lost; nothing was sent for it.
     reasonLineChecking: 'This item is still being checked. Tap Add again in a moment.',

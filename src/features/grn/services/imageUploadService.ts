@@ -21,6 +21,7 @@ import { isTemporaryGRNImageId } from './imageId';
 import { formatNumber } from '@/utils/formatters';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { logPhotoFailure } from '@/utils/photoUploadError';
 import { createLogger, loggableError } from '@/utils/logger';
 import { createLimiter } from '@/utils/concurrency';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
@@ -253,7 +254,7 @@ export const uploadGRNImage = async (
     );
 
     if (regError) {
-      log.error('Registration failed', loggableError(regError));
+      logPhotoFailure(log, 'Registration failed', regError);
       return {
         success: false,
         error: serverText(regError, t('grn.upload.registerFailed'), { write: true, photo: true }),
@@ -344,7 +345,7 @@ export const uploadGRNImage = async (
       const uploadDuration = Date.now() - startTime;
 
       if (uploadError) {
-        log.error('Storage upload failed', loggableError(uploadError));
+        logPhotoFailure(log, 'Storage upload failed', uploadError);
         throw uploadError;
       }
 
@@ -364,7 +365,7 @@ export const uploadGRNImage = async (
       );
 
       if (confirmError) {
-        log.error('Confirmation failed', loggableError(confirmError));
+        logPhotoFailure(log, 'Confirmation failed', confirmError);
         throw confirmError;
       }
 
@@ -378,7 +379,7 @@ export const uploadGRNImage = async (
       confirmedPath = storagePath;
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record and try to remove from storage
-      log.error('Upload/confirm failed, rolling back', loggableError(uploadOrConfirmError));
+      logPhotoFailure(log, 'Upload/confirm failed, rolling back', uploadOrConfirmError);
 
       const rollback = await rollbackPendingUpload(supabase, {
         rpc: 'cancel_grn_image_upload',
@@ -399,7 +400,7 @@ export const uploadGRNImage = async (
 
     return await finishConfirmed(confirmedPath);
   } catch (error) {
-    log.error('Upload exception', loggableError(error));
+    logPhotoFailure(log, 'Upload exception', error);
 
     // Only the photo being unreadable has a sentence of its own; a failure to reach the server is worded by
     // photoUploadFailureText, and anything else is the app's generic text (never a library's English message).
@@ -500,7 +501,7 @@ export const getImageSignedUrl = async (
       if (attempt < 3) {
         await new Promise(resolve => setTimeout(resolve, attempt * 500));
       } else {
-        log.error('Final signed URL attempt failed', loggableError(error));
+        logPhotoFailure(log, 'Final signed URL attempt failed', error);
       }
     }
 
@@ -509,7 +510,7 @@ export const getImageSignedUrl = async (
     log.warn('Using fallback direct storage URL');
     return baseUrl;
   } catch (error) {
-    log.error('Error getting signed URL', loggableError(error));
+    logPhotoFailure(log, 'Error getting signed URL', error);
     return filePath; // Fallback to original path
   }
 };
@@ -623,7 +624,7 @@ const uploadSingleDeferredImage = async (
     );
 
     if (regError) {
-      log.error(`Registration failed for deferred ${imageType} image`, loggableError(regError));
+      logPhotoFailure(log, `Registration failed for deferred ${imageType} image`, regError);
       return { success: false, error: photoUploadFailureText(regError, t('grn.details.imageUploadFailed')) };
     }
 
@@ -660,7 +661,7 @@ const uploadSingleDeferredImage = async (
         });
 
       if (uploadError) {
-        log.error(`Storage upload failed for deferred ${imageType} image`, loggableError(uploadError));
+        logPhotoFailure(log, `Storage upload failed for deferred ${imageType} image`, uploadError);
         throw uploadError;
       }
 
@@ -675,7 +676,7 @@ const uploadSingleDeferredImage = async (
       );
 
       if (confirmError) {
-        log.error(`Confirmation failed for deferred ${imageType} image`, loggableError(confirmError));
+        logPhotoFailure(log, `Confirmation failed for deferred ${imageType} image`, confirmError);
         throw confirmError;
       }
 
@@ -687,7 +688,7 @@ const uploadSingleDeferredImage = async (
       return { success: true };
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record and try to remove from storage
-      log.error(`Upload/confirm failed for deferred ${imageType} image, rolling back`, loggableError(uploadOrConfirmError));
+      logPhotoFailure(log, `Upload/confirm failed for deferred ${imageType} image, rolling back`, uploadOrConfirmError);
 
       const rollback = await rollbackPendingUpload(supabase, {
         rpc: 'cancel_grn_image_upload',
@@ -706,7 +707,7 @@ const uploadSingleDeferredImage = async (
       };
     }
   } catch (err) {
-    log.error(`Error uploading deferred ${imageType} image`, loggableError(err));
+    logPhotoFailure(log, `Error uploading deferred ${imageType} image`, err);
     return {
       success: false,
       error: photoUploadFailureText(err, t('grn.details.imageUploadFailed')),

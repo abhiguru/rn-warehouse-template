@@ -51,11 +51,11 @@ export function bandLine(band: ItemStoragePrice): string {
   return parts.join(' · ');
 }
 
-/** "Default rate: ₹3.50 per bag, per month", or null when the item has no default rate on the day. */
+/** "Default rate: ₹3.50 per bag, per month" ("per box" for a Box item), or null when the item has no default rate on the day. */
 export function defaultLine(entry: CustomerItemEntry): string | null {
   if (entry.defaultBands.length === 0) return null;
   const prices = entry.defaultBands.map(b => b.unit_price);
-  return t('pricing.customerRate.defaultIs', { amount: rentRange(Math.min(...prices), Math.max(...prices)), unit: unitText(entry.priceType) });
+  return t('pricing.customerRate.defaultIs', { amount: rentRange(Math.min(...prices), Math.max(...prices)), unit: unitText(entry.priceType, entry.packaging) });
 }
 
 function tagTexts(entry: CustomerItemEntry): { label: string; informative: boolean }[] {

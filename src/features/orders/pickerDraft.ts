@@ -30,6 +30,8 @@ export interface PickerChange {
   grnItemId: string;
   quantity: number;
   expected: number;
+  /** What the lot is counted in (Bag, Box, Crate), for the reasons that count it; absent when the lot does not say. */
+  packaging?: string;
 }
 
 /**
@@ -104,12 +106,13 @@ export function withoutReasons(draft: PickerDraft): PickerDraft {
  */
 export function changesOf(draft: PickerDraft): PickerChange[] {
   const changes: PickerChange[] = [];
+  const packagingOf = (line: PickerLine) => (line.item.packaging ? { packaging: line.item.packaging } : {});
   draft.selection.forEach((line, grnItemId) => {
     const expected = draft.base.get(grnItemId)?.quantity ?? 0;
-    if (expected !== line.quantity) changes.push({ grnItemId, quantity: line.quantity, expected });
+    if (expected !== line.quantity) changes.push({ grnItemId, quantity: line.quantity, expected, ...packagingOf(line) });
   });
   draft.base.forEach((line, grnItemId) => {
-    if (!draft.selection.has(grnItemId)) changes.push({ grnItemId, quantity: 0, expected: line.quantity });
+    if (!draft.selection.has(grnItemId)) changes.push({ grnItemId, quantity: 0, expected: line.quantity, ...packagingOf(line) });
   });
   return changes;
 }

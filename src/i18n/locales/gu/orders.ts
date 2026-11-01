@@ -105,8 +105,8 @@ export const orders: Translation<typeof source> = {
     rowSelected: '{{bags}} પસંદ કરી',
     inOrder: 'ઑર્ડરમાં છે',
     ofTotal: 'કુલ {{total}}',
-    addBags: { one: '{{name}} ના {{count}} નંગ ઉમેરો', other: '{{name}} ના {{count}} નંગ ઉમેરો' },
-    removeBags: { one: '{{name}} ના {{count}} નંગ ઘટાડો', other: '{{name}} ના {{count}} નંગ ઘટાડો' },
+    addPacks: '{{name}} ના {{packs}} ઉમેરો',
+    removePacks: '{{name}} ના {{packs}} ઘટાડો',
     selectedOf: '{{name}} ની {{bags}} પસંદ કરી',
     noStockForTitle: '"{{search}}" માટે કોઈ સ્ટોક નથી',
     noStockForMessage: 'ઓછા અક્ષરો, બીજો માર્કો અથવા ૧૦-૨૦ જેવી વજનની મર્યાદા લખી જુઓ.',
@@ -127,10 +127,11 @@ export const orders: Translation<typeof source> = {
     addToOrder: 'ઑર્ડરમાં ઉમેરો',
     // One line per changed lot; {{lot}} is "name · mark · GRN · weight", {{count}} the bags after the change.
     // The changed quantity is in words, not "→", so a screen reader says it right.
-    changeAdd: { one: '{{lot}} — {{count}} નંગ ઉમેરો', other: '{{lot}} — {{count}} નંગ ઉમેરો' },
-    changeSet: { one: '{{lot}} — {{from}} થી {{count}} નંગ', other: '{{lot}} — {{from}} થી {{count}} નંગ' },
-    // {{count}} is the bags on the order that would be taken off.
-    changeRemove: { one: '{{lot}} — {{count}} નંગ દૂર કરો', other: '{{lot}} — {{count}} નંગ દૂર કરો' },
+    // {{packs}} is the count in the lot's packaging word, {{from}} the count before. Draft.
+    changeAdd: '{{lot}} — {{packs}} ઉમેરો',
+    changeSet: '{{lot}} — {{from}} થી {{packs}}',
+    // {{packs}} is what is on the order and would be taken off.
+    changeRemove: '{{lot}} — {{packs}} દૂર કરો',
     // Last line of the question when Add is not offered (every lot already on the order was taken off, none chosen). Draft.
     discardOnlyNote: 'પસંદગી છોડી દેવાથી ઑર્ડર જેમ છે તેમ રહે છે. બધા જથ્થા કાઢવા માટે ઑર્ડરના પેજ પરથી આઇટમ કાઢી નાખો.',
     // Add waits for the server; a lot that was not saved keeps its reason.
@@ -140,20 +141,20 @@ export const orders: Translation<typeof source> = {
       one: '{{count}} જથ્થો સચવાયો નથી. તેના પર કારણ જુઓ.',
       other: '{{count}} જથ્થા સચવાયા નથી. દરેક પર કારણ જુઓ.',
     },
-    reasonStock: 'સ્ટોકમાં ફક્ત {{bags}} છે.',
+    reasonStock: 'સ્ટોકમાં ફક્ત {{packs}} છે.',
     reasonAlreadyInOrder: 'આ જથ્થો ઑર્ડરમાં પહેલેથી છે.',
-    reasonBelowDispatched: '{{bags}} ની જાવક થઈ ચૂકી છે. એટલા કે વધુ નંગ પસંદ કરો.',
+    reasonBelowDispatched: '{{packs}} ની જાવક થઈ ચૂકી છે. એટલા કે વધુ નંગ પસંદ કરો.',
     reasonOrderClosed: 'આ ઑર્ડર પૂર્ણ થયો છે. પાછા જઈને ફરી ખોલો.',
     reasonNotSaved: 'સચવાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     // Draft for the owner's wording review (2026-10-20): a line that is no longer on the order.
     reasonLineGone: 'આ આઇટમ હવે ઑર્ડરમાં નથી.',
     // Someone else changed the lot while the picker was open; nothing was overwritten.
-    reasonChangedMeanwhile: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonChangedMeanwhile: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{packs}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonRemovedMeanwhile: 'બીજા કોઈએ આ જથ્થો દૂર કર્યો. {{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
-    reasonChangedMeanwhileRemove: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{bags}} છે. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonChangedMeanwhileRemove: 'બીજા કોઈએ ફેરફાર કર્યો: હવે ઑર્ડરમાં {{packs}} છે. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
     // Drafts for the owner's wording review (2026-10-20): the answer was lost, the lot was checked, the server did not apply it.
     reasonCheckedNotSaved: 'તપાસ્યું: સચવાયું નથી. {{chosen}} ઉમેરવા માટે ફરી "ઉમેરો" દબાવો.',
-    reasonCheckedOther: 'તપાસ્યું: ઑર્ડરમાં હવે {{bags}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
+    reasonCheckedOther: 'તપાસ્યું: ઑર્ડરમાં હવે {{packs}} છે. {{chosen}} કરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonCheckedNotRemoved: 'તપાસ્યું: દૂર થયું નથી. દૂર કરવા માટે ફરી "ઉમેરો" દબાવો.',
     reasonLineChecking: 'આ આઇટમ હજુ તપાસાઈ રહી છે. થોડી વાર પછી ફરી "ઉમેરો" દબાવો.',
     leaveCheckingTitle: 'તપાસ દરમિયાન છોડવું છે?',

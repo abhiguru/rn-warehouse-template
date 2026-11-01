@@ -1,5 +1,6 @@
 /** customerItemRows: the items a customer has an own rate for on a day, and what the entry shows. */
 import { customerItemRows } from '../customerRates';
+import { unitText } from '../rateText';
 import { row } from '@/tests/helpers/ratesFixtures';
 
 const A = { id: 'cust-a', name: 'Review Orchard A' };
@@ -74,6 +75,14 @@ describe('customerItemRows: the items a customer has an own rate for', () => {
       ['cumin', 'Review Cumin Bold', false, [11], []],
       ['retired', 'Review Retired Seed', true, [5], [6]],
     ]);
+  });
+
+  it('carries the item\'s packaging so the rate row can say per box, not per bag', () => {
+    const items = [...ITEMS, { id: 'tomato', name: 'Review Tomato', packaging: 'Box' }];
+    const entries = customerItemRows([mine('tomato', 4, '2026-01-01'), dflt('tomato', 5), mine('onion', 3, '2026-01-01')], items, A.id, DAY);
+    expect(entries.map(e => [e.itemId, e.packaging])).toEqual([['onion', 'Bag'], ['tomato', 'Box']]);
+    expect(unitText(entries[1].priceType, entries[1].packaging)).toContain('per box');
+    expect(unitText(entries[0].priceType, entries[0].packaging)).toContain('per bag');
   });
 
   it('shows the monthly rate before a one-time one', () => {

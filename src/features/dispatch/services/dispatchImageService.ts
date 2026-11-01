@@ -19,7 +19,8 @@ import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { mapWithConcurrency } from '@/utils/concurrency';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
-import { photoUploadFailureText } from '@/utils/photoUploadError';
+import { logPhotoFailure, photoUploadFailureText } from '@/utils/photoUploadError';
+import { createLogger, loggableError } from '@/utils/logger';
 import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
 import {
   holdLocalPhoto,
@@ -68,6 +69,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 // Storage bucket name
 const STORAGE_BUCKET = 'dispatch-images';
+
+const log = createLogger('DispatchImageService');
 
 /**
  * Photo uploads that run at the same time when a dispatch is saved, as for a
@@ -254,7 +257,7 @@ export const uploadDispatchImage = async (
     );
 
     if (regError) {
-      console.error('[DispatchImageService] Registration failed:', regError);
+      logPhotoFailure(log, 'Registration failed', regError);
       return {
         success: false,
         error: serverText(regError, t('dispatch.photos.registerFailed'), { write: true, photo: true }),
@@ -348,10 +351,7 @@ export const uploadDispatchImage = async (
       const uploadDuration = Date.now() - startTime;
 
       if (uploadError) {
-        console.error(
-          '[DispatchImageService] Storage upload failed:',
-          uploadError
-        );
+        logPhotoFailure(log, 'Storage upload failed', uploadError);
         throw uploadError;
       }
 
@@ -371,10 +371,7 @@ export const uploadDispatchImage = async (
       );
 
       if (confirmError) {
-        console.error(
-          '[DispatchImageService] Confirmation failed:',
-          confirmError
-        );
+        logPhotoFailure(log, 'Confirmation failed', confirmError);
         throw confirmError;
       }
 
@@ -391,10 +388,7 @@ export const uploadDispatchImage = async (
       confirmedPath = storagePath;
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record
-      console.error(
-        '[DispatchImageService] Upload/confirm failed, rolling back:',
-        uploadOrConfirmError
-      );
+      logPhotoFailure(log, 'Upload/confirm failed, rolling back', uploadOrConfirmError);
 
       const rollback = await rollbackPendingUpload(supabase, {
         rpc: 'cancel_dispatch_image_upload',
@@ -415,7 +409,7 @@ export const uploadDispatchImage = async (
 
     return await finishConfirmed(confirmedPath);
   } catch (error) {
-    console.error('[DispatchImageService] Upload exception:', error);
+    logPhotoFailure(log, 'Upload exception', error);
 
     // Only the photo being unreadable has a sentence of its own; a failure to reach the server is worded by
     // photoUploadFailureText, and anything else is the app's generic text (never a library's English message).
@@ -489,7 +483,7 @@ const uploadSingleDeferredImage = async (
     );
 
     if (regError) {
-      console.error('[DispatchImageService] Registration failed:', regError);
+      logPhotoFailure(log, 'Registration failed', regError);
       return { success: false, error: photoUploadFailureText(regError, t('dispatch.photos.uploadFailedRetry')) };
     }
 
@@ -541,10 +535,7 @@ const uploadSingleDeferredImage = async (
       return { success: true };
     } catch (uploadOrConfirmError) {
       // Rollback
-      console.error(
-        '[DispatchImageService] Deferred upload failed, rolling back:',
-        uploadOrConfirmError
-      );
+      logPhotoFailure(log, 'Deferred upload failed, rolling back', uploadOrConfirmError);
 
       const rollback = await rollbackPendingUpload(supabase, {
         rpc: 'cancel_dispatch_image_upload',
@@ -563,10 +554,7 @@ const uploadSingleDeferredImage = async (
       };
     }
   } catch (err) {
-    console.error(
-      '[DispatchImageService] Error uploading deferred image:',
-      err
-    );
+    logPhotoFailure(log, 'Error uploading deferred image', err);
     return {
       success: false,
       error: photoUploadFailureText(err, t('dispatch.photos.uploadFailedRetry')),
@@ -660,10 +648,7 @@ export const uploadDeferredDispatchImages = async (
       failed,
     };
   } catch (error) {
-    console.error(
-      '[DispatchImageService] uploadDeferredDispatchImages exception:',
-      error
-    );
+    logPhotoFailure(log, 'uploadDeferredDispatchImages exception', error);
     // Could not start: like a failed upload, each file is kept for the retry,
     // also through the form reset that follows the save.
     if (!started) deferredImages.forEach(image => localPhotoUploadEnded(image.image_url, false));
@@ -712,10 +697,10 @@ export const getDispatchImageSignedUrl = async (
       return viaCurrentPath(data.signedUrl);
     }
 
-    console.error('[DispatchImageService] Failed to create signed URL:', error);
+    logPhotoFailure(log, 'Failed to create signed URL', error);
     return viaCurrentPath(`${getCurrentConfig().url}/storage/v1/object/${STORAGE_BUCKET}/${filePath}`);
   } catch (error) {
-    console.error('[DispatchImageService] Error getting signed URL:', error);
+    logPhotoFailure(log, 'Error getting signed URL', error);
     return filePath;
   }
 };

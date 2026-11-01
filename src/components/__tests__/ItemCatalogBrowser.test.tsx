@@ -198,6 +198,26 @@ it('shows a lot\'s weight as the weight of one package, and none for a lot witho
   } finally { await act(async () => { tree.unmount(); }); }
 });
 
+it('counts a Box lot in boxes, never bags, in its row and its spoken label', async () => {
+  jest.mocked(OrderService.getAvailableItems).mockResolvedValueOnce({
+    success: true, message: '',
+    data: [{ ...catalogItem('lot-box', 'Fictional tomatoes'), packaging: 'Box', current_stock: 188, original_quantity: 188 }],
+  } as never);
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
+  try {
+    const box = rowOf(tree, 'lot-box', 'Fictional tomatoes');
+    expect(box.texts).toContain('of 188 boxes');
+    expect(box.spoken[0]).toContain('188 of 188 boxes');
+    expect(box.spoken[0]).not.toMatch(/bags/);
+    expect(box.texts.some(text => /bags/.test(text))).toBe(false);
+    const labels = tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => String(node.props.accessibilityLabel));
+    expect(labels).toContain('Add 10 boxes of Fictional tomatoes');
+    expect(labels).toContain('Add 1 box of Fictional tomatoes');
+    expect(labels.some(label => /^(Add|Remove) \d+ bags? of /.test(label))).toBe(false);
+  } finally { await act(async () => { tree.unmount(); }); }
+});
+
 const MODES: Mode[] = ['light', 'dark'];
 
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('in %s %s', (brand, mode) => {
