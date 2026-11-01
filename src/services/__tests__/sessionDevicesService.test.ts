@@ -74,4 +74,16 @@ describe('revokeSession', () => {
     rpc.mockResolvedValue({ data: { success: false, error: 'NOT_FOUND', message: 'x' }, error: null });
     expect(await revokeSession('s9')).toMatchObject({ success: false, code: 'NOT_FOUND' });
   });
+
+  it('marks a connection that dropped after the request left as a lost answer, not as a plain failure', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'TypeError: Network request failed', details: '', hint: '', code: '' } });
+    expect(await revokeSession('s1')).toMatchObject({ success: false, lostAnswer: true });
+  });
+
+  it('does not call a refusal the server gave a lost answer', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'Administrator required', status: 403 } });
+    const result = await revokeSession('s1');
+    expect(result).toMatchObject({ success: false, code: '42501' });
+    expect(result).not.toHaveProperty('lostAnswer');
+  });
 });

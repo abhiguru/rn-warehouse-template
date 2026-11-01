@@ -12,6 +12,7 @@ import { isMissingFunction, noteRpcSupport } from '@/config/facilityRpcSupport';
 import type { UserSession } from '@/features/users/sessionDevices';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
+import { isLostAnswer } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
@@ -24,7 +25,15 @@ export type ListSessionsResult =
 
 export type RevokeSessionResult =
   | { success: true; revokedCurrent: boolean }
-  | { success: false; unsupported?: boolean; /** NOT_FOUND: the session is gone already. */ code?: string; message: string };
+  | {
+      success: false;
+      unsupported?: boolean;
+      /** NOT_FOUND: the session is gone already. */
+      code?: string;
+      /** No answer came after the request left the phone: the session may be signed out; the caller reads the list again. */
+      lostAnswer?: boolean;
+      message: string;
+    };
 
 const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() !== '' ? value : null);
 
@@ -97,6 +106,7 @@ export async function revokeSession(sessionId: string): Promise<RevokeSessionRes
         noteRpcSupport('userSessions', false);
         return { success: false, unsupported: true, message: t('users.devices.unsupported') };
       }
+      if (isLostAnswer(error)) return { success: false, lostAnswer: true, message: t('users.devices.signOutFailed') };
       return { success: false, code: error.code, message: refusalMessage(error.code, error.message, t('users.devices.signOutFailed')) };
     }
     if (data?.success === true) return { success: true, revokedCurrent: data.revoked_current === true };
@@ -105,6 +115,10 @@ export async function revokeSession(sessionId: string): Promise<RevokeSessionRes
     return { success: false, code, message: refusalMessage(code, text(data?.message) ?? undefined, t('users.devices.signOutFailed')) };
   } catch (error) {
     log.error('Revoking a session failed');
-    return { success: false, message: error instanceof AppError ? error.message : t('users.devices.signOutFailed') };
+    return {
+      success: false,
+      ...(isLostAnswer(error) ? { lostAnswer: true } : {}),
+      message: error instanceof AppError ? error.message : t('users.devices.signOutFailed'),
+    };
   }
 }

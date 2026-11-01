@@ -95,7 +95,8 @@ export function SignedInDevicesSection({ userId, onUnsupported }: SignedInDevice
       setBusyId(session.id);
       try {
         const result = await revokeSession(session.id);
-        if (!result.success) {
+        // No answer came: the server may have signed the device out, so the list decides, as after an answer of "done".
+        if (!result.success && !result.lostAnswer) {
           if (result.unsupported) {
             setPhase('hidden');
             onUnsupported?.();
@@ -109,7 +110,7 @@ export function SignedInDevicesSection({ userId, onUnsupported }: SignedInDevice
           showAlert(tr('users.devices.signOutFailedTitle'), result.message);
           return;
         }
-        if (result.revokedCurrent) {
+        if (result.success && result.revokedCurrent) {
           // The server ended this phone's session: clear it here as well, without asking the server again.
           await dispatch(logout({ localOnly: true }));
           return;

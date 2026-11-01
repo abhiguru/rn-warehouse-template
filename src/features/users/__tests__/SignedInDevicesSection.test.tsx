@@ -127,3 +127,36 @@ it('offers Retry when the list cannot be read', async () => {
   await act(async () => { tree!.root.find(n => n.props.accessibilityLabel === 'Try again' && typeof n.props.onPress === 'function').props.onPress(); });
   expect(texts()).toContain('No signed-in devices.');
 });
+
+it('reads the list again when the sign out got no answer, and says Device signed out if the session is gone', async () => {
+  jest.mocked(listUserSessions).mockResolvedValueOnce({ success: true, sessions: [row('s1'), row('s2')] }).mockResolvedValueOnce({ success: true, sessions: [row('s2')] });
+  jest.mocked(revokeSession).mockResolvedValue({ success: false, lostAnswer: true, message: "Couldn't sign out this device. Try again." });
+  await open();
+  await press('session-signout-s1');
+  await confirmSignOut();
+  expect(listUserSessions).toHaveBeenCalledTimes(2);
+  expect(showToast).toHaveBeenCalledWith('Device signed out.');
+  expect(showAlert).toHaveBeenCalledTimes(1);
+});
+
+it('says Not signed out when, after a sign out with no answer, the session is still listed', async () => {
+  jest.mocked(listUserSessions).mockResolvedValue({ success: true, sessions: [row('s1')] });
+  jest.mocked(revokeSession).mockResolvedValue({ success: false, lostAnswer: true, message: "Couldn't sign out this device. Try again." });
+  await open();
+  await press('session-signout-s1');
+  await confirmSignOut();
+  expect(showAlert).toHaveBeenLastCalledWith('Not signed out', expect.stringContaining('still signed in'));
+  expect(showToast).not.toHaveBeenCalled();
+});
+
+it('says Not confirmed when the sign out got no answer and the list cannot be read either', async () => {
+  jest.mocked(listUserSessions)
+    .mockResolvedValueOnce({ success: true, sessions: [row('s1')] })
+    .mockResolvedValueOnce({ success: false, message: "Couldn't load the signed-in devices." });
+  jest.mocked(revokeSession).mockResolvedValue({ success: false, lostAnswer: true, message: "Couldn't sign out this device. Try again." });
+  await open();
+  await press('session-signout-s1');
+  await confirmSignOut();
+  expect(showAlert).toHaveBeenLastCalledWith('Not confirmed', expect.stringContaining('not known'));
+  expect(showToast).not.toHaveBeenCalled();
+});
