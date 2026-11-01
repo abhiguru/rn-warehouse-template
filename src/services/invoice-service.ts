@@ -227,6 +227,8 @@ interface CustomerInvoiceRow {
   discount: number | null;
   tax_amount: number | null;
   notes: string | null;
+  /** Migration 134: set when the invoice is cancelled; absent on an older server. */
+  cancelled_at?: string | null;
 }
 
 /** The list RPC returns NULL for an amount an invoice never had (every auto-generated invoice has no discount): 0, as on the details screen. */
@@ -252,6 +254,7 @@ const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, cust
     discount: Number(row.discount) || 0,
     tax_amount: Number(row.tax_amount) || 0,
     notes: row.notes ?? null,
+    cancelled_at: row.cancelled_at ?? null,
     inv_name: null,
     created_by: '',
     one_time_charge: false,
