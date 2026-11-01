@@ -832,4 +832,21 @@ describe('dispatch activity, what a dispatch is counted in (D18)', () => {
     await screen.press('Dispatch DD0010, 12 Oct 2026, Asha Example, 50 boxes');
     expect(screen.has('Garlic, 50 boxes of 60, GRN A0010')).toBe(true);
   });
+
+  it('the single-customer tile names the word of every dispatch of the period, and units when they differ', async () => {
+    mockParams = GREEN;
+    customerActivity.mockResolvedValue(PACKED as never);
+    const mixed = await open(makeStore());
+    expect(mixed.texts()).toContain('Units dispatched');
+    expect(mixed.texts()).not.toContain('Bags dispatched');
+
+    const boxes = {
+      ...PACKED,
+      data: { ...PACKED.data, dispatches: [PACKED.data.dispatches[0], dispatch('d4', 'DD0007', '2026-10-09', 5, 'Meera Example', 0, [item('Ginger', { qty: 5, source_grn: 'A0001', packaging: 'Box' })])] },
+    };
+    customerActivity.mockResolvedValue(boxes as never);
+    const screen = await open(makeStore());
+    expect(screen.texts()).toContain('Boxes dispatched');
+  });
 });
+

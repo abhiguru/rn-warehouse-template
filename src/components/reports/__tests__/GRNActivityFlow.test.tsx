@@ -672,4 +672,24 @@ describe('GRN activity, what a GRN is counted in (D18)', () => {
     expect(all.some(label => label.includes('5 of 200 units in stock'))).toBe(true);
     expect(all.some(label => label.includes('90 of 120 bags in stock'))).toBe(true);
   });
+
+  it('the single-customer tile names the word of every GRN of the period, and units when they differ', async () => {
+    mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
+    const line = (packaging?: string) => ({ item_name: 'Garlic', quantity: 1, current_stock: 1, dispatched_qty: 0, weight: 0, rack: '', package_mark: '', ...(packaging ? { packaging } : {}) });
+    const serve = (rows: unknown[]) => customerActivity.mockResolvedValue({ success: true, message: '', data: { ...answerGrns.data, grns: rows } } as never);
+    serve([
+      { ...grn('g1', 'A0010', '2026-10-12', 50, 60, true), items: [line('Box')] },
+      { ...grn('g2', 'A0009', '2026-10-11', 200, 5, false), items: [line('Box'), line('Bag')] },
+    ]);
+    const mixed = await open(makeStore());
+    expect(mixed.texts()).toContain('Units');
+    serve([
+      { ...grn('g1', 'A0010', '2026-10-12', 50, 60, true), items: [line('Box')] },
+      { ...grn('g2', 'A0009', '2026-10-11', 200, 5, false), items: [line('Box'), line('Box')] },
+    ]);
+    const boxes = await open(makeStore());
+    expect(boxes.texts()).toContain('Boxes');
+    expect(boxes.texts()).not.toContain('Bags');
+  });
 });
+

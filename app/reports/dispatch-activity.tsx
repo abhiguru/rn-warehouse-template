@@ -45,7 +45,7 @@ import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllDispatchActivityData, CustomerDispatchRow, DispatchActivityData, DispatchActivityRecord, DispatchItemDetail } from '@/types/report.types';
 import { formatCount, formatDate, formatNumber, formatSpokenDate } from '@/utils/formatters';
-import { formatPackages, packNounFor, sharedPackaging } from '@/utils/packagingWord';
+import { formatPackages, packNounCapital, packNounFor, sharedPackaging } from '@/utils/packagingWord';
 
 const REPORT_ID = 'dispatch-activity';
 
@@ -310,7 +310,15 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
     () =>
       data && [
         { icon: 'truck-delivery-outline', value: data.summary.total_dispatches, label: tr('reports.customerActivity.dispatches'), variant: 'secondary' },
-        { icon: 'package-variant', value: data.summary.total_quantity, label: tr('reports.dispatchActivity.bagsDispatched'), variant: 'primary' },
+        {
+          icon: 'package-variant',
+          value: data.summary.total_quantity,
+          // The server lists every dispatch of the period (no limit), so their items decide the word; mixed reads "units".
+          label: tr('dispatch.details.table.bagsDispatched', {
+            things: packNounCapital(sharedPackaging(data.dispatches.flatMap(dispatch => dispatch.items).map(item => item.packaging))),
+          }),
+          variant: 'primary',
+        },
       ],
     [data]
   );
