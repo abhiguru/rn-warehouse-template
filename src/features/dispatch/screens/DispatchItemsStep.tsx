@@ -19,6 +19,8 @@ import {
   Vibration,
   Keyboard,
   ActivityIndicator,
+  AccessibilityInfo,
+  findNodeHandle,
 } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -103,6 +105,9 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     // Refs
     const scrollViewRef = useRef<any>(null);
     const quantityInputRef = useRef<TextInputRef>(null);
+    // The three pickers and where each sits in the scroll content, so a tap on an incomplete line can bring the first missing one into view.
+    const pickerRefs = useRef<Record<string, View | null>>({});
+    const fieldTops = useRef<Record<string, number>>({});
 
     // Current item form state (single item being filled)
     const [currentItem, setCurrentItem] = useState<ItemFormData>({
@@ -466,6 +471,22 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         (currentItem.disp_quantity ?? 0) > 0 &&
         (currentItem.disp_quantity ?? 0) <= maxAllowedQty;
 
+    // After a tap on an incomplete line: the first missing field in screen order. A text field takes focus (and its keyboard);
+    // a picker is scrolled into view and given screen-reader focus, and its list stays closed.
+    const focusFirstMissingField = (errors: Record<string, string>) => {
+        const first = (['grns_gr_no', 'grnItems_item_id', 'grnItems_id', 'disp_quantity'] as const).find((key) => errors[key]);
+        if (!first) return;
+        if (first === 'disp_quantity') {
+            quantityInputRef.current?.focus();
+            return;
+        }
+        scrollViewRef.current?.scrollToPosition(0, Math.max(0, (fieldTops.current[first] ?? 0) - space.lg), true);
+        setTimeout(() => {
+            const node = findNodeHandle(pickerRefs.current[first] ?? null);
+            if (node) AccessibilityInfo.setAccessibilityFocus(node);
+        }, 300);
+    };
+
     // Add or update current item
     const handleAddItem = async () => {
         // Immediately show loading state for instant feedback
@@ -481,7 +502,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
+                focusFirstMissingField(validation.errors);
                 return;
             }
 
@@ -997,7 +1018,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     )}
 
                     {/* GRN Selector */}
-                    <View style={styles.formGroup}>
+                    <View style={styles.formGroup} onLayout={(e) => { fieldTops.current.grns_gr_no = e.nativeEvent.layout.y; }}>
                         <Text style={[styles.label, validationErrors.grns_gr_no && styles.labelError]}>
                             {tr('common.grn')}<Text style={styles.required}> *</Text>
                         </Text>
@@ -1007,6 +1028,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                 pressed && styles.inputPressed,
                                 validationErrors.grns_gr_no && styles.inputError,
                             ]}
+                            ref={(node) => { pickerRefs.current.grns_gr_no = node; }}
                             onPress={() => setShowGRNBottomSheet(true)}
                             accessibilityRole="button"
                             accessibilityLabel={tr('dispatch.items.grnFieldLabel', { value: currentItem.grns_gr_no || tr('dispatch.items.notChosen') })}
@@ -1035,7 +1057,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     </View>
 
                     {/* Item Selector */}
-                    <View style={styles.formGroup}>
+                    <View style={styles.formGroup} onLayout={(e) => { fieldTops.current.grnItems_item_id = e.nativeEvent.layout.y; }}>
                         <Text style={[styles.label, validationErrors.grnItems_item_id && styles.labelError]}>
                             {tr('common.item')}<Text style={styles.required}> *</Text>
                         </Text>
@@ -1046,6 +1068,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                 (!selectedGRN || allAvailableLotsAlreadyAdded) && styles.disabled,
                                 validationErrors.grnItems_item_id && styles.inputError,
                             ]}
+                            ref={(node) => { pickerRefs.current.grnItems_item_id = node; }}
                             onPress={() => selectedGRN && setShowItemBottomSheet(true)}
                             disabled={!selectedGRN || allAvailableLotsAlreadyAdded}
                             accessibilityRole="button"
@@ -1096,7 +1119,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     </View>
 
                     {/* Lot Selector */}
-                    <View style={styles.formGroup}>
+                    <View style={styles.formGroup} onLayout={(e) => { fieldTops.current.grnItems_id = e.nativeEvent.layout.y; }}>
                         <Text style={[styles.label, validationErrors.grnItems_id && styles.labelError]}>
                             {tr('dispatch.items.lot')}<Text style={styles.required}> *</Text>
                         </Text>
@@ -1107,6 +1130,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                                 !currentItem.grnItems_item_id && styles.disabled,
                                 validationErrors.grnItems_id && styles.inputError,
                             ]}
+                            ref={(node) => { pickerRefs.current.grnItems_id = node; }}
                             onPress={() => currentItem.grnItems_item_id && setShowLotBottomSheet(true)}
                             disabled={!currentItem.grnItems_item_id}
                             accessibilityRole="button"
