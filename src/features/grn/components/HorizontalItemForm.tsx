@@ -842,7 +842,9 @@ const makeStyles = (t: ThemeTokens) => ({
     },
     scrollContent: {
         paddingHorizontal: space.lg,
-        paddingVertical: space.md,
+        paddingTop: space.md,
+        // As the gaps between the Rack input and the Floor line and Chamber line (chipsRow), so the lines sit close above the keyboard.
+        paddingBottom: space.sm,
         alignItems: 'flex-start' as const,
     },
     fieldContainer: {
