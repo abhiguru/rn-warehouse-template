@@ -819,6 +819,7 @@ Confirmation buttons repeat the verb: "Delete GRN" and "Cancel", never "Yes" and
 | Percent | No decimals except in reports | 85% |
 | Document numbers | Type, then number | GRN 311, Invoice 2026-0042 |
 | Rack and chamber | Chamber, then rack | Chamber 2 · Rack B-14 |
+| Item and its packaging word | Where two items can share a name (pickers, lists, reports, rate screens), the item name, then " · ", then the item's word. A blank word and "Bag" both read "Bag"; Box and Crate are capitalised; any other word reads exactly as typed. A total over lots with different words names no word | Egg · Trey, Egg · Bag |
 
 Use the shared helpers in `src/utils/formatters.ts`; never format by string concatenation or with `toLocaleDateString` (some phones print "Sept" for en-IN).
 
@@ -837,6 +838,7 @@ Use the shared helpers in `src/utils/formatters.ts`; never format by string conc
 | `formatWeightEach(n)` | 50 kg each; nothing (`null`) for a weight that is missing, is not a finite number, or rounds to zero or less |
 | `formatWeight(n)` | 1,250.5 kg (the number and unit inside `formatWeightEach`; nothing else calls it but the style gallery, for one sample) |
 | `formatTemperature(n)` | −18.5°C |
+| `itemWithPackaging(name, packaging)` (`src/utils/packagingWord.ts`) | Egg · Trey, Egg · Bag (the one way to write an item beside its word; used by the GRN item search, the order catalogue, Items, dispatch Choose item, the rate item picker and the rate screens, and the stock and customer reports) |
 
 Empty values show "—", never "-", "N/A", "null" or "0" for unknown.
 
