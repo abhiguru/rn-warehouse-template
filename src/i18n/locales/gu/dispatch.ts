@@ -119,8 +119,6 @@ export const dispatch: Translation<typeof source> = {
     lotFieldLabel: 'જથ્થો, જરૂરી, {{value}}',
     lotValue: 'આવક નંગ {{quantity}} · સ્ટોકમાં {{stock}}',
     lotValueLabel: 'આવક પાવતીમાં {{quantity}} નંગ, સ્ટોકમાં {{stock}}',
-    lotChosen: 'જથ્થો પસંદ કર્યો',
-    lotChosenState: 'પસંદ કર્યો',
     opensLotList: 'જથ્થાની યાદી ખોલે છે',
     chooseItemFirst: 'પહેલાં આઇટમ પસંદ કરો',
     chooseLot: 'જથ્થો પસંદ કરો',
@@ -129,10 +127,8 @@ export const dispatch: Translation<typeof source> = {
     leftAfterDispatch: 'જાવક પછી બાકી',
     // Draft for the owner's wording review (2026-10-20): what the order asks of the lot of a line, to check the quantity against.
     orderAsks: 'ઑર્ડરમાં {{bags}} માંગ્યા છે',
-    enterPacks: '{{things}} લખો',
     maxPacksOriginal: '{{packs}} કે તેથી ઓછા લખો. મૂળ સ્ટોક એટલો જ છે.',
     maxPacksAvailable: '{{packs}} કે તેથી ઓછા લખો. સ્ટોકમાં એટલા જ છે.',
-    maxPacksInHand: '{{packs}} કે તેથી ઓછા લખો. હાથ પર એટલો જ સ્ટોક છે.',
     lotDetails: 'જથ્થાની વિગતો',
     backToDetails: 'જાવકની વિગતો પર પાછા જાઓ',
     nextReview: 'આગળ, જાવક ચકાસો',
@@ -146,10 +142,6 @@ export const dispatch: Translation<typeof source> = {
     discardItemChangesTitle: 'આ આઇટમના ફેરફાર છોડી દેવા છે?',
     discardItemChangesMessage: 'આ આઇટમમાં કરેલા ફેરફાર જતા રહેશે.',
     discardChanges: 'ફેરફાર છોડી દો',
-    addItem: 'આઇટમ ઉમેરો',
-    closeAddItem: 'આઇટમ ઉમેરવાનું બંધ કરો',
-    addAndAnother: 'આઇટમ ઉમેરો અને બીજી ઉમેરો',
-    addAnother: 'બીજી ઉમેરો',
   },
   // The GRN picker with its number pad
   grnSheet: {
