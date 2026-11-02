@@ -38,7 +38,7 @@ const FIELD_WIDTHS = {
     // text size (see `widthOf`), so at font scale 2.0 the label still stays on
     // one line and the weight box does not drop below the quantity box.
     weight: 112,
-    rack: 196,
+    rack: 196, // the least; the column grows to its longest chip line
     package_mark: 270,
 } as const;
 export type ItemFormFieldName = keyof typeof FIELD_WIDTHS;
@@ -54,21 +54,18 @@ const widthOf = (field: ItemFormFieldName, fontScale: number): number =>
 /** The gap after every field (`fieldContainer.marginRight`). */
 const FIELD_GAP = space.md;
 
-/** Where the Floor and Chamber line starts: about halfway under the weight field. */
-const chipsLeftOf = (fontScale: number): number =>
-    widthOf('item', fontScale) + widthOf('qty', fontScale) + 2 * FIELD_GAP + Math.round(widthOf('weight', fontScale) / 2);
-
 /**
- * Where the row scrolls to when a field takes focus: the widths of the fields
- * before it. Worked out from the table above, so a width cannot change without
- * the offsets following it.
+ * Where the row scrolls to when a field takes focus: where the field starts, so
+ * it sits near the left edge. The fields after Rack need the width the Rack
+ * column has (it is as wide as its longest chip line), which the form measures
+ * (`rackWidth`). Worked out from the table above, so a width cannot change
+ * without the offsets following it.
  */
-const scrollOffsetOf = (field: ItemFormFieldName, fontScale: number): number => {
-    const before = FIELD_ORDER.slice(0, FIELD_ORDER.indexOf(field)).reduce((sum, name) => sum + widthOf(name, fontScale), 0);
-    // The Floor and Chamber buttons start under the middle of the weight field, so
-    // Rack brings the row there: the buttons and the rack field are both in view.
-    return field === 'rack' ? chipsLeftOf(fontScale) : before;
-};
+const scrollOffsetOf = (field: ItemFormFieldName, fontScale: number, rackWidth: number): number =>
+    FIELD_ORDER.slice(0, FIELD_ORDER.indexOf(field)).reduce(
+        (sum, name) => sum + (name === 'rack' ? Math.max(rackWidth, widthOf('rack', fontScale)) : widthOf(name, fontScale)) + FIELD_GAP,
+        0
+    );
 
 /**
  * How long `focusField` waits before it gives a field the cursor. The items
@@ -188,7 +185,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const [addItemName, setAddItemName] = useState('');
 
         const { fontScale } = useWindowDimensions();
-        const offsetOf = useCallback((field: ItemFormFieldName) => scrollOffsetOf(field, fontScale), [fontScale]);
+        // The width the Rack column took (it is as wide as its longest chip line).
+        const [rackWidth, setRackWidth] = useState(0);
+        const offsetOf = useCallback((field: ItemFormFieldName) => scrollOffsetOf(field, fontScale, rackWidth), [fontScale, rackWidth]);
         const scrollRef = useRef<ScrollViewRef>(null);
         const qtyInputRef = useRef<TextInputRef>(null);
         const weightInputRef = useRef<TextInputRef>(null);
@@ -406,7 +405,6 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     contentContainerStyle={styles.scrollContent}
                     style={styles.scrollView}
                 >
-                    <View>
                     <View style={styles.fieldsRow}>
                     {/* Field 1: Item Name (Dropdown Picker) */}
                     <View style={[styles.fieldContainer, { width: widthOf('item', fontScale), zIndex: 1000 }]}>
@@ -620,7 +618,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
 
                     {/* Field 4: Rack with Floor/Chamber Chips */}
-                    <View style={[styles.fieldContainer, { width: widthOf('rack', fontScale) }]}>
+                    <View style={[styles.fieldContainer, { minWidth: widthOf('rack', fontScale) }]} onLayout={(e) => setRackWidth(Math.round(e.nativeEvent.layout.width))}>
                         <View style={styles.labelRow}>
                             <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('common.rack')}</Text>
@@ -647,6 +645,27 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             onBlur={() => setFocusedField(null)}
                             autoCapitalize="characters"
                         />
+
+                        {/* Floor buttons on one line, Chamber buttons on a second, in the Rack column under its input. Neither line
+                            wraps. The column is as wide as its longest line (at least `FIELD_WIDTHS.rack`), so the input spans it. */}
+                        <View style={styles.chipsRow}>
+                            <View style={styles.chipGroup}>
+                                <Text style={styles.chipLabel} accessibilityRole="header">{tr('grn.item.floor')}</Text>
+                                <View style={styles.chipLine} accessibilityRole="radiogroup">
+                                    {rackPresets.floor.map((floor) =>
+                                        renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), tr('grn.item.floor'))
+                                    )}
+                                </View>
+                            </View>
+                            <View style={styles.chipGroup}>
+                                <Text style={styles.chipLabel} accessibilityRole="header">{tr('common.chamber')}</Text>
+                                <View style={styles.chipLine} accessibilityRole="radiogroup">
+                                    {rackPresets.chamber.map((chamber) =>
+                                        renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), tr('common.chamber'))
+                                    )}
+                                </View>
+                            </View>
+                        </View>
 
                         {renderError(currentItem.errors.rack)}
                     </View>
@@ -720,29 +739,6 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             </View>
                         )}
                         {renderError(currentItem.errors.package_mark)}
-                    </View>
-                    </View>
-
-                    {/* Floor buttons on one line and Chamber buttons on a second, under the fields, from about the middle of
-                        the weight field to the right. Neither line wraps; the row scrolls sideways when a facility has many.
-                        Rack's focus scrolls the row here (offsetOf('rack')), so both lines show above the keyboard. */}
-                    <View style={[styles.chipsRow, { marginLeft: chipsLeftOf(fontScale) }]}>
-                        <View style={styles.chipGroup}>
-                            <Text style={styles.chipLabel} accessibilityRole="header">{tr('grn.item.floor')}</Text>
-                            <View style={styles.chipLine} accessibilityRole="radiogroup">
-                                {rackPresets.floor.map((floor) =>
-                                    renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), tr('grn.item.floor'))
-                                )}
-                            </View>
-                        </View>
-                        <View style={styles.chipGroup}>
-                            <Text style={styles.chipLabel} accessibilityRole="header">{tr('common.chamber')}</Text>
-                            <View style={styles.chipLine} accessibilityRole="radiogroup">
-                                {rackPresets.chamber.map((chamber) =>
-                                    renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), tr('common.chamber'))
-                                )}
-                            </View>
-                        </View>
                     </View>
                     </View>
                 </ScrollView>
@@ -1044,7 +1040,7 @@ const makeStyles = (t: ThemeTokens) => ({
         flexDirection: 'column' as const,
         alignItems: 'flex-start' as const,
         rowGap: space.sm,
-        marginTop: space.xs,
+        marginTop: space.sm,
     },
     chipGroup: {
         flexDirection: 'row' as const,
