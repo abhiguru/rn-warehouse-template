@@ -165,13 +165,26 @@ export const receiptStockSchema = yup
   .min(0, msg('grn.validation.stockNegative'))
   .max(yup.ref('qty'), msg('grn.validation.stockExceeds'));
 
+/** The most a received weight can be when it is entered or changed (kg per bag, box or crate). */
+export const RECEIPT_WEIGHT_MAX = 9999;
+
+/**
+ * Validation context for a weight that is not being entered or changed: a line
+ * saved earlier with a weight above RECEIPT_WEIGHT_MAX stays as it is (its other
+ * fields can be edited), so only the general ceiling applies to it.
+ */
+export type WeightContext = { keepWeight?: boolean };
+
 export const receiptWeightSchema = yup
   .number()
   .transform(wholeNumberTransform)
   .typeError(msg('grn.validation.weightWhole'))
   .integer(msg('grn.validation.weightWhole'))
   .min(0, msg('grn.validation.weightNegative'))
-  .max(WHOLE_NUMBER_MAX, msg('grn.validation.weightMax'));
+  .max(WHOLE_NUMBER_MAX, msg('grn.validation.weightMax'))
+  .test('weight-limit', msg('grn.validation.weightMax'), (value, ctx) =>
+    value === undefined || value === null || value <= RECEIPT_WEIGHT_MAX || (ctx.options.context as WeightContext | undefined)?.keepWeight === true
+  );
 
 export const isValidReceiptQuantity = (value: string): boolean =>
   parseReceiptQuantity(value) !== null;
@@ -262,9 +275,10 @@ export const validateStep1 = async (data: any): Promise<{ isValid: boolean; erro
   }
 };
 
-export const validateStep2 = async (data: any): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
+/** `keepWeight`: the weight is not being entered or changed (see WeightContext). */
+export const validateStep2 = async (data: any, options: WeightContext = {}): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
   try {
-    await step2Schema.validate(data, { abortEarly: false });
+    await step2Schema.validate(data, { abortEarly: false, context: options });
     return { isValid: true, errors: {} };
   } catch (error) {
     if (error instanceof yup.ValidationError) {
@@ -280,9 +294,10 @@ export const validateStep2 = async (data: any): Promise<{ isValid: boolean; erro
   }
 };
 
+// The lines were each checked when they were entered, so the whole-form check keeps a saved weight above the limit.
 export const validateStep3 = async (data: any): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
   try {
-    await fullGRNSchema.validate(data, { abortEarly: false });
+    await fullGRNSchema.validate(data, { abortEarly: false, context: { keepWeight: true } satisfies WeightContext });
     return { isValid: true, errors: {} };
   } catch (error) {
     if (error instanceof yup.ValidationError) {
@@ -300,7 +315,7 @@ export const validateStep3 = async (data: any): Promise<{ isValid: boolean; erro
 
 export const validateFullGRN = async (data: any): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
   try {
-    await fullGRNSchema.validate(data, { abortEarly: false });
+    await fullGRNSchema.validate(data, { abortEarly: false, context: { keepWeight: true } satisfies WeightContext });
     return { isValid: true, errors: {} };
   } catch (error) {
     if (error instanceof yup.ValidationError) {

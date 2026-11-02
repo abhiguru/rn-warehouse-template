@@ -76,10 +76,17 @@ const EMPTY_GRN_ITEM = (): ItemFormData => ({
   errors: {},
 });
 
-/** A new, empty item for the form. It starts with the rack of the first saved item. */
-const freshItem = (lines: readonly ItemFormData[]): ItemFormData => {
+/**
+ * A new, empty item for the form. It starts with the rack of the line saved most
+ * recently in this form (`recentId`; a corrected line counts as saved). Without
+ * one still on the list, the last line of the list stands in for it: that is the
+ * case when "Edit GRN" has just opened, and after the recent line was deleted.
+ * The rack of that line is taken as it is: empty if it has none.
+ */
+const freshItem = (lines: readonly ItemFormData[], recentId: string | null): ItemFormData => {
   const item = EMPTY_GRN_ITEM();
-  if (lines.length > 0 && lines[0].rack) item.rack = lines[0].rack;
+  const recent = lines.find((line) => line.grn_trl_id === recentId) ?? lines[lines.length - 1];
+  if (recent?.rack) item.rack = recent.rack;
   return item;
 };
 
@@ -104,7 +111,7 @@ const isItemDirty = (item: ItemFormData, baseline: ItemFormData): boolean =>
   photoIds(item) !== photoIds(baseline);
 
 /** The field errors of one item, or null when it can be saved. */
-const validateItem = async (item: ItemFormData): Promise<Record<string, string> | null> => {
+const validateItem = async (item: ItemFormData, keepWeight: boolean): Promise<Record<string, string> | null> => {
   const validation = await validateStep2({
     items: [{
       item_table_id: item.item_table_id,
@@ -120,7 +127,7 @@ const validateItem = async (item: ItemFormData): Promise<Record<string, string> 
       package_mark: item.package_mark,
       trl_images: photosOf(item),
     }],
-  });
+  }, { keepWeight });
   if (validation.isValid) return null;
 
   const itemErrors: Record<string, string> = {};
@@ -180,6 +187,8 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
   // Map of grn_trl_id -> original stock value for items with dispatches
   const [itemsWithDispatchesOnLoad, setItemsWithDispatchesOnLoad] = useState<Map<string, number>>(new Map());
 
+  // The line saved most recently in this form (a corrected line counts); its rack starts the next new line.
+  const recentLineId = useRef<string | null>(null);
   const hasSyncedFromRedux = useRef(false);
   const formRef = useRef<HorizontalItemFormRef>(null);
 
@@ -321,7 +330,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         // deleted or a photo is added.
         const now = latest.current;
         if (!now.editingItemId && !isItemDirty(now.currentItem, baseline.current)) {
-          loadForm(freshItem(syncedItems), null);
+          loadForm(freshItem(syncedItems, recentLineId.current), null);
         }
       } else if (!isCreateMode) {
         setItemsWithDispatchesOnLoad(new Map());
@@ -340,7 +349,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       }
       zeroItemsHandledRef.current = true;
 
-      const emptied = freshItem(savedItems);
+      const emptied = freshItem(savedItems, recentLineId.current);
       setSavedItems([]);
       // As above: what was typed for a new item outlives the deletion of the last saved one.
       const now = latest.current;
@@ -401,7 +410,8 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         return null;
       }
 
-      const errors = await validateItem(item);
+      // A saved line with a weight above the limit stays as it is: only a changed weight must come within it.
+      const errors = await validateItem(item, editingId !== null && item.weight === baseline.current.weight);
       if (errors) {
         // Only the errors are written: the typed values, the item being corrected and the baseline stay.
         setCurrentItem((prev) => ({ ...prev, errors }));
@@ -451,7 +461,8 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         next = [...lines, savedItem];
       }
       setSavedItems(next);
-      loadForm(freshItem(next), null);
+      recentLineId.current = savedItem.grn_trl_id;
+      loadForm(freshItem(next, recentLineId.current), null);
       Vibration.vibrate(10);
 
       // Reset scroll to Item field for next entry
@@ -490,7 +501,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       }
     }
 
-    loadForm(freshItem(next), null);
+    loadForm(freshItem(next, recentLineId.current), null);
     return next;
   };
 
@@ -590,7 +601,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
     }
 
     // The form is closed before the step is left: coming back never shows an item that was left open.
-    loadForm(freshItem(lines), null);
+    loadForm(freshItem(lines, recentLineId.current), null);
     if (exit.to === 'review') {
       proceedToReview(lines);
       return;
@@ -715,7 +726,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
 
     // The item being corrected was deleted: the form has nothing left to correct.
     if (now.editingItemId === itemId) {
-      loadForm(freshItem(updatedItems), null);
+      loadForm(freshItem(updatedItems, recentLineId.current), null);
     }
   }, [dispatch, loadForm, header.customer_name]);
 

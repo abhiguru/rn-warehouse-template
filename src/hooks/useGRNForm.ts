@@ -495,7 +495,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         break;
       case 2:
         // validateStep2 expects { items: [...] } not just the array
-        result = await validateStep2({ items });
+        result = await validateStep2({ items }, { keepWeight: true });
         break;
       case 3:
         result = await validateStep3({ header, items });
