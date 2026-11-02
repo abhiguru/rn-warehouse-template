@@ -526,6 +526,8 @@ export interface InvoiceDetail {
 
 export interface InvoiceItem {
   item_id: string;
+  /** Migration 143. False for a cancelled invoice's line whose dispatch went before the details were kept; absent on an older server. */
+  details_available?: boolean;
   charge: number;
   tax: number;
   duration: number;

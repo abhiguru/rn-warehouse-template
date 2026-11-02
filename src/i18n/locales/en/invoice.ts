@@ -393,6 +393,7 @@ export const invoice = {
     shareFailedMessage: "Couldn't share the invoice PDF. Check your connection and try again.",
     shareMissingData: 'This invoice is missing its number or financial year. Reload it and try again.',
     unknownItem: 'Unknown Item',
+    detailsNotAvailable: 'Details not available',
     totalA11y: 'Total {{amount}}',
     taxA11y: 'Tax {{amount}}',
     notSetA11y: 'not set',

@@ -402,6 +402,7 @@ export const invoice: Translation<typeof source> = {
     shareFailedMessage: 'ઇન્વૉઇસની PDF શેર કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     shareMissingData: 'આ ઇન્વૉઇસમાં નંબર અથવા નાણાકીય વર્ષ નથી. તેને ફરી લોડ કરો અને ફરી પ્રયાસ કરો.',
     unknownItem: 'અજાણી આઇટમ',
+    detailsNotAvailable: 'વિગતો ઉપલબ્ધ નથી',
     totalA11y: 'કુલ {{amount}}',
     taxA11y: 'ટેક્સ {{amount}}',
     notSetA11y: 'સેટ નથી',
