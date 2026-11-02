@@ -115,7 +115,6 @@ import {
   captureMessage,
   Sentry,
 } from '@/config/sentryConfig';
-import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { AppStateManager } from '@/components/AppStateManager';
 import { ForceUpdateModal } from '@/components/ForceUpdateModal';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -504,7 +503,6 @@ function ThemedContent() {
               <ForceUpdateModal />
               <OfflineBanner />
               <UpgradingBanner />
-              <UpdatePrompt />
               <BottomSheetModalProvider>
                 <BelowOfflineBanner>
                   <NavigationStack key={language} screenBackground={screenBackground} />

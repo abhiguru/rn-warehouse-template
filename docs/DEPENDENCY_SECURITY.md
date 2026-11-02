@@ -191,16 +191,10 @@ v6.0.1, `actions/upload-artifact` v6.0.0, read with `git ls-remote` on
 the comment together. Every checkout sets `persist-credentials: false`.
 `scripts/workflows.test.mjs` checks all three points.
 
-**Over-the-air updates are off, explicitly.** `expo-updates`, a runtime
-version, EAS channels and the in-app update prompt are present, and updates
-were off only because `app.json` had no `updates.url`. `app.json` now says
-`"updates": { "enabled": false }`; the generated Android manifest and iOS
-plist are the same as before (compared with `npx expo config --type
-introspect`). Turning updates on means remote JavaScript runs with the user's
-session, so it needs `updates.codeSigningCertificate`,
-`updates.codeSigningMetadata` and `updates.checkAutomatically` set to `NEVER`
-or `ON_ERROR_RECOVERY` in the same change; `scripts/ota-updates.test.mjs`
-fails otherwise.
+**Over-the-air updates are removed (WH-27).** Every change ships through the store, so `expo-updates`, the runtime version, the `updates` block of
+`app.json` and the in-app update prompt are gone. Remote JavaScript cannot run with the user's session; the version gate ("Update the app") is unchanged.
+`scripts/ota-updates.test.mjs` described the old setting and is for Test to retire. `@sentry/react-native` lists `expo-updates` as an optional peer, so
+the lockfile still carries its entries as optional peers; nothing installs or imports them.
 
 ## Expo SDK 57 upgrade — 10 October 2026
 
