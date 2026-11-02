@@ -894,6 +894,8 @@ Anatomy: label (`FormLabel`), required asterisk, field, optional left and right 
 
 Rules: label above the field, never only a placeholder. A tap places the cursor; a field that opens with a value meant to be replaced (a rate or weight on the rate editor) passes `selectTextOnFocus` so typing replaces it. Height 44 minimum, radius `radius.field`. Set the right `keyboardType`, `autoComplete`, `textContentType` and `returnKeyType`. Validate on blur and on submit, not on every keystroke. `GhostTextInput` (inline editing in tables) shows its border only when focused. Autocomplete inputs show suggestions in a list under the field or in a bottom sheet with the match highlighted in bold, never in colour alone.
 
+A document number box (GRN, dispatch, invoice) gives the number the room to show all 20 characters on a 360 dp wide phone at the default text size. If its row can't, the box takes a row of its own. Larger text sizes may wrap; they never cut the number off.
+
 `GhostTextInput` keeps the 1 px field border when it is used as a form field (vehicle registration on the GRN and dispatch headers); it is borderless only inside tables. Editable number cells in tables are borderless `TextInput`s that show a 2 px `border.fieldFocus` border while focused. (The invoice Items step's line table is the exception: its editable cells are input boxes at rest, owner decision 2026-10-19, §13.7.)
 
 ### 13.3 Specialised inputs

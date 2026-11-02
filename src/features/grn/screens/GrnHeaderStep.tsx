@@ -320,8 +320,10 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                     placeholder={numberBoxPlaceholder(numberHint, numberReason, tr('grn.header.numberPlaceholder'))}
                     placeholderTextColor={t.text.placeholder}
                     maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
+                    // A long number at a large text size wraps instead of scrolling; Enter still just leaves the box.
+                    multiline
+                    submitBehavior="blurAndSubmit"
                     autoCapitalize="characters"
-                    returnKeyType="next"
                     onFocus={() => setFocusedField('gr_no')}
                     onBlur={() => setFocusedField(null)}
                   />
@@ -669,8 +671,9 @@ const makeStyles = (t: ThemeTokens) => ({
   radioChipText: { ...typography.footnote, fontWeight: fontWeight.medium, color: t.text.primary },
   radioChipTextSelected: { color: t.brand.tint, fontWeight: fontWeight.semibold },
   compactRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, columnGap: space.md },
-  grNumberField: { flexGrow: 4, flexBasis: 120 },
-  dateField: { flexGrow: 6, flexBasis: 140 },
+  // Room for all 20 characters of the number (style guide, text fields): the date wraps below it on a narrow phone.
+  grNumberField: { flexGrow: 1, flexBasis: 260 },
+  dateField: { flexGrow: 1, flexBasis: 140 },
   optionalToggle: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

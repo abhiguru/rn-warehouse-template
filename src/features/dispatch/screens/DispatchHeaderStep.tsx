@@ -165,14 +165,19 @@ const makeStyles = (t: ThemeTokens) => ({
     },
     compactRow: {
         flexDirection: 'row' as const,
-        gap: space.md,
+        flexWrap: 'wrap' as const,
+        columnGap: space.md,
     },
+    // The number box wants room for all 20 characters (style guide, text fields): on a phone too narrow
+    // for it beside the date, the date wraps to the next row and the number gets the full width.
     halfField: {
-        flex: 1,
+        flexGrow: 1,
+        flexBasis: 260,
     },
-    // The Gujarati date ("૧૦ ઑક્ટો ૨૦૨૬") is wider than the eight-character number beside it.
+    // The Gujarati date ("૧૦ ઑક્ટો ૨૦૨૬") is wider than an English one.
     dateField: {
-        flex: byLanguage(1, 1.35),
+        flexGrow: byLanguage(1, 1.35),
+        flexBasis: 140,
     },
     optionalToggle: {
         flexDirection: 'row' as const,
@@ -417,6 +422,9 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                             placeholderTextColor={t.text.placeholder}
                                             autoCapitalize="characters"
                                             maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
+                                            // A long number at a large text size wraps instead of scrolling; Enter still just leaves the box.
+                                            multiline
+                                            submitBehavior="blurAndSubmit"
                                         />
                                     </View>
                                 )}
