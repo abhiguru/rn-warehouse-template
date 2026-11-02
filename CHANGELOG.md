@@ -2,6 +2,8 @@
 
 ## Unreleased — each item's own packaging word, as entered (needs backend migration 144)
 
+- **PDF refusals read properly (WH-16).** When the server will not make a PDF, "Share PDF" on a GRN, dispatch or invoice, and a report export, say why in the app's own words: "Too long for a PDF" (over the line or page limit, HTTP 400), "Document changed" (it changed while printing, 503) and "PDF not available" (the renderer is down, 503). They are matched on the status and the start of the server's text; any other failure keeps today's message. Gujarati wording is a draft. The older `errors.pdf.tooManyLines` family stays for the service's own error text.
+
 - **"Delete invoice" beside "Cancel invoice" (WH-43, needs backend migration 146).** Administrators and supervisors see it on the invoice page, on live and cancelled invoices (staff and customers do not). One question ("Delete invoice 12?"), then the invoice and its lines are removed for good and its number is free again; refused when payments refer to it, and when someone else changed the invoice since the page was read ("Someone else changed this invoice ..."). A delete whose answer is lost checks whether the invoice is still there before anything is sent again. "Cancel invoice" is unchanged. A cancelled invoice can be deleted too, which frees its GRN to be deleted. Gujarati wording is a draft.
 - **The word comes from the item.** Bag, Box and Crate read as before ("12 bags", "1 box", "12 crates", "નંગ" in Gujarati); any other word ("Katta", "Trey", "Unit", "Sack")
   shows as typed with no plural ("12 Katta", "₹6.00 per Trey"); a blank word reads "bag". Outer spaces and invisible characters (U+FEFF, U+2007, U+202F, no-break

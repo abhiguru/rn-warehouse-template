@@ -78,7 +78,7 @@ import { printGRNRange } from '@/services/print-service';
 import { DocumentSuccessDialog, DocumentData } from '@/components/DocumentSuccessDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
-import { generateGRNPDF } from '@/services/pdf-service';
+import { generateGRNPDF, pdfRefusalSentence } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
 import { askAlert, showAlert } from '@/utils/alert';
@@ -1199,7 +1199,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     try {
       const pdfResult = await generateGRNPDF(documentNumber);
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setSnackbarMessage(tr('grn.review.pdfCreateFailed'));
+        setSnackbarMessage(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('grn.review.pdfCreateFailed'));
         setSnackbarVisible(true);
         return;
       }

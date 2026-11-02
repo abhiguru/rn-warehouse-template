@@ -34,7 +34,7 @@ import { StatusTag } from '@/components/ui';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { useOrderEffectsPreview } from '@/hooks/useOrderEffectsPreview';
 import { orderEffectLines, orderEffectsNotice, type OrderEffect, previewCreateDispatch, previewUpdateDispatch, withOrderEffects } from '@/services/orderEffects';
-import { generateDispatchPDF } from '@/services/pdf-service';
+import { generateDispatchPDF, pdfRefusalSentence } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { useDispatchForm, type DispatchSubmitResult } from '@/hooks/useDispatchForm';
 import { askPossibleDuplicate } from '@/utils/possibleDuplicate';
@@ -517,7 +517,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         try {
             const pdfResult = await generateDispatchPDF(createdDispatchNumber);
             if (!pdfResult.success || !pdfResult.pdfUrl) {
-                setShareError(tr('dispatch.review.pdfFailed'));
+                setShareError(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('dispatch.review.pdfFailed'));
                 return;
             }
 

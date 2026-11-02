@@ -64,6 +64,43 @@ export interface PDFResponse {
     items_count: number;
   };
   error?: string;
+  /** Set when the server refused with one of its three known answers (see `pdfRefusal`). */
+  refusal?: PdfRefusal;
+}
+
+/** The server's three refusals to make a PDF: the document is too long, it changed while printing, the renderer is down. */
+export type PdfRefusal = 'tooLong' | 'changed' | 'unavailable';
+
+/**
+ * Which refusal an answer is, by its status and a stable start of its text
+ * (functions/_shared/document-lines.ts, document-pdf.ts, pdf-renderer-client.ts); undefined for any other answer.
+ * The line limit and the page limit are both "too long".
+ */
+export function pdfRefusal(status: number, text: unknown): PdfRefusal | undefined {
+  if (typeof text !== 'string') return undefined;
+  const lower = text.trim().toLowerCase();
+  if (status === 400 && /^document (exceeds the limit|is too long to print)/.test(lower)) return 'tooLong';
+  if (status === 503 && lower.startsWith('the document changed while printing')) return 'changed';
+  if (status === 503 && lower.startsWith('pdf renderer unavailable')) return 'unavailable';
+  return undefined;
+}
+
+const REFUSAL_KEYS = {
+  tooLong: ['errors.pdf.refusalTooLongTitle', 'errors.pdf.refusalTooLong'],
+  changed: ['errors.pdf.refusalChangedTitle', 'errors.pdf.refusalChanged'],
+  unavailable: ['errors.pdf.refusalUnavailableTitle', 'errors.pdf.refusalUnavailable'],
+} as const;
+
+/** The app's title and message for a refusal, in the app's language. */
+export function pdfRefusalText(refusal: PdfRefusal): { title: string; message: string } {
+  const [title, message] = REFUSAL_KEYS[refusal];
+  return { title: t(title), message: t(message) };
+}
+
+/** Title and message as one sentence, for a message strip or snackbar that has no separate title. */
+export function pdfRefusalSentence(refusal: PdfRefusal): string {
+  const { title, message } = pdfRefusalText(refusal);
+  return `${title}. ${message}`;
 }
 
 /**
@@ -116,6 +153,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
+        refusal: pdfRefusal(response.status, data.error),
       };
     }
 
@@ -184,6 +222,7 @@ export async function generateDispatchPDF(
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
+        refusal: pdfRefusal(response.status, data.error),
       };
     }
 
@@ -254,6 +293,7 @@ export async function generateInvoicePDF(
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
+        refusal: pdfRefusal(response.status, data.error),
       };
     }
 
@@ -322,6 +362,7 @@ export async function generateCustomerStockPDF(
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
+        refusal: pdfRefusal(response.status, data.error),
       };
     }
 
@@ -477,6 +518,8 @@ export interface ReportPdfResult {
   /** In the app's language, ready to show. */
   error?: string;
   reason?: ReportPdfFailure;
+  /** Set when the server gave one of the three PDF refusals (see `pdfRefusal`); `error` then holds its message. */
+  refusal?: PdfRefusal;
 }
 
 /** The request without the fields that narrow it: the full report the screen's period, customer and sort give. */
@@ -610,6 +653,10 @@ export async function generateReportPDF(request: ReportPdfRequest): Promise<Repo
   }
 
   if (!response.ok || data.success !== true) {
+    const refusal = pdfRefusal(response.status, data.error);
+    if (refusal) {
+      return { ...reportFailure(refusal === 'unavailable' ? 'server-unavailable' : 'not-accepted', pdfRefusalText(refusal).message), refusal };
+    }
     switch (response.status) {
       case 401:
         return reportFailure('session', t('errors.code.sessionExpired'));
