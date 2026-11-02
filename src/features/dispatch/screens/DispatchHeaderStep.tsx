@@ -605,6 +605,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 ref={customerBottomSheetRef}
                 onSelect={handleCustomerSelect}
                 title={tr('dispatch.form.chooseCustomer')}
+                includeInactive
             />
 
             <SupervisorBottomSheet

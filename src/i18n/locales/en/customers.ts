@@ -15,7 +15,7 @@ export const customers = {
     rowHint: 'Opens the customer.',
     deactivateConfirmTitle: 'Deactivate {{name}}?',
     statusDeactivated: 'Deactivated',
-    deactivateConfirmMessage: "They won't appear when you choose a customer for a new GRN, dispatch or order. Their records stay, and you can activate them again.",
+    deactivateConfirmMessage: "They won't appear when you choose a customer for a new GRN. Their stock can still go out on orders and dispatches. Their records stay, and you can activate them again.",
     deactivateCustomer: 'Deactivate customer',
     couldNotActivateTitle: "Couldn't activate the customer",
     couldNotDeactivateTitle: "Couldn't deactivate the customer",

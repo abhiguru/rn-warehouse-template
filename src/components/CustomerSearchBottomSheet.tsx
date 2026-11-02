@@ -29,6 +29,8 @@ import { Button } from '@/components/ui/Button';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { searchService } from '@/services/search-service';
 import { RecentCustomersService, RecentCustomer } from '@/services/recent-customers-service';
+import { customerService } from '@/services/customer-service';
+import { StatusTag } from '@/components/ui/StatusTag';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { normalizeDigits, t as tr } from '@/i18n';
@@ -70,11 +72,18 @@ export interface CustomerSearchResult {
     detail?: string;
     city?: string;
     mobile?: string;
+    /** A deactivated customer (only in a sheet that lists them). */
+    inactive?: boolean;
 }
 
 export interface CustomerSearchBottomSheetProps {
     onSelect: (customer: { id: string; name: string; address?: string; city?: string; mobile?: string }) => void;
     title?: string;
+    /**
+     * List deactivated customers too, tagged "Deactivated" (the dispatch and order customer pickers: their stock can
+     * still go out). Left off, as in the GRN pickers, they stay hidden.
+     */
+    includeInactive?: boolean;
 }
 
 export interface CustomerSearchBottomSheetRef {
@@ -83,7 +92,7 @@ export interface CustomerSearchBottomSheetRef {
 }
 
 export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef, CustomerSearchBottomSheetProps>(
-    ({ onSelect, title = tr('customers.search.title') }, ref) => {
+    ({ onSelect, title = tr('customers.search.title'), includeInactive = false }, ref) => {
         const bottomSheetRef = useRef<BottomSheet>(null);
         const searchInputRef = useRef<any>(null);
         const insets = useSafeAreaInsets();
@@ -92,6 +101,8 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         const [searchQuery, setSearchQuery] = useState('');
         const [searchResults, setSearchResults] = useState<CustomerSearchResult[]>([]);
         const [recentCustomers, setRecentCustomers] = useState<RecentCustomer[]>([]);
+        // Recent picks that were deactivated since (only in a sheet that lists deactivated customers).
+        const [inactiveRecentIds, setInactiveRecentIds] = useState<Set<string>>(() => new Set());
         const [isSearching, setIsSearching] = useState(false);
         const [searchFailed, setSearchFailed] = useState(false);
         const [retryCount, setRetryCount] = useState(0);
@@ -126,13 +137,21 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         // Load recent customers (user-scoped)
         const loadRecentCustomers = useCallback(async () => {
             try {
-                const recent = await RecentCustomersService.getRecentCustomers(userId);
-                setRecentCustomers(recent || []);
+                const recent = (await RecentCustomersService.getRecentCustomers(userId)) || [];
+                if (!includeInactive) {
+                    setRecentCustomers(recent);
+                    return;
+                }
+                // A pick is stored by id and name only: ask which are deactivated or deleted now (deleted ones never show).
+                // If that cannot be read, the picks show as stored.
+                const states = await customerService.getCustomerStates(recent.map(c => c.id));
+                setInactiveRecentIds(new Set(recent.filter(c => states?.get(c.id)?.active === false).map(c => c.id)));
+                setRecentCustomers(states ? recent.filter(c => !states.get(c.id)?.deleted) : recent);
             } catch (error) {
                 console.error('[CustomerSearchBottomSheet] Error loading recent customers:', error);
                 setRecentCustomers([]);
             }
-        }, [userId]);
+        }, [userId, includeInactive]);
 
         // Search customers with debounce
         useEffect(() => {
@@ -142,7 +161,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                 const timeoutId = setTimeout(async () => {
                     const search = ++latestSearch.current;
                     try {
-                        const results = await searchService.searchCustomersOrThrow(normalizeDigits(searchQuery));
+                        const results = await searchService.searchCustomersOrThrow(normalizeDigits(searchQuery), { includeInactive });
                         if (search !== latestSearch.current) return;
                         setSearchResults(results || []);
                     } catch (error) {
@@ -162,7 +181,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                 setSearchFailed(false);
                 setIsSearching(false);
             }
-        }, [searchQuery, retryCount]);
+        }, [searchQuery, retryCount, includeInactive]);
 
         // Handle customer selection (user-scoped)
         const handleSelect = useCallback(async (customer: CustomerSearchResult | { value: string; label: string; detail?: string; city?: string; mobile?: string }) => {
@@ -207,8 +226,8 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                 return searchResults;
             }
             // Include detail from recent customers for address display
-            return recentCustomers.map(c => ({ value: c.id, label: c.name, detail: c.detail }));
-        }, [searchQuery, searchResults, recentCustomers]);
+            return recentCustomers.map(c => ({ value: c.id, label: c.name, detail: c.detail, inactive: inactiveRecentIds.has(c.id) }));
+        }, [searchQuery, searchResults, recentCustomers, inactiveRecentIds]);
 
         const isSearchMode = searchQuery.length >= 1;
         const emptyTitle = isSearching
@@ -297,13 +316,13 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                     {/* Customer List */}
                     <BottomSheetFlatList
                         data={displayData}
-                        keyExtractor={(item: { value: string; label: string; detail?: string }) => item.value}
+                        keyExtractor={(item: { value: string; label: string; detail?: string; inactive?: boolean }) => item.value}
                         ListHeaderComponent={
                             !isSearchMode && displayData.length > 0 ? (
                                 <Text style={styles.sectionHeader} accessibilityRole="header">{tr('customers.search.recentHeader')}</Text>
                             ) : undefined
                         }
-                        renderItem={({ item }: { item: { value: string; label: string; detail?: string } }) => (
+                        renderItem={({ item }: { item: { value: string; label: string; detail?: string; inactive?: boolean } }) => (
                             <Pressable
                                 style={({ pressed }) => [
                                     styles.customerItem,
@@ -311,7 +330,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                 ]}
                                 onPress={() => handleSelect(item)}
                                 accessibilityRole="button"
-                                accessibilityLabel={item.detail ? `${item.label}, ${item.detail}` : item.label}
+                                accessibilityLabel={[item.label, item.detail, item.inactive ? tr('common.deactivated') : undefined].filter(Boolean).join(', ')}
                             >
                                 <View style={styles.customerItemContent}>
                                     <Icon
@@ -332,6 +351,9 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                                 {item.detail}
                                             </Text>
                                         )}
+                                        {item.inactive ? (
+                                            <StatusTag status="neutral" label={tr('common.deactivated')} style={styles.customerItemTag} />
+                                        ) : null}
                                     </View>
                                     <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
                                 </View>
@@ -498,6 +520,10 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   customerItemMatch: {
     fontWeight: fontWeight.semibold,
+  },
+  customerItemTag: {
+    alignSelf: 'flex-start' as const,
+    marginTop: space.xxs,
   },
   customerItemDetail: {
     ...typography.footnote,

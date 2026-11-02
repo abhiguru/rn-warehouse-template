@@ -127,6 +127,33 @@ class CustomerService {
   }
 
   /**
+   * Which of these customers are deactivated or deleted now. A picker's recent picks are stored by id and
+   * name only, so a pick that was deactivated (or deleted) since is found here. Customers the caller cannot
+   * read are left out of the answer; a read that fails answers null (the picker then shows the picks as stored).
+   */
+  async getCustomerStates(ids: string[]): Promise<Map<string, { active: boolean; deleted: boolean }> | null> {
+    if (ids.length === 0) return new Map();
+    try {
+      const client = await getAuthenticatedClient();
+      const { data, error } = await client.from('customers').select('id, active, deleted_at').in('id', ids);
+      if (error) {
+        handleGlobalAuthError(error);
+        log.warn('getCustomerStates failed', { code: error.code });
+        return null;
+      }
+      return new Map(
+        (data ?? []).map((row: { id: string; active: boolean | null; deleted_at: string | null }) => [
+          row.id,
+          { active: row.active !== false, deleted: row.deleted_at != null },
+        ])
+      );
+    } catch (error) {
+      log.error('Exception in getCustomerStates', loggableError(error));
+      return null;
+    }
+  }
+
+  /**
    * Get paginated customer list with filters
    * Falls back to direct table query with RLS
    */

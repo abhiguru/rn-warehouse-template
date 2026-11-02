@@ -15,14 +15,21 @@ export interface SearchResult {
   city?: string;
   mobile?: string;
   type: 'customer' | 'item' | 'dispatch' | 'grn';
+  /** A customer the facility has deactivated (only when the search asked for them: `includeInactive`). */
+  inactive?: boolean;
+}
+
+/** `includeInactive` also lists deactivated customers (the dispatch and order customer pickers; never the GRN pickers). */
+export interface CustomerSearchOptions {
+  includeInactive?: boolean;
 }
 
 class SearchService {
   // Search customers by name using RPC for proper security.
   // A search that fails answers [] (see searchCustomersOrThrow for a picker that says so).
-  async searchCustomers(query: string): Promise<SearchResult[]> {
+  async searchCustomers(query: string, options: CustomerSearchOptions = {}): Promise<SearchResult[]> {
     try {
-      return await this.searchCustomersOrThrow(query);
+      return await this.searchCustomersOrThrow(query, options);
     } catch {
       return [];
     }
@@ -30,7 +37,7 @@ class SearchService {
 
   // The same search, but a search that could not be made throws instead of answering [],
   // so a picker can tell "could not search" from "nothing matches".
-  async searchCustomersOrThrow(query: string): Promise<SearchResult[]> {
+  async searchCustomersOrThrow(query: string, options: CustomerSearchOptions = {}): Promise<SearchResult[]> {
     try {
       if (!query || query.length < 1) {
         return [];
@@ -41,7 +48,8 @@ class SearchService {
       const { data, error } = await authenticatedClient
         .rpc('search_customers', {
           p_search_query: query,
-          p_limit: 20
+          p_limit: 20,
+          ...(options.includeInactive ? { p_include_inactive: true } : {}),
         });
 
       if (error) {
@@ -63,6 +71,7 @@ class SearchService {
         city?: string;
         email?: string;
         address?: string;
+        active?: boolean;
       }
       const results = customerData.map((customer: RpcCustomerResult) => {
         // Prioritize address (first line) for distinguishing customers with same name
@@ -79,7 +88,9 @@ class SearchService {
           detail,
           city: customer.city,
           mobile: customer.mobile,
-          type: 'customer' as const
+          type: 'customer' as const,
+          // Only a search that asked for deactivated customers can return one.
+          ...(options.includeInactive && customer.active === false ? { inactive: true } : {}),
         };
       });
 
