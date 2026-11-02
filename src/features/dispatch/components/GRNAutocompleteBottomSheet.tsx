@@ -288,6 +288,8 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'center' as const,
     gap: space.s6,
     maxWidth: '100%' as const,
+    // Empty (no customer, the middle of the sheet says it): the row keeps one line of height so the keypad does not move.
+    minHeight: typography.footnote.lineHeight,
   },
   keyboardMessage: {
     ...typography.footnote,
@@ -388,6 +390,8 @@ interface CustomKeyboardProps {
   isPrefixesLoading: boolean;
   /** False until the dispatch has a customer: the keypad then says to choose one instead of "no stock". */
   hasCustomer: boolean;
+  /** The sheet already lists GRNs: with no customer the middle of the sheet shows no message, so the keypad row does. */
+  hasListedGrns: boolean;
   /** The prefix read failed for a real customer: say so, with Try again, instead of "no stock". */
   prefixesFailed: boolean;
   /** Reads only the prefixes again, so the working list does not flash to its spinner. */
@@ -401,6 +405,7 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
   prefixes,
   isPrefixesLoading,
   hasCustomer,
+  hasListedGrns,
   prefixesFailed,
   onRetry,
   onSearch,
@@ -555,14 +560,18 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
         ) : (
           <View style={styles.noPrefixContainer}>
             <View style={styles.noPrefixMessageRow} testID="grn-keypad-message-row">
-              <Icon name="information" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.keyboardMessage}>
-                {!hasCustomer
-                  ? tr('dispatch.grnSheet.noCustomerMessage')
-                  : prefixesFailed
-                    ? tr('dispatch.grnSheet.loadFailed')
-                    : tr('dispatch.grnSheet.noStockLeft')}
-              </Text>
+              {hasCustomer || hasListedGrns ? (
+                <>
+                  <Icon name="information" size={iconSize.sm} color={t.icon.secondary} />
+                  <Text style={styles.keyboardMessage}>
+                    {!hasCustomer
+                      ? tr('dispatch.grnSheet.noCustomerMessage')
+                      : prefixesFailed
+                        ? tr('dispatch.grnSheet.loadFailed')
+                        : tr('dispatch.grnSheet.noStockLeft')}
+                  </Text>
+                </>
+              ) : null}
             </View>
             {hasCustomer && prefixesFailed && (
               <Pressable
@@ -1032,6 +1041,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
               prefixes={prefixes}
               isPrefixesLoading={isPrefixesLoading}
               hasCustomer={!!customerId}
+              hasListedGrns={defaultGrnList.length > 0}
               prefixesFailed={prefixesFailed}
               onRetry={loadPrefixes}
               onSearch={handleSearch}
