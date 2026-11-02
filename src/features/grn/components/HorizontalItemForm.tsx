@@ -723,8 +723,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
                     </View>
 
-                    {/* Floor and Chamber buttons: one line under the fields, from about the middle of the weight field to the right.
-                        They do not wrap; the row scrolls sideways when the facility has many. */}
+                    {/* Floor buttons on one line and Chamber buttons on a second, under the fields, from about the middle of
+                        the weight field to the right. Neither line wraps; the row scrolls sideways when a facility has many.
+                        Rack's focus scrolls the row here (offsetOf('rack')), so both lines show above the keyboard. */}
                     <View style={[styles.chipsRow, { marginLeft: chipsLeftOf(fontScale) }]}>
                         <View style={styles.chipGroup}>
                             <Text style={styles.chipLabel} accessibilityRole="header">{tr('grn.item.floor')}</Text>
@@ -1040,9 +1041,9 @@ const makeStyles = (t: ThemeTokens) => ({
         alignItems: 'flex-start' as const,
     },
     chipsRow: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        columnGap: space.lg,
+        flexDirection: 'column' as const,
+        alignItems: 'flex-start' as const,
+        rowGap: space.sm,
         marginTop: space.xs,
     },
     chipGroup: {
