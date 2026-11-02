@@ -51,6 +51,9 @@ const MAX_FONT_SCALE = 2;
 const widthOf = (field: ItemFormFieldName, fontScale: number): number =>
     field === 'weight' ? Math.round(FIELD_WIDTHS.weight * Math.min(Math.max(fontScale, 1), MAX_FONT_SCALE)) : FIELD_WIDTHS[field];
 
+/** The gap under the Rack input and under the Floor line: the owner's own value (13 dp), not a spacing token. */
+const RACK_CHIP_GAP = 13;
+
 /** The gap after every field (`fieldContainer.marginRight`). */
 const FIELD_GAP = space.md;
 
@@ -1041,8 +1044,8 @@ const makeStyles = (t: ThemeTokens) => ({
     chipsRow: {
         flexDirection: 'column' as const,
         alignItems: 'flex-start' as const,
-        rowGap: space.sm,
-        marginTop: space.sm,
+        rowGap: RACK_CHIP_GAP,
+        marginTop: RACK_CHIP_GAP,
     },
     chipGroup: {
         flexDirection: 'row' as const,
