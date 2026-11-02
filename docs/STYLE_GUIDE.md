@@ -911,6 +911,13 @@ Rules: label above the field, never only a placeholder. A tap places the cursor;
 
 Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search field directly above the keypad rather than at the top of the sheet.
 
+The keypad's buttons wrap in a centred row with `space.sm` between them, and each is at least `touchTarget` wide and exactly `touchTarget` high, so nothing falls below the touch target.
+
+- **Digit buttons:** `surface.card` with a 1 px `border.button`, `radius.button`, and `typography.callout` in semibold `text.primary`. When pressed: `brand.subtle`.
+- **Prefix buttons** come before the digits: `brand.subtle` with a matching border; the prefix in `brand.tint`, beside its GRN count in `typography.caption2`, tabular, in `brand.tint`. The button grows with the prefix ("A", "DV"). When pressed: `brand.subtleStrong`.
+- **When there are no prefix buttons,** the row shows one centred line in `typography.footnote`, `text.secondary`, with an information icon, and any "Try again" on its own line below. With no customer chosen and no GRNs listed, the line is left empty (the middle of the sheet says it) but keeps one line of height so the keypad does not move. While prefixes load, it shows a small spinner beside the message.
+- **Accessibility:** every button has its own label: "Use GRN prefix {{prefix}}, {{count}} GRNs", "Enter GRN digit {{digit}}", "Delete last character".
+
 **Brand and mode:** native pickers (the date picker dialog, the rack and chamber dropdowns on Android) follow the phone's theme, not the app's ([3.8](#38-the-mode-axis)).
 
 ### 13.4 Selection controls
