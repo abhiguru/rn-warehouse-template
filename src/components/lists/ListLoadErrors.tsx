@@ -18,7 +18,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
-import { formatTime } from '@/utils/formatters';
+import { formatLoadedAt, formatTime } from '@/utils/formatters';
 import {
   fontWeight,
   iconSize,
@@ -112,14 +112,16 @@ interface LastUpdatedLineProps {
   at: number;
   /** At the top of a list with no heading above it: room above the line. */
   top?: boolean;
+  /** The rows may come from an earlier day (kept on the phone): a time of another day shows its date too. */
+  withDate?: boolean;
   testID?: string;
 }
 
-export const LastUpdatedLine: React.FC<LastUpdatedLineProps> = ({ at, top = false, testID = 'last-updated' }) => {
+export const LastUpdatedLine: React.FC<LastUpdatedLineProps> = ({ at, top = false, withDate = false, testID = 'last-updated' }) => {
   const styles = useThemedStyles(makeStyles);
   return (
     <Text style={[styles.updated, top && styles.updatedTop]} testID={testID}>
-      {translate('lists.order.lastUpdated', { time: formatTime(new Date(at)) })}
+      {translate('lists.order.lastUpdated', { time: withDate ? formatLoadedAt(at) : formatTime(new Date(at)) })}
     </Text>
   );
 };

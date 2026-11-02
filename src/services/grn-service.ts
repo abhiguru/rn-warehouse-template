@@ -1,11 +1,12 @@
 import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { compareDocumentNumbers } from '@/utils/documentNumber';
 import { unwrapArrayResponse } from '@/utils/responseUtils';
-import { createErrorResponse, isJWTSignatureError, isSessionInvalidationError } from '@/utils/serviceErrorHandler';
+import { createErrorResponse, isJWTSignatureError, isOfflineFailure, isSessionInvalidationError } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import type { RpcGrnItemRow, RpcPagination } from '@/types/rpc-canonical.types';
 import { hasMoreItems } from '@/utils/paginationUtils';
-import { PAGINATION } from '@/config/cacheConfig';
+import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
+import { createBoundedCache, generateScopedCacheKey, getSessionCacheScope } from '@/utils/cacheManager';
 import { t } from '@/i18n';
 import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
@@ -147,6 +148,12 @@ export interface GRNListResponse {
   };
   message: string;
   error?: string;
+  /** A failure because the phone could not reach the server (network or timeout), not a refusal. */
+  offline?: boolean;
+  /** The page is the saved copy of the last first page loaded, not a fresh answer. */
+  fromCache?: boolean;
+  /** With `fromCache`: when (ms since 1970) the copy was stored, i.e. really loaded. */
+  cachedAt?: number;
 }
 
 export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNListResponse> => {
@@ -216,6 +223,7 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
       (isJWTSignatureError(error) || isSessionInvalidationError(error) ? console.log : console.error)('[GRN Service] Failed to fetch GRN items:', error.message);
       return {
         ...createErrorResponse(error, t('errors.grn.fetchItemsFailed'), 'GRNService.getAllGRNItems'),
+        offline: isOfflineFailure(error),
         data: EMPTY_GRN_RESPONSE_DATA
       };
     }
@@ -270,6 +278,7 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
   } catch (error) {
     return {
       ...createErrorResponse(error, t('errors.grn.fetchItemsFailed'), 'GRNService.getAllGRNItems'),
+        offline: isOfflineFailure(error),
       data: EMPTY_GRN_RESPONSE_DATA
     };
   }
@@ -338,6 +347,7 @@ export const getCustomerGRNItems = async (
     if (error) {
       return {
         ...createErrorResponse(error, t('errors.grn.fetchCustomerItemsFailed'), 'GRNService.getCustomerGRNItems'),
+        offline: isOfflineFailure(error),
         data: emptyData,
       };
     }
@@ -396,6 +406,7 @@ export const getCustomerGRNItems = async (
   } catch (error) {
     return {
       ...createErrorResponse(error, t('errors.grn.fetchCustomerItemsFailed'), 'GRNService.getCustomerGRNItems'),
+        offline: isOfflineFailure(error),
       data: emptyData,
     };
   }
@@ -735,5 +746,55 @@ export const getAssignedCustomerGRNItems = async (
   };
   const result = entry.tail.then(page);
   entry.tail = result.catch(() => undefined);
+  return result;
+};
+
+/**
+ * The last first page of the GRN list is kept on the phone so that, offline, the list reads as that page with the
+ * time it was loaded, also after the app is restarted. Bounded: Android keeps all of AsyncStorage in one 6 MB
+ * database. The entries sit under the GRN list prefix, so they are removed with the other list caches whenever a
+ * session ends, and are keyed by the session scope, so one person's list is never served to another.
+ */
+export const GRN_CACHE_MAX_ENTRIES = 12;
+export const GRN_CACHE_MAX_TOTAL_CHARS = 1024 * 1024;
+export const GRN_CACHE_MAX_ENTRY_CHARS = 256 * 1024;
+
+const grnListCache = createBoundedCache(CACHE_PREFIXES.GRN_LIST, {
+  maxEntries: GRN_CACHE_MAX_ENTRIES,
+  maxTotalChars: GRN_CACHE_MAX_TOTAL_CHARS,
+  maxEntryChars: GRN_CACHE_MAX_ENTRY_CHARS,
+  expiryMs: CACHE_DURATION_DEFAULT_MS,
+});
+
+/** The list screen's one read: all GRNs, or the assigned customers' for a customer account. */
+export const getGRNListPage = async (
+  params: GRNListParams,
+  assignedCustomerIds: string[] | null
+): Promise<GRNListResponse> => {
+  const generation = getSessionGeneration();
+  const scope = (params.p_offset || 0) === 0 ? await getSessionCacheScope() : null;
+  const key = scope
+    ? generateScopedCacheKey(CACHE_PREFIXES.GRN_LIST, scope, {
+        customers: assignedCustomerIds ? [...new Set(assignedCustomerIds)].sort() : 'all',
+        from: params.p_date_from || '',
+        to: params.p_date_to || '',
+        filters: params.p_filters || {},
+        sortBy: params.p_sort_by || 'date',
+        sortOrder: params.p_sort_order || 'desc',
+      })
+    : null;
+
+  const result = assignedCustomerIds
+    ? await getAssignedCustomerGRNItems(assignedCustomerIds, params)
+    : await getAllGRNItems(params);
+
+  if (key && result.success) {
+    void grnListCache.set(key, result.data, generation);
+  } else if (key && result.offline) {
+    const entry = await grnListCache.getEntry<GRNListResponse['data']>(key, generation);
+    if (entry) {
+      return { success: true, message: result.message, data: entry.data, fromCache: true, cachedAt: entry.storedAt };
+    }
+  }
   return result;
 };

@@ -236,6 +236,15 @@ export const formatDateTime = (date: string | Date | null | undefined): string =
   return `${formatDate(d)}, ${formatTime(d)}`;
 };
 
+/**
+ * When a kept list was loaded (ms since 1970): "4:05 pm" if that was today, else with the date so a time of
+ * another day is not read as today: "09/10/26, 4:05 pm". Today is the phone's own today (as `formatSectionDate`).
+ */
+export const formatLoadedAt = (at: number): string => {
+  const d = new Date(at);
+  return d.toDateString() === new Date().toDateString() ? formatTime(d) : formatDateTime(d);
+};
+
 /** The date and time for a screen reader: "9 Oct 2026, 4:05 pm". */
 export const formatSpokenDateTime = (date: string | Date | null | undefined): string => {
   const d = toDate(date);

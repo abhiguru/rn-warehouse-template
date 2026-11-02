@@ -50,7 +50,7 @@ import { MemoizedDispatchItem } from '@/components/list-items';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
-import { formatCount, formatNumber, formatTime } from '@/utils/formatters';
+import { formatCount, formatNumber, formatLoadedAt } from '@/utils/formatters';
 import { localizeDigits, t as translate } from '@/i18n';
 
 // State
@@ -119,7 +119,7 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt 
           <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
         </View>
       </View>
-      {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} testID="dispatch-last-updated" /> : null}
+      {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} withDate testID="dispatch-last-updated" /> : null}
     </>
   );
 });
@@ -446,7 +446,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const listHeader = useMemo(() => {
     const updated = flat ? offlineUpdatedAt : undefined;
     if (updated === undefined) return null;
-    return <LastUpdatedLine at={updated} top testID="dispatch-last-updated" />;
+    return <LastUpdatedLine at={updated} top withDate testID="dispatch-last-updated" />;
   }, [flat, offlineUpdatedAt]);
 
   // The capped-history footnote while it applies, above the list or the empty state, so it also shows with no rows:
@@ -491,7 +491,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         {refreshError ? (
           <StaleListStrip
             title={translate('lists.dispatch.staleTitle')}
-            text={translate('lists.dispatch.staleText', { time: formatTime(new Date(loadedAt)) })}
+            text={translate('lists.dispatch.staleText', { time: formatLoadedAt(loadedAt) })}
             retryLabel={translate('lists.dispatch.retryRefresh')}
             onRetry={handleRefresh}
             retrying={isRefreshing}

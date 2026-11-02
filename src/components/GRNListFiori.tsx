@@ -24,8 +24,7 @@ import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   countReceipts,
-  getAllGRNItems,
-  getAssignedCustomerGRNItems,
+  getGRNListPage,
   withReceiptPages,
   GRNItem,
   GRNListResponse,
@@ -77,7 +76,7 @@ import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
 import { formatPackages, packNounCapital, sharedPackaging } from '@/utils/packagingWord';
-import { formatSectionDate, formatNumber, formatCount, formatDate, formatSpokenDate, formatTime, formatWeightEach } from '@/utils/formatters';
+import { formatSectionDate, formatNumber, formatCount, formatDate, formatSpokenDate, formatLoadedAt, formatWeightEach } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
 import { t as translate, formatIdentifier } from '@/i18n';
@@ -597,12 +596,14 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
         ? Math.max(PAGE_SIZE, loadedCount.current)
         : offset === 0 || pageUnit.current === 'receipt' ? PAGE_SIZE : LINE_PAGE_SIZE;
       const params = withReceiptPages({ ...request, p_limit: limit, p_offset: offset });
-      const result = isCustomerAccount
-        ? await getAssignedCustomerGRNItems(assignedCustomerIds, params)
-        : await getAllGRNItems(params);
+      const result = await getGRNListPage(params, isCustomerAccount ? assignedCustomerIds : null);
       if (requestId !== latestRequest.current) return;
 
-      if (result.success && result.data) {
+      // The service answers a network failure with the first page kept on the phone. A refresh of the rows on
+      // screen that got only that did not refresh: it is a failure (strip, loadedAt kept), not a new load (§14.9).
+      if (result.fromCache && !append && shownRequest.current === requestKey) {
+        showLoadFailure(append, requestKey);
+      } else if (result.success && result.data) {
         const unit = result.data.pagination.unit === 'receipt' ? 'receipt' : 'line';
         // The facility answers in another unit than the one the loaded pages were counted in (backend migration 98
         // arrived while the list was open): the offset means something else now. Start again from the first page.
@@ -628,7 +629,8 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           setLoadError(false);
           setRefreshError(false);
           setLoadMoreFailed(false);
-          setLoadedAt(Date.now());
+          // A page answered from the phone's saved copy was loaded when that copy was stored, not now.
+          setLoadedAt(result.fromCache && result.cachedAt ? result.cachedAt : Date.now());
           shownRequest.current = requestKey;
           if (!keepPlace) listRef.current?.scrollToOffset({ offset: 0, animated: false });
         }
@@ -879,7 +881,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   // refresh says it in its strip instead.
   const offlineUpdatedAt = isOffline && !refreshError ? loadedAt : undefined;
   const renderListHeader = useCallback(
-    () => (offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top testID="grn-last-updated" /> : null),
+    () => (offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="grn-last-updated" /> : null),
     [offlineUpdatedAt]
   );
 
@@ -910,7 +912,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
         {refreshError ? (
           <StaleListStrip
             title={translate('lists.grn.staleTitle')}
-            text={translate('lists.grn.staleText', { time: formatTime(new Date(loadedAt)) })}
+            text={translate('lists.grn.staleText', { time: formatLoadedAt(loadedAt) })}
             retryLabel={translate('lists.grn.retryRefresh')}
             onRetry={onRefresh}
             retrying={refreshing}
