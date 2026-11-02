@@ -85,6 +85,11 @@ interface RemoteAutocompleteInputProps<T> {
   emptyText?: string;
   /** The person typed in the field (not a pick, not the clear button): the text as it now stands. */
   onTextChange?: (text: string) => void;
+  /**
+   * A last row of the drop-down, once something is typed, with or without matches ("Add item"). It gets the text as typed.
+   * The list closes and the keyboard goes down when it is pressed.
+   */
+  footerAction?: { label: string; accessibilityLabel?: string; onPress: (typed: string) => void };
 }
 
 // ============================================================================
@@ -124,6 +129,7 @@ function RemoteAutocompleteInputInner<T>({
   rightIcon,
   emptyText: emptyTextProp,
   onTextChange,
+  footerAction,
 }: RemoteAutocompleteInputProps<T>, ref: ForwardedRef<RemoteAutocompleteInputHandle>) {
   const placeholder = placeholderProp ?? tr('components.autocomplete.placeholder');
   const emptyText = emptyTextProp ?? tr('components.autocomplete.noMatches');
@@ -219,6 +225,27 @@ function RemoteAutocompleteInputInner<T>({
     setShowList(false);
     Keyboard.dismiss();
   };
+
+  const pressFooterAction = () => {
+    if (!footerAction) return;
+    cancelPendingSearch();
+    setIsLoading(false);
+    setShowList(false);
+    Keyboard.dismiss();
+    footerAction.onPress(query);
+  };
+
+  const footerRow = footerAction ? (
+    <Pressable
+      style={({ pressed }) => [styles.footerRow, pressed && styles.dropdownItemPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={footerAction.accessibilityLabel ?? footerAction.label}
+      onPress={pressFooterAction}
+    >
+      <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
+      <Text style={styles.footerText}>{footerAction.label}</Text>
+    </Pressable>
+  ) : null;
 
   const clearInput = () => {
     cancelPendingSearch();
@@ -381,6 +408,7 @@ function RemoteAutocompleteInputInner<T>({
             nestedScrollEnabled={true}
             style={styles.dropdownList}
             showsVerticalScrollIndicator={false}
+            ListFooterComponent={footerRow}
           />
         </View>
       )}
@@ -398,6 +426,7 @@ function RemoteAutocompleteInputInner<T>({
             style={styles.emptyIcon}
           />
           <Text style={styles.emptyText}>{emptyText}</Text>
+          {footerRow}
         </View>
       )}
     </View>
@@ -539,6 +568,19 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   emptyIcon: {
     marginBottom: space.sm,
+  },
+  footerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'stretch' as const,
+    gap: space.sm,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    minHeight: touchTarget,
+  },
+  footerText: {
+    ...typography.body,
+    color: t.brand.tint,
   },
   emptyText: {
     ...typography.footnote,

@@ -113,6 +113,8 @@ export const items: Translation<typeof source> = {
     rateItemRequired: 'જે આઇટમના દર આ આઇટમને મળે તે પસંદ કરો.',
     rateNoItems: 'આજે લાગુ દર ધરાવતી કોઈ આઇટમ નથી.',
     couldNotAddTitle: 'આઇટમ ઉમેરી શકાઈ નથી',
+    notConfirmedTitle: 'આઇટમની ખાતરી થઈ શકી નથી',
+    notConfirmedMessage: '{{name}} ઉમેરાઈ કે નહીં તેની ખાતરી થઈ શકી નથી. ઉમેરતા પહેલાં તેને ફરી શોધો. આ આવક પાવતીમાં બીજું કંઈ ગુમાવાયું નથી.',
     savedToast: '{{name}} સચવાઈ.',
     couldNotSaveTitle: 'આઇટમ સાચવી શકાઈ નથી',
     discardNewTitle: 'આ આઇટમ છોડી દેવી છે?',

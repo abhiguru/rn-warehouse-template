@@ -11,6 +11,11 @@
   with this name and packaging already exists."). Pickers and lists show the word beside the name ("Egg · Trey"): GRN item search, order catalog, Items list, dispatch
   Choose item, rate item picker, stock summary, stock aging, customer activity. The recent-items pills and the catalog's recent list tell two items of one name apart by
   the catalog item. A blank word reads "Bag" beside the name everywhere. The rate history, add-rate and customer-rate headers show the word too (the two rate reads carry `item_packaging`). An older server still works; it shows typed words as "bag".
+- **"Add item" from the GRN "Items" step (WH-42, needs backend migration 145).** Once something is typed in the item search of Create GRN or Edit GRN, the drop-down ends with an
+  "Add item" row, with or without matches. It opens a quick sheet (item name filled with the typed text, packaging with the words used before, "Save item"); on save the sheet
+  closes, the new item is chosen with its word filled, and nothing else on the step or the GRN changes. Staff may use it: their item is active with no rate even when a standard
+  rate is saved (Review shows "No rate yet for …", Items shows "No rate"), decided by the server; administrators and supervisors get the standard rate as on Add item. A duplicate
+  name and word shows the field message and keeps the sheet open; a save whose answer is lost says it couldn't be confirmed and asks to search again. An older app has no sheet.
 
 ## Unreleased — app 0.7.0: the backend audit follow-ups (needs backend migrations 134, 136, 139, 140; floor 127)
 

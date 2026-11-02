@@ -1,5 +1,6 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef, useState } from 'react';
 import { itemWithPackaging } from '@/utils/packagingWord';
+import { AddItemSheet } from './AddItemSheet';
 import {
   View,
   Text,
@@ -160,6 +161,10 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
 
         const styles = useThemedStyles(makeStyles);
         const t = useTokens();
+
+        // The "Add item" sheet over this step (WH-42): the typed search text fills its name.
+        const [addItemOpen, setAddItemOpen] = useState(false);
+        const [addItemName, setAddItemName] = useState('');
 
         const scrollRef = useRef<ScrollViewRef>(null);
         const qtyInputRef = useRef<TextInputRef>(null);
@@ -454,6 +459,13 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 </View>
                             )}
                             keyExtractor={(item) => item.id}
+                            footerAction={{
+                                label: tr('items.list.addItem'),
+                                onPress: (typed) => {
+                                    setAddItemName(typed.trim());
+                                    setAddItemOpen(true);
+                                },
+                            }}
                             zIndex={3000}
                         />
                         )}
@@ -712,6 +724,23 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                 </View>
                 </>
                 )}
+
+                <AddItemSheet
+                    visible={addItemOpen}
+                    initialName={addItemName}
+                    onClose={() => setAddItemOpen(false)}
+                    onAdded={(item) => {
+                        // The new item is chosen and its word filled; nothing else on the step or the GRN changes.
+                        setAddItemOpen(false);
+                        onFieldChange('item_table_id', item.id);
+                        onFieldChange('item_name', item.name);
+                        onFieldChange('packaging', item.packaging);
+                        setTimeout(() => {
+                            qtyInputRef.current?.focus();
+                            scrollToField(scrollOffsetOf('qty'));
+                        }, 400);
+                    }}
+                />
             </View>
         );
     });
