@@ -56,9 +56,20 @@ interface ActionsSectionProps {
    * person is asked once, not twice.
    */
   confirmDelete?: boolean;
-  /** Words and icon for the button when it does not delete (an invoice is cancelled, not deleted). */
+  /** Words and icon for the button when it does not delete (an invoice also has Cancel, shown as the second action). */
   deleteLabel?: string;
   deleteIcon?: IconName;
+  /**
+   * A second, destructive action shown just above Delete (invoices: "Cancel invoice" beside "Delete invoice"). The
+   * caller decides whether it is shown (role, state); nothing else on the section is pressable while it is busy.
+   */
+  secondAction?: {
+    label: string;
+    icon: IconName;
+    onPress: () => void;
+    busy?: boolean;
+    busyLabel?: string;
+  };
 }
 
 export const ActionsSection: React.FC<ActionsSectionProps> = ({
@@ -80,6 +91,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   confirmDelete = true,
   deleteLabel,
   deleteIcon = 'trash-can-outline',
+  secondAction,
 }) => {
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
@@ -91,9 +103,12 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   const showPrintButton = onPrint && entityNumber;
   const showEditButton = canEdit && onEdit && entityId;
   const showDeleteButton = resolvedCanDelete && onDelete && entityId;
+  const showSecondAction = !!secondAction && !!entityId;
+  // An invoice that is being deleted or cancelled is not edited, and neither action starts over the other.
+  const busyAny = isDeleting || !!secondAction?.busy;
 
   // Don't render if no actions available
-  if (!showShareButton && !showPrintButton && !showEditButton && !showDeleteButton) {
+  if (!showShareButton && !showPrintButton && !showEditButton && !showDeleteButton && !showSecondAction) {
     return null;
   }
 
@@ -195,16 +210,42 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               overviewStyles.primaryButton,
               colorStyles.primaryButton,
               pressed && colorStyles.primaryButtonPressed,
-              isDeleting && overviewStyles.buttonDisabled,
+              busyAny && overviewStyles.buttonDisabled,
             ]}
             onPress={onEdit}
-            disabled={isDeleting}
+            disabled={busyAny}
             accessibilityRole="button"
             accessibilityLabel={labels.edit}
-            accessibilityState={{ disabled: isDeleting }}
+            accessibilityState={{ disabled: busyAny }}
           >
             <Icon name="pencil-outline" size={iconSize.lg} color={colorStyles.iconOnFill} />
             <Text style={[overviewStyles.primaryButtonText, colorStyles.primaryButtonText]}>{labels.edit}</Text>
+          </Pressable>
+        )}
+
+        {/* Second action (Cancel invoice) - Secondary Negative */}
+        {showSecondAction && secondAction && (
+          <Pressable
+            style={({ pressed }) => [
+              overviewStyles.secondaryNegativeButton,
+              colorStyles.secondaryNegativeButton,
+              pressed && colorStyles.secondaryNegativeButtonPressed,
+              busyAny && overviewStyles.buttonDisabled,
+            ]}
+            onPress={secondAction.onPress}
+            disabled={busyAny}
+            accessibilityRole="button"
+            accessibilityLabel={secondAction.label}
+            accessibilityState={{ disabled: busyAny, busy: !!secondAction.busy }}
+          >
+            {secondAction.busy ? (
+              <ActivityIndicator size="small" color={colorStyles.iconError} />
+            ) : (
+              <Icon name={secondAction.icon} size={iconSize.lg} color={colorStyles.iconError} />
+            )}
+            <Text style={[overviewStyles.secondaryNegativeButtonText, colorStyles.secondaryNegativeButtonText]}>
+              {secondAction.busy ? secondAction.busyLabel ?? secondAction.label : secondAction.label}
+            </Text>
           </Pressable>
         )}
 
@@ -215,10 +256,10 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               overviewStyles.secondaryNegativeButton,
               colorStyles.secondaryNegativeButton,
               pressed && colorStyles.secondaryNegativeButtonPressed,
-              isDeleting && overviewStyles.buttonDisabled,
+              busyAny && overviewStyles.buttonDisabled,
             ]}
             onPress={handleDeletePress}
-            disabled={isDeleting}
+            disabled={busyAny}
             accessibilityRole="button"
             accessibilityLabel={deleteLabel ?? labels.delete}
             accessibilityState={{ disabled: isDeleting, busy: isDeleting }}

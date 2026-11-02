@@ -82,7 +82,7 @@ export const REFUSAL = {
   DISCOUNT_TOTAL_ZERO: 'DISCOUNT_TOTAL_ZERO',
   /** A looked-up rate changed since the form opened (`lines`: disp_trl_id, fields, looked_up, current). */
   RATES_CHANGED: 'RATES_CHANGED',
-  // Backend migration 134 (an invoice is cancelled, never deleted).
+  // Backend migration 134 (an invoice can be cancelled; delete_invoice came back in migration 146).
   /** The invoice is already cancelled (`invoice_id`, `cancelled_at`); a cancelled invoice also takes no edit. */
   INVOICE_CANCELLED: 'INVOICE_CANCELLED',
   /** A payment refers to the invoice, so it can't be cancelled (`invoice_id`, `payments`). */

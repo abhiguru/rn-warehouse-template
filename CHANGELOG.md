@@ -2,6 +2,7 @@
 
 ## Unreleased — each item's own packaging word, as entered (needs backend migration 144)
 
+- **"Delete invoice" beside "Cancel invoice" (WH-43, needs backend migration 146).** Administrators and supervisors see it on the invoice page, on live and cancelled invoices (staff and customers do not). One question ("Delete invoice 12?"), then the invoice and its lines are removed for good and its number is free again; refused when payments refer to it, and when someone else changed the invoice since the page was read ("Someone else changed this invoice ..."). A delete whose answer is lost checks whether the invoice is still there before anything is sent again. "Cancel invoice" is unchanged. A cancelled invoice can be deleted too, which frees its GRN to be deleted. Gujarati wording is a draft.
 - **The word comes from the item.** Bag, Box and Crate read as before ("12 bags", "1 box", "12 crates", "નંગ" in Gujarati); any other word ("Katta", "Trey", "Unit", "Sack")
   shows as typed with no plural ("12 Katta", "₹6.00 per Trey"); a blank word reads "bag". Outer spaces and invisible characters (U+FEFF, U+2007, U+202F, no-break
   space) never change a word and the match ignores case, as on the server (`warehouse_security.shared_packaging`). Totals over lines of one word say that word, over

@@ -68,8 +68,12 @@ interface InvoiceOverviewTabProps {
   on_edit_invoice?: () => void;
   /** Cancel the invoice (administrators and supervisors; the page asks for the reason). */
   on_cancel_invoice?: () => void;
+  /** Delete the invoice (administrators and supervisors, live or cancelled; the page asks the one question). */
+  on_delete_invoice?: () => void;
   can_edit?: boolean;
   can_cancel?: boolean;
+  can_delete?: boolean;
+  is_deleting?: boolean;
   is_cancelling?: boolean;
   /** Migration 134: when and why the invoice was cancelled (null or absent when it is not); who, for staff and up. */
   cancelled_at?: string | null;
@@ -198,8 +202,11 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   on_view_grn,
   on_edit_invoice,
   on_cancel_invoice,
+  on_delete_invoice,
   can_edit = false,
   can_cancel = false,
+  can_delete = false,
+  is_deleting = false,
   is_cancelling = false,
   cancelled_at,
   cancel_reason,
@@ -495,13 +502,18 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         isPrintLoading={is_print_loading}
         onEdit={on_edit_invoice}
         canEdit={can_edit}
-        canDelete={can_cancel}
-        onDelete={on_cancel_invoice}
-        isDeleting={is_cancelling}
-        deleteLabel={tr('invoice.cancel.action')}
-        deleteIcon="cancel"
-        deleteBusyLabel={tr('invoice.cancel.busy')}
-        // The invoice page opens its own sheet (the reason is asked there): no second question.
+        // Cancel invoice (live invoices) and Delete invoice (live and cancelled): the page asks its own question for each
+        // (the reason for Cancel, the one confirmation for Delete), so the section asks none.
+        secondAction={
+          can_cancel && on_cancel_invoice
+            ? { label: tr('invoice.cancel.action'), icon: 'cancel', onPress: on_cancel_invoice, busy: is_cancelling, busyLabel: tr('invoice.cancel.busy') }
+            : undefined
+        }
+        canDelete={can_delete}
+        onDelete={on_delete_invoice}
+        isDeleting={is_deleting}
+        deleteLabel={tr('invoice.details.deleteConfirm')}
+        deleteBusyLabel={tr('common.deleting')}
         confirmDelete={false}
       />
 

@@ -5,7 +5,7 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
-import { isNetworkError, isStatementTimeout, isTimeoutError, serverReason, serverText } from '@/utils/serverText';
+import { isNetworkError, isStatementTimeout, isTimeoutError, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { REFUSAL } from '@/utils/serverRefusal';
 import { formatNumber } from '@/utils/formatters';
 import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/features/invoice/utils/cancelReason';
@@ -938,8 +938,8 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
 };
 
 /**
- * Cancel an invoice (server migration 134, review finding H5). An invoice is cancelled, never deleted: it keeps its
- * number and lines, stays visible (marked Cancelled) and can no longer be edited. `cancel_invoice` is for
+ * Cancel an invoice (server migration 134, review finding H5). A cancelled invoice keeps its
+ * number and lines, stays visible (marked Cancelled) and can no longer be edited (it can still be deleted, migration 146). `cancel_invoice` is for
  * administrators and supervisors, needs a reason of 3 to 500 characters and refuses by `reason` code.
  */
 export interface CancelInvoiceResponse {
@@ -1019,4 +1019,91 @@ export const cancelInvoice = async (
   void invalidateReportQueries();
 
   return { success: true, cancelledAt: result.data?.cancelled_at, updatedAt: result.data?.updated_at };
+};
+
+/**
+ * Delete an invoice, live or cancelled (server migration 146, WH-43): the invoice and its lines are removed for good and
+ * its number is free again. `delete_invoice` is for administrators and supervisors, refuses an invoice with payments, and
+ * refuses a screen that is out of date (`STALE_RECORD`) when it is sent the version the screen read.
+ */
+export interface DeleteInvoiceResponse {
+  success: boolean;
+  /** The worded message for a refusal or a failure, in the app's language. */
+  message?: string;
+  error?: string;
+  /** The server's refusal code (STALE_RECORD). */
+  reason?: string;
+  /**
+   * The request may have reached the server, but no answer came back (lost-answer rule W22): the invoice may be deleted
+   * already. `sentAt` is when it was sent (ms since 1970). No worded message goes with it: the caller waits for the
+   * connection, reads the invoice, and sends the delete again only if the invoice is still there.
+   */
+  lostAnswer?: boolean;
+  sentAt?: number;
+  /** The server answered "Invoice not found": someone else deleted it, so it is gone, as the person wanted. */
+  notFound?: boolean;
+}
+
+/**
+ * Asks the server whether an invoice is still there (a lost delete, rule W22). `gone`: the server says "Invoice not
+ * found", so the delete went through, and an open report is told as after any delete. `there`: the invoice was read.
+ * `unknown`: the question itself got no usable answer (no connection, an error): ask again later.
+ */
+export const invoiceDeleteState = async (invoiceId: string): Promise<'gone' | 'there' | 'unknown'> => {
+  const check = await getInvoiceDetails(invoiceId).catch(() => null);
+  if (check?.success && check.data) return 'there';
+  if (!check?.notFound) return 'unknown';
+  void invalidateReportQueries();
+  return 'gone';
+};
+
+/**
+ * `options.resend`: this is the delete sent again after one whose answer was lost. Any failure of it that is not the
+ * server's answer (a statement timeout while it waits behind the first delete, a failure before sending, a changed
+ * session) leaves the attempt unsettled, so the result says `lostAnswer` and the caller goes back to the check instead
+ * of unlocking the page. "Invoice not found" is `notFound`: deleted, as asked.
+ */
+export const deleteInvoice = async (
+  invoiceId: string,
+  expectedUpdatedAt?: string | null,
+  options: { resend?: boolean } = {}
+): Promise<DeleteInvoiceResponse> => {
+  const sentAt = Date.now();
+  const result = await executeRPC<{ message?: string; gr_id?: string }>(
+    getAuthenticatedClient,
+    'delete_invoice',
+    { p_invoice_id: invoiceId, p_expected_updated_at: expectedUpdatedAt ?? null },
+    // `delete`: a timeout or a dropped connection says the invoice may have been deleted (not saved).
+    { context: 'InvoiceService.deleteInvoice', write: true, delete: true, errorMessage: t('errors.invoice.deleteFailed'), unwrapNested: false, validateSuccess: true }
+  );
+
+  if (!result.success) {
+    // "Invoice not found" is the server's own raw text: the invoice is gone (deleted on another phone). The caller
+    // tells the person it is deleted, and an open report must stop listing it as after any delete.
+    if (INVOICE_NOT_FOUND.test(result.error ?? '')) {
+      void invalidateReportQueries();
+      return { success: false, message: result.message, error: result.error, notFound: true };
+    }
+    // The request may have reached the server and no answer came: the invoice may be gone already. Nothing is worded
+    // for the person; the caller waits, reads the invoice, and sends the delete again only if it is still there.
+    // (Not the server's own statement timeout, 57014: it rolled back, so nothing was deleted.)
+    if (result.lostAnswer || (options.resend && isUnsettledFailure(result, result.errorCode))) {
+      return { success: false, error: result.error, lostAnswer: true, sentAt };
+    }
+    // The invoice was changed by someone else since this screen read it: the caller reads it again.
+    if (result.reason === REFUSAL.STALE_RECORD) {
+      return { success: false, message: t('invoice.details.deleteStale'), error: result.error, reason: result.reason };
+    }
+    // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in
+    // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.
+    const transportFailure = !isStatementTimeout(result) && (isTimeoutError(result) || isNetworkError(result));
+    const refusal = transportFailure ? undefined : serverReason(result.error ?? '');
+    // Any other failure says "Couldn't delete the invoice. Try again.": a server sentence the app has no wording for stays hidden.
+    return { success: false, message: refusal ?? (transportFailure ? result.message : t('errors.invoice.deleteFailed')), error: result.error };
+  }
+
+  // A report left open under the invoice must not keep listing it (SR-10, as for every other write).
+  void invalidateReportQueries();
+
+  return { success: true, message: result.data?.message };
 };

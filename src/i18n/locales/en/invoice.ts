@@ -340,7 +340,7 @@ export const invoice = {
     overview: 'Overview',
     breakdown: 'Breakdown',
   },
-  // An invoice is cancelled, never deleted (server migration 134).
+  // An invoice can be cancelled (server migration 134: it stays on record) or deleted (migration 146: it is removed).
   cancel: {
     action: 'Cancel invoice',
     title: 'Cancel invoice {{number}}?',
@@ -386,6 +386,7 @@ export const invoice = {
     deleteConfirm: 'Delete invoice',
     deletedTitle: 'Invoice {{number}} deleted.',
     deleteFailedTitle: "Couldn't delete invoice",
+    deleteStale: 'Someone else changed this invoice. It has been loaded again: check it, then delete it if it is still wrong.',
     // The page is opened on an invoice that was deleted (on another phone, or just now).
     deletedGoneTitle: 'Invoice deleted',
     deletedGoneMessage: 'This invoice was deleted, so it cannot be opened, edited or shared any more.',
