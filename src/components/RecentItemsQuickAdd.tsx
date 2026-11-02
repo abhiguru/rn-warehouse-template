@@ -1,3 +1,4 @@
+import { itemWithPackaging } from '@/utils/packagingWord';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -28,7 +29,13 @@ import { t as tr } from '@/i18n';
 export interface QuickAddItem {
   id: string;
   name: string;
+  /** The catalog item (two items can share a name) and its own packaging word, shown beside the name. */
+  itemId?: string | null;
+  packaging?: string | null;
 }
+
+/** What makes two pills the same item: the catalog item, else the name. */
+const pillKey = (item: QuickAddItem): string => item.itemId || item.name.toLowerCase();
 
 interface RecentItemsQuickAddProps {
   customerId: string;
@@ -86,18 +93,19 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
     const validAllItems = allItems.filter(item => item.name);
 
     // Start with recently added items from current session (most recent first)
-    const recentlyAddedNames = new Set(validRecentlyAdded.map(item => item.name.toLowerCase()));
+    const recentlyAddedNames = new Set(validRecentlyAdded.map(pillKey));
 
     // Then add recent items from history, excluding those already in recently added
     // Map RecentItem to QuickAddItem
-    const recentNames = new Set(validRecentItems.map(item => item.name.toLowerCase()));
+    const toPill = (item: RecentItem): QuickAddItem => ({ id: item.id, name: item.name, itemId: item.catalog_id, packaging: item.packaging });
+    const recentNames = new Set(validRecentItems.map(item => pillKey(toPill(item))));
     const recentHistoryOnly: QuickAddItem[] = validRecentItems
-      .filter(item => !recentlyAddedNames.has(item.name.toLowerCase()))
-      .map(item => ({ id: item.id, name: item.name }));
+      .map(toPill)
+      .filter(item => !recentlyAddedNames.has(pillKey(item)));
 
     // Finally add all other items, excluding those already shown
     const allShownNames = new Set([...recentlyAddedNames, ...recentNames]);
-    const otherItems = validAllItems.filter(item => !allShownNames.has(item.name.toLowerCase()));
+    const otherItems = validAllItems.filter(item => !allShownNames.has(pillKey(item)));
 
     const combined: QuickAddItem[] = [...validRecentlyAdded, ...recentHistoryOnly, ...otherItems];
     if (__DEV__) console.log('[RecentItemsQuickAdd] 📊 Display items:', {
@@ -150,7 +158,7 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
         ]}
         onPress={() => handleItemPress(item)}
         hitSlop={CHIP_HIT_SLOP}
-        accessibilityLabel={tr('orders.quickAdd.select', { name: item.name })}
+        accessibilityLabel={tr('orders.quickAdd.select', { name: itemWithPackaging(item.name, item.packaging) })}
         accessibilityRole="button"
         accessibilityState={{ selected: isSelected }}
       >
@@ -160,7 +168,7 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
           numberOfLines={1}
           maxFontSizeMultiplier={1.6}
         >
-          {item.name}
+          {itemWithPackaging(item.name, item.packaging)}
         </Text>
       </Pressable>
     );

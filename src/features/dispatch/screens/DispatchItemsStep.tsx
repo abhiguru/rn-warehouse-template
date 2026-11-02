@@ -59,7 +59,7 @@ import { readDispatchQuantityInput } from '@/features/dispatch/utils/dispatchQua
 import { showAlert } from '@/utils/alert';
 import { invoicedLineText } from '@/features/dispatch/components/ItemsSummaryBottomSheet';
 import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
-import { formatPackages, packNounCapital } from '@/utils/packagingWord';
+import { formatPackages, packNoun, packNounCapital } from '@/utils/packagingWord';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import type { TextInputRef } from '@/types/nativeRefs';
 /** The bags a saved dispatch held per lot, for a form that holds none (a new dispatch). */
@@ -1333,7 +1333,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             <ConfirmDialog
                 visible={showClearItemDialog}
                 title={tr('dispatch.items.clearItemTitle')}
-                message={tr('dispatch.items.clearItemMessage')}
+                message={tr('dispatch.items.clearItemMessage', { things: packNoun(currentItem.grnItems_packaging) })}
                 confirmText={tr('dispatch.items.clearItemConfirm')}
                 cancelText={tr('dispatch.items.keepItem')}
                 onConfirm={handleClearItemConfirm}

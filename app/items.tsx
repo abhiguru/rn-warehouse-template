@@ -20,6 +20,7 @@
  * The search is screen state: it starts empty each time Items is opened from Settings and stays while an item is open.
  */
 
+import { itemWithPackaging } from '@/utils/packagingWord';
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
@@ -735,7 +736,7 @@ function FioriItemCard({ item, noRate, busy = false, onPress, onToggleActive, on
         ]}
         onPress={handleToggle}
         accessibilityRole="button"
-        accessibilityLabel={tr(item.active ? 'items.list.deactivateName' : 'items.list.activateName', { name: item.name })}
+        accessibilityLabel={tr(item.active ? 'items.list.deactivateName' : 'items.list.activateName', { name: itemWithPackaging(item.name, item.packaging) })}
       >
         <Icon
           name={item.active ? 'archive-arrow-down-outline' : 'archive-arrow-up-outline'}
@@ -753,7 +754,7 @@ function FioriItemCard({ item, noRate, busy = false, onPress, onToggleActive, on
         style={({ pressed }) => [styles.swipeAction, pressed && styles.swipeActionPressed]}
         onPress={handleDelete}
         accessibilityRole="button"
-        accessibilityLabel={tr('items.list.deleteName', { name: item.name })}
+        accessibilityLabel={tr('items.list.deleteName', { name: itemWithPackaging(item.name, item.packaging) })}
       >
         <Icon name="trash-can-outline" size={iconSize.lg} color={t.destructive.onFill} />
         <Text style={styles.swipeActionText}>{tr('common.delete')}</Text>
@@ -799,16 +800,13 @@ function FioriItemCard({ item, noRate, busy = false, onPress, onToggleActive, on
         {/* Fiori Object Cell: Main Content */}
         <View style={styles.cardContent}>
           <Text style={[styles.headline, !item.active && styles.textInactive]} numberOfLines={2}>
-            {item.name}
+            {itemWithPackaging(item.name, item.packaging)}
           </Text>
           {!item.active && <StatusTag status="neutral" label={tr('common.deactivated')} />}
           {noRate && <StatusTag status="critical" label={tr('items.list.noRateTag')} testID={`no-rate-tag-${item.id}`} />}
 
           {/* Subheadline - Item Details */}
           <View style={styles.attributeStack}>
-            {item.packaging && (
-              <Text style={styles.attributeText}>{item.packaging}</Text>
-            )}
             {item.description && (
               <View style={styles.attributeRow}>
                 <Icon name="text-box-outline" size={iconSize.sm} color={t.icon.secondary} />

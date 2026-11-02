@@ -137,7 +137,7 @@ export const dispatch: Translation<typeof source> = {
     backToDetails: 'જાવકની વિગતો પર પાછા જાઓ',
     nextReview: 'આગળ, જાવક ચકાસો',
     clearItemTitle: 'આ આઇટમ સાફ કરવી છે?',
-    clearItemMessage: 'આ આઇટમ માટે ભરેલી આવક પાવતી, જથ્થો અને નંગ સાફ થઈ જશે.',
+    clearItemMessage: 'આ આઇટમ માટે ભરેલી આવક પાવતી, જથ્થો અને {{things}} સાફ થઈ જશે.',
     clearItemConfirm: 'આઇટમ સાફ કરો',
     keepItem: 'આઇટમ રાખો',
     backTitle: 'વિગતો પર પાછા જવું છે?',

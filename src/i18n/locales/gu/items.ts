@@ -97,7 +97,8 @@ export const items: Translation<typeof source> = {
     charCountLabel: '{{max}} માંથી {{count}} અક્ષર',
     nameRequired: 'આઇટમનું નામ લખો.',
     maxLength: 'વધુમાં વધુ {{max}} અક્ષર વાપરો.',
-    duplicateName: 'આ નામની આઇટમ પહેલેથી છે. બીજું નામ વાપરો.',
+    duplicateName: 'આ નામ અને પેકિંગની આઇટમ પહેલેથી છે.',
+    packagingRequired: 'પેકિંગ જરૂરી છે',
     addedToast: '{{name}} ઉમેરાઈ.',
     // Which rate the new item got (create_item, backend migration 85).
     addedStandardToast: '{{name}} પ્રમાણભૂત દર સાથે ઉમેરાઈ.',

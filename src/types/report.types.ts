@@ -300,6 +300,8 @@ export interface StockAgingDispatchInfo {
  * Individual item in stock aging report
  */
 export interface StockAgingItem {
+  /** The item (additive since migration 144); two items can share a name. */
+  item_id?: string;
   grn_id: string;
   gr_no: string;
   item_name: string;

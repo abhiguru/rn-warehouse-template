@@ -72,7 +72,7 @@ export const common = {
   weight: 'Weight',
   weightEach: 'Weight each',
   quantity: 'Quantity',
-  bags: 'Bags',
+  bags: 'Units',
   rack: 'Rack',
   chamber: 'Chamber',
   packageMark: 'Package mark',

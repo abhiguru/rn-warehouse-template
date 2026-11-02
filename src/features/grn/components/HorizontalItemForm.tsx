@@ -1,4 +1,5 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef, useState } from 'react';
+import { itemWithPackaging } from '@/utils/packagingWord';
 import {
   View,
   Text,
@@ -429,7 +430,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 onFieldChange('item_name', text);
                             }}
                             suggestionPlacement="inline"
-                            getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: item.name })}
+                            getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: itemWithPackaging(item.name, item.packaging) })}
                             onSelect={(item) => {
                                 if (item) {
                                     onFieldChange('item_table_id', item.id);
@@ -449,10 +450,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             }}
                             renderItem={(item) => (
                                 <View>
-                                    <Text style={styles.dropdownText}>{item.name}</Text>
-                                    {!!item.packaging && (
-                                        <Text style={styles.dropdownSubtext}>{item.packaging}</Text>
-                                    )}
+                                    <Text style={styles.dropdownText}>{itemWithPackaging(item.name, item.packaging)}</Text>
                                 </View>
                             )}
                             keyExtractor={(item) => item.id}

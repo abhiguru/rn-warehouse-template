@@ -24,6 +24,7 @@ import {
   type Draft,
   type EditorContext,
 } from '../editModel';
+import { packageUnit } from '@/utils/packagingWord';
 import { bandText } from '../rateText';
 import { BandsFooter } from './BandsFooter';
 import { fieldLink, type FieldRegistry } from './fieldLink';
@@ -34,6 +35,8 @@ interface Props {
   errors: Record<string, string>;
   onChange: (next: Draft) => void;
   fields?: FieldRegistry;
+  /** The item's packaging, for "per Katta" in the labels; unknown (the standard rate) keeps "per bag". */
+  packaging?: string | null;
 }
 
 /** At this text size From and Up to stack (P-42). */
@@ -59,13 +62,17 @@ const makeStyles = (t: ThemeTokens) => ({
   note: { ...typography.footnote, color: t.text.secondary },
 });
 
-export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
+export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging }: Props) {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale >= STACK_FROM_SCALE;
   const oneTime = draft.priceType === 'one_time';
   const perBand = draft.bands.some(b => b.labour !== undefined);
-  const rentLabel = oneTime ? t('pricing.edit.rentOnce') : t('pricing.edit.rentMonthly');
+  const unit = packaging === undefined ? undefined : packageUnit(packaging);
+  const rentLabel = unit !== undefined
+    ? t(oneTime ? 'pricing.edit.rentOnceFor' : 'pricing.edit.rentMonthlyFor', { unit })
+    : oneTime ? t('pricing.edit.rentOnce') : t('pricing.edit.rentMonthly');
+  const labourLabel = unit !== undefined ? t('pricing.edit.labourFor', { unit }) : t('pricing.edit.labour');
 
   return (
     <View style={styles.list}>
@@ -170,7 +177,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
             />
             {perBand && !oneTime && band.labour !== undefined && (
               <Input
-                label={t('pricing.edit.labour')}
+                label={labourLabel}
                 required
                 numeric
                 selectTextOnFocus
@@ -201,7 +208,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
           </View>
         );
       })}
-      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} />
+      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} packaging={packaging} />
     </View>
   );
 }

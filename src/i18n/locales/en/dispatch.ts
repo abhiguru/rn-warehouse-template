@@ -137,7 +137,7 @@ export const dispatch = {
     backToDetails: 'Back to dispatch details',
     nextReview: 'Next, review dispatch',
     clearItemTitle: 'Clear this item?',
-    clearItemMessage: 'The GRN, lot and bags you entered for this item will be cleared.',
+    clearItemMessage: 'The GRN, lot and {{things}} you entered for this item will be cleared.',
     clearItemConfirm: 'Clear item',
     keepItem: 'Keep item',
     backTitle: 'Go back to details?',

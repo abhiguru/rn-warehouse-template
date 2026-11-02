@@ -53,7 +53,8 @@ export const SessionRecentItemsService = {
       // Deduplicate by item name (same item can have different IDs across GRN records)
       const seenNames = new Set<string>();
       const uniqueItems = validItems.filter(item => {
-        const nameLower = item.item.name.toLowerCase();
+        // One entry per catalog item (two items can share a name); older rows without one go by name.
+        const nameLower = item.item.catalog_id || item.item.name.toLowerCase();
         if (seenNames.has(nameLower)) {
           return false;
         }
@@ -171,9 +172,10 @@ export const SessionRecentItemsService = {
       // Load existing items
       const existingItems = await this.loadRecentlyAddedItems(customerId);
 
-      // Remove the item if it already exists BY NAME (to move it to front)
+      // Remove the item if it already exists (to move it to front): the same catalog item, else the same name.
       // Same item can have different IDs across GRN records
-      const filtered = existingItems.filter(i => i.name.toLowerCase() !== item.name.toLowerCase());
+      const filtered = existingItems.filter(i =>
+        i.catalog_id && item.catalog_id ? i.catalog_id !== item.catalog_id : i.name.toLowerCase() !== item.name.toLowerCase());
 
       // Add the new item at the front
       const updated = [item, ...filtered];

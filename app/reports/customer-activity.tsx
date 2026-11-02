@@ -64,7 +64,7 @@ import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllCustomerActivityData, CustomerActivityDetailData, CustomerActivityRow } from '@/types/report.types';
 import { formatCount, formatCurrency, formatIndiaDate, formatIndiaSpokenDate, formatNumber, indiaDay } from '@/utils/formatters';
-import { formatPackages, MIXED_PACKAGING, sharedPackaging } from '@/utils/packagingWord';
+import { formatPackages, itemWithPackaging, MIXED_PACKAGING, sharedPackaging } from '@/utils/packagingWord';
 
 const REPORT_ID = 'customer-activity';
 
@@ -586,7 +586,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
       return data.top_stock_items.slice(0, PREVIEWS).map((item, index) => (
         <Preview
           key={`${item.item_name}-${index}`}
-          label={item.item_name}
+          label={itemWithPackaging(item.item_name, stockPackaging(item))}
           sublabel={formatCount(item.grn_count, 'GRN')}
           value={formatPackages(item.total_stock, stockPackaging(item))}
         />

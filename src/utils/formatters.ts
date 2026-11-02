@@ -15,7 +15,7 @@ const words = () => commonWords(getLanguage());
  */
 const indianFormats = new Map<string, Intl.NumberFormat>();
 
-const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string => {
+export const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string => {
   // Building an Intl formatter is slow on Hermes, so one is kept for each set of options.
   const key = options ? JSON.stringify(options) : '';
   let format = indianFormats.get(key);

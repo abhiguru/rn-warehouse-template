@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { typography, type ThemeTokens } from '@/theme/tokens';
+import { packNounCapital } from '@/utils/packagingWord';
 import { appendBandBlock, appendEmptyBand, type Draft, type EditorContext } from '../editModel';
 
 interface Props {
@@ -18,6 +19,8 @@ interface Props {
   /** The errors of the form; only `bands` is shown here. */
   errors: Record<string, string>;
   onChange: (next: Draft) => void;
+  /** The item's packaging, for the word in the note; unknown (the standard rate) keeps "bags". */
+  packaging?: string | null;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -25,7 +28,7 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function BandsFooter({ draft, ctx, errors, onChange }: Props) {
+export function BandsFooter({ draft, ctx, errors, onChange, packaging }: Props) {
   const styles = useThemedStyles(makeStyles);
   const addBlock = appendBandBlock(draft);
   return (
@@ -42,7 +45,7 @@ export function BandsFooter({ draft, ctx, errors, onChange }: Props) {
           {addBlock === 'upTo' ? <Text style={styles.note}>{t('pricing.edit.addBandNeedsUpTo')}</Text> : null}
         </>
       )}
-      {ctx.customerId ? <Text style={styles.note}>{t('pricing.edit.outsidePay')}</Text> : null}
+      {ctx.customerId ? <Text style={styles.note}>{packaging === undefined ? t('pricing.edit.outsidePay') : t('pricing.edit.outsidePayFor', { things: packNounCapital(packaging) })}</Text> : null}
     </>
   );
 }

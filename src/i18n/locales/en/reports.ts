@@ -319,7 +319,7 @@ export const reports = {
     retrievedAll: 'All-customers dispatch activity retrieved successfully',
     loadError: "Couldn't load dispatch activity. Check your connection and try again.",
     errorTitle: "Couldn't load dispatch activity",
-    bagsDispatched: 'Bags dispatched',
+    bagsDispatched: 'Units dispatched',
     customerHint: "Shows this customer's dispatches",
     emptyTitle: 'No dispatches in this period',
     emptyDescription: 'Choose a longer period to see more dispatch activity.',
@@ -328,7 +328,7 @@ export const reports = {
     cardLabel: 'Dispatch {{number}}, {{date}}, {{supervisor}}, {{bags}}',
     hideItemsHint: 'Hides the items',
     showItemsHint: 'Shows the items',
-    bagUnit: { one: 'bag', other: 'bags' },
+    bagUnit: { one: 'unit', other: 'units' },
     openDispatch: 'Open dispatch {{number}}',
     ofQuantity: 'of {{quantity}}',
     // An item row read aloud: "20 bags of 60"

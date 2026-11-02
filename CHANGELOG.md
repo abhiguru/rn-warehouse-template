@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — each item's own packaging word, as entered (needs backend migration 144)
+
+- **The word comes from the item.** Bag, Box and Crate read as before ("12 bags", "1 box", "12 crates", "નંગ" in Gujarati); any other word ("Katta", "Trey", "Unit", "Sack")
+  shows as typed with no plural ("12 Katta", "₹6.00 per Trey"); a blank word reads "bag". Outer spaces and invisible characters (U+FEFF, U+2007, U+202F, no-break
+  space) never change a word and the match ignores case, as on the server (`warehouse_security.shared_packaging`). Totals over lines of one word say that word, over
+  different words "units". Rate labels, the clear-item question and the how-an-invoice-picks-a-rate help take the item's word; the all-customers report tiles and
+  filters read "Units" (Gujarati "નંગ").
+- **Add item and Edit item require packaging** ("Packaging is required"). "Egg" + "Box" and "Egg" + "Trey" are two items; the same name and word is refused ("An item
+  with this name and packaging already exists."). Pickers and lists show the word beside the name ("Egg · Trey"): GRN item search, order catalog, Items list, dispatch
+  Choose item, rate item picker, stock summary, stock aging, customer activity. The recent-items pills and the catalog's recent list tell two items of one name apart by
+  the catalog item. An older server still works; it shows typed words as "bag".
+
 ## Unreleased — app 0.7.0: the backend audit follow-ups (needs backend migrations 134, 136, 139, 140; floor 127)
 
 - **Version 0.7.0.** `MIN_BACKEND_MIGRATION` is 127: a facility whose public config says its newest migration is lower sees "This facility's server

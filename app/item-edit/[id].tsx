@@ -147,8 +147,10 @@ const ItemEditScreen: React.FC = () => {
       newErrors.name = tr('items.form.maxLength', { max: 80 });
     }
 
-    // Packaging validation
-    if (formData.packaging && formData.packaging.length > 40) {
+    // Packaging validation: the item's own word is required (WH-41).
+    if (!formData.packaging.trim()) {
+      newErrors.packaging = tr('items.form.packagingRequired');
+    } else if (formData.packaging.length > 40) {
       newErrors.packaging = tr('items.form.maxLength', { max: 40 });
     }
 
@@ -331,6 +333,7 @@ const ItemEditScreen: React.FC = () => {
             />
             <ItemTextField
               label={tr('common.packaging')}
+              required
               value={formData.packaging}
               onChangeText={(text) => handleFieldChange('packaging', text)}
               placeholder={tr('items.form.packagingPlaceholder')}

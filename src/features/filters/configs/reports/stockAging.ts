@@ -5,6 +5,7 @@
  * has no `period` and the server is asked the same thing whatever is chosen.
  * Everything here is done in the app on the rows the server returned.
  */
+import { itemWordOfLots } from '@/utils/packagingWord';
 import type { AgingBucketId } from '@/components/reports/AgingBucketBar';
 import { t } from '@/i18n';
 import type { CustomerAgingSummary, StockAgingItem } from '@/types/report.types';
@@ -75,9 +76,11 @@ export type StockAgingLine = StockAgingItem & { lineKey: string };
 
 /** An item and its lines, oldest line first. Its figures are those of the lines it holds. */
 export interface StockAgingGroup {
-  /** The item's name, which the lines are grouped by. */
+  /** The item (its id, else its name for an answer without ids), which the lines are grouped by. */
   key: string;
   itemName: string;
+  /** The word its lines are counted in, when they share one. */
+  packaging?: string;
   totalStock: number;
   /** Age in days of the oldest line, and that line's bucket. */
   oldestDays: number;
@@ -90,6 +93,7 @@ function summarise(key: string, lines: StockAgingLine[]): StockAgingGroup {
   return {
     key,
     itemName: oldest.item_name,
+    packaging: itemWordOfLots(lines.map(line => line.packaging)),
     totalStock: lines.reduce((sum, line) => sum + (line.current_stock || 0), 0),
     oldestDays: oldest.aging_days,
     oldestBucket: lineBucket(oldest),
@@ -110,9 +114,10 @@ export function groupStockAgingLines(items: readonly StockAgingItem[]): StockAgi
     const count = seen.get(base) ?? 0;
     seen.set(base, count + 1);
     const line: StockAgingLine = { ...item, lineKey: count === 0 ? base : `${base}#${count}` };
-    const lines = byItem.get(item.item_name);
+    const itemKey = item.item_id ?? item.item_name;
+    const lines = byItem.get(itemKey);
     if (lines) lines.push(line);
-    else byItem.set(item.item_name, [line]);
+    else byItem.set(itemKey, [line]);
   }
   return [...byItem.entries()].map(([key, lines]) => summarise(key, sortRows(lines, { field: 'age', order: 'desc' }, { age: line => line.aging_days })));
 }
@@ -171,7 +176,7 @@ export function stockAgingItemsView(groups: readonly StockAgingGroup[], view: St
   const narrowed: StockAgingGroup[] = [];
   for (const group of groups) {
     const lines = group.lines.filter(
-      line => (view.bucket === 'all' || lineBucket(line) === view.bucket) && matchesSearch(view.words, [group.itemName, line.gr_no])
+      line => (view.bucket === 'all' || lineBucket(line) === view.bucket) && matchesSearch(view.words, [group.itemName, group.packaging ?? '', line.gr_no])
     );
     if (lines.length === group.lines.length) narrowed.push(group);
     else if (lines.length > 0) narrowed.push(summarise(group.key, lines));

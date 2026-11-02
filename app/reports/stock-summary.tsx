@@ -11,6 +11,7 @@
  * header's agree.
  */
 
+import { itemWithPackaging, itemWordOfLots } from '@/utils/packagingWord';
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
@@ -566,7 +567,7 @@ const ItemRow = memo(function ItemRow({ item, words, isExpanded, onToggle, outOf
   const matchLine = useMemo(() => hiddenMatches(item, words).join(' · ') || undefined, [item, words]);
   return (
     <StockItemCard
-      name={item.item_name}
+      name={itemWithPackaging(item.item_name, itemWordOfLots((item.grns ?? []).map(grn => grn.packaging)))}
       grnCount={item.grn_count}
       stock={item.total_stock}
       outOfStock={outOfStock}

@@ -263,7 +263,7 @@ export function ItemPricingTab({ itemId, itemName, packaging, active = true }: I
         ) : null}
         {body}
       </ScrollView>
-      <HowInvoiceSheet visible={howOpen} onClose={() => setHowOpen(false)} />
+      <HowInvoiceSheet visible={howOpen} onClose={() => setHowOpen(false)} packaging={packaging ?? ''} />
       {actions.dialog}
     </View>
   );

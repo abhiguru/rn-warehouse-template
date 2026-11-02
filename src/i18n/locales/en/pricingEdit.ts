@@ -15,6 +15,11 @@ export const pricingEdit = {
     pastDate: "This date is in the past. Lots received since {{date}} that aren't invoiced yet will be charged the new rate.",
     rentMonthly: 'Rent per bag, per month',
     rentOnce: 'Rent per bag, once',
+    // With the item's own word: {{unit}} is "bag", "box", "Katta" ...
+    rentMonthlyFor: 'Rent per {{unit}}, per month',
+    rentOnceFor: 'Rent per {{unit}}, once',
+    labourFor: 'Labour per {{unit}}',
+    outsidePayFor: '{{things}} outside these weights pay the default rate.',
     upTo: 'Up to',
     fromKg: 'From {{kg}} kg',
     now: 'Now {{amount}}',

@@ -89,7 +89,8 @@ export const items = {
     charCountLabel: '{{count}} of {{max}} characters',
     nameRequired: 'Enter the item name.',
     maxLength: 'Use {{max}} characters or fewer.',
-    duplicateName: 'An item with this name already exists. Use a different name.',
+    duplicateName: 'An item with this name and packaging already exists.',
+    packagingRequired: 'Packaging is required',
     addedToast: '{{name}} added.',
     // Which rate the new item got (create_item, backend migration 85).
     addedStandardToast: '{{name}} added with the standard rate.',
