@@ -129,6 +129,7 @@ export const sensors = {
   /** Long history and the CSV export, from the hourly summary the server keeps for 24 months. */
   hourly: {
     export: 'Export CSV',
+    latestNote: 'Hourly figures are added once a day, so the latest hours may not appear yet.',
     exporting: 'Preparing CSV…',
     exportA11y: 'Export CSV, {{period}}',
     exportFailedTitle: "Couldn't export",
