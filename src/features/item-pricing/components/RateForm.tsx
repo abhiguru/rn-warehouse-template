@@ -16,6 +16,7 @@
  * bottom, disabled until something differs from the copy; leaving with changes asks "Discard this rate?" (both for the
  * default rate and for a customer's rate); a save goes back to the Pricing tab.
  */
+import { itemWithPackaging } from '@/utils/packagingWord';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
@@ -216,14 +217,16 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
         ? t('pricing.rateForm.kickerUpcoming', { type })
         : t('pricing.rateForm.kickerAdd', { type });
 
+  // The item's word beside its name once the item is known (the loading placeholder has no name).
+  const itemTitle = item.name && 'packaging' in item ? itemWithPackaging(item.name, item.packaging) : item.name;
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
       <Pressable style={styles.close} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={t('common.close')} testID="add-rate-close">
         <Icon name="close" size={iconSize.md} color={th.icon.primary} />
       </Pressable>
-      <View style={styles.headerText} accessible accessibilityRole="header" accessibilityLabel={`${heading}, ${item.name}`}>
+      <View style={styles.headerText} accessible accessibilityRole="header" accessibilityLabel={`${heading}, ${itemTitle}`}>
         <Text style={styles.kicker} numberOfLines={1} testID="add-rate-kicker">{heading}</Text>
-        <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail" adjustsFontSizeToFit minimumFontScale={0.85} testID="add-rate-item">{item.name}</Text>
+        <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail" adjustsFontSizeToFit minimumFontScale={0.85} testID="add-rate-item">{itemTitle}</Text>
       </View>
     </View>
   );

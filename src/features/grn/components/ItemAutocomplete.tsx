@@ -7,6 +7,7 @@
  * @module features/grn/components/ItemAutocomplete
  */
 
+import { displayPackaging } from '@/utils/packagingWord';
 import React, { useCallback } from 'react';
 import { View, Text } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
@@ -113,9 +114,7 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
         <Text style={styles.itemName} numberOfLines={1}>
           {item.name}
         </Text>
-        {item.packaging ? (
-          <StatusTag status="neutral" label={item.packaging} icon={null} style={styles.packagingBadge} />
-        ) : null}
+        <StatusTag status="neutral" label={displayPackaging(item.packaging)} icon={null} style={styles.packagingBadge} />
       </View>
       {item.description ? (
         <Text style={styles.itemDescription} numberOfLines={1}>

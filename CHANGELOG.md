@@ -10,7 +10,7 @@
 - **Add item and Edit item require packaging** ("Packaging is required"). "Egg" + "Box" and "Egg" + "Trey" are two items; the same name and word is refused ("An item
   with this name and packaging already exists."). Pickers and lists show the word beside the name ("Egg · Trey"): GRN item search, order catalog, Items list, dispatch
   Choose item, rate item picker, stock summary, stock aging, customer activity. The recent-items pills and the catalog's recent list tell two items of one name apart by
-  the catalog item. An older server still works; it shows typed words as "bag".
+  the catalog item. A blank word reads "Bag" beside the name everywhere. The rate history, add-rate and customer-rate headers show the word too (the two rate reads carry `item_packaging`). An older server still works; it shows typed words as "bag".
 
 ## Unreleased — app 0.7.0: the backend audit follow-ups (needs backend migrations 134, 136, 139, 140; floor 127)
 

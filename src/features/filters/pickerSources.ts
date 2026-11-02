@@ -5,6 +5,7 @@
  * the customers assigned to it, taken from its profile, so it never calls the
  * staff-only customer search.
  */
+import { itemWithPackaging } from '@/utils/packagingWord';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { readAllRows } from '@/utils/pagedRead';
 import { searchService } from '@/services/search-service';
@@ -49,10 +50,11 @@ export const itemSource: PickerSource = {
   async initial() {
     const client = await getAuthenticatedClient();
     const { data } = await client.from('items').select('id, name, packaging').order('name').limit(INITIAL_OPTIONS);
-    return (data ?? []).map(row => ({ id: row.id, label: row.name, detail: row.packaging ?? undefined }));
+    // The item's own word beside its name (two items can share a name): "Egg · Trey".
+    return (data ?? []).map(row => ({ id: row.id, label: itemWithPackaging(row.name, row.packaging) }));
   },
   async search(query) {
     const results = await searchService.searchGRNItems(query);
-    return results.map(result => ({ id: result.value, label: result.label, detail: result.detail }));
+    return results.map(result => ({ id: result.value, label: itemWithPackaging(result.label, result.detail) }));
   },
 };

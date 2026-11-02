@@ -36,15 +36,20 @@ export function packagingWord(packaging: string | null | undefined): PackagingWo
   return resolve(packaging).word;
 }
 
-/** An item's name with its own word beside it, "Egg \u00B7 Trey" (just the name when the item has no word). */
+/** The word to show for an item's packaging: Bag, Box or Crate (a blank word is Bag), else the word as typed. */
+export const displayPackaging = (packaging: string | null | undefined): string => {
+  const { word, text } = resolve(packaging);
+  return word === 'custom' ? text : word === 'unit' ? '' : text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+/** An item's name with its own word beside it, "Egg \u00B7 Trey" ("Egg \u00B7 Bag" for a blank word; just the name for a mixed total). */
 export const itemWithPackaging = (name: string, packaging: string | null | undefined): string => {
-  const word = packaging === MIXED_PACKAGING ? '' : cleanPackaging(packaging);
+  const word = displayPackaging(packaging);
   return word ? `${name} \u00B7 ${word}` : name;
 };
 
-/** The word to put beside an item's name when the lots show it: the shared word, nothing when the lots have no word or differ. */
-export const itemWordOfLots = (packagings: ReadonlyArray<string | null | undefined>): string | undefined =>
-  packagings.every(p => cleanPackaging(p) === '') ? undefined : sharedPackaging(packagings);
+/** The word to put beside an item's name when the lots show it: the shared word (a blank word is Bag), nothing when the lots differ. */
+export const itemWordOfLots = (packagings: ReadonlyArray<string | null | undefined>): string | undefined => sharedPackaging(packagings);
 
 /** "1 box", "12 boxes", "12 Katta" (a word of the item's own has no plural), in the language of the app. */
 export const formatPackages = (count: number | null | undefined, packaging: string | null | undefined): string => {

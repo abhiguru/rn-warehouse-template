@@ -10,6 +10,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ItemPriceHistoryEntry } from '@/types/item-pricing.types';
+import { itemWithPackaging } from '@/utils/packagingWord';
 import { formatDateTime, formatSpokenDateTime } from '@/utils/formatters';
 import { bandText, dateText, spokenDateText } from '../rateText';
 import type { GroupView } from '../utils/priceHistory';
@@ -33,7 +34,8 @@ const ChangeGroupCard = memo<Props>(({ entries, view }) => {
     view.kind === 'stopped'
       ? t('pricing.changes.groupStopped', { date: spokenDateText(view.day ?? '') })
       : t('pricing.changes.group', { date: spokenDateText(view.day ?? '') });
-  const itemName = first.item_name || t('pricing.history.deletedItem');
+  // The item's word beside its name; none for a deleted item or an older server (no word sent).
+  const itemName = first.item_name ? (first.item_packaging == null ? first.item_name : itemWithPackaging(first.item_name, first.item_packaging)) : t('pricing.history.deletedItem');
   const customerName = !first.customer_id ? t('pricing.history.defaultPrice') : first.customer_name || t('pricing.history.deletedCustomer');
   const when = formatDateTime(first.changed_at);
   const who = priceHistoryAuthor(first);
