@@ -169,6 +169,7 @@ export const settings = {
     // An administrator has nobody at the facility to ask: the details below go to whoever set up the server.
     askAdminSelf:
       "You are this facility's administrator. For problems with the app, share the details below with whoever set up your server.",
+    minimumPhone: 'This app needs a phone with at least 4 GB of RAM and Android 12 or newer.',
     noContact: "The app has no support contact details of its own. Your facility's office can tell you who to ask.",
     rolesTitle: 'Roles',
     yourRole: 'Your role: {{role}}',

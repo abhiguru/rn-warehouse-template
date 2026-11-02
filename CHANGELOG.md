@@ -2,6 +2,7 @@
 
 ## Unreleased — each item's own packaging word, as entered (needs backend migration 144)
 
+- **Help names the minimum phone (WH-31).** Settings, "Help and about", "Help", under "Getting help": "This app needs a phone with at least 4 GB of RAM and Android 12 or newer." (Gujarati draft, with Gujarati digits.) Plain text, shown to every role; nothing blocks a smaller phone. The operator install guide states the same.
 - **The GRN and Dispatch "loaded at" time survives a restart (WH-29).** Offline, the GRN list now reads as the last first page loaded, with the time it was loaded, also after the app is closed and opened again (the Dispatch list already kept its page; the GRN list kept nothing). The "Couldn't refresh GRNs. Showing the GRNs loaded at ..." strip and the "Last updated" line on GRNs and dispatches show the date too when that was not today. The kept page is removed on sign-out, a facility switch and a server switch, and is never shown to another account. No new text. Orders and Reports are unchanged.
 - **"Server being updated" comes only from the "upgrading" 503 (WH-28).** The app no longer reads `maintenanceMode` from the configuration (it no longer requires the key either); the banner shows while the gateway answers "upgrading" and clears when the server answers normally. Nothing else changes.
 - **Over-the-air updates removed (WH-27, needs a new build).** `expo-updates`, the update prompt and its text are gone; every change ships through the store. Nothing visible changes; "Update the app" for a version below the minimum stays.

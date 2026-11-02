@@ -100,6 +100,7 @@ export default function HelpScreen() {
                 <Text style={styles.secondary}>{t('settings.help.noContact')}</Text>
               </>
             )}
+            <Text style={styles.secondary}>{t('settings.help.minimumPhone')}</Text>
           </View>
         </Section>
 
