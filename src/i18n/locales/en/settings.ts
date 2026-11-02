@@ -84,7 +84,7 @@ export const settings = {
   },
   account: {
     title: 'Account',
-    deleteAccount: 'Delete account',
+    deleteAccount: 'Delete my account',
     deleteAccountSubtitle: 'Removes your profile and sign-in. Records are kept.',
     // Central login: the account at the facility that is open; {{facility}} is its name.
     deleteAtFacility: 'Delete my account at {{facility}}',

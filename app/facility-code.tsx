@@ -31,7 +31,6 @@ type Step = 'choose' | 'phone' | 'code';
 /** The words for each way the facility can refuse a code (the facility never says which of the first four it was). */
 const REFUSAL_TEXT: Record<BreakGlassFailure, TranslationKey> = {
   refused: 'auth.facilityCode.refused',
-  customer: 'auth.facilityCode.customerNotAllowed',
   rate_limited: 'auth.facilityCode.rateLimited',
   unavailable: 'auth.facilityCode.unavailable',
   network: 'common.checkConnection',

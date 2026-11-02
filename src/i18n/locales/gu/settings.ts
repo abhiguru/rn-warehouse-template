@@ -83,7 +83,7 @@ export const settings: Translation<typeof source> = {
   },
   account: {
     title: 'એકાઉન્ટ',
-    deleteAccount: 'એકાઉન્ટ ડિલીટ કરો',
+    deleteAccount: 'મારું એકાઉન્ટ ડિલીટ કરો',
     deleteAccountSubtitle: 'તમારી પ્રોફાઇલ અને લૉગિન કાઢી નાખે છે. રેકોર્ડ રહે છે.',
     deleteAtFacility: '{{facility}}માં મારું એકાઉન્ટ ડિલીટ કરો',
     deleteAtFacilitySubtitle: 'અહીં તમારી પ્રોફાઇલ અને લૉગિન કાઢી નાખે છે. રેકોર્ડ, ઍસોસિએશનનું તમારું લૉગિન અને બીજાં કોલ્ડ સ્ટોરેજ રહે છે.',

@@ -46,7 +46,7 @@ export const dispatch = {
     maybeSavedAfterLeavingTitle: 'No answer from the server',
     savedAfterLeavingTitle: 'Dispatch saved',
     savedAfterLeaving: 'Dispatch {{number}} was saved before you left the form. Find it in the Dispatch list.',
-    savedAfterLeavingPhotos: 'Dispatch {{number}} was saved, but its photos were not uploaded. Open it in the Dispatch list and add them under Photos.',
+    savedAfterLeavingPhotos: 'Dispatch {{number}} was saved, but its photos were not uploaded. Open it in the Dispatch list and add them under Images.',
   },
   // Opening a dispatch to edit it (the edit form reads the dispatch before it shows a step)
   edit: {

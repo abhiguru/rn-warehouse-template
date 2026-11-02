@@ -182,7 +182,6 @@ export const auth = {
     changeFacilityHint: 'Goes back to the list of facilities',
     couldNotSignInTitle: "Couldn't sign in",
     refused: "That code doesn't work. Facility codes are for facility staff; ask your facility's operator for a new code.",
-    customerNotAllowed: 'Facility codes are for facility staff only. Sign in with the association.',
     rateLimited: 'Too many tries. Wait a few minutes and try again.',
     unavailable: "This facility's server can't sign you in with a code right now. Try again later.",
     sessionEnded: 'Your facility code session has ended. Sign in again.',

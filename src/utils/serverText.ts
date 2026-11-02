@@ -67,7 +67,7 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/image line does not belong to this grn/, 'errors.parsed.imageWrongLine'],
   [/image path is required/, 'errors.parsed.imagePathRequired'],
   [/insufficient stock/, 'errors.code.insufficientStock'],
-  [/delete invoices first|cannot delete item|cannot modify invoiced|is pending tally sync/, 'errors.parsed.inUse'],
+  [/delete invoices first|cannot delete item|cannot modify invoiced/, 'errors.parsed.inUse'],
   [/already exists|duplicate|overlapping/, 'errors.parsed.duplicate'],
   [/not found/, 'errors.parsed.itemNotFound'],
   [/transaction conflict|too many retries|deadlock|could not serialize/, 'errors.parsed.busy'],

@@ -44,7 +44,7 @@ export const orders = {
     removeTitle: 'Remove {{name}}?',
     removeMessage: '{{name}} will be taken off this order.',
     removeTitleNoName: 'Remove this item?',
-    removeMessageNoName: 'this item will be taken off this order.',
+    removeMessageNoName: 'This item will be taken off this order.',
     removeItem: 'Remove item',
     couldNotRemoveTitle: "Couldn't remove the item",
     // A line that is no longer on the order when it is changed or removed (taken off or dispatched by someone else).
