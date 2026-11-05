@@ -100,6 +100,8 @@ export interface UseRateEditor {
   /** The keys of the number fields in the order the Next key walks them. */
   order: string[];
   setDraft: (next: Draft) => void;
+  /** A field was left: its own message shows, or goes. */
+  validateKey: (key: string) => void;
   /** Starts-on choice from StartsOnField. */
   setStartsOn: (choice: StartsOnChoice, day: string) => void;
   /** Monthly / One-time on a new rate (re-seeds the bands from the default where there is one). */
@@ -206,13 +208,36 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const draft = open?.draft;
   const ctx = open?.ctx;
 
+  const bandCountNow = draft?.bands.length ?? 0;
   const setDraft = useCallback((next: Draft) => {
     ownSave.current = false;
     maybeSaved.current = false;
     setCore(current => (current ? { ...current, draft: next } : current));
     setStrip(null);
-    if (checked.current && ctx) setErrors(validate(next, ctx).errors);
-  }, [ctx]);
+    if (!ctx) return;
+    const found = validate(next, ctx).errors;
+    if (checked.current) {
+      // After a failed save every field is checked again as it is typed; a band just added is not wrong yet, so it
+      // shows nothing until its field is left or Save is pressed.
+      if (next.bands.length > bandCountNow) {
+        for (let i = bandCountNow; i < next.bands.length; i++) for (const k of Object.keys(found)) if (k.startsWith(`band.${i}.`)) delete found[k];
+      }
+      setErrors(found);
+    } else {
+      // Before the first Save, a message shown when a field was left goes once the field is right.
+      setErrors(current => Object.fromEntries(Object.entries(current).filter(([k]) => k in found)));
+    }
+  }, [ctx, bandCountNow]);
+
+  /** A field was left: its own message shows (or goes). Other fields are not touched. */
+  const validateKey = (key: string) => {
+    if (!draft || !ctx) return;
+    const found = validate(draft, ctx).errors;
+    setErrors(current => {
+      const { [key]: _old, ...rest } = current;
+      return found[key] ? { ...rest, [key]: found[key] } : rest;
+    });
+  };
 
   const dirty = !!open && !open.ctx.managerOnly && hasChanges(open.draft, open.initial);
   const order = useMemo(() => (draft ? fieldOrder(draft, ctx?.customerId ?? null) : []), [draft, ctx]);
@@ -366,6 +391,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     rowsChanged,
     order,
     setDraft,
+    validateKey,
     setStartsOn,
     switchType,
     copyFrom,

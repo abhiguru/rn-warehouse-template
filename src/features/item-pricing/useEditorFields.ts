@@ -32,6 +32,8 @@ export interface UseEditorFields {
   /** Scroll the field `key` into view, or to the top when it is not on the screen. */
   scrollToError: (key: string) => void;
   scrollToTop: () => void;
+  /** Focus the field `key` (a no-op while it is not drawn). */
+  focusField: (key: string) => void;
   /** True while the keyboard is up; only kept current with `trackKeyboard`. */
   keyboardUp: boolean;
 }
@@ -116,9 +118,13 @@ export function useEditorFields(order: string[], options: UseEditorFieldsOptions
     node.measureInWindow((_x, y) => scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + y - 160), animated: true }));
   }, []);
 
+  const focusField = useCallback((key: string) => {
+    nodes.current[key]?.focus();
+  }, []);
+
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     scrollY.current = event.nativeEvent.contentOffset.y;
   }, []);
 
-  return { scrollRef: scrollRef as React.RefObject<ScrollViewRef | null>, onScroll, fields, barHeight, setBarHeight, scrollToError, scrollToTop, keyboardUp };
+  return { scrollRef: scrollRef as React.RefObject<ScrollViewRef | null>, onScroll, fields, barHeight, setBarHeight, scrollToError, scrollToTop, focusField, keyboardUp };
 }
