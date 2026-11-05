@@ -21,7 +21,8 @@ import {
   formatInvoiceDeduction,
   savedInvoiceAmounts,
 } from '@/utils/invoiceCalculations';
-import { formatCardDate, formatFinancialYear, formatSpokenDate } from '@/utils/formatters';
+import { formatCardDate, formatCurrency, formatFinancialYear, formatSpokenDate } from '@/utils/formatters';
+import { getLanguage } from '@/i18n/language';
 import { formatIdentifier, t as translate } from '@/i18n';
 import type { Invoice } from '@/services/invoice-service';
 import { StatusTag } from '@/components/ui/StatusTag';
@@ -68,13 +69,11 @@ const makeStyles = (t: ThemeTokens) => ({
   cardPressed: {
     backgroundColor: t.surface.cardPressed,
   },
-  // Badge, customer and date, total. When they cannot share a line the total goes under, at the end.
+  // Badge, customer and date, and the total at the end. Where the total sits depends on the screen only (see totalBeside).
   cardHeader: {
     flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
     alignItems: 'flex-start' as const,
     columnGap: space.md,
-    rowGap: space.xs,
   },
   // Solid brand fill. A long number wraps inside its own box and is never cut.
   invoiceBadge: {
@@ -82,7 +81,7 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.pill,
     paddingHorizontal: space.sm,
     paddingVertical: space.xxs,
-    maxWidth: '40%' as const,
+    maxWidth: '30%' as const,
     flexShrink: 1,
   },
   invoiceBadgeText: {
@@ -92,7 +91,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   cardInfo: {
     flex: 1,
-    flexBasis: 120,
     minWidth: 0,
     gap: space.xxs,
   },
@@ -134,9 +132,13 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
     textAlign: 'right' as const,
     flexShrink: 0,
-    marginLeft: 'auto' as const,
   },
-  // The grey bar: amounts side by side, each value above its label; rows of it when they do not fit one line.
+  // The total under the customer, at the end, on a screen too narrow to hold it beside.
+  amountUnder: {
+    alignSelf: 'flex-end' as const,
+    marginTop: space.xs,
+  },
+  // The grey bar: four fixed places, equal columns, each value above a small label.
   metricsBar: {
     marginTop: space.md,
     paddingVertical: space.sm,
@@ -150,12 +152,13 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   metric: {
     flex: 1,
+    flexBasis: 0,
     alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    paddingHorizontal: space.xs,
+    justifyContent: 'flex-start' as const,
+    paddingHorizontal: space.xxs,
   },
   metricValue: {
-    ...typography.subhead,
+    ...typography.footnote,
     fontWeight: fontWeight.semibold,
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
@@ -163,6 +166,9 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   discountValue: {
     color: t.status.positive.text,
+  },
+  emptyValue: {
+    color: t.text.secondary,
   },
   metricLabel: {
     ...typography.caption1,
@@ -186,41 +192,55 @@ const makeStyles = (t: ThemeTokens) => ({
 // THE AMOUNTS BAR
 // ============================================================================
 
+/** A place with nothing in it. */
+const EMPTY_PLACE = '–';
+
 interface Metric {
   id: string;
   label: string;
+  /** Whole rupees, or the dash for a place with nothing. */
   value: string;
   /** A discount: drawn in status.positive.text. */
   discount: boolean;
+  empty: boolean;
 }
 
-/** Share of the font size one figure character takes (digits, comma, point, rupee sign), with a margin. */
-const FIGURE_WIDTH = 0.64;
+/** The widest figure the bar is sized for: ₹9,99,999 in whole rupees. */
+const SIZING_AMOUNT = 999999;
 
-/**
- * Splits the amounts into rows that fit the bar: as many side by side as the width allows for the widest
- * figure at the current font scale, the rest on the next row. Nothing is shrunk to fit unless one amount
- * alone is wider than the bar.
- */
-const metricRows = (metrics: Metric[], barWidth: number, fontScale: number): Metric[][] => {
-  const widest = Math.max(...metrics.map(metric => metric.value.length));
-  const need = widest * typography.subhead.fontSize! * FIGURE_WIDTH * fontScale + 2 * space.xs + 1;
-  const perRow = Math.max(1, Math.floor(barWidth / need));
-  if (metrics.length <= perRow) return [metrics];
-  // Even rows: five amounts on three places make 3 and 2, not 3, 2.
-  const rows = Math.ceil(metrics.length / perRow);
-  const size = Math.ceil(metrics.length / rows);
-  const out: Metric[][] = [];
-  for (let i = 0; i < metrics.length; i += size) out.push(metrics.slice(i, i + size));
-  return out;
+/** Width of a figure in ems (weight 600, tabular): digits and the rupee sign 0.56 (Gujarati digits 0.62), separators 0.26. */
+const figureEms = (text: string): number => {
+  const digit = getLanguage() === 'gu' ? 0.62 : 0.56;
+  return [...text].reduce((sum, ch) => sum + (/[\p{Nd}₹]/u.test(ch) ? digit : 0.26), 0);
+};
+
+/** The window less the card's margins, outline and padding. */
+const cardInnerWidth = (width: number): number => width - 2 * layout.marginCompact - 2 - 2 * space.lg;
+
+/** Four across when the sizing figure fits a quarter of the bar at this width and font scale; else a 2 x 2 grid. Never reads the invoice. */
+const barFitsOneRow = (width: number, fontScale: number): boolean => {
+  const column = (cardInnerWidth(width) - 3) / 4 - 2 * space.xxs;
+  const figure = figureEms(formatCurrency(SIZING_AMOUNT, { maximumFractionDigits: 0 })) * typography.footnote.fontSize! * fontScale;
+  return figure <= column;
+};
+
+/** The total sits beside the number and customer when at least this much is left for them (badge and customer). */
+const HEADER_REST_MIN = 150;
+
+/** The total's width in ems for ₹99,99,999.00, in bold 18. */
+const totalBeside = (width: number, fontScale: number): boolean => {
+  const total = figureEms(formatInvoiceAmount(9999999)) * 18 * fontScale;
+  return cardInnerWidth(width) - total - 2 * space.md >= HEADER_REST_MIN;
 };
 
 const MetricsBar = React.memo<{ metrics: Metric[] }>(({ metrics }) => {
   const styles = useThemedStyles(makeStyles);
   const { width, fontScale } = useWindowDimensions();
-  // The window less the card's margins, outline and padding.
-  const barWidth = width - 2 * layout.marginCompact - 2 - 2 * space.lg;
-  const rows = metricRows(metrics, barWidth, Math.max(1, fontScale || 1));
+  const scale = Math.max(1, fontScale || 1);
+  const rows = barFitsOneRow(width, scale) ? [metrics] : [metrics.slice(0, 2), metrics.slice(2)];
+  // Gujarati labels such as "વધારાનો ચાર્જ" may take two lines: every label reserves them, so every card's bar is as tall.
+  const labelLines = getLanguage() === 'gu' ? 2 : 1;
+  const labelHeight = labelLines * (typography.caption1.lineHeight ?? 16) * scale;
 
   return (
     // The card's own label already reads every amount, so the bar adds no stops for a screen reader.
@@ -232,14 +252,14 @@ const MetricsBar = React.memo<{ metrics: Metric[] }>(({ metrics }) => {
               {index > 0 ? <View style={styles.metricDivider} /> : null}
               <View style={styles.metric}>
                 <Text
-                  style={[styles.metricValue, metric.discount && styles.discountValue]}
+                  style={[styles.metricValue, metric.empty && styles.emptyValue, metric.discount && styles.discountValue]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
                   minimumFontScale={0.8}
                 >
                   {metric.value}
                 </Text>
-                <Text style={styles.metricLabel}>{metric.label}</Text>
+                <Text style={[styles.metricLabel, { minHeight: labelHeight }]}>{metric.label}</Text>
               </View>
             </React.Fragment>
           ))}
@@ -262,6 +282,9 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const { width, fontScale } = useWindowDimensions();
+  // Decided from the screen only, so every card of the list has its total in the same place.
+  const beside = totalBeside(width, Math.max(1, fontScale || 1));
 
   // A missing amount is 0, as on the details screen (the list service already maps them; this guards a stale row).
   const total = invoice.total || 0;
@@ -269,31 +292,34 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
   const labour = invoice.labour || 0;
   const discount = invoice.discount || 0;
   const totalText = formatInvoiceAmount(total);
-  // The same figures as the invoice's Breakdown tab; the card calls "Net before tax" Subtotal. Tax is always
-  // shown; Labour, Discount and Surcharge only when there is one.
-  const metrics = (() => {
-    const amounts = savedInvoiceAmounts({ total, tax_amount: taxAmount, discount });
-    return [
-      { id: 'subtotal', label: translate('invoice.label.subtotal'), value: formatInvoiceAmount(amounts.netBeforeTax), discount: false },
-      { id: 'tax', label: translate('invoice.label.tax'), value: formatInvoiceAmount(taxAmount), discount: false },
-      ...(labour > 0
-        ? [{ id: 'labour', label: translate('invoice.label.labour'), value: formatInvoiceAmount(labour), discount: false }]
-        : []),
-      ...(amounts.hasAdjustment
-        ? [{
-            id: 'adjustment',
-            label: translate(amounts.isSurcharge ? 'invoice.label.surcharge' : 'invoice.label.discount'),
-            value: discount > 0 ? formatInvoiceDeduction(amounts.adjustmentAmount) : `+${formatInvoiceAmount(amounts.adjustmentAmount)}`,
-            discount: discount > 0,
-          }]
-        : []),
-    ];
-  })();
+  // Four fixed places in a fixed order, so the bars line up down the list: Subtotal (the Breakdown tab's Net before
+  // tax), Tax, Labour, then Discount, which says Surcharge on a surcharge invoice (discount and surcharge are one
+  // signed field, so they never occur together). A place with nothing shows a dash. Whole rupees; the label reads exact.
+  const amounts = savedInvoiceAmounts({ total, tax_amount: taxAmount, discount });
+  const whole = (n: number) => (n < 0 ? `−${formatCurrency(-n, { maximumFractionDigits: 0 })}` : formatCurrency(n, { maximumFractionDigits: 0 }));
+  const place = (id: string, label: string, amount: number, shown: string, spoken: string, isDiscount = false) => ({
+    id,
+    label,
+    value: amount === 0 ? EMPTY_PLACE : shown,
+    discount: isDiscount && amount !== 0,
+    empty: amount === 0,
+    spoken: amount === 0 ? null : `${label} ${spoken}`,
+  });
+  const adjustment = amounts.adjustmentAmount;
+  const places = [
+    place('subtotal', translate('invoice.label.subtotal'), amounts.netBeforeTax, whole(amounts.netBeforeTax), formatInvoiceAmount(amounts.netBeforeTax)),
+    place('tax', translate('invoice.label.tax'), taxAmount, whole(taxAmount), formatInvoiceAmount(taxAmount)),
+    place('labour', translate('invoice.label.labour'), labour, whole(labour), formatInvoiceAmount(labour)),
+    amounts.isSurcharge
+      ? place('adjustment', translate('invoice.label.surcharge'), adjustment, `+${whole(adjustment)}`, `+${formatInvoiceAmount(adjustment)}`)
+      : place('adjustment', translate('invoice.label.discount'), adjustment, `−${whole(adjustment)}`, formatInvoiceDeduction(adjustment), true),
+  ];
+  const metrics: Metric[] = places;
   const customerName = invoice.customer?.name || translate('lists.invoice.customerNotSet');
   const invoiceDate = formatCardDate(invoice.invoice_date);
   const grnText = invoice.grn?.gr_no ? translate('lists.card.grnRef', { number: formatIdentifier(invoice.grn.gr_no) }) : null;
-  // Spoken: the bar's own amounts as drawn (the total is spoken before them).
-  const spokenAmounts = metrics.map(metric => `${metric.label} ${metric.value}`).join(', ');
+  // Spoken: the exact amounts of the places that have one; an empty place says nothing.
+  const spokenAmounts = places.map(place => place.spoken).filter(Boolean).join(', ');
 
   // One element for screen readers (style guide §11.3)
   const accessibilityDescription = [
@@ -339,8 +365,9 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
             ) : null}
           </View>
         </View>
-        <Text style={styles.amountValue}>{totalText}</Text>
+        {beside ? <Text style={styles.amountValue}>{totalText}</Text> : null}
       </View>
+      {beside ? null : <Text style={[styles.amountValue, styles.amountUnder]}>{totalText}</Text>}
 
       {/* Key amounts side by side */}
       <MetricsBar metrics={metrics} />
