@@ -63,7 +63,7 @@ import { invoicedLineText } from '@/features/dispatch/components/ItemsSummaryBot
 import { formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { formatPackages, packNoun, packNounCapital } from '@/utils/packagingWord';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
-import type { TextInputRef } from '@/types/nativeRefs';
+import type { TextInputRef, ViewRef } from '@/types/nativeRefs';
 /** The bags a saved dispatch held per lot, for a form that holds none (a new dispatch). */
 const NO_HELD_BAGS: Record<string, number> = {};
 /** What an order asks of each lot, for a form that is not made from an order. */
@@ -106,7 +106,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const scrollViewRef = useRef<any>(null);
     const quantityInputRef = useRef<TextInputRef>(null);
     // The three pickers and where each sits in the scroll content, so a tap on an incomplete line can bring the first missing one into view.
-    const pickerRefs = useRef<Record<string, View | null>>({});
+    const pickerRefs = useRef<Record<string, ViewRef | null>>({});
     const fieldTops = useRef<Record<string, number>>({});
 
     // Current item form state (single item being filled)

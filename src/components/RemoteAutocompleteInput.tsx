@@ -245,7 +245,7 @@ function RemoteAutocompleteInputInner<T>({
       <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
       <Text style={styles.footerText}>{footerAction.label}</Text>
     </Pressable>
-  ) : null;
+  ) : undefined;
 
   const clearInput = () => {
     cancelPendingSearch();
