@@ -75,7 +75,7 @@ describe('item row', () => {
     await renderItems();
     const row = rowFor('Dry Red Chillies');
     const texts = row.findAllByType(Text).map(node => flat(node.props.children));
-    expect(texts).toContain('Dry Red Chillies');
+    expect(texts).toContain('Dry Red Chillies · Bag');
     expect(texts).not.toContain('DR');
     const icons = row.findAll(node => (node.type as unknown) === 'Icon').map(node => node.props.name);
     expect(icons).toContain('cube-outline');

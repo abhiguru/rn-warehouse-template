@@ -3,7 +3,7 @@
  * that counts the items that got the rate, the leave guard and offline.
  */
 import React from 'react';
-import { ScrollView, TextInput } from 'react-native';
+import { ScrollView, StyleSheet, TextInput } from 'react-native';
 import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
@@ -128,10 +128,122 @@ describe('Standard rate', () => {
     await act(async () => { saveButton(t).props.onPress(); });
     expect(showToast).toHaveBeenLastCalledWith('Standard rate saved.');
   });
+  // WH-61: Add band asks where the new band starts; the box is pre-filled with the last Up to + 1.
+  const press = async (t: ReactTestRenderer, id: string) => {
+    await act(async () => { t.root.find(n => n.props.testID === id && typeof n.props.onPress === 'function').props.onPress(); });
+  };
+  const startBox = (t: ReactTestRenderer) => t.root.find(n => n.props.testID === 'add-band-start' && typeof n.props.onChangeText === 'function');
+  const addAt = async (t: ReactTestRenderer, start: string) => {
+    await press(t, 'add-band');
+    await act(async () => { startBox(t).props.onChangeText(start); });
+    await press(t, 'add-band-confirm');
+  };
+
+  it('Add band opens a box pre-filled with the last Up to + 1, and Cancel closes it without adding', async () => {
+    const t = await open(FOUR);
+    await press(t, 'add-band');
+    expect(startBox(t).props.value).toBe('51');
+    await press(t, 'add-band-cancel');
+    expect(t.root.findAll(n => n.props.testID === 'add-band-panel')).toHaveLength(0);
+    expect(value(t, 'Up to')).toEqual(['10', '20', '30', '50']);
+  });
+
+  it('a start of 5 splits 0-10 into 0-4 and 5-10: the new band keeps the old figures, nothing else changes', async () => {
+    const t = await open(FOUR);
+    await addAt(t, '5');
+    expect(value(t, 'Up to')).toEqual(['4', '10', '20', '30', '50']);
+    expect(value(t, 'Rent per bag, per month')).toEqual(['3.00', '3.00', '4.00', '5.00', '6.00']);
+    expect(mockGuard.hasChanges).toBe(true);
+  });
+
+  it('a start of 10 gives 0-9 and 10-10', async () => {
+    const t = await open(FOUR);
+    await addAt(t, '10');
+    expect(value(t, 'Up to')).toEqual(['9', '10', '20', '30', '50']);
+  });
+
+  it('refuses a start the bands do not allow, says why in the box, and adds nothing', async () => {
+    const t = await open(FOUR);
+    for (const [start, message] of [
+      ['60', 'Start from 51 kg or lower'],
+      ['11', 'A band already starts at 11 kg'],
+      ['0', 'A band already starts at 0 kg'],
+    ] as const) {
+      await press(t, 'add-band');
+      await act(async () => { startBox(t).props.onChangeText(start); });
+      await press(t, 'add-band-confirm');
+      expect(startBox(t).props.error).toContain(message.replace(/ kg.*/, ''));
+      expect(value(t, 'Up to')).toEqual(['10', '20', '30', '50']);
+      await press(t, 'add-band-cancel');
+    }
+  });
+
+  it('refuses a start that is not a whole number', async () => {
+    const t = await open(FOUR);
+    await press(t, 'add-band');
+    await act(async () => { startBox(t).props.onChangeText('abc'); });
+    await press(t, 'add-band-confirm');
+    expect(startBox(t).props.error).toBeTruthy();
+    expect(value(t, 'Up to')).toEqual(['10', '20', '30', '50']);
+  });
+
+  // WH-60: the bands fold like an accordion, one open at a time.
+  const opened = (t: ReactTestRenderer) =>
+    [0, 1, 2, 3, 4].map(i => t.root.findAll(n => n.props.testID === `band-section-${i}` && n.props.accessibilityState)[0]).filter(Boolean)
+      .map(n => n.props.accessibilityState.expanded as boolean);
+  const toggle = async (t: ReactTestRenderer, i: number) => {
+    await act(async () => { t.root.find(n => n.props.testID === `band-section-${i}` && typeof n.props.onPress === 'function').props.onPress(); });
+  };
+
+  it('opens the first band on load and the rest closed, each closed band with its line of figures', async () => {
+    const t = await open(FOUR);
+    expect(opened(t)).toEqual([true, false, false, false]);
+    expect(t.root.findAll(n => n.props.testID === 'bands-card').length).toBeGreaterThan(0);
+    expect(t.root.findAll(n => n.props.testID === 'band-section-1-line').length).toBeGreaterThan(0);
+  });
+
+  it('opens one band at a time: opening another closes the first, and a second tap closes the open one', async () => {
+    const t = await open(FOUR);
+    await toggle(t, 2);
+    expect(opened(t)).toEqual([false, false, true, false]);
+    await toggle(t, 3);
+    expect(opened(t)).toEqual([false, false, false, true]);
+    await toggle(t, 3);
+    expect(opened(t)).toEqual([false, false, false, false]);
+  });
+
+  it('a band added opens, and the band it was added after closes', async () => {
+    const t = await open(FOUR);
+    await addAt(t, '51');
+    expect(opened(t)).toEqual([false, false, false, false, true]);
+  });
+
+
+  it('only the open band body is shown: the others are hidden, Remove in them too', async () => {
+    const t = await open(FOUR);
+    const hidden = () => [0, 1, 2, 3].map(i => StyleSheet.flatten(t.root.find(n => n.props.testID === `band-body-${i}` && typeof n.type === 'string').props.style)?.display === 'none');
+    expect(hidden()).toEqual([false, true, true, true]);
+    await toggle(t, 3);
+    expect(hidden()).toEqual([true, true, true, false]);
+    const inBody = t.root.find(n => n.props.testID === 'band-body-3' && typeof n.type === 'string').findAll(n => n.props.testID === 'band-3-remove' && typeof n.props.onPress === 'function');
+    expect(inBody.length).toBeGreaterThan(0);
+  });
+
+  it('Save with an error in a closed band opens that band', async () => {
+    const t = await open(FOUR);
+    await fillAll(t);
+    await type(t, 'Tax', 2, '101');
+    expect(opened(t)).toEqual([true, false, false, false]);
+    await act(async () => { saveButton(t).props.onPress(); });
+    expect(setStandardRate).not.toHaveBeenCalled();
+    expect(opened(t)).toEqual([false, false, true, false]);
+    expect(inputsWithLabel(t, 'Tax')[2].props.error).toBe('Enter a tax rate from 0 to 100.');
+  });
 
   it('adds a tier after the last and sends five', async () => {
     const t = await open(FOUR);
-    await act(async () => { t.root.find(n => n.props.testID === 'add-band' && typeof n.props.onPress === 'function').props.onPress(); });
+    await press(t, 'add-band');
+    await press(t, 'add-band-confirm');
     expect(value(t, 'Up to')).toEqual(['10', '20', '30', '50', '']);
     await type(t, 'Up to', 4, '80');
     await type(t, 'Rent per bag, per month', 4, '7');

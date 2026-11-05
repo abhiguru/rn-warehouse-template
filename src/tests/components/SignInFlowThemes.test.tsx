@@ -76,7 +76,6 @@ jest.mock('@/components/OperatorServerSelection', () => ({ OperatorServerSelecti
 jest.mock('@/components/ConfigErrorScreen', () => () => null);
 jest.mock('@/components/ErrorBoundary', () => ({ ErrorBoundary: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));
-jest.mock('@/components/UpdatePrompt', () => ({ UpdatePrompt: () => null }));
 jest.mock('@/components/AppStateManager', () => ({ AppStateManager: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@/components/ForceUpdateModal', () => ({ ForceUpdateModal: () => null }));
 jest.mock('@/hooks/useColdStartDeepLink', () => ({ useColdStartDeepLink: jest.fn() }));

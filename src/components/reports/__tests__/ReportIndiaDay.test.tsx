@@ -330,7 +330,7 @@ describe('GRN activity', () => {
   it('gives each card its own day, India\'s, when the cards are not in date order', async () => {
     const screen = await open(GRNActivityScreen, GREEN);
     await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Bags');
+    await screen.press('Units');
     await screen.press('Done');
     expect(screen.rows(/^GRN A\d+$/)).toEqual(['GRN A0011', 'GRN A0001', 'GRN A0012']);
     const dates = screen.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
@@ -447,7 +447,7 @@ describe('stock aging', () => {
 
   it('dates the receipt of a line and its last dispatch by the day in India', async () => {
     const screen = await open(StockAgingScreen, GREEN);
-    await screen.press('Garlic, ');
+    await screen.press('Garlic · Bag, ');
     expect(screen.label('GRN A0001')).toContain('received 1 Oct 2026, ');
     expect(screen.texts()).toContain('Received 01/10/26');
     await screen.press('GRN A0001');

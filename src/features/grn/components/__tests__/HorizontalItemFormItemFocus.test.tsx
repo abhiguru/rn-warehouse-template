@@ -6,6 +6,9 @@ import { HorizontalItemForm, type HorizontalItemFormRef, type ItemFormData } fro
 const mockFocus = jest.fn();
 const mockBlur = jest.fn();
 let mockFocused = false;
+// The add-item sheet in the entry form (WH-56) needs the safe area and the network state.
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/components/RemoteAutocompleteInput', () => {
   const React = require('react');
   return {

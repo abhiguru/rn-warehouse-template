@@ -274,7 +274,7 @@ describe('dispatch activity, every customer', () => {
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')]]);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
     expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Dispatches', '27', 'Bags dispatched', '550']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Dispatches', '27', 'Units dispatched', '550']));
 
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
@@ -303,7 +303,7 @@ describe('dispatch activity, every customer', () => {
 
   it('orders the rows by the field chosen in the sort sheet, and the other direction reverses them', async () => {
     const screen = await open(makeStore());
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Customer');
     // The field changed and the direction was kept: Z to A.
     expect(screen.customers()).toEqual(['Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co', 'Green Valley Traders']);
@@ -321,7 +321,7 @@ describe('dispatch activity, every customer', () => {
     const screen = await open(makeStore());
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Customer');
     await screen.press('A to Z');
     await screen.press('Done');
@@ -345,14 +345,14 @@ describe('dispatch activity, every customer', () => {
     const screen = await open(store);
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Dispatches');
     await screen.press('Done');
     const byDispatches = ['Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods', 'Green Valley Traders', 'Old Mill Stores'];
     expect(screen.customers()).toEqual(byDispatches);
     expect(screen.texts()).not.toContain('Last opened');
 
-    await screen.press('Riverbank Produce, 9 dispatches, 80 bags');
+    await screen.press('Riverbank Produce, 9 dispatches, 80 units');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/dispatch-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({ 'dispatch-activity': { id: 'c1', name: 'Riverbank Produce' } });
 
@@ -393,7 +393,7 @@ describe('dispatch activity, one customer', () => {
     expect(screen.dispatchRows()).toEqual(BY_DATE);
 
     await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Bags');
+    await screen.press('Units');
     expect(screen.dispatchRows()).toEqual(['Dispatch DD0009', 'Dispatch DD0100', 'Dispatch DD0010', 'Dispatch DD0050']);
     await screen.press('Dispatch number');
     expect(screen.dispatchRows()).toEqual(['Dispatch DD0100', 'Dispatch DD0050', 'Dispatch DD0010', 'Dispatch DD0009']);
@@ -438,7 +438,7 @@ describe('dispatch activity, one customer', () => {
     expect(screen.has('Garlic, 50 bags of 60, GRN A0010, Rack B-14, mark GV')).toBe(true);
 
     await screen.press('Sorted by Date, newest first. Change sort');
-    expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Bags']);
+    expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Units']);
     expect(screen.has('Weight')).toBe(false);
   });
 
@@ -451,7 +451,7 @@ describe('dispatch activity, one customer', () => {
     expect(screen.cardLabels()).toEqual(CARD_LABELS);
 
     await screen.press('Sorted by Date, newest first. Change sort');
-    expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Bags']);
+    expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Units']);
     expect(screen.has('Weight')).toBe(false);
   });
 
@@ -471,7 +471,7 @@ describe('dispatch activity, one customer', () => {
     expect(screen.dispatchRows()).not.toEqual(['Dispatch DD0009', 'Dispatch DD0050', 'Dispatch DD0010', 'Dispatch DD0100']);
 
     await screen.press('Sorted by Date, newest first. Change sort');
-    expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Bags']);
+    expect(screen.sortOptions()).toEqual(['Date', 'Dispatch number', 'Units']);
     expect(screen.has('Weight')).toBe(false);
     await screen.press('Done');
 
@@ -481,9 +481,9 @@ describe('dispatch activity, one customer', () => {
 
     // A sort chosen now replaces the remembered one, and is what the next opening finds.
     await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Bags');
+    await screen.press('Units');
     await screen.press('Done');
-    expect(screen.has('Sorted by Bags, highest first. Change sort')).toBe(true);
+    expect(screen.has('Sorted by Units, highest first. Change sort')).toBe(true);
     expect(screen.dispatchRows()).toEqual(['Dispatch DD0009', 'Dispatch DD0100', 'Dispatch DD0010', 'Dispatch DD0050']);
     expect(mockStore.getState().reportPrefs.byScope[SCOPE].sort['report-dispatch-activity-customer']).toEqual({ field: 'bags', order: 'desc' });
   });
@@ -632,7 +632,7 @@ describe('dispatch activity, the layout of a dispatch card', () => {
     // Sorted by date the heading above gives the day; any other sort puts it on the card.
     expect(outline(head(screen, 'DD0010'))).toEqual([AVATAR, ['Dispatch DD0010', 'Asha Example'], ['50', 'bags'], 'icon chevron-down']);
     await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Bags');
+    await screen.press('Units');
     await screen.press('Done');
     const card = head(screen, 'DD0009');
     expect(outline(card)).toEqual([AVATAR, ['Dispatch DD0009', 'Ravi Example', '11/10/26'], ['200', 'bags'], 'icon chevron-down']);
@@ -734,7 +734,7 @@ async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: R
 describe('dispatch activity, the report PDF', () => {
   it('every customer: shares the period and the sort on screen as the PDF names them, with no customer', async () => {
     const screen = await open(makeStore());
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Dispatches');
     await screen.press('Done');
     expect(screen.has('Sorted by Dispatches, highest first. Change sort')).toBe(true);
@@ -787,7 +787,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     mockParams = GREEN;
     const one = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
     await one.press('Sorted by Date, newest first. Change sort');
-    await one.press('Bags');
+    await one.press('Units');
     await one.press('Done');
     const text = (words: string) => one.tree.root.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === words)[0];
     expect(flat(text('Dispatch DD0100'))).toMatchObject({ color: t.text.primary, fontWeight: fontWeight.semibold });

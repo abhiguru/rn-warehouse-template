@@ -182,19 +182,19 @@ it('shows a lot\'s weight as the weight of one package, and none for a lot witho
   let tree!: ReturnType<typeof create>;
   await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
   try {
-    const weighed = rowOf(tree, 'lot-50', 'Fictional potatoes');
+    const weighed = rowOf(tree, 'lot-50', 'Fictional potatoes · Bag');
     expect(weighed.texts).toContain('50 kg each');
     expect(weighed.texts).not.toContain('50 kg');
     // The row is read out with the same words.
     expect(weighed.spoken).toHaveLength(1);
     expect(weighed.spoken[0].split(', ')).toContain('50 kg each');
 
-    const unweighed = rowOf(tree, 'lot-0', 'Fictional onions');
+    const unweighed = rowOf(tree, 'lot-0', 'Fictional onions · Bag');
     expect(unweighed.texts.some(text => /\bkg\b/.test(text))).toBe(false);
     expect(unweighed.spoken).toHaveLength(1);
     expect(unweighed.spoken[0]).not.toMatch(/\bkg\b/);
     // The row itself is drawn: only the weight is missing.
-    expect(unweighed.texts).toContain('Fictional onions');
+    expect(unweighed.texts).toContain('Fictional onions · Bag');
   } finally { await act(async () => { tree.unmount(); }); }
 });
 
@@ -206,14 +206,14 @@ it('counts a Box lot in boxes, never bags, in its row and its spoken label', asy
   let tree!: ReturnType<typeof create>;
   await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
   try {
-    const box = rowOf(tree, 'lot-box', 'Fictional tomatoes');
+    const box = rowOf(tree, 'lot-box', 'Fictional tomatoes · Box');
     expect(box.texts).toContain('of 188 boxes');
     expect(box.spoken[0]).toContain('188 of 188 boxes');
     expect(box.spoken[0]).not.toMatch(/bags/);
     expect(box.texts.some(text => /bags/.test(text))).toBe(false);
     const labels = tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => String(node.props.accessibilityLabel));
-    expect(labels).toContain('Add 10 boxes of Fictional tomatoes');
-    expect(labels).toContain('Add 1 box of Fictional tomatoes');
+    expect(labels).toContain('Add 10 boxes of Fictional tomatoes · Box');
+    expect(labels).toContain('Add 1 box of Fictional tomatoes · Box');
     expect(labels.some(label => /^(Add|Remove) \d+ bags? of /.test(label))).toBe(false);
   } finally { await act(async () => { tree.unmount(); }); }
 });

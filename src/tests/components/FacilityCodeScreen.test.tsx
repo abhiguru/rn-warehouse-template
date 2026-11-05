@@ -110,7 +110,6 @@ it('signs in on a correct code and opens the facility', async () => {
 
 it.each([
   ['refused', "That code doesn't work. Facility codes are for facility staff; ask your facility's operator for a new code."],
-  ['customer', 'Facility codes are for facility staff only. Sign in with the association.'],
   ['rate_limited', 'Too many tries. Wait a few minutes and try again.'],
   ['unavailable', "This facility's server can't sign you in with a code right now. Try again later."],
   ['network', 'Check your connection and try again.'],

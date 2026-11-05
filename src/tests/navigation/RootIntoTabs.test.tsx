@@ -178,7 +178,6 @@ jest.mock('@/components/ErrorBoundary', () => ({ ErrorBoundary: ({ children }: {
 jest.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));
 jest.mock('@/components/UpgradingBanner', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/AlertHost', () => ({ AlertHost: () => null }));
-jest.mock('@/components/UpdatePrompt', () => ({ UpdatePrompt: () => null }));
 jest.mock('@/components/AppStateManager', () => ({ AppStateManager: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@/components/ForceUpdateModal', () => ({ ForceUpdateModal: () => null }));
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));

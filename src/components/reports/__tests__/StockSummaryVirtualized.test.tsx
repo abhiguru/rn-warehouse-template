@@ -238,7 +238,7 @@ describe('stock summary: an opened item with 500 GRNs', () => {
     // Closed: the card names the match under its facts.
     expect(screen.rows()).toEqual([['item', 'item:i1']]);
     expect(screen.bold()).toEqual(['A0042']);
-    expect(screen.labels()).toContain('Example Garlic, 1,000 units, 500 GRNs, GRN A0042');
+    expect(screen.labels()).toContain('Example Garlic · Bag, 1,000 units, 500 GRNs, GRN A0042');
 
     await screen.toggle();
     // Open: every GRN is a row, and the searched one shows the words in bold in its own row.

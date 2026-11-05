@@ -219,7 +219,8 @@ describe('GRN picker search', () => {
   it('with no customer, says to choose one (keypad and list) and never "no stock left"', async () => {
     const tree = await open(undefined);
     const shown = texts(tree);
-    expect(shown.filter((x) => x === 'Choose a customer in the first step to see their GRNs.')).toHaveLength(2);
+    // The list says it once (WH-6): the keypad row stays empty with no customer.
+    expect(shown.filter((x) => x === 'Choose a customer in the first step to see their GRNs.')).toHaveLength(1);
     expect(shown).not.toContain('No GRNs have stock left.');
     await act(async () => { tree.unmount(); });
   });

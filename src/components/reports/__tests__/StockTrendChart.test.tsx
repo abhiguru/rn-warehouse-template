@@ -107,10 +107,10 @@ describe('stock trend, figures', () => {
     expect(chart.props.noOfSections).toBe(3);
   });
 
-  it('gives the highest month as it was, and names the axis in bags', () => {
+  it('gives the highest month as it was, and names the axis in units (a trend has no one packaging word)', () => {
     const { texts, labels, chart } = render(TRENDS);
-    expect(texts).toContain('bags');
-    expect(texts).not.toContain('units');
+    expect(texts).toContain('units');
+    expect(texts).not.toContain('bags');
     expect(labels).toContain('Highest 180');
     // At least a fifth above the highest point (216), so its label is not cut at the top.
     expect(chart.props.maxValue).toBe(300);

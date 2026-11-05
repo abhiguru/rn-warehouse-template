@@ -9,7 +9,6 @@ import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 
 import { ConfirmDialog } from '../ConfirmDialog';
 import { ForceUpdateModal } from '../ForceUpdateModal';
-import { UpdatePrompt } from '../UpdatePrompt';
 import { CachedImage } from '../CachedImage';
 import { ImageOverlay } from '../ImageOverlay';
 import { CameraModal } from '../CameraModal';
@@ -60,20 +59,6 @@ jest.mock('@/hooks/useForceUpdate', () => ({
     minimumVersion: '1.2.0',
     isConfigLoaded: true,
     openStore: jest.fn(),
-  }),
-}));
-jest.mock('@/hooks/useOTAUpdates', () => ({
-  useOTAUpdates: () => ({
-    isUpdateAvailable: false,
-    isUpdatePending: true,
-    isDownloading: false,
-    isChecking: false,
-    error: new Error('HTTP 500 from update server'),
-    downloadProgress: 0,
-    downloadUpdate: jest.fn(),
-    applyUpdate: jest.fn(),
-    dismissUpdate: jest.fn(),
-    isEnabled: true,
   }),
 }));
 jest.mock('expo-image', () => ({
@@ -163,18 +148,12 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
     act(() => tree.unmount());
   });
 
-  it('ForceUpdateModal and UpdatePrompt render as dialogs without developer text', () => {
+  it('ForceUpdateModal renders as a dialog without developer text', () => {
     const force = render(<ForceUpdateModal />);
     expect(hasBackground(force, t.surface.sheet)).toBe(true);
     expect(hasBackground(force, t.brand.fill)).toBe(true);
     expect(texts(force)).toContain('Update app');
     act(() => force.unmount());
-
-    const prompt = render(<UpdatePrompt />);
-    expect(hasBackground(prompt, t.overlay.scrim)).toBe(true);
-    expect(texts(prompt).join(' ')).not.toContain('HTTP 500');
-    expect(texts(prompt)).toEqual(expect.arrayContaining(['Update ready', 'Restart app', 'Later']));
-    act(() => prompt.unmount());
   });
 
   it('media components use the placeholder and photo tokens', () => {

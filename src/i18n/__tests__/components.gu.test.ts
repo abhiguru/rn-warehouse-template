@@ -27,7 +27,6 @@ describe('components texts in Gujarati', () => {
   });
 
   it('a formatted number: percentages and table cells follow the language', () => {
-    expect(t('components.update.downloadingPercent', { percent: 45 }, 'gu')).toBe('ડાઉનલોડ થઈ રહ્યું છે… ૪૫%');
     expect(t('components.rack.tooLong', { max: 30, count: 34 }, 'gu')).toBe('આખા રેક માટે વધુમાં વધુ ૩૦ અક્ષર વાપરો (૩૪/૩૦).');
     // What the shared table, steppers and badges do with a number they format themselves
     expect(localizeDigits('1,23,456.5')).toBe('1,23,456.5');

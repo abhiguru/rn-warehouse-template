@@ -36,6 +36,11 @@ jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/grn-service', () => ({
   getAllGRNItems: jest.fn(),
   getAssignedCustomerGRNItems: jest.fn(),
+  // The screen's one read (WH-29): the same two reads, without the phone cache.
+  getGRNListPage: (params: object, ids: string[] | null) => {
+    const service = require('@/services/grn-service');
+    return ids ? service.getAssignedCustomerGRNItems(ids, params) : service.getAllGRNItems(params);
+  },
   withReceiptPages: (request: { p_filters?: object }) => ({ ...request, p_filters: { ...request.p_filters, page_by: 'receipt' } }),
   countReceipts: (items: { grn_id?: string; id: string }[]) => new Set(items.map((item) => item.grn_id || item.id)).size,
 }));
@@ -142,17 +147,17 @@ const table = (tree: ReactTestRenderer) => {
 };
 
 describe('GRN list card', () => {
-  it('shows no total weight for 100 bags at 50 kg, on the card or aloud', async () => {
+  it('shows the total weight of 100 bags at 50 kg on the card, and says it aloud after the tag (WH-58)', async () => {
     const tree = await renderList([row('line-1', 'Potato', 100, 50, 80)]);
 
     const all = texts(tree);
     expect(all).toContain('GRN RV15001');
-    // What is left of what was received, then the status tag; "5,000 kg" used to be under them.
-    expect(attributeStack(tree)).toEqual([`80 of ${nb('100 bags')}`, 'In stock']);
-    expect(all).not.toContain('5,000 kg');
-    expect(all.filter((text) => /kg|kilo/i.test(text))).toEqual([]);
+    // The tag, the number left with STOCK under it, then the weight received (bags x kg each).
+    expect(attributeStack(tree)).toEqual(['Partial', '80', 'STOCK', '5,000 kg']);
+    expect(all).toContain('5,000 kg');
+    expect(all.filter((text) => /kg|kilo/i.test(text))).toEqual(['5,000 kg']);
     expect(host(tree, `grn-card-${GRN}`).props.accessibilityLabel).toBe(
-      `GRN RV15001, Fictional Orchard, 1 Oct 2026, 1 item, 80 of ${nb('100 bags')}, In stock`
+      `GRN RV15001, Fictional Orchard, 1 Oct 2026, 1 item, 80 of ${nb('100 bags')}, Partial, 5,000 kg`
     );
   });
 
@@ -166,9 +171,9 @@ describe('GRN list card', () => {
     expect(header).toEqual(['Item', 'Bags', 'Kg each', 'Stock']);
     expect(rows).toEqual([['Potato', '100', '50', '100']]);
     expect(spoken).toEqual(['Potato, 100 bags, 50 kg each, 100 in stock, In stock']);
-    // Still no total with the table open: the heading is the only text that names kilograms.
-    expect(attributeStack(tree)).toEqual([`100 of ${nb('100 bags')}`, 'In stock']);
-    expect(texts(tree).filter((text) => /kg|kilo/i.test(text))).toEqual(['Kg each']);
+    // With the table open the card keeps its total; the heading and the total are the texts that name kilograms.
+    expect(attributeStack(tree)).toEqual(['Full', '100', 'STOCK', '5,000 kg']);
+    expect(texts(tree).filter((text) => /kg|kilo/i.test(text))).toEqual(['5,000 kg', 'Kg each']);
   });
 
   it('shows a dash, and says no weight, for a lot saved without one', async () => {
@@ -346,10 +351,11 @@ describe('GRN card figures, marks and stock text (phone run GL, 2026-10-18)', ()
     expect(table(tree).spoken[0]).toContain(MARK);
   });
 
-  it('keeps "9,999 bags" together in the card stock text: a wrap falls after "of"', async () => {
+  it('keeps "9,999 bags" together in the spoken stock text: a wrap falls after "of", and the card shows the number left', async () => {
     const tree = await renderList([row('line-1', 'Potato', 9999, 50, 2621)]);
-    const stock = attributeStack(tree)[0];
-    expect(stock).toBe(`2,621 of 9,999\u00a0bags`);
+    const stock = host(tree, `grn-card-${GRN}`).props.accessibilityLabel as string;
+    expect(attributeStack(tree).slice(0, 3)).toEqual(['Partial', '2,621', 'STOCK']);
+    expect(stock).toContain(`2,621 of 9,999\u00a0bags`);
     expect(stock).toContain('9,999\u00a0bags');
   });
 });

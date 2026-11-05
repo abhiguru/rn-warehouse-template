@@ -278,7 +278,7 @@ describe('GRN activity, every customer', () => {
 
   it('orders the rows by the field chosen in the sort sheet, and the other direction reverses them', async () => {
     const screen = await open(makeStore());
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Customer');
     // The field changed and the direction was kept: Z to A.
     expect(screen.customers()).toEqual(['Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co', 'Green Valley Traders']);
@@ -294,7 +294,7 @@ describe('GRN activity, every customer', () => {
     const screen = await open(makeStore());
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Customer');
     await screen.press('A to Z');
     await screen.press('Done');
@@ -318,14 +318,14 @@ describe('GRN activity, every customer', () => {
     const screen = await open(store);
     await screen.press('Period: Last 120 days. Change');
     await screen.press('Last 240 days');
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('GRNs');
     await screen.press('Done');
     const byGrns = ['Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods', 'Green Valley Traders', 'Old Mill Stores'];
     expect(screen.customers()).toEqual(byGrns);
     expect(screen.texts()).not.toContain('Last opened');
 
-    await screen.press('Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 bags');
+    await screen.press('Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 units');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
 
@@ -366,13 +366,13 @@ describe('GRN activity, one customer', () => {
     expect(screen.grnRows()).toEqual(['Today', 'GRN A0010', 'Yesterday', 'GRN A0009', 'GRN A0100', '20/09/26', 'GRN A0050']);
 
     await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Bags');
+    await screen.press('Units');
     await screen.press('Done');
     expect(screen.grnRows()).toEqual(['GRN A0009', 'GRN A0100', 'GRN A0010', 'GRN A0050']);
     // With no heading above it, each card gives its own date.
     expect(screen.texts()).toEqual(expect.arrayContaining(['11/10/26', '12/10/26', '20/09/26']));
 
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Date');
     await screen.press('Oldest first');
     await screen.press('Done');
@@ -525,7 +525,7 @@ async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: R
 describe('GRN activity, the report PDF', () => {
   it('every customer: shares the period and the sort on screen as the PDF names them, with no customer', async () => {
     const screen = await open(makeStore());
-    await screen.press('Sorted by Bags, highest first. Change sort');
+    await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Latest GRN');
     await screen.press('Done');
     await sharesThePdf(

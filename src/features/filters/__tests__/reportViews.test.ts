@@ -366,7 +366,7 @@ describe('one customer\'s dispatches: no sort by weight', () => {
 
   it('offers exactly Date, Dispatch number and Bags, by default the newest first', () => {
     const options = DISPATCH_ACTIVITY_CUSTOMER.sort!.options;
-    expect(options.map(option => option.label)).toEqual(['Date', 'Dispatch number', 'Bags']);
+    expect(options.map(option => option.label)).toEqual(['Date', 'Dispatch number', 'Units']);
     expect(options.map(option => option.field)).toEqual(['date', 'number', 'bags']);
     expect(options.map(option => option.kind)).toEqual(['date', 'number', 'amount']);
     expect(options.some(option => option.label === 'Weight' || option.field === 'weight')).toBe(false);

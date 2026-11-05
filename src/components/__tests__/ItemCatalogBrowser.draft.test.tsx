@@ -95,12 +95,12 @@ const addButtonText = () => textOf(node('catalog-add'));
 const pressLabel = (label: string) => act(async () => {
   tree!.root.findAll(candidate => candidate.props.accessibilityLabel === label && typeof candidate.props.onPress === 'function')[0].props.onPress();
 });
-const choose = (name: string) => pressLabel(`Add 1 bag of ${name}`);
+const choose = (name: string) => pressLabel(`Add 1 bag of ${name} · Bag`);
 const pressAdd = () => act(async () => { node('catalog-add').props.onPress(); });
 const listedLots = () =>
   tree!.root.findAllByType('CatalogItem' as never).map(item => String(item.props.testID).replace('catalog-item-', ''));
 const selectedText = (name: string) =>
-  tree!.root.findAll(candidate => candidate.props.accessibilityLabel === `1 bag of ${name} selected`).length > 0;
+  tree!.root.findAll(candidate => candidate.props.accessibilityLabel === `1 bag of ${name} · Bag selected`).length > 0;
 
 // The four ways out. A swipe is the library closing the sheet by itself.
 const WAYS: Record<string, () => void> = {
@@ -170,8 +170,8 @@ describe('what was chosen is seeded once', () => {
     await choose('Fictional garlic');
     expect(addButtonText()).toBe('Add (1)');
     // Taking a saved lot off the order is a change too.
-    await pressLabel('Remove 1 bag of Fictional potatoes');
-    await pressLabel('Remove 1 bag of Fictional potatoes');
+    await pressLabel('Remove 1 bag of Fictional potatoes · Bag');
+    await pressLabel('Remove 1 bag of Fictional potatoes · Bag');
     expect(addButtonText()).toBe('Add (2)');
     await pressAdd();
     expect(onAddItems.mock.calls[0][0]).toEqual([
@@ -182,7 +182,7 @@ describe('what was chosen is seeded once', () => {
 
   it('does not remove every line of the order when all saved lots are deselected: it says nothing is selected', async () => {
     await open([saved('lot-a', 1)]);
-    await pressLabel('Remove 1 bag of Fictional potatoes');
+    await pressLabel('Remove 1 bag of Fictional potatoes · Bag');
     // The change is counted, so the button reads Add (1) ...
     expect(addButtonText()).toBe('Add (1)');
     await pressAdd();
@@ -207,9 +207,9 @@ it('names a box lot in boxes in the unsaved-changes question', async () => {
   potatoes.packaging = 'Box';
   try {
     await open([]);
-    await pressLabel('Add 10 boxes of Fictional potatoes');
+    await pressLabel('Add 10 boxes of Fictional potatoes · Box');
     await leaveBy('Cancel');
-    expect(alertTexts(jest.mocked(showAlert))[0][1]).toContain('Fictional potatoes · mark FX · GRN FXG001 · 50 kg each — add 10 boxes');
+    expect(alertTexts(jest.mocked(showAlert))[0][1]).toContain('Fictional potatoes · Box · mark FX · GRN FXG001 · 50 kg each — add 10 boxes');
   } finally {
     potatoes.packaging = 'Bag';
   }
@@ -228,7 +228,7 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     await choose('Fictional potatoes');
     await leaveBy(way);
     expect(alertTexts(jest.mocked(showAlert))).toEqual([
-      ['Add these changes to the order?', 'Changes to 1 lot have not been saved.\n\n• Fictional potatoes · mark FX · GRN FXG001 · 50 kg each — add 1 bag'],
+      ['Add these changes to the order?', 'Changes to 1 lot have not been saved.\n\n• Fictional potatoes · Bag · mark FX · GRN FXG001 · 50 kg each — add 1 bag'],
     ]);
     const buttons = jest.mocked(showAlert).mock.calls[0][2]!;
     expect(buttons.map(button => [button.text, button.style])).toEqual([
@@ -263,8 +263,8 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
       [
         'Add these changes to the order?',
         'Changes to 2 lots have not been saved.\n\n' +
-          '• Fictional potatoes · mark FX · GRN FXG001 · 50 kg each — add 1 bag\n' +
-          '• Fictional onions · mark FX · GRN FXG001 · 50 kg each — add 1 bag',
+          '• Fictional potatoes · Bag · mark FX · GRN FXG001 · 50 kg each — add 1 bag\n' +
+          '• Fictional onions · Bag · mark FX · GRN FXG001 · 50 kg each — add 1 bag',
       ],
     ]);
     await answer('Discard selections');
@@ -400,7 +400,7 @@ describe('Add waits for the server', () => {
     expect(quantityButtons.every(candidate => candidate.props.disabled === true)).toBe(true);
     expect(mockSheet.props.enablePanDownToClose).toBe(false);
     // A stepper pressed anyway changes nothing.
-    await pressLabel('Add 1 bag of Fictional garlic');
+    await pressLabel('Add 1 bag of Fictional garlic · Bag');
     expect(selectedText('Fictional garlic')).toBe(false);
 
     await act(async () => { progress(2, 2); });
@@ -479,7 +479,7 @@ describe('Add waits for the server', () => {
     expect(textOf(node('catalog-not-saved-summary'))).toBe('2 lots were not saved. See the reason on each.');
     expect(listedLots().slice(0, 2)).toEqual(['lot-a', 'lot-b']);
 
-    await pressLabel('Remove 1 bag of Fictional potatoes');
+    await pressLabel('Remove 1 bag of Fictional potatoes · Bag');
     expect(node('catalog-reason-lot-a')).toBeUndefined();
     expect(textOf(node('catalog-reason-lot-b'))).toBe('Only 3 bags in stock.');
     expect(addButtonText()).toBe('Add (1)');

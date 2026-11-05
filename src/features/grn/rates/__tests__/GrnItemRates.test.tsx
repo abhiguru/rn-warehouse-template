@@ -318,6 +318,6 @@ describe('the note under the table names what the GRN is counted in (D18)', () =
     read.mockResolvedValue(answer([lot({ grn_item_id: 'lot-a' })]));
     await mount(<GrnItemRates grnId="g1" grnNumber="A1" packagingByLot={{ 'lot-a': 'Box' }} />);
     act(() => links()[0].props.onPress());
-    expect(jest.mocked(router.push)).toHaveBeenCalledWith(expect.objectContaining({ params: expect.objectContaining({ pack: 'box' }) }));
+    expect(jest.mocked(router.push)).toHaveBeenCalledWith(expect.objectContaining({ params: expect.objectContaining({ pack: 'Box' }) }));
   });
 });

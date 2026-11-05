@@ -31,6 +31,11 @@ jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/grn-service', () => ({
   getAllGRNItems: jest.fn(),
   getAssignedCustomerGRNItems: jest.fn(),
+  // The screen's one read (WH-29): the same two reads, without the phone cache.
+  getGRNListPage: (params: object, ids: string[] | null) => {
+    const service = require('@/services/grn-service');
+    return ids ? service.getAssignedCustomerGRNItems(ids, params) : service.getAllGRNItems(params);
+  },
   withReceiptPages: (request: { p_filters?: object }) => ({ ...request, p_filters: { ...request.p_filters, page_by: 'receipt' } }),
   countReceipts: (items: { grn_id?: string; id: string }[]) => new Set(items.map((item) => item.grn_id || item.id)).size,
 }));
@@ -276,8 +281,9 @@ describe('repeated lines on a next page (code review 2026-10-18, R1-01)', () => 
     expect(host(tree, 'grn-card-stock-g3')).toBeDefined();
     await act(async () => { await list(tree).props.onEndReached(); });
 
-    const stockOf = (n: number) => [host(tree, `grn-card-stock-g${n}`).findAllByType('Text' as never)[0].props.children].flat().join('');
-    expect(stockOf(3)).toBe(`20 of ${nb('20 bags')}`);
+    const stockOf = (n: number) => [host(tree, `grn-card-stock-g${n}`).findAllByType('Text' as never)[1].props.children].flat().join('');
+    // The number left in stock (the card no longer prints "of N bags"): 20 once, not 40 if the repeat were added again.
+    expect(stockOf(3)).toBe('20');
     expect(texts(tree).filter((text) => text === '2 items')).toHaveLength(1);
 
     await act(async () => { await list(tree).props.onEndReached(); });

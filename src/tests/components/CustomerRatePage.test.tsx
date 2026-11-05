@@ -98,7 +98,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
     await open('admin');
     const s = texts(tree);
     expect(s).toContain("Review Orchard B's own rate");
-    expect(s).toContain('Review Onion Red');
+    expect(s).toContain('Review Onion Red · Bag');
   });
 
   it('shows the own ₹3.00 in the box (not the default ₹3.50) and the default beside it, ₹3.50 per bag, per month (B2)', async () => {

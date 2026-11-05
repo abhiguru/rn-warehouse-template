@@ -235,7 +235,9 @@ async function open(store: Store) {
     /** Customer names in the order the rows show them. */
     customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
     /** Item cards, in stock and out of stock, in the order they are drawn. */
-    items: () => tree.root.findAllByType(StockItemCard).map(card => card.props.name as string),
+    // The card names the item with its packaging word ("Cumin · Bag", WH-41); the lists below are the item names.
+    items: () => tree.root.findAllByType(StockItemCard).map(card => (card.props.name as string).replace(/ · [^·]+$/, '')),
+    itemCardNames: () => tree.root.findAllByType(StockItemCard).map(card => card.props.name as string),
     /** At one customer's level: the lines the item cards draw naming what a search found inside a closed card. */
     matchLines: () => matchLineNodes().map(node => node.props.text as string),
     matchLineNodes,
@@ -564,13 +566,13 @@ describe('stock summary, one customer', () => {
     expect(card.props.highlightWords).toEqual(['a0042']);
     expect(screen.matchLines()).toEqual(['GRN A0042']);
     expect(screen.bold()).toEqual(['A0042']);
-    expect(screen.has('Red chilli, 5 units, 2 GRNs, GRN A0042')).toBe(true);
+    expect(screen.has('Red chilli · Bag, 5 units, 2 GRNs, GRN A0042')).toBe(true);
     expect(screen.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
 
     // Opened, the card shows its GRNs: the line is not needed, the GRN number is in bold, and a GRN opens.
-    await screen.press('Red chilli, 5 units, 2 GRNs, GRN A0042');
+    await screen.press('Red chilli · Bag, 5 units, 2 GRNs, GRN A0042');
     expect(screen.matchLines()).toEqual([]);
-    expect(screen.has('Red chilli, 5 units, 2 GRNs')).toBe(true);
+    expect(screen.has('Red chilli · Bag, 5 units, 2 GRNs')).toBe(true);
     // "GRN A0042" is drawn as "GRN " and a bold "A0042" inside it.
     expect(screen.texts()).toContain('GRN A0009');
     const rowTitles = screen.tree.root.findAllByType(HighlightedText).map(node => node.props.text as string);
@@ -638,8 +640,8 @@ describe('stock summary, one customer', () => {
     expect(screen.footer()).toBeNull();
 
     // An item that ran out opens on its own, and says it was dispatched.
-    await screen.press('Fictional Onions, 1 GRN dispatched, Out of stock');
-    expect(screen.has('Fictional Onions, 1 GRN dispatched, Out of stock')).toBe(true);
+    await screen.press('Fictional Onions · Bag, 1 GRN dispatched, Out of stock');
+    expect(screen.has('Fictional Onions · Bag, 1 GRN dispatched, Out of stock')).toBe(true);
     expect(screen.texts()).toContain('GRN A0003');
 
     // The header closes them again: they are no longer rows at all.
@@ -702,12 +704,12 @@ describe('stock summary, one customer', () => {
     customerStock.mockResolvedValue(answerItems([item('i9', 'Fictional Peas', 10, [])], [item('o9', 'Example Beans', 0, [])]) as never);
     const screen = await open(makeStore());
     expect(screen.texts()).not.toContain('No GRNs with this item in stock.');
-    await screen.press('Fictional Peas, 10 units, 0 GRNs');
+    await screen.press('Fictional Peas · Bag, 10 units, 0 GRNs');
     expect(screen.texts()).toContain('No GRNs with this item in stock.');
 
     await screen.press('Out of stock, 1 item, last 360 days');
     expect(screen.texts()).not.toContain('No GRNs to show for this item.');
-    await screen.press('Example Beans, 0 GRNs dispatched, Out of stock');
+    await screen.press('Example Beans · Bag, 0 GRNs dispatched, Out of stock');
     expect(screen.texts()).toContain('No GRNs to show for this item.');
   });
 

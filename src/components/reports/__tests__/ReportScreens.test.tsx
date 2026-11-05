@@ -441,7 +441,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     const tree = await render(brand, mode, <DispatchActivityScreen />);
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     expect(texts(tree)).toEqual(
-      expect.arrayContaining(['Dispatch activity', 'All customers', 'Bags dispatched', 'Fictional Traders', '3 dispatches'])
+      expect.arrayContaining(['Dispatch activity', 'All customers', 'Units dispatched', 'Fictional Traders', '3 dispatches'])
     );
     act(() => tree.unmount());
   });
