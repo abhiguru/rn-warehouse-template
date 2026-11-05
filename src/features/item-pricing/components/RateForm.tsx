@@ -423,7 +423,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
 
           {/* Starts on: the choice always shown, the rule under it. */}
           <View style={styles.section} testID="add-rate-starts">
-            {addingBand && ctx.mixedStarts ? (
+            {addingBand && (ctx.mixedStarts || ctx.othersAtRisk) ? (
               <>
                 <Text style={styles.kicker}>{t('pricing.edit.startsOn')}</Text>
                 <Text style={styles.note} testID="add-rate-mixed-starts">{t('pricing.edit.bandMixedStarts')}</Text>

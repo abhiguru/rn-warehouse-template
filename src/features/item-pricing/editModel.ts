@@ -83,6 +83,8 @@ export interface EditorContext {
   ownStart?: string | null;
   /** Mode addBand: the rows in force do not share one start day, so only Today is offered (nothing is sent as a correction). */
   mixedStarts?: boolean;
+  /** Mode addBand: a save from the default day would lose a row or a stop of the scope, so only Today is offered. */
+  othersAtRisk?: boolean;
 }
 
 export interface Scope {
@@ -167,6 +169,22 @@ export function rowsInForce(rows: ItemStoragePrice[], scope: Scope, onDay: strin
   return rows
     .filter(r => inScope(r, scope) && day(r.effective_from) <= onDay && (!r.effective_to || day(r.effective_to) >= onDay))
     .sort((a, b) => a.weight_min - b.weight_min);
+}
+
+/**
+ * Add rate on a rate in force: true when saving from the default day would lose something. Correct mode deletes every row of the
+ * scope starting that day and a change from the earliest day deletes every row starting from it; both give all new rows one kept
+ * stop, which exists only when the rows in force that day share it (all open or one last day). So the default day is safe only when
+ * every such row is one of the locked bands and the rows in force that day stop together.
+ */
+function defaultDayLosesRows(rows: ItemStoragePrice[], locked: ItemStoragePrice[], scope: Scope, ownStart: string, earliest: string | null): boolean {
+  const moved = !!earliest && ownStart < earliest;
+  const from = moved ? (earliest as string) : ownStart;
+  const lockedIds = new Set(locked.map(r => r.id));
+  const inScopeRows = rows.filter(r => inScope(r, scope));
+  const deleted = inScopeRows.filter(r => (moved ? day(r.effective_from) >= from : day(r.effective_from) === from) && !lockedIds.has(r.id));
+  const stops = new Set(rowsInForce(inScopeRows, scope, from).map(r => day(r.effective_to)));
+  return deleted.length > 0 || stops.size > 1 || locked.some(r => day(r.effective_to) !== [...stops][0]);
 }
 
 /** The soonest planned rate of a scope after a day: its start and rows. */
@@ -569,8 +587,9 @@ export function initialDraft({ mode, params, rows, role, today, earliest }: Open
     const lastOwn = own[own.length - 1];
     const starts = [...new Set(own.map(r => day(r.effective_from)))].sort();
     const mixedStarts = starts.length > 1;
-    const ownStart = mixedStarts ? null : starts[0];
-    const context: EditorContext = { ...base, mode, priceTypeChoosable: false, lockedRows: own, ownStart, mixedStarts };
+    const othersAtRisk = !mixedStarts && defaultDayLosesRows(rows, own, scope, starts[0], earliest ?? null);
+    const ownStart = mixedStarts || othersAtRisk ? null : starts[0];
+    const context: EditorContext = { ...base, mode, priceTypeChoosable: false, lockedRows: own, ownStart, mixedStarts, othersAtRisk };
     const opened = draftFromRows(own, priceType, true, false);
     const draft: Draft = {
       ...opened,
@@ -858,7 +877,11 @@ export function lotsRule(draft: Draft, ctx: EditorContext): string | null {
   if (ctx.mode === 'addBand') {
     const date = dateText(draft.startsOn);
     if (draft.startsOnChoice !== 'ownStart') return t('pricing.edit.ruleBandToday', { date });
-    return t(startMoved(ctx) ? 'pricing.edit.ruleBandEarliest' : 'pricing.edit.ruleBandOwn', { date });
+    if (startMoved(ctx)) return t('pricing.edit.ruleBandEarliest', { date });
+    // The item's first rate (no row of the scope, ended ones too, starts before it) also covers earlier days (migration 129, find_storage_price).
+    const scope: Scope = { customerId: ctx.customerId, priceType: draft.priceType };
+    const first = !!ctx.ownStart && !ctx.rows.some(r => inScope(r, scope) && day(r.effective_from) < (ctx.ownStart as string));
+    return t(first ? 'pricing.edit.ruleBandFirst' : 'pricing.edit.ruleBandOwn', { date });
   }
   const earlier = earlierRows(draft, ctx);
   if (earlier.length === 0) return t('pricing.edit.lotsRuleNone', { date: dateText(draft.startsOn) });
