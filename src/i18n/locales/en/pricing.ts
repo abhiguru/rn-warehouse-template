@@ -195,6 +195,8 @@ export const pricing = {
     changeTier: '{{band}}: rent {{rent}}, labour {{labour}}, tax {{tax}}%',
     reload: 'Reload',
     lastTierHint: 'Bags heavier than {{kg}} kg get no standard rate.',
+    bandLine: 'Rent {{rent}} · Labour {{labour}} · Tax {{tax}}',
+    bandNeedsFix: 'Needs a fix',
     loading: 'Loading the standard rate',
     loadErrorTitle: "Couldn't load the standard rate",
     // Tags on the tiers of an item's default monthly rate.

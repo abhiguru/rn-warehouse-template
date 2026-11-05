@@ -196,6 +196,8 @@ export const pricing: Translation<typeof source> = {
     changeTier: '{{band}}: ભાડું {{rent}}, મજૂરી {{labour}}, ટેક્સ {{tax}}%',
     reload: 'ફરી લોડ કરો',
     lastTierHint: '{{kg}} કિલોથી વધુ વજનના નંગ પર પ્રમાણભૂત દર લાગતો નથી.',
+    bandLine: 'ભાડું {{rent}} · મજૂરી {{labour}} · ટેક્સ {{tax}}',
+    bandNeedsFix: 'સુધારવાની જરૂર છે',
     loading: 'પ્રમાણભૂત દર લોડ થઈ રહ્યો છે',
     loadErrorTitle: 'પ્રમાણભૂત દર લોડ થઈ શક્યો નહીં',
     // Tags on the tiers of an item's default monthly rate.
