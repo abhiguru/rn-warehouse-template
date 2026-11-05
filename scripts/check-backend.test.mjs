@@ -15,6 +15,6 @@ test('rejects incomplete bootstrap instead of reporting success', () => assert.t
 
 test('rejects invalid origins, expired keys, malformed shapes and private envelope fields', () => {
   for (const origin of ['ftp://localhost', 'http://user:pass@localhost', 'http://localhost/path', 'http://localhost?key=private', 'not a URL']) assert.throws(() => validatePublicConfig(config(), origin));
-  for (const change of [ { maintenanceMode: 'false' }, { featureFlags: { printing: 'yes' } }, { urls: { publicConfig: 'http://other.example', fullConfig: url + '/functions/v1/get-config' } }, { anonKey: 'invalid' }, { anonKey: `header.${Buffer.from(JSON.stringify({ role: 'anon', exp: 1 })).toString('base64url')}.signature` } ]) assert.throws(() => validatePublicConfig({ success: true, data: { ...config().data, ...change } }, url));
+  for (const change of [ { version: 1 }, { featureFlags: { printing: 'yes' } }, { urls: { publicConfig: 'http://other.example', fullConfig: url + '/functions/v1/get-config' } }, { anonKey: 'invalid' }, { anonKey: `header.${Buffer.from(JSON.stringify({ role: 'anon', exp: 1 })).toString('base64url')}.signature` } ]) assert.throws(() => validatePublicConfig({ success: true, data: { ...config().data, ...change } }, url));
   assert.throws(() => validatePublicConfig({ ...config(), debug: { JWT_SECRET: 'fixture-private-field' } }, url));
 });
