@@ -519,6 +519,7 @@ export const grn = {
     weightWhole: 'Weight must be a whole number',
     weightNegative: 'Weight cannot be negative',
     weightMax: 'Weight must be at most 9,999',
+    weightMaxSaved: 'Weight must be at most 999,999,999',
     itemInvalid: 'Invalid item selection',
     itemSelectRequired: 'Please select an item from the catalog',
     itemNameRequired: 'Item name is required',

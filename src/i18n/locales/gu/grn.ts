@@ -527,6 +527,7 @@ export const grn: Translation<typeof source> = {
     weightWhole: 'વજન પૂર્ણ આંકડામાં હોવું જોઈએ',
     weightNegative: 'વજન શૂન્યથી ઓછું ન હોઈ શકે',
     weightMax: 'વજન વધુમાં વધુ ૯,૯૯૯ હોઈ શકે',
+    weightMaxSaved: 'વજન વધુમાં વધુ ૯૯,૯૯,૯૯,૯૯૯ હોઈ શકે',
     itemInvalid: 'આઇટમની પસંદગી બરાબર નથી',
     itemSelectRequired: 'યાદીમાંથી આઇટમ પસંદ કરો',
     itemNameRequired: 'આઇટમનું નામ જરૂરી છે',
