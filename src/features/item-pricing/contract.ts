@@ -3,7 +3,7 @@ import type { PriceType } from '@/types/item-pricing.types';
 /**
  * How a rate form opens. The rate boxes (useRateEditor) use every mode.
  */
-export type EditorMode = 'change' | 'add' | 'addCustomer' | 'correct' | 'upcoming';
+export type EditorMode = 'change' | 'add' | 'addBand' | 'addCustomer' | 'correct' | 'upcoming';
 
 /** What a rate form needs to open. Built by useRateEditor from its args; the snake_case names are kept from the old route params. */
 export type EditorParams = {
@@ -32,7 +32,7 @@ export const itemPagePath = (itemId: string) => ({ pathname: '/item/[id]', param
 /** The item page on its Pricing tab: the way into the rates of an item. */
 export const itemRatesPath = (itemId: string) => ({ pathname: '/item/[id]', params: { id: itemId, tab: 'pricing' } }) as const;
 /** The full-screen form of the item's default rate: a new rate, a correction of the rate in force, or a change of an upcoming one. */
-export const rateFormPath = (p: { itemId: string; mode: 'add' | 'correct' | 'upcoming'; priceType: PriceType; startsOn?: string }) =>
+export const rateFormPath = (p: { itemId: string; mode: 'add' | 'addBand' | 'change' | 'correct' | 'upcoming'; priceType: PriceType; startsOn?: string }) =>
   ({
     pathname: '/item-rates/[itemId]/rate',
     params: { itemId: p.itemId, mode: p.mode, price_type: p.priceType, ...(p.startsOn ? { starts_on: p.startsOn } : {}) },

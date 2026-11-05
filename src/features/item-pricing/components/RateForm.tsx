@@ -13,6 +13,8 @@
  * band (From / Up to and the rent, each with + and −; labour and tax in the card only when the bands differ in them);
  * otherwise one row of labour and tax for every band; Add weight band and Copy weight bands; "View default rate", an
  * outlined pill closed by default that opens into a table of the default's bands; what changes. Save is pinned at the
+ * Mode addBand (Add rate on a rate in force, WH-74): the rate's own bands are closed cards (no fields, no remove, sent as loaded), the
+ * new bands are open, Starts on is the rate's own start or Today (AddBandStart), and Copy weight bands is left out.
  * bottom, disabled until something differs from the copy; leaving with changes asks "Discard this rate?" (both for the
  * default rate and for a customer's rate); a save goes back to the Pricing tab.
  */
@@ -33,7 +35,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import { appendBandBlock, appendEmptyBand, fromOf, lotsRule, removeBand, summaryLines, wholeKg, setBandField, setBandFrom, setFirstFrom, setUpTo, type Draft } from '../editModel';
+import { appendBandBlock, appendEmptyBand, bandPlannedNote, fromOf, lotsRule, ownStartDay, removeBand, summaryLines, wholeKg, setBandField, setBandFrom, setFirstFrom, setUpTo, type Draft } from '../editModel';
 import { priceNumber } from '@/utils/priceNumbers';
 import { laterDialogText } from '../laterRates';
 import { bandText, dateText, money, todayDay, unitText } from '../rateText';
@@ -43,6 +45,7 @@ import { useEditorFields } from '../useEditorFields';
 import { figuresStack } from '../figureRow';
 import { useRateEditor, type EditorView } from '../useRateEditor';
 import { priceTypeLabel } from '../utils/priceLabels';
+import { AddBandStart } from './AddBandStart';
 import { BandsFooter } from './BandsFooter';
 import { ChangeSummary } from './ChangeSummary';
 import { ChangesTable, type ChangeRow } from './ChangesTable';
@@ -106,7 +109,9 @@ const makeStyles = (th: ThemeTokens) => ({
 interface Props {
   itemId: string;
   /** addCustomer: a customer's own rate. add, correct and upcoming: the item's default rate. */
-  mode: Extract<EditorMode, 'add' | 'addCustomer' | 'correct' | 'upcoming'>;
+  mode: Extract<EditorMode, 'add' | 'addBand' | 'addCustomer' | 'correct' | 'upcoming'>;
+  /** Mode add only: the form is Change rate (a copy of the rate in force, a new price from a date): its title says so. */
+  changeRate?: boolean;
   /** The customer of a customer's rate (mode addCustomer); absent for the default rate. */
   customerId?: string;
   /** From the link; the rows give it too once a customer has any rate. */
@@ -125,7 +130,7 @@ interface Props {
 /** A typed rupee figure as money ("₹12.50"), or a dash while it is empty or not a number. */
 const figure = (text: string): string => (text.trim() !== '' && Number.isFinite(Number(text)) ? money(Number(text)) : '—');
 
-export function RateForm({ itemId, mode, customerId, customerName: nameFromLink, priceType: typeFromLink, startsOn: startFromLink, customerDeactivated, customerCheckFailed, onRetryCustomerCheck }: Props) {
+export function RateForm({ itemId, mode, changeRate, customerId, customerName: nameFromLink, priceType: typeFromLink, startsOn: startFromLink, customerDeactivated, customerCheckFailed, onRetryCustomerCheck }: Props) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
@@ -206,6 +211,15 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
     else if (openBand > bandCount - 1) setOpenBand(Math.max(0, bandCount - 1));
     lastCount.current = bandCount;
   }, [bandCount]);
+  // Add rate on a rate in force: the rate's own bands stay closed, so the first new band opens.
+  const lockedCount = editor.draft?.locked ?? 0;
+  const openedNew = useRef(false);
+  useEffect(() => {
+    if (lockedCount > 0 && !openedNew.current) {
+      openedNew.current = true;
+      setOpenBand(lockedCount);
+    }
+  }, [lockedCount]);
   const orderKey = editor.order.join('|');
   useEffect(() => { setOrder(editor.order); }, [orderKey]);
   // A save goes back to the Pricing tab without asking (the editor shows "Customer rate saved." or "New rate saved.").
@@ -233,7 +247,9 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
       ? t('pricing.rateForm.kickerCorrect', { type })
       : mode === 'upcoming'
         ? t('pricing.rateForm.kickerUpcoming', { type })
-        : t('pricing.rateForm.kickerAdd', { type });
+        : changeRate
+          ? t('pricing.rateForm.kickerChange', { type })
+          : t('pricing.rateForm.kickerAdd', { type });
 
   // The item's word beside its name once the item is known (the loading placeholder has no name).
   const itemTitle = item.name && 'packaging' in item ? itemWithPackaging(item.name, item.packaging) : item.name;
@@ -269,11 +285,14 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   const set = (next: Draft) => editor.setDraft(next);
   const perBand = draft.bands.some(b => b.labour !== undefined);
   const fromTextOf = (i: number) => (i === 0 ? draft.firstFromText ?? String(draft.firstFrom) : draft.bands[i].fromText ?? (fromOf(draft, i) === null ? '' : String(fromOf(draft, i))));
-  const inThePast = !!draft.startsOn && draft.startsOn < ctx.today && ctx.mode !== 'correct';
+  const inThePast = !!draft.startsOn && draft.startsOn < ctx.today && ctx.mode !== 'correct' && ctx.mode !== 'addBand';
   // The default rate: why it cannot be saved (a rate that was cancelled meanwhile, or a role that may not correct), and the lines of what changes.
   const refusal = ctx.managerOnly ? t('pricing.edit.managerOnly') : ctx.plannedGone ? t('pricing.error.notARateStart') : null;
   const lots = customerId ? null : lotsRule(draft, ctx);
   const changeLines = customerId ? [] : summaryLines(draft, ctx);
+  const addingBand = ctx.mode === 'addBand';
+  const plannedNote = addingBand ? bandPlannedNote(draft, ctx) : null;
+  const ownDay = addingBand ? ownStartDay(ctx) : null;
   // What changes, band by band, against the default's same band (shown once something was changed).
   const changeRows: ChangeRow[] = draft.bands.flatMap((band, i) => {
     const from = fromOf(draft, i);
@@ -295,7 +314,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   const helper = offline ? t('pricing.error.offline') : !draft.startsOn ? t('pricing.edit.chooseDate') : null;
   // Nothing to save until the copy of the default rate is changed (owner, 2026-10-17).
   const saveDisabled = saving || offline || !draft.startsOn || !editor.dirty || refusal !== null || (customerDeactivated !== undefined && customerDeactivated !== false);
-  const saveLabel = ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : customerId ? t('pricing.edit.saveCustomer') : t('pricing.edit.save');
+  const saveLabel = ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : addingBand ? t('pricing.edit.saveBand') : customerId ? t('pricing.edit.saveCustomer') : t('pricing.edit.save');
 
   /** A number field with + and − under it. */
   const field = (stacked: boolean, key: string, label: string, value: string, onText: (text: string) => void, kind: StepKind, fieldName: string, suffix?: string) => (
@@ -345,10 +364,17 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   );
   const bandsActions = (
     <View style={styles.section}>
-      <BandsFooter draft={draft} ctx={ctx} errors={bandsErrors} onChange={set} hideAdd={!customerId} />
-      <Button type="tertiary" leftIcon="content-copy" onPress={() => setCopyOpen(true)} disabled={offline} testID="add-rate-copy">
-        {t('pricing.edit.copyTiers')}
-      </Button>
+      {addingBand ? (
+        // The rate's own bands cannot take weights over, and the bands cannot be copied from another item here.
+        bandsErrors.bands ? <Text style={styles.warning} accessibilityRole="alert">{bandsErrors.bands}</Text> : null
+      ) : (
+        <>
+          <BandsFooter draft={draft} ctx={ctx} errors={bandsErrors} onChange={set} hideAdd={!customerId} />
+          <Button type="tertiary" leftIcon="content-copy" onPress={() => setCopyOpen(true)} disabled={offline} testID="add-rate-copy">
+            {t('pricing.edit.copyTiers')}
+          </Button>
+        </>
+      )}
     </View>
   );
 
@@ -397,6 +423,9 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
 
           {/* Starts on: the choice always shown, the rule under it. */}
           <View style={styles.section} testID="add-rate-starts">
+            {addingBand && ownDay ? (
+              <AddBandStart choice={draft.startsOnChoice} ownDay={ownDay} today={ctx.today} onChange={editor.setStartsOn} />
+            ) : (
             <StartsOnField
               choice={draft.startsOnChoice}
               day={draft.startsOn}
@@ -408,21 +437,25 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
               fixed={draft.startsOnChoice === 'fixed'}
               hideRequired
             />
+            )}
             {lots ? (
               <Text style={styles.note} testID="add-rate-rule">{lots}</Text>
             ) : draft.startsOn && ctx.mode !== 'correct' ? (
               <Text style={styles.note} numberOfLines={1} testID="add-rate-rule">{t('pricing.addForm.rule', { date: dateText(draft.startsOn) })}</Text>
             ) : null}
+            {plannedNote ? <Text style={styles.note} testID="add-rate-planned-note">{plannedNote}</Text> : null}
             {inThePast && ctx.canStartInPast ? <Text style={styles.warning}>{t('pricing.edit.pastDate', { date: dateText(draft.startsOn ?? '') })}</Text> : null}
           </View>
 
           {customerId ? null : addRow}
+          {addingBand ? <Text style={styles.note} testID="add-rate-locked-note">{t('pricing.addForm.lockedNote')}</Text> : null}
 
           {/* One card per weight band, as an accordion: the title names the weights, and closed, the rate. */}
           {draft.bands.map((band, i) => {
             const n = localizeDigits(String(i + 1));
             const fromKey = i === 0 ? 'firstFrom' : `band.${i}.from`;
-            const open = i === openBand;
+            const isLocked = i < lockedCount;
+            const open = !isLocked && i === openBand;
             const from = fromOf(draft, i);
             const upTo = wholeKg(band.upTo);
             // A range only when the band ends at or above its start; "31–0 kg" is never shown while typing.
@@ -434,6 +467,24 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
               ? t('pricing.addForm.bandRateOnce', { rent: figure(band.rent), tax: localizeDigits(tax || '—') })
               : t('pricing.addForm.bandRate', { rent: figure(band.rent), labour: figure(labour), tax: localizeDigits(tax || '—') });
             const title = t('pricing.addForm.bandTitle', { n, range });
+            if (isLocked) {
+              // The rate's own band: closed, no field, no remove; read out with its figures.
+              return (
+                <View
+                  key={i}
+                  style={styles.card}
+                  accessible
+                  accessibilityLabel={t('pricing.addForm.lockedA11y', { title, rate })}
+                  testID={`add-rate-band-${i}`}
+                  onLayout={e => { bandY.current[i] = e.nativeEvent.layout.y; }}
+                >
+                  <View style={styles.cardTitles}>
+                    <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
+                    <Text style={styles.cardLine} numberOfLines={2} testID={`add-rate-band-${i}-rate`}>{rate}</Text>
+                  </View>
+                </View>
+              );
+            }
             return (
               <View key={i} style={[styles.card, open && styles.cardOpen]} testID={`add-rate-band-${i}`} onLayout={e => { bandY.current[i] = e.nativeEvent.layout.y; }}>
                 <View style={styles.cardHead}>
@@ -451,7 +502,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
                     </View>
                     <Icon name={open ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={th.brand.tint} />
                   </Pressable>
-                  {draft.bands.length > 1 ? (
+                  {draft.bands.length > 1 && !isLocked ? (
                     <Pressable style={styles.remove} onPress={() => set(removeBand(draft, i))} accessibilityRole="button" accessibilityLabel={t('pricing.addForm.removeBand', { n })} testID={`add-rate-band-${i}-remove`}>
                       <Icon name="trash-can-outline" size={iconSize.md} color={th.icon.secondary} />
                     </Pressable>
