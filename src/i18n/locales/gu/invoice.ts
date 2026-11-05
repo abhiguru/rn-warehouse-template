@@ -25,6 +25,8 @@ export const invoice: Translation<typeof source> = {
     surchargeIncluded: 'વધારાનો ચાર્જ (સામેલ)',
     rounding: 'પૂરા રૂપિયા',
     netBeforeTax: 'ટેક્સ પહેલાંની રકમ',
+    // Draft for the owner's wording review (WH-59).
+    subtotal: 'પેટા સરવાળો',
     totalAmount: 'કુલ રકમ',
     percent: '{{value}}%',
     gst: 'GST',
