@@ -294,6 +294,7 @@ export const pricing: Translation<typeof source> = {
     changeFigureA11y: '{{name}} {{value}}, મૂળ {{dflt}}',
     bandTitle: 'વજન મર્યાદા {{n}} · {{range}}',
     bandNew: 'વજન નક્કી નથી',
+    bandsHeading: 'વજન મર્યાદા',
     bandRate: 'ભાડું {{rent}} · મજૂરી {{labour}} · ટેક્સ {{tax}}%',
     bandRateOnce: 'ભાડું {{rent}} · ટેક્સ {{tax}}%',
     copied: 'મૂળ દરમાંથી નકલ કરેલ',

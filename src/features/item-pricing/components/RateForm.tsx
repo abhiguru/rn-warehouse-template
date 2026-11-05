@@ -33,7 +33,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import { fromOf, lotsRule, removeBand, summaryLines, wholeKg, setBandField, setBandFrom, setFirstFrom, setUpTo, type Draft } from '../editModel';
+import { appendBandBlock, appendEmptyBand, fromOf, lotsRule, removeBand, summaryLines, wholeKg, setBandField, setBandFrom, setFirstFrom, setUpTo, type Draft } from '../editModel';
 import { priceNumber } from '@/utils/priceNumbers';
 import { laterDialogText } from '../laterRates';
 import { bandText, dateText, money, todayDay, unitText } from '../rateText';
@@ -86,6 +86,8 @@ const makeStyles = (th: ThemeTokens) => ({
   cardToggle: { flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, minHeight: touchTarget, gap: space.sm },
   cardTitles: { flex: 1 },
   cardTitle: { ...typography.subhead, fontWeight: '600' as const, color: th.text.primary },
+  addRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, columnGap: space.sm },
+  addHeading: { ...typography.footnote, fontWeight: '600' as const, textTransform: 'uppercase' as const, color: th.text.secondary, flexShrink: 1 },
   fromLine: { ...typography.subhead, color: th.text.secondary },
   cardLine: { ...typography.footnote, color: th.text.secondary },
   remove: { width: touchTarget, height: touchTarget, alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: -space.sm },
@@ -170,6 +172,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
     },
   };
   const leave = useRef<() => void>(() => undefined);
+  const bandY = useRef<Record<number, number>>({});
 
   const editor = useRateEditor({
     item,
@@ -195,7 +198,11 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
   const bandCount = editor.draft?.bands.length ?? 0;
   const lastCount = useRef(bandCount);
   useEffect(() => {
-    if (bandCount > lastCount.current && lastCount.current > 0) setOpenBand(bandCount - 1);
+    if (bandCount > lastCount.current && lastCount.current > 0) {
+      setOpenBand(bandCount - 1);
+      // The new band may be below the Save bar: bring its heading to the top once the bands have settled.
+      setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, (bandY.current[bandCount - 1] ?? 0) - space.sm), animated: true }), 120);
+    }
     else if (openBand > bandCount - 1) setOpenBand(Math.max(0, bandCount - 1));
     lastCount.current = bandCount;
   }, [bandCount]);
@@ -319,9 +326,26 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
 
   // A band-wide refusal (gap, overlap) is the strip at the top of the form; it is not drawn a second time under the bands.
   const bandsErrors = editor.strip && editor.strip === errors.bands ? { ...errors, bands: '' } : errors;
+  // An item's own rate: "Weight bands" with Add weight band beside it, above Band 1, so the button is on screen when the
+  // form opens whatever the open band's height. The row wraps (large text, Gujarati) so the button stays whole.
+  const addBlock = appendBandBlock(draft);
+  const addRow = (
+    <View style={styles.section} testID="add-rate-bands-header">
+      <View style={styles.addRow}>
+        <Text style={styles.addHeading} accessibilityRole="header">{t('pricing.addForm.bandsHeading')}</Text>
+        {addBlock === 'max' ? null : (
+          <Button type="tertiary" leftIcon="plus" disabled={addBlock !== null} onPress={() => set(appendEmptyBand(draft))} testID="add-band">
+            {t('pricing.edit.addBand')}
+          </Button>
+        )}
+      </View>
+      {addBlock === 'max' ? <Text style={styles.note}>{t('pricing.edit.bandsFull')}</Text> : null}
+      {addBlock === 'upTo' ? <Text style={styles.note}>{t('pricing.edit.addBandNeedsUpTo')}</Text> : null}
+    </View>
+  );
   const bandsActions = (
     <View style={styles.section}>
-      <BandsFooter draft={draft} ctx={ctx} errors={bandsErrors} onChange={set} />
+      <BandsFooter draft={draft} ctx={ctx} errors={bandsErrors} onChange={set} hideAdd={!customerId} />
       <Button type="tertiary" leftIcon="content-copy" onPress={() => setCopyOpen(true)} disabled={offline} testID="add-rate-copy">
         {t('pricing.edit.copyTiers')}
       </Button>
@@ -392,6 +416,8 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
             {inThePast && ctx.canStartInPast ? <Text style={styles.warning}>{t('pricing.edit.pastDate', { date: dateText(draft.startsOn ?? '') })}</Text> : null}
           </View>
 
+          {customerId ? null : addRow}
+
           {/* One card per weight band, as an accordion: the title names the weights, and closed, the rate. */}
           {draft.bands.map((band, i) => {
             const n = localizeDigits(String(i + 1));
@@ -409,7 +435,7 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
               : t('pricing.addForm.bandRate', { rent: figure(band.rent), labour: figure(labour), tax: localizeDigits(tax || '—') });
             const title = t('pricing.addForm.bandTitle', { n, range });
             return (
-              <View key={i} style={[styles.card, open && styles.cardOpen]} testID={`add-rate-band-${i}`}>
+              <View key={i} style={[styles.card, open && styles.cardOpen]} testID={`add-rate-band-${i}`} onLayout={e => { bandY.current[i] = e.nativeEvent.layout.y; }}>
                 <View style={styles.cardHead}>
                   <Pressable
                     style={styles.cardToggle}
@@ -456,7 +482,6 @@ export function RateForm({ itemId, mode, customerId, customerName: nameFromLink,
             );
           })}
 
-          {/* An item's own rate: Add weight band sits right under the bands, on screen when the form opens. */}
           {customerId ? null : bandsActions}
 
           {/* Labour and tax once, for every band, unless the bands differ in them. */}

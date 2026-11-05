@@ -25,6 +25,8 @@ interface Props {
   onAddPress?: () => void;
   /** Standard rate: the panel that asks for the start, drawn in place of the Add band button while it is open. */
   addPanel?: ReactNode;
+  /** The item's own rate form draws Add band and its reasons itself, above the bands: leave them out here. */
+  hideAdd?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -32,14 +34,14 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPress, addPanel }: Props) {
+export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPress, addPanel, hideAdd }: Props) {
   const styles = useThemedStyles(makeStyles);
   const addBlock = appendBandBlock(draft);
   return (
     <>
       {draft.bands.length >= 2 ? <Text style={styles.note} testID="remove-band-note">{t('pricing.edit.removeBandNote')}</Text> : null}
       {errors.bands ? <Text style={styles.error} accessibilityRole="alert">{errors.bands}</Text> : null}
-      {addBlock === 'max' ? (
+      {hideAdd ? null : addBlock === 'max' ? (
         <Text style={styles.note}>{t('pricing.edit.bandsFull')}</Text>
       ) : addPanel ? (
         addPanel

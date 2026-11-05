@@ -292,6 +292,7 @@ export const pricing = {
     changeFigureA11y: '{{name}} {{value}}, default {{dflt}}',
     bandTitle: 'Band {{n}} · {{range}}',
     bandNew: 'weights not set',
+    bandsHeading: 'Weight bands',
     bandRate: '{{rent}} rent · {{labour}} labour · {{tax}}% tax',
     bandRateOnce: '{{rent}} rent · {{tax}}% tax',
     copied: 'Copied from the default rate',
