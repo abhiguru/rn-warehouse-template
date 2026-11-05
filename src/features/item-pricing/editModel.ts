@@ -81,6 +81,8 @@ export interface EditorContext {
   lockedRows?: ItemStoragePrice[];
   /** Mode addBand: the day the rate in force started (its rows' start). */
   ownStart?: string | null;
+  /** Mode addBand: the rows in force do not share one start day, so only Today is offered (nothing is sent as a correction). */
+  mixedStarts?: boolean;
 }
 
 export interface Scope {
@@ -565,8 +567,10 @@ export function initialDraft({ mode, params, rows, role, today, earliest }: Open
     // Nothing in force (the rate ended meanwhile): the form opens as Add rate always did.
     if (own.length === 0) return initialDraft({ mode: 'add', params, rows, role, today, earliest });
     const lastOwn = own[own.length - 1];
-    const ownStart = own.map(r => day(r.effective_from)).sort()[0];
-    const context: EditorContext = { ...base, mode, priceTypeChoosable: false, lockedRows: own, ownStart };
+    const starts = [...new Set(own.map(r => day(r.effective_from)))].sort();
+    const mixedStarts = starts.length > 1;
+    const ownStart = mixedStarts ? null : starts[0];
+    const context: EditorContext = { ...base, mode, priceTypeChoosable: false, lockedRows: own, ownStart, mixedStarts };
     const opened = draftFromRows(own, priceType, true, false);
     const draft: Draft = {
       ...opened,
@@ -576,7 +580,8 @@ export function initialDraft({ mode, params, rows, role, today, earliest }: Open
       ],
       locked: own.length,
     };
-    return { draft: withStart(draft, 'ownStart', ownStartDay(context) ?? ownStart), context };
+    const ownDay = ownStartDay(context);
+    return { draft: ownDay ? withStart(draft, 'ownStart', ownDay) : withStart(draft, 'today', today), context };
   }
 
   // ---- a new rate ----
