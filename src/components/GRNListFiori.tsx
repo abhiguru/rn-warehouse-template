@@ -38,7 +38,7 @@ import { printGRNRange } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 import { StatusTag } from '@/components/ui';
-import { getStatusColors, getStockValueLevel } from '@/utils/stockStatus';
+import { getStatusColors, getStockBadgeLabel, getStockValueLevel, STOCK_VALUE_ICONS } from '@/utils/stockStatus';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
@@ -77,7 +77,7 @@ import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
 import { formatPackages, packNounCapital, sharedPackaging } from '@/utils/packagingWord';
-import { formatSectionDate, formatNumber, formatCount, formatDate, formatSpokenDate, formatLoadedAt, formatWeightEach } from '@/utils/formatters';
+import { formatSectionDate, formatNumber, formatCount, formatCardDate, formatWeight, formatSpokenDate, formatLoadedAt, formatWeightEach } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
 import { t as translate, formatIdentifier } from '@/i18n';
@@ -300,16 +300,20 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const matched = hiddenMatches(group, words);
   const swipeableRef = useRef<SwipeableMethods>(null);
 
-  // Totals of the receipt: bags received and bags in stock. A total weight is
-  // not shown (style guide 12.3); the open table has each line's "Kg each".
+  // Totals of the receipt: bags received, bags in stock and the weight received
+  // (bags received x kg each, as the old card summed it). The collapsed card shows
+  // the total weight, an exception to style guide 12.3 (WH-58); the open table has each line's "Kg each".
   const totalQty = group.items.reduce((sum, item) => sum + (item.qty || 0), 0);
   const totalStock = group.items.reduce((sum, item) => sum + (item.stock || 0), 0);
+  const totalWeight = group.items.reduce((sum, item) => sum + (item.qty || 0) * (item.weight || 0), 0);
 
-  const stockStatus = stockStatusFor(totalStock, totalQty);
-  // The number's colour follows how much is left (style guide 3.5); the tag keeps the Stock rules.
-  const stockValueColor = getStatusColors(getStockValueLevel(totalStock, totalQty), t).dark;
+  // One level colours the box, the badge and the number (style guide 3.5, WH-57 and WH-58). The lines keep their own tags.
+  const valueLevel = getStockValueLevel(totalStock, totalQty);
+  const levelColors = getStatusColors(valueLevel, t);
+  const badgeLabel = getStockBadgeLabel(totalStock, totalQty);
+  const weightText = formatWeight(Math.round(totalWeight), 0);
   const stock = stockText(totalStock, totalQty, sharedPackaging(group.items.map((item) => item.packaging)));
-  const displayDate = formatDate(group.date);
+  const displayDate = formatCardDate(group.date);
   // Under a line-level filter the items, bags and tag are those of the matching lines only, and the card says so.
   const itemCountLabel = linesHidden
     ? translate('lists.grn.matchingItems', { count: group.items.length })
@@ -381,7 +385,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
             group.registration,
             itemCountLabel,
             stock,
-            stockStatus.label,
+            badgeLabel,
+            weightText,
             filteredNote,
             matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
           ].filter(Boolean).join(', ')}
@@ -390,6 +395,15 @@ const GRNCardFiori = memo<GRNCardProps>(({
           onAccessibilityAction={actions.length > 0 ? event => runAction(event.nativeEvent.actionName) : undefined}
           testID={`grn-card-${group.grnId}`}
         >
+          {/* Stock box: decorative, the badge and the numbers say it */}
+          <View
+            style={[styles.statusIconBox, { backgroundColor: levelColors.light, borderColor: levelColors.border }]}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+          >
+            <Icon name={STOCK_VALUE_ICONS[valueLevel]} size={iconSize.lg} color={levelColors.main} />
+          </View>
+
           {/* Main content */}
           <View style={styles.mainContent}>
             <HighlightedText style={styles.titleText} numberOfLines={2} text={title} words={words} />
@@ -409,8 +423,9 @@ const GRNCardFiori = memo<GRNCardProps>(({
                   </View>
                 </>
               )}
-              <View style={styles.footerDot} />
-              <Text style={styles.footerText} {...singleLineText()}>{itemCountLabel}</Text>
+              <View style={styles.itemCountPill}>
+                <Text style={styles.itemCountText} {...singleLineText()}>{itemCountLabel}</Text>
+              </View>
             </View>
             {filteredNote ? (
               <Text style={styles.filteredNote} testID={`grn-card-filtered-note-${group.grnId}`}>{filteredNote}</Text>
@@ -426,10 +441,20 @@ const GRNCardFiori = memo<GRNCardProps>(({
             ) : null}
           </View>
 
-          {/* Attribute stack: what is left of what was received, then its status */}
+          {/* Right stack: badge, the number left with STOCK under it, total kg */}
           <View style={styles.attributeStack} testID={`grn-card-stock-${group.grnId}`}>
-            <Text style={[styles.stockValueText, { color: stockValueColor }]}>{stock}</Text>
-            <StatusTag status={stockStatus.status} label={stockStatus.label} icon={stockStatus.icon} />
+            <View style={[styles.statusBadge, { backgroundColor: levelColors.dark }]}>
+              <Text style={[styles.statusBadgeText, { color: t.text.inverse }]} maxFontSizeMultiplier={1.3} {...singleLineText()}>
+                {badgeLabel}
+              </Text>
+            </View>
+            <View style={styles.stockValueContainer}>
+              <Text style={[styles.stockValueText, { color: levelColors.dark }]} maxFontSizeMultiplier={1.3} {...singleLineText()}>
+                {formatNumber(totalStock)}
+              </Text>
+              <Text style={styles.stockLabel} maxFontSizeMultiplier={1.3}>{translate('lists.grn.stockLabel')}</Text>
+            </View>
+            <Text style={styles.weightText} maxFontSizeMultiplier={1.3} {...singleLineText()}>{weightText}</Text>
           </View>
         </Pressable>
 

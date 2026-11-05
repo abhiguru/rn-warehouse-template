@@ -102,6 +102,28 @@ export function getStockValueLevel(stock: number, qty: number): StockStatus {
   return 'negative';
 }
 
+/** Icon of the GRN list card's stock box, by the colour level of its value (WH-58). */
+export const STOCK_VALUE_ICONS: Record<StockStatus, IconName> = {
+  positive: 'package-variant',
+  critical: 'package-variant-minus',
+  negative: 'package-variant-closed-remove',
+  neutral: 'help-circle-outline',
+};
+
+/**
+ * The word of the GRN list card's badge (WH-58): nothing received N/A, nothing
+ * left Empty, everything left Full, anything between Partial. The colour comes
+ * from `getStockValueLevel`, so 85% left is a green Partial and 10% a red one.
+ */
+export function getStockBadgeLabel(stock: number, qty: number): string {
+  const safeStock = Number(stock) || 0;
+  const safeQty = Number(qty) || 0;
+  if (safeQty <= 0) return t('lists.grn.badge.na');
+  if (safeStock <= 0) return t('lists.grn.badge.empty');
+  if (safeStock >= safeQty) return t('lists.grn.badge.full');
+  return t('lists.grn.badge.partial');
+}
+
 /** True when the stock is low (critical) under the one rule. */
 export function isLowStock(stock: number, originalQty: number): boolean {
   return getStockLevel(stock, originalQty) === 'critical';

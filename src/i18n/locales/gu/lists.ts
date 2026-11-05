@@ -43,6 +43,9 @@ export const lists: Translation<typeof source> = {
     // Draft for the owner's wording review (code review 2026-10-18).
     filteredNote: 'ફક્ત ફિલ્ટર સાથે મળતી આઇટમ જ બતાવી છે.',
     noQuantity: 'નંગ નથી',
+    // Drafts for the owner's wording review (WH-58).
+    badge: { full: 'પૂરો', partial: 'આંશિક', empty: 'ખાલી', na: 'લાગુ નથી' },
+    stockLabel: 'સ્ટોક',
     itemStock: 'સ્ટોકમાં {{stock}}, {{status}}',
     // Drafts for the owner's wording review (GRN list review 2026-10-18): openHint, openHintActions,
     // showDetailsOf, loadMoreFailed, retryMore, staleTitle, staleText, retryRefresh.

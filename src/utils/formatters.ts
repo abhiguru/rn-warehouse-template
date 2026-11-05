@@ -200,6 +200,18 @@ export const formatDate = (date: string | Date | null | undefined): string => {
   return writeDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() });
 };
 
+/**
+ * The short card date, "12 Jan 26": day, month name and two-digit year, in the
+ * language's digits and month names. Used by the GRN list's collapsed card only
+ * (style guide 3.5 exception); every other screen uses `formatDate`.
+ * Returns "—" when the date is missing or invalid.
+ */
+export const formatCardDate = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  if (!d) return '—';
+  return `${localizeDigits(String(d.getDate()))} ${words().monthsShort[d.getMonth()]} ${localizeDigits(twoDigits(d.getFullYear() % 100))}`;
+};
+
 /** The date for a screen reader (accessibilityLabel, Hint, Value): "9 Oct 2026". Returns "—" when missing or invalid. */
 export const formatSpokenDate = (date: string | Date | null | undefined): string => {
   const d = toDate(date);
