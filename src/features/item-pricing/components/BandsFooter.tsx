@@ -3,7 +3,7 @@
  * as a whole (a gap or an overlap the server found), Add band with the reason it is off, and the note on
  * the weights outside a customer's bands. Shared by the card-per-band editor and the editable table.
  */
-import React from 'react';
+import React, { type ReactNode } from 'react';
 import { Text } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { useThemedStyles } from '@/hooks/useTheme';
@@ -21,6 +21,10 @@ interface Props {
   onChange: (next: Draft) => void;
   /** The item's packaging, for the word in the note; unknown (the standard rate) keeps "bags". */
   packaging?: string | null;
+  /** Standard rate: Add band asks where the new band starts (this runs instead of adding at the end). */
+  onAddPress?: () => void;
+  /** Standard rate: the panel that asks for the start, drawn in place of the Add band button while it is open. */
+  addPanel?: ReactNode;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -28,7 +32,7 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function BandsFooter({ draft, ctx, errors, onChange, packaging }: Props) {
+export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPress, addPanel }: Props) {
   const styles = useThemedStyles(makeStyles);
   const addBlock = appendBandBlock(draft);
   return (
@@ -37,9 +41,11 @@ export function BandsFooter({ draft, ctx, errors, onChange, packaging }: Props) 
       {errors.bands ? <Text style={styles.error} accessibilityRole="alert">{errors.bands}</Text> : null}
       {addBlock === 'max' ? (
         <Text style={styles.note}>{t('pricing.edit.bandsFull')}</Text>
+      ) : addPanel ? (
+        addPanel
       ) : (
         <>
-          <Button type="tertiary" leftIcon="plus" disabled={addBlock !== null} onPress={() => onChange(appendEmptyBand(draft))} testID="add-band">
+          <Button type="tertiary" leftIcon="plus" disabled={addBlock !== null} onPress={() => (onAddPress ? onAddPress() : onChange(appendEmptyBand(draft)))} testID="add-band">
             {t('pricing.edit.addBand')}
           </Button>
           {addBlock === 'upTo' ? <Text style={styles.note}>{t('pricing.edit.addBandNeedsUpTo')}</Text> : null}

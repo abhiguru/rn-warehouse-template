@@ -242,6 +242,13 @@ export default function StandardRateScreen() {
     else go();
   };
 
+  // Errors keyed by band index (a refusal the server named) are dropped when the bands shift; a checked form is re-validated
+  // by setDraft, which runs just before this.
+  const dropBandErrors = () => {
+    if (checked.current) return;
+    setErrors(current => Object.fromEntries(Object.entries(current).filter(([k]) => !k.startsWith('band.'))));
+  };
+
   const folding: FoldingBands = {
     open: sections.open === null ? null : Number(sections.open),
     onToggle: index => {
@@ -256,8 +263,20 @@ export default function StandardRateScreen() {
         }, FOLD_SETTLE_MS);
       }
     },
-    onAdd: index => { openBand(index); },
+    onAdd: index => {
+      // The bands after a middle insert moved up one place: errors named by band index would point at the wrong band.
+      dropBandErrors();
+      openBand(index);
+      // Bring the new band's heading into view once the bands have settled.
+      later(() => {
+        const y = layoutY.current.card + (layoutY.current.bands[index] ?? 0);
+        if (y - space.sm < scrollY.current || y > scrollY.current + windowHeightRef.current / 2) {
+          scrollRef.current?.scrollTo({ y: Math.max(0, y - space.sm), animated: true });
+        }
+      }, FOLD_SETTLE_MS);
+    },
     onRemove: (index, count) => {
+      dropBandErrors();
       const current = openBandRef.current;
       if (current === null) return;
       // Keep the same band open by its shifted index; if the open one was removed, open its neighbour.

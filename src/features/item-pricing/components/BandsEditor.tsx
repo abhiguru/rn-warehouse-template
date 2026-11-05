@@ -4,8 +4,8 @@
  * In a default rate a band starts where the one before ends (no gap, no overlap, the server
  * refuses a gap). In a customer rate the "From" can be typed above that, which leaves a gap whose weights pay the default rate. Built from ui/Input only, with no field or dialog of its own (P-26).
  */
-import React from 'react';
-import { Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import React, { useState } from 'react';
+import { Keyboard, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useThemedStyles } from '@/hooks/useTheme';
@@ -19,6 +19,7 @@ import {
   setBandFrom,
   setFirstFrom,
   setUpTo,
+  insertBandAt,
   removeBand,
   wholeKg,
   type Draft,
@@ -38,7 +39,7 @@ export interface FoldingBands {
   /** Index of the open band, or null when all are closed. */
   open: number | null;
   onToggle: (index: number) => void;
-  /** A band was added: the screen opens it. */
+  /** A band was added at `index` (in the middle or at the end): the screen opens it. */
   onAdd: (index: number) => void;
   /** Band `index` was removed: the screen keeps the right band open; `count` is the number left. */
   onRemove: (index: number, count: number) => void;
@@ -79,6 +80,8 @@ const makeStyles = (t: ThemeTokens) => ({
   prefix: { ...typography.body, color: t.text.secondary },
   note: { ...typography.footnote, color: t.text.secondary },
   foldBody: { gap: space.xs },
+  addPanel: { gap: space.sm },
+  addButtons: { flexDirection: 'row' as const, justifyContent: 'flex-end' as const, gap: space.sm, flexWrap: 'wrap' as const },
   removeRow: { alignItems: 'flex-end' as const },
 });
 
@@ -100,10 +103,55 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, f
     if (!text) return dash;
     return sign === 'rupee' ? `₹${localizeDigits(text)}` : `${localizeDigits(text)}%`;
   };
-  const changeDraft = (next: Draft) => {
-    onChange(next);
-    if (folding && next.bands.length > draft.bands.length) folding.onAdd(next.bands.length - 1);
+  // Standard rate: Add band asks where the new band starts (prefilled: one kg above the last band, today's add at the end).
+  const [adding, setAdding] = useState(false);
+  const [startText, setStartText] = useState('');
+  const [startError, setStartError] = useState<string | undefined>();
+  const lastEnd = wholeKg(draft.bands[draft.bands.length - 1]?.upTo);
+  const openAdd = () => {
+    setStartText(lastEnd === null ? '' : String(lastEnd + 1));
+    setStartError(undefined);
+    setAdding(true);
   };
+  const closeAdd = () => {
+    setAdding(false);
+    setStartText('');
+    setStartError(undefined);
+  };
+  const confirmAdd = () => {
+    const result = insertBandAt(draft, startText);
+    if (!result.ok) {
+      setStartError(result.reason);
+      return;
+    }
+    Keyboard.dismiss();
+    closeAdd();
+    onChange(result.draft);
+    folding?.onAdd(result.index);
+  };
+  const addPanel = folding && adding ? (
+    <View style={styles.addPanel} testID="add-band-panel">
+      <Input
+        label={t('pricing.edit.insertLabel')}
+        required
+        numeric
+        selectTextOnFocus
+        value={startText}
+        onChangeText={text => { setStartText(text); setStartError(undefined); }}
+        keyboardType="number-pad"
+        returnKeyType="done"
+        error={startError}
+        rightIcon={<Text style={styles.unit}>{t('pricing.kg')}</Text>}
+        testID="add-band-start"
+        {...fieldLink(fields, 'addBand.start')}
+        onSubmitEditing={confirmAdd}
+      />
+      <View style={styles.addButtons}>
+        <Button type="tertiary" onPress={closeAdd} testID="add-band-cancel">{t('common.cancel')}</Button>
+        <Button type="primary" onPress={confirmAdd} testID="add-band-confirm">{t('pricing.edit.insertConfirm')}</Button>
+      </View>
+    </View>
+  ) : undefined;
   const bandCards = draft.bands.map((band, i) => {
         const from = fromOf(draft, i);
         const to = wholeKg(band.upTo);
@@ -281,7 +329,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, f
           {bandCards}
         </ReviewCard>
       ) : bandCards}
-      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={changeDraft} packaging={packaging} />
+      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} packaging={packaging} onAddPress={folding ? openAdd : undefined} addPanel={addPanel} />
     </View>
   );
 }

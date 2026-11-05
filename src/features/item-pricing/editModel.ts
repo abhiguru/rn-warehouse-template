@@ -306,6 +306,46 @@ export function appendEmptyBand(draft: Draft): Draft {
   return { ...draft, bands: [...draft.bands, fresh] };
 }
 
+export type InsertBandResult = { ok: true; draft: Draft; index: number } | { ok: false; reason: string };
+
+/**
+ * Adds a band that starts at `startText` kg. Inside a band it splits it: that band ends one kg before the
+ * start and the new band takes its old end, rent, labour and tax (no other band changes). Right after the
+ * last band it is today's append (blank figures). Refused, with the reason in words, when the start is not a
+ * whole number, is the start of a band already or lies before the first one, would leave a gap, or when
+ * there are ten bands or a band's "Up to" is not yet a whole number.
+ */
+export function insertBandAt(draft: Draft, startText: string): InsertBandResult {
+  const fail = (reason: string): InsertBandResult => ({ ok: false, reason });
+  if (draft.bands.length >= MAX_BANDS) return fail(t('pricing.edit.bandsFull'));
+  const ends = draft.bands.map(b => wholeKg(b.upTo));
+  if (ends.some(e => e === null)) return fail(t('pricing.edit.insertNeedsUpTo'));
+  const start = wholeKg(startText);
+  if (start === null) return fail(t('pricing.edit.insertWhole'));
+  const lastEnd = ends[ends.length - 1] as number;
+  if (start > lastEnd + 1) return fail(t('pricing.edit.insertGap', { kg: localizeDigits(String(lastEnd + 1)) }));
+  if (start === lastEnd + 1) {
+    const draftAfter = appendEmptyBand(draft);
+    return draftAfter === draft ? fail(t('pricing.edit.bandsFull')) : { ok: true, draft: draftAfter, index: draft.bands.length };
+  }
+  if (start < draft.firstFrom) return fail(t('pricing.edit.insertLow', { kg: localizeDigits(String(draft.firstFrom + 1)) }));
+  for (let i = 0; i < draft.bands.length; i++) {
+    const from = fromOf(draft, i);
+    const end = ends[i] as number;
+    if (from === null || !(from < start && start <= end)) continue;
+    const { rentRefused: _refused, ...band } = draft.bands[i];
+    const added: BandDraft = {
+      upTo: String(end),
+      rent: band.rent,
+      ...(band.labour !== undefined ? { labour: band.labour } : {}),
+      ...(band.tax !== undefined ? { tax: band.tax } : {}),
+    };
+    const bands = [...draft.bands.slice(0, i), { ...band, upTo: String(start - 1) }, added, ...draft.bands.slice(i + 1)];
+    return { ok: true, draft: { ...draft, bands }, index: i + 1 };
+  }
+  return fail(t('pricing.edit.insertExists', { kg: localizeDigits(String(start)) }));
+}
+
 /**
  * Removes a band. The LAST band is dropped and the range gets shorter (the band before keeps its own
  * "Up to": owner decision 6, so "Up to 1, Up to 8, remove the rest" ends at 8). Any other band hands
