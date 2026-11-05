@@ -38,6 +38,7 @@ import { printGRNRange } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 import { StatusTag } from '@/components/ui';
+import { getStatusColors, getStockValueLevel } from '@/utils/stockStatus';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
@@ -305,6 +306,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const totalStock = group.items.reduce((sum, item) => sum + (item.stock || 0), 0);
 
   const stockStatus = stockStatusFor(totalStock, totalQty);
+  // The number's colour follows how much is left (style guide 3.5); the tag keeps the Stock rules.
+  const stockValueColor = getStatusColors(getStockValueLevel(totalStock, totalQty), t).dark;
   const stock = stockText(totalStock, totalQty, sharedPackaging(group.items.map((item) => item.packaging)));
   const displayDate = formatDate(group.date);
   // Under a line-level filter the items, bags and tag are those of the matching lines only, and the card says so.
@@ -425,7 +428,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
 
           {/* Attribute stack: what is left of what was received, then its status */}
           <View style={styles.attributeStack} testID={`grn-card-stock-${group.grnId}`}>
-            <Text style={styles.stockValueText}>{stock}</Text>
+            <Text style={[styles.stockValueText, { color: stockValueColor }]}>{stock}</Text>
             <StatusTag status={stockStatus.status} label={stockStatus.label} icon={stockStatus.icon} />
           </View>
         </Pressable>
