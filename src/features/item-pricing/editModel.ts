@@ -85,6 +85,10 @@ export interface EditorContext {
   mixedStarts?: boolean;
   /** Mode addBand: a save from the default day would lose a row or a stop of the scope, so only Today is offered. */
   othersAtRisk?: boolean;
+  /** Mode addBand, only Today offered: why. 'planned' = the only cause is a planned later rate (plannedStart); 'mixed' = other cause. */
+  todayOnlyReason?: 'mixed' | 'planned' | null;
+  /** Mode addBand, todayOnlyReason 'planned': the start of that planned rate. */
+  plannedStart?: string | null;
 }
 
 export interface Scope {
@@ -589,7 +593,12 @@ export function initialDraft({ mode, params, rows, role, today, earliest }: Open
     const mixedStarts = starts.length > 1;
     const othersAtRisk = !mixedStarts && defaultDayLosesRows(rows, own, scope, starts[0], earliest ?? null);
     const ownStart = mixedStarts || othersAtRisk ? null : starts[0];
-    const context: EditorContext = { ...base, mode, priceTypeChoosable: false, lockedRows: own, ownStart, mixedStarts, othersAtRisk };
+    // Only a planned later rate when the risk is gone without the rows that start after today (mixed starts win).
+    const planned = othersAtRisk ? upcomingGroup(rows, scope, today) : null;
+    const plannedOnly = !!planned && !defaultDayLosesRows(rows.filter(r => day(r.effective_from) <= today), own, scope, starts[0], earliest ?? null);
+    const todayOnlyReason = mixedStarts ? 'mixed' : othersAtRisk ? (plannedOnly ? 'planned' : 'mixed') : null;
+    const plannedStart = plannedOnly ? planned.startsOn : null;
+    const context: EditorContext = { ...base, mode, priceTypeChoosable: false, lockedRows: own, ownStart, mixedStarts, othersAtRisk, todayOnlyReason, plannedStart };
     const opened = draftFromRows(own, priceType, true, false);
     const draft: Draft = {
       ...opened,

@@ -426,7 +426,9 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
             {addingBand && (ctx.mixedStarts || ctx.othersAtRisk) ? (
               <>
                 <Text style={styles.kicker}>{t('pricing.edit.startsOn')}</Text>
-                <Text style={styles.note} testID="add-rate-mixed-starts">{t('pricing.edit.bandMixedStarts')}</Text>
+                <Text style={styles.note} testID="add-rate-mixed-starts">{ctx.todayOnlyReason === 'planned' && ctx.plannedStart
+                    ? t('pricing.edit.bandPlannedTodayOnly', { date: dateText(ctx.plannedStart) })
+                    : t('pricing.edit.bandMixedStarts')}</Text>
               </>
             ) : addingBand && ownDay ? (
               <AddBandStart choice={draft.startsOnChoice} ownDay={ownDay} today={ctx.today} onChange={editor.setStartsOn} />

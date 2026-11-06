@@ -57,6 +57,7 @@ export const pricingEdit = {
     ruleBandEarliest: 'This rate began before {{date}}, the earliest day a rate can start. The new band starts from {{date}}; the bands above keep their figures.',
     ruleBandToday: 'Lots received from {{date}} use these bands. Earlier lots keep the old rent and have no rate for the new weights.',
     bandMixedStarts: "This rate's bands don't all run on the same dates, so a new band can only start today.",
+    bandPlannedTodayOnly: 'A rate from {{date}} is planned, so a new band can only start today. To start it earlier, cancel the planned rate first.',
     bandLaterPlanned: "A rate from {{date}} is also planned. This band isn't added to it.",
     bandLaterBlocked: "A rate from {{date}} is planned, so this band can't start from {{earliest}}. Choose Today, or cancel the planned rate first.",
     bandMoved: 'The earliest day a rate can start is {{date}}, so the new band now starts from that day. Your figures are kept. Check and save again.',
