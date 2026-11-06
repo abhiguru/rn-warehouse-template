@@ -29,10 +29,10 @@ export const acceptedWithoutRepair = {
   'GHSA-g3hv-75wg-m249': { package: 'minimatch', range: '>=7.0.0<11.0.1', reviewBy: '2026-12-15', reason: 'only the copies under glob 9 and glob 10 (minimatch 8.0.7 and 9.0.9), which package.json overrides keep because minimatch 11 breaks their RegExp check; build and test tooling only, not in the app bundle; glob itself is accepted; every other copy in the advisory\'s range is 11.0.1' },
 };
 // The packages that may declare glob or minimatch in the production tree. Each uses it in build, prebuild or
-// tooling code that the app's bundle never imports (expo-updates: only in utils/build/vcs.js).
+// tooling code that the app's bundle never imports.
 export const toolingParents = [
   '@expo/cli', '@expo/config', '@expo/config-plugins', '@expo/fingerprint', '@expo/metro-config',
-  '@sentry/bundler-plugins', 'expo-updates',
+  '@sentry/bundler-plugins',
 ];
 
 // Every place in the production tree (`npm ls --omit=dev --all --json`) where one of `names` is declared as a

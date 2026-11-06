@@ -486,6 +486,10 @@ export function initializeSentry(): void {
 
     // Sanitize breadcrumbs as they occur
     beforeBreadcrumb,
+
+    // expo-updates is not part of the app (WH-27); its listener would require it
+    integrations: integrations =>
+      integrations.filter(integration => integration.name !== 'ExpoUpdatesListener'),
   });
 }
 

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Warehouse Manager",
     "slug": "rn-warehouse-template",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "orientation": "portrait",
     "icon": "./assets/icon-1024.png",
     "userInterfaceStyle": "automatic",
@@ -45,7 +45,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.example.warehousemanager",
-      "versionCode": 700,
+      "versionCode": 800,
       "allowBackup": false,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",

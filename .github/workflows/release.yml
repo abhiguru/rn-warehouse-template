@@ -11,7 +11,11 @@ permissions:
 jobs:
   release:
     name: Validate release tag
-    runs-on: ubuntu-latest
+    # Where this job runs is the repository variable CI_RUNNER, as in ci.yml (a JSON value for
+    # runs-on, for example ["self-hosted","linux","x64","my-label"]). Without it, a GitHub-hosted
+    # runner. No fork clause is needed: a tag is pushed only by a maintainer, and a fork's tag
+    # runs in the fork, with the fork's own variables.
+    runs-on: ${{ fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
 
     steps:
       - name: Checkout

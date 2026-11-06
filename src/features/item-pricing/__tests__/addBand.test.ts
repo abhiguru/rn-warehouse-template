@@ -409,3 +409,55 @@ describe('the lots line for the item\'s first rate (WH-74)', () => {
     expect(lotsRule(setStartsOn(draft, 'today', TODAY), context)).toContain('Earlier lots keep the old rent');
   });
 });
+
+describe('why only Today is offered: a planned later rate, or another cause (WH-81)', () => {
+  it('an old one-band rate with a planned later rate gives "planned" and that rate\'s start', () => {
+    const rows = [row(0, 30, 11.25, 2.5, 5, '2020-01-01'), row(0, 30, 13, 2.5, 5, '2027-01-01')];
+    const { context } = open(rows, '2023-11-06');
+    expect(context.othersAtRisk).toBe(true);
+    expect(context.mixedStarts).toBe(false);
+    expect(context.todayOnlyReason).toBe('planned');
+    expect(context.plannedStart).toBe('2027-01-01');
+  });
+
+  it('names the soonest planned rate when two are planned', () => {
+    const rows = [row(0, 30, 11.25, 2.5, 5, '2020-01-01'), row(0, 30, 14, 2.5, 5, '2028-01-01'), row(0, 30, 13, 2.5, 5, '2027-01-01')];
+    const { context } = open(rows, '2023-11-06');
+    expect(context.todayOnlyReason).toBe('planned');
+    expect(context.plannedStart).toBe('2027-01-01');
+  });
+
+  it('bands that start on different days win over a planned rate: "mixed", with no planned start', () => {
+    const rows = [row(0, 30, 11.25, 2.5, 5, '2026-04-01'), row(31, 50, 12, 2.5, 5, '2026-06-01'), row(0, 30, 13, 2.5, 5, '2027-01-01')];
+    const { context } = open(rows);
+    expect(context.mixedStarts).toBe(true);
+    expect(context.todayOnlyReason).toBe('mixed');
+    expect(context.plannedStart).toBeNull();
+  });
+
+  it('a planned rate beside another cause is "mixed": an ended band the default day would also delete', () => {
+    const rows = [
+      row(0, 30, 11.25, 2.5, 5, '2020-01-01'),
+      row(31, 50, 12, 2.5, 5, '2024-01-01', '2024-06-30'),
+      row(0, 30, 13, 2.5, 5, '2027-01-01'),
+    ];
+    const { context } = open(rows, '2023-11-06');
+    expect(context.othersAtRisk).toBe(true);
+    expect(context.todayOnlyReason).toBe('mixed');
+    expect(context.plannedStart).toBeNull();
+  });
+
+  it('a cause with nothing planned is "mixed": an ended band that started the same day', () => {
+    const { context } = open([row(0, 30, 11.25, 2.5, 5, '2026-04-01'), row(31, 50, 12, 2.5, 5, '2026-04-01', '2026-06-30')]);
+    expect(context.othersAtRisk).toBe(true);
+    expect(context.todayOnlyReason).toBe('mixed');
+    expect(context.plannedStart).toBeNull();
+  });
+
+  it('with the default day safe there is no reason and no planned start', () => {
+    const { context } = open(ownRows());
+    expect(context.othersAtRisk).toBe(false);
+    expect(context.todayOnlyReason).toBeNull();
+    expect(context.plannedStart).toBeNull();
+  });
+});

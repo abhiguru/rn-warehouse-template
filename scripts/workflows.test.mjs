@@ -98,6 +98,18 @@ test('sdk-watch.yml takes its runner from CI_RUNNER and is not triggered by pull
   assert.match(text, /^ {2}schedule:\n/m);
 });
 
+// The release validation runs on the same runner variable as the CI jobs. Only a version tag starts it, and a tag
+// is pushed by a maintainer (a fork's tag runs in the fork, with the fork's own variables), so it has no fork clause.
+test('release.yml takes its runner from CI_RUNNER and is started only by a version tag', () => {
+  const text = workflowText('release.yml');
+  const runsOn = text.split('\n').filter(line => /^\s*runs-on:/.test(line));
+  assert.equal(runsOn.length, 1, 'one job');
+  assert.match(runsOn[0], /^ {4}runs-on: \$\{\{ fromJSON\(vars\.CI_RUNNER \|\| '"ubuntu-latest"'\) \}\}$/);
+  assert.doesNotMatch(runsOn[0], /self-hosted/);
+  assert.match(text, /^on:\n {2}push:\n {4}tags:\n {6}- 'v\*'\n\n/m, 'a version tag is the only trigger');
+  assert.doesNotMatch(text, /^\s*(?:pull_request|workflow_dispatch|schedule)/m, 'no other trigger');
+});
+
 // Review 2026-10-17, M03: the test files are excluded from `tsc --noEmit`, so a
 // type error in a test went unseen until `typecheck:tests` was run by hand.
 test('CI and the release both type-check the test files', () => {

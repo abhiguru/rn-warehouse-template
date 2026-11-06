@@ -8,11 +8,13 @@ import React from 'react';
 import { Text } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { RateForm } from '@/features/item-pricing/components/RateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
 import { replaceItemRates } from '@/services/item-pricing-service';
+import { clearRateStartFloor, rememberRateStartFloor } from '@/services/rateStartFloor';
 import { inputsWithLabel, rate, textsOf } from '@/tests/helpers/rateEditorFixtures';
 import { showToast } from '@/utils/toast';
 
@@ -174,6 +176,52 @@ describe('criterion 9: a planned later rate', () => {
   it('shows no note when nothing is planned', async () => {
     const t = await openWith([own()]);
     expect(ids(t, 'add-rate-planned-note')).toHaveLength(0);
+  });
+
+  describe('on a rate that began before the earliest day (WH-81)', () => {
+    // The facility's oldest GRN is 1 Jun 2025, so the rate from 1 Jan 2025 is older than the earliest day.
+    beforeEach(() => { rememberRateStartFloor('2025-06-01'); });
+    afterEach(() => { clearRateStartFloor(); });
+    const planned = () => rate('onion', null, 0, 30, 4, 1.5, 5, '2027-01-01', null, 'monthly', 'Review Onion Red');
+
+    it('offers only Today and gives the planned rate as the reason', async () => {
+      const t = await openWith([own(), planned()]);
+      expect(textOf(t, 'add-rate-mixed-starts')).toEqual(['A rate from 01/01/27 is planned, so a new band can only start today. To start it earlier, cancel the planned rate first.']);
+      expect(ids(t, 'add-rate-band-start')).toHaveLength(0);
+    });
+
+    it('the save is a change from today, which the server refuses while the planned rate stands: the form asks, and "Keep it" saves nothing', async () => {
+      const t = await openWith([own(), planned()]);
+      await type(t, 'Up to (kg)', '50');
+      await type(t, 'Rent ₹/month', '4');
+      // What the server answers to a change that a later rate follows (backend migration 129): a refusal naming that rate, never a success.
+      replace.mockResolvedValueOnce({
+        success: false,
+        errorCode: 'LATER_RATES_EXIST',
+        later: [{ effective_from: '2027-01-01', weight_min: 0, weight_max: 30, unit_price: 4 }],
+      } as never);
+      await pressSave(t);
+      expect(replace.mock.calls[0][0]).toMatchObject({ mode: 'change', starts_on: '2026-10-14' });
+      expect(replace.mock.calls[0][0]).not.toHaveProperty('replace_later');
+      const question = () => t.root.findAllByType(ConfirmDialog).find(d => d.props.confirmText === 'Replace it')!;
+      expect(question().props.visible).toBe(true);
+      expect(question().props.title).toBe('Replace the rate from 01/01/27?');
+      expect(question().props.cancelText).toBe('Keep it');
+      await act(async () => { question().props.onCancel(); });
+      expect(question().props.visible).toBe(false);
+      expect(replace).toHaveBeenCalledTimes(1);
+      expect(router.back).not.toHaveBeenCalled();
+    });
+
+    it('keeps the differing-dates line when an ended band is at risk as well', async () => {
+      const t = await openWith([
+        own(),
+        rate('onion', null, 31, 50, 4, 1.5, 5, '2025-08-01', '2025-12-31', 'monthly', 'Review Onion Red'),
+        planned(),
+      ]);
+      expect(textOf(t, 'add-rate-mixed-starts')).toEqual(["This rate's bands don't all run on the same dates, so a new band can only start today."]);
+      expect(ids(t, 'add-rate-band-start')).toHaveLength(0);
+    });
   });
 });
 
