@@ -10,6 +10,7 @@ jest.mock('../../config/supabaseConfig', () => ({
   getCurrentConfig: () => ({ url: 'https://example.invalid' }),
 }));
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: async () => 'token' }));
+jest.mock('expo-crypto', () => ({ randomUUID: () => jest.requireActual('node:crypto').randomUUID() }));
 
 const answer = (status: number, body: unknown) => ({
   ok: status >= 200 && status < 300,
@@ -23,7 +24,7 @@ beforeEach(() => mockFetch.mockReset());
 it('sends the financial year it was given', async () => {
   mockFetch.mockResolvedValue(answer(200, { success: true }));
   await printInvoiceRange('412', '412', 2025);
-  expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ start_inv_no_str: '412', end_inv_no_str: '412', inv_fin_year: 2025 });
+  expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ start_inv_no_str: '412', end_inv_no_str: '412', inv_fin_year: 2025, request_id: expect.any(String) });
 });
 
 it('marks a 502 with a recorded job as unconfirmed, and a plain failure as not', async () => {

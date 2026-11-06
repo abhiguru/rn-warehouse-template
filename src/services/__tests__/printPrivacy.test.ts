@@ -13,7 +13,9 @@ jest.mock('@/config/supabaseConfig', () => ({
   createAuthenticatedFetch: () => (...args: Parameters<typeof fetch>) => global.fetch(...args),
 }));
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: jest.fn() }));
+jest.mock('expo-crypto', () => ({ randomUUID: () => jest.requireActual('node:crypto').randomUUID() }));
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const token = 'fictional-access-credential-SENTINEL';
 const marker = 'Fictional private print sentinel';
 const originalFetch = global.fetch;
@@ -52,12 +54,14 @@ describe('print job submission privacy', () => {
   ] as const)('submits the %s range with the session and returns the response without logging either', async (_name, submit, path, body) => {
     const response = { success: true, message: marker, print_job: { cups_job_id: 7, job_uri: marker, printer: marker, content_size: 1 } };
     jest.mocked(fetch).mockResolvedValue(jsonResponse(response));
-    expect(await submit()).toEqual(response);
+    expect(await submit()).toEqual({ ...response, status: 200 });
     expect(fetch).toHaveBeenCalledWith(`https://warehouse.example.test/functions/v1/${path}`, expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
-      body: JSON.stringify(body),
     }));
+    // The request carries a request_id of its own: one per print action, so the server prints a repeat only once.
+    const sent = JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(sent).toEqual({ ...body, request_id: expect.stringMatching(UUID) });
     expectPrivateLogs();
     expect(logOutput()).toMatch(/"status": 200/);
     expect(logOutput()).toMatch(/"ok": true/);
@@ -65,7 +69,7 @@ describe('print job submission privacy', () => {
 
   it('returns the server error to the caller and logs only the failing status', async () => {
     jest.mocked(fetch).mockResolvedValue(jsonResponse({ success: false, error: marker }, false, 422));
-    expect(await printGRNRange('FXG0001', 'FXG0002')).toEqual({ success: false, error: marker });
+    expect(await printGRNRange('FXG0001', 'FXG0002')).toEqual({ success: false, status: 422, kind: 'other', error: marker });
     expectPrivateLogs();
     expect(logOutput()).toMatch(/"status": 422/);
     expect(logOutput()).toMatch(/"ok": false/);
@@ -77,6 +81,8 @@ describe('print job submission privacy', () => {
     for (const submit of [() => printGRNRange('a', 'b'), () => printDispatchRange('a', 'b'), () => printInvoiceRange('a', 'b')]) {
       expect(await submit()).toEqual({
         success: false,
+        status: 502,
+        kind: 'serverUnavailable',
         error: 'Server error (502): The print server is unavailable. Please try again later.',
       });
     }
@@ -86,7 +92,7 @@ describe('print job submission privacy', () => {
 
   it('returns a transport exception to the caller without logging its message', async () => {
     jest.mocked(fetch).mockRejectedValue(new Error(marker));
-    expect(await printInvoiceRange('a', 'b')).toEqual({ success: false, error: marker });
+    expect(await printInvoiceRange('a', 'b')).toEqual({ success: false, kind: 'connection', error: marker });
     expectPrivateLogs();
   });
 
