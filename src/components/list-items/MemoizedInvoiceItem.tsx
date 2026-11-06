@@ -126,7 +126,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   amountValue: {
     ...typography.headline,
-    fontSize: 18,
     fontWeight: fontWeight.bold,
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
