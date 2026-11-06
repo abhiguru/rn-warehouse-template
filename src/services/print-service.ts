@@ -81,6 +81,8 @@ export interface CancelPrintJobResponse {
   success: boolean;
   message?: string;
   error?: string;
+  /** The backend's code when it sent one: INVALID_STATUS, CANNOT_CANCEL, CANCEL_FAILED. */
+  code?: string;
 }
 
 export type PrinterStatus = 'online' | 'offline' | 'error' | 'busy';
@@ -411,26 +413,34 @@ export async function cancelPrintJob(
     }
 
     const config = getCurrentConfig();
-    const response = await authenticatedFetch(`${config.url}/rest/v1/rpc/cancel_print_job`, {
+    const response = await authenticatedFetch(`${config.url}/functions/v1/cancel-print-job`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${authToken}`,
-        apikey: config.anonKey,
       },
       body: JSON.stringify({
-        p_print_job_id: jobId,
+        print_job_id: jobId,
       }),
     });
 
     logResponse('cancelPrintJob', response);
 
-    const data = await response.json();
+    const data = await response.json().catch(() => null);
 
     if (!response.ok) {
+      const code = data && typeof data.code === 'string' ? data.code : undefined;
+      // The function's own refusals get a text of the app's own (the server's English is not shown).
+      const known: Record<string, string> = {
+        CANNOT_CANCEL: t('errors.print.cannotCancel'),
+        INVALID_STATUS: t('errors.print.cancelFinished'),
+        CANCEL_FAILED: t('errors.print.cancelUnconfirmed'),
+      };
+      if (code && known[code]) return { success: false, code, error: known[code] };
       return {
         success: false,
-        error: serverText(upgradingBody(data) ?? (data.error || data.message), t('errors.print.cancelFailed')),
+        ...(code ? { code } : {}),
+        error: serverText(upgradingBody(data) ?? (data?.error || data?.message), t('errors.print.cancelFailed')),
       };
     }
 

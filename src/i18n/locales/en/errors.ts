@@ -539,6 +539,9 @@ export const errors = {
     fetchJobsFailed: 'Failed to fetch print jobs',
     cancelFailed: 'Failed to cancel print job',
     cancelled: 'Print job cancelled successfully',
+    cannotCancel: "This job can't be cancelled: it may already be printing. Check the printer.",
+    cancelFinished: "This job has already finished or been cancelled.",
+    cancelUnconfirmed: "The cancel wasn't confirmed. The job may still print. Check the printer.",
     statusFailed: 'Failed to check printer status',
   },
   image: {

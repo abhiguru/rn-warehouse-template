@@ -375,7 +375,8 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // Read again after the cancel: a read already in flight was sent before it committed.
           void Promise.all([refetchNow(), refreshStatusNow()]);
         } else {
-          setSnackbarMessage(tr('components.printJobs.cancelFailed'));
+          // A refusal the backend explained (cannot be stopped, already finished, not confirmed) is shown as it is.
+          setSnackbarMessage(result.code && result.error ? result.error : tr('components.printJobs.cancelFailed'));
           setSnackbarVisible(true);
         }
       } catch (error) {

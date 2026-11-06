@@ -549,6 +549,9 @@ export const errors: Translation<typeof source> = {
     fetchJobsFailed: 'પ્રિન્ટ જૉબ લોડ કરી શકાઈ નથી',
     cancelFailed: 'પ્રિન્ટ જૉબ રદ કરી શકાઈ નથી',
     cancelled: 'પ્રિન્ટ જૉબ રદ થઈ',
+    cannotCancel: "આ જૉબ રદ કરી શકાતી નથી: તે કદાચ પ્રિન્ટ થઈ રહી છે. પ્રિન્ટર તપાસો.",
+    cancelFinished: "આ જૉબ પહેલેથી પૂરી થઈ છે અથવા રદ થઈ છે.",
+    cancelUnconfirmed: "રદ કરવાની પુષ્ટિ થઈ નથી. જૉબ હજી પ્રિન્ટ થઈ શકે છે. પ્રિન્ટર તપાસો.",
     statusFailed: 'પ્રિન્ટરની સ્થિતિ તપાસી શકાઈ નથી',
   },
   image: {
