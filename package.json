@@ -55,7 +55,7 @@
     "@tanstack/react-query": "^5.104.5",
     "@tanstack/react-table": "9.3.1",
     "babel-preset-expo": "~58.0.0",
-    "expo": "~58.0.22",
+    "expo": "~58.0.23",
     "expo-application": "~58.1.2",
     "expo-camera": "~58.0.14",
     "expo-constants": "~58.0.14",
@@ -67,13 +67,13 @@
     "expo-image-manipulator": "~58.0.16",
     "expo-image-picker": "~58.0.10",
     "expo-linear-gradient": "~58.0.3",
-    "expo-linking": "~58.0.15",
+    "expo-linking": "~58.0.16",
     "expo-local-authentication": "~58.0.2",
     "expo-navigation-bar": "~58.0.4",
-    "expo-router": "~58.0.29",
+    "expo-router": "~58.0.30",
     "expo-secure-store": "~58.0.2",
-    "expo-sharing": "~58.0.21",
-    "expo-splash-screen": "~58.0.12",
+    "expo-sharing": "~58.0.22",
+    "expo-splash-screen": "~58.0.13",
     "expo-status-bar": "~58.0.4",
     "expo-system-ui": "~58.0.7",
     "react": "19.3.0",
@@ -86,7 +86,7 @@
     "react-native-paper": "^5.14.5",
     "react-native-paper-dates": "^0.24.1",
     "react-native-reanimated": "4.7.1",
-    "react-native-safe-area-context": "~5.10.1",
+    "react-native-safe-area-context": "~5.11.1",
     "react-native-screens": "~4.30.0",
     "react-native-svg": "15.16.0",
     "react-native-worklets": "0.13.0",
@@ -108,7 +108,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "expo-doctor": "1.21.5",
     "jest": "~30.5.2",
-    "jest-expo": "~58.0.13",
+    "jest-expo": "~58.0.14",
     "prettier": "^3.9.10",
     "react-test-renderer": "19.3.0",
     "typescript": "~6.0.3"
@@ -118,7 +118,11 @@
     "postcss": "8.5.28",
     "compression": "1.8.2",
     "source-map-js": "1.2.2",
-    "shell-quote": "1.11.0"
+    "shell-quote": "1.11.0",
+    "minimatch@>=7.0.0 <11.0.1": "11.0.1",
+    "test-exclude@^7.0.0": {
+      "minimatch": "11.0.1"
+    }
   },
   "jest": {
     "preset": "jest-expo",

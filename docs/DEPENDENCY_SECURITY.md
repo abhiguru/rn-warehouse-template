@@ -21,6 +21,14 @@
   service, fixed in 11.0.1). A fix needs `glob` 14 and `minimatch` 11, but the dependents ask for `glob` ^7, ^9, ^10 and ^13
   and `minimatch` ^3, ^8, ^9 and ^10, so no lockfile update reaches them, and an `overrides` pin across those majors would
   break callers that use the old APIs. They are accepted for as long as nothing the app ships contains them.
+  - **minimatch 11.0.1 override (2026-11-06).** `package.json` `overrides` now carries `"minimatch@>=7.0.0 <11.0.1": "11.0.1"` and
+    `"test-exclude@^7.0.0": { "minimatch": "11.0.1" }`, so every `minimatch` 8, 9 and 10 copy in the lockfile resolves to 11.0.1
+    (`glob` 9, 10 and 13, `eslint`, `@eslint/config-array`, `@typescript-eslint/typescript-estree`, `@expo/fingerprint`, Jest's
+    `test-exclude` 7, `babel-plugin-module-resolver`). These callers use the named exports (`minimatch`, `Minimatch`, `GLOBSTAR`,
+    `escape`, `unescape`), which 11 keeps, and 11 runs on Node 18, 20 and 22 or later. `minimatch` 3.1.5 (`test-exclude` 6,
+    `@eslint/eslintrc`, `glob` 7) is outside the advisory and unchanged; it needs the default export that 9 and later removed, so it
+    must not be overridden. The `acceptedWithoutRepair` entry for GHSA-g3hv-75wg-m249 stays until the review date; `glob` is
+    unchanged. Review the overrides together with the others.
   - **What reaches the bundle: nothing.** On 2026-10-31 a static trace of every `require` and `import` (relative, aliased and
     package, with the packages' `react-native`, `browser` and `exports` entries) from the app entry and every `app/` route found
     4195 files in 130 packages. Neither `glob` nor `minimatch` is among them, and neither are `@expo/cli`, `@expo/config`,
@@ -74,7 +82,7 @@
 
 ## zod backport removed — Expo SDK 58
 
-`@expo/cli` 58.1.18 no longer depends on `zod`, so the nested `node_modules/expo/node_modules/zod` 3.25.76 that the local size
+`@expo/cli` 58.1.18 (and 58.1.19) no longer depends on `zod`, so the nested `node_modules/expo/node_modules/zod` 3.25.76 that the local size
 gate patched is gone from the lockfile. The only zod left is the dev-only 4.6.7 that `eslint-plugin-react-hooks` and
 `zod-validation-error` use, which is past the fix (GHSA-mrhx-c7xc-m3w5 is fixed in 4.6.6). The zod entries were therefore removed
 from `scripts/security-backports.json`, its tests and `acceptedAdvisories`; the accepted set is braces, sprintf-js and deepmerge.
