@@ -122,6 +122,12 @@
     "minimatch@>=7.0.0 <11.0.1": "11.0.1",
     "test-exclude@^7.0.0": {
       "minimatch": "11.0.1"
+    },
+    "glob@^9.0.0": {
+      "minimatch": "8.0.7"
+    },
+    "glob@^10.0.0": {
+      "minimatch": "9.0.9"
     }
   },
   "jest": {

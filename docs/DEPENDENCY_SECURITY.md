@@ -15,20 +15,26 @@
   React Native 0.88, Metro and Expo 58 support (`^22.13 || ^24.3 || >=26`). Node 23 and 25 are no longer admitted.
 - **Android toolchain.** React Native 0.88 builds with compile SDK 37, build tools 37.0.0, NDK 27.1.12297006 and Android Gradle
   Plugin 9.2.1. Google publishes API 37 as `platforms;android-37.0`; there is no `platforms;android-37`. Target SDK stays 36.
-- **glob: accepted without a repair, build and dev tooling only (owner decision 2026-10-31, review by 2026-12-15). minimatch was accepted the same way until the 2026-11-06 override below.**
+- **glob and minimatch (the copies under glob 9 and 10): accepted without a repair, build and dev tooling only (owner decision 2026-10-31, review by 2026-12-15).**
   `npm run audit:dependencies` failed with `FAIL_UNREPAIRED_DEPENDENCIES` on two moderate advisories published on 2026-10-30:
-  GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `<11.0.1`, denial of
+  GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `>=7.0.0 <11.0.1`, denial of
   service, fixed in 11.0.1). A fix needs `glob` 14 and `minimatch` 11, but the dependents ask for `glob` ^7, ^9, ^10 and ^13
   and `minimatch` ^3, ^8, ^9 and ^10, so no lockfile update reaches them, and an `overrides` pin across those majors would
   break callers that use the old APIs. They are accepted for as long as nothing the app ships contains them.
-  - **minimatch 11.0.1 override (2026-11-06).** `package.json` `overrides` now carries `"minimatch@>=7.0.0 <11.0.1": "11.0.1"` and
-    `"test-exclude@^7.0.0": { "minimatch": "11.0.1" }`, so every `minimatch` 8, 9 and 10 copy in the lockfile resolves to 11.0.1
-    (`glob` 9, 10 and 13, `eslint`, `@eslint/config-array`, `@typescript-eslint/typescript-estree`, `@expo/fingerprint`, Jest's
-    `test-exclude` 7, `babel-plugin-module-resolver`). These callers use the named exports (`minimatch`, `Minimatch`, `GLOBSTAR`,
-    `escape`, `unescape`), which 11 keeps, and 11 runs on Node 18, 20 and 22 or later. `minimatch` 3.1.5 (`test-exclude` 6,
-    `@eslint/eslintrc`, `glob` 7) is outside the advisory and unchanged; it needs the default export that 9 and later removed, so it
-    must not be overridden. The `acceptedWithoutRepair` entry for GHSA-g3hv-75wg-m249 was removed; `glob` is
-    unchanged. Review the overrides together with the others.
+  - **minimatch 11.0.1 override (2026-11-06).** `package.json` `overrides` carries `"minimatch@>=7.0.0 <11.0.1": "11.0.1"`,
+    `"test-exclude@^7.0.0": { "minimatch": "11.0.1" }`, `"glob@^9.0.0": { "minimatch": "8.0.7" }` and
+    `"glob@^10.0.0": { "minimatch": "9.0.9" }`. The minimatch copies of `eslint`, `@eslint/config-array`,
+    `@typescript-eslint/typescript-estree`, `@expo/fingerprint`, Jest's own packages and `glob` 13 resolve to 11.0.1.
+    `glob` 9.3.5 (under `babel-plugin-module-resolver`) and `glob` 10.5.0 (under Jest, `jest-expo` and `test-exclude` 7) keep their
+    own `minimatch` (8.0.7 and 9.0.9, the versions they had before): they test `p instanceof RegExp` on what `Minimatch#parse`
+    returns, and 11 returns a matcher object instead, so with 11 a magic pattern such as `src/*/*.ts` returns nothing and
+    `**/*.ts` throws. Those two copies are still inside GHSA-g3hv-75wg-m249 (`>=7.0.0 <11.0.1`). They are covered by an
+    `acceptedWithoutRepair` entry for that advisory (the gate accepts by package and the advisory's range, so it cannot be limited
+    to the glob parents; the shipped-tree check still fails if a runtime package declares `minimatch` outside `toolingParents`),
+    review by 2026-12-15 with `glob`. `minimatch` 3.1.5 (`test-exclude` 6, `@eslint/eslintrc`, `glob` 7) is outside the advisory
+    and unchanged. `glob` 13.0.6 is not fixed by this: its main entry bundles its own older `minimatch`, so the advisory code
+    still runs in Expo CLI's `glob` calls. `glob` stays accepted. Checked with `glob.sync` on `src/*/*.ts` and `**/*.ts` through
+    the glob 9, glob 10 and glob 13 copies: all return the files.
   - **What reaches the bundle: nothing.** On 2026-10-31 a static trace of every `require` and `import` (relative, aliased and
     package, with the packages' `react-native`, `browser` and `exports` entries) from the app entry and every `app/` route found
     4195 files in 130 packages. Neither `glob` nor `minimatch` is among them, and neither are `@expo/cli`, `@expo/config`,
@@ -43,11 +49,11 @@
     istanbul plugin and `test-exclude`) is a dev dependency.
   - **How the gate stays safe.** `scripts/audit-dependencies.mjs` has a second list, `acceptedWithoutRepair` (advisory, package,
     range, reason, `reviewBy`), apart from `acceptedAdvisories`, which keeps its rule that every entry has a verified local
-    backport. The gate also reads `npm ls --omit=dev --all --json` and fails (`SHIPPED:`) when `glob` is
+    backport. The gate also reads `npm ls --omit=dev --all --json` and fails (`SHIPPED:`) when `glob` or `minimatch` is
     declared by anything outside `toolingParents` (the list above), including the app itself. From the day after `reviewBy`
     the entries are `REVIEW_OVERDUE` and the gate fails, as for the backported ones. Tests are in
     `scripts/audit-dependencies.test.mjs`. The result carries `reviewByWithoutRepair` and `shippedPaths`.
-  - **At 2026-12-15:** check whether `@expo/*`, Jest and ESLint have moved to `glob` 14 (`npm outdated`,
+  - **At 2026-12-15:** check whether `@expo/*`, Jest and ESLint have moved to `glob` 14 and `minimatch` 11 (`npm outdated`,
     the advisories' pages). If so, upgrade and delete the entries; if not, move the date in the same pull request as a note
     here. A new Expo or Sentry release that makes a runtime package declare either one makes the gate fail by itself.
   - The gate now reports `PASS_WITH_VERIFIED_BACKPORTS` (deepmerge and braces are still backported); the two tooling
@@ -148,6 +154,7 @@ repair (a package of the shipped tree makes the gate fail):
 | Advisory            | Package and range             | Why it is accepted                                                          | Review by  |
 | ------------------- | ----------------------------- | --------------------------------------------------------------------------- | ---------- |
 | GHSA-3g3m-2fjr-6pw4 | glob `>=9.0.0 <=14.0.1`       | Build and dev tooling only; not in the app bundle; 14.0.2 not reachable     | 2026-12-15 |
+| GHSA-g3hv-75wg-m249 | minimatch `>=7.0.0 <11.0.1`   | Only the copies under glob 9 and 10 (8.0.7, 9.0.9); build and test tooling; 11 breaks their RegExp check | 2026-12-15 |
 
 - Every entry of the npm report at **moderate, high or critical** must resolve
   to advisories on this list, with the same package and affected range, and
