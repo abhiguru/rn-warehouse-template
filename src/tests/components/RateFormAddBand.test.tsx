@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/Input';
 import { RateForm } from '@/features/item-pricing/components/RateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
 import { replaceItemRates } from '@/services/item-pricing-service';
+import { clearRateStartFloor, rememberRateStartFloor } from '@/services/rateStartFloor';
 import { inputsWithLabel, rate, textsOf } from '@/tests/helpers/rateEditorFixtures';
 import { showToast } from '@/utils/toast';
 
@@ -174,6 +175,34 @@ describe('criterion 9: a planned later rate', () => {
   it('shows no note when nothing is planned', async () => {
     const t = await openWith([own()]);
     expect(ids(t, 'add-rate-planned-note')).toHaveLength(0);
+  });
+
+  describe('on a rate that began before the earliest day (WH-81)', () => {
+    // The facility's oldest GRN is 1 Jun 2025, so the rate from 1 Jan 2025 is older than the earliest day.
+    beforeEach(() => { rememberRateStartFloor('2025-06-01'); });
+    afterEach(() => { clearRateStartFloor(); });
+    const planned = () => rate('onion', null, 0, 30, 4, 1.5, 5, '2027-01-01', null, 'monthly', 'Review Onion Red');
+
+    it('offers only Today and gives the planned rate as the reason; a save is a change from today', async () => {
+      const t = await openWith([own(), planned()]);
+      expect(textOf(t, 'add-rate-mixed-starts')).toEqual(['A rate from 01/01/27 is planned, so a new band can only start today. To start it earlier, cancel the planned rate first.']);
+      expect(ids(t, 'add-rate-band-start')).toHaveLength(0);
+      await type(t, 'Up to (kg)', '50');
+      await type(t, 'Rent ₹/month', '4');
+      replace.mockResolvedValueOnce({ success: true } as never);
+      await pressSave(t);
+      expect(replace.mock.calls[0][0]).toMatchObject({ mode: 'change', starts_on: '2026-10-14' });
+    });
+
+    it('keeps the differing-dates line when an ended band is at risk as well', async () => {
+      const t = await openWith([
+        own(),
+        rate('onion', null, 31, 50, 4, 1.5, 5, '2025-08-01', '2025-12-31', 'monthly', 'Review Onion Red'),
+        planned(),
+      ]);
+      expect(textOf(t, 'add-rate-mixed-starts')).toEqual(["This rate's bands don't all run on the same dates, so a new band can only start today."]);
+      expect(ids(t, 'add-rate-band-start')).toHaveLength(0);
+    });
   });
 });
 
