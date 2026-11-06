@@ -29,12 +29,13 @@ import {
   RpcGrnDetails,
 } from '@/services/grn-detail-service';
 import { generateGRNPDF } from '@/services/pdf-service';
-import { printGRNRange } from '@/services/print-service';
+import { printGRNRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
@@ -187,7 +188,8 @@ function GRNDetailScreen() {
   }, [user, session, userProfile]);
 
   // Use centralized permission system
-  const { canUpdate, canDelete, isCustomer } = usePermissions();
+  const { canUpdate, canDelete } = usePermissions();
+  const canPrint = useCanPrint();
 
   // Check edit permissions
   useEffect(() => {
@@ -893,7 +895,7 @@ function GRNDetailScreen() {
               onDelete={handleDeleteGRN}
               onSharePDF={handleSharePDF}
               is_share_loading={isShareLoading}
-              onPrint={!isCustomer ? handlePrint : undefined}
+              onPrint={canPrint ? handlePrint : undefined}
             />
           )}
 
@@ -952,12 +954,12 @@ function GRNDetailScreen() {
                 ? tr('grn.details.printJobSentWithId', { jobId: String(result.print_job.cups_job_id) })
                 : tr('grn.details.printJobSent')
             );
+          } else if (result.unconfirmed) {
+            // The job may still print: close the dialog so it is not sent again on a guess.
+            setSnackbarMessage(printFailureMessage(result));
           } else {
-            setSnackbarMessage(
-              result.unconfirmed
-                ? tr('grn.details.printUnconfirmed')
-                : serverText(result.error, tr('grn.details.printFailed'))
-            );
+            // Thrown, so the dialog stays open and shows the reason above its buttons.
+            throw new Error(printFailureMessage(result));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);

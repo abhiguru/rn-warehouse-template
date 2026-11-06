@@ -47,6 +47,12 @@ import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
 import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCanPrint } from '@/hooks/useCanPrint';
+import { PrintRangeDialog } from '@/components/PrintRangeDialog';
+import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
+import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
+import { showToast } from '@/utils/toast';
+import { showAlert } from '@/utils/alert';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 
 // Filters, search and sort
@@ -127,14 +133,14 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // User state & permissions
   const { userProfile } = useAppSelector(state => state.auth);
   const dispatch = useAppDispatch();
-  const { canCreate, canUpdate } = usePermissions();
+  const { canCreate } = usePermissions();
   const { canManageOrders: isWarehouseRole, assignedCustomerIds } = useRoleBasedAccess();
   const assignedCustomerNames = useMemo(
     () => Object.fromEntries((userProfile?.assignedCustomers || []).map(customer => [customer.id, customer.name])),
     [userProfile?.assignedCustomers]
   );
   const canCreateInvoice = canCreate;
-  const canPrint = canCreate || canUpdate; // Staff can print (they have update permission)
+  const canPrint = useCanPrint();
 
   // Filters, search and sort
   const filters = useListFilters(INVOICE_FILTERS);
@@ -334,6 +340,40 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     router.push('/invoice-form/step1');
   }, [dispatch]);
 
+  // Print: the same dialog as the GRN list. A job sent is a short confirmation; a failure is thrown, so the dialog stays open
+  // and shows it; an unconfirmed job closes the dialog with a dialog of its own (never sent again on a guess).
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [selectedForPrint, setSelectedForPrint] = useState<{ number: string; finYear?: number }>({ number: '' });
+  const printJobsSheetRef = useRef<PrintJobsBottomSheetRef>(null);
+
+  const handlePrint = useCallback((invoice: Invoice) => {
+    // '2025-26' -> 2025; a year that is not a number is left out (the backend then uses the current year).
+    const fy: unknown = invoice.financial_year;
+    const parsed = typeof fy === 'string' ? parseInt(fy.split('-')[0], 10) : fy;
+    setSelectedForPrint({
+      number: String(invoice.invoice_number ?? ''),
+      finYear: typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : undefined,
+    });
+    setShowPrintDialog(true);
+  }, []);
+
+  const handlePrintConfirm = useCallback(async (start: string, end: string) => {
+    const result = await printInvoiceRange(start, end, selectedForPrint.finYear);
+    if (result.success) {
+      showToast(
+        result.print_job?.cups_job_id
+          ? translate('invoice.print.sentWithJob', { job: String(result.print_job.cups_job_id) })
+          : translate('invoice.print.sent')
+      );
+      return;
+    }
+    if (result.unconfirmed) {
+      showAlert(translate('grn.review.printUnconfirmedTitle'), printFailureMessage(result));
+      return;
+    }
+    throw new Error(printFailureMessage(result));
+  }, [selectedForPrint.finYear]);
+
   // ============================================================================
   // FLATTENED DATA (for FlashList)
   // ============================================================================
@@ -379,11 +419,12 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       <MemoizedInvoiceItem
         invoice={item.data}
         onPress={handleInvoicePress}
-        canPrint={canPrint || false}
+        canPrint={canPrint}
+        onPrint={handlePrint}
         words={words}
       />
     );
-  }, [handleInvoicePress, canPrint, words, offlineUpdatedAt]);
+  }, [handleInvoicePress, canPrint, handlePrint, words, offlineUpdatedAt]);
 
   const ListFooter = useMemo(() => {
     if (loadMoreFailed && !isLoadingMore) {
@@ -443,7 +484,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleInvoicePress, words, offlineUpdatedAt }}
+        extraData={{ canPrint, handlePrint, handleInvoicePress, words, offlineUpdatedAt }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -490,6 +531,22 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       {/* The header, search field and filter bar are shown in every state. */}
       <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} />
       {content}
+
+      {/* Print dialog and jobs sheet */}
+      <PrintRangeDialog
+        visible={showPrintDialog}
+        onDismiss={() => setShowPrintDialog(false)}
+        onConfirm={handlePrintConfirm}
+        title={translate('invoice.print.titleRange')}
+        defaultNumber={selectedForPrint.number}
+        entity="invoice"
+        placeholder={translate('invoice.print.exampleShort', { example: '2555' })}
+        onViewJobs={() => {
+          setShowPrintDialog(false);
+          printJobsSheetRef.current?.open();
+        }}
+      />
+      <PrintJobsBottomSheet ref={printJobsSheetRef} />
     </View>
   );
 };

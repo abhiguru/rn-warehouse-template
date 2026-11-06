@@ -56,6 +56,12 @@ import { localizeDigits, t as translate } from '@/i18n';
 // State
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCanPrint } from '@/hooks/useCanPrint';
+import { PrintRangeDialog } from '@/components/PrintRangeDialog';
+import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
+import { printDispatchRange, printFailureMessage } from '@/services/print-service';
+import { showToast } from '@/utils/toast';
+import { showAlert } from '@/utils/alert';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useOpenNewDispatchForm } from '@/features/dispatch/hooks/useOpenNewDispatchForm';
 
@@ -138,9 +144,9 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const t = useTokens();
 
   // User state & permissions
-  const { canCreate, canUpdate } = usePermissions();
+  const { canCreate } = usePermissions();
   const { canManageOrders: isWarehouseRole, assignedCustomerIds } = useRoleBasedAccess();
-  const canPrint = canCreate || canUpdate; // Staff can print (they have update permission)
+  const canPrint = useCanPrint();
   const canCreateDispatch = canCreate;
 
   // Filters, search and sort
@@ -397,6 +403,34 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     return flattenSections(sections, (dispatch) => dispatch.dispatch_id || dispatch.id);
   }, [dispatches, sortedByNumber]);
 
+  // Print: the same dialog as the GRN list. A job sent is a short confirmation; a failure is thrown, so the dialog stays open
+  // and shows it; an unconfirmed job closes the dialog with a dialog of its own (never sent again on a guess).
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [selectedForPrint, setSelectedForPrint] = useState('');
+  const printJobsSheetRef = useRef<PrintJobsBottomSheetRef>(null);
+
+  const handlePrint = useCallback((dispatch: Dispatch) => {
+    setSelectedForPrint(dispatch.disp_no ?? '');
+    setShowPrintDialog(true);
+  }, []);
+
+  const handlePrintConfirm = useCallback(async (start: string, end: string) => {
+    const result = await printDispatchRange(start, end);
+    if (result.success) {
+      showToast(
+        result.print_job?.cups_job_id
+          ? translate('dispatch.details.printSentWithJob', { job: String(result.print_job.cups_job_id) })
+          : translate('dispatch.details.printSent')
+      );
+      return;
+    }
+    if (result.unconfirmed) {
+      showAlert(translate('grn.review.printUnconfirmedTitle'), printFailureMessage(result));
+      return;
+    }
+    throw new Error(printFailureMessage(result));
+  }, []);
+
   const keyExtractor = useCallback((item: FlattenedItem<Dispatch>) => item.key, []);
 
   // Offline with no failed refresh: the first heading (or, with no headings, the top of the list) says when the
@@ -412,14 +446,15 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       <MemoizedDispatchItem
         dispatch={item.data}
         onPress={handleDispatchPress}
-        canPrint={canPrint || false}
+        canPrint={canPrint}
+        onPrint={handlePrint}
         expanded={isOpen(open, item.key)}
         onToggle={handleCardToggle}
         words={words}
         onViewGRN={handleViewGRN}
       />
     );
-  }, [handleDispatchPress, handleViewGRN, canPrint, open, handleCardToggle, words, offlineUpdatedAt]);
+  }, [handleDispatchPress, handleViewGRN, canPrint, handlePrint, open, handleCardToggle, words, offlineUpdatedAt]);
 
   const ListFooter = useMemo(() => {
     if (loadMoreFailed && !isLoadingMore) {
@@ -506,7 +541,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleDispatchPress, open, words, offlineUpdatedAt }}
+        extraData={{ canPrint, handlePrint, handleDispatchPress, open, words, offlineUpdatedAt }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -555,6 +590,22 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     <View style={styles.container}>
       {header}
       {content}
+
+      {/* Print dialog and jobs sheet */}
+      <PrintRangeDialog
+        visible={showPrintDialog}
+        onDismiss={() => setShowPrintDialog(false)}
+        onConfirm={handlePrintConfirm}
+        title={translate('dispatch.details.printTitle')}
+        defaultNumber={selectedForPrint}
+        entity="dispatch"
+        placeholder={translate('dispatch.review.printPlaceholder', { example: 'I4613' })}
+        onViewJobs={() => {
+          setShowPrintDialog(false);
+          printJobsSheetRef.current?.open();
+        }}
+      />
+      <PrintJobsBottomSheet ref={printJobsSheetRef} />
     </View>
   );
 };

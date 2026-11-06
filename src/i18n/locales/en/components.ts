@@ -259,6 +259,8 @@ export const components = {
       printing: 'Printing in progress',
       queued: 'Print job queued',
       unavailable: 'Status unavailable',
+      offline: 'The printer is offline. Check that it is on and connected.',
+      problem: 'The printer reports a problem. Check the printer.',
       unconfirmed: 'The last print job was not confirmed. Check the printer.',
     },
   },

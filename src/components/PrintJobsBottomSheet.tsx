@@ -52,7 +52,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { getPrintJobs, cancelPrintJob, PrintJob, PrinterStatus } from '@/services/print-service';
+import { getPrintJobs, cancelPrintJob, getPrinterStatus, PrintJob, PrinterStatus } from '@/services/print-service';
 import { usePrintJobPolling } from '@/hooks/usePrintJobPolling';
 import type { IsCurrent } from '@/hooks/usePolling';
 import { formatRelativeTime } from '@/utils/formatters';
@@ -135,41 +135,40 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       },
     }));
 
-    // Fetch and update printer status from most recent print job. usePrintJobPolling owns
+    // The printer's own status from the print server. When the server cannot answer it (printing not set up, an older
+    // server, no connection), the status is derived from the most recent print job. usePrintJobPolling owns
     // the schedule; `isCurrent()` is false once the sheet closed, so a late answer is dropped.
     const updatePrinterStatus = useCallback(async (isCurrent: IsCurrent) => {
       try {
-        if (__DEV__) console.log('[PrintJobsBottomSheet] Fetching printer status from print_jobs...');
+        const printer = await getPrinterStatus();
+        if (!isCurrent()) return;
+        if (printer.success && printer.status) {
+          setPrinterStatus(printer.status);
+          setPrinterMessage(
+            printer.status === 'online'
+              ? tr('components.printJobs.message.ready')
+              : printer.status === 'busy'
+                ? tr('components.printJobs.message.printing')
+                : printer.status === 'offline'
+                  ? tr('components.printJobs.message.offline')
+                  : tr('components.printJobs.message.problem')
+          );
+          return;
+        }
 
-        // Query the print_jobs table for the most recent job (limit=1, no filters)
-        // This gets the absolute latest job regardless of type or status
+        // The most recent job, whatever its type, status or printer.
         const result = await getPrintJobs(undefined, 1, undefined);
         if (!isCurrent()) return;
 
         if (!result.success || !result.data || result.data.length === 0) {
-          if (__DEV__) console.log('[PrintJobsBottomSheet] No recent print jobs found');
-          setPrinterStatus('offline');
-          setPrinterMessage(tr('components.printJobs.message.noActivity'));
+          setPrinterStatus(null);
+          setPrinterMessage(
+            result.success ? tr('components.printJobs.message.noActivity') : tr('components.printJobs.message.unavailable')
+          );
           return;
         }
 
         const recentJob = result.data[0];
-        if (__DEV__) console.log('[PrintJobsBottomSheet] Most recent job:', {
-          id: recentJob.id,
-          printer: recentJob.printer_name,
-          status: recentJob.status,
-          error: recentJob.error_message,
-          created: recentJob.created_at,
-          completed: recentJob.completed_at
-        });
-
-        // Filter by LQ1310_RAW printer only
-        if (recentJob.printer_name !== 'LQ1310_RAW') {
-          if (__DEV__) console.log('[PrintJobsBottomSheet] Most recent job is not for LQ1310_RAW');
-          setPrinterStatus('offline');
-          setPrinterMessage(tr('components.printJobs.message.noActivity'));
-          return;
-        }
 
         // Derive printer status from job status
         if (recentJob.status === 'completed') {

@@ -11,8 +11,24 @@ import { serverText, upgradingBody } from '@/utils/serverText';
 // error message.
 const log = createLogger('print');
 
-interface PrintJobResponse {
+/** Why a print request failed, for the text shown (`printFailureMessage`). */
+export type PrintFailureKind =
+  | 'notSetUp'
+  | 'notAllowed'
+  | 'unconfirmed'
+  | 'printerFailed'
+  | 'serverUnavailable'
+  | 'connection'
+  | 'other';
+
+export interface PrintJobResponse {
   success: boolean;
+  /** HTTP status of the answer (absent when no answer came). */
+  status?: number;
+  /** The backend's own code (PRINTING_OFF, PRINT_FORBIDDEN, PRINTER_FAILED, PRINT_UNCONFIRMED), when it sends one. */
+  code?: string;
+  /** On a failure: which text to show. Decided from the code, else from the HTTP status. */
+  kind?: PrintFailureKind;
   message?: string;
   range?: {
     start: string;
@@ -79,6 +95,44 @@ export interface GetPrinterStatusResponse {
   error?: string;
 }
 
+/**
+ * Decide the failure kind from the backend's code, else (today's backend, no code) from the HTTP status.
+ * A 503 whose JSON body is not the "upgrading" answer is "printing not set up"; a 502 or 504, or an answer that is
+ * not JSON, is "server unavailable"; a 500 from a print function is a printer failure.
+ */
+function classifyFailure(status: number, code: string | undefined, unconfirmed: boolean, jsonBody: boolean): PrintFailureKind {
+  if (unconfirmed || code === 'PRINT_UNCONFIRMED') return 'unconfirmed';
+  if (code === 'PRINTING_OFF') return 'notSetUp';
+  if (code === 'PRINT_FORBIDDEN') return 'notAllowed';
+  if (code === 'PRINTER_FAILED') return 'printerFailed';
+  if (!jsonBody) return 'serverUnavailable';
+  if (status === 503) return 'notSetUp';
+  if (status === 403) return 'notAllowed';
+  if (status === 502 || status === 504) return 'serverUnavailable';
+  if (status === 500) return 'printerFailed';
+  return 'other';
+}
+
+/** The text for a failed print result, in the app's language. */
+export function printFailureMessage(result: PrintJobResponse): string {
+  switch (result.kind) {
+    case 'notSetUp':
+      return t('errors.print.notSetUp');
+    case 'notAllowed':
+      return t('errors.print.notAllowed');
+    case 'unconfirmed':
+      return t('errors.print.unconfirmed');
+    case 'printerFailed':
+      return t('errors.print.printerFailed');
+    case 'serverUnavailable':
+      return t('errors.print.serverUnavailable', { status: String(result.status ?? '') });
+    case 'connection':
+      return t('errors.print.connection');
+    default:
+      return serverText(result.error, t('errors.print.submitFailed'));
+  }
+}
+
 const authRequiredError = () => t('errors.auth.loginAgain');
 
 /**
@@ -127,27 +181,53 @@ async function submitPrintJob(
       discardBody(response);
       return {
         success: false,
+        status: response.status,
+        kind: 'serverUnavailable',
         error: t('errors.print.serverUnavailable', { status: String(response.status) }),
       };
     }
 
-    const data = await response.json();
+    // A body that says it is JSON but is not: an answer that was cut or garbled.
+    let data: any;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+    if (data === null || typeof data !== 'object') {
+      // On a success the job may be on its way: never resubmit on a guess.
+      return response.ok
+        ? { success: false, status: response.status, kind: 'unconfirmed', unconfirmed: true, error: t('errors.print.unconfirmed') }
+        : {
+            success: false,
+            status: response.status,
+            kind: 'serverUnavailable',
+            error: t('errors.print.serverUnavailable', { status: String(response.status) }),
+          };
+    }
 
     if (!response.ok) {
+      const code = typeof data.code === 'string' ? data.code : undefined;
+      // The backend says so (`unconfirmed: true`), or a 502 names a recorded job: the printer did
+      // not confirm it. Never resubmit on a guess.
+      const unconfirmed = data.unconfirmed === true || (response.status === 502 && !!data.print_job_id);
+      const upgrading = upgradingBody(data) !== undefined;
       return {
         success: false,
+        status: response.status,
+        ...(code ? { code } : {}),
+        kind: upgrading ? 'other' : classifyFailure(response.status, code, unconfirmed, true),
         error: serverText(upgradingBody(data) ?? data.error, t('errors.print.httpError', { status: String(response.status) })),
-        // The backend says so (`unconfirmed: true`), or a 502 names a recorded job: the printer did
-        // not confirm it. Never resubmit on a guess.
-        ...(data.unconfirmed === true || (response.status === 502 && data.print_job_id) ? { unconfirmed: true } : {}),
+        ...(unconfirmed ? { unconfirmed: true } : {}),
       };
     }
 
-    return data;
+    return { ...data, status: response.status };
   } catch (error) {
     log.error(`${operation} failed`);
     return {
       success: false,
+      kind: 'connection',
       error: error instanceof Error ? error.message : t('errors.print.submitFailed'),
     };
   }
@@ -157,7 +237,7 @@ async function submitPrintJob(
  * Print GRN range using Supabase Edge Function
  * @param startGrNo - Starting GRN number (e.g., "Z0797")
  * @param endGrNo - Ending GRN number (e.g., "Z0801")
- * @returns Print job response with CUPS job details
+ * @returns The print job response
  */
 export async function printGRNRange(
   startGrNo: string,
@@ -173,7 +253,7 @@ export async function printGRNRange(
  * Print dispatch range using Supabase Edge Function
  * @param startDispNo - Starting dispatch number
  * @param endDispNo - Ending dispatch number
- * @returns Print job response with CUPS job details
+ * @returns The print job response
  */
 export async function printDispatchRange(
   startDispNo: string,
@@ -190,7 +270,7 @@ export async function printDispatchRange(
  * @param startInvNo - Starting invoice number (e.g., "INV001")
  * @param endInvNo - Ending invoice number (e.g., "INV005")
  * @param finYear - Financial year (optional, defaults to current year in backend)
- * @returns Print job response with CUPS job details
+ * @returns The print job response
  */
 export async function printInvoiceRange(
   startInvNo: string,
@@ -206,7 +286,8 @@ export async function printInvoiceRange(
     end_inv_no_str: endInvNo,
   };
 
-  if (finYear !== undefined) {
+  // A year that is not a finite number is left out: the backend then uses the current year.
+  if (finYear !== undefined && Number.isFinite(finYear)) {
     requestBody.inv_fin_year = finYear;
   }
 
@@ -330,12 +411,12 @@ export async function cancelPrintJob(
 }
 
 /**
- * Get current printer status from CUPS
- * @param printerName - Name of the printer (default: LQ1310_RAW)
+ * Get the current printer status from the print server
+ * @param printerName - Name of the printer; left out, the server answers for the facility's own printer
  * @returns Printer status and details
  */
 export async function getPrinterStatus(
-  printerName: string = 'LQ1310_RAW'
+  printerName?: string
 ): Promise<GetPrinterStatusResponse> {
   try {
     const authenticatedFetch = createAuthenticatedFetch();
@@ -352,14 +433,19 @@ export async function getPrinterStatus(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify({
-        printer_name: printerName,
-      }),
+      body: JSON.stringify(printerName ? { printer_name: printerName } : {}),
     });
 
     logResponse('getPrinterStatus', response);
 
-    const data = await response.json();
+    // Not JSON (a gateway's page) or cut short: no status, and the caller falls back.
+    const data = await response.json().catch(() => null);
+    if (data === null || typeof data !== 'object') {
+      return {
+        success: false,
+        error: t('errors.print.serverUnavailable', { status: String(response.status) }),
+      };
+    }
 
     if (!response.ok) {
       return {

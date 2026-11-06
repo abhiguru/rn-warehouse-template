@@ -28,12 +28,13 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { getDispatchDetails, DispatchDetailsResponse } from '@/services/dispatch-detail-service';
 import { deleteDispatch } from '@/services/dispatch-service';
 import { generateDispatchPDF } from '@/services/pdf-service';
-import { printDispatchRange } from '@/services/print-service';
+import { printDispatchRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { LostAnswerStrip } from '@/features/dispatch/components/LostAnswerStrip';
 import {
@@ -145,7 +146,8 @@ const makeStyles = (t: ThemeTokens) => ({
 function DispatchDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
-  const { canUpdate, canDelete, isCustomer } = usePermissions();
+  const { canUpdate, canDelete } = usePermissions();
+  const canPrint = useCanPrint();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -699,7 +701,7 @@ function DispatchDetailScreen() {
               is_deleting={isDeleting}
               onSharePDF={handleSharePDF}
               is_share_loading={isShareLoading}
-              onPrint={!isCustomer ? handlePrint : undefined}
+              onPrint={canPrint ? handlePrint : undefined}
             />
           )}
 
@@ -755,8 +757,12 @@ function DispatchDetailScreen() {
                 ? tr('dispatch.details.printSentWithJob', { job: String(result.print_job.cups_job_id) })
                 : tr('dispatch.details.printSent')
             );
+          } else if (result.unconfirmed) {
+            // The job may still print: close the dialog so it is not sent again on a guess.
+            setSnackbarMessage(printFailureMessage(result));
           } else {
-            setSnackbarMessage(tr(result.unconfirmed ? 'dispatch.details.printUnconfirmed' : 'dispatch.details.printFailed'));
+            // Thrown, so the dialog stays open and shows the reason above its buttons.
+            throw new Error(printFailureMessage(result));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);

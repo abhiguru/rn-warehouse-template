@@ -529,6 +529,11 @@ export const errors = {
   },
   print: {
     serverUnavailable: 'Server error ({{status}}): The print server is unavailable. Please try again later.',
+    notSetUp: 'Printing is not set up for this facility. Ask an admin to set it up.',
+    notAllowed: "You aren't allowed to print. Ask an admin.",
+    unconfirmed: 'The printer did not confirm the job. Check the printer before printing again.',
+    printerFailed: "The printer couldn't print the job. Check the printer and try again.",
+    connection: "Couldn't reach the print server. Check your connection and try again.",
     httpError: 'HTTP error! status: {{status}}',
     submitFailed: 'Failed to submit print job',
     fetchJobsFailed: 'Failed to fetch print jobs',
