@@ -229,11 +229,15 @@ test('shippedPaths allows tooling parents only', () => {
     name: 'rn-warehouse-template',
     dependencies: {
       expo: { dependencies: { '@expo/cli': { dependencies: { glob: { dependencies: { minimatch: {} } } } }, '@expo/fingerprint': { dependencies: { minimatch: {} } } } },
-      'expo-updates': { dependencies: { glob: {} } },
+      '@sentry/bundler-plugins': { dependencies: { glob: {} } },
     },
   };
   const names = ['glob', 'minimatch'];
   assert.deepEqual(shippedPaths(tree, names), []);
+  // expo-updates is no longer a tooling parent: it is not part of the app (WH-27, WH-105), so a copy under it counts as shipped.
+  assert.ok(!toolingParents.includes('expo-updates'));
+  assert.deepEqual(shippedPaths({ name: 'rn-warehouse-template', dependencies: { 'expo-updates': { dependencies: { glob: {} } } } }, names),
+    [{ package: 'glob', path: 'rn-warehouse-template > expo-updates > glob' }]);
   // A runtime library, or the app itself, starts to declare one of them.
   tree.dependencies.expo.dependencies['some-runtime-lib'] = { dependencies: { minimatch: {} } };
   assert.deepEqual(shippedPaths(tree, names), [{ package: 'minimatch', path: 'rn-warehouse-template > expo > some-runtime-lib > minimatch' }]);

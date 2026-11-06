@@ -13,6 +13,7 @@ import {
   captureException,
   captureMessage,
   addBreadcrumb,
+  initializeSentry,
 } from '../sentryConfig';
 
 jest.mock('@sentry/react-native', () => ({
@@ -767,6 +768,20 @@ describe('sentryConfig - Telemetry and Redaction', () => {
           category: 'navigation',
         })
       );
+    });
+  });
+
+  // WH-105: the SDK's ExpoUpdatesListener requires expo-updates when it starts. The package is not part of the app
+  // (WH-27), so the listener is left out and the SDK's other integrations stay.
+  describe('initializeSentry', () => {
+    it('leaves out the ExpoUpdatesListener integration and keeps the others', () => {
+      initializeSentry();
+      expect(Sentry.init).toHaveBeenCalledTimes(1);
+      const options = jest.mocked(Sentry.init).mock.calls[0][0] as { integrations?: unknown };
+      expect(typeof options.integrations).toBe('function');
+      const choose = options.integrations as (defaults: { name: string }[]) => { name: string }[];
+      const kept = choose([{ name: 'ExpoConstants' }, { name: 'ExpoUpdatesListener' }, { name: 'Breadcrumbs' }]);
+      expect(kept.map(integration => integration.name)).toEqual(['ExpoConstants', 'Breadcrumbs']);
     });
   });
 });
