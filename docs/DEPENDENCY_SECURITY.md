@@ -15,7 +15,7 @@
   React Native 0.88, Metro and Expo 58 support (`^22.13 || ^24.3 || >=26`). Node 23 and 25 are no longer admitted.
 - **Android toolchain.** React Native 0.88 builds with compile SDK 37, build tools 37.0.0, NDK 27.1.12297006 and Android Gradle
   Plugin 9.2.1. Google publishes API 37 as `platforms;android-37.0`; there is no `platforms;android-37`. Target SDK stays 36.
-- **glob and minimatch: accepted without a repair, build and dev tooling only (owner decision 2026-10-31, review by 2026-12-15).**
+- **glob: accepted without a repair, build and dev tooling only (owner decision 2026-10-31, review by 2026-12-15). minimatch was accepted the same way until the 2026-11-06 override below.**
   `npm run audit:dependencies` failed with `FAIL_UNREPAIRED_DEPENDENCIES` on two moderate advisories published on 2026-10-30:
   GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `<11.0.1`, denial of
   service, fixed in 11.0.1). A fix needs `glob` 14 and `minimatch` 11, but the dependents ask for `glob` ^7, ^9, ^10 and ^13
@@ -27,7 +27,7 @@
     `test-exclude` 7, `babel-plugin-module-resolver`). These callers use the named exports (`minimatch`, `Minimatch`, `GLOBSTAR`,
     `escape`, `unescape`), which 11 keeps, and 11 runs on Node 18, 20 and 22 or later. `minimatch` 3.1.5 (`test-exclude` 6,
     `@eslint/eslintrc`, `glob` 7) is outside the advisory and unchanged; it needs the default export that 9 and later removed, so it
-    must not be overridden. The `acceptedWithoutRepair` entry for GHSA-g3hv-75wg-m249 stays until the review date; `glob` is
+    must not be overridden. The `acceptedWithoutRepair` entry for GHSA-g3hv-75wg-m249 was removed; `glob` is
     unchanged. Review the overrides together with the others.
   - **What reaches the bundle: nothing.** On 2026-10-31 a static trace of every `require` and `import` (relative, aliased and
     package, with the packages' `react-native`, `browser` and `exports` entries) from the app entry and every `app/` route found
@@ -43,11 +43,11 @@
     istanbul plugin and `test-exclude`) is a dev dependency.
   - **How the gate stays safe.** `scripts/audit-dependencies.mjs` has a second list, `acceptedWithoutRepair` (advisory, package,
     range, reason, `reviewBy`), apart from `acceptedAdvisories`, which keeps its rule that every entry has a verified local
-    backport. The gate also reads `npm ls --omit=dev --all --json` and fails (`SHIPPED:`) when `glob` or `minimatch` is
+    backport. The gate also reads `npm ls --omit=dev --all --json` and fails (`SHIPPED:`) when `glob` is
     declared by anything outside `toolingParents` (the list above), including the app itself. From the day after `reviewBy`
     the entries are `REVIEW_OVERDUE` and the gate fails, as for the backported ones. Tests are in
     `scripts/audit-dependencies.test.mjs`. The result carries `reviewByWithoutRepair` and `shippedPaths`.
-  - **At 2026-12-15:** check whether `@expo/*`, Jest and ESLint have moved to `glob` 14 and `minimatch` 11 (`npm outdated`,
+  - **At 2026-12-15:** check whether `@expo/*`, Jest and ESLint have moved to `glob` 14 (`npm outdated`,
     the advisories' pages). If so, upgrade and delete the entries; if not, move the date in the same pull request as a note
     here. A new Expo or Sentry release that makes a runtime package declare either one makes the gate fail by itself.
   - The gate now reports `PASS_WITH_VERIFIED_BACKPORTS` (deepmerge and braces are still backported); the two tooling
@@ -148,7 +148,6 @@ repair (a package of the shipped tree makes the gate fail):
 | Advisory            | Package and range             | Why it is accepted                                                          | Review by  |
 | ------------------- | ----------------------------- | --------------------------------------------------------------------------- | ---------- |
 | GHSA-3g3m-2fjr-6pw4 | glob `>=9.0.0 <=14.0.1`       | Build and dev tooling only; not in the app bundle; 14.0.2 not reachable     | 2026-12-15 |
-| GHSA-g3hv-75wg-m249 | minimatch `<11.0.1`           | Build and dev tooling only; not in the app bundle; 11.0.1 not reachable     | 2026-12-15 |
 
 - Every entry of the npm report at **moderate, high or critical** must resolve
   to advisories on this list, with the same package and affected range, and
