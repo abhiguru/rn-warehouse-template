@@ -1,3 +1,4 @@
+import * as Crypto from 'expo-crypto';
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
@@ -37,7 +38,8 @@ export interface PrintJobResponse {
     fin_year?: number;
   };
   print_job?: {
-    cups_job_id: number;
+    print_job_id?: string | null;
+    cups_job_id: number | null;
     job_uri: string;
     printer: string;
     content_size: number;
@@ -46,6 +48,8 @@ export interface PrintJobResponse {
   error?: string;
   /** The printer accepted the job but did not confirm it (status 'unknown'): it may still print. */
   unconfirmed?: boolean;
+  /** The server had already handled this request_id and printed nothing again. That is a success. */
+  duplicate?: boolean;
 }
 
 export interface PrintJob {
@@ -146,6 +150,21 @@ const logResponse = (operation: string, response: Pick<Response, 'status' | 'ok'
   log.info(`${operation} response`, { status: response.status, ok: response.ok });
 };
 
+// One request_id per user print action (the server prints a repeated one only once). The id is reused only while the last
+// attempt of the same request ended without a usable answer (no connection, a gateway page, a cut answer): the user's
+// next tap is then the retry of the same action. After any answer the server gave (success, refusal, "unconfirmed",
+// printer failed) the next tap is a new action with a new id; a deliberate second copy must print.
+const REQUEST_ID_REUSE_MS = 5 * 60 * 1000;
+let lastAttempt: { key: string; id: string; at: number } | null = null;
+
+function requestIdFor(path: string, body: Record<string, unknown>): string {
+  const key = `${path}:${JSON.stringify(body)}`;
+  const now = Date.now();
+  if (lastAttempt && lastAttempt.key === key && now - lastAttempt.at < REQUEST_ID_REUSE_MS) return lastAttempt.id;
+  lastAttempt = { key, id: Crypto.randomUUID(), at: now };
+  return lastAttempt.id;
+}
+
 /**
  * Submit a print job to one of the preprinted-form Edge Functions.
  * The response body is returned to the caller untouched and never logged.
@@ -154,6 +173,21 @@ async function submitPrintJob(
   operation: string,
   path: string,
   body: Record<string, unknown>
+): Promise<PrintJobResponse> {
+  let answered = false;
+  try {
+    const result = await sendPrintJob(operation, path, body, () => { answered = true; });
+    return result;
+  } finally {
+    if (answered) lastAttempt = null;
+  }
+}
+
+async function sendPrintJob(
+  operation: string,
+  path: string,
+  body: Record<string, unknown>,
+  markAnswered: () => void
 ): Promise<PrintJobResponse> {
   try {
     const authenticatedFetch = createAuthenticatedFetch();
@@ -170,7 +204,7 @@ async function submitPrintJob(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, request_id: requestIdFor(path, body) }),
     });
 
     logResponse(operation, response);
@@ -206,6 +240,9 @@ async function submitPrintJob(
           };
     }
 
+    // The server gave a real answer (not a gateway's 502/504 with no code of its own): the next tap is a new action.
+    if (response.ok || typeof data.code === 'string' || data.unconfirmed === true || (response.status !== 502 && response.status !== 504)) markAnswered();
+
     if (!response.ok) {
       const code = typeof data.code === 'string' ? data.code : undefined;
       // The backend says so (`unconfirmed: true`), or a 502 names a recorded job: the printer did
@@ -222,7 +259,8 @@ async function submitPrintJob(
       };
     }
 
-    return { ...data, status: response.status };
+    // duplicate: the server had this request_id already and printed nothing again: the job is done, a success.
+    return { ...data, ...(data.duplicate === true ? { success: true } : {}), status: response.status };
   } catch (error) {
     log.error(`${operation} failed`);
     return {
