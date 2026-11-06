@@ -30,8 +30,9 @@ jest.mock('@/store/hooks', () => ({
     selector({ auth: mockAuth, theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('@/hooks/usePermissions', () => ({
-  usePermissions: () => ({ isCustomer: mockIsCustomer, canUpdate: !mockIsCustomer, canDelete: mockCanDelete }),
+  usePermissions: () => ({ isCustomer: mockIsCustomer, role: mockIsCustomer ? 'customer' : 'staff', canUpdate: !mockIsCustomer, canDelete: mockCanDelete }),
 }));
+jest.mock('@/hooks/useCapability', () => ({ useCapability: () => true }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Portal: 'Portal', Snackbar: 'Snackbar' }));

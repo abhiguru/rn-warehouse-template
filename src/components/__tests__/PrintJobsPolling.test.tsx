@@ -6,7 +6,7 @@
 import React, { createRef } from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { AppState, type AppStateStatus } from 'react-native';
-import { getPrintJobs, type PrintJob } from '@/services/print-service';
+import { getPrintJobs, getPrinterStatus, type PrintJob } from '@/services/print-service';
 import PrintJobsBottomSheet, { type PrintJobsBottomSheetRef } from '../PrintJobsBottomSheet';
 
 jest.mock('@/store/hooks', () => ({
@@ -24,7 +24,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
     React.createElement(View, { testID: 'sheet' }, children));
   return { __esModule: true, default: BottomSheet, BottomSheetBackdrop: () => null, BottomSheetFlatList: FlatList };
 });
-jest.mock('@/services/print-service', () => ({ getPrintJobs: jest.fn(), cancelPrintJob: jest.fn() }));
+jest.mock('@/services/print-service', () => ({ getPrintJobs: jest.fn(), cancelPrintJob: jest.fn(), getPrinterStatus: jest.fn() }));
 
 const job = (id: string, status: PrintJob['status']): PrintJob => ({
   id,
@@ -62,6 +62,8 @@ beforeEach(() => {
   }) as never);
   deferAll = false;
   pending = [];
+  // The print server cannot answer for the printer here (an older server): the status is derived from the latest job.
+  jest.mocked(getPrinterStatus).mockReset().mockResolvedValue({ success: false, error: 'unavailable' });
   getJobs.mockReset();
   getJobs.mockImplementation((_type: unknown, limit: number, status?: PrintJob['status']) => {
     const answer = () => ({

@@ -18,6 +18,8 @@ jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
 jest.mock('react-native-paper', () => ({ ActivityIndicator: 'ActivityIndicator' }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
+jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: 'ListSkeleton' }));
 jest.mock('@/components/list-items', () => ({ MemoizedDispatchItem: () => null }));
 jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: 'ListEmptyState' }));

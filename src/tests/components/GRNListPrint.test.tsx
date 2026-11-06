@@ -1,8 +1,7 @@
 /**
- * GRN list, printing: when the printer did not confirm the job (print result `unconfirmed`),
- * the dialog says to check the printer before printing again, as the invoice screens do,
- * and not the plain failure that invites a reprint. A failure needs the person to act, so it
- * is a dialog with the GRN Review step's titles; a job sent is a short toast (§13.9).
+ * GRN list, printing: an unconfirmed job is an alert that says to check the printer before printing again (Product,
+ * 2026-11-07); every other failure is thrown to the print dialog, which shows it above its buttons; a job sent is a short
+ * toast (§13.9).
  */
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
@@ -32,7 +31,9 @@ jest.mock('react-native-reanimated', () => ({ __esModule: true, ...jest.requireA
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
-jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
+// Only the request is faked; the failure texts are the real ones.
+jest.mock('@/services/print-service', () => ({ ...jest.requireActual('@/services/print-service'), printGRNRange: jest.fn() }));
+jest.mock('@/hooks/useCapability', () => ({ useCapability: () => true }));
 jest.mock('@/services/grn-service', () => ({
   getAllGRNItems: jest.fn(),
   getAssignedCustomerGRNItems: jest.fn(),
@@ -62,7 +63,7 @@ const mockFilters = {
   clear: jest.fn(),
 };
 jest.mock('@/features/filters/useListFilters', () => ({ useListFilters: () => mockFilters }));
-jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canCreate: true, canUpdate: true }) }));
+jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canCreate: true, canUpdate: true, role: 'staff' }) }));
 // One object for every read: the list loads again whenever the profile it reads is a new one.
 const mockState = {
   theme: { preference: 'light', brand: 'orange' },
@@ -117,19 +118,32 @@ afterEach(async () => {
   });
 });
 
+const dialogOnConfirm = (tree: ReactTestRenderer) => tree.root.findByType('PrintRangeDialog' as never).props.onConfirm as (s: string, e: string) => Promise<void>;
 const confirmPrint = (tree: ReactTestRenderer) =>
-  act(async () => { await tree.root.findByType('PrintRangeDialog' as never).props.onConfirm('RV15001', 'RV15001'); });
+  act(async () => { await dialogOnConfirm(tree)('RV15001', 'RV15001'); });
 
-it.each([
-  [{ success: false, error: 'x', unconfirmed: true }, 'Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.'],
-  [{ success: false, error: 'x' }, "Couldn't print", "Couldn't send the print job. Check the printer and try again."],
-])('print answer %j asks "%s"', async (answer, title, text) => {
-  jest.mocked(printGRNRange).mockResolvedValue(answer as never);
+it('an unconfirmed job is an alert "Print not confirmed" (the dialog closes: nothing is thrown to it)', async () => {
+  jest.mocked(printGRNRange).mockResolvedValue({ success: false, kind: 'unconfirmed', unconfirmed: true, status: 502, error: 'x' } as never);
   const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
 
   await confirmPrint(tree);
 
-  expect(showAlert).toHaveBeenCalledWith(title, text);
+  expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.');
+  expect(showToast).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['printerFailed', "The printer couldn't print the job. Check the printer and try again."],
+  ['notSetUp', 'Printing is not set up for this facility. Ask an admin to set it up.'],
+  ['notAllowed', "You aren't allowed to print. Ask an admin."],
+  ['connection', "Couldn't reach the print server. Check your connection and try again."],
+])('a %s failure is thrown to the dialog, which shows it above its buttons, and is no alert', async (kind, text) => {
+  jest.mocked(printGRNRange).mockResolvedValue({ success: false, kind, error: 'x' } as never);
+  const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
+
+  await expect(dialogOnConfirm(tree)('RV15001', 'RV15001')).rejects.toThrow(text);
+
+  expect(showAlert).not.toHaveBeenCalled();
   expect(showToast).not.toHaveBeenCalled();
 });
 
@@ -141,14 +155,4 @@ it('says a print job was sent in a toast, with its number', async () => {
 
   expect(showToast).toHaveBeenCalledWith('Print job 42 sent.');
   expect(showAlert).not.toHaveBeenCalled();
-});
-
-it('a dropped connection is a dialog that says to check the connection', async () => {
-  jest.mocked(printGRNRange).mockRejectedValue(new Error('Network unavailable'));
-  jest.spyOn(console, 'error').mockImplementation(() => {});
-  const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
-
-  await confirmPrint(tree);
-
-  expect(showAlert).toHaveBeenCalledWith("Couldn't print", "Couldn't send the print job. Check your connection and try again.");
 });

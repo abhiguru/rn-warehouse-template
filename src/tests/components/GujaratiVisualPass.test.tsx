@@ -39,6 +39,8 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+// The cards import the Print swipe, which needs the real gesture and animation libraries; no card here is printable.
+jest.mock('@/components/list-items/PrintSwipe', () => ({ PrintSwipe: ({ children }: { children: unknown }) => children }));
 jest.mock('react-native-reanimated', () => {
   const { View } = jest.requireActual('react-native');
   return { __esModule: true, default: { View }, FadeIn: { duration: () => undefined }, useReducedMotion: () => false };
