@@ -250,5 +250,5 @@ test('the accepted-without-repair list is separate from the backported one and f
     assert.equal(new Date(`${entry.reviewBy}T00:00:00Z`).toISOString().slice(0, 10), entry.reviewBy);
     assert.ok(entry.package && entry.range && entry.reason);
   }
-  assert.deepEqual(Object.keys(acceptedWithoutRepair).sort(), ['GHSA-3g3m-2fjr-6pw4', 'GHSA-g3hv-75wg-m249']);
+  assert.deepEqual(Object.keys(acceptedWithoutRepair).sort(), ['GHSA-3g3m-2fjr-6pw4']);
 });
