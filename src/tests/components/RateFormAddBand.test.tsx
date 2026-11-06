@@ -88,7 +88,7 @@ describe('criterion 2: what the form opens with on 0-30', () => {
     expect(ids(t, 'add-rate-band-0-toggle')).toHaveLength(0);
     expect(inputsWithLabel(t, 'Up to (kg)').map(n => n.props.testID)).toEqual(['add-rate-band.1.upTo']);
     expect(textOf(t, 'add-rate-band-1-from')).toEqual(['From 31 kg']);
-    expect(textsOf(t)).toContain("Bands already in the rate can't be changed here. Use Change rate to change a price.");
+    expect(textsOf(t)).toContain("Bands already in the rate can't be changed here. Use Change rate to start a new rent from a date.");
   });
 
   it('Up to and rent are blank, the labour and tax of Band 2 are those of Band 1, and no message shows', async () => {
@@ -136,8 +136,22 @@ describe('criterion 6 and the start choice', () => {
       rate('onion', null, 0, 30, 3.5, 1.5, 5, '2025-01-01', null, 'monthly', 'Review Onion Red'),
       rate('onion', null, 31, 50, 4, 1.5, 5, '2025-06-01', null, 'monthly', 'Review Onion Red'),
     ]);
-    expect(textOf(t, 'add-rate-mixed-starts')).toEqual(["This rate's bands start on different days, so a new band can only start today."]);
+    expect(textOf(t, 'add-rate-mixed-starts')).toEqual(["This rate's bands don't all run on the same dates, so a new band can only start today."]);
     expect(ids(t, 'add-rate-band-start')).toHaveLength(0);
+  });
+
+  it('an ended band that started the same day offers no choice either, and a save is a change from today', async () => {
+    const t = await openWith([
+      own(),
+      rate('onion', null, 31, 50, 4, 1.5, 5, '2025-01-01', '2025-06-30', 'monthly', 'Review Onion Red'),
+    ]);
+    expect(textOf(t, 'add-rate-mixed-starts')).toHaveLength(1);
+    expect(ids(t, 'add-rate-band-start')).toHaveLength(0);
+    await type(t, 'Up to (kg)', '50');
+    await type(t, 'Rent ₹/month', '4');
+    replace.mockResolvedValueOnce({ success: true } as never);
+    await pressSave(t);
+    expect(replace.mock.calls[0][0]).toMatchObject({ mode: 'change', starts_on: '2026-10-14' });
   });
 
   it('says which lots get the new band, for each choice', async () => {

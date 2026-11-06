@@ -248,13 +248,18 @@ describe('a planned later rate (criterion 9)', () => {
     expect(bandPlannedNote(none.draft, none.context)).toBeNull();
   });
 
-  it('on a rate older than the earliest day, the default choice cannot save while a rate is planned, and says so', () => {
+  it('on a rate older than the earliest day, a planned rate would be deleted by a change from that day: only Today is offered', () => {
     const rows = [row(0, 30, 11.25, 2.5, 5, '2020-01-01'), row(0, 30, 13, 2.5, 5, '2027-01-01')];
     const { draft, context } = open(rows, '2023-11-06');
-    const message = bandBlockedByPlanned(draft, context);
-    expect(message).toContain('01/01/27');
-    expect(message).toContain('06/11/23');
-    expect(bandBlockedByPlanned(setStartsOn(draft, 'today', TODAY), context)).toBeNull();
+    expect(context.othersAtRisk).toBe(true);
+    expect(context.ownStart).toBeNull();
+    expect(draft.startsOnChoice).toBe('today');
+    expect(draft.startsOn).toBe(TODAY);
+    // Nothing is sent from the earliest day, so there is nothing to block with a message.
+    expect(bandBlockedByPlanned(draft, context)).toBeNull();
+    const input = toReplaceInput(typed(draft), context);
+    expect(input.mode).toBe('change');
+    expect(input.starts_on).toBe(TODAY);
   });
 
   it('learns the earliest day from the server\'s refusal when it was not known', () => {
@@ -291,5 +296,116 @@ describe('with no rate in force', () => {
     const { draft, context } = open([row(0, 30, 11.25, 2.5, 5, '2020-01-01', '2021-01-01')]);
     expect(context.mode).toBe('add');
     expect(draft.locked).toBeUndefined();
+  });
+});
+
+describe('the default day never deletes a row or drops a stop (WH-74, release review)', () => {
+  /** What every save of the form can send: the mode, the day, and the band count. */
+  const sends = (rows: ItemStoragePrice[], earliest?: string | null) => {
+    const { draft, context } = open(rows, earliest);
+    const input = toReplaceInput(typed(draft), context);
+    return { context, draft, input };
+  };
+
+  it('shape A: an ended band that started the same day (0-30 and 31-50 from 1 Apr, 31-50 ended 30 Jun) offers only Today, sent as a change from today', () => {
+    const { context, draft, input } = sends([row(0, 30, 11.25, 2.5, 5, '2026-04-01'), row(31, 50, 12, 2.5, 5, '2026-04-01', '2026-06-30')]);
+    // Only 0-30 is in force today, so only it is locked; a correction on 1 Apr would delete the ended 31-50.
+    expect(context.lockedRows).toHaveLength(1);
+    expect(context.othersAtRisk).toBe(true);
+    expect(context.ownStart).toBeNull();
+    expect(draft.startsOnChoice).toBe('today');
+    expect(input.mode).toBe('change');
+    expect(input.starts_on).toBe(TODAY);
+  });
+
+  it('shape B: bands in force that stop on different days (31-50 stops 31 Mar 2027, 0-30 open) offer only Today', () => {
+    const { context, draft, input } = sends([row(0, 30, 11.25, 2.5, 5, '2026-04-01'), row(31, 50, 12, 2.5, 5, '2026-04-01', '2027-03-31')]);
+    expect(context.mixedStarts).toBe(false);
+    expect(context.othersAtRisk).toBe(true);
+    expect(draft.startsOnChoice).toBe('today');
+    expect(input.mode).toBe('change');
+  });
+
+  it('a stop that every band in force shares is safe: the correction is sent and keeps the stop', () => {
+    const rows = [row(0, 30, 11.25, 2.5, 5, '2026-04-01', '2026-12-31'), row(31, 50, 12, 2.5, 5, '2026-04-01', '2026-12-31')];
+    const { context, draft, input } = sends(rows);
+    expect(context.othersAtRisk).toBe(false);
+    expect(draft.startsOnChoice).toBe('ownStart');
+    expect(input.mode).toBe('correct');
+    expect(input.starts_on).toBe('2026-04-01');
+    expect(toReplaceInput(typed(draft, '80', '14'), context).bands.map(b => [b.weight_min, b.weight_max])).toEqual([[0, 30], [31, 50], [51, 80]]);
+  });
+
+  it('rows of another price type or of a customer that start the same day are not touched and do not matter', () => {
+    const other = row(0, 30, 40, 0, 0, '2026-04-01', null, 'one_time');
+    const customer = { ...row(0, 30, 9, 2.5, 5, '2026-04-01'), customer_id: 'cust-a', customer_name: 'Review Orchard A' };
+    const { context, input } = sends([...ownRows(), other, customer]);
+    expect(context.othersAtRisk).toBe(false);
+    expect(input.mode).toBe('correct');
+  });
+
+  it('an earlier ended rate of the scope does not matter', () => {
+    const { context } = sends([row(0, 30, 10, 2.5, 5, '2025-01-01', '2026-03-31'), ...ownRows()]);
+    expect(context.othersAtRisk).toBe(false);
+  });
+
+  it('on a rate older than the earliest day, a row starting after that day or bands with differing stops offer only Today', () => {
+    const ended = sends([row(0, 30, 11.25, 2.5, 5, '2020-01-01'), row(31, 50, 12, 2.5, 5, '2024-01-01', '2024-06-30')], '2023-11-06');
+    expect(ended.context.othersAtRisk).toBe(true);
+    expect(ended.input.mode).toBe('change');
+    expect(ended.input.starts_on).toBe(TODAY);
+    const stops = sends([row(0, 30, 11.25, 2.5, 5, '2020-01-01'), row(31, 50, 12, 2.5, 5, '2020-01-01', '2027-03-31')], '2023-11-06');
+    expect(stops.context.othersAtRisk).toBe(true);
+    expect(stops.input.mode).toBe('change');
+    expect(stops.input.starts_on).toBe(TODAY);
+  });
+
+  it('on a rate older than the earliest day with nothing at risk, the change from that day is still the default', () => {
+    const { context, input } = sends([row(0, 30, 11.25, 2.5, 5, '2020-01-01')], '2023-11-06');
+    expect(context.othersAtRisk).toBe(false);
+    expect(input.mode).toBe('change');
+    expect(input.starts_on).toBe('2023-11-06');
+  });
+
+  it('whenever the default is withheld, no payload in any of these shapes is a correction', () => {
+    const shapes = [
+      [row(0, 30, 11.25, 2.5, 5, '2026-04-01'), row(31, 50, 12, 2.5, 5, '2026-04-01', '2026-06-30')],
+      [row(0, 30, 11.25, 2.5, 5, '2026-04-01'), row(31, 50, 12, 2.5, 5, '2026-04-01', '2027-03-31')],
+      [row(0, 30, 11.25, 2.5, 5, '2026-04-01'), row(31, 50, 12, 2.5, 5, '2026-06-01')],
+    ];
+    for (const rows of shapes) {
+      const { draft, context } = open(rows);
+      expect(toReplaceInput(typed(draft, '80', '14'), context).mode).toBe('change');
+    }
+  });
+});
+
+describe('the lots line for the item\'s first rate (WH-74)', () => {
+  it('names the earlier days too when no row of the scope starts before the rate\'s own start', () => {
+    const { draft, context } = open(ownRows());
+    const line = lotsRule(draft, context);
+    expect(line).toContain('including those received before 01/04/26');
+    expect(line).toContain('this is the item\'s first rate');
+    expect(line).toContain('The bands above keep their figures.');
+  });
+
+  it('says "received from" when an earlier rate, ended too, exists in the scope', () => {
+    const { draft, context } = open([row(0, 30, 10, 2.5, 5, '2025-01-01', '2026-03-31'), ...ownRows()]);
+    const line = lotsRule(draft, context);
+    expect(line).toContain('received from 01/04/26');
+    expect(line).not.toContain('first rate');
+  });
+
+  it('an earlier rate of another price type does not make it a later one: still the first rate', () => {
+    const { draft, context } = open([row(0, 30, 40, 0, 0, '2024-01-01', null, 'one_time'), ...ownRows()]);
+    expect(lotsRule(draft, context)).toContain('first rate');
+  });
+
+  it('keeps the earliest-day line when the start moved, and the Today line for Today', () => {
+    const old = open([row(0, 30, 11.25, 2.5, 5, '2020-01-01')], '2023-11-06');
+    expect(lotsRule(old.draft, old.context)).toContain('began before 06/11/23');
+    expect(lotsRule(old.draft, old.context)).not.toContain('first rate');
+    const { draft, context } = open(ownRows());
+    expect(lotsRule(setStartsOn(draft, 'today', TODAY), context)).toContain('Earlier lots keep the old rent');
   });
 });
