@@ -178,10 +178,9 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     alignItems: 'flex-end' as const,
   },
 
-  // The number left: 18 as the old card had it (title3 is 20, headline 17), tabular.
+  // The number left: headline (17), tabular.
   stockValueText: {
     ...typography.headline,
-    fontSize: 18,
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
     textAlign: 'right' as const,
