@@ -73,7 +73,7 @@ it('asks with the title and a message that says what deactivating does', async (
   expect(showAlert).toHaveBeenCalledTimes(1);
   const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
   expect(title).toBe('Deactivate Hilltop Fresh Mart?');
-  expect(message).toBe("They won't appear when you choose a customer for a new GRN, dispatch or order. Their records stay, and you can activate them again.");
+  expect(message).toBe("They won't appear when you choose a customer for a new GRN. Their stock can still go out on orders and dispatches. Their records stay, and you can activate them again.");
   expect((buttons as { text: string }[]).map(b => b.text)).toEqual(['Cancel', 'Deactivate customer']);
   expect(customerService.inactivateCustomer).not.toHaveBeenCalled();
 });

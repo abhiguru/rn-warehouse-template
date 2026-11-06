@@ -91,7 +91,7 @@ it('asks before deactivating, in words that say what it does, and then deactivat
   await act(async () => { button(screen, 'Deactivate customer').props.onPress(); });
   const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
   expect(title).toBe('Deactivate 24 Seven Foods?');
-  expect(message).toContain("They won't appear when you choose a customer for a new GRN, dispatch or order.");
+  expect(message).toContain("They won't appear when you choose a customer for a new GRN. Their stock can still go out on orders and dispatches.");
   expect(customerService.inactivateCustomer).not.toHaveBeenCalled();
   await act(async () => { (buttons as { text: string; onPress?: () => void }[]).find(b => b.text === 'Deactivate customer')?.onPress?.(); });
   expect(customerService.inactivateCustomer).toHaveBeenCalledWith('c1');

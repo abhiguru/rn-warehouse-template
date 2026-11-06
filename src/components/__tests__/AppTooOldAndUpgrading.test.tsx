@@ -101,9 +101,9 @@ describe('UpgradingBanner', () => {
     expect(textOf(tree!)).toContain("The facility's server is being updated. Try again in a few minutes.");
   });
 
-  it('shows the same message when the facility\'s configuration says maintenance mode (the one screen for both)', () => {
+  it('ignores a maintenanceMode flag in the facility\'s configuration: only the gateway\'s upgrading answer shows it (WH-28)', () => {
     mockState = { config: { publicConfig: { maintenanceMode: true } } };
     act(() => { tree = create(<UpgradingBanner />); });
-    expect(textOf(tree!)).toContain(t('components.upgrading.message'));
+    expect(tree!.toJSON()).toBeNull();
   });
 });

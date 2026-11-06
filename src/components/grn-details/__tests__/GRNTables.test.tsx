@@ -89,13 +89,13 @@ describe('GRN Items table', () => {
 
     expect(has('grn-item-details-p')).toBe(false);
     press('grn-item-row-p');
-    expect(textOf(byTestId('grn-item-details-p'))).toBe('Dispatched 20 bags|B-14|Packaging Jute bag|View dispatches');
+    expect(textOf(byTestId('grn-item-details-p'))).toBe('Dispatched 20 Jute bag|B-14|Packaging Jute bag|View dispatches');
     expect(byTestId('grn-item-row-p').props.accessibilityState).toEqual({ expanded: true });
     press('grn-item-dispatches-p');
     expect(onViewItemDispatches).toHaveBeenCalledWith(potatoes);
   });
 
-  it('counts a Box lot in boxes, a Crate lot in crates, and any other packaging in bags (D18)', () => {
+  it('counts a Box lot in boxes, a Crate lot in crates, and any other packaging as its own word, as in Unit (D18, WH-41)', () => {
     const box = lot({ id: 'bx', stock: 77, packaging: 'Box' });
     const crate = lot({ id: 'cr', stock: 97, packaging: 'Crates' });
     const unit = lot({ id: 'un', stock: 99, packaging: 'Unit' });
@@ -106,16 +106,16 @@ describe('GRN Items table', () => {
 
     expect(textOf(byTestId('grn-item-details-bx'))).toMatch(/^Dispatched 23 boxes\|/);
     expect(textOf(byTestId('grn-item-details-cr'))).toMatch(/^Dispatched 3 crates\|/);
-    expect(textOf(byTestId('grn-item-details-un'))).toMatch(/^Dispatched 1 bag\|/);
+    expect(textOf(byTestId('grn-item-details-un'))).toMatch(/^Dispatched 1 Unit\|/);
   });
 
   it('uses the dispatch summary when it is there, and offers no View dispatches for a lot not dispatched', () => {
     render(<GRNItemsTab items={[lot({ id: 'x', stock: 100, dispatch_summary: { total_dispatched: 0 } }), lot({ id: 'y', stock: 70, dispatch_summary: { total_dispatched: 25 } })]} onViewItemDispatches={jest.fn()} />);
 
     press('grn-item-row-x');
-    expect(textOf(byTestId('grn-item-details-x'))).toBe('Dispatched 0 bags|B-14|Packaging Jute bag');
+    expect(textOf(byTestId('grn-item-details-x'))).toBe('Dispatched 0 Jute bag|B-14|Packaging Jute bag');
     press('grn-item-row-y');
-    expect(textOf(byTestId('grn-item-details-y'))).toMatch(/^Dispatched 25 bags\|/);
+    expect(textOf(byTestId('grn-item-details-y'))).toMatch(/^Dispatched 25 Jute bag\|/);
   });
 
   it('totals the lots, the bags received and the bags in stock', () => {
@@ -153,7 +153,7 @@ describe('GRN Dispatches table', () => {
     mockWidth = 700;
     render(<GRNDispatchesTab items={[onions, potatoes, garlic]} dispatchesByItem={byItem} />);
 
-    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Dispatches\|Bags dispatched\|/);
+    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Dispatches\|Units dispatched\|/);
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received|2|20');
   });
 
@@ -161,11 +161,11 @@ describe('GRN Dispatches table', () => {
     render(<GRNDispatchesTab items={[onions, potatoes, garlic]} dispatchesByItem={byItem} />);
 
     // On a phone the count goes under the item: the "Dispatches" heading is wider than its counts.
-    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Bags dispatched\|/);
+    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Units dispatched\|/);
     expect(textOf(byTestId('grn-dispatch-row-o'))).toBe('Onions|60 received · 0 dispatches|0');
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
     expect(textOf(byTestId('grn-dispatch-row-g'))).toBe('Garlic|G1|10 received · 1 dispatch|10');
-    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Date|Bags|DD0041|09/10/26|12|DD0042|11/10/26|8');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Date|Jute bag|DD0041|09/10/26|12|DD0042|11/10/26|8');
     expect(has('grn-dispatch-lines-g')).toBe(false);
   });
 
@@ -199,16 +199,16 @@ describe('GRN Dispatches table', () => {
     render(<GRNDispatchesTab items={[potatoes, garlic]} dispatchesByItem={byItem} />);
 
     expect(textOf(byTestId('grn-dispatches-total'))).toBe('Total|2 dispatches|30');
-    expect(byTestId('grn-dispatches-total').props.accessibilityLabel).toBe('Total: 2 dispatches, 30 bags dispatched');
+    expect(byTestId('grn-dispatches-total').props.accessibilityLabel).toBe('Total: 2 dispatches, 30 Jute bag dispatched');
   });
 
   it('moves the count under the item and the date under the number at large text', () => {
     mockFontScale = 2;
     render(<GRNDispatchesTab items={[potatoes]} dispatchesByItem={byItem} />);
 
-    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Bags dispatched\|/);
+    expect(textOf(byTestId('grn-dispatches-table'))).toMatch(/^Item\|Jute bag dispatched\|/);
     expect(textOf(byTestId('grn-dispatch-row-p'))).toBe('Potatoes|PM · 50 kg each|100 received · 2 dispatches|20');
-    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Bags|DD0041|09/10/26|12|DD0042|11/10/26|8');
+    expect(textOf(byTestId('grn-dispatch-lines-p'))).toBe('Dispatch|Jute bag|DD0041|09/10/26|12|DD0042|11/10/26|8');
   });
 
   it('counts in the packaging of the lot instead of fixed bags', () => {
