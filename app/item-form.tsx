@@ -112,8 +112,10 @@ const ItemFormScreen: React.FC = () => {
       newErrors.name = tr('items.form.maxLength', { max: 80 });
     }
 
-    // Packaging validation
-    if (formData.packaging && formData.packaging.length > 40) {
+    // Packaging validation: the item's own word is required (WH-41).
+    if (!formData.packaging.trim()) {
+      newErrors.packaging = tr('items.form.packagingRequired');
+    } else if (formData.packaging.length > 40) {
       newErrors.packaging = tr('items.form.maxLength', { max: 40 });
     }
 
@@ -149,7 +151,7 @@ const ItemFormScreen: React.FC = () => {
     try {
       const result = await itemService.createItem({
         p_name: formData.name.trim(),
-        p_packaging: normalizePackaging(formData.packaging, groups) || undefined,
+        p_packaging: normalizePackaging(formData.packaging, groups),
         p_description: formData.description.trim() || undefined,
         p_active: formData.active,
         ...(rateChoice === 'item' && rateSource ? { p_rate_from_item: rateSource.id } : {}),
@@ -234,6 +236,7 @@ const ItemFormScreen: React.FC = () => {
             />
             <ItemTextField
               label={tr('common.packaging')}
+              required
               value={formData.packaging}
               onChangeText={(text) => handleFieldChange('packaging', text)}
               placeholder={tr('items.form.packagingPlaceholder')}

@@ -18,7 +18,9 @@ import { showToast } from '@/utils/toast';
 import { useRateSaveKey } from './useRateSaveKey';
 import { notifyRatesChanged, type EditorMode, type EditorParams } from './contract';
 import {
+  bandBlockedByPlanned,
   copyTiersFrom,
+  correcting,
   fieldOrder,
   hasChanges,
   initialDraft,
@@ -100,6 +102,8 @@ export interface UseRateEditor {
   /** The keys of the number fields in the order the Next key walks them. */
   order: string[];
   setDraft: (next: Draft) => void;
+  /** A field was left: its own message shows, or goes. */
+  validateKey: (key: string) => void;
   /** Starts-on choice from StartsOnField. */
   setStartsOn: (choice: StartsOnChoice, day: string) => void;
   /** Monthly / One-time on a new rate (re-seeds the bands from the default where there is one). */
@@ -188,7 +192,19 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
           today: todayNow(),
           earliest: core.ctx.earliestStart ?? getRateStartFloor(),
         });
-        setCore({ ...core, rows, ctx: { ...opened.context, copied: core.ctx.copied } });
+        if (mode === 'addBand' && core.draft.locked !== undefined && opened.draft.locked !== undefined) {
+          // Add rate on a rate in force: the rate's own bands are the ones now held; the new bands typed stay.
+          const typed = core.draft.bands.slice(core.draft.locked);
+          const choice = core.draft.startsOnChoice;
+          const merged = {
+            ...opened.draft,
+            bands: [...opened.draft.bands.slice(0, opened.draft.locked), ...typed],
+            ...(choice === 'today' ? { startsOnChoice: choice, startsOn: core.draft.startsOn } : {}),
+          };
+          setCore({ rows, draft: merged, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
+        } else {
+          setCore({ ...core, rows, ctx: { ...opened.context, copied: core.ctx.copied } });
+        }
         setRowsChanged(true);
       }
     } else {
@@ -206,13 +222,36 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const draft = open?.draft;
   const ctx = open?.ctx;
 
+  const bandCountNow = draft?.bands.length ?? 0;
   const setDraft = useCallback((next: Draft) => {
     ownSave.current = false;
     maybeSaved.current = false;
     setCore(current => (current ? { ...current, draft: next } : current));
     setStrip(null);
-    if (checked.current && ctx) setErrors(validate(next, ctx).errors);
-  }, [ctx]);
+    if (!ctx) return;
+    const found = validate(next, ctx).errors;
+    if (checked.current) {
+      // After a failed save every field is checked again as it is typed; a band just added is not wrong yet, so it
+      // shows nothing until its field is left or Save is pressed.
+      if (next.bands.length > bandCountNow) {
+        for (let i = bandCountNow; i < next.bands.length; i++) for (const k of Object.keys(found)) if (k.startsWith(`band.${i}.`)) delete found[k];
+      }
+      setErrors(found);
+    } else {
+      // Before the first Save, a message shown when a field was left goes once the field is right.
+      setErrors(current => Object.fromEntries(Object.entries(current).filter(([k]) => k in found)));
+    }
+  }, [ctx, bandCountNow]);
+
+  /** A field was left: its own message shows (or goes). Other fields are not touched. */
+  const validateKey = (key: string) => {
+    if (!draft || !ctx) return;
+    const found = validate(draft, ctx).errors;
+    setErrors(current => {
+      const { [key]: _old, ...rest } = current;
+      return found[key] ? { ...rest, [key]: found[key] } : rest;
+    });
+  };
 
   const dirty = !!open && !open.ctx.managerOnly && hasChanges(open.draft, open.initial);
   const order = useMemo(() => (draft ? fieldOrder(draft, ctx?.customerId ?? null) : []), [draft, ctx]);
@@ -245,7 +284,9 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     const message =
       context.mode === 'correct'
         ? t('pricing.edit.savedCorrection')
-        : context.mode === 'addCustomer'
+        : context.mode === 'addBand' && data.startsOnChoice === 'ownStart'
+          ? t('pricing.edit.savedBand', { date: dateText(data.startsOn ?? '') })
+          : context.mode === 'addCustomer'
           ? t('pricing.edit.savedCustomer')
           : t('pricing.edit.saved', { date: dateText(data.startsOn ?? '') });
     // A scheduled stop is kept by the server: say so (its answer first, else what the draft knew).
@@ -285,7 +326,15 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       return;
     }
     // A planned rate that starts on the first day is deleted by the server without a question: ask here.
-    if (!replaceLater && context.mode !== 'correct' && data.startsOn) {
+    // Add rate on a rate in force, default choice: a planned rate is never replaced from here.
+    const blocked = bandBlockedByPlanned(data, context);
+    if (blocked) {
+      setStrip(blocked);
+      view?.current?.scrollToTop();
+      return;
+    }
+    const keepsLater = context.mode === 'addBand' && data.startsOnChoice === 'ownStart';
+    if (!replaceLater && !correcting(data, context) && !keepsLater && data.startsOn) {
       const hidden = plannedOnDay(context.rows, { customerId: context.customerId, priceType: data.priceType }, data.startsOn, context.today, context.editingIds);
       if (hidden.length > 0) {
         setLater(hidden);
@@ -305,6 +354,12 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
         return;
       }
       if (result.errorCode === 'LATER_RATES_EXIST' && result.later?.length) {
+        if (keepsLater) {
+          // The default choice never offers to replace a planned rate: say why, at the top.
+          setStrip(t('pricing.edit.bandLaterBlocked', { date: dateText(result.later[0].effective_from), earliest: dateText(data.startsOn ?? '') }));
+          view?.current?.scrollToTop();
+          return;
+        }
         setLater(result.later);
         return;
       }
@@ -327,6 +382,20 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
         setErrors(current => ({ ...current, bands: message }));
         setStrip(message);
         view?.current?.scrollToError('bands');
+        return;
+      }
+      if (result.errorCode === 'INVALID_DATE' && context.mode === 'addBand') {
+        // There is no date field to put the message on: it is the strip at the top. A rate that began before the earliest
+        // allowed day moves its default choice to that day (typed figures stay); the next save sends a change from it.
+        const earliest = result.earliest;
+        if (data.startsOnChoice === 'ownStart' && earliest && context.ownStart && context.ownStart < earliest) {
+          const moved = { ...data, startsOn: earliest };
+          setCore(cur => (cur ? { ...cur, draft: { ...cur.draft, startsOn: earliest }, initial: { ...cur.initial, startsOn: earliest }, ctx: { ...cur.ctx, earliestStart: earliest } } : cur));
+          setStrip(bandBlockedByPlanned(moved, { ...context, earliestStart: earliest }) ?? t('pricing.edit.bandMoved', { date: dateText(earliest) }));
+        } else {
+          setStrip(result.message ?? t('pricing.error.generic'));
+        }
+        view?.current?.scrollToTop();
         return;
       }
       if (result.errorCode === 'INVALID_DATE') {
@@ -366,6 +435,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     rowsChanged,
     order,
     setDraft,
+    validateKey,
     setStartsOn,
     switchType,
     copyFrom,

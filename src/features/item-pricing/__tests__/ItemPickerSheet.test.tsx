@@ -47,14 +47,14 @@ describe('ItemPickerSheet', () => {
     expect(sheetProps.emptySearchText).toBe('No items match "garlic fresh".');
   });
 
-  it('shows the name, and the packaging under it when there is one', () => {
+  it('shows the name with its packaging word beside it (a blank packaging reads Bag)', () => {
     mount();
     const rows = ITEMS.map(item => {
       let r!: ReturnType<typeof create>;
       act(() => { r = create(sheetProps.renderItem(item, jest.fn())); });
       return r.root.findAllByType(Text).map(n => String(n.props.children));
     });
-    expect(rows).toEqual([['Review Garlic Desi', 'Bag'], ['Review Ginger Fresh'], ['Review Garlic Pole']]);
+    expect(rows).toEqual([['Review Garlic Desi · Bag'], ['Review Ginger Fresh · Bag'], ['Review Garlic Pole · Bag']]);
   });
 
   it('hands the chosen item to the caller', () => {

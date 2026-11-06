@@ -363,7 +363,7 @@ describe('GRN activity opened from its customers list', () => {
   it("a row tap: the report shows the row's name at once without asking the facility, and \"Last opened\" keeps that name", async () => {
     const store = makeStore();
     const list = await open(GRNActivityScreen, store);
-    await list.press('Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 bags');
+    await list.press('Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 units');
     expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
 
     // The route the tap pushed opens the customer. The facility's names are held back: none is needed.

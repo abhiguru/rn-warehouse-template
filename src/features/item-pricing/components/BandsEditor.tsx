@@ -4,8 +4,8 @@
  * In a default rate a band starts where the one before ends (no gap, no overlap, the server
  * refuses a gap). In a customer rate the "From" can be typed above that, which leaves a gap whose weights pay the default rate. Built from ui/Input only, with no field or dialog of its own (P-26).
  */
-import React from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import React, { useState } from 'react';
+import { Keyboard, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useThemedStyles } from '@/hooks/useTheme';
@@ -19,14 +19,33 @@ import {
   setBandFrom,
   setFirstFrom,
   setUpTo,
+  insertBandAt,
   removeBand,
   wholeKg,
   type Draft,
   type EditorContext,
 } from '../editModel';
+import { packageUnit } from '@/utils/packagingWord';
+import { ReviewCard, ReviewSection } from '@/components/review/ReviewSections';
 import { bandText } from '../rateText';
 import { BandsFooter } from './BandsFooter';
 import { fieldLink, type FieldRegistry } from './fieldLink';
+
+/**
+ * Opt-in folding (Standard rate): the bands draw as the style guide's folding card, one open at a time, the
+ * open one owned by the screen. Without it the editor draws one card per band, as the item rate editor does.
+ */
+export interface FoldingBands {
+  /** Index of the open band, or null when all are closed. */
+  open: number | null;
+  onToggle: (index: number) => void;
+  /** A band was added at `index` (in the middle or at the end): the screen opens it. */
+  onAdd: (index: number) => void;
+  /** Band `index` was removed: the screen keeps the right band open; `count` is the number left. */
+  onRemove: (index: number, count: number) => void;
+  /** Position of the card (`'card'`) and of each band's block inside it, for scrolling a heading into view. */
+  onLayout?: (which: number | 'card', y: number) => void;
+}
 
 interface Props {
   draft: Draft;
@@ -34,6 +53,9 @@ interface Props {
   errors: Record<string, string>;
   onChange: (next: Draft) => void;
   fields?: FieldRegistry;
+  /** The item's packaging, for "per Katta" in the labels; unknown (the standard rate) keeps "per bag". */
+  packaging?: string | null;
+  folding?: FoldingBands;
 }
 
 /** At this text size From and Up to stack (P-42). */
@@ -57,19 +79,80 @@ const makeStyles = (t: ThemeTokens) => ({
   unit: { ...typography.body, color: t.text.secondary },
   prefix: { ...typography.body, color: t.text.secondary },
   note: { ...typography.footnote, color: t.text.secondary },
+  foldBody: { gap: space.xs },
+  addPanel: { gap: space.sm },
+  addButtons: { flexDirection: 'row' as const, justifyContent: 'flex-end' as const, gap: space.sm, flexWrap: 'wrap' as const },
+  removeRow: { alignItems: 'flex-end' as const },
 });
 
-export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
+export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, folding }: Props) {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale >= STACK_FROM_SCALE;
   const oneTime = draft.priceType === 'one_time';
   const perBand = draft.bands.some(b => b.labour !== undefined);
-  const rentLabel = oneTime ? t('pricing.edit.rentOnce') : t('pricing.edit.rentMonthly');
+  const unit = packaging === undefined ? undefined : packageUnit(packaging);
+  const rentLabel = unit !== undefined
+    ? t(oneTime ? 'pricing.edit.rentOnceFor' : 'pricing.edit.rentMonthlyFor', { unit })
+    : oneTime ? t('pricing.edit.rentOnce') : t('pricing.edit.rentMonthly');
+  const labourLabel = unit !== undefined ? t('pricing.edit.labourFor', { unit }) : t('pricing.edit.labour');
 
-  return (
-    <View style={styles.list}>
-      {draft.bands.map((band, i) => {
+  const dash = '–';
+  const money = (v: string | undefined, sign: 'rupee' | 'percent'): string => {
+    const text = v?.trim();
+    if (!text) return dash;
+    return sign === 'rupee' ? `₹${localizeDigits(text)}` : `${localizeDigits(text)}%`;
+  };
+  // Standard rate: Add band asks where the new band starts (prefilled: one kg above the last band, today's add at the end).
+  const [adding, setAdding] = useState(false);
+  const [startText, setStartText] = useState('');
+  const [startError, setStartError] = useState<string | undefined>();
+  const lastEnd = wholeKg(draft.bands[draft.bands.length - 1]?.upTo);
+  const openAdd = () => {
+    setStartText(lastEnd === null ? '' : String(lastEnd + 1));
+    setStartError(undefined);
+    setAdding(true);
+  };
+  const closeAdd = () => {
+    setAdding(false);
+    setStartText('');
+    setStartError(undefined);
+  };
+  const confirmAdd = () => {
+    const result = insertBandAt(draft, startText);
+    if (!result.ok) {
+      setStartError(result.reason);
+      return;
+    }
+    Keyboard.dismiss();
+    closeAdd();
+    onChange(result.draft);
+    folding?.onAdd(result.index);
+  };
+  const addPanel = folding && adding ? (
+    <View style={styles.addPanel} testID="add-band-panel">
+      <Input
+        label={t('pricing.edit.insertLabel')}
+        required
+        numeric
+        selectTextOnFocus
+        value={startText}
+        onChangeText={text => { setStartText(text); setStartError(undefined); }}
+        keyboardType="number-pad"
+        returnKeyType="done"
+        error={startError}
+        rightIcon={<Text style={styles.unit}>{t('pricing.kg')}</Text>}
+        testID="add-band-start"
+        {...fieldLink(fields, 'addBand.start')}
+        onSubmitEditing={confirmAdd}
+      />
+      <View style={styles.addButtons}>
+        <Button type="tertiary" onPress={closeAdd} testID="add-band-cancel">{t('common.cancel')}</Button>
+        <Button type="primary" onPress={confirmAdd} testID="add-band-confirm">{t('pricing.edit.insertConfirm')}</Button>
+      </View>
+    </View>
+  ) : undefined;
+  const bandCards = draft.bands.map((band, i) => {
         const from = fromOf(draft, i);
         const to = wholeKg(band.upTo);
         const title = from !== null && to !== null && to >= from ? bandText(from, to) : t('pricing.edit.fromKg', { kg: localizeDigits(String(from ?? '–')) });
@@ -77,24 +160,24 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
           ? t('pricing.edit.bandRange', { from: localizeDigits(String(from)), to: localizeDigits(String(to)) })
           : title;
         const now = nowText(draft, ctx, i);
-        return (
-          <View key={i} style={styles.card} testID={`band-${i}`}>
-            <View style={styles.head}>
-              <Text style={styles.title} accessibilityRole="header">{title}</Text>
-              {draft.bands.length >= 2 && (
-                <Button
-                  type="tertiary"
-                  variant="negative"
-                  iconOnly
-                  leftIcon="delete-outline"
-                  onPress={() => onChange(removeBand(draft, i))}
-                  accessibilityLabel={t('pricing.edit.removeBand', { band: removeName })}
-                  testID={`band-${i}-remove`}
-                >
-                  {t('pricing.edit.removeBand', { band: removeName })}
-                </Button>
-              )}
-            </View>
+        const removeButton = draft.bands.length >= 2 ? (
+          <Button
+            type="tertiary"
+            variant="negative"
+            iconOnly
+            leftIcon="delete-outline"
+            onPress={() => {
+              onChange(removeBand(draft, i));
+              folding?.onRemove(i, draft.bands.length - 1);
+            }}
+            accessibilityLabel={t('pricing.edit.removeBand', { band: removeName })}
+            testID={`band-${i}-remove`}
+          >
+            {t('pricing.edit.removeBand', { band: removeName })}
+          </Button>
+        ) : null;
+        const body = (
+          <>
             {ctx.customerId && gapBefore(draft, i) ? (
               <Text style={styles.note} testID={`band-${i}-gap`}>
                 {t('pricing.edit.gapHint', { band: bandText(gapBefore(draft, i)!.from, gapBefore(draft, i)!.to) })}
@@ -170,7 +253,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
             />
             {perBand && !oneTime && band.labour !== undefined && (
               <Input
-                label={t('pricing.edit.labour')}
+                label={labourLabel}
                 required
                 numeric
                 selectTextOnFocus
@@ -198,10 +281,55 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields }: Props) {
                 {...fieldLink(fields, `band.${i}.tax`)}
               />
             )}
+          </>
+        );
+        if (folding) {
+          const closedLine = t('pricing.standard.bandLine', {
+            rent: money(band.rent, 'rupee'),
+            labour: money(band.labour, 'rupee'),
+            tax: money(band.tax, 'percent'),
+          });
+          const hasError = Object.keys(errors).some(k => k.startsWith(`band.${i}.`) && errors[k]);
+          return (
+            <ReviewSection
+              key={i}
+              id={String(i)}
+              testIDPrefix="band"
+              blockTestID={`band-${i}`}
+              title={title}
+              tag={hasError ? t('pricing.standard.bandNeedsFix') : undefined}
+              closedLine={closedLine}
+              wrapClosedLine
+              open={folding.open === i}
+              onToggle={() => folding.onToggle(i)}
+              first={i === 0}
+              onLayout={(e: LayoutChangeEvent) => folding.onLayout?.(i, e.nativeEvent.layout.y)}
+              bodyStyle={styles.foldBody}
+            >
+              {removeButton ? <View style={styles.removeRow}>{removeButton}</View> : null}
+              {body}
+            </ReviewSection>
+          );
+        }
+        return (
+          <View key={i} style={styles.card} testID={`band-${i}`}>
+            <View style={styles.head}>
+              <Text style={styles.title} accessibilityRole="header">{title}</Text>
+              {removeButton}
+            </View>
+            {body}
           </View>
         );
-      })}
-      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} />
+  });
+
+  return (
+    <View style={styles.list}>
+      {folding ? (
+        <ReviewCard testID="bands-card" onLayout={(e: LayoutChangeEvent) => folding.onLayout?.('card', e.nativeEvent.layout.y)}>
+          {bandCards}
+        </ReviewCard>
+      ) : bandCards}
+      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} packaging={packaging} onAddPress={folding ? openAdd : undefined} addPanel={addPanel} />
     </View>
   );
 }

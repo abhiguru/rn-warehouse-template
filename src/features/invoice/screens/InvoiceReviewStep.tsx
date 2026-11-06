@@ -36,7 +36,7 @@ import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSucce
 import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printInvoiceRange } from '@/services/print-service';
-import { generateInvoicePDF } from '@/services/pdf-service';
+import { generateInvoicePDF, pdfRefusalSentence } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { showAlert } from '@/utils/alert';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
@@ -394,7 +394,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         finYearNum
       );
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setShareError(tr('invoice.review.pdfCreateFailed'));
+        setShareError(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('invoice.review.pdfCreateFailed'));
         return;
       }
 

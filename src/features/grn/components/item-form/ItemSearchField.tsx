@@ -7,6 +7,7 @@
  * @module features/grn/components/item-form/ItemSearchField
  */
 
+import { itemWithPackaging } from '@/utils/packagingWord';
 import React, { useCallback } from 'react';
 import { View, Text } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -51,8 +52,7 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
   const renderItem = useCallback(
     (item: ItemSearchResult) => (
       <View>
-        <Text style={styles.dropdownText}>{item.name}</Text>
-        {!!item.packaging && <Text style={styles.dropdownSubtext}>{item.packaging}</Text>}
+        <Text style={styles.dropdownText}>{itemWithPackaging(item.name, item.packaging)}</Text>
       </View>
     ),
     [styles]
@@ -76,7 +76,7 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
         fetchData={searchItems}
         onSelect={onSelect}
         renderItem={renderItem}
-        getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: item.name })}
+        getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: itemWithPackaging(item.name, item.packaging) })}
         keyExtractor={keyExtractor}
         zIndex={zIndex}
       />

@@ -1,4 +1,6 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef, useState } from 'react';
+import { itemWithPackaging } from '@/utils/packagingWord';
+import { AddItemSheet } from './AddItemSheet';
 import {
   View,
   Text,
@@ -8,6 +10,7 @@ import {
   Pressable,
   Keyboard,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
@@ -30,22 +33,42 @@ import type { ScrollViewRef, TextInputRef } from '@/types/nativeRefs';
 const FIELD_WIDTHS = {
     item: 220,
     qty: 117,
-    // Wider than Quantity: "Weight each" has to stay on one line at font scale
-    // 2.0, or the weight box drops below the quantity box.
-    weight: 152,
-    rack: 196, // the chips wrap
+    // Room for "9999" and its unit at the default text size (the unit is the
+    // wider in Gujarati) and for the label "Weight each". It grows with the
+    // text size (see `widthOf`), so at font scale 2.0 the label still stays on
+    // one line and the weight box does not drop below the quantity box.
+    weight: 112,
+    rack: 196, // the least; the column grows to its longest chip line
     package_mark: 270,
 } as const;
 export type ItemFormFieldName = keyof typeof FIELD_WIDTHS;
 const FIELD_ORDER: readonly ItemFormFieldName[] = ['item', 'qty', 'weight', 'rack', 'package_mark'];
 
+/** The widest the text sizes count for: the weight box grows with them up to here. */
+const MAX_FONT_SCALE = 2;
+
+/** The width of a field. The weight box follows the text size, because its label and number do. */
+const widthOf = (field: ItemFormFieldName, fontScale: number): number =>
+    field === 'weight' ? Math.round(FIELD_WIDTHS.weight * Math.min(Math.max(fontScale, 1), MAX_FONT_SCALE)) : FIELD_WIDTHS[field];
+
+/** The gap under the Rack input and under the Floor line: the owner's own value (18 dp, the usual 8 plus 10), not a spacing token. */
+const RACK_CHIP_GAP = 18;
+
+/** The gap after every field (`fieldContainer.marginRight`). */
+const FIELD_GAP = space.md;
+
 /**
- * Where the row scrolls to when a field takes focus: the widths of the fields
- * before it. Worked out from the table above, so a width cannot change without
- * the offsets following it.
+ * Where the row scrolls to when a field takes focus: where the field starts, so
+ * it sits near the left edge. The fields after Rack need the width the Rack
+ * column has (it is as wide as its longest chip line), which the form measures
+ * (`rackWidth`). Worked out from the table above, so a width cannot change
+ * without the offsets following it.
  */
-const scrollOffsetOf = (field: ItemFormFieldName): number =>
-    FIELD_ORDER.slice(0, FIELD_ORDER.indexOf(field)).reduce((sum, name) => sum + FIELD_WIDTHS[name], 0);
+const scrollOffsetOf = (field: ItemFormFieldName, fontScale: number, rackWidth: number): number =>
+    FIELD_ORDER.slice(0, FIELD_ORDER.indexOf(field)).reduce(
+        (sum, name) => sum + (name === 'rack' ? Math.max(rackWidth, widthOf('rack', fontScale)) : widthOf(name, fontScale)) + FIELD_GAP,
+        0
+    );
 
 /**
  * How long `focusField` waits before it gives a field the cursor. The items
@@ -160,6 +183,14 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const styles = useThemedStyles(makeStyles);
         const t = useTokens();
 
+        // The "Add item" sheet over this step (WH-42): the typed search text fills its name.
+        const [addItemOpen, setAddItemOpen] = useState(false);
+        const [addItemName, setAddItemName] = useState('');
+
+        const { fontScale } = useWindowDimensions();
+        // The width the Rack column took (it is as wide as its longest chip line).
+        const [rackWidth, setRackWidth] = useState(0);
+        const offsetOf = useCallback((field: ItemFormFieldName) => scrollOffsetOf(field, fontScale, rackWidth), [fontScale, rackWidth]);
         const scrollRef = useRef<ScrollViewRef>(null);
         const qtyInputRef = useRef<TextInputRef>(null);
         const weightInputRef = useRef<TextInputRef>(null);
@@ -186,9 +217,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                 scrollRef.current?.scrollTo({ x: 0, animated: true });
             },
             revealField: (field) => {
-                scrollToField(scrollOffsetOf(field));
+                scrollToField(offsetOf(field));
             },
-        }), [scrollToField]);
+        }), [scrollToField, offsetOf]);
 
         // Focus chain for keyboard navigation
         const focusNext = useCallback((current: 'qty' | 'weight' | 'rack' | 'package_mark') => {
@@ -377,8 +408,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     contentContainerStyle={styles.scrollContent}
                     style={styles.scrollView}
                 >
+                    <View style={styles.fieldsRow}>
                     {/* Field 1: Item Name (Dropdown Picker) */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.item, zIndex: 1000 }]}>
+                    <View style={[styles.fieldContainer, { width: widthOf('item', fontScale), zIndex: 1000 }]}>
                         <View style={styles.labelRow}>
                             <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('common.item')}<Text style={styles.required}> *</Text></Text>
@@ -429,7 +461,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 onFieldChange('item_name', text);
                             }}
                             suggestionPlacement="inline"
-                            getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: item.name })}
+                            getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: itemWithPackaging(item.name, item.packaging) })}
                             onSelect={(item) => {
                                 if (item) {
                                     onFieldChange('item_table_id', item.id);
@@ -438,7 +470,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                     // Focus Qty
                                     setTimeout(() => {
                                         qtyInputRef.current?.focus();
-                                        scrollToField(scrollOffsetOf('qty'));
+                                        scrollToField(offsetOf('qty'));
                                     }, 100);
                                 } else {
                                     // Clear
@@ -449,13 +481,17 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             }}
                             renderItem={(item) => (
                                 <View>
-                                    <Text style={styles.dropdownText}>{item.name}</Text>
-                                    {!!item.packaging && (
-                                        <Text style={styles.dropdownSubtext}>{item.packaging}</Text>
-                                    )}
+                                    <Text style={styles.dropdownText}>{itemWithPackaging(item.name, item.packaging)}</Text>
                                 </View>
                             )}
                             keyExtractor={(item) => item.id}
+                            footerAction={{
+                                label: tr('items.list.addItem'),
+                                onPress: (typed) => {
+                                    setAddItemName(typed.trim());
+                                    setAddItemOpen(true);
+                                },
+                            }}
                             zIndex={3000}
                         />
                         )}
@@ -463,7 +499,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
 
                     {/* Field 2: Quantity */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.qty }]}>
+                    <View style={[styles.fieldContainer, { width: widthOf('qty', fontScale) }]}>
                         <View style={styles.labelRow}>
                             <Text style={styles.label}>{tr('grn.item.quantity')}<Text style={styles.required}> *</Text></Text>
                             {isQtyLocked && (
@@ -506,7 +542,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                         return;
                                     }
                                     setFocusedField('qty');
-                                    scrollToField(scrollOffsetOf('qty'));
+                                    scrollToField(offsetOf('qty'));
                                 }}
                                 onBlur={() => setFocusedField(null)}
                                 selectTextOnFocus={!isQtyLocked}
@@ -528,7 +564,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
 
                     {/* Field 3: Weight of one bag, box or crate */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.weight }]}>
+                    <View style={[styles.fieldContainer, { width: widthOf('weight', fontScale) }]}>
                         <View style={styles.labelRow}>
                             <Text style={styles.label}>{tr('common.weightEach')}</Text>
                             {isWeightLocked && (
@@ -564,7 +600,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 blurOnSubmit={false}
                                 onFocus={() => {
                                     setFocusedField('weight');
-                                    scrollToField(scrollOffsetOf('weight'));
+                                    scrollToField(offsetOf('weight'));
                                 }}
                                 onBlur={() => setFocusedField(null)}
                                 selectTextOnFocus
@@ -585,7 +621,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
 
                     {/* Field 4: Rack with Floor/Chamber Chips */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.rack }]}>
+                    <View style={[styles.fieldContainer, { minWidth: widthOf('rack', fontScale) }]} onLayout={(e) => setRackWidth(Math.round(e.nativeEvent.layout.width))}>
                         <View style={styles.labelRow}>
                             <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('common.rack')}</Text>
@@ -607,29 +643,30 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             blurOnSubmit={false}
                             onFocus={() => {
                                 setFocusedField('rack');
-                                scrollToField(scrollOffsetOf('rack'));
+                                scrollToField(offsetOf('rack'));
                             }}
                             onBlur={() => setFocusedField(null)}
                             autoCapitalize="characters"
                         />
 
-                        {/* Floor Chips */}
-                        <View style={styles.chipSection}>
-                            <Text style={styles.chipLabel} accessibilityRole="header">{tr('grn.item.floor')}</Text>
-                            <View style={styles.chipWrap} accessibilityRole="radiogroup">
-                                {rackPresets.floor.map((floor) =>
-                                    renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), tr('grn.item.floor'))
-                                )}
+                        {/* Floor buttons on one line, Chamber buttons on a second, in the Rack column under its input. Neither line
+                            wraps. The column is as wide as its longest line (at least `FIELD_WIDTHS.rack`), so the input spans it. */}
+                        <View style={styles.chipsRow}>
+                            <View style={styles.chipGroup}>
+                                <Text style={styles.chipLabel} accessibilityRole="header">{tr('grn.item.floor')}</Text>
+                                <View style={styles.chipLine} accessibilityRole="radiogroup">
+                                    {rackPresets.floor.map((floor) =>
+                                        renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), tr('grn.item.floor'))
+                                    )}
+                                </View>
                             </View>
-                        </View>
-
-                        {/* Chamber Chips */}
-                        <View style={styles.chipSection}>
-                            <Text style={styles.chipLabel} accessibilityRole="header">{tr('common.chamber')}</Text>
-                            <View style={styles.chipWrap} accessibilityRole="radiogroup">
-                                {rackPresets.chamber.map((chamber) =>
-                                    renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), tr('common.chamber'))
-                                )}
+                            <View style={styles.chipGroup}>
+                                <Text style={styles.chipLabel} accessibilityRole="header">{tr('common.chamber')}</Text>
+                                <View style={styles.chipLine} accessibilityRole="radiogroup">
+                                    {rackPresets.chamber.map((chamber) =>
+                                        renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), tr('common.chamber'))
+                                    )}
+                                </View>
                             </View>
                         </View>
 
@@ -637,7 +674,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </View>
 
                     {/* Field 5: Package Mark + Image Upload */}
-                    <View style={[styles.fieldContainer, { width: FIELD_WIDTHS.package_mark }]}>
+                    <View style={[styles.fieldContainer, { width: widthOf('package_mark', fontScale) }]}>
                         <View style={styles.labelRow}>
                             <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.label}>{tr('grn.item.mark')}</Text>
@@ -669,7 +706,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             blurOnSubmit={false}
                             onFocus={() => {
                                 setFocusedField('package_mark');
-                                scrollToField(scrollOffsetOf('package_mark'));
+                                scrollToField(offsetOf('package_mark'));
                             }}
                             onBlur={() => setFocusedField(null)}
                             maxLength={60}
@@ -706,6 +743,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         )}
                         {renderError(currentItem.errors.package_mark)}
                     </View>
+                    </View>
                 </ScrollView>
 
                 {/* Scroll hint: more fields to the right */}
@@ -714,6 +752,23 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                 </View>
                 </>
                 )}
+
+                <AddItemSheet
+                    visible={addItemOpen}
+                    initialName={addItemName}
+                    onClose={() => setAddItemOpen(false)}
+                    onAdded={(item) => {
+                        // The new item is chosen and its word filled; nothing else on the step or the GRN changes.
+                        setAddItemOpen(false);
+                        onFieldChange('item_table_id', item.id);
+                        onFieldChange('item_name', item.name);
+                        onFieldChange('packaging', item.packaging);
+                        setTimeout(() => {
+                            qtyInputRef.current?.focus();
+                            scrollToField(offsetOf('qty'));
+                        }, 400);
+                    }}
+                />
             </View>
         );
     });
@@ -790,11 +845,13 @@ const makeStyles = (t: ThemeTokens) => ({
     },
     scrollContent: {
         paddingHorizontal: space.lg,
-        paddingVertical: space.md,
+        paddingTop: space.md,
+        // As the gaps between the Rack input and the Floor line and Chamber line (chipsRow), so the lines sit close above the keyboard.
+        paddingBottom: space.sm,
         alignItems: 'flex-start' as const,
     },
     fieldContainer: {
-        marginRight: space.md,
+        marginRight: FIELD_GAP,
     },
     labelRow: {
         flexDirection: 'row' as const,
@@ -980,8 +1037,20 @@ const makeStyles = (t: ThemeTokens) => ({
         backgroundColor: t.surface.card,
         ...t.shadow[1],
     },
-    chipSection: {
-        marginTop: space.sm,
+    fieldsRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'flex-start' as const,
+    },
+    chipsRow: {
+        flexDirection: 'column' as const,
+        alignItems: 'flex-start' as const,
+        rowGap: RACK_CHIP_GAP,
+        marginTop: RACK_CHIP_GAP,
+    },
+    chipGroup: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        columnGap: space.sm,
     },
     chipLabel: {
         ...typography.caption1,
@@ -989,11 +1058,10 @@ const makeStyles = (t: ThemeTokens) => ({
         textTransform: 'uppercase' as const,
         letterSpacing: trackedText(0.5),
         color: t.text.secondary,
-        marginBottom: space.xs,
     },
-    chipWrap: {
+    chipLine: {
         flexDirection: 'row' as const,
-        flexWrap: 'wrap' as const,
+        flexWrap: 'nowrap' as const,
         gap: space.sm,
     },
     chip: {

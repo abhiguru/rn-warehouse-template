@@ -201,14 +201,14 @@ export function BandsTable({ draft, ctx, errors, onChange, fields, tags, readOnl
   if (fontScale >= TABLE_FALLBACK_SCALE || crowd) {
     return (
       <View style={styles.footer} testID={`${testID}-stacked`}>
-        <BandsEditor draft={draft} ctx={ctx} errors={errors} onChange={onChange} fields={fields} />
+        <BandsEditor draft={draft} ctx={ctx} errors={errors} onChange={onChange} fields={fields} packaging={packaging ?? ''} />
         {perBand ? null : (
           <>
             {oneTime ? (
               <Text style={styles.note}>{t('pricing.edit.oneTimeLabour')}</Text>
             ) : (
               <Input
-                label={t('pricing.edit.labour')}
+                label={t('pricing.edit.labourFor', { unit: packageUnit(packaging) })}
                 required
                 numeric
                 selectTextOnFocus
@@ -453,7 +453,7 @@ export function BandsTable({ draft, ctx, errors, onChange, fields, tags, readOnl
       {readOnly ? null : (
         <View style={[styles.line, styles.footer]}>
           <View style={styles.grow}>
-            <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} />
+            <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} packaging={packaging ?? ''} />
           </View>
         </View>
       )}

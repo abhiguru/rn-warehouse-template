@@ -55,7 +55,7 @@ import { useAppSelector } from '@/store/hooks';
 import { useSensorDevice, useSensorHistory } from '@/features/sensors/useSensorQueries';
 import { useSensorLiveUpdates } from '@/hooks/useSensorLiveUpdates';
 import { rpcSupport, subscribeRpcSupport } from '@/config/facilityRpcSupport';
-import { buildSensorCsv, rangeOfLastDays, selectablePeriods } from '@/features/sensors/sensorHourly';
+import { buildSensorCsv, isLongPeriod, rangeOfLastDays, selectablePeriods } from '@/features/sensors/sensorHourly';
 import { getSensorHourlyRows } from '@/services/sensor-hourly-service';
 import { shareCsvFile } from '@/utils/shareDocument';
 import { showAlert } from '@/utils/alert';
@@ -264,6 +264,12 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
       color: t.brand.tint,
+    },
+    hourlyNote: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      paddingHorizontal: layout.marginCompact,
+      paddingVertical: space.xs,
     },
     noHistoryText: {
       ...typography.subhead,
@@ -703,6 +709,7 @@ const SensorDetailScreen: React.FC = () => {
                   {exporting ? tr('sensors.hourly.exporting') : tr('sensors.hourly.export')}
                 </Text>
               </Pressable>
+              <Text style={styles.hourlyNote}>{tr('sensors.hourly.latestNote')}</Text>
             </View>
           ) : null}
         </View>
@@ -742,6 +749,9 @@ const SensorDetailScreen: React.FC = () => {
               periodDays={historyData.period_days}
               thresholds={thresholds}
             />
+
+            {/* 6 months and longer are read from the hourly rows, which are added once a day. */}
+            {isLongPeriod(selectedPeriod) ? <Text style={styles.hourlyNote}>{tr('sensors.hourly.latestNote')}</Text> : null}
 
             {/* Summary */}
             {renderSummary(historyData.summary, historyData.raw_reading_count)}

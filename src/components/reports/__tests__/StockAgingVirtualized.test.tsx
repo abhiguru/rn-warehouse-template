@@ -210,7 +210,7 @@ describe('stock aging: an opened item with 500 lots', () => {
     expect(closed).toHaveLength(1);
     const [itemType, itemKey] = closed[0];
     expect(screen.expanded()).toBe(false);
-    const header = 'Example Garlic, 500 GRNs, 1,000 units, oldest 600 days';
+    const header = 'Example Garlic · Bag, 500 GRNs, 1,000 units, oldest 600 days';
     expect(screen.headerLabel()).toBe(header);
     // The figures count item cards (1), not the server's 500 stock lines.
     const totals = ['Items: 1', 'Items over 364 days: 1'];
@@ -254,7 +254,7 @@ describe('stock aging: an opened item with 500 lots', () => {
     await screen.search('a0042');
     // Closed: the card names the lot the search found.
     expect(screen.rows()).toHaveLength(1);
-    expect(screen.headerLabel()).toBe('Example Garlic, 1 GRN, 2 units, oldest 559 days, GRN A0042');
+    expect(screen.headerLabel()).toBe('Example Garlic · Bag, 1 GRN, 2 units, oldest 559 days, GRN A0042');
     expect(screen.bold()).toEqual(['A0042']);
 
     await screen.toggle();

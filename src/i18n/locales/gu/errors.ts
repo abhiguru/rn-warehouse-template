@@ -526,6 +526,13 @@ export const errors: Translation<typeof source> = {
     tooManyPages: 'આ દસ્તાવેજ બહુ લાંબો છે, તેથી એક PDF તરીકે છાપી શકાતો નથી.',
     changedWhilePrinting: 'દસ્તાવેજ બનતો હતો ત્યારે તે બદલાઈ ગયો. ફરી પ્રયાસ કરો.',
     rendererUnavailable: 'PDF બનાવવાની સેવા હમણાં ઉપલબ્ધ નથી. થોડી વારમાં ફરી પ્રયાસ કરો.',
+    // Drafts for the owner's wording review (2026-11-02): the title and message of the three PDF refusals.
+    refusalTooLongTitle: 'PDF માટે બહુ લાંબો',
+    refusalTooLong: 'આ દસ્તાવેજ PDF બનાવવા માટે બહુ લાંબો છે.',
+    refusalChangedTitle: 'દસ્તાવેજ બદલાયો',
+    refusalChanged: 'PDF બનતી હતી ત્યારે તે બદલાઈ ગયો. ફરી પ્રયાસ કરો.',
+    refusalUnavailableTitle: 'PDF ઉપલબ્ધ નથી',
+    refusalUnavailable: 'હમણાં PDF બનાવી શકાતી નથી. થોડી વાર પછી ફરી પ્રયાસ કરો.',
     tooLarge: 'આ દસ્તાવેજ ૨૫ MB થી મોટો છે, તેથી ઍપમાંથી શેર કરી શકાતો નથી.',
     sharingUnavailable: 'આ ફોનમાં શેર કરવાની સુવિધા નથી',
     shareDialogTitle: '{{name}} શેર કરો',

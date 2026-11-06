@@ -612,6 +612,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         ref={customerSearchRef}
         onSelect={handleCustomerSelect}
         title={translate('lists.order.selectCustomer')}
+        includeInactive
       />
 
       {/* A customer account's own businesses, to pick the one to order for */}

@@ -43,7 +43,7 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/grn is already invoiced/, 'errors.parsed.grnAlreadyInvoiced'],
   [/already on another invoice/, 'errors.parsed.lineOnOtherInvoice'],
   [/invoice that has payments/, 'errors.parsed.invoiceHasPayments'],
-  // Server migration 134: an invoice is cancelled, not deleted ("This invoice has payments and can not be cancelled.").
+  // Server migration 134: an invoice can be cancelled ("This invoice has payments and can not be cancelled.").
   [/invoice has payments and can not be cancelled/, 'invoice.cancel.hasPayments'],
   [/invoice is already cancelled/, 'invoice.cancel.alreadyCancelled'],
   [/invoice is cancelled and can not be changed/, 'invoice.cancel.cannotChange'],
@@ -67,7 +67,7 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/image line does not belong to this grn/, 'errors.parsed.imageWrongLine'],
   [/image path is required/, 'errors.parsed.imagePathRequired'],
   [/insufficient stock/, 'errors.code.insufficientStock'],
-  [/delete invoices first|cannot delete item|cannot modify invoiced|is pending tally sync/, 'errors.parsed.inUse'],
+  [/delete invoices first|cannot delete item|cannot modify invoiced/, 'errors.parsed.inUse'],
   [/already exists|duplicate|overlapping/, 'errors.parsed.duplicate'],
   [/not found/, 'errors.parsed.itemNotFound'],
   [/transaction conflict|too many retries|deadlock|could not serialize/, 'errors.parsed.busy'],

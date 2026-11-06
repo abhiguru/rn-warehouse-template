@@ -117,7 +117,7 @@ async function deleteWith(row: string, number: string) {
   await act(async () => { await confirmButton('Continue').props.onPress(); });
   const field = tree!.root.find(node => typeof node.props.onChangeText === 'function' && node.props.placeholder === '10-digit mobile number');
   await act(async () => { field.props.onChangeText(number); });
-  await act(async () => { await confirmButton('Delete account').props.onPress(); });
+  await act(async () => { await confirmButton('Delete my account').props.onPress(); });
 }
 
 describe.each([
@@ -213,7 +213,7 @@ describe('deletion in Settings with central login on', () => {
     await deleteWith(DELETE_ROW, '9000000002');
     expect(deleteFacilityAccount).not.toHaveBeenCalled();
     expect(texts()).toContain("This number doesn't match your account. Check it and try again.");
-    expect(confirmButton('Delete account').props.disabled).toBe(false);
+    expect(confirmButton('Delete my account').props.disabled).toBe(false);
     expect(confirmButton('Cancel').props.disabled).toBe(false);
   });
 

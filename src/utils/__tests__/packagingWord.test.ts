@@ -1,15 +1,15 @@
 import { setLanguage } from '@/i18n';
-import { formatPackages, packNoun, packNounFor, packNounCapital, packageUnit, packagingWord, sharedPackaging, MIXED_PACKAGING } from '../packagingWord';
+import { formatPackages, packNoun, packNounFor, packNounCapital, packageUnit, packagingWord, sharedPackaging, cleanPackaging, itemWithPackaging, displayPackaging, itemWordOfLots, MIXED_PACKAGING } from '../packagingWord';
 
 afterEach(() => setLanguage('en'));
 
 describe('packagingWord', () => {
-  it('names Bag, Box and Crate (any case, singular or plural), and says bag for anything else', () => {
+  it('names Bag, Box and Crate (any case, singular or plural), reads any other word as the item own custom word (WH-41), and a blank as bag', () => {
     expect(packagingWord('Box')).toBe('box');
     expect(packagingWord(' boxes ')).toBe('box');
     expect(packagingWord('CRATE')).toBe('crate');
     expect(packagingWord('Bag')).toBe('bag');
-    expect(packagingWord('Tin')).toBe('bag');
+    expect(packagingWord('Tin')).toBe('custom');
     expect(packagingWord('')).toBe('bag');
     expect(packagingWord(null)).toBe('bag');
     expect(packagingWord(undefined)).toBe('bag');
@@ -45,12 +45,34 @@ describe('packagingWord', () => {
     expect(sharedPackaging([])).toBeUndefined();
   });
 
-  it('keeps an item\'s own "Unit"/"Units" as bags on per-item texts; only a mixed total says units', () => {
-    expect(packagingWord('Unit')).toBe('bag');
-    expect(formatPackages(3, 'Units')).toBe('3 bags');
-    expect(packageUnit('unit')).toBe('bag');
-    expect(packNounCapital('Units')).toBe('Bags');
+  it('shows an item\'s own word as typed, with no plural and no translation; only a mixed total says units (WH-41)', () => {
+    expect(packagingWord('Unit')).toBe('custom');
+    expect(formatPackages(3, 'Units')).toBe('3 Units');
+    expect(packageUnit('unit')).toBe('unit');
+    expect(packNounCapital('Units')).toBe('Units');
+    expect(formatPackages(12, 'Katta')).toBe('12 Katta');
+    expect(formatPackages(1, 'Katta')).toBe('1 Katta');
+    expect(packNounFor(12, 'Trey')).toBe('Trey');
     expect(formatPackages(3, MIXED_PACKAGING)).toBe('3 units');
+    setLanguage('gu');
+    expect(formatPackages(12, 'Katta')).toBe('૧૨ Katta');
+  });
+
+  it('ignores outer spaces and invisible characters, and the case, when it matches a word (WH-9)', () => {
+    expect(packagingWord('﻿Box ')).toBe('box');
+    expect(packagingWord(' crate ')).toBe('crate');
+    expect(packagingWord(' bags ')).toBe('bag');
+    expect(cleanPackaging('  Katta  ')).toBe('Katta');
+    expect(sharedPackaging(['Katta', ' katta '])).toBe('Katta');
+    expect(sharedPackaging(['Katta', 'Trey'])).toBe(MIXED_PACKAGING);
+  });
+
+  it('puts the word beside the item name, a blank reading Bag (WH-46)', () => {
+    expect(itemWithPackaging('Egg', 'Trey')).toBe('Egg · Trey');
+    expect(itemWithPackaging('Egg', null)).toBe('Egg · Bag');
+    expect(itemWithPackaging('Egg', 'boxes')).toBe('Egg · Box');
+    expect(displayPackaging('  ')).toBe('Bag');
+    expect(itemWordOfLots(['Box', 'Crate'])).toBe(MIXED_PACKAGING);
   });
 
   it('counts lines of mixed packaging as units, in Gujarati નંગ', () => {

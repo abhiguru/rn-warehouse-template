@@ -11,6 +11,7 @@
  * positive, 121–240 informative, 241–364 critical and over 364 negative.
  */
 
+import { itemWithPackaging } from '@/utils/packagingWord';
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
@@ -537,7 +538,7 @@ const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, onTogg
           onPress={() => onToggle(group.key)}
           accessibilityRole="button"
           accessibilityLabel={[
-            tr('reports.stockAging.groupA11y', { name: group.itemName, grns, units: units(group.totalStock), age: days(group.oldestDays) }),
+            tr('reports.stockAging.groupA11y', { name: itemWithPackaging(group.itemName, group.packaging), grns, units: units(group.totalStock), age: days(group.oldestDays) }),
             ...found,
           ].join(', ')}
           accessibilityState={{ expanded }}
@@ -546,7 +547,7 @@ const ItemGroupRow = memo(function ItemGroupRow({ group, words, expanded, onTogg
             <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
           </View>
           <View style={styles.cellContent}>
-            <HighlightedText style={styles.cellTitle} numberOfLines={2} text={group.itemName} words={words} />
+            <HighlightedText style={styles.cellTitle} numberOfLines={2} text={itemWithPackaging(group.itemName, group.packaging)} words={words} />
             <Text style={styles.cellSubtitle}>{grns}</Text>
             {found.length > 0 ? <HighlightedText style={styles.footnote} text={found.join(' · ')} words={words} /> : null}
             <AgeTag bucket={group.oldestBucket} label={oldest} />

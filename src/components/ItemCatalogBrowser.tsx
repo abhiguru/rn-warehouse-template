@@ -29,7 +29,7 @@ import {
   type ThemeTokens,
   singleLineText,
 } from '@/theme/tokens';
-import { formatPackages } from '@/utils/packagingWord';
+import { formatPackages, itemWithPackaging } from '@/utils/packagingWord';
 import { formatCount, formatDate, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { OrderService } from '@/services/order-service';
@@ -73,11 +73,18 @@ type CheckingLeaveAnswer = 'wait' | 'leave';
  */
 const lotParts = (item: GRNItem): string[] =>
   [
-    item.name,
+    itemWithPackaging(item.name, item.packaging),
     item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
     item.grn_number ? tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) }) : null,
     formatWeightEach(item.weight),
   ].filter((part): part is string => Boolean(part));
+
+/** A lot as a quick-add pill: the catalog item (two items can share a name) and its own packaging word. */
+const toQuickAdd = (item: GRNItem): QuickAddItem => ({ id: item.id, name: item.name, itemId: item.catalog_id, packaging: item.packaging });
+
+/** Two lots of one item: the same catalog item, else (older rows) the same name. */
+const sameItem = (a: GRNItem, b: GRNItem): boolean =>
+  a.catalog_id && b.catalog_id ? a.catalog_id === b.catalog_id : a.name.toLowerCase() === b.name.toLowerCase();
 
 /** A lot as the leave question names it: the parts of the row's name, set apart by dots. */
 const lotLabel = (item: GRNItem): string => lotParts(item).join(' \u00B7 ');
@@ -622,9 +629,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     if (quantity === 0) {
       setDraft(prev => withQuantity(prev, item, 0));
 
-      // Also remove from recently added items if it was there (by name for consistency)
+      // Also remove from recently added items if it was there
       setRecentlyAddedItems(prevRecent => {
-        const filtered = prevRecent.filter(i => i.name.toLowerCase() !== item.name.toLowerCase());
+        const filtered = prevRecent.filter(i => !sameItem(i, item));
         if (filtered.length < prevRecent.length) {
           // Item was in the list, persist the removal
           SessionRecentItemsService.saveRecentlyAddedItems(customerId, filtered)
@@ -660,8 +667,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
 
         // Update local state
         setRecentlyAddedItems(prevRecent => {
-          // Remove if already exists BY NAME (not ID) - same item can have different IDs across GRN records
-          const filtered = prevRecent.filter(i => i.name.toLowerCase() !== item.name.toLowerCase());
+          // Remove if the same item is already there. Lots of one item have different ids, so the catalog item decides (two items can share a name).
+          const filtered = prevRecent.filter(i => !sameItem(i, item));
           const updated = [item, ...filtered];
           if (__DEV__) console.log('[ItemCatalogBrowser] 📋 Updated recentlyAddedItems:', updated.map(i => i.name));
 
@@ -1040,14 +1047,14 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       quantity > 0 ? tr('orders.catalog.rowSelected', { bags: formatPackages(quantity, item.packaging) }) : null,
     ].filter(Boolean).join(', ');
 
-    const addPacks = (count: number) => tr('orders.catalog.addPacks', { packs: formatPackages(count, item.packaging), name: item.name });
-    const removePacks = (count: number) => tr('orders.catalog.removePacks', { packs: formatPackages(count, item.packaging), name: item.name });
+    const addPacks = (count: number) => tr('orders.catalog.addPacks', { packs: formatPackages(count, item.packaging), name: itemWithPackaging(item.name, item.packaging) });
+    const removePacks = (count: number) => tr('orders.catalog.removePacks', { packs: formatPackages(count, item.packaging), name: itemWithPackaging(item.name, item.packaging) });
     // What − and −10 give a lot above its stock: the quantity it is lowered to (never above the stock, never below 1; 0 when
     // there is no stock, which takes it off), and the spoken label that says so.
     const loweredTo = (amount: number) => item.current_stock <= 0 ? 0 : Math.min(item.current_stock, Math.max(1, quantity - amount));
     const lowerPacks = (amount: number) => loweredTo(amount) === 0
-      ? tr('orders.item.removeFromOrder', { name: item.name })
-      : tr('orders.item.lowerTo', { name: item.name, quantity: formatNumber(loweredTo(amount)) });
+      ? tr('orders.item.removeFromOrder', { name: itemWithPackaging(item.name, item.packaging) })
+      : tr('orders.item.lowerTo', { name: itemWithPackaging(item.name, item.packaging), quantity: formatNumber(loweredTo(amount)) });
 
     const preset = (amount: number, label: string, a11y: string, disabled = false) => (
       <Pressable
@@ -1094,7 +1101,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           <View style={styles.mainContent}>
             {/* Title Row */}
             <View style={styles.titleRow}>
-              <Text style={styles.titleText} numberOfLines={2}>{item.name}</Text>
+              <Text style={styles.titleText} numberOfLines={2}>{itemWithPackaging(item.name, item.packaging)}</Text>
               {isInExistingOrder && (
                 <View style={styles.alreadyInOrderBadge}>
                   <Icon name="check" size={iconSize.sm} color={t.brand.tint} />
@@ -1186,7 +1193,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
                 {stepper(overStock ? loweredTo(1) : quantity - 1, '−', overStock ? lowerPacks(1) : removePacks(1), quantity === 0)}
                 <Text
                   style={styles.quantity}
-                  accessibilityLabel={tr('orders.catalog.selectedOf', { bags: formatPackages(quantity, item.packaging), name: item.name })}
+                  accessibilityLabel={tr('orders.catalog.selectedOf', { bags: formatPackages(quantity, item.packaging), name: itemWithPackaging(item.name, item.packaging) })}
                   accessibilityLiveRegion="polite"
                 >
                   {formatNumber(quantity)}
@@ -1353,10 +1360,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         customerId={customerId}
         onItemSelected={handleRecentItemSelected}
         isLoading={loading}
-        allItems={customerAllItems.map(item => ({ id: item.id, name: item.name }))}
+        allItems={customerAllItems.map(toQuickAdd)}
         selectedItemName={searchQuery}
         refreshTrigger={recentItemsRefreshTrigger}
-        recentlyAddedItems={recentlyAddedItems.map(item => ({ id: item.id, name: item.name }))}
+        recentlyAddedItems={recentlyAddedItems.map(toQuickAdd)}
       />
 
       {/* A lot's answer was lost: the whole picker is locked while the server is asked, and says so here. */}

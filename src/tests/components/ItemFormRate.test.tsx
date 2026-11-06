@@ -58,6 +58,8 @@ const addItem = async () => { await act(async () => { tree.root.find(n => typeof
 async function open() {
   await act(async () => { tree = create(<ItemFormScreen />); });
   await act(async () => { nameField().props.onChangeText('Fictional Gur Box'); });
+  // The item's own packaging word is required (WH-41).
+  await act(async () => { tree.root.find(n => n.props.accessibilityLabel === 'Packaging, required' && typeof n.props.onChangeText === 'function').props.onChangeText('Bag'); });
 }
 
 beforeEach(() => {

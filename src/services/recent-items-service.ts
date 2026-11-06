@@ -110,7 +110,7 @@ export const RecentItemsService = {
       }
 
       result.data.items?.forEach((dispatch: RpcDispatchRecord) => {
-        // Aggregate by item NAME (not ID), since same item can be in multiple GRNs
+        // Aggregate by the catalog item (the same item can be in multiple GRNs); two items with one name stay two (WH-41).
         const itemName = dispatch.item_name || dispatch.grnItems_itemName || t('common.unknown');
         // Use the GRN item record ID for the first occurrence
         const grnItemId = dispatch.id || dispatch.grnItems_id;
@@ -136,8 +136,8 @@ export const RecentItemsService = {
           updated_at: dispatch.updated_at || dispatch.grnItems_updatedAt || new Date().toISOString()
         };
 
-        // Use item name as key for aggregation
-        const existing = itemMap.get(itemName);
+        const itemKey = grnItem.catalog_id || itemName;
+        const existing = itemMap.get(itemKey);
 
         if (existing) {
           existing.orderCount++;
@@ -149,7 +149,7 @@ export const RecentItemsService = {
             existing.lastOrderedDate = dispDate;
           }
         } else {
-          itemMap.set(itemName, {
+          itemMap.set(itemKey, {
             item: grnItem,
             lastOrderedDate: dispatch.dispDate || dispatch.dispatch_date || new Date().toISOString(),
             orderCount: 1,

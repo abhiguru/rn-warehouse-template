@@ -11,6 +11,9 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { normalizeDigits } from '@/i18n';
 import { HorizontalItemForm, type ItemFormData } from '../HorizontalItemForm';
 
+// The add-item sheet in the entry form (WH-56) needs the safe area and the network state.
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),

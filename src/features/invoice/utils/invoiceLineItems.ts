@@ -31,7 +31,10 @@ export function buildInvoiceLineItems(
 
       return {
         id: item.item_id,
-        item_name: catalog.name || grnItem.name || tr('invoice.details.unknownItem'),
+        item_name:
+          item.details_available === false
+            ? tr('invoice.details.detailsNotAvailable')
+            : catalog.name || grnItem.name || tr('invoice.details.unknownItem'),
         duration: (item.duration || 1).toString(),
         no_of_days: item.no_of_days || 0,
         charge: item.charge || 0,

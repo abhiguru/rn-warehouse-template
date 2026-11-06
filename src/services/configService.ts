@@ -31,7 +31,6 @@ export interface PublicConfig {
   anonKey: string;
   environment: string;
   version: string;
-  maintenanceMode: boolean;
   instanceId: string;
   displayName: string;
   companyName: string;
@@ -86,7 +85,6 @@ export interface FullConfig {
   };
   features: {
     testMode: boolean;
-    maintenanceMode: boolean;
     otpEnabled: boolean;
     smsProvider: string;
     maxFileUploadSize: number;

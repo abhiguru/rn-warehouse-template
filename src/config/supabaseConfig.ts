@@ -1224,8 +1224,6 @@ export const exchangeCentralIdentity = async (
 export type BreakGlassFailure =
   /** The code is wrong, used, expired or locked (the facility does not say which). */
   | 'refused'
-  /** A customer: facility codes are for facility staff. */
-  | 'customer'
   | 'rate_limited'
   /** The facility is not in operator mode, or its database is down (503), or it does not know the function. */
   | 'unavailable'
@@ -1264,7 +1262,6 @@ export const breakGlassSignIn = async (phone: string, code: string): Promise<Bre
       const failureCode = typeof result?.code === 'string' ? result.code : '';
       if (response.status === 429) return { success: false, reason: 'rate_limited' };
       if (response.status === 503 || response.status === 404) return { success: false, reason: 'unavailable' };
-      if (failureCode === 'customer_not_allowed') return { success: false, reason: 'customer' };
       if (BREAK_GLASS_REFUSALS.includes(failureCode)) return { success: false, reason: 'refused' };
       return { success: false, reason: 'failed' };
     }

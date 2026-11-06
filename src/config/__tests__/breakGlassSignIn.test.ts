@@ -94,7 +94,7 @@ it.each([
   ['code_used', 400, 'refused'],
   ['code_expired', 400, 'refused'],
   ['code_locked', 400, 'refused'],
-  ['customer_not_allowed', 403, 'customer'],
+  ['customer_not_allowed', 403, 'failed'], // WH-32: the backend never sends it; no longer a reason of its own
   [undefined, 429, 'rate_limited'],
   [undefined, 503, 'unavailable'],
   ['invalid_request', 400, 'failed'],

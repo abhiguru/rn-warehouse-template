@@ -116,7 +116,7 @@ const textOf = (instance: ReactTestInstance): string =>
   instance.children.map(child => (typeof child === 'string' ? child : textOf(child))).join('');
 const addButtonText = () => textOf(node('catalog-add'));
 const isSelected = (name: string) =>
-  renderer!.root.findAll(candidate => candidate.props.accessibilityLabel === `1 bag of ${name} selected`).length > 0;
+  renderer!.root.findAll(candidate => candidate.props.accessibilityLabel === `1 bag of ${name} · Bag selected`).length > 0;
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -163,7 +163,7 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   expect(addButtonText()).toBe('Add');
   await act(async () => {
     renderer!.root.findAll(candidate =>
-      candidate.props.accessibilityLabel === 'Add 1 bag of Fictional potatoes' && typeof candidate.props.onPress === 'function')[0].props.onPress();
+      candidate.props.accessibilityLabel === 'Add 1 bag of Fictional potatoes · Bag' && typeof candidate.props.onPress === 'function')[0].props.onPress();
   });
   expect(addButtonText()).toBe('Add (1)');
   expect(isSelected('Fictional potatoes')).toBe(true);
@@ -206,7 +206,7 @@ it('closes when the save that timed out is found applied: the lot is locked and 
 
   await act(async () => {
     renderer!.root.findAll(candidate =>
-      candidate.props.accessibilityLabel === 'Add 1 bag of Fictional potatoes' && typeof candidate.props.onPress === 'function')[0].props.onPress();
+      candidate.props.accessibilityLabel === 'Add 1 bag of Fictional potatoes · Bag' && typeof candidate.props.onPress === 'function')[0].props.onPress();
   });
   expect(addButtonText()).toBe('Add (1)');
 

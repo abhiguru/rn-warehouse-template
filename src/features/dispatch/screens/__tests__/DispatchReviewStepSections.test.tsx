@@ -238,6 +238,6 @@ describe('the lots\' packaging (D18)', () => {
     withPackaging('Jute', 'Unit');
     await act(async () => { tree.unmount(); });
     await render();
-    expect(labels()).toContain('Total: 2 item lines from 2 GRNs, 10 bags dispatched');
+    expect(labels()).toContain('Total: 2 item lines from 2 GRNs, 10 units dispatched');
   });
 });

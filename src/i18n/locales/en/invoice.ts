@@ -22,6 +22,8 @@ export const invoice = {
     surchargeIncluded: 'Surcharge (included)',
     rounding: 'Rounding',
     netBeforeTax: 'Net before tax',
+    // The Invoices list card's word for the same figure (WH-59).
+    subtotal: 'Subtotal',
     totalAmount: 'Total amount',
     percent: '{{value}}%',
     gst: 'GST',
@@ -340,7 +342,7 @@ export const invoice = {
     overview: 'Overview',
     breakdown: 'Breakdown',
   },
-  // An invoice is cancelled, never deleted (server migration 134).
+  // An invoice can be cancelled (server migration 134: it stays on record) or deleted (migration 146: it is removed).
   cancel: {
     action: 'Cancel invoice',
     title: 'Cancel invoice {{number}}?',
@@ -386,6 +388,7 @@ export const invoice = {
     deleteConfirm: 'Delete invoice',
     deletedTitle: 'Invoice {{number}} deleted.',
     deleteFailedTitle: "Couldn't delete invoice",
+    deleteStale: 'Someone else changed this invoice. It has been loaded again: check it, then delete it if it is still wrong.',
     // The page is opened on an invoice that was deleted (on another phone, or just now).
     deletedGoneTitle: 'Invoice deleted',
     deletedGoneMessage: 'This invoice was deleted, so it cannot be opened, edited or shared any more.',
@@ -393,6 +396,7 @@ export const invoice = {
     shareFailedMessage: "Couldn't share the invoice PDF. Check your connection and try again.",
     shareMissingData: 'This invoice is missing its number or financial year. Reload it and try again.',
     unknownItem: 'Unknown Item',
+    detailsNotAvailable: 'Details not available',
     totalA11y: 'Total {{amount}}',
     taxA11y: 'Tax {{amount}}',
     notSetA11y: 'not set',

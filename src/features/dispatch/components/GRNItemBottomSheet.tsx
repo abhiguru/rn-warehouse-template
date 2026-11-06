@@ -36,7 +36,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 import { formatCount } from '@/utils/formatters';
-import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
+import { formatPackages, itemWithPackaging, sharedPackaging } from '@/utils/packagingWord';
 import { t as tr } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
 
@@ -279,7 +279,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
           ]}
           onPress={() => handleItemSelect({ item_id: item.item_id, item_name: item.item_name })}
           accessibilityRole="button"
-          accessibilityLabel={tr('dispatch.itemSheet.rowLabel', { item: item.item_name, lots, available })}
+          accessibilityLabel={tr('dispatch.itemSheet.rowLabel', { item: itemWithPackaging(item.item_name, item.packaging), lots, available })}
           accessibilityState={{ selected: isSelected }}
         >
           <View style={styles.itemHeader}>
@@ -287,7 +287,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
               <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
             </View>
             <View style={styles.itemInfo}>
-              <Text style={styles.itemName} numberOfLines={2}>{item.item_name}</Text>
+              <Text style={styles.itemName} numberOfLines={2}>{itemWithPackaging(item.item_name, item.packaging)}</Text>
               <View style={styles.itemMeta}>
                 <View style={styles.metaBadge}>
                   <Icon name="layers-outline" size={iconSize.sm} color={t.status.neutral.text} />

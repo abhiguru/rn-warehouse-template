@@ -128,18 +128,73 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     marginHorizontal: space.xs,
   },
 
-  // "120 of 200 bags" over the status tag. It may wrap at large text; it is never cut.
+  // The collapsed card's stock box (WH-58, the old Fiori arrangement): 40 dp, tinted per level (colours set where drawn).
+  statusIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+
+  // The item count as a grey pill (no dot before it).
+  itemCountPill: {
+    backgroundColor: t.surface.cardPressed,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    flexShrink: 0,
+  },
+
+  itemCountText: {
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+
+  // Badge, number with STOCK under it, total kg. It never grows past 45% of the card, so a long customer name cannot push it off.
   attributeStack: {
     alignItems: 'flex-end' as const,
     gap: space.xs,
     minWidth: 72,
     maxWidth: '45%' as const,
+    flexShrink: 0,
   },
 
-  // The main value of an object cell (13.6): headline, tabular.
+  // Solid fill; the colours are set where drawn (status text colour, text.inverse on it).
+  statusBadge: {
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+  },
+
+  statusBadgeText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    textAlign: 'center' as const,
+  },
+
+  stockValueContainer: {
+    alignItems: 'flex-end' as const,
+  },
+
+  // The number left: headline (17), tabular.
   stockValueText: {
     ...typography.headline,
     color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+    textAlign: 'right' as const,
+  },
+
+  stockLabel: {
+    ...typography.caption2,
+    color: t.text.secondary,
+    textAlign: 'right' as const,
+  },
+
+  weightText: {
+    ...typography.footnote,
+    color: t.text.secondary,
     fontVariant: ['tabular-nums' as const],
     textAlign: 'right' as const,
   },

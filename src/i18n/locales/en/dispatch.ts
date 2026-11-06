@@ -46,7 +46,7 @@ export const dispatch = {
     maybeSavedAfterLeavingTitle: 'No answer from the server',
     savedAfterLeavingTitle: 'Dispatch saved',
     savedAfterLeaving: 'Dispatch {{number}} was saved before you left the form. Find it in the Dispatch list.',
-    savedAfterLeavingPhotos: 'Dispatch {{number}} was saved, but its photos were not uploaded. Open it in the Dispatch list and add them under Photos.',
+    savedAfterLeavingPhotos: 'Dispatch {{number}} was saved, but its photos were not uploaded. Open it in the Dispatch list and add them under Images.',
   },
   // Opening a dispatch to edit it (the edit form reads the dispatch before it shows a step)
   edit: {
@@ -118,8 +118,6 @@ export const dispatch = {
     lotFieldLabel: 'Lot, required, {{value}}',
     lotValue: 'GRN qty {{quantity}} · {{stock}} in stock',
     lotValueLabel: 'GRN quantity {{quantity}}, {{stock}} in stock',
-    lotChosen: 'Lot chosen',
-    lotChosenState: 'chosen',
     opensLotList: 'Opens the lot list',
     chooseItemFirst: 'Choose an item first',
     chooseLot: 'Choose lot',
@@ -129,15 +127,13 @@ export const dispatch = {
     leftAfterDispatch: 'Left after dispatch',
     // A new dispatch from an order: what the order asks of the lot of a line ("Order asks for 40 bags"), to check the quantity against.
     orderAsks: 'Order asks for {{bags}}',
-    enterPacks: 'Enter {{things}}',
     maxPacksOriginal: 'Enter {{packs}} or fewer. That is the original stock.',
     maxPacksAvailable: 'Enter {{packs}} or fewer. That is the available stock.',
-    maxPacksInHand: 'Enter {{packs}} or fewer. That is the stock in hand.',
     lotDetails: 'Lot details',
     backToDetails: 'Back to dispatch details',
     nextReview: 'Next, review dispatch',
     clearItemTitle: 'Clear this item?',
-    clearItemMessage: 'The GRN, lot and bags you entered for this item will be cleared.',
+    clearItemMessage: 'The GRN, lot and {{things}} you entered for this item will be cleared.',
     clearItemConfirm: 'Clear item',
     keepItem: 'Keep item',
     backTitle: 'Go back to details?',
@@ -146,10 +142,6 @@ export const dispatch = {
     discardItemChangesTitle: 'Discard changes to this item?',
     discardItemChangesMessage: 'Your changes to this item will be lost.',
     discardChanges: 'Discard changes',
-    addItem: 'Add item',
-    closeAddItem: 'Close add item',
-    addAndAnother: 'Add item and add another',
-    addAnother: 'Add another',
   },
   // The GRN picker with its number pad
   grnSheet: {

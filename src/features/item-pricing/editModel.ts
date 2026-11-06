@@ -16,7 +16,7 @@ import { acceptRentText, labourNumber, priceNumber, rentNumber, RENT_MAX } from 
 export const MAX_BANDS = 10;
 
 /** 'fixed': the day cannot be chosen (a correction keeps the rate's own start). */
-export type StartsOnChoice = 'today' | 'nextMonth' | 'april' | 'other' | 'fixed';
+export type StartsOnChoice = 'today' | 'nextMonth' | 'april' | 'other' | 'fixed' | 'ownStart';
 
 export interface BandDraft {
   /** The heaviest bag this band holds, whole kg, as typed. */
@@ -49,6 +49,8 @@ export interface Draft {
   tax: string;
   /** A default rate's stored first band started above 0 kg: it now starts at 0 (the editor says so). */
   firstBandZeroed?: true;
+  /** Mode addBand: the first `locked` bands are the rate's own, shown closed and sent as loaded (ctx.lockedRows). */
+  locked?: number;
 }
 
 export interface EditorContext {
@@ -75,6 +77,14 @@ export interface EditorContext {
   copied: boolean;
   /** The earliest day a rate may start (the oldest GRN's day); absent: three years before today. */
   earliestStart?: string | null;
+  /** Mode addBand: the rows in force, exactly as loaded; the draft's first bands are their readings. */
+  lockedRows?: ItemStoragePrice[];
+  /** Mode addBand: the day the rate in force started (its rows' start). */
+  ownStart?: string | null;
+  /** Mode addBand: the rows in force do not share one start day, so only Today is offered (nothing is sent as a correction). */
+  mixedStarts?: boolean;
+  /** Mode addBand: a save from the default day would lose a row or a stop of the scope, so only Today is offered. */
+  othersAtRisk?: boolean;
 }
 
 export interface Scope {
@@ -104,6 +114,47 @@ export function dayInWindow(startsOn: string, today: string, earliest?: string |
   return startsOn >= startFloor(today, earliest) && startsOn <= addDays(today, START_DAYS_AHEAD);
 }
 
+/** Mode addBand: the rate in force began before the earliest day the server accepts (known only when the server sent it). */
+export const startMoved = (ctx: EditorContext): boolean => !!ctx.ownStart && !!ctx.earliestStart && ctx.ownStart < ctx.earliestStart;
+
+/** Mode addBand: the day of the default choice, the rate's own start, or the earliest allowed day when the rate began before it. */
+export function ownStartDay(ctx: EditorContext): string | null {
+  return ctx.ownStart ? (startMoved(ctx) ? (ctx.earliestStart as string) : ctx.ownStart) : null;
+}
+
+/** True when the save sends mode 'correct' on the rate's own start: a correction, or the default choice of Add rate on a rate in force. */
+export function correcting(draft: Draft, ctx: EditorContext): boolean {
+  return ctx.mode === 'correct' || (ctx.mode === 'addBand' && draft.startsOnChoice === 'ownStart' && !startMoved(ctx));
+}
+
+/** The soonest rate of the item's own scope that starts after `afterDay`, or null. */
+export function laterRateStart(ctx: EditorContext, priceType: PriceType, afterDay: string): string | null {
+  const later = ctx.rows
+    .filter(r => inScope(r, { customerId: null, priceType }) && day(r.effective_from) > afterDay)
+    .map(r => day(r.effective_from))
+    .sort();
+  return later[0] ?? null;
+}
+
+/**
+ * Add rate on a rate in force, default choice. A rate that began before the server's earliest day cannot start
+ * from a planned rate's side: the person is told (at the top) and the planned rate is never replaced from here.
+ */
+export function bandBlockedByPlanned(draft: Draft, ctx: EditorContext, earliest: string | null = null): string | null {
+  if (ctx.mode !== 'addBand' || draft.startsOnChoice !== 'ownStart' || !ctx.ownStart) return null;
+  const from = earliest && ctx.ownStart < earliest ? earliest : startMoved(ctx) ? (ctx.earliestStart as string) : null;
+  if (!from) return null;
+  const later = laterRateStart(ctx, draft.priceType, from);
+  return later ? t('pricing.edit.bandLaterBlocked', { date: dateText(later), earliest: dateText(from) }) : null;
+}
+
+/** Add rate on a rate in force, default choice on its own start: a planned later rate does not get the new band (the form says so). */
+export function bandPlannedNote(draft: Draft, ctx: EditorContext): string | null {
+  if (ctx.mode !== 'addBand' || draft.startsOnChoice !== 'ownStart' || startMoved(ctx) || !draft.startsOn) return null;
+  const later = laterRateStart(ctx, draft.priceType, draft.startsOn);
+  return later ? t('pricing.edit.bandLaterPlanned', { date: dateText(later) }) : null;
+}
+
 /** A whole number of kilograms typed as digits only, else null. */
 export function wholeKg(text: string | null | undefined): number | null {
   const cleaned = normalizeDigits(text ?? '').trim();
@@ -118,6 +169,22 @@ export function rowsInForce(rows: ItemStoragePrice[], scope: Scope, onDay: strin
   return rows
     .filter(r => inScope(r, scope) && day(r.effective_from) <= onDay && (!r.effective_to || day(r.effective_to) >= onDay))
     .sort((a, b) => a.weight_min - b.weight_min);
+}
+
+/**
+ * Add rate on a rate in force: true when saving from the default day would lose something. Correct mode deletes every row of the
+ * scope starting that day and a change from the earliest day deletes every row starting from it; both give all new rows one kept
+ * stop, which exists only when the rows in force that day share it (all open or one last day). So the default day is safe only when
+ * every such row is one of the locked bands and the rows in force that day stop together.
+ */
+function defaultDayLosesRows(rows: ItemStoragePrice[], locked: ItemStoragePrice[], scope: Scope, ownStart: string, earliest: string | null): boolean {
+  const moved = !!earliest && ownStart < earliest;
+  const from = moved ? (earliest as string) : ownStart;
+  const lockedIds = new Set(locked.map(r => r.id));
+  const inScopeRows = rows.filter(r => inScope(r, scope));
+  const deleted = inScopeRows.filter(r => (moved ? day(r.effective_from) >= from : day(r.effective_from) === from) && !lockedIds.has(r.id));
+  const stops = new Set(rowsInForce(inScopeRows, scope, from).map(r => day(r.effective_to)));
+  return deleted.length > 0 || stops.size > 1 || locked.some(r => day(r.effective_to) !== [...stops][0]);
 }
 
 /** The soonest planned rate of a scope after a day: its start and rows. */
@@ -210,7 +277,8 @@ export function fromOf(draft: Draft, index: number): number | null {
  */
 export function fieldOrder(draft: Draft, customerId: string | null): string[] {
   const perBand = draft.bands.some(b => b.labour !== undefined);
-  const keys = draft.bands.flatMap((b, i) => [
+  const locked = draft.locked ?? 0;
+  const keys = draft.bands.flatMap((b, i) => i < locked ? [] : [
     ...(customerId ? [i === 0 ? 'firstFrom' : `band.${i}.from`] : []),
     `band.${i}.upTo`,
     `band.${i}.rent`,
@@ -297,13 +365,54 @@ export function appendBandBlock(draft: Draft): 'max' | 'upTo' | null {
  */
 export function appendEmptyBand(draft: Draft): Draft {
   if (appendBandBlock(draft) !== null) return draft;
-  const first = draft.bands[0];
+  // Add rate on a rate in force: the new band's labour and tax start as the band before's.
+  const first = draft.locked ? draft.bands[draft.bands.length - 1] : draft.bands[0];
   const fresh: BandDraft = {
     upTo: '',
     rent: '',
     ...(draft.bands.some(b => b.labour !== undefined) ? { labour: first.labour ?? '', tax: first.tax ?? '' } : {}),
   };
   return { ...draft, bands: [...draft.bands, fresh] };
+}
+
+export type InsertBandResult = { ok: true; draft: Draft; index: number } | { ok: false; reason: string };
+
+/**
+ * Adds a band that starts at `startText` kg. Inside a band it splits it: that band ends one kg before the
+ * start and the new band takes its old end, rent, labour and tax (no other band changes). Right after the
+ * last band it is today's append (blank figures). Refused, with the reason in words, when the start is not a
+ * whole number, is the start of a band already or lies before the first one, would leave a gap, or when
+ * there are ten bands or a band's "Up to" is not yet a whole number.
+ */
+export function insertBandAt(draft: Draft, startText: string): InsertBandResult {
+  const fail = (reason: string): InsertBandResult => ({ ok: false, reason });
+  if (draft.bands.length >= MAX_BANDS) return fail(t('pricing.edit.bandsFull'));
+  const ends = draft.bands.map(b => wholeKg(b.upTo));
+  if (ends.some(e => e === null)) return fail(t('pricing.edit.insertNeedsUpTo'));
+  const start = wholeKg(startText);
+  if (start === null) return fail(t('pricing.edit.insertWhole'));
+  const lastEnd = ends[ends.length - 1] as number;
+  if (start > lastEnd + 1) return fail(t('pricing.edit.insertGap', { kg: localizeDigits(String(lastEnd + 1)) }));
+  if (start === lastEnd + 1) {
+    const draftAfter = appendEmptyBand(draft);
+    return draftAfter === draft ? fail(t('pricing.edit.bandsFull')) : { ok: true, draft: draftAfter, index: draft.bands.length };
+  }
+  if (start < draft.firstFrom) return fail(t('pricing.edit.insertLow', { kg: localizeDigits(String(draft.firstFrom + 1)) }));
+  for (let i = 0; i < draft.bands.length; i++) {
+    const from = fromOf(draft, i);
+    const end = ends[i] as number;
+    if (from === null || !(from < start && start <= end)) continue;
+    const { rentRefused: _refused, ...band } = draft.bands[i];
+    const added: BandDraft = {
+      upTo: String(end),
+      rent: band.rent,
+      ...(band.labour !== undefined ? { labour: band.labour } : {}),
+      ...(band.tax !== undefined ? { tax: band.tax } : {}),
+    };
+    const bands = [...draft.bands.slice(0, i), { ...band, upTo: String(start - 1) }, added, ...draft.bands.slice(i + 1)];
+    return { ok: true, draft: { ...draft, bands }, index: i + 1 };
+  }
+  return fail(t('pricing.edit.insertExists', { kg: localizeDigits(String(start)) }));
 }
 
 /**
@@ -313,11 +422,13 @@ export function appendEmptyBand(draft: Draft): Draft {
  * A band whose "Up to" is still empty (just added) has no weights to hand over either way.
  */
 export function removeBand(draft: Draft, index: number): Draft {
-  if (draft.bands.length < 2 || index < 0 || index >= draft.bands.length) return draft;
+  const locked = draft.locked ?? 0;
+  if (draft.bands.length < 2 || index < locked || index >= draft.bands.length) return draft;
   const removed = draft.bands[index];
   const bands = draft.bands.filter((_, i) => i !== index);
   const last = index === draft.bands.length - 1;
-  if (index > 0 && !last && removed.upTo.trim() !== '') bands[index - 1] = { ...bands[index - 1], upTo: removed.upTo };
+  // A rate's own bands never take weights over: the band after simply follows the one before.
+  if (index > locked && !last && removed.upTo.trim() !== '') bands[index - 1] = { ...bands[index - 1], upTo: removed.upTo };
   return { ...draft, bands };
 }
 
@@ -468,6 +579,30 @@ export function initialDraft({ mode, params, rows, role, today, earliest }: Open
     copied: false,
   };
 
+  // ---- Add rate on a rate in force: the rate's own bands closed, a new band open (WH-74) ----
+  if (mode === 'addBand') {
+    const own = rowsInForce(rows, scope, today);
+    // Nothing in force (the rate ended meanwhile): the form opens as Add rate always did.
+    if (own.length === 0) return initialDraft({ mode: 'add', params, rows, role, today, earliest });
+    const lastOwn = own[own.length - 1];
+    const starts = [...new Set(own.map(r => day(r.effective_from)))].sort();
+    const mixedStarts = starts.length > 1;
+    const othersAtRisk = !mixedStarts && defaultDayLosesRows(rows, own, scope, starts[0], earliest ?? null);
+    const ownStart = mixedStarts || othersAtRisk ? null : starts[0];
+    const context: EditorContext = { ...base, mode, priceTypeChoosable: false, lockedRows: own, ownStart, mixedStarts, othersAtRisk };
+    const opened = draftFromRows(own, priceType, true, false);
+    const draft: Draft = {
+      ...opened,
+      bands: [
+        ...own.map(r => ({ upTo: String(r.weight_max), rent: two(r.unit_price), labour: two(r.labour_rate), tax: taxText(r.tax_percent) })),
+        { upTo: '', rent: '', labour: two(lastOwn.labour_rate), tax: taxText(lastOwn.tax_percent) },
+      ],
+      locked: own.length,
+    };
+    const ownDay = ownStartDay(context);
+    return { draft: ownDay ? withStart(draft, 'ownStart', ownDay) : withStart(draft, 'today', today), context };
+  }
+
   // ---- a new rate ----
   if (mode === 'add' || mode === 'addCustomer') {
     const { draft, copied } = seedNewRate(mode, rows, priceType, today, zeroStart);
@@ -535,12 +670,12 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
 
   if (!draft.startsOn) {
     errors.startsOn = t('pricing.edit.chooseDate');
-  } else if (ctx.mode !== 'correct' && draft.startsOn < startFloor(ctx.today, ctx.earliestStart)) {
+  } else if (!correcting(draft, ctx) && draft.startsOn < startFloor(ctx.today, ctx.earliestStart)) {
     // A day from the server is named; without one (an older server) the old three-year window is described.
     errors.startsOn = ctx.earliestStart
       ? t('pricing.error.invalidDate', { date: dateText(ctx.earliestStart) })
       : t('pricing.error.invalidDateWindow');
-  } else if (ctx.mode !== 'correct' && !dayInWindow(draft.startsOn, ctx.today, ctx.earliestStart)) {
+  } else if (!correcting(draft, ctx) && !dayInWindow(draft.startsOn, ctx.today, ctx.earliestStart)) {
     errors.startsOn = t('pricing.error.startTooFar');
   }
 
@@ -551,6 +686,8 @@ export function validate(draft: Draft, ctx: EditorContext): Validation {
   }
 
   draft.bands.forEach((band, i) => {
+    // The rate's own bands are sent as loaded and never checked here.
+    if (i < (draft.locked ?? 0)) return;
     const upTo = wholeKg(band.upTo);
     if (upTo === null) {
       errors[`band.${i}.upTo`] = t('pricing.edit.err.wholeKg');
@@ -611,6 +748,14 @@ function startOf(d: Draft, i: number): number | string | null {
 
 /** True when the draft differs from the one the form opened with (any field). */
 export function hasChanges(draft: Draft, initial: Draft): boolean {
+  if (draft.locked !== undefined) {
+    // Add rate on a rate in force: only what is typed in the new bands counts (opening, or the choice of day, is no change;
+    // with no new band left there is nothing to save).
+    const mine = draft.bands.slice(draft.locked);
+    const first = initial.bands.slice(initial.locked ?? 0);
+    if (mine.length === 0) return false;
+    return mine.length !== first.length || mine.some((b, i) => b.upTo !== first[i].upTo || b.rent !== first[i].rent || b.labour !== first[i].labour || b.tax !== first[i].tax);
+  }
   const key = (d: Draft) =>
     JSON.stringify([d.priceType, d.startsOn, d.startsOnChoice, d.firstFrom, d.firstFromText !== undefined && wholeKg(d.firstFromText) === null ? d.firstFromText : null, d.labour, d.tax, d.bands.map((b, i) => [b.upTo, b.rent, b.labour ?? null, b.tax ?? null, startOf(d, i)])]);
   return key(draft) !== key(initial);
@@ -635,7 +780,7 @@ export function toReplaceInput(draft: Draft, ctx: EditorContext): ReplaceRatesIn
   const planned = ctx.mode === 'upcoming' ? ctx.originalStart : null;
   // A correction (and an unmoved planned rate) replaces only the rows that start on that day; a moved
   // planned rate is first undone from its old start, then changed from the new one, in one call.
-  const mode: 'change' | 'correct' = ctx.mode === 'correct' || (planned !== null && draft.startsOn === planned) ? 'correct' : 'change';
+  const mode: 'change' | 'correct' = correcting(draft, ctx) || (planned !== null && draft.startsOn === planned) ? 'correct' : 'change';
   const moveFrom = planned !== null && draft.startsOn !== planned ? planned : null;
   return {
     mode,
@@ -645,14 +790,21 @@ export function toReplaceInput(draft: Draft, ctx: EditorContext): ReplaceRatesIn
     customer_id: ctx.customerId,
     price_type: draft.priceType,
     starts_on: draft.startsOn ?? '',
-    bands: draft.bands.map((band, i) => ({
+    bands: draft.bands.map((band, i) => {
+      // The rate's own bands go back exactly as loaded (the rows' numbers, never a reading of the text shown).
+      const own = i < (draft.locked ?? 0) ? ctx.lockedRows?.[i] : undefined;
+      if (own) {
+        return { weight_min: own.weight_min, weight_max: own.weight_max, unit_price: own.unit_price, labour_rate: own.labour_rate, tax_percent: own.tax_percent };
+      }
+      return {
       weight_min: fromOf(draft, i) ?? 0,
       weight_max: wholeKg(band.upTo) ?? 0,
       unit_price: round2(priceNumber(band.rent, 2) ?? 0),
       // Labour is included in a one-time rate: the server stores 0 whatever is sent.
       labour_rate: oneTime ? 0 : round2(priceNumber(band.labour ?? draft.labour, 2) ?? 0),
       tax_percent: priceNumber(band.tax ?? draft.tax, 2) ?? 0,
-    })),
+      };
+    }),
   };
 }
 
@@ -685,7 +837,7 @@ const sharedEnd = (rows: ItemStoragePrice[]): string | null => {
 function notFollowed(end: string | null, draft: Draft, ctx: EditorContext): string | null {
   if (!end || !draft.startsOn) return end;
   const next = addDays(end, 1);
-  const replaced = (r: ItemStoragePrice) => ctx.editingIds.includes(r.id) || (ctx.mode === 'correct' && day(r.effective_from) === draft.startsOn);
+  const replaced = (r: ItemStoragePrice) => ctx.editingIds.includes(r.id) || (correcting(draft, ctx) && day(r.effective_from) === draft.startsOn);
   const followed = ctx.rows.some(
     r => inScope(r, { customerId: ctx.customerId, priceType: draft.priceType }) && !replaced(r) &&
       day(r.effective_from) > (draft.startsOn as string) && day(r.effective_from) <= next
@@ -711,7 +863,7 @@ export function keptEnd(draft: Draft, ctx: EditorContext): string | null {
   if (!draft.startsOn) return null;
   const scope: Scope = { customerId: ctx.customerId, priceType: draft.priceType };
   if (ctx.mode === 'upcoming') return notFollowed(sharedEnd(ctx.rows.filter(r => ctx.editingIds.includes(r.id))), draft, ctx);
-  if (ctx.mode === 'correct') {
+  if (correcting(draft, ctx)) {
     return notFollowed(sharedEnd(rowsInForce(ctx.rows, scope, draft.startsOn).filter(r => day(r.effective_from) === draft.startsOn)), draft, ctx);
   }
   const others = ctx.rows.filter(r => !ctx.editingIds.includes(r.id));
@@ -722,6 +874,15 @@ export function keptEnd(draft: Draft, ctx: EditorContext): string | null {
 /** "Lots received from 1 Jan 2027 are charged the new rate. Lots received before keep ₹11.00." */
 export function lotsRule(draft: Draft, ctx: EditorContext): string | null {
   if (ctx.mode === 'correct' || !draft.startsOn) return null;
+  if (ctx.mode === 'addBand') {
+    const date = dateText(draft.startsOn);
+    if (draft.startsOnChoice !== 'ownStart') return t('pricing.edit.ruleBandToday', { date });
+    if (startMoved(ctx)) return t('pricing.edit.ruleBandEarliest', { date });
+    // The item's first rate (no row of the scope, ended ones too, starts before it) also covers earlier days (migration 129, find_storage_price).
+    const scope: Scope = { customerId: ctx.customerId, priceType: draft.priceType };
+    const first = !!ctx.ownStart && !ctx.rows.some(r => inScope(r, scope) && day(r.effective_from) < (ctx.ownStart as string));
+    return t(first ? 'pricing.edit.ruleBandFirst' : 'pricing.edit.ruleBandOwn', { date });
+  }
   const earlier = earlierRows(draft, ctx);
   if (earlier.length === 0) return t('pricing.edit.lotsRuleNone', { date: dateText(draft.startsOn) });
   return t('pricing.edit.lotsRule', { date: dateText(draft.startsOn), old: figure(earlier.map(r => r.unit_price)) });
@@ -729,7 +890,7 @@ export function lotsRule(draft: Draft, ctx: EditorContext): string | null {
 
 /** What the rate is now for the weights of band `index` ("₹11.00"), or null when there is no such rate. */
 export function nowText(draft: Draft, ctx: EditorContext, index: number): string | null {
-  if (ctx.mode === 'add' || ctx.mode === 'addCustomer') return null;
+  if (ctx.mode === 'add' || ctx.mode === 'addCustomer' || ctx.mode === 'addBand') return null;
   const from = fromOf(draft, index);
   if (from === null) return null;
   const current = rowsInForce(
@@ -751,6 +912,17 @@ export function summaryLines(draft: Draft, ctx: EditorContext): string[] {
   const kept = keptEnd(draft, ctx);
   const stillStops = kept ? [t('pricing.edit.stillStops', { date: dateText(kept) })] : [];
 
+  if (ctx.mode === 'addBand') {
+    // The rate's bands and the new ones, from the day chosen; with Today the rate they replace is named first.
+    const lines: string[] = [];
+    if (draft.startsOnChoice !== 'ownStart' && (ctx.lockedRows?.length ?? 0) > 0) {
+      lines.push(t('pricing.edit.until', { date: dateText(addDays(draft.startsOn, -1)), amount: figure((ctx.lockedRows ?? []).map(r => r.unit_price)), unit }));
+    }
+    draft.bands.forEach((_, i) => {
+      lines.push(t('pricing.edit.fromBand', { date, band: bandText(spans[i][0] as number, spans[i][1] as number), amount: money(rents[i] as number), unit }));
+    });
+    return [...lines, ...stillStops];
+  }
   if (ctx.mode === 'correct') {
     return [t('pricing.edit.corrected', { date, amount: figure(rents as number[]), unit }), ...stillStops];
   }

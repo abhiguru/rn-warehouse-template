@@ -459,7 +459,7 @@ describe('customer activity, one customer', () => {
     await screen.pressStarting('Invoice 2026-0042, ');
     expect(mockRouterPush).toHaveBeenLastCalledWith('/invoice-details/i1');
     // The item rows are read as one element each, with nothing to press and no chevron.
-    expect(screen.labels()).toContain('Garlic, 2 GRNs, 200 bags');
+    expect(screen.labels()).toContain('Garlic · Bag, 2 GRNs, 200 bags');
     expect(screen.controls(label => label.startsWith('Garlic'))).toEqual([]);
   });
 
@@ -491,7 +491,7 @@ describe('customer activity, one customer', () => {
     const chart = screen.tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0];
     expect(chart.props.formatYLabel('1200')).toBe('1,200');
     expect(chart.props.formatYLabel('433.3333')).toBe('433');
-    expect(screen.texts()).toContain('bags');
+    expect(screen.texts()).toContain('units');
     // October is in progress on 12 October: its figure is the stock as of today, not a month end.
     expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12/10/26. Highest 1,200.');
 
@@ -715,9 +715,9 @@ describe('customer activity, what the stock is counted in (D18)', () => {
     );
     const screen = await open(makeStore());
     const labels = screen.labels();
-    expect(labels).toContain('Garlic, 2 GRNs, 200 boxes');
+    expect(labels).toContain('Garlic · Box, 2 GRNs, 200 boxes');
     expect(labels).toContain('Cumin, 1 GRN, 100 units');
-    expect(labels).toContain('Ginger, 1 GRN, 50 bags');
+    expect(labels).toContain('Ginger · Bag, 1 GRN, 50 bags');
     // Not all one word: the card's total reads units.
     expect(labels).toContain('Current stock: 300 units. View stock age');
   });

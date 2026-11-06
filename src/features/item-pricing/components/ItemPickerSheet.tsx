@@ -4,6 +4,7 @@
  * item…" in the rate editor and "Same as another item" on Add item. Like the customer sheet it
  * opens at 90% so the rows do not move after typing (P-28). With no search typed it lists every item.
  */
+import { itemWithPackaging } from '@/utils/packagingWord';
 import React, { useCallback } from 'react';
 import { Pressable, Text } from 'react-native';
 import { SearchableBottomSheet } from '@/components/common/SearchableBottomSheet';
@@ -47,7 +48,7 @@ export function ItemPickerSheet({ visible, onClose, onSelect, items, title, empt
   const searchFn = useCallback(async (query: string): Promise<PickableItem[]> => {
     setLastQuery(query.trim());
     const terms = searchTerms(query);
-    return terms.length === 0 ? items : items.filter(item => matchesSearch(terms, [item.name]));
+    return terms.length === 0 ? items : items.filter(item => matchesSearch(terms, [item.name, item.packaging ?? '']));
   }, [items]);
 
   const renderItem = useCallback(
@@ -56,11 +57,10 @@ export function ItemPickerSheet({ visible, onClose, onSelect, items, title, empt
         onPress={() => select(item)}
         style={styles.row}
         accessibilityRole="button"
-        accessibilityLabel={[item.name, item.packaging, item.detail].filter(Boolean).join(', ')}
+        accessibilityLabel={[itemWithPackaging(item.name, item.packaging), item.detail].filter(Boolean).join(', ')}
         testID={`picker-item-${item.id}`}
       >
-        <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
-        {item.packaging ? <Text style={styles.detail}>{item.packaging}</Text> : null}
+        <Text style={styles.name} numberOfLines={2}>{itemWithPackaging(item.name, item.packaging)}</Text>
         {item.detail ? <Text style={styles.detail} testID={`picker-item-${item.id}-detail`}>{item.detail}</Text> : null}
       </Pressable>
     ),

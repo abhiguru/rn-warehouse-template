@@ -327,7 +327,7 @@ export function RateBandFields({ draft, ctx, errors, onChange, order, fields, ta
 
       {readOnly ? null : (
         <View style={styles.shared}>
-          <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} />
+          <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} packaging={packaging ?? ''} />
         </View>
       )}
     </View>

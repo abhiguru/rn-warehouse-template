@@ -117,6 +117,7 @@ export const sensors: Translation<typeof source> = {
   /** Long history and the CSV export, from the hourly summary the server keeps for 24 months. */
   hourly: {
     export: 'CSV એક્સપોર્ટ કરો',
+    latestNote: 'કલાકદીઠ આંકડા દિવસમાં એક વાર ઉમેરાય છે, તેથી છેલ્લા કલાકો હજુ દેખાય નહીં.',
     exporting: 'CSV તૈયાર થઈ રહી છે…',
     exportA11y: 'CSV એક્સપોર્ટ કરો, {{period}}',
     exportFailedTitle: 'એક્સપોર્ટ થઈ શક્યું નથી',

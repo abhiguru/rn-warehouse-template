@@ -98,10 +98,21 @@ describe('Add item save', () => {
   it('shows an "added" toast and goes back', async () => {
     await renderAdd();
     await typeInto('Item name, required', 'Onions');
+    await typeInto('Packaging, required', 'Katta');
     await press('Add item');
-    expect(itemService.createItem).toHaveBeenCalledWith(expect.objectContaining({ p_name: 'Onions' }));
+    expect(itemService.createItem).toHaveBeenCalledWith(expect.objectContaining({ p_name: 'Onions', p_packaging: 'Katta' }));
     expect(showToast).toHaveBeenCalledWith('Onions added.');
     expect(router.back).toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('does not add an item without its own packaging word (WH-41): nothing is sent', async () => {
+    await renderAdd();
+    await typeInto('Item name, required', 'Onions');
+    await typeInto('Packaging, required', '   ');
+    await press('Add item');
+    expect(itemService.createItem).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
   });
 });

@@ -370,6 +370,6 @@ describe('a refused dashboard', () => {
   it('a staff account is not offered it, and nothing is asked', async () => {
     const screen = await open(makeStore({ userProfile: { id: 'user-b', name: 'Ravi Example', role: 'staff' } }));
     expect(dashboard).not.toHaveBeenCalled();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Staff only', 'This report is available to staff members only.']));
+    expect(screen.texts()).toEqual(expect.arrayContaining(['Administrators and supervisors only', 'This report is available to administrators and supervisors only.']));
   });
 });

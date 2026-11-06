@@ -39,6 +39,8 @@ export interface ReviewSectionProps {
   closedLine?: string | null;
   /** What a screen reader says for the closed line, when it holds a date ("9 Oct 2026"). */
   spokenClosedLine?: string | null;
+  /** Let the closed line wrap onto more lines (a line of figures at a large text size) instead of cutting it at one. */
+  wrapClosedLine?: boolean;
   /** Draws the icon-only pencil beside the chevron, as its own target. */
   onEdit?: () => void;
   editLabel?: string;
@@ -67,6 +69,7 @@ export function ReviewSection({
   tag,
   closedLine,
   spokenClosedLine,
+  wrapClosedLine = false,
   onEdit,
   editLabel,
   open,
@@ -115,7 +118,7 @@ export function ReviewSection({
             {tag ? <StatusTag wrap status="critical" label={tag} /> : null}
           </View>
           {line ? (
-            <Text style={styles.sectionClosedLine} numberOfLines={1} testID={`${prefix}-line`}>
+            <Text style={styles.sectionClosedLine} numberOfLines={wrapClosedLine ? undefined : 1} testID={`${prefix}-line`}>
               {line}
             </Text>
           ) : null}

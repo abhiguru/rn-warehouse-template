@@ -15,7 +15,7 @@ const words = () => commonWords(getLanguage());
  */
 const indianFormats = new Map<string, Intl.NumberFormat>();
 
-const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string => {
+export const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string => {
   // Building an Intl formatter is slow on Hermes, so one is kept for each set of options.
   const key = options ? JSON.stringify(options) : '';
   let format = indianFormats.get(key);
@@ -200,6 +200,18 @@ export const formatDate = (date: string | Date | null | undefined): string => {
   return writeDate({ year: d.getFullYear(), month: d.getMonth(), day: d.getDate() });
 };
 
+/**
+ * The short card date, "12 Jan 26": day, month name and two-digit year, in the
+ * language's digits and month names. Used by the GRN list's collapsed card only
+ * (style guide 3.5 exception); every other screen uses `formatDate`.
+ * Returns "—" when the date is missing or invalid.
+ */
+export const formatCardDate = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  if (!d) return '—';
+  return `${localizeDigits(String(d.getDate()))} ${words().monthsShort[d.getMonth()]} ${localizeDigits(twoDigits(d.getFullYear() % 100))}`;
+};
+
 /** The date for a screen reader (accessibilityLabel, Hint, Value): "9 Oct 2026". Returns "—" when missing or invalid. */
 export const formatSpokenDate = (date: string | Date | null | undefined): string => {
   const d = toDate(date);
@@ -234,6 +246,15 @@ export const formatDateTime = (date: string | Date | null | undefined): string =
   const d = toDate(date);
   if (!d) return '—';
   return `${formatDate(d)}, ${formatTime(d)}`;
+};
+
+/**
+ * When a kept list was loaded (ms since 1970): "4:05 pm" if that was today, else with the date so a time of
+ * another day is not read as today: "09/10/26, 4:05 pm". Today is the phone's own today (as `formatSectionDate`).
+ */
+export const formatLoadedAt = (at: number): string => {
+  const d = new Date(at);
+  return d.toDateString() === new Date().toDateString() ? formatTime(d) : formatDateTime(d);
 };
 
 /** The date and time for a screen reader: "9 Oct 2026, 4:05 pm". */

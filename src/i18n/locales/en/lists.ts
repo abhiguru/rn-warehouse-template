@@ -38,6 +38,9 @@ export const lists = {
     cardTitle: 'GRN {{number}}',
     noNumber: 'GRN with no number',
     noQuantity: 'No quantity',
+    // The collapsed card's badge (WH-58): how much of the receipt is left.
+    badge: { full: 'Full', partial: 'Partial', empty: 'Empty', na: 'N/A' },
+    stockLabel: 'STOCK',
     // A filter on items, stock, weight, package or text shows only the matching items of each GRN.
     matchingItems: { one: '{{count}} matching item', other: '{{count}} matching items' },
     filteredNote: 'Only the items that match the filters are shown.',

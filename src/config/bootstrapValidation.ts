@@ -121,8 +121,7 @@ export function validatePublicConfig(
   classifyAnonKey(config.anonKey);
   if (
     typeof config.environment !== 'string' ||
-    typeof config.version !== 'string' ||
-    typeof config.maintenanceMode !== 'boolean'
+    typeof config.version !== 'string'
   )
     throw new BootstrapValidationError('config.publicShape', 'Invalid public configuration shape.');
   const urls = object(config.urls);
@@ -169,7 +168,7 @@ export function validateFullConfig(
   classifyAnonKey(supabase.anonKey);
   const features = object(config.features);
   if (
-    ['testMode', 'maintenanceMode', 'otpEnabled'].some(
+    ['testMode', 'otpEnabled'].some(
       k => typeof features[k] !== 'boolean'
     ) ||
     typeof features.smsProvider !== 'string' ||

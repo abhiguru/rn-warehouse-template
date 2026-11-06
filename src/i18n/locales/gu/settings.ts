@@ -83,7 +83,7 @@ export const settings: Translation<typeof source> = {
   },
   account: {
     title: 'એકાઉન્ટ',
-    deleteAccount: 'એકાઉન્ટ ડિલીટ કરો',
+    deleteAccount: 'મારું એકાઉન્ટ ડિલીટ કરો',
     deleteAccountSubtitle: 'તમારી પ્રોફાઇલ અને લૉગિન કાઢી નાખે છે. રેકોર્ડ રહે છે.',
     deleteAtFacility: '{{facility}}માં મારું એકાઉન્ટ ડિલીટ કરો',
     deleteAtFacilitySubtitle: 'અહીં તમારી પ્રોફાઇલ અને લૉગિન કાઢી નાખે છે. રેકોર્ડ, ઍસોસિએશનનું તમારું લૉગિન અને બીજાં કોલ્ડ સ્ટોરેજ રહે છે.',
@@ -158,6 +158,7 @@ export const settings: Translation<typeof source> = {
     askTitle: 'મદદ ક્યાંથી મળે',
     askAdmin: 'ઍપ કે તમારા એકાઉન્ટ વિશે મદદ માટે તમારા કોલ્ડ સ્ટોરેજના એડમિનને પૂછો.',
     askAdminSelf: 'તમે આ કોલ્ડ સ્ટોરેજના એડમિન છો. ઍપમાં કોઈ સમસ્યા હોય તો નીચેની વિગતો તમારું સર્વર ગોઠવનાર વ્યક્તિને મોકલો.',
+    minimumPhone: 'આ ઍપ માટે ઓછામાં ઓછી ૪ GB RAM અને Android ૧૨ કે તેથી નવા વર્ઝનવાળો ફોન જોઈએ.',
     noContact: 'ઍપમાં સપોર્ટ માટે પોતાની કોઈ સંપર્ક વિગતો નથી. કોને પૂછવું તે તમારા કોલ્ડ સ્ટોરેજની ઑફિસ કહી શકશે.',
     rolesTitle: 'હોદ્દા',
     yourRole: 'તમારો હોદ્દો: {{role}}',

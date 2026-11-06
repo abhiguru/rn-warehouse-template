@@ -4,7 +4,9 @@
  *
  * A Monthly | One-time switch picks the kind. Every period of that kind is a card, newest first: Upcoming (Change,
  * Cancel), In force (Correct this rate, Stop this rate, and the strip of a rate that stops, with Undo stop) and Ended
- * (read only). "+ Add rate", Correct and Change open the full-screen rate form (app/item-rates/[itemId]/rate.tsx);
+ * (read only). With a rate in force "+ Add rate" adds the next weight band and "Change rate" (pencil) opens the copy form (WH-74;
+ * "Add rate" is off when the last band reaches 9999 kg or there are 10 bands); without one "+ Add rate" opens the copy form.
+ * "+ Add rate", Correct and Change open the full-screen rate form (app/item-rates/[itemId]/rate.tsx);
  * Stop opens the stop screen; a save elsewhere refetches the item, so the tab shows it on return. Under the cards
  * come the item's Changes and "How an invoice picks a rate". The buttons that change rates are for a role that may
  * write, and wait for a connection. Each monthly tier in force is tagged Standard or This item.
@@ -22,14 +24,14 @@ import { SegmentedControl } from '@/components/ui/RadioButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { t } from '@/i18n';
+import { localizeDigits, t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { PriceType } from '@/types/item-pricing.types';
 import { formatTime } from '@/utils/formatters';
 import { historyPath, rateFormPath } from '../contract';
 import { ratePeriods, type RatePeriod } from '../ratePeriods';
-import { seenRowIds } from '../editModel';
+import { MAX_BANDS, seenRowIds } from '../editModel';
 import { rateState, scopeView } from '../rateModel';
 import { rateRights } from '../rateRights';
 import { addDays, dateText, spokenDateText, todayDay } from '../rateText';
@@ -57,7 +59,8 @@ const SKELETON_CARDS = [0, 1];
 const makeStyles = (th: ThemeTokens) => ({
   switchRow: { paddingHorizontal: layout.marginCompact, paddingTop: space.md, paddingBottom: space.sm },
   cards: { gap: space.md },
-  add: { alignSelf: 'flex-start' as const, marginHorizontal: layout.marginCompact },
+  add: { alignSelf: 'flex-start' as const },
+  addRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, columnGap: space.sm, marginHorizontal: layout.marginCompact },
   note: { ...typography.footnote, color: th.text.secondary, marginHorizontal: layout.marginCompact },
   empty: { ...typography.subhead, color: th.text.secondary, marginHorizontal: layout.marginCompact },
   strip: { marginHorizontal: layout.marginCompact },
@@ -120,7 +123,12 @@ export function ItemPricingTab({ itemId, itemName, packaging, active = true }: I
     stopsAfter: view.stopsAfter,
     seenRows: seenRowIds(rows, null, priceType),
   });
-  const openForm = (mode: 'add' | 'correct' | 'upcoming', startsOn?: string) =>
+  // With a rate in force, "Add rate" adds the next weight band and "Change rate" opens the copy form (WH-74); without one, "Add rate" is the copy form as before.
+  const hasRateInForce = view.inForce.length > 0;
+  const lastUpTo = view.inForce.reduce((max, r) => Math.max(max, r.weight_max), 0);
+  const noNextBand = hasRateInForce && (lastUpTo >= 9999 || view.inForce.length >= MAX_BANDS);
+  const noNextText = lastUpTo >= 9999 ? t('pricing.itemTab.noNextBand', { kg: localizeDigits(String(lastUpTo)) }) : t('pricing.edit.bandsFull');
+  const openForm = (mode: 'add' | 'addBand' | 'change' | 'correct' | 'upcoming', startsOn?: string) =>
     router.push(rateFormPath({ itemId, mode, priceType, startsOn }));
 
   const buttonsOf = (period: RatePeriod): RateStripAction[] => {
@@ -184,18 +192,38 @@ export function ItemPricingTab({ itemId, itemName, packaging, active = true }: I
           testID="item-pricing-header"
         />
         {canChange ? (
-          <Button
-            type="tertiary"
-            leftIcon="plus"
-            style={styles.add}
-            disabled={offline || busy}
-            onPress={() => openForm('add')}
-            accessibilityLabel={t(priceType === 'monthly' ? 'pricing.itemTab.addMonthlyA11y' : 'pricing.itemTab.addOneTimeA11y')}
-            testID="period-add"
-          >
-            {t('pricing.itemTab.addRate')}
-          </Button>
+          <View style={styles.addRow}>
+            <Button
+              type="tertiary"
+              leftIcon="plus"
+              style={styles.add}
+              disabled={offline || busy || noNextBand}
+              onPress={() => openForm(hasRateInForce ? 'addBand' : 'add')}
+              accessibilityLabel={t(
+                hasRateInForce
+                  ? priceType === 'monthly' ? 'pricing.itemTab.addBandMonthlyA11y' : 'pricing.itemTab.addBandOneTimeA11y'
+                  : priceType === 'monthly' ? 'pricing.itemTab.addMonthlyA11y' : 'pricing.itemTab.addOneTimeA11y'
+              )}
+              testID="period-add"
+            >
+              {t('pricing.itemTab.addRate')}
+            </Button>
+            {hasRateInForce ? (
+              <Button
+                type="tertiary"
+                leftIcon="pencil"
+                style={styles.add}
+                disabled={offline || busy}
+                onPress={() => openForm('change')}
+                accessibilityLabel={t(priceType === 'monthly' ? 'pricing.itemTab.changeMonthlyA11y' : 'pricing.itemTab.changeOneTimeA11y')}
+                testID="period-change-rate"
+              >
+                {t('pricing.itemTab.changeRate')}
+              </Button>
+            ) : null}
+          </View>
         ) : null}
+        {canChange && noNextBand ? <Text style={styles.note} testID="period-add-blocked">{noNextText}</Text> : null}
         {periods.length === 0 ? (
           <Text style={styles.empty} testID="item-pricing-empty">
             {t(priceType === 'monthly' ? 'pricing.itemTab.emptyMonthly' : 'pricing.itemTab.emptyOneTime')}
@@ -263,7 +291,7 @@ export function ItemPricingTab({ itemId, itemName, packaging, active = true }: I
         ) : null}
         {body}
       </ScrollView>
-      <HowInvoiceSheet visible={howOpen} onClose={() => setHowOpen(false)} />
+      <HowInvoiceSheet visible={howOpen} onClose={() => setHowOpen(false)} packaging={packaging ?? ''} />
       {actions.dialog}
     </View>
   );

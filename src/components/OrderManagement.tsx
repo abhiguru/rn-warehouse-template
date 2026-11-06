@@ -21,6 +21,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
+import { StatusTag } from '@/components/ui/StatusTag';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   iconSize,
@@ -287,7 +288,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // Search customers
   const searchCustomers = useCallback(async (query: string) => {
     try {
-      const results = await searchService.searchCustomers(normalizeDigits(query));
+      const results = await searchService.searchCustomers(normalizeDigits(query), { includeInactive: true });
       setCustomerSearchResults(results);
     } catch (error) {
       console.error('[OrderManagement] Customer search error:', error);
@@ -1200,12 +1201,15 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
                   style={({ pressed }) => [styles.customerItem, pressed && styles.customerItemPressed]}
                   onPress={() => handleCustomerSelect(customer)}
                   accessibilityRole="button"
-                  accessibilityLabel={customer.detail ? tr('orders.manage.labelDetail', { label: customer.label, detail: customer.detail }) : customer.label}
+                  accessibilityLabel={`${customer.detail ? tr('orders.manage.labelDetail', { label: customer.label, detail: customer.detail }) : customer.label}${customer.inactive ? `, ${tr('common.deactivated')}` : ''}`}
                 >
                   <Text style={styles.customerName}>{customer.label}</Text>
                   {customer.detail && (
                     <Text style={styles.customerDetail}>{customer.detail}</Text>
                   )}
+                  {customer.inactive ? (
+                    <StatusTag status="neutral" label={tr('common.deactivated')} style={styles.customerTag} />
+                  ) : null}
                 </Pressable>
               ))}
 
@@ -1380,6 +1384,10 @@ const makeStyles = (t: ThemeTokens) => ({
   customerDetail: {
     ...typography.subhead,
     color: t.text.secondary,
+    marginTop: space.xxs,
+  },
+  customerTag: {
+    alignSelf: 'flex-start' as const,
     marginTop: space.xxs,
   },
   noResults: {

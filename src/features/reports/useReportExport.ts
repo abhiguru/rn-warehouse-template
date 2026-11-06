@@ -51,6 +51,7 @@ import { t } from '@/i18n';
 import {
   generateReportPDF,
   isPeriodReport,
+  pdfRefusalText,
   REPORT_PDF_FILTER_FIELDS,
   withoutReportFilters,
   type ReportPdfDocument,
@@ -205,6 +206,11 @@ async function makePdf(
   if (result.reason === 'server-outdated') {
     noteFacility(facility, true);
     if (fallback) return fallbackPdf(request, fallback);
+  }
+  if (result.refusal) {
+    const { title, message } = pdfRefusalText(result.refusal);
+    showAlert(title, message);
+    return undefined;
   }
   showAlert(t('reports.export.failedTitle'), result.error ?? t('common.checkConnection'));
   return undefined;

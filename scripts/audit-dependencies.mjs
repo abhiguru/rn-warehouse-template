@@ -26,7 +26,7 @@ export const acceptedAdvisories = {
 // docs/DEPENDENCY_SECURITY.md for who the parents are and the evidence that none of it is in the bundle.
 export const acceptedWithoutRepair = {
   'GHSA-3g3m-2fjr-6pw4': { package: 'glob', range: '>=9.0.0<=14.0.1', reviewBy: '2026-12-15', reason: 'build and dev tooling only (Expo CLI, config plugins, fingerprint, Metro config, Sentry bundler plugin, Jest, ESLint); not in the app bundle; fixed release 14.0.2 is not reachable through the Expo and Jest versions in use' },
-  'GHSA-g3hv-75wg-m249': { package: 'minimatch', range: '<11.0.1', reviewBy: '2026-12-15', reason: 'build and dev tooling only (glob, Expo fingerprint, ESLint, Jest, typescript-eslint); not in the app bundle; fixed release 11.0.1 is not reachable through the versions in use' },
+  'GHSA-g3hv-75wg-m249': { package: 'minimatch', range: '>=7.0.0<11.0.1', reviewBy: '2026-12-15', reason: 'only the copies under glob 9 and glob 10 (minimatch 8.0.7 and 9.0.9), which package.json overrides keep because minimatch 11 breaks their RegExp check; build and test tooling only, not in the app bundle; glob itself is accepted; every other copy in the advisory\'s range is 11.0.1' },
 };
 // The packages that may declare glob or minimatch in the production tree. Each uses it in build, prebuild or
 // tooling code that the app's bundle never imports (expo-updates: only in utils/build/vcs.js).

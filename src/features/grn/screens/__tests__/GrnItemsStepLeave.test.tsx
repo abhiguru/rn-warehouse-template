@@ -509,7 +509,8 @@ describe('GRN items step, Next with a new item that was not checkmarked', () => 
 
   it('a new form that only holds the rack of the first saved item is not asked about', async () => {
     const tree = await render('create', lines(3));
-    expect(inForm(tree)).toMatchObject({ rack: 'R1', item: '', qty: '' });
+    // The rack comes from the most recent saved line, line 3 (WH-56): R3, since line n has rack R(n mod 4).
+    expect(inForm(tree)).toMatchObject({ rack: 'R3', item: '', qty: '' });
 
     await pressNext(tree);
 

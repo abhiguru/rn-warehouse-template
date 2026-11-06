@@ -169,7 +169,7 @@ test('audit refuses a changed deepmerge range and an overdue review', () => {
 
 // Accepted without a local repair: build and dev tooling only, never in the shipped dependency tree.
 const globAdvisory = { name: 'glob', url: 'https://github.com/advisories/GHSA-3g3m-2fjr-6pw4', range: '>=9.0.0 <=14.0.1', severity: 'moderate' };
-const minimatchAdvisory = { name: 'minimatch', url: 'https://github.com/advisories/GHSA-g3hv-75wg-m249', range: '<11.0.1', severity: 'moderate' };
+const minimatchAdvisory = { name: 'minimatch', url: 'https://github.com/advisories/GHSA-g3hv-75wg-m249', range: '>=7.0.0 <11.0.1', severity: 'moderate' };
 const withTooling = () => {
   const input = report({
     glob: { severity: 'moderate', nodes: ['node_modules/glob', 'node_modules/foo/node_modules/glob'], via: [globAdvisory, 'minimatch'] },
@@ -199,6 +199,9 @@ test('the gate fails when an accepted-without-repair package is in the shipped d
   const result = assess(withTooling(), verified, { ...beforeReview, shipped });
   assert.equal(result.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
   assert.ok(result.unresolved.some(entry => entry.package === 'minimatch' && entry.reasons.includes('SHIPPED:GHSA-g3hv-75wg-m249')));
+  const globShipped = assess(withTooling(), verified, { ...beforeReview, shipped: [{ package: 'glob', path: 'rn-warehouse-template > some-runtime-lib > glob' }] });
+  assert.equal(globShipped.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
+  assert.ok(globShipped.unresolved.some(entry => entry.package === 'glob' && entry.reasons.includes('SHIPPED:GHSA-3g3m-2fjr-6pw4')));
   // Its consumers carry the refusal with it.
   assert.ok(result.unresolved.some(entry => entry.package === 'glob' && entry.reasons.includes('SHIPPED:GHSA-g3hv-75wg-m249')));
 });

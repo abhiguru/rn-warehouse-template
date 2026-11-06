@@ -89,7 +89,8 @@ export const items = {
     charCountLabel: '{{count}} of {{max}} characters',
     nameRequired: 'Enter the item name.',
     maxLength: 'Use {{max}} characters or fewer.',
-    duplicateName: 'An item with this name already exists. Use a different name.',
+    duplicateName: 'An item with this name and packaging already exists.',
+    packagingRequired: 'Packaging is required',
     addedToast: '{{name}} added.',
     // Which rate the new item got (create_item, backend migration 85).
     addedStandardToast: '{{name}} added with the standard rate.',
@@ -104,6 +105,9 @@ export const items = {
     rateItemRequired: 'Choose the item whose rates this item gets.',
     rateNoItems: 'No item has a rate in force today to copy.',
     couldNotAddTitle: "Couldn't add the item",
+    // The "Add item" sheet of the GRN Items step: the answer to the save was lost (WH-42).
+    notConfirmedTitle: "Couldn't confirm the item",
+    notConfirmedMessage: "We couldn't confirm that {{name}} was added. Search for it again before adding it. Nothing else on this GRN is lost.",
     savedToast: '{{name}} saved.',
     couldNotSaveTitle: "Couldn't save the item",
     discardNewTitle: 'Discard this item?',

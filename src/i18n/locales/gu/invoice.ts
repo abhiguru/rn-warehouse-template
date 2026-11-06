@@ -25,6 +25,8 @@ export const invoice: Translation<typeof source> = {
     surchargeIncluded: 'વધારાનો ચાર્જ (સામેલ)',
     rounding: 'પૂરા રૂપિયા',
     netBeforeTax: 'ટેક્સ પહેલાંની રકમ',
+    // Draft for the owner's wording review (WH-59).
+    subtotal: 'પેટા સરવાળો',
     totalAmount: 'કુલ રકમ',
     percent: '{{value}}%',
     gst: 'GST',
@@ -349,7 +351,7 @@ export const invoice: Translation<typeof source> = {
     overview: 'સારાંશ',
     breakdown: 'હિસાબ',
   },
-  // An invoice is cancelled, never deleted (server migration 134).
+  // An invoice can be cancelled (server migration 134: it stays on record) or deleted (migration 146: it is removed).
   cancel: {
     action: 'ઇન્વૉઇસ રદ કરો',
     title: 'ઇન્વૉઇસ {{number}} રદ કરવું છે?',
@@ -395,6 +397,8 @@ export const invoice: Translation<typeof source> = {
     deleteConfirm: 'ઇન્વૉઇસ ડિલીટ કરો',
     deletedTitle: 'ઇન્વૉઇસ {{number}} ડિલીટ થઈ ગયું.',
     deleteFailedTitle: 'ઇન્વૉઇસ ડિલીટ કરી શકાયું નથી',
+    // Gujarati drafts (glossary) for the Delete invoice texts of WH-43.
+    deleteStale: 'બીજા કોઈએ આ ઇન્વૉઇસમાં ફેરફાર કર્યો છે. તે ફરી લોડ કર્યું છે: તપાસો, અને જરૂર હોય તો ડિલીટ કરો.',
     // Draft for the owner's wording review (tweak 2026-10-20, review J5).
     deletedGoneTitle: 'ઇન્વૉઇસ ડિલીટ થઈ ગયું',
     deletedGoneMessage: 'આ ઇન્વૉઇસ ડિલીટ થઈ ગયું છે, એટલે તે હવે ખોલી, બદલી કે શેર કરી શકાતું નથી.',
@@ -402,6 +406,7 @@ export const invoice: Translation<typeof source> = {
     shareFailedMessage: 'ઇન્વૉઇસની PDF શેર કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     shareMissingData: 'આ ઇન્વૉઇસમાં નંબર અથવા નાણાકીય વર્ષ નથી. તેને ફરી લોડ કરો અને ફરી પ્રયાસ કરો.',
     unknownItem: 'અજાણી આઇટમ',
+    detailsNotAvailable: 'વિગતો ઉપલબ્ધ નથી',
     totalA11y: 'કુલ {{amount}}',
     taxA11y: 'ટેક્સ {{amount}}',
     notSetA11y: 'સેટ નથી',

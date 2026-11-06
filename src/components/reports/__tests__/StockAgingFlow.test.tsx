@@ -248,7 +248,8 @@ async function open(store: Store) {
     /** Customer names in the order the rows show them. */
     customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
     /** Item names in the order the rows show them. */
-    items: () => toggles().map(node => String(node.props.accessibilityLabel)).filter(label => !label.startsWith('GRN ')).map(label => label.split(',')[0]),
+    // The card is read as "Name · Word, ..." (WH-41); the lists in the tests are the item names.
+    items: () => toggles().map(node => String(node.props.accessibilityLabel)).filter(label => !label.startsWith('GRN ')).map(label => label.split(',')[0].replace(/ · [^·]+$/, '')),
     /** GRN lines of the open items: their label's title and whether each is open. */
     lines: () => toggles().map(node => [String(node.props.accessibilityLabel), node.props.accessibilityState.expanded] as const).filter(([label]) => label.startsWith('GRN ')).map(([label, expanded]) => `${label.split(',')[0]}${expanded ? ' (open)' : ''}`),
     status: () => texts().find(text => text.includes('Last updated')),
@@ -466,7 +467,7 @@ describe('stock aging, one customer', () => {
     await screen.press('0–120 days');
     // Garlic keeps only its 90-day line (20 units), Red chilli its one line.
     expect(screen.items()).toEqual(['Red chilli', 'Garlic']);
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Garlic, 1 GRN, 20 units, oldest 90 days']));
+    expect(screen.labels()).toEqual(expect.arrayContaining(['Garlic · Bag, 1 GRN, 20 units, oldest 90 days']));
     expect(screen.status()).toBe('Showing 2 of 4 · Last updated 10:00 am');
     expect(screen.has('Stock age: 0–120 days. Change')).toBe(true);
 
@@ -481,11 +482,11 @@ describe('stock aging, one customer', () => {
     const screen = await open(makeStore());
     await screen.search('garlic');
     expect(screen.items()).toEqual(['Garlic']);
-    expect(screen.labels()).toContain('Garlic, 2 GRNs, 50 units, oldest 400 days');
+    expect(screen.labels()).toContain('Garlic · Bag, 2 GRNs, 50 units, oldest 400 days');
 
     await screen.search('a0011');
     expect(screen.items()).toEqual(['Garlic']);
-    expect(screen.labels()).toContain('Garlic, 1 GRN, 20 units, oldest 90 days, GRN A0011');
+    expect(screen.labels()).toContain('Garlic · Bag, 1 GRN, 20 units, oldest 90 days, GRN A0011');
     expect(screen.bold()).toEqual(['A0011']);
 
     await screen.search('a0030');
@@ -528,7 +529,7 @@ describe('stock aging, one customer', () => {
     expect(mockRouterPush).toHaveBeenCalledWith('/grn-details/g3');
 
     // Another item opens without touching this one's lines.
-    await screen.pressStarting('Garlic, ');
+    await screen.pressStarting('Garlic · Bag, ');
     expect(screen.lines()).toEqual(['GRN A0010', 'GRN A0011', 'GRN A0030 · Rack R1 (open)', 'GRN A0030 · Rack R2']);
     animate.mockRestore();
   });
@@ -581,13 +582,13 @@ describe('stock aging, units and the Items tile', () => {
     const screen = await open(makeStore());
     expect(screen.items()).toEqual(['Seed Item 02', 'Seed Item 01']);
     expect(screen.labels()).toEqual(
-      expect.arrayContaining(['Seed Item 01, 1 GRN, 1 unit, oldest 11 days', 'Seed Item 02, 1 GRN, 2 units, oldest 40 days'])
+      expect.arrayContaining(['Seed Item 01 · Bag, 1 GRN, 1 unit, oldest 11 days', 'Seed Item 02 · Bag, 1 GRN, 2 units, oldest 40 days'])
     );
     // The word under each figure, in the order of the cards.
     expect(screen.texts().filter(text => text === 'unit' || text === 'units')).toEqual(['units', 'unit']);
 
-    await screen.pressStarting('Seed Item 01, ');
-    await screen.pressStarting('Seed Item 02, ');
+    await screen.pressStarting('Seed Item 01 · Bag, ');
+    await screen.pressStarting('Seed Item 02 · Bag, ');
     // (A pressable repeats its label on the wrappers React draws around it: each is listed once.)
     const lots = [...new Set(screen.labels().filter(label => label.startsWith('GRN A000')))];
     expect(lots.sort()).toEqual(['GRN A0001, received 7 Sep 2025, 11 days in storage, 1 unit', 'GRN A0002, received 7 Sep 2025, 40 days in storage, 2 units']);
@@ -601,12 +602,12 @@ describe('stock aging, units and the Items tile', () => {
     const screen = await open(makeStore());
     expect(screen.labels()).toEqual(
       expect.arrayContaining([
-        'Seed Item 01, ૧ આવક પાવતી, ૧ નંગ, સૌથી જૂનો માલ ૧૧ દિવસથી',
-        'Seed Item 02, ૧ આવક પાવતી, ૨ નંગ, સૌથી જૂનો માલ ૪૦ દિવસથી',
+        'Seed Item 01 · Bag, ૧ આવક પાવતી, ૧ નંગ, સૌથી જૂનો માલ ૧૧ દિવસથી',
+        'Seed Item 02 · Bag, ૧ આવક પાવતી, ૨ નંગ, સૌથી જૂનો માલ ૪૦ દિવસથી',
       ])
     );
     expect(screen.texts().filter(text => text === 'નંગ')).toEqual(['નંગ', 'નંગ']);
-    await screen.pressStarting('Seed Item 01, ');
+    await screen.pressStarting('Seed Item 01 · Bag, ');
     expect([...new Set(screen.labels().filter(label => label.startsWith('આવક પાવતી A0001')))]).toEqual(['આવક પાવતી A0001, આવક તા. ૭ સપ્ટે ૨૦૨૫, ૧૧ દિવસથી પડ્યો છે, ૧ નંગ']);
   });
 
@@ -691,7 +692,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
   it('one customer: an open item and an open line on theme tokens', async () => {
     openGreenValley();
     const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
-    await screen.pressStarting('Garlic, ');
+    await screen.pressStarting('Garlic · Bag, ');
     await screen.pressStarting('GRN A0010, ');
     expect(backgrounds(screen.tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.negative.background]));
     expect(screen.lines()).toEqual(['GRN A0010 (open)', 'GRN A0011']);

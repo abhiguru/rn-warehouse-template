@@ -15,12 +15,26 @@
   React Native 0.88, Metro and Expo 58 support (`^22.13 || ^24.3 || >=26`). Node 23 and 25 are no longer admitted.
 - **Android toolchain.** React Native 0.88 builds with compile SDK 37, build tools 37.0.0, NDK 27.1.12297006 and Android Gradle
   Plugin 9.2.1. Google publishes API 37 as `platforms;android-37.0`; there is no `platforms;android-37`. Target SDK stays 36.
-- **glob and minimatch: accepted without a repair, build and dev tooling only (owner decision 2026-10-31, review by 2026-12-15).**
+- **glob and minimatch (the copies under glob 9 and 10): accepted without a repair, build and dev tooling only (owner decision 2026-10-31, review by 2026-12-15).**
   `npm run audit:dependencies` failed with `FAIL_UNREPAIRED_DEPENDENCIES` on two moderate advisories published on 2026-10-30:
-  GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `<11.0.1`, denial of
+  GHSA-3g3m-2fjr-6pw4 (`glob` `>=9.0.0 <=14.0.1`, fixed in 14.0.2) and GHSA-g3hv-75wg-m249 (`minimatch` `>=7.0.0 <11.0.1`, denial of
   service, fixed in 11.0.1). A fix needs `glob` 14 and `minimatch` 11, but the dependents ask for `glob` ^7, ^9, ^10 and ^13
   and `minimatch` ^3, ^8, ^9 and ^10, so no lockfile update reaches them, and an `overrides` pin across those majors would
   break callers that use the old APIs. They are accepted for as long as nothing the app ships contains them.
+  - **minimatch 11.0.1 override (2026-11-06).** `package.json` `overrides` carries `"minimatch@>=7.0.0 <11.0.1": "11.0.1"`,
+    `"test-exclude@^7.0.0": { "minimatch": "11.0.1" }`, `"glob@^9.0.0": { "minimatch": "8.0.7" }` and
+    `"glob@^10.0.0": { "minimatch": "9.0.9" }`. The minimatch copies of `eslint`, `@eslint/config-array`,
+    `@typescript-eslint/typescript-estree`, `@expo/fingerprint`, Jest's own packages and `glob` 13 resolve to 11.0.1.
+    `glob` 9.3.5 (under `babel-plugin-module-resolver`) and `glob` 10.5.0 (under Jest, `jest-expo` and `test-exclude` 7) keep their
+    own `minimatch` (8.0.7 and 9.0.9, the versions they had before): they test `p instanceof RegExp` on what `Minimatch#parse`
+    returns, and 11 returns a matcher object instead, so with 11 a magic pattern such as `src/*/*.ts` returns nothing and
+    `**/*.ts` throws. Those two copies are still inside GHSA-g3hv-75wg-m249 (`>=7.0.0 <11.0.1`). They are covered by an
+    `acceptedWithoutRepair` entry for that advisory (the gate accepts by package and the advisory's range, so it cannot be limited
+    to the glob parents; the shipped-tree check still fails if a runtime package declares `minimatch` outside `toolingParents`),
+    review by 2026-12-15 with `glob`. `minimatch` 3.1.5 (`test-exclude` 6, `@eslint/eslintrc`, `glob` 7) is outside the advisory
+    and unchanged. `glob` 13.0.6 is not fixed by this: its main entry bundles its own older `minimatch`, so the advisory code
+    still runs in Expo CLI's `glob` calls. `glob` stays accepted. Checked with `glob.sync` on `src/*/*.ts` and `**/*.ts` through
+    the glob 9, glob 10 and glob 13 copies: all return the files.
   - **What reaches the bundle: nothing.** On 2026-10-31 a static trace of every `require` and `import` (relative, aliased and
     package, with the packages' `react-native`, `browser` and `exports` entries) from the app entry and every `app/` route found
     4195 files in 130 packages. Neither `glob` nor `minimatch` is among them, and neither are `@expo/cli`, `@expo/config`,
@@ -74,7 +88,7 @@
 
 ## zod backport removed — Expo SDK 58
 
-`@expo/cli` 58.1.18 no longer depends on `zod`, so the nested `node_modules/expo/node_modules/zod` 3.25.76 that the local size
+`@expo/cli` 58.1.18 (and 58.1.19) no longer depends on `zod`, so the nested `node_modules/expo/node_modules/zod` 3.25.76 that the local size
 gate patched is gone from the lockfile. The only zod left is the dev-only 4.6.7 that `eslint-plugin-react-hooks` and
 `zod-validation-error` use, which is past the fix (GHSA-mrhx-c7xc-m3w5 is fixed in 4.6.6). The zod entries were therefore removed
 from `scripts/security-backports.json`, its tests and `acceptedAdvisories`; the accepted set is braces, sprintf-js and deepmerge.
@@ -140,7 +154,7 @@ repair (a package of the shipped tree makes the gate fail):
 | Advisory            | Package and range             | Why it is accepted                                                          | Review by  |
 | ------------------- | ----------------------------- | --------------------------------------------------------------------------- | ---------- |
 | GHSA-3g3m-2fjr-6pw4 | glob `>=9.0.0 <=14.0.1`       | Build and dev tooling only; not in the app bundle; 14.0.2 not reachable     | 2026-12-15 |
-| GHSA-g3hv-75wg-m249 | minimatch `<11.0.1`           | Build and dev tooling only; not in the app bundle; 11.0.1 not reachable     | 2026-12-15 |
+| GHSA-g3hv-75wg-m249 | minimatch `>=7.0.0 <11.0.1`   | Only the copies under glob 9 and 10 (8.0.7, 9.0.9); build and test tooling; 11 breaks their RegExp check | 2026-12-15 |
 
 - Every entry of the npm report at **moderate, high or critical** must resolve
   to advisories on this list, with the same package and affected range, and
@@ -191,16 +205,10 @@ v6.0.1, `actions/upload-artifact` v6.0.0, read with `git ls-remote` on
 the comment together. Every checkout sets `persist-credentials: false`.
 `scripts/workflows.test.mjs` checks all three points.
 
-**Over-the-air updates are off, explicitly.** `expo-updates`, a runtime
-version, EAS channels and the in-app update prompt are present, and updates
-were off only because `app.json` had no `updates.url`. `app.json` now says
-`"updates": { "enabled": false }`; the generated Android manifest and iOS
-plist are the same as before (compared with `npx expo config --type
-introspect`). Turning updates on means remote JavaScript runs with the user's
-session, so it needs `updates.codeSigningCertificate`,
-`updates.codeSigningMetadata` and `updates.checkAutomatically` set to `NEVER`
-or `ON_ERROR_RECOVERY` in the same change; `scripts/ota-updates.test.mjs`
-fails otherwise.
+**Over-the-air updates are removed (WH-27).** Every change ships through the store, so `expo-updates`, the runtime version, the `updates` block of
+`app.json` and the in-app update prompt are gone. Remote JavaScript cannot run with the user's session; the version gate ("Update the app") is unchanged.
+`scripts/ota-updates.test.mjs` described the old setting and is for Test to retire. `@sentry/react-native` lists `expo-updates` as an optional peer, so
+the lockfile still carries its entries as optional peers; nothing installs or imports them.
 
 ## Expo SDK 57 upgrade — 10 October 2026
 

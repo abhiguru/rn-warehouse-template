@@ -46,7 +46,7 @@ import { customerPricingPath, itemRatesPath } from '@/features/item-pricing/cont
 import { useAppSelector } from '@/store/hooks';
 import { t } from '@/i18n';
 import { money } from '@/features/item-pricing/rateText';
-import { packageUnit, packagingWord } from '@/utils/packagingWord';
+import { cleanPackaging, packageUnit } from '@/utils/packagingWord';
 import { space, type ThemeTokens } from '@/theme/tokens';
 import { formatWeightEach } from '@/utils/formatters';
 import type { RpcGrnItemRate, RpcGrnRate } from '@/types/rpc-canonical.types';
@@ -293,7 +293,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                           ? customerPricingPath(customerId as string, rate.item_id)
                           : managerTarget === 'grn'
                             ? grnRatesStepPath(grnId as string)
-                            : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined, packagingByLot?.[rate.grn_item_id] ? packagingWord(packagingByLot[rate.grn_item_id]) : undefined),
+                            : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined, packagingByLot?.[rate.grn_item_id] ? cleanPackaging(packagingByLot[rate.grn_item_id]) : undefined),
                     )
                   }
                   style={({ pressed }) => [table.row, pressed && table.rowPressed]}

@@ -11,6 +11,15 @@ import { setLanguage } from '@/i18n';
 import { HorizontalItemForm, type HorizontalItemFormRef, type ItemFormData } from '../HorizontalItemForm';
 import { QuantityWeightFields } from '../item-form';
 
+// The weight box and the scroll offsets follow the text size (WH-56): 1 unless a test sets it.
+let mockFontScale = 1;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 392, height: 780, scale: 3, fontScale: mockFontScale }),
+}));
+// The add-item sheet in the entry form (WH-56) needs the safe area and the network state.
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
@@ -74,6 +83,7 @@ afterEach(() => {
   act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
   jest.useRealTimers();
   setLanguage('en');
+  mockFontScale = 1;
 });
 
 const isText = (node: ReactTestInstance) => (node.type as unknown) === 'Text';
@@ -104,13 +114,34 @@ describe('GRN item form weight field', () => {
     expect(tree.root.findAll(isText).map(textOf)).not.toContain('Weight');
   });
 
-  it('has a width of its own, 152, wider than the quantity field; the other fields keep theirs', () => {
+  it('has a width of its own, 112, 5 dp narrower than the quantity field (WH-56); the other fields keep theirs', () => {
     const tree = renderForm();
 
-    expect(widthOf(input(tree, 'Weight each, in kilograms'))).toBe(152);
+    expect(widthOf(input(tree, 'Weight each, in kilograms'))).toBe(112);
     expect(widthOf(input(tree, 'Receipt item quantity'))).toBe(117);
-    expect(widthOf(input(tree, 'Rack'))).toBe(196);
+    // The Rack column is as wide as its longest chip line: 196 is its least (minWidth).
+    let rackField = input(tree, 'Rack').parent;
+    while (rackField && !(typeof rackField.type === 'string' && typeof StyleSheet.flatten(rackField.props.style)?.minWidth === 'number')) rackField = rackField.parent;
+    expect(StyleSheet.flatten(rackField!.props.style).minWidth).toBe(196);
     expect(widthOf(input(tree, 'Mark'))).toBe(270);
+  });
+
+  it('grows with the text size, up to 2.0, and the row scrolls by the grown width (WH-56)', () => {
+    mockFontScale = 2;
+    const tree = renderForm();
+    expect(widthOf(input(tree, 'Weight each, in kilograms'))).toBe(224);
+    expect(widthOf(input(tree, 'Receipt item quantity'))).toBe(117);
+
+    focus(tree, 'Rack');
+    focus(tree, 'Mark');
+
+    // 232 + 117 + 12 = 361 for Weight; Rack 361 + 224 + 12 = 597; Mark 597 + 196 + 12 = 805.
+    expect(scrolledTo().map((target) => target.x)).toEqual([597, 805]);
+
+    act(() => tree.unmount());
+    mockFontScale = 3;
+    const larger = renderForm();
+    expect(widthOf(input(larger, 'Weight each, in kilograms'))).toBe(224);
   });
 
   it('stores what is typed in 0-9', () => {
@@ -122,12 +153,12 @@ describe('GRN item form weight field', () => {
   });
 
   describe('scrolling to the field in focus', () => {
-    // Item 220, Quantity 117, Weight 152, Rack 196: each field is reached by the widths before it.
+    // Item 220, Quantity 117, Weight 112, Rack 196, each followed by the 12 dp gap: a field is reached by the widths before it.
     it.each([
-      ['Receipt item quantity', 220],
-      ['Weight each, in kilograms', 337],
-      ['Rack', 489],
-      ['Mark', 685],
+      ['Receipt item quantity', 232],
+      ['Weight each, in kilograms', 361],
+      ['Rack', 485],
+      ['Mark', 693],
     ])('%s scrolls the row to %d', (label, x) => {
       const tree = renderForm();
 
@@ -136,15 +167,15 @@ describe('GRN item form weight field', () => {
       expect(scrolledTo()).toEqual([{ x, animated: true }]);
     });
 
-    it('Rack and Mark are not scrolled to as if Weight were still 117 wide (454 and 650)', () => {
+    it('Rack and Mark are not scrolled to as if Weight were still 152 wide (525 and 733)', () => {
       const tree = renderForm();
 
       focus(tree, 'Rack');
       focus(tree, 'Mark');
 
-      expect(scrolledTo().map((target) => target.x)).toEqual([489, 685]);
-      expect(scrolledTo().map((target) => target.x)).not.toContain(454);
-      expect(scrolledTo().map((target) => target.x)).not.toContain(650);
+      expect(scrolledTo().map((target) => target.x)).toEqual([485, 693]);
+      expect(scrolledTo().map((target) => target.x)).not.toContain(525);
+      expect(scrolledTo().map((target) => target.x)).not.toContain(733);
     });
 
     it('goes to Quantity after an item is chosen, as before', () => {
@@ -155,7 +186,7 @@ describe('GRN item form weight field', () => {
         jest.advanceTimersByTime(100);
       });
 
-      expect(scrolledTo()).toEqual([{ x: 220, animated: true }]);
+      expect(scrolledTo()).toEqual([{ x: 232, animated: true }]);
     });
   });
 
@@ -164,10 +195,10 @@ describe('GRN item form weight field', () => {
   describe('scrolling to a field the items step names', () => {
     it.each([
       ['item', 0],
-      ['qty', 220],
-      ['weight', 337],
-      ['rack', 489],
-      ['package_mark', 685],
+      ['qty', 232],
+      ['weight', 361],
+      ['rack', 485],
+      ['package_mark', 693],
     ] as const)('%s scrolls the row to %d, the place it has when it takes focus', (field, x) => {
       const ref = React.createRef<HorizontalItemFormRef>();
       renderForm(ITEM, ref);

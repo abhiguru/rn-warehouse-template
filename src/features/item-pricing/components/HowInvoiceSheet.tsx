@@ -4,6 +4,7 @@ import { Text, View } from 'react-native';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
+import { packageUnit } from '@/utils/packagingWord';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
 
 const makeStyles = (th: ThemeTokens) => ({
@@ -13,7 +14,8 @@ const makeStyles = (th: ThemeTokens) => ({
   text: { ...typography.body, flex: 1, color: th.text.primary },
 });
 
-export function HowInvoiceSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+/** `packaging` is the item's own word for "bag" in the lines about one package's weight; without it the lines say bag. */
+export function HowInvoiceSheet({ visible, onClose, packaging }: { visible: boolean; onClose: () => void; packaging?: string | null }) {
   const styles = useThemedStyles(makeStyles);
   const lines = ['l0a', 'l0b', 'l1', 'l2', 'l3', 'l4', 'l5'] as const;
   return (
@@ -22,7 +24,7 @@ export function HowInvoiceSheet({ visible, onClose }: { visible: boolean; onClos
         {lines.map((key, index) => (
           <View key={key} style={styles.line}>
             <Text style={styles.number}>{localizeDigits(`${index + 1}.`)}</Text>
-            <Text style={styles.text}>{t(`pricing.how.${key}`)}</Text>
+            <Text style={styles.text}>{packaging !== undefined && (key === 'l1' || key === 'l3') ? t(`pricing.how.${key}For`, { unit: packageUnit(packaging) }) : t(`pricing.how.${key}`)}</Text>
           </View>
         ))}
       </View>

@@ -516,6 +516,13 @@ export const errors = {
     tooManyPages: 'This document is too long to print as one PDF.',
     changedWhilePrinting: 'The document changed while it was being made. Try again.',
     rendererUnavailable: 'The PDF service is not available right now. Try again in a moment.',
+    // The three refusals the PDF functions give, as an alert or message strip: a title and a message (pdfRefusalText).
+    refusalTooLongTitle: 'Too long for a PDF',
+    refusalTooLong: 'This document is too long to make into a PDF.',
+    refusalChangedTitle: 'Document changed',
+    refusalChanged: 'It changed while the PDF was being made. Try again.',
+    refusalUnavailableTitle: 'PDF not available',
+    refusalUnavailable: "PDFs can't be made right now. Try again later.",
     tooLarge: 'This document is larger than 25 MB and cannot be shared from the app.',
     sharingUnavailable: 'Sharing is not available on this device',
     shareDialogTitle: 'Share {{name}}',

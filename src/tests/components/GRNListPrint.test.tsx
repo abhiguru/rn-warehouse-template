@@ -36,6 +36,11 @@ jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/grn-service', () => ({
   getAllGRNItems: jest.fn(),
   getAssignedCustomerGRNItems: jest.fn(),
+  // The screen's one read (WH-29): the same two reads, without the phone cache.
+  getGRNListPage: (params: object, ids: string[] | null) => {
+    const service = require('@/services/grn-service');
+    return ids ? service.getAssignedCustomerGRNItems(ids, params) : service.getAllGRNItems(params);
+  },
   withReceiptPages: (request: object) => request,
   countReceipts: (items: unknown[]) => items.length,
 }));

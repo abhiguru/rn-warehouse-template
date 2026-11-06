@@ -8,6 +8,7 @@
  * the item gets the strip that says so and "Add customer rate", which opens the full-screen form that adds it. Old rates are folded at the bottom, and the day
  * control is behind the link "See rates on another day" (a day other than today is read-only).
  */
+import { itemWithPackaging } from '@/utils/packagingWord';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -95,6 +96,8 @@ export default function CustomerRatePage() {
   useLeaveGuard({ hasChanges: anyDirty, blocked: Boolean(bar?.save.loading) });
 
   const item = itemRates?.item ?? { id: itemId, name: '' };
+  // The item's word beside its name once the item is known.
+  const itemTitle = item.name && 'packaging' in item ? itemWithPackaging(item.name, item.packaging) : item.name;
   const rows = useMemo(() => itemRates?.rows ?? [], [itemRates]);
   const own = useMemo(() => rows.filter(r => r.customer_id === customerId), [rows, customerId]);
   // The name outlives the rows: cancelling or undoing the customer's last own rate leaves no row to read it from.
@@ -121,9 +124,9 @@ export default function CustomerRatePage() {
           <HeaderBackButton />
           <View style={styles.titles}>
             <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
-              {customerName ? t('pricing.customerRate.title', { customer: customerName }) : item.name}
+              {customerName ? t('pricing.customerRate.title', { customer: customerName }) : itemTitle}
             </Text>
-            <Text style={styles.subtitle} numberOfLines={2}>{item.name}</Text>
+            <Text style={styles.subtitle} numberOfLines={2}>{itemTitle}</Text>
           </View>
           {rights.canSeeChanges && itemRates ? (
             <Button

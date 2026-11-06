@@ -219,7 +219,8 @@ describe('GRN picker search', () => {
   it('with no customer, says to choose one (keypad and list) and never "no stock left"', async () => {
     const tree = await open(undefined);
     const shown = texts(tree);
-    expect(shown.filter((x) => x === 'Choose a customer in the first step to see their GRNs.')).toHaveLength(2);
+    // The list says it once (WH-6): the keypad row stays empty with no customer.
+    expect(shown.filter((x) => x === 'Choose a customer in the first step to see their GRNs.')).toHaveLength(1);
     expect(shown).not.toContain('No GRNs have stock left.');
     await act(async () => { tree.unmount(); });
   });
@@ -287,13 +288,20 @@ describe('GRN picker search', () => {
     await tapKey(tree, 'Enter GRN digit 7');
     expect(texts(tree)).toContain('Searching GRNs…');
 
+    expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
+    expect(resolveSearch).toBeDefined();
+
     await pressLabelled(tree, 'Clear search');
     expect(texts(tree)).not.toContain('Searching GRNs…');
+    const afterClear = texts(tree);
     await act(async () => {
       resolveSearch([{ id: 'g-9', gr_no: 'A-7', date: '2026-01-01', customer_name: 'Ay' }] as never);
     });
+    // The late reply really arrived on the one pending search and changed nothing.
+    expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
     expect(texts(tree)).not.toContain('GRN A-7');
     expect(texts(tree)).not.toContain('Searching GRNs…');
+    expect(texts(tree)).toEqual(afterClear);
     await act(async () => { tree.unmount(); });
   });
 
@@ -304,12 +312,20 @@ describe('GRN picker search', () => {
     await tapKey(tree, 'Enter GRN digit 7');
     expect(texts(tree)).toContain('Searching GRNs…');
 
+    expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
+    expect(resolveSearch).toBeDefined();
+
     await pressLabelled(tree, 'Delete last character');
     expect(texts(tree)).not.toContain('Searching GRNs…');
+    const afterBackspace = texts(tree);
     await act(async () => {
       resolveSearch([{ id: 'g-9', gr_no: 'A-7', date: '2026-01-01', customer_name: 'Ay' }] as never);
     });
+    // The empty query ran no second search; the late reply changed nothing.
+    expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
     expect(texts(tree)).not.toContain('GRN A-7');
+    expect(texts(tree)).not.toContain('Searching GRNs…');
+    expect(texts(tree)).toEqual(afterBackspace);
     await act(async () => { tree.unmount(); });
   });
 

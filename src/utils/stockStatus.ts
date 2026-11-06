@@ -16,6 +16,12 @@ import type { IconName } from '@/types/icon.types';
 /** Below this share of the original quantity, stock is low (critical). */
 export const LOW_STOCK_RATIO = 0.2;
 
+/** GRN list card, stock value colour: at or above this share left is positive (§3.5). */
+export const STOCK_VALUE_HIGH_RATIO = 0.8;
+
+/** GRN list card, stock value colour: at or above this share left (and below the high share) is critical. */
+export const STOCK_VALUE_LOW_RATIO = 0.2;
+
 // SAP Fiori semantic status types ('neutral' kept for colour lookups by callers)
 export type StockStatus = 'positive' | 'critical' | 'negative' | 'neutral';
 
@@ -71,6 +77,51 @@ export function getStockLevel(stock: number, originalQty: number): StockLevel {
   if (safeStock <= 0) return 'negative';
   if (safeQty > 0 && safeStock < safeQty * LOW_STOCK_RATIO) return 'critical';
   return 'positive';
+}
+
+/**
+ * The colour level of the stock value on a GRN list card (§3.5). It colours the
+ * number only; the tag beside it keeps `getStockLevel`.
+ *
+ * Nothing received (qty 0 or less): neutral. 80% or more left: positive. 20% up
+ * to 80%: critical. Less than 20%, including 0: negative.
+ *
+ * @example
+ * getStockValueLevel(80, 100) // 'positive'
+ * getStockValueLevel(20, 100) // 'critical'
+ * getStockValueLevel(19, 100) // 'negative'
+ * getStockValueLevel(0, 0)    // 'neutral'
+ */
+export function getStockValueLevel(stock: number, qty: number): StockStatus {
+  const safeStock = Number(stock) || 0;
+  const safeQty = Number(qty) || 0;
+  if (safeQty <= 0) return 'neutral';
+  const ratio = safeStock / safeQty;
+  if (ratio >= STOCK_VALUE_HIGH_RATIO) return 'positive';
+  if (ratio >= STOCK_VALUE_LOW_RATIO) return 'critical';
+  return 'negative';
+}
+
+/** Icon of the GRN list card's stock box, by the colour level of its value (WH-58). */
+export const STOCK_VALUE_ICONS: Record<StockStatus, IconName> = {
+  positive: 'package-variant',
+  critical: 'package-variant-minus',
+  negative: 'package-variant-closed-remove',
+  neutral: 'help-circle-outline',
+};
+
+/**
+ * The word of the GRN list card's badge (WH-58): nothing received N/A, nothing
+ * left Empty, everything left Full, anything between Partial. The colour comes
+ * from `getStockValueLevel`, so 85% left is a green Partial and 10% a red one.
+ */
+export function getStockBadgeLabel(stock: number, qty: number): string {
+  const safeStock = Number(stock) || 0;
+  const safeQty = Number(qty) || 0;
+  if (safeQty <= 0) return t('lists.grn.badge.na');
+  if (safeStock <= 0) return t('lists.grn.badge.empty');
+  if (safeStock >= safeQty) return t('lists.grn.badge.full');
+  return t('lists.grn.badge.partial');
 }
 
 /** True when the stock is low (critical) under the one rule. */

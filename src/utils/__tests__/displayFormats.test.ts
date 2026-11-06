@@ -1,5 +1,6 @@
 import {
   formatCount,
+  formatCardDate,
   formatDate,
   formatSpokenDate,
   formatIndiaSpokenDate,
@@ -394,5 +395,28 @@ describe('formatSpokenDate and formatIndiaSpokenDate, the date in words for a sc
   it('uses Gujarati month names and digits in Gujarati', () => {
     setLanguage('gu');
     expect(formatSpokenDate('2026-10-09')).toBe('૯ ઑક્ટો ૨૦૨૬');
+  });
+});
+
+describe('formatCardDate, the date on a list card (WH-58)', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('writes the day, the short month and the two-digit year', () => {
+    expect(formatCardDate('2026-10-09')).toBe('9 Oct 26');
+    expect(formatCardDate('2026-12-31')).toBe('31 Dec 26');
+    expect(formatCardDate('2019-01-05')).toBe('5 Jan 19');
+    expect(formatCardDate('2100-01-05')).toBe('5 Jan 00');
+    expect(formatCardDate(new Date(2026, 2, 9))).toBe('9 Mar 26');
+  });
+
+  it('gives a dash for a missing or invalid date', () => {
+    expect(formatCardDate(null)).toBe('—');
+    expect(formatCardDate(undefined)).toBe('—');
+    expect(formatCardDate('not a date')).toBe('—');
+  });
+
+  it('writes the month and the digits in Gujarati', () => {
+    setLanguage('gu');
+    expect(formatCardDate('2026-10-10')).toBe('૧૦ ઑક્ટો ૨૬');
   });
 });

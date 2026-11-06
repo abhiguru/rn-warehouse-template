@@ -66,7 +66,7 @@ export const STOCK_SUMMARY_CUSTOMER: FilterListConfig<StockSummaryRequest> = {
 };
 
 /** What a search looks in: the item's name and the number of every GRN it is on. */
-const itemColumns = (item: StockItemSummary) => [item.item_name, ...(item.grns ?? []).map(grn => grn.gr_no)];
+const itemColumns = (item: StockItemSummary) => [item.item_name, ...(item.grns ?? []).map(grn => grn.packaging), ...(item.grns ?? []).map(grn => grn.gr_no)];
 
 /**
  * One customer's items after the search, in the chosen order. The screen applies

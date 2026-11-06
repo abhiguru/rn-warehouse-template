@@ -35,6 +35,8 @@ const mockDispatch = (action: UnknownAction) => {
 let mockMode: 'create' | 'edit' = 'edit';
 
 // The store wiring, as in GrnItemsStepLeave.test.tsx.
+// The add-item sheet in the entry form needs the network state.
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) =>
@@ -269,7 +271,7 @@ describe.each([
     await answer('OK');
 
     // Item (220) and Quantity (117) are drawn before it.
-    expect(mockScrollTo.mock.calls).toEqual([[{ x: 337, animated: true }]]);
+    expect(mockScrollTo.mock.calls).toEqual([[{ x: 361, animated: true }]]);
     expect(router.push).not.toHaveBeenCalled();
   });
 });

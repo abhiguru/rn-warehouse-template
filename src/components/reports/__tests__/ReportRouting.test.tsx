@@ -343,7 +343,7 @@ describe('operations dashboard', () => {
     await open(OperationsDashboardScreen, account);
     expect(jest.mocked(reporting.getOperationsDashboard).mock.calls.length > 0).toBe(sent);
     // Who is not offered it sees why, not a failed report; who is sees the refusal as an error.
-    expect(texts().includes('Staff only')).toBe(!sent);
+    expect(texts().includes('Administrators and supervisors only')).toBe(!sent);
     expect(texts().includes("Couldn't load the operations dashboard")).toBe(sent);
   });
 });

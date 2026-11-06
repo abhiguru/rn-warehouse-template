@@ -15,7 +15,6 @@ import { space } from '@/theme/tokens';
 import type { DispatchItemData, GRNDetailItem } from '@/types/dispatch.types';
 import { LotBottomSheet } from '../LotBottomSheet';
 import { ItemsSummaryBottomSheet } from '../ItemsSummaryBottomSheet';
-import { AddItemBottomSheet } from '../AddItemBottomSheet';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -146,12 +145,12 @@ describe('the lot picker counts a lot in its packaging', () => {
     <LotBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} lots={[{ ...lot(50), packaging, stock }]} grnInfo={{ id: 'grn-1', gr_no: 'G0311' }} />
   );
 
-  it('says boxes for a Box lot, and bags for other packaging', () => {
+  it('says boxes for a Box lot, and the item own word for other packaging (WH-41)', () => {
     render(boxes('Box'));
     expect(texts(tree)).toContain('40 boxes');
     act(() => tree.unmount());
     render(boxes('Tin'));
-    expect(texts(tree)).toContain('40 bags');
+    expect(texts(tree)).toContain('40 Tin');
   });
 
   it('says one box and, in Gujarati, બૉક્સ with Gujarati digits', () => {
@@ -246,27 +245,5 @@ describe('the saved-items sheet', () => {
       const margins = rowViews().map((node) => Number(styleOf(node).marginBottom ?? 0) + Number(styleOf(node).marginTop ?? 0)).filter(Boolean);
       expect(margins).toEqual([space.sm]);
     });
-  });
-});
-
-// No screen opens this sheet today; it is kept in step with the items step.
-describe('the add-item sheet', () => {
-  const chooseLot = (weight: number | null) => {
-    render(<AddItemBottomSheet isVisible onClose={jest.fn()} onAddItem={jest.fn()} existingItems={[]} />);
-    act(() => tree.root.findByType(LotBottomSheet).props.onSelect(lot(weight)));
-  };
-
-  it('says "Weight" and "50 kg each" in the lot details', () => {
-    chooseLot(50);
-
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Lot details', 'Weight', '50 kg each']));
-    expect(texts(tree)).not.toContain('50 kg');
-  });
-
-  it.each([[0], [null]])('shows no weight row for a lot without a weight (%s)', (weight) => {
-    chooseLot(weight);
-
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Lot details', '40 bags']));
-    expect(mentionsWeight(tree)).toBe(false);
   });
 });

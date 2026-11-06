@@ -427,7 +427,7 @@ describe('deleting the account', () => {
   it('without central login: the row and warning keep their wording with the preferences sentence; the right number deletes and opens sign-in', async () => {
     mockCentralOn = false;
     await render();
-    expect(hook.deletion.label).toBe('Delete account');
+    expect(hook.deletion.label).toBe('Delete my account');
     expect(hook.deletion.subtitle).toBe('Removes your profile and sign-in. Records are kept.');
     act(() => hook.deletion.open());
     expect(hook.deletion.dialog.title).toBe('Delete your account?');

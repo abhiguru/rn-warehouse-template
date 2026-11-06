@@ -3,7 +3,7 @@ export const filters = {
   // Field labels that are not in `common`
   field: {
     package: 'Package',
-    bagsOnLine: 'Bags on a line',
+    bagsOnLine: 'Units on a line',
     financialYear: 'Financial year',
     withItems: 'With items',
   },
@@ -12,7 +12,7 @@ export const filters = {
   },
   unit: {
     kg: 'kg',
-    bags: 'bags',
+    bags: 'units',
   },
   placeholder: {
     packageName: 'Package name',

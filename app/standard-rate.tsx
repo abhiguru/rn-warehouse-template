@@ -50,7 +50,8 @@ import {
   validateStandard,
 } from '@/features/item-pricing/standardRate';
 import { useStandardRate, rememberStandardRate, clearStandardRateCache } from '@/features/item-pricing/useStandardRate';
-import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
+import { BandsEditor, type FoldingBands } from '@/features/item-pricing/components/BandsEditor';
+import { useReviewSections } from '@/components/review/ReviewSections';
 import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
 import type { FieldNode, FieldRegistry } from '@/features/item-pricing/components/fieldLink';
 import { RateStrip } from '@/features/item-pricing/components/RateStrip';
@@ -58,6 +59,14 @@ import { RatesState } from '@/features/item-pricing/components/RatesState';
 import type { ScrollViewRef } from '@/types/nativeRefs';
 
 const ABOVE_KEYBOARD = space.xxl;
+/** A bit more than the 200 ms a band takes to open or close: after this its fields have their final place. */
+const FOLD_SETTLE_MS = 260;
+
+/** The band a field key belongs to (`band.2.rent` is band 2); null for a key outside the bands. */
+const bandOfKey = (fieldKey: string | undefined): number | null => {
+  const m = fieldKey ? /^band\.(\d+)\./.exec(fieldKey) : null;
+  return m ? Number(m[1]) : null;
+};
 
 interface Form {
   draft: Draft;
@@ -106,6 +115,24 @@ export default function StandardRateScreen() {
   const barHeightRef = useRef(0);
   const windowHeightRef = useRef(windowHeight);
   windowHeightRef.current = windowHeight;
+
+  // The bands fold: one open at a time, the first when the screen opens. The ids are the band indexes.
+  const sections = useReviewSections<string>('0');
+  const openBandRef = useRef<number | null>(0);
+  openBandRef.current = sections.open === null ? null : Number(sections.open);
+  // A field to focus once its band has opened (the keyboard's next key into a closed band).
+  const pendingFocus = useRef<string | null>(null);
+  const layoutY = useRef<{ card: number; bands: Record<number, number> }>({ card: 0, bands: {} });
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const later = (fn: () => void, ms: number) => { timers.current.push(setTimeout(fn, ms)); };
+  /** Opens a band (closing the one open); true when it was closed. */
+  const openBand = (index: number): boolean => {
+    if (openBandRef.current === index) return false;
+    openBandRef.current = index;
+    sections.show(String(index));
+    return true;
+  };
 
   // The screen always reads the standard rate again when it opens: a copy cached by an item page or
   // Add item may be older than what another phone saved, and Save sends every tier on the screen.
@@ -159,6 +186,18 @@ export default function StandardRateScreen() {
     };
   }, [ensureVisible]);
 
+  // After a band has opened for the next key, focus the field once the band is drawn.
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (!target || bandOfKey(target) !== openBandRef.current) return;
+    pendingFocus.current = null;
+    const frame = requestAnimationFrame(() => {
+      nodes.current[target]?.focus();
+      later(() => ensureVisible(target), FOLD_SETTLE_MS);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sections.open, ensureVisible]);
+
   const order = useMemo(() => (form ? fieldOrder(form.draft, null) : []), [form]);
   const fields: FieldRegistry = useMemo(
     () => ({
@@ -168,21 +207,87 @@ export default function StandardRateScreen() {
         ensureVisible(fieldKey);
       },
       next: fieldKey => {
-        const following = nodes.current[order[order.indexOf(fieldKey) + 1]];
-        if (following) following.focus();
-        else Keyboard.dismiss();
+        const followingKey = order[order.indexOf(fieldKey) + 1];
+        const following = nodes.current[followingKey];
+        if (!following) {
+          Keyboard.dismiss();
+          return;
+        }
+        const band = bandOfKey(followingKey);
+        if (band !== null && band !== openBandRef.current) {
+          // The field is in a closed band: open it, then focus after the band is drawn.
+          pendingFocus.current = followingKey;
+          openBand(band);
+          return;
+        }
+        following.focus();
       },
     }),
     [order, ensureVisible],
   );
 
   const scrollToError = (fieldKey: string) => {
-    const node = nodes.current[fieldKey];
-    if (!node) {
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-      return;
-    }
-    node.measureInWindow((_x, y) => scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + y - 160), animated: true }));
+    // The field's band opens first, and the field is measured once the bands have settled (a hidden node measures wrong).
+    const band = bandOfKey(fieldKey);
+    const opened = band !== null && openBand(band);
+    const go = () => {
+      const node = nodes.current[fieldKey];
+      if (!node) {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+        return;
+      }
+      node.measureInWindow((_x, y) => scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + y - 160), animated: true }));
+    };
+    if (opened) later(go, FOLD_SETTLE_MS);
+    else go();
+  };
+
+  // Errors keyed by band index (a refusal the server named) are dropped when the bands shift; a checked form is re-validated
+  // by setDraft, which runs just before this.
+  const dropBandErrors = () => {
+    if (checked.current) return;
+    setErrors(current => Object.fromEntries(Object.entries(current).filter(([k]) => !k.startsWith('band.'))));
+  };
+
+  const folding: FoldingBands = {
+    open: sections.open === null ? null : Number(sections.open),
+    onToggle: index => {
+      const opening = openBandRef.current !== index;
+      openBandRef.current = opening ? index : null;
+      sections.toggle(String(index));
+      // The band above closing moves this one: bring its heading back under the header if it went above.
+      if (opening) {
+        later(() => {
+          const y = layoutY.current.card + (layoutY.current.bands[index] ?? 0);
+          if (y - space.sm < scrollY.current) scrollRef.current?.scrollTo({ y: Math.max(0, y - space.sm), animated: true });
+        }, FOLD_SETTLE_MS);
+      }
+    },
+    onAdd: index => {
+      // The bands after a middle insert moved up one place: errors named by band index would point at the wrong band.
+      dropBandErrors();
+      openBand(index);
+      // Bring the new band's heading into view once the bands have settled.
+      later(() => {
+        const y = layoutY.current.card + (layoutY.current.bands[index] ?? 0);
+        if (y - space.sm < scrollY.current || y > scrollY.current + windowHeightRef.current / 2) {
+          scrollRef.current?.scrollTo({ y: Math.max(0, y - space.sm), animated: true });
+        }
+      }, FOLD_SETTLE_MS);
+    },
+    onRemove: (index, count) => {
+      dropBandErrors();
+      const current = openBandRef.current;
+      if (current === null) return;
+      // Keep the same band open by its shifted index; if the open one was removed, open its neighbour.
+      const next = current > index ? current - 1 : current === index ? Math.min(index, count - 1) : current;
+      openBandRef.current = null;
+      openBand(next);
+    },
+    onLayout: (which, y) => {
+      if (which === 'card') layoutY.current.card = y;
+      else layoutY.current.bands[which] = y;
+    },
   };
 
   const reload = () => {
@@ -192,6 +297,10 @@ export default function StandardRateScreen() {
     setStale(false);
     setUnconfirmed(false);
     checked.current = false;
+    pendingFocus.current = null;
+    openBandRef.current = null;
+    sections.show('0');
+    openBandRef.current = 0;
     readFresh();
   };
 
@@ -356,7 +465,7 @@ export default function StandardRateScreen() {
             />
           ) : strip ? <EditorStrip variant="critical" message={strip} testID="standard-error" /> : null}
           <Text style={styles.note} testID="standard-note">{t('pricing.standard.note')}</Text>
-          <BandsEditor draft={form.draft} ctx={form.ctx} errors={{ ...rentErrors(form.draft), ...errors }} onChange={setDraft} fields={fields} />
+          <BandsEditor draft={form.draft} ctx={form.ctx} errors={{ ...rentErrors(form.draft), ...errors }} onChange={setDraft} fields={fields} folding={folding} />
           {lastUpTo !== null ? <Text style={styles.note} testID="standard-last-tier-hint">{t('pricing.standard.lastTierHint', { kg: lastUpTo })}</Text> : null}
         </ScrollView>
 

@@ -125,11 +125,27 @@ describe('receipt quantity admission and validation', () => {
     }
   );
 
-  it('says a weight of ten or more digits is at most 999,999,999', async () => {
+  it('says a weight of ten or more digits, entered now, is at most 9,999 (WH-56; was 999,999,999)', async () => {
     const result = await validateStep2({ items: [item('3', { weight: '1000000000' })] });
-    expect(result.errors['items[0].weight']).toBe('Weight must be at most 999,999,999');
+    expect(result.errors['items[0].weight']).toBe('Weight must be at most 9,999');
     const gujarati = await validateStep2({ items: [item('3', { weight: '૧૦૦૦૦૦૦૦૦૦' })] });
-    expect(gujarati.errors['items[0].weight']).toBe('Weight must be at most 999,999,999');
+    expect(gujarati.errors['items[0].weight']).toBe('Weight must be at most 9,999');
+  });
+
+  it('limits a weight that is entered or changed to 9,999 (WH-56), and keeps a saved weight above it', async () => {
+    const atLimit = await validateStep2({ items: [item('3', { weight: '9999' })] });
+    expect(atLimit.errors['items[0].weight']).toBeUndefined();
+    const over = await validateStep2({ items: [item('3', { weight: '10000' })] });
+    expect(over.errors['items[0].weight']).toBe('Weight must be at most 9,999');
+    const saved = await validateStep2({ items: [item('3', { weight: '10000' })] }, { keepWeight: true });
+    expect(saved.errors['items[0].weight']).toBeUndefined();
+  });
+
+  it('still refuses a saved weight of ten or more digits, with the 999,999,999 message (WH-56)', async () => {
+    const saved = await validateStep2({ items: [item('3', { weight: '1000000000' })] }, { keepWeight: true });
+    expect(saved.errors['items[0].weight']).toBe('Weight must be at most 999,999,999');
+    const atCeiling = await validateStep2({ items: [item('3', { weight: '999999999' })] }, { keepWeight: true });
+    expect(atCeiling.errors['items[0].weight']).toBeUndefined();
   });
 
   it('still reports garbled text as not whole', async () => {

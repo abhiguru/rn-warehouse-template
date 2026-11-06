@@ -6,6 +6,8 @@ export interface ItemStoragePrice {
   id: string;
   item_id: string;
   item_name: string;
+  /** The item's packaging word (additive since migration 144). */
+  item_packaging?: string | null;
   customer_id: string | null;
   customer_name: string | null;
   price_type: PriceType;
@@ -129,6 +131,8 @@ export interface ItemPriceHistoryEntry {
   item_id: string | null;
   /** Null for a truncate, and when the item has since been deleted. */
   item_name: string | null;
+  /** The item's packaging word now (additive since migration 144); null once the item is deleted. */
+  item_packaging?: string | null;
   /** Null for a default price (and for a truncate). */
   customer_id: string | null;
   customer_name: string | null;

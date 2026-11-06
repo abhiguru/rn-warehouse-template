@@ -18,10 +18,10 @@ describe('rateText', () => {
     expect(bandText(0, 40)).toBe('0–40 kg');
   });
 
-  it('says box or crate for a Box or Crate item, and bag for other packaging', () => {
+  it('says box or crate for a Box or Crate item, the item own word for other packaging (WH-41), and bag for none', () => {
     expect(unitText('monthly', 'Box')).toBe('per box, per month');
     expect(unitText('one_time', 'Crate')).toBe('per crate, once');
-    expect(unitText('monthly', 'Tin')).toBe('per bag, per month');
+    expect(unitText('monthly', 'Tin')).toBe('per Tin, per month');
     expect(labourText('₹2.00', 'Box')).toBe('₹2.00 per box, charged once at dispatch');
     expect(labourText('₹2.00')).toBe('₹2.00 per bag, charged once at dispatch');
   });
