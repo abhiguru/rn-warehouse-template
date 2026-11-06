@@ -141,6 +141,13 @@ describe('receipt quantity admission and validation', () => {
     expect(saved.errors['items[0].weight']).toBeUndefined();
   });
 
+  it('still refuses a saved weight of ten or more digits, with the 999,999,999 message (WH-56)', async () => {
+    const saved = await validateStep2({ items: [item('3', { weight: '1000000000' })] }, { keepWeight: true });
+    expect(saved.errors['items[0].weight']).toBe('Weight must be at most 999,999,999');
+    const atCeiling = await validateStep2({ items: [item('3', { weight: '999999999' })] }, { keepWeight: true });
+    expect(atCeiling.errors['items[0].weight']).toBeUndefined();
+  });
+
   it('still reports garbled text as not whole', async () => {
     const result = await validateStep2({ items: [item('3', { weight: '10000000000x' })] });
     expect(result.errors['items[0].weight']).toBe('Weight must be a whole number');
