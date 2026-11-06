@@ -181,7 +181,10 @@ export const receiptWeightSchema = yup
   .typeError(msg('grn.validation.weightWhole'))
   .integer(msg('grn.validation.weightWhole'))
   .min(0, msg('grn.validation.weightNegative'))
-  .max(WHOLE_NUMBER_MAX, msg('grn.validation.weightMaxSaved'))
+  // The general ceiling applies only to a kept (saved) weight; a weight being entered gets weightMax below.
+  .test('weight-ceiling', msg('grn.validation.weightMaxSaved'), (value, ctx) =>
+    value === undefined || value === null || value <= WHOLE_NUMBER_MAX || (ctx.options.context as WeightContext | undefined)?.keepWeight !== true
+  )
   .test('weight-limit', msg('grn.validation.weightMax'), (value, ctx) =>
     value === undefined || value === null || value <= RECEIPT_WEIGHT_MAX || (ctx.options.context as WeightContext | undefined)?.keepWeight === true
   );
