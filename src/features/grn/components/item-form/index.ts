@@ -10,13 +10,6 @@
 // Hero banner with title and save button
 export { HeroBanner, type HeroBannerProps } from './HeroBanner';
 
-// Item search autocomplete field
-export {
-  ItemSearchField,
-  type ItemSearchFieldProps,
-  type ItemSearchResult,
-} from './ItemSearchField';
-
 // Quantity and weight input fields
 export {
   QuantityWeightFields,
