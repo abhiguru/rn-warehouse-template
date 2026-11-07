@@ -92,6 +92,12 @@ export const REFUSAL = {
   // Backend migration 162 (document numbering).
   /** An invoice scheme change while an invoice exists in the current financial year. Nothing was changed. */
   NUMBERING_SWITCH_MID_YEAR: 'NUMBERING_SWITCH_MID_YEAR',
+  // Backend migration 164 (charging rule).
+  /** The facility's charging rule is not the one the form showed (`charging`: the rule now, `sent`: the rule the form sent). Nothing was saved. */
+  CHARGING_CHANGED: 'CHARGING_CHANGED',
+  // Backend migration 165 (invoice goods as they leave).
+  /** The setting cannot be turned off while GRNs with goods in store have an invoice (`count`, `gr_nos`). Nothing changed. */
+  PARTIAL_INVOICES_OPEN: 'PARTIAL_INVOICES_OPEN',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

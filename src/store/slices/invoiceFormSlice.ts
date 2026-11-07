@@ -231,7 +231,7 @@ const invoiceFormSlice = createSlice({
       }
 
       // Recalculate header totals using extracted function
-      const headerTotals = calculateHeaderTotals(totalsOf, state.header.discount);
+      const headerTotals = calculateHeaderTotals(totalsOf, state.header.discount, state.header.charging?.rounding);
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
       state.header.total = headerTotals.total;
@@ -254,7 +254,7 @@ const invoiceFormSlice = createSlice({
           discount === roundMoney(state.header.saved_discount || 0) ? savedReason : '';
       }
       state.header.discount = discount;
-      const headerTotals = calculateHeaderTotals(plainLines(state.items), state.header.discount);
+      const headerTotals = calculateHeaderTotals(plainLines(state.items), state.header.discount, state.header.charging?.rounding);
       Object.assign(state.header, headerTotals);
     },
 
@@ -299,7 +299,8 @@ const invoiceFormSlice = createSlice({
 
       const headerTotals = calculateHeaderTotals(
         current.size === 0 ? lines : lines.map((line, index) => current.get(index) ?? line),
-        state.header.discount
+        state.header.discount,
+        state.header.charging?.rounding
       );
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
@@ -357,7 +358,7 @@ const invoiceFormSlice = createSlice({
       state.items = updatedItems;
 
       // Recalculate header totals using extracted function
-      const headerTotals = calculateHeaderTotals(updatedItems, state.header.discount);
+      const headerTotals = calculateHeaderTotals(updatedItems, state.header.discount, state.header.charging?.rounding);
       state.header.labour = headerTotals.labour;
       state.header.tax_amount = headerTotals.tax_amount;
       state.header.total = headerTotals.total;
@@ -441,7 +442,7 @@ const invoiceFormSlice = createSlice({
       // object at once; an unfrozen one it walks and freezes field by field (thousands of lines: ~100 ms+).
       const items = action.payload.items.map((item) => Object.freeze({
         ...item,
-        ...calculateItemAmounts(item.qty, item.charge, item.labour_rate, item.tax, item.duration, item.one_time),
+        ...calculateItemAmounts(item.qty, item.charge, item.labour_rate, item.tax, item.duration, item.one_time, item.server_storage),
       }));
       const oneTimeCharge = items.length > 0 && items.every((item) => item.one_time === true);
 
@@ -455,6 +456,8 @@ const invoiceFormSlice = createSlice({
         inv_date: preservedInvDate,
         inv_fin_year: preservedInvFinYear,
         one_time_charge: oneTimeCharge,
+        // A new invoice takes the rule the preview answered; an invoice being edited keeps the rule it was made with.
+        charging: state.invoice_id !== null ? state.header.charging : action.payload.header.charging,
         discount: preservedDiscount,
         ...preservedDiscountRecord,
         zero_charge_reason: preservedZeroChargeReason,
@@ -470,7 +473,7 @@ const invoiceFormSlice = createSlice({
       );
 
       // Calculate initial totals with proper rounding
-      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
+      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount, state.header.charging?.rounding));
     },
 
     // Load invoice data for edit mode
@@ -549,7 +552,7 @@ const invoiceFormSlice = createSlice({
       const lines = plainLines(state.items);
       const next = withServerDurations(lines, action.payload);
       if (next !== lines) state.items = next;
-      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount));
+      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount, state.header.charging?.rounding));
     },
 
     // The server refused a save with RATES_CHANGED (D12): the rates it looks up now go on the lines it names, for the fields
@@ -577,7 +580,29 @@ const invoiceFormSlice = createSlice({
         return recalculateItemWithEdits(line, values);
       });
       state.items = next;
-      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount));
+      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount, state.header.charging?.rounding));
+    },
+
+    // The server refused a save with CHARGING_CHANGED (WH-137): the facility's rule changed after the form opened. The
+    // lines read again under the new rule (same dispatch lines) bring their durations, days and storage; the rates, discount,
+    // reasons, number and date the person typed stay, and the totals are shown again under the new rounding.
+    applyFreshCharging: (
+      state,
+      action: PayloadAction<{ charging: InvoiceHeaderData['charging']; items: InvoiceItemData[] }>
+    ) => {
+      const fresh = new Map(action.payload.items.map((item) => [item.disp_trl_id, item] as const));
+      const lines = plainLines(state.items);
+      const next = lines.map((line) => {
+        const read = fresh.get(line.disp_trl_id);
+        if (!read) return line;
+        return recalculateItemWithEdits(
+          { ...line, server_storage: read.server_storage },
+          { duration: read.duration, no_of_days: read.no_of_days }
+        );
+      });
+      state.items = next;
+      state.header.charging = action.payload.charging;
+      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount, state.header.charging?.rounding));
     },
 
     // An edit that moved to another GRN goes back to the GRN it was saved with: the saved lines, discount and
@@ -598,7 +623,7 @@ const invoiceFormSlice = createSlice({
       state.editedItems = {};
       state.itemOverrides = savedLineOverrides(saved.items);
       state.bulkPricing = {};
-      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
+      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount, state.header.charging?.rounding));
     },
 
     // A new form. The session number goes up, so a screen that is already open
@@ -659,6 +684,7 @@ export const {
   loadInvoiceEditData,
   applyServerDurations,
   applyCurrentRates,
+  applyFreshCharging,
   restoreSavedGrn,
   resetForm,
   numberRequested,

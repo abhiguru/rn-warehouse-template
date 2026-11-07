@@ -60,6 +60,8 @@ export interface InvoiceLineItem {
   server_tax_amount?: number;
   /** The line's total (base plus tax) as the server computed it. */
   server_total_amount?: number;
+  /** The line's storage as the server worked it out under the invoice's own rule (migration 164). */
+  server_storage_amount?: number;
   /** The line's GRN is priced ONE_TIME: no duration, no labour. Used only when the server amounts are absent. */
   one_time?: boolean;
   grn_id?: string;
@@ -185,7 +187,15 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
     // they worked out here, by the same rules, as a stand-in.
     const hasServerAmounts =
       typeof item.server_tax_amount === 'number' && typeof item.server_total_amount === 'number';
-    const computed = calculateItemAmounts(dispatch_qty, charge_per_unit, labour_rate, taxRate, duration, item.one_time);
+    const computed = calculateItemAmounts(
+      dispatch_qty,
+      charge_per_unit,
+      labour_rate,
+      taxRate,
+      duration,
+      item.one_time,
+      typeof item.server_storage_amount === 'number' ? { amount: item.server_storage_amount, charge: charge_per_unit, by_days: false } : undefined
+    );
     const taxAmount = hasServerAmounts ? item.server_tax_amount! : computed.tax_amount;
     const lineTotal = hasServerAmounts ? item.server_total_amount! : computed.item_total;
     const baseAmount = hasServerAmounts ? roundMoney(lineTotal - taxAmount) : computed.taxable_amount;

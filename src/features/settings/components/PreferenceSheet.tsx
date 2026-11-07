@@ -23,6 +23,9 @@ export interface PreferenceOption<T extends string> {
   icon?: IconName;
   /** Drawn in place of the icon, e.g. brand swatches. */
   leading?: React.ReactNode;
+  /** Shown but not choosable (greyed), with `hint` under the label saying why. */
+  disabled?: boolean;
+  hint?: string;
 }
 
 export interface PreferenceSheetProps<T extends string> {
@@ -57,6 +60,8 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   optionPressed: { backgroundColor: t.surface.cardPressed },
   optionLabel: { ...typography.body, flex: 1, color: t.text.primary },
+  optionDisabled: { opacity: 0.45 },
+  optionHint: { ...typography.footnote, color: t.text.secondary },
   optionLabelSelected: { fontWeight: fontWeight.semibold, color: t.brand.tint },
   check: { width: iconSize.md },
   note: { ...typography.footnote, color: t.text.secondary, marginTop: space.md },
@@ -87,15 +92,24 @@ export function PreferenceSheet<T extends string>({
               style={({ pressed }) => [
                 styles.option,
                 index < options.length - 1 && styles.optionDivider,
-                pressed && !isSelected && styles.optionPressed,
+                pressed && !isSelected && !option.disabled && styles.optionPressed,
+                option.disabled && styles.optionDisabled,
               ]}
+              disabled={option.disabled}
               onPress={() => onSelect(option.value)}
               accessibilityRole="radio"
-              accessibilityState={{ selected: isSelected, checked: isSelected }}
+              accessibilityState={{ selected: isSelected, checked: isSelected, disabled: option.disabled === true }}
               accessibilityLabel={option.accessibilityLabel ?? option.label}
             >
               {option.leading ?? (option.icon ? <Icon name={option.icon} size={iconSize.md} color={t.icon.primary} /> : null)}
-              <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>{option.label}</Text>
+              {option.hint ? (
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>{option.label}</Text>
+                  <Text style={styles.optionHint}>{option.hint}</Text>
+                </View>
+              ) : (
+                <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>{option.label}</Text>
+              )}
               <View style={styles.check}>
                 {isSelected ? <Icon name="check" size={iconSize.md} color={t.brand.tint} /> : null}
               </View>

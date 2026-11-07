@@ -16,6 +16,7 @@ import { pricing } from './pricing';
 import { reports } from './reports';
 import { settings } from './settings';
 import { numbering } from './numbering';
+import { charging } from './charging';
 import { users } from './users';
 import { sensors } from './sensors';
 import { errors } from './errors';
@@ -40,6 +41,7 @@ export const gu: Translation<typeof en> = {
   reports,
   settings,
   numbering,
+  charging,
   users,
   sensors,
   errors,

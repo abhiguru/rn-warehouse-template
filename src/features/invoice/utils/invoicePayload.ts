@@ -32,6 +32,8 @@ export const transformFormDataToPayload = (
       tax_amount: header.tax_amount || 0,
       total: header.total || 0,
       one_time_charge: header.one_time_charge || false,
+      // The rule the figures were made under (WH-137); left out on a backend before migration 164.
+      ...(header.charging ? { charging: header.charging } : {}),
     },
     items: items.map((item) => ({
       disp_trl_id: item.disp_trl_id,

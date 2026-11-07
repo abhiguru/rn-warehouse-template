@@ -522,10 +522,14 @@ export interface InvoiceDetail {
   cancel_reason?: string | null;
   /** Administrators, supervisors and staff only. */
   cancelled_by_name?: string | null;
+  /** Migration 164: the charging rule the invoice was made with, as the server sent it (read with parseChargingRule). Absent on an older server. */
+  charging?: unknown;
 }
 
 export interface InvoiceItem {
   item_id: string;
+  /** Migration 164: the line's storage as the server worked it out under the invoice's rule; null with no quantity, absent on an older server. */
+  storage_amount?: number | string | null;
   /** Migration 143. False for a cancelled invoice's line whose dispatch went before the details were kept; absent on an older server. */
   details_available?: boolean;
   charge: number;

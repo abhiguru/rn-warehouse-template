@@ -16,6 +16,8 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { ChargingRuleLine } from '@/features/charging/ChargingRuleLine';
+import type { ChargingRule } from '@/features/charging/chargingRule';
 
 // ============================================================================
 // TYPES
@@ -39,6 +41,8 @@ interface InvoiceBreakdownTabProps {
   related_documents?: RelatedDocument[];
   on_view_grn?: (grn_id: string) => void;
   on_view_dispatch?: (dispatch_id: string) => void;
+  /** The charging rule the invoice was made with (migration 164), shown in words under the amounts. */
+  charging?: ChargingRule;
 }
 
 // ============================================================================
@@ -191,6 +195,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
   related_documents = [],
   on_view_grn,
   on_view_dispatch,
+  charging,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -298,6 +303,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
             <Text style={styles.breakdownLabelTotal}>{tr('invoice.label.totalAmount')}</Text>
             <Text style={styles.breakdownValueTotal}>{formatInvoiceAmount(breakdown.total)}</Text>
           </View>
+          <ChargingRuleLine rule={charging} testID="invoice-breakdown-charging" />
         </View>
       </View>
 

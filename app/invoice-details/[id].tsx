@@ -51,6 +51,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { formatDate } from '@/utils/formatters';
+import { parseChargingRule } from '@/features/charging/chargingRule';
 import { buildInvoiceLineItems, relatedDispatchDocuments } from '@/features/invoice/utils/invoiceLineItems';
 import { t as tr, formatIdentifier } from '@/i18n';
 // ============================================================================
@@ -703,6 +704,7 @@ function InvoiceDetailScreen() {
           {activeTab === 'breakdown' && (
             <InvoiceBreakdownTab
               breakdown={financialSummary}
+              charging={parseChargingRule(invoice.charging) ?? undefined}
               related_documents={relatedDocuments}
               on_view_grn={handleViewGRN}
               on_view_dispatch={handleViewDispatch}

@@ -27,6 +27,10 @@ const INTRODUCED_BY_MIGRATION = {
   documentNumbering: 127,
   /** `get_rack_presets` and `set_rack_presets`: the facility's Floor and Chamber buttons for a rack. */
   rackPresets: 131,
+  /** `get_charging_rule` and `set_charging_rule`, the invoice's stored rule, `charging` and `storage_amount` in the preview and the readers (WH-137). */
+  chargingRule: 164,
+  /** The setting `invoice_as_goods_leave`, `invoice_state` on GRN lists and details, several invoices per GRN (WH-138). */
+  invoiceAsGoodsLeave: 165,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

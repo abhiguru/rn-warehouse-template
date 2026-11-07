@@ -6,6 +6,7 @@
  */
 
 import type { GroupRates, InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
+import type { TotalRounding } from '@/features/charging/chargingRule';
 import { localizeDigits, t } from '@/i18n';
 
 /**
@@ -135,6 +136,27 @@ export interface ItemAmounts {
 }
 
 /**
+ * The storage of one line. The server's own figure (`storage_amount`, WH-137) is used while the line's charge is the one it
+ * was worked out for. A charge typed since then cannot be sent to the server on every key: under a rule that charges by the
+ * day the server's figure is scaled to the new charge (it is not rate x quantity x the rounded months), otherwise the
+ * product the server uses for whole and half months is the same figure. The save question and the server's own total check
+ * (W18) still settle the amount.
+ */
+function storageAmount(
+  qty: number,
+  charge: number,
+  duration: number,
+  oneTime: boolean,
+  server?: InvoiceItemData['server_storage']
+): number {
+  if (server && Number.isFinite(server.amount)) {
+    if (roundMoney(server.charge) === roundMoney(charge)) return roundMoney(server.amount);
+    if (server.by_days && server.charge > 0) return roundMoney((server.amount * charge) / server.charge);
+  }
+  return roundMoney(oneTime ? qty * charge : qty * charge * duration);
+}
+
+/**
  * The amounts of one line, computed as the server computes them
  * (recalculate_invoice_header, backend docs/INVOICE_RULES.md).
  *
@@ -149,7 +171,8 @@ export function calculateItemAmounts(
   labour_rate: number,
   tax: number,
   duration: number,
-  oneTime: boolean = false
+  oneTime: boolean = false,
+  serverStorage?: InvoiceItemData['server_storage']
 ): ItemAmounts {
   // Guard against NaN - use 0 as safe default for invalid values
   const safeQty = isNaN(qty) || qty < 0 ? 0 : qty;
@@ -158,7 +181,7 @@ export function calculateItemAmounts(
   const safeTax = isNaN(tax) || tax < 0 ? 0 : tax;
   const safeDuration = isNaN(duration) || duration <= 0 ? 1 : duration;
 
-  const amount = roundMoney(oneTime ? safeQty * safeCharge : safeQty * safeCharge * safeDuration);
+  const amount = storageAmount(safeQty, safeCharge, safeDuration, oneTime, serverStorage);
   const labour_amount = oneTime ? 0 : roundMoney(safeQty * safeLabourRate);
   const taxable_amount = roundMoney(amount + labour_amount);
   const tax_amount = roundMoney(taxable_amount * (safeTax / 100));
@@ -196,7 +219,8 @@ export function applyPricingToItem(
     labour_rate,
     tax,
     duration,
-    item.one_time
+    item.one_time,
+    item.server_storage
   );
 
   return {
@@ -218,9 +242,22 @@ export interface HeaderTotals {
   total: number;
 }
 
+/**
+ * Rounds `value` as the invoice's rule says (backend warehouse_security.round_invoice_total): up to the next whole rupee,
+ * to the nearest rupee with 50 paise rounding up, or to paise. Done on whole paise so a figure such as 1234.50 is not
+ * lost to binary noise.
+ */
+export function roundByRule(value: number, rounding: TotalRounding = 'up'): number {
+  const paise = Math.round(value * 100);
+  if (rounding === 'none') return paise / 100;
+  if (rounding === 'nearest') return Math.sign(paise) * Math.floor((Math.abs(paise) + 50) / 100);
+  return Math.ceil(paise / 100);
+}
+
 export function calculateHeaderTotals(
   items: InvoiceItemData[],
-  discount: number = 0
+  discount: number = 0,
+  rounding: TotalRounding = 'up'
 ): HeaderTotals {
   // Guard against NaN values (allow negative discounts as they act as surcharges)
   const safeDiscount = isNaN(discount) ? 0 : discount;
@@ -241,10 +278,16 @@ export function calculateHeaderTotals(
     return sum + (Number.isFinite(baseCents) && Number.isFinite(rateHundredths)
       ? baseCents * Math.max(0, rateHundredths) : 0);
   }, 0);
-  const tax_amount = Math.ceil(taxUnits / 1_000_000);
+  // The tax is the sum of the unrounded line taxes, in millionths of a rupee, rounded as the invoice's rule says.
+  const tax_amount =
+    rounding === 'up'
+      ? Math.ceil(taxUnits / 1_000_000)
+      : rounding === 'nearest'
+        ? Math.floor((taxUnits + 500_000) / 1_000_000)
+        : Math.floor((taxUnits + 5_000) / 10_000) / 100;
   // save_invoice and update_invoice cast total to NUMERIC(12,2), then CEIL.
   // Preserve the existing absolute discount (negative means surcharge).
-  const total = Math.ceil(roundMoney(subtotal + labour + tax_amount - safeDiscount));
+  const total = roundByRule(roundMoney(subtotal + labour + tax_amount - safeDiscount), rounding);
 
   return {
     labour,
@@ -333,7 +376,7 @@ export function recalculateItemWithEdits(
   const tax = editedValues.tax ?? item.tax;
   const no_of_days = Math.round(editedValues.no_of_days ?? item.no_of_days);
 
-  const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, duration, item.one_time);
+  const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, duration, item.one_time, item.server_storage);
 
   return {
     ...item,
@@ -474,7 +517,7 @@ export function applyBulkGroupPricing(
     const tax = rate('tax');
 
     // Recalculate amounts
-    const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time);
+    const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time, item.server_storage);
 
     return {
       ...item,

@@ -15,6 +15,8 @@ export const settings = {
     standardRateSubtitle: 'The rate new items get',
     documentNumbers: 'Document numbers',
     documentNumbersSubtitle: 'How GRN, dispatch and invoice numbers are written',
+    charging: 'Charging',
+    chargingSubtitle: 'How storage time is counted and totals are rounded',
     rackPresets: 'Rack buttons',
     rackPresetsSubtitle: 'The Floor and Chamber buttons on the GRN item form',
     sensors: 'Temperature and humidity',

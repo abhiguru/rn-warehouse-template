@@ -32,6 +32,7 @@ import {
   loadInvoiceEditData,
   applyServerDurations,
   applyCurrentRates,
+  applyFreshCharging,
   resetForm,
   numberRequested,
   numberAnswered,
@@ -58,6 +59,7 @@ import {
   validateFullInvoice,
   validateNewInvoiceStep1,
   validateNewInvoice,
+  setInvoiceChargingRule,
 } from '@/features/invoice/schemas/invoiceValidation';
 import {
   getNextInvoiceNumber,
@@ -85,6 +87,7 @@ import { REFUSAL, refusalNumber, refusalString } from '@/utils/serverRefusal';
 import { formatDate, formatFinancialYear, toCalendarDay } from '@/utils/formatters';
 import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { calculateFinancialYear, formatInvoiceAmount, serverLineDurations, serverLineRates } from '@/utils/invoiceCalculations';
+import { parseChargingRule } from '@/features/charging/chargingRule';
 
 const log = createLogger('useInvoiceForm');
 
@@ -429,7 +432,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       showAlert(t('invoice.form.grnLoadFailedTitle'), `${reason}${kept}`);
     };
     try {
-      const result = await loadInvoiceFormDataService(grId);
+      const result = await loadInvoiceFormDataService(grId, isCreateMode ? undefined : store.getState().invoiceForm.header.charging);
       if (result.success && result.data) {
         const loaded = result.data.header;
         dispatch(loadInvoiceFormData({
@@ -457,7 +460,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     } finally {
       dispatch(setIsLoadingItems(false));
     }
-  }, [dispatch, isCreateMode, header.gr_id, header.gr_no]);
+  }, [dispatch, store, isCreateMode, header.gr_id, header.gr_no]);
 
   // The question "Move to financial year …?" is open: another date change waits for its answer (D9).
   const moveYearAsked = useRef(false);
@@ -585,6 +588,13 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     },
     [dispatch]
   );
+
+  // The duration check follows the charging rule of the form (WH-137), and goes back to its default when the form closes.
+  const chargingInForm = header.charging;
+  useEffect(() => {
+    setInvoiceChargingRule(chargingInForm);
+    return () => setInvoiceChargingRule(undefined);
+  }, [chargingInForm]);
 
   // The invoice number may differ from the saved one only within the server's range.
   const numberChanged = !isCreateMode && baseline !== null && header.inv_no !== baseline.inv_no;
@@ -927,6 +937,33 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         dispatch(applyCurrentRates(serverLineRates(refusal.fields.lines)));
         const message = t('invoice.refusal.ratesChanged');
         report(t(failedTitleKey), message, { ratesChanged: true });
+        return { success: false, error: message };
+      }
+      if (refusal?.reason === REFUSAL.CHARGING_CHANGED) {
+        // WH-137: the facility's charging rule changed after the form opened. Nothing was saved. The lines are read again
+        // under the new rule and the figures shown again; the rates, discount, reasons, number and date typed stay.
+        const message = t('charging.ruleChanged');
+        const wanted = new Set(store.getState().invoiceForm.items.map((line) => line.disp_trl_id));
+        let refreshed = false;
+        if (isCreateMode) {
+          try {
+            const fresh = await loadInvoiceFormDataService(header.gr_id);
+            const freshItems = fresh.success && fresh.data ? fresh.data.items : [];
+            const sameLines = freshItems.length === wanted.size && freshItems.every((line) => wanted.has(line.disp_trl_id));
+            if (sameLines) {
+              dispatch(applyFreshCharging({ charging: fresh.data.header.charging ?? parseChargingRule(refusal.fields.charging) ?? undefined, items: freshItems }));
+              refreshed = true;
+            }
+          } catch (error) {
+            log.warn('Could not read the lines again after the charging rule changed:', error);
+          }
+        }
+        if (!refreshed) {
+          // The lines could not be read again, or they are not the same ones: the person reads them again.
+          report(t(failedTitleKey), message, isCreateMode ? { reloadLines: true } : undefined);
+          return { success: false, error: message, ...(isCreateMode ? { reloadLines: true } : {}) };
+        }
+        report(t(failedTitleKey), message, { totalChanged: true });
         return { success: false, error: message };
       }
       const currentTotal = refusal?.reason === REFUSAL.TOTAL_CHANGED ? refusalNumber(refusal, 'current_total') : undefined;

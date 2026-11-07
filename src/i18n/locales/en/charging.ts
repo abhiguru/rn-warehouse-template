@@ -1,0 +1,66 @@
+/** English text: how storage is charged (WH-137). English is the source; src/i18n/locales/gu/charging.ts must have the same keys. */
+export const charging = {
+  screen: {
+    title: 'Charging',
+    intro: 'How storage time is counted and totals are rounded on invoices you make from now on. Saved invoices keep the rule they were made with.',
+    loadFailed: 'Charging could not be loaded. Check your connection and try again.',
+    adminsOnlyTitle: 'Administrators only',
+    adminsOnlyMessage: 'Only an administrator of this cold storage can see and change how storage is charged.',
+    backToSettings: 'Back to settings',
+    changedBy: 'Last changed by {{name}}',
+    save: 'Save changes',
+    saved: 'Charging changed',
+    unchanged: 'Nothing changed',
+    saveFailed: 'The change could not be saved. Check your connection and try again.',
+    refused: 'The server did not accept these values. Check the choices and try again.',
+    unconfirmed: 'We could not confirm the change. The screen now shows what the server holds.',
+    notAllowed: 'Only an administrator can change this.',
+  },
+  step: {
+    label: 'Charge storage in steps of',
+    half: 'Half a month (15 days)',
+    month: 'A month (30 days)',
+    day: 'A day',
+  },
+  minimum: {
+    label: 'Minimum charge',
+    oneStep: 'One step',
+    half: 'Half a month',
+    months: { one: '{{count}} month', other: '{{count}} months' },
+    shorterThanStep: 'Shorter than one step',
+  },
+  days: {
+    label: 'Days counted',
+    after: 'From the day after receipt',
+    including: 'Including the day of receipt',
+  },
+  round: {
+    label: 'Round the invoice total',
+    up: 'Up to the next rupee',
+    nearest: 'To the nearest rupee',
+    none: 'No rounding (paise)',
+  },
+  confirm: {
+    title: 'Change how storage is charged?',
+    body: 'Invoices you make from now on use the new rule. Saved invoices keep the rule they were made with.',
+    change: 'Change',
+  },
+  // The rule in one sentence under the totals of an invoice (form review step, preview, details).
+  line: {
+    sentence: '{{step}}, minimum {{minimum}}, {{days}}. {{rounding}}',
+    stepHalf: 'Storage charged in half-month steps',
+    stepMonth: 'Storage charged in monthly steps',
+    stepDay: 'Storage charged by the day',
+    minOneStep: 'one step',
+    minHalf: 'half a month',
+    daysAfter: 'from the day after receipt',
+    daysIncluding: 'including the day of receipt',
+    roundUp: 'Total rounded up to the next rupee.',
+    roundNearest: 'Total rounded to the nearest rupee.',
+    roundNone: 'Total not rounded (paise).',
+  },
+  roundingNote: 'This is an estimate. The server works out the final amount when the invoice is saved, under the charging rule above, and the discount is preserved.',
+  ruleChanged: 'How storage is charged changed since you opened this invoice. Check the new figures.',
+  // An edit moved to a GRN: the facility's rule is no longer the one the invoice was made with, so the lines cannot be read under it.
+  grnMoveOtherRule: 'This invoice was made under a different charging rule than the one now in use, so it cannot be moved to another GRN. Keep its GRN, or make a new invoice.',
+};

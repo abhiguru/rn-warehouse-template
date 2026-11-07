@@ -1,5 +1,6 @@
 // Invoice form types for creation and editing
 import type { ServerRefusal } from '@/utils/serverRefusal';
+import type { ChargingRule } from '@/features/charging/chargingRule';
 
 // Invoiceable GRN (available for invoice creation)
 export interface InvoiceableGrn {
@@ -41,6 +42,11 @@ export interface InvoiceHeaderData {
    * An invoice being edited starts with the stored reason. Only the person changes this text: the app never clears it.
    */
   zero_charge_reason?: string;
+  /**
+   * The charging rule the figures were made under (WH-137): the facility's rule for a new invoice, as the preview answered it
+   * and as the save sends it back (`charging`); the invoice's own stored rule for an edit. Absent on a backend before migration 164.
+   */
+  charging?: ChargingRule;
   labour: number; // Calculated sum
   tax_amount: number; // Calculated sum
   total: number; // Calculated grand total
@@ -91,6 +97,13 @@ export interface InvoiceItemData {
   charge: number; // ₹ per unit per duration
   labour_rate: number; // ₹ per unit
   tax: number; // Percentage (e.g., 18 for 18%)
+
+  /**
+   * The storage the server worked out for this line (`storage_amount`, WH-137) at the charge it had then. The app shows it
+   * and never works storage out again for a line whose rate was not changed; `by_days` is set when the rule charges by the
+   * day, where storage is not rate x quantity x the rounded months. Absent on a backend before migration 164.
+   */
+  server_storage?: { amount: number; charge: number; by_days: boolean };
 
   // Calculated fields (read-only)
   amount: number; // qty × charge × duration
@@ -201,6 +214,8 @@ export interface CreateInvoicePayload {
      * the save when its own total differs by more than 1. Left out of the request when not given.
      */
     expected_total?: number;
+    /** The charging rule the form showed (WH-137), sent as `charging`: the server refuses the save when the facility's rule is another now. */
+    charging?: ChargingRule;
   };
   items: {
     disp_trl_id: string;

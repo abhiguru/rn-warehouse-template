@@ -18,6 +18,8 @@ export const settings: Translation<typeof source> = {
     standardRateSubtitle: 'નવી આઇટમને મળતો દર',
     documentNumbers: 'દસ્તાવેજ નંબર',
     documentNumbersSubtitle: 'આવક પાવતી, જાવક અને ઇન્વૉઇસ નંબર કેવી રીતે લખાય છે',
+    charging: 'ભાડાની ગણતરી',
+    chargingSubtitle: 'સંગ્રહનો સમય કેવી રીતે ગણાય અને કુલ રકમ કેવી રીતે રાઉન્ડ થાય',
     rackPresets: 'રેકના બટન',
     rackPresetsSubtitle: 'આવક પાવતીની આઇટમમાં માળ અને ચેમ્બરના બટન',
     sensors: 'તાપમાન અને ભેજ',

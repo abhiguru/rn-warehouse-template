@@ -73,6 +73,7 @@ export type RoleGatedScreen =
   | 'userManagement'
   | 'enrollmentReview'
   | 'documentNumbering'
+  | 'charging'
   | 'rackPresets'
   | 'masterData';
 
@@ -113,6 +114,9 @@ export function canOpenScreen(
     case 'documentNumbering':
       // How GRN, dispatch and invoice numbers are written: administrators only (set_document_numbering, migration 127).
       return normalizeRole(role) === 'admin';
+    case 'charging':
+      // How storage time is counted and totals are rounded: administrators only (get_charging_rule, set_charging_rule, migration 164).
+      return normalizeRole(role) === 'admin';
   }
 }
 
@@ -128,6 +132,7 @@ export type SettingsFeature =
   | 'users'
   | 'standardRate'
   | 'documentNumbering'
+  | 'charging'
   | 'rackPresets'
   | 'sensors';
 
@@ -142,6 +147,7 @@ export function settingsFeatureRows(
   if (canOpenScreen(role, 'userManagement')) rows.push('users');
   if (canOpenScreen(role, 'standardRate')) rows.push('standardRate');
   if (canOpenScreen(role, 'documentNumbering')) rows.push('documentNumbering');
+  if (canOpenScreen(role, 'charging')) rows.push('charging');
   if (canOpenScreen(role, 'rackPresets')) rows.push('rackPresets');
   if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
   return rows;

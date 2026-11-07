@@ -15,6 +15,7 @@ import { t } from '@/i18n';
 
 import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
+import { parseChargingRule, type ChargingRule } from '@/features/charging/chargingRule';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { emptyAnswerAsError, expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
@@ -42,6 +43,20 @@ const errorForLog = (error: unknown): { code?: string; message: string } => {
 
 /** The server's words for a GRN that the preview refuses: not fully dispatched, or already invoiced. */
 const NOT_INVOICEABLE = /not (be )?ready for invoicing/i;
+
+/**
+ * The server's storage figure of a line (`storage_amount`, migration 164) with the charge it was worked out at, or
+ * undefined when the server sent none (an older backend, or a line without a quantity).
+ */
+export const serverStorageOf = (
+  value: unknown,
+  charge: number,
+  rule: ChargingRule | undefined
+): InvoiceItemData['server_storage'] => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? { amount, charge, by_days: rule?.step_days === 1 } : undefined;
+};
 
 /** Thrown inside loadInvoiceFormData so the caller can tell this refusal from a failed request. */
 class GrnNotInvoiceableError extends Error {}
@@ -184,6 +199,8 @@ const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
   REFUSAL.INVOICE_BEFORE_DISPATCH,
   REFUSAL.DISCOUNT_TOTAL_ZERO,
   REFUSAL.RATES_CHANGED,
+  // Migration 164: the facility's charging rule changed since the form opened.
+  REFUSAL.CHARGING_CHANGED,
 ]);
 function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
   const refusal = refusalOf(answer);
@@ -437,7 +454,13 @@ export const getInvoiceableGrns = async (
  * Uses the same RPC as web app: generate_invoice_data_for_grn_with_pricing
  */
 export const loadInvoiceFormData = async (
-  grId: string
+  grId: string,
+  /**
+   * An invoice being edited that moves to another GRN: the rule it was made with (WH-137). The preview is asked for that
+   * rule's days counted, and a facility rule whose step or minimum is another cannot be read under the invoice's own, so
+   * the move is refused in words and nothing is changed.
+   */
+  storedRule?: ChargingRule
 ): Promise<InvoiceFormDataResponse> => {
   try {
     // Extract the actual GRN ID if it includes a reset counter suffix
@@ -450,6 +473,7 @@ export const loadInvoiceFormData = async (
       'generate_invoice_data_for_grn_with_pricing',
       {
         p_gr_id: actualGrnId,
+        ...(storedRule ? { p_duration_mode: storedRule.days_counted } : {}),
       }
     );
 
@@ -490,6 +514,13 @@ export const loadInvoiceFormData = async (
 
     const headerData = responseData.header;
 
+    // The rule the figures were made under (migration 164); absent on an older backend.
+    const previewRule = parseChargingRule(responseData.charging);
+    if (storedRule && previewRule && (previewRule.step_days !== storedRule.step_days || previewRule.minimum_days !== storedRule.minimum_days)) {
+      throw new Error(t('charging.grnMoveOtherRule'));
+    }
+    const rule = storedRule ?? previewRule ?? undefined;
+
     // Check if there are any items to invoice
     if (!itemsData || itemsData.length === 0) {
       throw new Error(t('invoice.service.noDispatchedItemsLong'));
@@ -515,6 +546,7 @@ export const loadInvoiceFormData = async (
       gr_id: headerData.grn_id,
       gr_no: headerData.grn_no,
       one_time_charge: isOneTimeCharge,
+      ...(rule ? { charging: rule } : {}),
     };
 
     // Transform items to include temp_id and mobile-specific fields
@@ -554,6 +586,8 @@ export const loadInvoiceFormData = async (
       const oneTime = item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode
         ? isOneTime(item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode)
         : isOneTimeCharge;
+      // The storage the server worked out for the line (migration 164): shown as it is, not worked out again here.
+      const serverStorage = serverStorageOf(item.storage_amount, charge, rule);
 
       return {
         // Generate temp_id for React keys
@@ -594,7 +628,8 @@ export const loadInvoiceFormData = async (
 
         // Amounts as the server computes them for this pricing mode
         one_time: oneTime,
-        ...calculateItemAmounts(qty, charge, labourRate, tax, duration, oneTime),
+        ...(serverStorage ? { server_storage: serverStorage } : {}),
+        ...calculateItemAmounts(qty, charge, labourRate, tax, duration, oneTime, serverStorage),
       };
     });
 
@@ -799,6 +834,8 @@ const sendCreateInvoice = async (
       ...zeroChargeHeader(payload),
       // The total the person confirmed: the server refuses the save when its own total differs by more than 1 (D18).
       ...givenTotal(payload.header.expected_total),
+      // The rule the form showed: the server refuses the save when the facility's rule is another now (CHARGING_CHANGED).
+      ...(payload.header.charging ? { charging: payload.header.charging } : {}),
       ...(requestKey ? { request_key: requestKey } : {}),
     };
 
@@ -1006,6 +1043,8 @@ export const loadInvoiceData = async (
     // the fallback, and without either the lines are monthly.
     const oneTime = isOneTime(grnPricing.mode ?? header.pricing_mode);
 
+    const editRule = parseChargingRule(header.charging) ?? undefined;
+
     // Convert header data - full InvoiceHeaderData format
     const formattedHeader: InvoiceHeaderData = {
       customer_id: header.customer_id || '',
@@ -1027,6 +1066,8 @@ export const loadInvoiceData = async (
       labour: header.labour || 0,
       tax_amount: header.tax_amount || 0,
       total: header.total || 0,
+      // The rule the invoice was made with (migration 164); an edit keeps it.
+      ...(editRule ? { charging: editRule } : {}),
     };
 
     // Convert items data - backend now returns all needed fields
@@ -1042,6 +1083,8 @@ export const loadInvoiceData = async (
       const tax = item.tax || 0;
       const no_of_days = Math.round(item.no_of_days || 30);
       const qty = item.qty || 0;
+      // The storage the server worked out under the invoice's own rule: shown as it is, not worked out again here.
+      const serverStorage = serverStorageOf(item.storage_amount, charge, editRule);
 
       return {
         // Generate temp_id for React keys
@@ -1082,7 +1125,8 @@ export const loadInvoiceData = async (
 
         // Calculated fields, as the server computes them for this pricing mode
         one_time: oneTime,
-        ...calculateItemAmounts(qty, charge, labour_rate, tax, duration, oneTime),
+        ...(serverStorage ? { server_storage: serverStorage } : {}),
+        ...calculateItemAmounts(qty, charge, labour_rate, tax, duration, oneTime, serverStorage),
       };
     });
 
@@ -1165,6 +1209,8 @@ export const updateInvoice = async (
       ...(payload.header.expected_updated_at ? { expected_updated_at: payload.header.expected_updated_at } : {}),
       // The total the person confirmed: the server refuses the update when its own total differs by more than 1 (D18).
       ...givenTotal(payload.header.expected_total),
+      // The invoice's own stored rule, as read. The server edits under that rule whatever the facility's is now.
+      ...(payload.header.charging ? { charging: payload.header.charging } : {}),
       ...(requestKey ? { request_key: requestKey } : {}),
     };
 

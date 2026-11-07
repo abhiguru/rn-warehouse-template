@@ -42,6 +42,7 @@ export function buildInvoiceLineItems(
         // The server's amounts for the line, when they loaded
         server_tax_amount: serverLine?.taxAmount,
         server_total_amount: serverLine?.totalAmount,
+        server_storage_amount: item.storage_amount === null || item.storage_amount === undefined || item.storage_amount === '' || !Number.isFinite(Number(item.storage_amount)) ? undefined : Number(item.storage_amount),
         // How the GRN is priced decides how a line is charged
         one_time: isOneTime(grnItem.pricing_mode),
         // Some deployed get_invoice_data variants omit grn.id, but every

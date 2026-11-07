@@ -477,7 +477,7 @@ export const invoice = {
     discountTooSmall: 'Discount is too small',
     durationRequired: 'Duration is required',
     durationPositive: 'Duration must be positive',
-    durationMin: 'Duration must be at least 0.5 months',
+    durationMin: 'Duration must be at least {{minimum}}',
     daysRequired: 'Number of days is required',
     daysWhole: 'Days must be a whole number',
     daysNegative: 'Days cannot be negative',

@@ -3,6 +3,7 @@ import { createStepValidator, type ValidationResult } from '@/utils/validationHe
 import { t, type TranslationKey, type TranslationParams } from '@/i18n';
 import { isZeroChargeLine } from '@/utils/invoiceCalculations';
 import { formatDate } from '@/utils/formatters';
+import { minimumInWords, minimumMonths, type ChargingRule } from '@/features/charging/chargingRule';
 
 /**
  * A message that is read when validation fails, not when this file is loaded,
@@ -11,6 +12,18 @@ import { formatDate } from '@/utils/formatters';
  * build theirs from an English field name, so they are not used here.
  */
 const msg = (key: TranslationKey, params?: TranslationParams) => () => t(key, params);
+
+/**
+ * The least duration (months) the invoice's charging rule allows, and its words for the message. Set by the invoice form
+ * from the rule it holds (`setInvoiceChargingRule`); half a month, as before the rule existed, until then.
+ */
+let ruleInForce: ChargingRule | undefined;
+let minimumMonthsInForce = 0.5;
+export function setInvoiceChargingRule(rule: ChargingRule | undefined): void {
+  ruleInForce = rule;
+  minimumMonthsInForce = rule ? minimumMonths(rule) : 0.5;
+}
+const minimumText = (): string => (ruleInForce ? minimumInWords(ruleInForce) : t('charging.line.minHalf'));
 
 /**
  * A required line rate from 0 to 999999, the range the server accepts (backend migration 41). This is what Next and Save
@@ -91,7 +104,12 @@ export const itemPricingSchema = yup.object().shape({
     .number()
     .required(msg('invoice.validation.durationRequired'))
     .positive(msg('invoice.validation.durationPositive'))
-    .min(0.5, msg('invoice.validation.durationMin')),
+    // The least duration the charging rule gives (WH-137); half a month where no rule is known (a backend before migration 164).
+    .test(
+      'duration-min',
+      () => t('invoice.validation.durationMin', { minimum: minimumText() }),
+      (value) => value === undefined || value === null || value >= minimumMonthsInForce - 1e-9
+    ),
 
   no_of_days: yup
     .number()

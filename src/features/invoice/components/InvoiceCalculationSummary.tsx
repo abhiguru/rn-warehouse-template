@@ -15,6 +15,7 @@ import {
   roundMoney,
 } from '@/utils/invoiceCalculations';
 import { InlineValidation } from '@/components/fiori';
+import { ChargingRuleLine } from '@/features/charging/ChargingRuleLine';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 import { clampDiscount, discountFieldText, parseDiscountInput, parseFinalAmountInput } from '@/features/invoice/utils/amountInput';
 import { useTableLayout } from '@/components/common/DetailTable';
@@ -580,6 +581,8 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
         <Text style={[styles.totalValue, stacked && styles.valueStacked]}>{formatInvoiceAmount(header.total)}</Text>
       </View>
 
+      <ChargingRuleLine rule={header.charging} />
+
       <Pressable
         style={({ pressed }) => [styles.tertiary, pressed && styles.tertiaryPressed]}
         onPress={() => setHowOpen(true)}
@@ -617,7 +620,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
       <ConfirmDialog
         visible={howOpen}
         title={tr('invoice.summary.howCalculated')}
-        message={`${formula}\n\n${tr('invoice.summary.roundingNote')}`}
+        message={`${formula}\n\n${tr(header.charging ? 'charging.roundingNote' : 'invoice.summary.roundingNote')}`}
         confirmText={tr('common.close')}
         cancelText=""
         onConfirm={() => setHowOpen(false)}
