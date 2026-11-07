@@ -443,8 +443,8 @@ function InvoiceDetailScreen() {
       const pdfResult = await generateInvoicePDF(invoiceNo, finYearNum);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        if (pdfResult.refusal === 'tooLong') {
-          const { title, message } = pdfRefusalText('tooLong');
+        if (pdfResult.refusal) {
+          const { title, message } = pdfRefusalText(pdfResult.refusal);
           showAlert(title, message);
           return;
         }
