@@ -201,6 +201,8 @@ const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
   REFUSAL.RATES_CHANGED,
   // Migration 164: the facility's charging rule changed since the form opened.
   REFUSAL.CHARGING_CHANGED,
+  // Migration 165: a dispatch line is on another live invoice.
+  REFUSAL.DISPATCH_LINE_INVOICED,
 ]);
 function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
   const refusal = refusalOf(answer);
@@ -455,12 +457,8 @@ export const getInvoiceableGrns = async (
  */
 export const loadInvoiceFormData = async (
   grId: string,
-  /**
-   * An invoice being edited that moves to another GRN: the rule it was made with (WH-137). The preview is asked for that
-   * rule's days counted, and a facility rule whose step or minimum is another cannot be read under the invoice's own, so
-   * the move is refused in words and nothing is changed.
-   */
-  storedRule?: ChargingRule
+  /** An invoice being edited (including a move to another GRN): the preview prices with that invoice's stored rule (`p_invoice_id`). */
+  invoiceId?: string
 ): Promise<InvoiceFormDataResponse> => {
   try {
     // Extract the actual GRN ID if it includes a reset counter suffix
@@ -473,7 +471,7 @@ export const loadInvoiceFormData = async (
       'generate_invoice_data_for_grn_with_pricing',
       {
         p_gr_id: actualGrnId,
-        ...(storedRule ? { p_duration_mode: storedRule.days_counted } : {}),
+        ...(invoiceId ? { p_invoice_id: invoiceId } : {}),
       }
     );
 
@@ -516,10 +514,7 @@ export const loadInvoiceFormData = async (
 
     // The rule the figures were made under (migration 164); absent on an older backend.
     const previewRule = parseChargingRule(responseData.charging);
-    if (storedRule && previewRule && (previewRule.step_days !== storedRule.step_days || previewRule.minimum_days !== storedRule.minimum_days)) {
-      throw new Error(t('charging.grnMoveOtherRule'));
-    }
-    const rule = storedRule ?? previewRule ?? undefined;
+    const rule = previewRule ?? undefined;
 
     // Check if there are any items to invoice
     if (!itemsData || itemsData.length === 0) {

@@ -98,6 +98,8 @@ export const REFUSAL = {
   // Backend migration 165 (invoice goods as they leave).
   /** The setting cannot be turned off while GRNs with goods in store have an invoice (`count`, `gr_nos`). Nothing changed. */
   PARTIAL_INVOICES_OPEN: 'PARTIAL_INVOICES_OPEN',
+  /** A dispatch line of the invoice is already on another live invoice (WH409). Nothing was saved. */
+  DISPATCH_LINE_INVOICED: 'DISPATCH_LINE_INVOICED',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

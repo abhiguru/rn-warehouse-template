@@ -62,7 +62,6 @@ export const charging = {
   roundingNote: 'This is an estimate. The server works out the final amount when the invoice is saved, under the charging rule above, and the discount is preserved.',
   ruleChanged: 'How storage is charged changed since you opened this invoice. Check the new figures.',
   // An edit moved to a GRN: the facility's rule is no longer the one the invoice was made with, so the lines cannot be read under it.
-  grnMoveOtherRule: 'This invoice was made under a different charging rule than the one now in use, so it cannot be moved to another GRN. Keep its GRN, or make a new invoice.',
   // WH-138
   goodsLeave: {
     label: 'Invoice goods as they leave',

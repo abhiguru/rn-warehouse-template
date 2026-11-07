@@ -433,7 +433,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       showAlert(t('invoice.form.grnLoadFailedTitle'), `${reason}${kept}`);
     };
     try {
-      const result = await loadInvoiceFormDataService(grId, isCreateMode ? undefined : store.getState().invoiceForm.header.charging);
+      const result = await loadInvoiceFormDataService(grId, isCreateMode ? undefined : invoiceId ?? undefined);
       if (result.success && result.data) {
         const loaded = result.data.header;
         dispatch(loadInvoiceFormData({
@@ -461,7 +461,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     } finally {
       dispatch(setIsLoadingItems(false));
     }
-  }, [dispatch, store, isCreateMode, header.gr_id, header.gr_no]);
+  }, [dispatch, invoiceId, isCreateMode, header.gr_id, header.gr_no]);
 
   // The question "Move to financial year …?" is open: another date change waits for its answer (D9).
   const moveYearAsked = useRef(false);
@@ -889,9 +889,10 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         report(t('invoice.form.numberTakenTitle'), message, { numberTaken: true });
         return { success: false, error: message, numberTaken: true };
       }
+      const refusal = result.refusal;
       // WH-138: a dispatch line of this GRN is on another invoice now (several invoices per GRN). A new invoice reads the free
-      // lines again and keeps what was typed; nothing was saved. (The server words it; there is no reason constant.)
-      if (isCreateMode && result.message === t('errors.parsed.lineOnOtherInvoice')) {
+      // lines again and keeps what was typed; nothing was saved (reason DISPATCH_LINE_INVOICED).
+      if (isCreateMode && result.refusal?.reason === REFUSAL.DISPATCH_LINE_INVOICED) {
         const message = t('charging.goodsLeave.linesTaken');
         try {
           const fresh = await loadInvoiceFormDataService(header.gr_id);
@@ -908,7 +909,6 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         report(t(failedTitleKey), message, { reloadLines: true });
         return { success: false, error: message, reloadLines: true };
       }
-      const refusal = result.refusal;
       if (refusal?.reason === REFUSAL.STALE_RECORD && !isCreateMode) {
         // D1: someone else changed the invoice. The screen asks "Keep editing" or "Open it again"; the form is not touched.
         report(t(failedTitleKey), serverText(result.message, t('common.checkConnection')), { stale: true });
