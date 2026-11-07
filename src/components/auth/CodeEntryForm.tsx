@@ -66,6 +66,8 @@ export interface CodeEntryFormProps {
    * expiry line and the resend section are not drawn.
    */
   facilityMade?: boolean;
+  /** A refusal of the code, shown under the code boxes; the typed code stays. */
+  refusal?: string | null;
   /** The link under the form; "Wrong number?" when not given. */
   leave?: { label: string; accessibilityLabel: string; accessibilityHint: string };
 }
@@ -81,6 +83,7 @@ export function CodeEntryForm({
   onResend,
   onBack,
   facilityMade,
+  refusal,
   leave,
 }: CodeEntryFormProps) {
   const [otpCode, setOtpCode] = useState('');
@@ -269,6 +272,22 @@ export function CodeEntryForm({
                 </Text>
               )}
             </View>
+
+            {refusal ? (
+              <View
+                style={styles.messageStrip}
+                accessible={true}
+                accessibilityRole="alert"
+                accessibilityLabel={refusal}
+                accessibilityLiveRegion="polite"
+                testID="code-refusal"
+              >
+                <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
+                <View style={styles.messageStripContent}>
+                  <Text style={styles.messageStripTitle}>{refusal}</Text>
+                </View>
+              </View>
+            ) : null}
 
             {/* C. Rate Limit Warning (Fiori critical message strip) */}
             {rateLimit.isRateLimited && (

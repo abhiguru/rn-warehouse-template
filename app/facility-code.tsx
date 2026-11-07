@@ -18,6 +18,7 @@ import type { AppTooOldInfo } from '@/config/appTooOld';
 import { listFacilitiesForCode, prepareFacilityForCode } from '@/config/breakGlass';
 import type { MyFacility } from '@/config/centralFacilities';
 import { breakGlassSignIn, type BreakGlassFailure } from '@/config/supabaseConfig';
+import { formatTime } from '@/utils/formatters';
 import { useAppDispatch } from '@/store/hooks';
 import { setUserProfile } from '@/store/slices/authSlice';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -28,8 +29,11 @@ import { clearSignInDraft } from '@/utils/signInDraft';
 
 type Step = 'choose' | 'phone' | 'code';
 
-/** The words for each way the facility can refuse a code (the facility never says which of the first four it was). */
+/** The words for each way the facility can refuse a code (a used, expired or locked code each has its own text). */
 const REFUSAL_TEXT: Record<BreakGlassFailure, TranslationKey> = {
+  code_used: 'auth.facilityCode.codeUsed',
+  code_expired: 'auth.facilityCode.codeExpired',
+  code_locked: 'auth.facilityCode.codeLocked',
   refused: 'auth.facilityCode.refused',
   rate_limited: 'auth.facilityCode.rateLimited',
   unavailable: 'auth.facilityCode.unavailable',
@@ -51,6 +55,8 @@ export default function FacilityCodeScreen() {
   const [tooOld, setTooOld] = useState<AppTooOldInfo | null>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verifying, setVerifying] = useState(false);
+  // A used, expired or locked code is told under the code boxes, where the typed code stays.
+  const [codeRefusal, setCodeRefusal] = useState<string | null>(null);
   // A ref, not the state: a second submit made from an older render still sees it.
   const busy = useRef(false);
 
@@ -65,6 +71,7 @@ export default function FacilityCodeScreen() {
   }, []);
 
   const goBack = useCallback(() => {
+    setCodeRefusal(null);
     if (step === 'code') setStep('phone');
     else if (step === 'phone') setStep('choose');
     else router.back();
@@ -115,6 +122,7 @@ export default function FacilityCodeScreen() {
     if (busy.current) return;
     busy.current = true;
     setVerifying(true);
+    setCodeRefusal(null);
     try {
       const result = await breakGlassSignIn(toInternationalMobile(phoneNumber), code);
       if (result.success && result.data.userProfile) {
@@ -122,6 +130,13 @@ export default function FacilityCodeScreen() {
         clearSignInDraft();
         dispatch(setUserProfile(result.data.userProfile));
         router.replace('/');
+      } else if (!result.success && (result.reason === 'code_used' || result.reason === 'code_expired' || result.reason === 'code_locked')) {
+        const text = tr(REFUSAL_TEXT[result.reason]);
+        setCodeRefusal(
+          result.reason === 'code_locked' && result.retryAfterSeconds
+            ? `${text} ${tr('auth.facilityCode.tryAgainAfter', { time: formatTime(new Date(Date.now() + result.retryAfterSeconds * 1000)) })}`
+            : text
+        );
       } else if (!result.success) {
         showAlert(tr('auth.facilityCode.couldNotSignInTitle'), tr(REFUSAL_TEXT[result.reason]));
       } else {
@@ -170,6 +185,7 @@ export default function FacilityCodeScreen() {
         onResend={async () => false}
         onBack={goBack}
         facilityMade
+        refusal={codeRefusal}
         leave={{
           label: tr('auth.otp.wrongNumber'),
           accessibilityLabel: tr('auth.otp.wrongNumberLabel'),
