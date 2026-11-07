@@ -13,6 +13,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import type { Item } from '@/types/item.types';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
+import { ItemGstTreatment } from '@/features/gst/ItemGstTreatment';
 
 type Row = { label: string; value: string | undefined | null };
 
@@ -54,6 +55,10 @@ export function ItemOverviewTab({ item, busy, onToggleActive, onDelete }: ItemOv
           </View>
         </View>
       )}
+      {/* WH-151: GST on storage (administrators and supervisors, backends with migration 173). */}
+      <View style={styles.gst}>
+        <ItemGstTreatment itemId={item.id} />
+      </View>
       <View style={styles.footer}>
         <Button type="tertiary" variant={item.active ? 'negative' : 'tint'} onPress={onToggleActive} disabled={busy}>
           {tr(item.active ? 'items.list.deactivateItem' : 'items.page.activate')}
@@ -70,6 +75,7 @@ const makeStyles = (t: ThemeTokens) => ({
   scroll: { flex: 1 },
   status: { paddingHorizontal: layout.marginCompact, paddingTop: space.md, alignItems: 'flex-start' as const },
   cells: { backgroundColor: t.surface.card, paddingHorizontal: layout.marginCompact },
+  gst: { paddingTop: space.xl },
   footer: { paddingHorizontal: layout.marginCompact, paddingTop: space.xl, alignItems: 'flex-start' as const, gap: space.sm },
 });
 
