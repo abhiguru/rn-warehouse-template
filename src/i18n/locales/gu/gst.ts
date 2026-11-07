@@ -49,10 +49,6 @@ export const gst: Translation<typeof source> = {
     addressRequired: 'દસ્તાવેજ માટે સરનામું લખો.',
     addressTooLong: 'સરનામું વધુમાં વધુ {{max}} અક્ષરનું હોઈ શકે.',
     invalidSac: 'SAC 4 થી 8 અંકનો હોય છે.',
-    unsavedTitle: 'સાચવ્યા વિના બહાર નીકળવું છે?',
-    unsavedBody: 'તમે કરેલા ફેરફાર જતા રહેશે.',
-    leave: 'બહાર નીકળો',
-    stay: 'ફેરફાર ચાલુ રાખો',
   },
   strip: {
     text: 'બિલ સાચાં છપાય તે માટે તમારી GST વિગતો ઉમેરો.',

@@ -45,10 +45,6 @@ export const gst = {
     addressRequired: 'Enter the address for documents.',
     addressTooLong: 'The address can have at most {{max}} characters.',
     invalidSac: 'A SAC is 4 to 8 digits.',
-    unsavedTitle: 'Leave without saving?',
-    unsavedBody: 'What you changed will be lost.',
-    leave: 'Leave',
-    stay: 'Keep editing',
   },
   strip: {
     text: 'Add your GST details so bills print correctly.',

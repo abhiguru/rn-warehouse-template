@@ -43,6 +43,7 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'standard-rate': 'standardRate',
   'document-numbering': 'documentNumbering',
   charging: 'charging',
+  'gst-details': 'gstDetails',
   'rack-presets': 'rackPresets',
   sensors: 'sensors',
   'sensor-detail': 'sensors',
