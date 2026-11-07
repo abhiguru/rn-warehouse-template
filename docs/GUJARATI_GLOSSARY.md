@@ -91,6 +91,7 @@ in Gujarati script; **English** = left in English letters.
 | Weight band (a range of bag weights with one rate; English "weight band", not "tier", in the rate editor) | વજન મર્યાદા | translate | Draft |
 | Warehouse, godown | વખાર | translate | Owner's choice |
 | Warehouse network (the LAN fallback to the server) | વખારનું નેટવર્ક | translate | Draft (2026-10-26) |
+| Warehouse network key (the secret that signs requests on the warehouse network) | વખારના નેટવર્કની ચાવી | translate | Draft (2026-11-07) |
 | Photo | ફોટો | Gujarati letters | Checked |
 | Order status: open | બાકી | translate | Owner's choice |
 | Order status: closed | પૂર્ણ | translate | Owner's choice |

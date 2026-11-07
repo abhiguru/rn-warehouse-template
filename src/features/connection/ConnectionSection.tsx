@@ -59,6 +59,8 @@ export function checkPresentation(answer: LanCheckAnswer): CheckPresentation {
       return { status: 'neutral', word: t('settings.connection.statusOtherNetwork'), detail: t('settings.connection.detailOtherNetwork') };
     case 'network-unknown':
       return { status: 'neutral', word: t('settings.connection.statusNetworkUnknown'), detail: t('settings.connection.detailNetworkUnknown') };
+    case 'no-key':
+      return { status: 'neutral', word: t('settings.connection.statusNoKey'), detail: t('settings.connection.detailNoKey') };
     case 'not-set':
       return { status: null, word: t('settings.connection.resultNotSet'), detail: null };
     default: {
@@ -158,7 +160,13 @@ export function ConnectionSection() {
   const viaWord = t(lan.path === 'lan' ? 'settings.connection.viaWarehouseNetwork' : 'settings.connection.viaInternet');
   const sourceWord = t(typed ? 'settings.connection.addressTyped' : 'settings.connection.addressFromServer');
   const addressText = address ? formatIdentifier(address) : t('common.notSet');
-  const problemText = lan.failure === 'old-configuration' ? t('settings.connection.oldConfiguration') : null;
+  // An answer that was changed on the way stays shown until a check succeeds (WH-133).
+  const problemText =
+    lan.failure === 'old-configuration'
+      ? t('settings.connection.oldConfiguration')
+      : lan.answerChanged
+        ? t('settings.connection.answerChanged')
+        : null;
 
   return (
     <HelpSection title={t('settings.connection.title')}>
