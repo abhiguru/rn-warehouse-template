@@ -387,6 +387,10 @@ export interface GRNActivityKPIs {
  */
 export interface GRNInvoiceStatus {
   is_invoiced: boolean;
+  /** Migration 165: Not invoiced, Partly invoiced or Invoiced (all live invoices of the GRN); absent on an older server. */
+  invoice_state?: 'not_invoiced' | 'partly_invoiced' | 'invoiced';
+  /** Migration 165: the sum of the GRN's live invoices. */
+  invoiced_amount?: number | null;
   invoice_id: string | null;
   invoice_number: string | null;
 }

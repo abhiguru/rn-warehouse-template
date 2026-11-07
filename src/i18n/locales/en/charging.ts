@@ -63,4 +63,21 @@ export const charging = {
   ruleChanged: 'How storage is charged changed since you opened this invoice. Check the new figures.',
   // An edit moved to a GRN: the facility's rule is no longer the one the invoice was made with, so the lines cannot be read under it.
   grnMoveOtherRule: 'This invoice was made under a different charging rule than the one now in use, so it cannot be moved to another GRN. Keep its GRN, or make a new invoice.',
+  // WH-138
+  goodsLeave: {
+    label: 'Invoice goods as they leave',
+    help: 'Make an invoice for lots that have been dispatched while other lots of the same GRN are still in store. Each invoice rounds its own total.',
+    turnOnTitle: 'Invoice goods as they leave?',
+    turnOnBody: 'A GRN can then have several invoices, one for each set of dispatches.',
+    turnOn: 'Turn on',
+    turnOffRefused: '{{count}} GRNs with goods still in store already have an invoice. Invoice or cancel those first, then turn this off.',
+    turnOffRefusedList: 'GRNs: {{numbers}}',
+    changeFailed: 'The setting could not be changed. Check your connection and try again.',
+    linesTaken: 'A dispatch on this invoice is already on another invoice, so it cannot be invoiced again. The free dispatches are shown again.',
+  },
+  invoiceState: {
+    not_invoiced: 'Not invoiced',
+    partly_invoiced: 'Partly invoiced',
+    invoiced: 'Invoiced',
+  },
 };

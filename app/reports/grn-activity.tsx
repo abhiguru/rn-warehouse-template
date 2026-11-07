@@ -380,7 +380,11 @@ const GRNCard = memo(function GRNCard({ grn, words, showDate, onOpen }: GRNCardP
   const styles = useThemedStyles(makeStyles);
   const number = tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) });
   const invoiced = grn.invoice_status.is_invoiced;
-  const invoiceLabel = invoiced
+  // A GRN with some of its lots invoiced says so (migration 165); the other states read as before.
+  const partly = grn.invoice_status.invoice_state === 'partly_invoiced';
+  const invoiceLabel = partly
+    ? tr('charging.invoiceState.partly_invoiced')
+    : invoiced
     ? grn.invoice_status.invoice_number
       ? tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(grn.invoice_status.invoice_number) })
       : tr('reports.grnActivity.invoiced')

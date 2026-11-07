@@ -68,6 +68,7 @@ import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText, failureText } from '@/utils/serverText';
 import { deleteBlockedText } from '@/features/grn/utils/deleteRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
+import { parseInvoiceState } from '@/features/charging/invoiceState';
 import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
 import { invoiceTableFrom } from '@/components/common/invoiceTable';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
@@ -929,7 +930,7 @@ function GRNDetailScreen() {
           )}
 
           {activeTab === 'invoices' && (
-            <GRNInvoicesTab invoices={invoiceTable} loading={invoicesLoading} onViewInvoice={handleViewInvoice} />
+            <GRNInvoicesTab invoices={invoiceTable} loading={invoicesLoading} onViewInvoice={handleViewInvoice} state={parseInvoiceState(grn.invoices_summary?.invoice_state)} />
           )}
         </View>
       </View>

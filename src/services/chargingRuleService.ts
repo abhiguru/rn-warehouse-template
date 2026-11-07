@@ -29,7 +29,7 @@ export interface SetChargingResult {
 /** Turning "Invoice goods as they leave" off was refused: GRNs with goods in store already have an invoice (WH409). */
 export class PartialInvoicesOpenError extends Error {
   constructor(readonly count: number, readonly grNos: string[]) {
-    super('PARTIAL_INVOICES_OPEN'); // worded by the screen from count and grNos
+    super(t('charging.goodsLeave.turnOffRefused', { count }));
   }
 }
 

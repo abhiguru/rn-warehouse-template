@@ -33,6 +33,7 @@ import {
   applyServerDurations,
   applyCurrentRates,
   applyFreshCharging,
+  applyFreeLines,
   resetForm,
   numberRequested,
   numberAnswered,
@@ -887,6 +888,25 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         const message = await handleNumberTaken(result.numberTaken.number);
         report(t('invoice.form.numberTakenTitle'), message, { numberTaken: true });
         return { success: false, error: message, numberTaken: true };
+      }
+      // WH-138: a dispatch line of this GRN is on another invoice now (several invoices per GRN). A new invoice reads the free
+      // lines again and keeps what was typed; nothing was saved. (The server words it; there is no reason constant.)
+      if (isCreateMode && result.message === t('errors.parsed.lineOnOtherInvoice')) {
+        const message = t('charging.goodsLeave.linesTaken');
+        try {
+          const fresh = await loadInvoiceFormDataService(header.gr_id);
+          if (fresh.success && fresh.data && fresh.data.items.length > 0) {
+            dispatch(applyFreeLines({ items: fresh.data.items }));
+            report(t(failedTitleKey), message, { totalChanged: true });
+            return { success: false, error: message };
+          }
+          report(t(failedTitleKey), serverText(fresh.message, message));
+          return { success: false, error: message };
+        } catch (error) {
+          log.warn('Could not read the free lines after a line was taken:', error);
+        }
+        report(t(failedTitleKey), message, { reloadLines: true });
+        return { success: false, error: message, reloadLines: true };
       }
       const refusal = result.refusal;
       if (refusal?.reason === REFUSAL.STALE_RECORD && !isCreateMode) {

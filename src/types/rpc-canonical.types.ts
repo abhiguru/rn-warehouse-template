@@ -287,6 +287,8 @@ export interface RpcGrnInvoicesSummary {
   total_amount: number;
   /** invoice.inv_no, as numbers. */
   invoice_numbers: number[];
+  /** Migration 165: Not invoiced, Partly invoiced or Invoiced; absent on an older server (read with parseInvoiceState). */
+  invoice_state?: string;
 }
 
 /**

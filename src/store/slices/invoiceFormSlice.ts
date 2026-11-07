@@ -605,6 +605,31 @@ const invoiceFormSlice = createSlice({
       Object.assign(state.header, calculateHeaderTotals(next, state.header.discount, state.header.charging?.rounding));
     },
 
+    // Another invoice took a dispatch line of this GRN (WH-138, several invoices per GRN): the lines the server offers now
+    // replace the form's set. A line that is still offered stays exactly as the person left it (rates and all); a line
+    // that is gone leaves; a line not in the form yet comes in with its looked-up figures. Everything typed on the
+    // header stays.
+    applyFreeLines: (state, action: PayloadAction<{ items: InvoiceItemData[] }>) => {
+      const fresh = new Map(action.payload.items.map((item) => [item.disp_trl_id, item] as const));
+      const lines = plainLines(state.items);
+      const kept = lines.filter((line) => fresh.has(line.disp_trl_id));
+      const known = new Set(kept.map((line) => line.disp_trl_id));
+      const added = action.payload.items
+        .filter((item) => !known.has(item.disp_trl_id))
+        .map((item) => Object.freeze({ ...item }));
+      const next = [...kept, ...added];
+      const gone = new Set(lines.filter((line) => !fresh.has(line.disp_trl_id)).map((line) => line.temp_id));
+      gone.forEach((id) => {
+        delete state.editedItems[id];
+        delete state.itemOverrides[id];
+      });
+      added.forEach((item) => {
+        state.lookedUp[item.disp_trl_id] = { charge: item.charge, labour_rate: item.labour_rate, tax: item.tax };
+      });
+      state.items = next;
+      Object.assign(state.header, calculateHeaderTotals(next, state.header.discount, state.header.charging?.rounding));
+    },
+
     // An edit that moved to another GRN goes back to the GRN it was saved with: the saved lines, discount and
     // reasons return. The number, date and financial year the person set meanwhile are kept.
     restoreSavedGrn: (state) => {
@@ -685,6 +710,7 @@ export const {
   applyServerDurations,
   applyCurrentRates,
   applyFreshCharging,
+  applyFreeLines,
   restoreSavedGrn,
   resetForm,
   numberRequested,

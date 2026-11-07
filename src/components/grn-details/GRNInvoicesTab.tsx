@@ -11,21 +11,34 @@ import React from 'react';
 import { t as tr } from '@/i18n';
 import { InvoicesTable } from '@/components/common/InvoicesTable';
 import type { InvoiceTable } from '@/components/common/invoiceTable';
+import { View } from 'react-native';
+import { StatusTag } from '@/components/ui/StatusTag';
+import { invoiceStateKind, invoiceStateLabel, type InvoiceState } from '@/features/charging/invoiceState';
+import { space } from '@/theme/tokens';
 
 interface GRNInvoicesTabProps {
   invoices: InvoiceTable;
   loading?: boolean;
   onViewInvoice?: (invoice_id: string) => void;
+  /** Migration 165: the GRN's invoice state, shown above the invoices (a GRN may have several). Absent on an older server. */
+  state?: InvoiceState;
 }
 
-export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loading = false, onViewInvoice }) => (
-  <InvoicesTable
-    invoices={invoices}
-    loading={loading}
-    loadingText={tr('grn.detailsTable.loadingInvoices')}
-    onViewInvoice={onViewInvoice}
-    note={tr('grn.detailsTable.invoicesNote')}
-    emptyText={tr('grn.detailsTable.invoicesEmpty')}
-    testIDPrefix="grn"
-  />
+export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loading = false, onViewInvoice, state }) => (
+  <>
+    {state ? (
+      <View style={{ alignItems: 'flex-start', paddingHorizontal: space.lg, paddingTop: space.md }}>
+        <StatusTag status={invoiceStateKind(state)} label={invoiceStateLabel(state)} testID="grn-invoice-state" />
+      </View>
+    ) : null}
+    <InvoicesTable
+      invoices={invoices}
+      loading={loading}
+      loadingText={tr('grn.detailsTable.loadingInvoices')}
+      onViewInvoice={onViewInvoice}
+      note={tr('grn.detailsTable.invoicesNote')}
+      emptyText={tr('grn.detailsTable.invoicesEmpty')}
+      testIDPrefix="grn"
+    />
+  </>
 );

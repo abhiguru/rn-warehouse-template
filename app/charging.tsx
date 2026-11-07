@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { Switch } from '@/components/ui/Switch';
 import { SettingsRow, SettingsSection } from '@/features/settings/components/SettingsList';
 import { PreferenceSheet, type PreferenceOption } from '@/features/settings/components/PreferenceSheet';
 import {
@@ -31,15 +32,17 @@ import {
 } from '@/features/charging/chargingRule';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { t as tr } from '@/i18n';
+import { formatIdentifier, t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
+import { backendHasFeature } from '@/config/backendFeatures';
 import {
   ChargingUnconfirmedError,
+  PartialInvoicesOpenError,
   getChargingRule,
   setChargingRule,
   type StoredChargingRule,
 } from '@/services/chargingRuleService';
-import { iconSize, layout, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { showToast } from '@/utils/toast';
 import { transportText } from '@/utils/serverText';
 import { showAlert } from '@/utils/alert';
@@ -60,6 +63,7 @@ export default function ChargingScreen() {
   const [saving, setSaving] = useState(false);
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [asking, setAsking] = useState(false);
+  const [askingLeave, setAskingLeave] = useState(false);
   // The latest read wins: an answer that arrives after a newer request is dropped.
   const requestRef = useRef(0);
 
@@ -119,6 +123,40 @@ export default function ChargingScreen() {
       setSaving(false);
     }
   }, [draft, load]);
+
+  // WH-138: the switch. It sends the rule the server holds (not the choices staged above) with the switch changed, and shows
+  // the value only once the server has answered.
+  const changeGoodsLeave = useCallback(
+    async (on: boolean) => {
+      if (!stored) return;
+      setAskingLeave(false);
+      setSaving(true);
+      try {
+        const result = await setChargingRule(stored.rule, on);
+        setStored(result.stored);
+        // Staged choices are the person's own; only a draft that equalled the old rule follows the stored one.
+        setDraft(current => (current && sameChargingRule(current, stored.rule) ? result.stored.rule : current));
+        showToast(tr(result.changed ? 'charging.screen.saved' : 'charging.screen.unchanged'));
+      } catch (failure) {
+        if (failure instanceof PartialInvoicesOpenError) {
+          const numbers = failure.grNos.map(formatIdentifier).join(', ');
+          showAlert(
+            tr('charging.goodsLeave.label'),
+            numbers ? `${failure.message}\n${tr('charging.goodsLeave.turnOffRefusedList', { numbers })}` : failure.message
+          );
+        } else if (failure instanceof ChargingUnconfirmedError) {
+          showAlert(tr('charging.screen.title'), failure.message);
+          void load();
+        } else {
+          showAlert(tr('charging.screen.title'), failure instanceof Error ? failure.message : tr('charging.goodsLeave.changeFailed'));
+        }
+      } finally {
+        setSaving(false);
+      }
+    },
+    [stored, load]
+  );
+  const showsGoodsLeave = backendHasFeature('invoiceAsGoodsLeave') && stored !== null && stored.invoiceAsGoodsLeave !== null;
 
   const header = (
     <Stack.Screen
@@ -215,6 +253,17 @@ export default function ChargingScreen() {
               <SettingsRow testID="charging-row-days" label={tr('charging.days.label')} value={tr(DAYS_LABEL[draft.days_counted])} onPress={() => setSheet('days')} />
               <SettingsRow testID="charging-row-round" label={tr('charging.round.label')} value={tr(ROUNDING_LABEL[draft.rounding])} onPress={() => setSheet('round')} last />
             </SettingsSection>
+            {showsGoodsLeave ? (
+              <View style={styles.switchBox}>
+                <Switch
+                  label={tr('charging.goodsLeave.label')}
+                  helperText={tr('charging.goodsLeave.help')}
+                  value={stored?.invoiceAsGoodsLeave === true}
+                  disabled={saving}
+                  onValueChange={on => (on ? setAskingLeave(true) : void changeGoodsLeave(false))}
+                />
+              </View>
+            ) : null}
             {stored?.updatedByName ? (
               <Text style={styles.intro}>{tr('charging.screen.changedBy', { name: stored.updatedByName })}</Text>
             ) : null}
@@ -239,6 +288,15 @@ export default function ChargingScreen() {
         />
       ) : null}
       <ConfirmDialog
+        visible={askingLeave}
+        title={tr('charging.goodsLeave.turnOnTitle')}
+        message={tr('charging.goodsLeave.turnOnBody')}
+        confirmText={tr('charging.goodsLeave.turnOn')}
+        cancelText={tr('common.cancel')}
+        onConfirm={() => void changeGoodsLeave(true)}
+        onCancel={() => setAskingLeave(false)}
+      />
+      <ConfirmDialog
         visible={asking}
         title={tr('charging.confirm.title')}
         message={tr('charging.confirm.body')}
@@ -259,6 +317,7 @@ const makeStyles = (t: ThemeTokens) =>
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
     actions: { marginHorizontal: layout.marginCompact, marginTop: space.md },
+    switchBox: { marginHorizontal: layout.marginCompact, marginTop: space.lg, borderRadius: radius.card, overflow: 'hidden', backgroundColor: t.surface.card },
     stateScreen: {
       flex: 1,
       alignItems: 'center',
