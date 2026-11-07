@@ -236,6 +236,7 @@ export async function getCustomerInvoiceHistory(
       pending_count: responseData?.summary?.pending_count ?? 0,
       paid_amount: responseData?.summary?.paid_amount ?? 0,
       pending_amount: responseData?.summary?.pending_amount ?? 0,
+      ...(typeof responseData?.summary?.unlinked_paid_amount === 'number' ? { unlinked_paid_amount: responseData.summary.unlinked_paid_amount } : {}),
     };
 
     const invoiceRows: InvoiceHistoryRecord[] = (responseData?.invoices ?? []).map(

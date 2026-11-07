@@ -505,6 +505,8 @@ export interface InvoiceHistoryKPIs {
   pending_count: number;
   paid_amount: number;
   pending_amount: number;
+  /** Migration 172: payments of the customer that name no invoice (the old accounting link). Absent on an older server. */
+  unlinked_paid_amount?: number;
 }
 
 /**

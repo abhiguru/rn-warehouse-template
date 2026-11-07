@@ -47,6 +47,7 @@ import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { getAllInvoiceHistory, getCustomerInvoiceHistory } from '@/services/reporting/invoice-history-service';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
@@ -325,6 +326,12 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   // pending_amount, which are overstated before backend migration 61 and count a part-paid invoice as paid
   // in full before migration 62. Not what the search or the choice leaves.
   const totals = useMemo(() => invoiceMonthTotals(months), [months]);
+  // WH-143 (Product, 2026-11-07): with migration 172 the customer's Paid is the server's linked figure plus the server's
+  // `unlinked_paid_amount` (payments of the old accounting link that name no invoice), matching the activity report; a note
+  // line says so when the second is above 0. Both figures are the server's; they are only put side by side here.
+  const linkedPaid = data?.summary.paid_amount;
+  const unlinkedPaid = payments && backendHasFeature('recordPayments') ? data?.summary.unlinked_paid_amount : undefined;
+  const paidShown = unlinkedPaid !== undefined && typeof linkedPaid === 'number' ? linkedPaid + unlinkedPaid : totals.paidAmount;
   const kpis = useMemo<KPIItem[] | undefined>(
     () =>
       data && [
@@ -337,7 +344,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
           ? ([
               {
                 icon: 'check-circle',
-                value: formatSummaryAmount(totals.paidAmount),
+                value: formatSummaryAmount(paidShown),
                 label: tr('reports.invoiceHistory.paidCount', { count: totals.paidCount }),
                 variant: 'success',
               },
@@ -350,7 +357,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
             ] as KPIItem[])
           : []),
       ],
-    [data, totals, payments]
+    [data, totals, payments, paidShown]
   );
   // The PDF follows the Payment choice (only the paid, or only the pending, invoices of the period, which
   // the server tells apart by the same rule) but not the search, which is the screen's own: the person is
@@ -408,9 +415,22 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.invoiceHistory.errorTitle')}
     >
+      {unlinkedPaid !== undefined && unlinkedPaid > 0 ? (
+        <UnlinkedNote text={tr('payments.customerReport.includesUnlinked', { amount: formatAmount(unlinkedPaid) })} />
+      ) : null}
       {months.length > 0 ? <MonthlyBreakdown months={months} totals={totals} payments={payments} /> : null}
     </ReportScaffold>
   );
+}
+
+const makeNoteStyles = (t: ThemeTokens) => ({
+  note: { ...typography.footnote, color: t.text.secondary, marginHorizontal: layout.marginCompact, marginTop: space.sm },
+});
+
+/** The line under the Paid tile when the customer has payments from before payments were linked to invoices (WH-143). */
+function UnlinkedNote({ text }: { text: string }) {
+  const styles = useThemedStyles(makeNoteStyles);
+  return <Text style={styles.note} testID="invoice-history-unlinked-note">{text}</Text>;
 }
 
 // ============================================================================

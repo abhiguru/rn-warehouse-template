@@ -8,6 +8,7 @@
  */
 import { getAssignedCustomerInvoices, getInvoicesList } from '@/services/invoice-service';
 import { t } from '@/i18n';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, financialYearLabel, financialYearOf, readSearch } from '../filterModel';
 import { customerSource } from '../pickerSources';
@@ -25,6 +26,7 @@ export interface InvoiceListRequest {
   p_date_from?: string;
   p_date_to?: string;
   p_customer_ids?: string[];
+  p_payment_status?: 'due' | 'part_paid' | 'paid';
 }
 
 /** How many financial years the Year filter offers, the current one first. */
@@ -80,11 +82,28 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
       get options() { return [{ value: 'all', get label() { return t('filters.option.allYears'); } }, ...yearOptions(new Date())]; },
     },
     { kind: 'numberRange', key: 'numberRange', get label() { return t('common.invoiceNumber'); }, icon: 'file-document-outline', integer: true, identifier: true },
+    {
+      // WH-143: Due / Part paid / Paid, for administrators and supervisors, only while payments are on and the backend has them.
+      kind: 'choice',
+      key: 'payment',
+      get label() { return t('payments.filter.label'); },
+      icon: 'cash-check',
+      visibleTo: ctx => ctx.payments === true && (ctx.role === 'admin' || ctx.role === 'supervisor') && backendHasFeature('recordPayments'),
+      defaultValue: 'all',
+      get options() {
+        return [
+          { value: 'all', get label() { return t('common.all'); } },
+          { value: 'due', get label() { return t('payments.status.due'); } },
+          { value: 'part_paid', get label() { return t('payments.status.partPaid'); } },
+          { value: 'paid', get label() { return t('payments.status.paid'); } },
+        ];
+      },
+    },
     { kind: 'text', key: 'grn', get label() { return t('common.grnNumber'); }, icon: 'package-down', get placeholder() { return t('common.grnNumber'); } },
   ],
   fastFilters: ['date', 'customers', 'year'],
 
-  toRequest(values, sort, _ctx, today = new Date()) {
+  toRequest(values, sort, ctx, today = new Date()) {
     const search = readSearch(INVOICE_FILTERS, values, today);
     const active = currentSort(INVOICE_FILTERS, sort) ?? INVOICE_FILTERS.sort!.default;
     const request: InvoiceListRequest = {
@@ -104,6 +123,12 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
     if (!numbers && search.range) {
       request.p_inv_no_from = Number(search.range.from);
       request.p_inv_no_to = Number(search.range.to);
+    }
+
+    // Hidden filters send nothing (a stored choice is dropped when payments are off); the server refuses it to staff.
+    const payment = values.payment;
+    if ((payment === 'due' || payment === 'part_paid' || payment === 'paid') && ctx.payments === true && (ctx.role === 'admin' || ctx.role === 'supervisor')) {
+      request.p_payment_status = payment;
     }
 
     if (typeof values.grn === 'string' && values.grn.trim()) request.p_search_grn_no = values.grn.trim();
