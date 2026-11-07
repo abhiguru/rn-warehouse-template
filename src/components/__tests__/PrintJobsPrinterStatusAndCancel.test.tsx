@@ -32,14 +32,17 @@ jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: async () => 'to
 
 const JOB = '6f1c2d3e-0000-4000-8000-000000000001';
 const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => 'application/json' }, json: async () => body });
-const pendingJob = {
-  id: JOB, job_type: 'GRN', status: 'queued', printer_name: 'LQ1310_RAW', document_range_start: '101',
-  document_range_end: '104', document_count: 4, created_at: '2026-10-09T10:00:00Z', completed_at: null, error_message: null,
+// The columns get_print_jobs returns (migration 123): cups_job_id is null until the print service gave one.
+const queuedJob = {
+  id: 'jq', cups_job_id: null, job_type: 'GRN', status: 'queued', printer_name: 'LQ1310_RAW', document_range_start: '101',
+  document_range_end: '104', document_count: 4, user_id: 'u1', user_name: 'Fictional User', content_size: 100, submitted_at: null,
+  created_at: '2026-10-09T10:00:00Z', updated_at: '2026-10-09T10:00:00Z', completed_at: null, error_message: null,
 };
-const completedJob = { ...pendingJob, id: 'jc', status: 'completed', completed_at: '2026-10-09T10:01:00Z' };
-const printingJob = { ...pendingJob, id: 'jp', status: 'printing', document_range_start: '201', document_range_end: '204' };
-const unknownJob = { ...pendingJob, id: 'ju', status: 'unknown', document_range_start: '301', document_range_end: '304' };
+const completedJob = { ...queuedJob, id: 'jc', cups_job_id: 5, status: 'completed', completed_at: '2026-10-09T10:01:00Z' };
+const printingJob = { ...queuedJob, id: JOB, cups_job_id: 7, status: 'printing', document_range_start: '201', document_range_end: '204' };
+const unknownJob = { ...queuedJob, id: 'ju', cups_job_id: null, status: 'unknown', document_range_start: '301', document_range_end: '304' };
 
+let printingCupsId: number | null = 7;
 let printerStatus: () => unknown;
 let cancelAnswer: () => unknown;
 const urls = () => mockFetch.mock.calls.map(c => String(c[0]));
@@ -55,13 +58,14 @@ beforeEach(() => {
     appStateListeners.push(cb);
     return { remove: () => undefined };
   }) as never);
+  printingCupsId = 7;
   mockFetch.mockReset();
   mockFetch.mockImplementation(async (url: string, init: { body: string }) => {
     if (url.endsWith('/functions/v1/get-printer-status')) return printerStatus();
     if (url.endsWith('/functions/v1/cancel-print-job')) return cancelAnswer();
     if (url.endsWith('/rest/v1/rpc/get_print_jobs')) {
       const { p_limit, p_status } = JSON.parse(init.body);
-      return reply(200, { success: true, message: 'ok', data: p_limit === 1 ? [completedJob] : p_status === 'queued' ? [pendingJob] : p_status === 'printing' ? [printingJob] : p_status === 'unknown' ? [unknownJob] : [] });
+      return reply(200, { success: true, message: 'ok', data: p_limit === 1 ? [completedJob] : p_status === 'queued' ? [queuedJob] : p_status === 'printing' ? [{ ...printingJob, cups_job_id: printingCupsId }] : p_status === 'unknown' ? [unknownJob] : [] });
     }
     throw new Error(`unexpected request ${url}`);
   });
@@ -110,7 +114,7 @@ describe('printer status', () => {
 
 describe('cancelling a job', () => {
   const cancel = async (tree: renderer.ReactTestRenderer) => {
-    const button = tree.root.find(n => n.props.accessibilityLabel === 'Cancel print job 101 to 104' && typeof n.props.onPress === 'function');
+    const button = tree.root.find(n => n.props.accessibilityLabel === 'Cancel print job 201 to 204' && typeof n.props.onPress === 'function');
     await act(async () => { await button.props.onPress(); });
   };
   beforeEach(() => {
@@ -157,10 +161,18 @@ describe('what the sheet shows of a real answer (WH-109 review)', () => {
   const cancelButtons = (tree: renderer.ReactTestRenderer) =>
     tree.root.findAll(n => /^Cancel print job /.test(String(n.props.accessibilityLabel)) && typeof n.props.onPress === 'function').map(n => n.props.accessibilityLabel);
 
-  it('lists the jobs of the {success, data} answer, with Cancel for a queued and a printing job and not for a job the printer did not confirm', async () => {
+  it('lists the jobs of the {success, data} answer, with Cancel for a printing job that has a CUPS job id, and not for a queued or an unconfirmed one', async () => {
     const tree = await openSheet();
-    expect(cancelButtons(tree)).toEqual(expect.arrayContaining(['Cancel print job 101 to 104', 'Cancel print job 201 to 204']));
+    expect(cancelButtons(tree)).toEqual(['Cancel print job 201 to 204']);
+    expect(cancelButtons(tree)).not.toContain('Cancel print job 101 to 104');
     expect(cancelButtons(tree)).not.toContain('Cancel print job 301 to 304');
+    act(() => tree.unmount());
+  });
+
+  it('a printing job that has no CUPS job id (a bridge job) is not offered Cancel', async () => {
+    printingCupsId = null;
+    const tree = await openSheet();
+    expect(cancelButtons(tree)).toEqual([]);
     act(() => tree.unmount());
   });
 
@@ -169,7 +181,7 @@ describe('what the sheet shows of a real answer (WH-109 review)', () => {
     const tree = await openSheet();
     const reads = () => mockFetch.mock.calls.filter(c => String(c[0]).endsWith('get_print_jobs')).length;
     const before = reads();
-    const button = tree.root.find(n => n.props.accessibilityLabel === 'Cancel print job 101 to 104' && typeof n.props.onPress === 'function');
+    const button = tree.root.find(n => n.props.accessibilityLabel === 'Cancel print job 201 to 204' && typeof n.props.onPress === 'function');
     await act(async () => { await button.props.onPress(); });
     await act(async () => { await jest.advanceTimersByTimeAsync(0); });
     expect(texts(tree)).toContain("The job was cancelled at the printer, but the record couldn't be updated. Refresh the list.");

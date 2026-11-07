@@ -3,7 +3,7 @@
  * answer), the failure kinds and texts follow the answers the backend really gives (functions/_shared/auth-helpers.ts,
  * print-transport.ts, print-request.ts, main/index.ts), and a cancel goes to the cancel-print-job function.
  */
-import { t } from '@/i18n';
+import { setLanguage, t } from '@/i18n';
 
 const mockFetch = jest.fn();
 jest.mock('../../config/supabaseConfig', () => ({
@@ -277,9 +277,32 @@ describe('getPrinterStatus on a refusal that carries the server status', () => {
 
   it('keeps no status for the upgrading answer or a refusal without one', async () => {
     const { getPrinterStatus } = load();
-    mockFetch.mockResolvedValueOnce(answer(503, { code: 'upgrading', message: 'x', status: 'offline' }));
+    // nginx's maintenance answer (docker/nginx/api-http.conf): a code and a message, no status
+    mockFetch.mockResolvedValueOnce(answer(503, { code: 'upgrading', message: "The facility's server is being updated. Try again in a few minutes." }));
     expect(await getPrinterStatus()).not.toHaveProperty('status');
     mockFetch.mockResolvedValueOnce(answer(403, { success: false, error: 'Admin, supervisor or staff access required to print', code: 'PRINT_FORBIDDEN' }));
     expect(await getPrinterStatus()).not.toHaveProperty('status');
+  });
+});
+
+describe('a print whose 500 has no message of its own', () => {
+  afterEach(() => setLanguage('en'));
+  it.each(['en', 'gu'] as const)('shows the general print text in %s, never "HTTP error"', async (language) => {
+    setLanguage(language);
+    const { printGRNRange, printFailureMessage } = require('../print-service') as Service; // same module registry as setLanguage
+    mockFetch.mockResolvedValue(answer(500, { success: false }));
+    const result = await printGRNRange('A1', 'A1');
+    expect(result.error).toBe(t('errors.print.submitFailed'));
+    expect(printFailureMessage(result)).toBe(t('errors.print.submitFailed'));
+    expect(printFailureMessage(result)).not.toMatch(/HTTP|500/);
+  });
+
+  // SUSPECTED PRODUCT BUG (src/services/print-service.ts classifyFailure, `if (status === 503) return 'notSetUp'`): nginx answers 503
+  // {"message":"The upstream server is unavailable"} when the functions container is down (docker/nginx/api-http.conf); the app then
+  // says printing is not set up, although the real "not set up" answer carries code PRINTING_OFF.
+  it.skip('a 503 "upstream unavailable" (no code) is not "printing is not set up"', async () => {
+    const { printGRNRange, printFailureMessage } = load();
+    mockFetch.mockResolvedValue(answer(503, { message: 'The upstream server is unavailable' }));
+    expect(printFailureMessage(await printGRNRange('A1', 'A1'))).not.toBe('Printing is not set up for this facility. Ask an admin to set it up.');
   });
 });

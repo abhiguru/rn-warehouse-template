@@ -28,13 +28,15 @@ jest.mock('@/services/print-service', () => ({ getPrintJobs: jest.fn(), cancelPr
 
 const job = (id: string, status: PrintJob['status']): PrintJob => ({
   id,
-  job_type: 'grn',
+  cups_job_id: status === 'queued' ? null : 7,
+  job_type: 'GRN',
   status,
   printer_name: 'LQ1310_RAW',
   document_range_start: '101',
   document_range_end: '104',
   document_count: 4,
   created_at: '2026-10-09T10:00:00Z',
+  updated_at: '2026-10-09T10:00:00Z',
   completed_at: null,
   error_message: null,
 } as unknown as PrintJob);
@@ -107,7 +109,7 @@ test('while a job prints: 12 status reads and 6 job batches (30 requests) a minu
   act(() => tree.unmount());
 });
 
-test('while a job prints: 30 requests a minute on the finished tab', async () => {
+test('while a job prints: 36 requests a minute on the finished tab (4 reads per batch: completed, failed, cancelled, unconfirmed)', async () => {
   latest = job('j1', 'printing');
   queued = [];
   const { tree } = await openSheet();
@@ -117,7 +119,7 @@ test('while a job prints: 30 requests a minute on the finished tab', async () =>
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(12);
-  expect(jobReads()).toBe(18);
+  expect(jobReads()).toBe(24);
   act(() => tree.unmount());
 });
 

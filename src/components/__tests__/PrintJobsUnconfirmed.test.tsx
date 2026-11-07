@@ -27,8 +27,8 @@ jest.mock('@gorhom/bottom-sheet', () => {
 jest.mock('@/services/print-service', () => ({ getPrintJobs: jest.fn(), cancelPrintJob: jest.fn(), getPrinterStatus: jest.fn() }));
 
 const unknownJob = {
-  id: 'ju', job_type: 'Invoice', status: 'unknown', printer_name: 'LQ1310_RAW', document_range_start: '412',
-  document_range_end: '412', document_count: 1, created_at: '2026-10-09T10:00:00Z', completed_at: null,
+  id: 'ju', cups_job_id: null, job_type: 'Invoice', status: 'unknown', printer_name: 'LQ1310_RAW', document_range_start: '412',
+  document_range_end: '412', document_count: 1, created_at: '2026-10-09T10:00:00Z', updated_at: '2026-10-09T10:00:00Z', completed_at: null,
   error_message: 'The printer did not confirm the job',
 } as unknown as PrintJob;
 
@@ -54,16 +54,72 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-test('an unconfirmed job is listed under In progress and the printer is not "ready"', async () => {
+// Product's rule (WH-109): an unconfirmed job stays In progress for 5 minutes from its last change (updated_at), then it
+// is history, still marked "Not confirmed".
+const CHANGED = Date.parse('2026-10-09T10:00:00Z');
+const atMinutes = (m: number) => jest.setSystemTime(new Date(CHANGED + m * 60_000));
+
+async function openSheet() {
   const ref = createRef<PrintJobsBottomSheetRef>();
   let tree!: renderer.ReactTestRenderer;
   act(() => { tree = renderer.create(<PrintJobsBottomSheet ref={ref} />); });
   act(() => ref.current!.open());
   await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+  return tree;
+}
+const textsOf = (tree: renderer.ReactTestRenderer) =>
+  tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join(''));
+const openFinished = async (tree: renderer.ReactTestRenderer) => {
+  const finished = tree.root.find(n => n.props.accessibilityRole === 'tab' && typeof n.props.onPress === 'function' && n.props.accessibilityState?.selected === false);
+  act(() => finished.props.onPress());
+  await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+};
+const latestReads = () => (getPrintJobs as jest.Mock).mock.calls.filter(c => c[1] === 1).length;
 
-  const texts = tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join(''));
-  expect(texts).toContain('Not confirmed');
-  expect(texts.some(x => x.includes('Printer ready'))).toBe(false);
-  expect(texts.some(x => x.includes('was not confirmed'))).toBe(true);
+test('a job younger than 5 minutes is listed under In progress, marked "Not confirmed", with the red strip and fast polling', async () => {
+  atMinutes(4);
+  const tree = await openSheet();
+  expect(textsOf(tree)).toContain('Not confirmed');
+  expect(textsOf(tree).some(x => x.includes('Printer ready'))).toBe(false);
+  expect(textsOf(tree).some(x => x.includes('was not confirmed'))).toBe(true);
+  (getPrintJobs as jest.Mock).mockClear();
+  await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+  expect(latestReads()).toBeGreaterThanOrEqual(10);
+  act(() => tree.unmount());
+});
+
+test('a job older than 5 minutes is not In progress: it is in history marked "Not confirmed", with no strip and slow polling', async () => {
+  atMinutes(6);
+  const tree = await openSheet();
+  expect(textsOf(tree)).not.toContain('Not confirmed');
+  expect(textsOf(tree)).toContain('No print jobs in progress');
+  expect(textsOf(tree).some(x => x.includes('was not confirmed'))).toBe(false);
+  (getPrintJobs as jest.Mock).mockClear();
+  await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+  expect(latestReads()).toBeLessThanOrEqual(3);
+  await openFinished(tree);
+  expect(textsOf(tree)).toContain('Not confirmed');
+  // the history asks for the unconfirmed jobs as its fourth read
+  expect((getPrintJobs as jest.Mock).mock.calls.some(c => c[0] === undefined && c[1] === 50 && c[2] === 'unknown')).toBe(true);
+  act(() => tree.unmount());
+});
+
+test('the history never shows a young unconfirmed job', async () => {
+  atMinutes(1);
+  const tree = await openSheet();
+  await openFinished(tree);
+  expect(textsOf(tree)).not.toContain('Not confirmed');
+  act(() => tree.unmount());
+});
+
+test('a job moves from In progress to history by the clock alone, with no new read', async () => {
+  atMinutes(4);
+  const tree = await openSheet();
+  expect(textsOf(tree)).toContain('Not confirmed');
+  // every later read hangs: only the 15-second re-check can move the job
+  (getPrintJobs as jest.Mock).mockImplementation(() => new Promise(() => undefined));
+  atMinutes(5.5);
+  await act(async () => { await jest.advanceTimersByTimeAsync(16_000); });
+  expect(textsOf(tree)).not.toContain('Not confirmed');
   act(() => tree.unmount());
 });
