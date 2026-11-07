@@ -36,6 +36,7 @@ import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSucce
 import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printInvoiceRange } from '@/services/print-service';
+import { printSkippedNote } from '@/features/gst/printSkipped';
 import { generateInvoicePDF, pdfRefusalSentence } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { showAlert } from '@/utils/alert';
@@ -55,6 +56,8 @@ import { formatFinancialYear } from '@/utils/formatters';
 import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { createLogger } from '@/utils/logger';
 import { invoiceGroupKey } from '@/features/invoice/utils/groupInvoiceItems';
+import { useDocumentsPreview } from '@/features/gst/useDocumentsPreview';
+import { DocumentsPreviewNote } from '@/features/gst/DocumentsPreviewNote';
 import type { InvoiceStepProps } from './InvoiceDetailsStep';
 
 const log = createLogger('InvoiceReviewStep');
@@ -94,6 +97,9 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     leaveAfterLostAnswer,
     resetFormState,
   } = useInvoiceForm({ mode, step: STEP_NUMBERS.REVIEW });
+
+  // WH-151: which document(s) the server will make from these lines (its own answer; nothing is worked out here).
+  const documentsPreview = useDocumentsPreview(header.gr_id, items.map((item) => item.disp_trl_id), isEdit ? invoiceId : null);
 
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [savedInvoiceData, setSavedInvoiceData] = useState<SavedInvoiceData | null>(null);
@@ -347,7 +353,10 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         customer_name: header.customer_name,
         // The server's stored total; the form's figure was only an estimate.
         total: result.total ?? null,
-        estimated_total: header.total,
+        // Two documents: the form's total is for both, so there is no estimate to compare with the first one's.
+        ...(result.documents && result.documents.length > 1 ? {} : { estimated_total: header.total }),
+        ...(result.docType ? { doc_type: result.docType } : {}),
+        ...(result.documents ? { documents: result.documents } : {}),
       };
       confirmClosed.later(() => {
         setSavedInvoiceData(saved);
@@ -428,6 +437,14 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     const result = await printInvoiceRange(start, end, printFinYear(header.inv_fin_year));
     printAnswered.current = true;
     if (result.success) {
+      // WH-151: invoices the form did not print are named in the dialog, which stays open (Close returns to the saved-invoice
+      // dialog); the form is left from there.
+      const skippedNote = printSkippedNote(result);
+      if (skippedNote) {
+        printAnswered.current = false;
+        showToast(tr('invoice.print.sent'));
+        return skippedNote;
+      }
       setShowPrintDialog(false);
       // The toast shows on the screen the form returns to.
       const message = end && end !== start
@@ -495,6 +512,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         enableOnAndroid={true}
         extraScrollHeight={100}
       >
+        <DocumentsPreviewNote state={documentsPreview} hasDiscount={header.discount > 0} />
         <ReviewCard testID="invoice-review">
           {/* Invoice details */}
           <ReviewSection

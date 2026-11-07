@@ -58,6 +58,7 @@ import { buildInvoiceLineItems, relatedDispatchDocuments } from '@/features/invo
 import { t as tr, formatIdentifier } from '@/i18n';
 import { usePaymentsVisible } from '@/features/payments/usePaymentsVisible';
 import { GstDocumentCard } from '@/features/gst/GstDocumentCard';
+import { printSkippedNote } from '@/features/gst/printSkipped';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { PaymentsTab } from '@/features/payments/PaymentsTab';
 // ============================================================================
@@ -807,6 +808,9 @@ function InvoiceDetailScreen() {
             throw new Error(printFailureMessage(result));
           }
           setSnackbarVisible(true);
+          // WH-151: invoices the form did not print are named in the dialog, which stays open until it is closed.
+          const skippedNote = printSkippedNote(result);
+          if (skippedNote) return skippedNote;
           setShowPrintDialog(false);
         }}
         title={tr('invoice.print.titleRange')}

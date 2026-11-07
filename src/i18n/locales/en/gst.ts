@@ -134,6 +134,7 @@ export const gst = {
     igstReason: 'PDF only',
     igstNote: 'IGST invoices print on plain paper.',
     doesNotFit: 'the {{field}} does not fit the form. Print it on plain paper.',
+    noneFit: 'None of these invoices can be printed on the form: an IGST invoice (PDF only) or a value that does not fit. Print them on plain paper.',
     cancelledReason: 'cancelled',
     otherReason: 'not printed',
     field: {

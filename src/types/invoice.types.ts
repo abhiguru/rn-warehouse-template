@@ -236,6 +236,15 @@ export interface CreateInvoicePayload {
   }[];
 }
 
+/** One document of a save (migration 173, WH-151): a save makes one, or two (a tax invoice and a bill of supply). All the server's. */
+export interface SavedInvoiceDocument {
+  invoice_id: string;
+  inv_no: number;
+  inv_fin_year?: number | string;
+  doc_type: string;
+  total: number | null;
+}
+
 export interface SavedInvoiceData {
   invoice_id: string;
   invoice_no: number;
@@ -245,6 +254,10 @@ export interface SavedInvoiceData {
   total: number | null;
   /** The total the form showed before saving, to say so when the stored one differs. */
   estimated_total?: number;
+  /** WH-151: the document type the server made (absent on an older backend). */
+  doc_type?: string;
+  /** WH-151: every document the save made, in number order; two for a tax invoice with a bill of supply. */
+  documents?: SavedInvoiceDocument[];
 }
 
 // Response types
@@ -284,10 +297,17 @@ export interface CreateInvoiceResponse {
     invoice_no: number;
     /** The total the server computed and stored; null when it could not be read back. */
     total?: number | null;
+    /** WH-151: the document type the server made. */
+    doc_type?: string;
+    /** WH-151: every document of the save (two for a mixed save to a customer with a GSTIN). */
+    documents?: SavedInvoiceDocument[];
   };
   message?: string;
-  /** The save was refused because the invoice number is taken (the number that was refused). */
-  numberTaken?: { number: number };
+  /**
+   * The save was refused because the invoice number is taken (the number that was refused). `second`: the save makes two
+   * documents and it is the SECOND number (the one after the number sent) that is used (WH-151).
+   */
+  numberTaken?: { number: number; second?: boolean };
   /**
    * The request may have reached the server, but no answer came back (owner rule D22). `sentAt` is when it was sent
    * (ms since 1970): the caller waits for the connection and for the server, then asks what became of the request.

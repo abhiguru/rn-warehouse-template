@@ -138,6 +138,7 @@ export const gst: Translation<typeof source> = {
     igstReason: 'ફક્ત PDF',
     igstNote: 'IGST ઇન્વૉઇસ સાદા કાગળ પર છપાય છે.',
     doesNotFit: '{{field}} ફોર્મમાં સમાતું નથી. તેને સાદા કાગળ પર છાપો.',
+    noneFit: 'આમાંનું કોઈ ઇન્વૉઇસ ફોર્મ પર છપાઈ શકતું નથી: IGST ઇન્વૉઇસ (ફક્ત PDF) અથવા ફોર્મમાં ન સમાતી વિગત. તેમને સાદા કાગળ પર છાપો.',
     cancelledReason: 'રદ થયેલ',
     otherReason: 'છપાયું નથી',
     field: {

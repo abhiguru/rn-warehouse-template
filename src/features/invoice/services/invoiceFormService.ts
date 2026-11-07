@@ -10,6 +10,7 @@ import {
   InvoiceableGrn,
   InvoiceItemData,
   InvoiceHeaderData,
+  SavedInvoiceDocument,
 } from '@/types/invoice.types';
 import { t } from '@/i18n';
 
@@ -161,7 +162,7 @@ function invoiceSaveMessage(text: unknown, fallback: string, code?: unknown): st
  * answer is any other refusal. `fallbackNumber` is the number that was sent, for an answer that does not repeat it.
  */
 type MaybeRefusal = { reason?: unknown; number?: unknown; error?: unknown; message?: unknown; details?: unknown; code?: unknown; error_code?: unknown };
-function numberTakenFrom(answer: MaybeRefusal | null | undefined, fallbackNumber: number): { number: number } | null {
+function numberTakenFrom(answer: MaybeRefusal | null | undefined, fallbackNumber: number): { number: number; second?: boolean } | null {
   if (!answer) return null;
   const code = typeof answer.error_code === 'string' ? answer.error_code : typeof answer.code === 'string' ? answer.code : undefined;
   const text = [answer.error, answer.message, answer.details].filter((part) => typeof part === 'string').join(' ');
@@ -169,16 +170,20 @@ function numberTakenFrom(answer: MaybeRefusal | null | undefined, fallbackNumber
   const olderServer = code === '23505' && /unique_inv_no_per_year/i.test(text);
   if (!named && !olderServer) return null;
   const given = Number(answer.number);
-  return { number: Number.isFinite(given) && given > 0 ? given : fallbackNumber };
+  // Migration 173: a save that makes two documents names the SECOND number (`documents` 2), the one after the number sent.
+  const second = named && (answer as { documents?: unknown }).documents === 2;
+  return { number: Number.isFinite(given) && given > 0 ? given : fallbackNumber, ...(second ? { second: true } : {}) };
 }
 
 /** Thrown inside createInvoice so its catch can answer with the taken number instead of a worded failure. */
 class NumberTakenError extends Error {
   taken: number;
+  second: boolean;
 
-  constructor(taken: number) {
+  constructor(taken: number, second = false) {
     super(t('invoice.form.numberTakenNoNext', { number: String(taken) }));
     this.taken = taken;
+    this.second = second;
     markRefusal(this, 'NUMBER_TAKEN');
   }
 }
@@ -205,6 +210,9 @@ const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
   REFUSAL.DISPATCH_LINE_INVOICED,
   // Migration 172: the new total is below what was paid on the invoice (`paid`, `total`).
   REFUSAL.TOTAL_BELOW_PAID,
+  // Migration 173 (WH-151): the lines need two documents on an edit; the second number of a two-document save is past the last.
+  REFUSAL.EDIT_NEEDS_TWO_DOCUMENTS,
+  REFUSAL.NUMBER_OUT_OF_RANGE,
 ]);
 function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
   const refusal = refusalOf(answer);
@@ -688,6 +696,22 @@ export const checkGrnStillInvoiceable = async (
   return { ok: true };
 };
 
+/** The documents a save made (migration 173, `documents` of the answer): empty on an older backend. The figures are the server's. */
+function savedDocuments(answer: any): SavedInvoiceDocument[] {
+  const list: unknown = answer?.documents;
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((doc): doc is Record<string, unknown> => typeof doc === 'object' && doc !== null)
+    .map((doc) => ({
+      invoice_id: String(doc.invoice_id ?? ''),
+      inv_no: Number(doc.inv_no),
+      inv_fin_year: typeof doc.inv_fin_year === 'string' || typeof doc.inv_fin_year === 'number' ? doc.inv_fin_year : undefined,
+      doc_type: typeof doc.doc_type === 'string' ? doc.doc_type : 'invoice',
+      total: serverAmount(doc.total),
+    }))
+    .filter((doc) => doc.invoice_id !== '' && Number.isFinite(doc.inv_no));
+}
+
 /** The result of a save_invoice that succeeded: the invoice, and the total the server stored for it. */
 async function createdInvoice(
   client: RpcClient | null,
@@ -696,12 +720,16 @@ async function createdInvoice(
 ): Promise<CreateInvoiceResponse> {
   // The write changed what reports count: a report on screen asks again (SR-10).
   void invalidateReportQueries();
+  const documents = savedDocuments(answer);
   return {
     success: true,
     data: {
       invoice_id: answer.invoice_id,
       invoice_no: answer.invoice_no || payload.header.inv_no,
-      total: await savedInvoiceTotal(client, answer, answer.invoice_id),
+      // Two documents: the first one's own total (each document's is in `documents`).
+      total: documents.length > 1 ? documents[0].total : await savedInvoiceTotal(client, answer, answer.invoice_id),
+      ...(typeof answer.doc_type === 'string' ? { doc_type: answer.doc_type } : {}),
+      ...(documents.length > 0 ? { documents } : {}),
     },
   };
 }
@@ -721,6 +749,7 @@ async function updatedInvoice(
       invoice_id: answer.invoice_id,
       invoice_no: parseInt(answer.invoice_number) || payload.header.inv_no,
       total: await savedInvoiceTotal(client, answer, answer.invoice_id || invoiceId),
+      ...(typeof answer.doc_type === 'string' ? { doc_type: answer.doc_type } : {}),
     },
     message: serverText(answer.message, t('invoice.service.updated')),
   };
@@ -881,13 +910,13 @@ const sendCreateInvoice = async (
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
       if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);
       const taken = numberTakenFrom(error, payload.header.inv_no);
-      if (taken) throw new NumberTakenError(taken.number);
+      if (taken) throw new NumberTakenError(taken.number, taken.second === true);
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed'), error.code));
     }
 
     if (!data || !data.success) {
       const taken = numberTakenFrom(data, payload.header.inv_no);
-      if (taken) throw new NumberTakenError(taken.number);
+      if (taken) throw new NumberTakenError(taken.number, taken.second === true);
       const refusal = actedOnRefusal(data);
       if (refusal) return refusedResponse(refusal, t('invoice.service.createFailed'), requestKey);
       const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
@@ -905,7 +934,7 @@ const sendCreateInvoice = async (
         success: false,
         data: { invoice_id: '', invoice_no: 0 },
         message: error.message,
-        numberTaken: { number: error.taken },
+        numberTaken: { number: error.taken, ...(error.second ? { second: true } : {}) },
       };
     }
     return {

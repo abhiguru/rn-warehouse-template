@@ -51,6 +51,7 @@ import { useCanPrint } from '@/hooks/useCanPrint';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
 import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
+import { printSkippedNote } from '@/features/gst/printSkipped';
 import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
@@ -368,7 +369,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
           ? translate('invoice.print.sentWithJob', { job: String(result.print_job.cups_job_id) })
           : translate('invoice.print.sent')
       );
-      return;
+      // WH-151: invoices the form did not print are named in the dialog, which stays open until it is closed.
+      return printSkippedNote(result) ?? undefined;
     }
     if (result.unconfirmed) {
       showAlert(translate('grn.review.printUnconfirmedTitle'), printFailureMessage(result));

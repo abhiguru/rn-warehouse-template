@@ -21,6 +21,7 @@ export type PrintFailureKind =
   | 'printerFailed'
   | 'serverUnavailable'
   | 'connection'
+  | 'plainPaper'
   | 'other';
 
 export interface PrintJobResponse {
@@ -51,6 +52,18 @@ export interface PrintJobResponse {
   unconfirmed?: boolean;
   /** The server had already handled this request_id and printed nothing again. That is a success. */
   duplicate?: boolean;
+  /**
+   * Invoices of the range that were not printed on the form (print-invoice-preprinted): `cancelled`, `igst` (no field for
+   * IGST on the form; print on plain paper) or `does_not_fit` (a value is longer than its field, named in `field`). The rest printed.
+   */
+  skipped?: PrintSkipped[];
+}
+
+export interface PrintSkipped {
+  inv_no?: number | string;
+  inv_fin_year?: number | string;
+  reason?: string;
+  field?: string;
 }
 
 export interface PrintJob {
@@ -134,6 +147,8 @@ export function printFailureMessage(result: PrintJobResponse): string {
       return t('errors.print.serverUnavailable', { status: String(result.status ?? '') });
     case 'connection':
       return t('errors.print.connection');
+    case 'plainPaper':
+      return t('gst.print.noneFit');
     default:
       return serverText(result.error, t('errors.print.submitFailed'));
   }
@@ -262,7 +277,8 @@ async function sendPrintJob(
         success: false,
         status: response.status,
         ...(code ? { code } : {}),
-        kind: upgrading ? 'other' : classifyFailure(response.status, code, unconfirmed, true),
+        // WH-151: every invoice of the range is an IGST invoice or has a value that does not fit the form (the server says "plain paper").
+        kind: upgrading ? 'other' : typeof data.error === 'string' && /plain paper/i.test(data.error) ? 'plainPaper' : classifyFailure(response.status, code, unconfirmed, true),
         error: serverText(upgradingBody(data) ?? data.error, t('errors.print.submitFailed')),
         ...(unconfirmed ? { unconfirmed: true } : {}),
       };

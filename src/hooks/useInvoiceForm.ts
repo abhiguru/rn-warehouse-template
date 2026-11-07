@@ -53,6 +53,7 @@ import type {
   InvoiceItemData,
   EditedItemValues,
   GroupRates,
+  SavedInvoiceDocument,
 } from '@/types/invoice.types';
 import {
   validateStep1,
@@ -85,6 +86,7 @@ import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 import { REFUSAL, refusalNumber, refusalString } from '@/utils/serverRefusal';
+import { documentRefusalText } from '@/services/gstService';
 import { formatMoney } from '@/services/paymentsService';
 import { formatDate, formatFinancialYear, toCalendarDay } from '@/utils/formatters';
 import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
@@ -110,6 +112,9 @@ export interface SubmitSuccess {
   invoiceNo?: number;
   /** The total the server stored, or null when it could not be read back after the save. */
   total: number | null;
+  /** WH-151: the document type the server made, and every document of the save (two for a tax invoice with a bill of supply). */
+  docType?: string;
+  documents?: SavedInvoiceDocument[];
 }
 export interface SubmitFailure {
   success: false;
@@ -745,7 +750,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
    * A number the person typed stays, and its field shows the message. A number the app suggested is replaced by the
    * free one: the field is then correct, so it shows no error and the alert says what happened (I4).
    */
-  const handleNumberTaken = useCallback(async (takenNumber: number): Promise<string> => {
+  const handleNumberTaken = useCallback(async (takenNumber: number, second = false): Promise<string> => {
     const current = store.getState().invoiceForm.header;
     let next: number | null = null;
     try {
@@ -754,7 +759,13 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     } catch (error) {
       log.warn('Could not read the next invoice number after a taken number:', error);
     }
-    const message = next
+    // WH-151: a save that makes two documents needs the number sent and the one after it; it is the second that is used.
+    const first = current.inv_no;
+    const message = second
+      ? next
+        ? t('gst.refusal.numberSecondTaken', { first: formatIdentifier(first), second: formatIdentifier(takenNumber), next: formatIdentifier(next) })
+        : t('gst.refusal.numberSecondTakenNoNext', { first: formatIdentifier(first), second: formatIdentifier(takenNumber) })
+      : next
       ? t('invoice.form.numberTaken', { number: formatIdentifier(takenNumber), next: formatIdentifier(next) })
       : t('invoice.form.numberTakenNoNext', { number: formatIdentifier(takenNumber) });
     if (next && !store.getState().invoiceForm.header.inv_no_typed) {
@@ -875,6 +886,8 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
           invoiceId: result.data?.invoice_id,
           invoiceNo: result.data?.invoice_no,
           total: result.data?.total ?? null,
+          ...(result.data?.doc_type ? { docType: result.data.doc_type } : {}),
+          ...(result.data?.documents ? { documents: result.data.documents } : {}),
         };
       }
       if (result.numberMaybeSaved) {
@@ -886,7 +899,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       }
       if (result.numberTaken) {
         // I4: say which number is taken and which is free, and take the person to the step with the field.
-        const message = await handleNumberTaken(result.numberTaken.number);
+        const message = await handleNumberTaken(result.numberTaken.number, result.numberTaken.second === true);
         report(t('invoice.form.numberTakenTitle'), message, { numberTaken: true });
         return { success: false, error: message, numberTaken: true };
       }
@@ -924,6 +937,18 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         });
         if (isCreateMode) dispatch(setValidationError({ field: 'gr_id', message }));
         report(t(failedTitleKey), message, isCreateMode ? { grnHasStock: true } : undefined);
+        return { success: false, error: message };
+      }
+      // WH-151: the lines need two documents on an edit; the second number of a two-document save is past the last number.
+      if (refusal?.reason === REFUSAL.EDIT_NEEDS_TWO_DOCUMENTS) {
+        const message = documentRefusalText(refusal.reason) ?? '';
+        report(t(failedTitleKey), message);
+        return { success: false, error: message };
+      }
+      if (refusal?.reason === REFUSAL.NUMBER_OUT_OF_RANGE) {
+        const message = documentRefusalText(refusal.reason, refusal.fields) ?? '';
+        dispatch(setValidationError({ field: 'inv_no', message }));
+        report(t(failedTitleKey), message, { numberTaken: true });
         return { success: false, error: message };
       }
       if (refusal?.reason === REFUSAL.INVOICE_DATE_FUTURE) {
