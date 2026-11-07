@@ -27,7 +27,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { getDispatchDetails, DispatchDetailsResponse } from '@/services/dispatch-detail-service';
 import { deleteDispatch } from '@/services/dispatch-service';
-import { generateDispatchPDF } from '@/services/pdf-service';
+import { generateDispatchPDF, pdfRefusalText } from '@/services/pdf-service';
 import { printDispatchRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -407,6 +407,11 @@ function DispatchDetailScreen() {
       const pdfResult = await generateDispatchPDF(data.dispatch.disp_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
+        if (pdfResult.refusal === 'tooLong') {
+          const { title, message } = pdfRefusalText('tooLong');
+          showAlert(title, message);
+          return;
+        }
         showAlert(tr('dispatch.details.pdfFailedTitle'), tr('common.checkConnection'));
         return;
       }

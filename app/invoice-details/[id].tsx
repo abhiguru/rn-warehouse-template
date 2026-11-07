@@ -27,7 +27,7 @@ import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice
 import { CancelInvoiceDialog } from '@/features/invoice/components/CancelInvoiceDialog';
 import { REFUSAL } from '@/utils/serverRefusal';
 import { getUserFriendlyError, parseErrorToFriendly } from '@/utils/errorHandler';
-import { generateInvoicePDF } from '@/services/pdf-service';
+import { generateInvoicePDF, pdfRefusalText } from '@/services/pdf-service';
 import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -443,6 +443,11 @@ function InvoiceDetailScreen() {
       const pdfResult = await generateInvoicePDF(invoiceNo, finYearNum);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
+        if (pdfResult.refusal === 'tooLong') {
+          const { title, message } = pdfRefusalText('tooLong');
+          showAlert(title, message);
+          return;
+        }
         showAlert(tr('invoice.details.shareFailedTitle'), shareError);
         return;
       }
