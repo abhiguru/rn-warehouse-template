@@ -187,7 +187,8 @@ before distributing a branded build. Never put private server keys in
 
 Central login (one sign-in at the association, then a list of facilities) is off
 unless the build sets `EXPO_PUBLIC_CENTRAL_ORIGIN`; see
-[docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md).
+[docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md). The central sign-in service is optional and open source
+([central-identity-template](https://github.com/abhiguru/central-identity-template)); an association or group of facilities runs one, and a single facility does not need it.
 
 ## Checks and releases
 
