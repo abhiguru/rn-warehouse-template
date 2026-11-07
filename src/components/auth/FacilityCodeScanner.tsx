@@ -29,6 +29,7 @@ const FAILURE_TEXT: Record<PairFailure, { title: TranslationKey; message: Transl
   unreachable: { title: 'auth.localFacility.unreachableTitle', message: 'auth.localFacility.unreachable' },
   'wrong-server': { title: 'auth.localFacility.wrongServerTitle', message: 'auth.localFacility.wrongServer' },
   'app-too-old': { title: 'auth.localFacility.failedTitle', message: 'auth.localFacility.appTooOld' },
+  cancelled: { title: 'auth.server.busyTitle', message: 'auth.server.busyMessage' },
   busy: { title: 'auth.server.busyTitle', message: 'auth.server.busyMessage' },
   failed: { title: 'auth.localFacility.failedTitle', message: 'auth.localFacility.failed' },
 };
@@ -61,7 +62,23 @@ export function FacilityCodeScanner({ visible, onClose, onAppTooOld }: FacilityC
     }
     setWorking(true);
     try {
-      const result = await pairWithFacility(payload, dispatch);
+      const result = await pairWithFacility(
+        payload,
+        dispatch,
+        names =>
+          new Promise<boolean>(resolve =>
+            showAlert(
+              tr('auth.localFacility.switchTitle', { next: names.next }),
+              tr('auth.localFacility.switchMessage', { current: names.current }),
+              [
+                { text: tr('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+                { text: tr('auth.localFacility.switchAction'), style: 'destructive', onPress: () => resolve(true) },
+              ]
+            )
+          )
+      );
+      // Cancel: the session stays and the code is unspent; the scanner stays open for another scan.
+      if (!result.ok && result.reason === 'cancelled') return;
       if (result.ok) {
         clearSignInDraft();
         dispatch(setUserProfile(result.userProfile));

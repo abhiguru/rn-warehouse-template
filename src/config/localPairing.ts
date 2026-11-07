@@ -21,7 +21,7 @@ import { getLanContext, setLanContext } from './lanTransport';
 import { localOnlyOrigin } from './localFacility';
 import { discoverOperator, getActiveOperatorServer } from './operatorServer';
 import { newPairingNonce, openPairingAnswer, PairingAnswerError, type PairingPayload } from './pairingCrypto';
-import { initializeSupabase, pairedSignIn } from './supabaseConfig';
+import { getStoredToken, initializeSupabase, pairedSignIn } from './supabaseConfig';
 import type { UserProfile } from '@/types/user.types';
 
 export type PairFailure =
@@ -35,6 +35,8 @@ export type PairFailure =
   | 'app-too-old'
   /** Something else is going on in the app (a write in flight, a switch under way). */
   | 'busy'
+  /** The person chose Cancel at "Switch to ...?": nothing was redeemed, the code can be scanned again. */
+  | 'cancelled'
   | 'failed';
 
 export type PairResult = { ok: true; userProfile: UserProfile } | { ok: false; reason: PairFailure; appTooOld?: AppTooOldInfo };
@@ -69,7 +71,12 @@ async function redeem(payload: PairingPayload, nonce: string): Promise<{ data: u
 }
 
 /** Pairs with the facility of `payload`. Never throws. `dispatch` is the store's. */
-export async function pairWithFacility(payload: PairingPayload, dispatch: (action: any) => any): Promise<PairResult> {
+export async function pairWithFacility(
+  payload: PairingPayload,
+  dispatch: (action: any) => any,
+  /** Asked once, after the address has proved to be the QR's facility and before the code is redeemed, and only when another facility's session exists. */
+  confirmSwitch?: (names: { next: string; current: string }) => Promise<boolean>
+): Promise<PairResult> {
   const origin = localOnlyOrigin(payload.instanceId);
   const previousContext = getLanContext();
   let committed = false;
@@ -84,6 +91,14 @@ export async function pairWithFacility(payload: PairingPayload, dispatch: (actio
       return fail('unreachable');
     }
     if (discovery.server.instanceId !== payload.instanceId) return fail('wrong-server');
+
+    // Another facility's session ends with the switch: ask first, while the code is still unspent (Cancel keeps both).
+    const other = getActiveOperatorServer();
+    if (confirmSwitch && other && other.instanceId !== payload.instanceId) {
+      const stored = await getStoredToken().catch(() => null);
+      if (stored?.authToken && !(await confirmSwitch({ next: discovery.server.displayName, current: other.displayName })))
+        return fail('cancelled');
+    }
 
     // 2 and 3. Redeem, check the proof, open the box.
     const nonce = await newPairingNonce();
