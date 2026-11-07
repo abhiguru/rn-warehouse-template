@@ -11,7 +11,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { ASSOCIATION_NAME, LEGAL_UPDATED, isAssociationLegalText, legalParty } from '@/constants/legal';
+import { ASSOCIATION_NAME, isAssociationLegalText, legalParty, legalUpdatedLabel } from '@/constants/legal';
 import { TemplateLegalScreen } from '@/legal/TemplateLegalScreen';
 import {
   fontWeight,
@@ -115,7 +115,7 @@ function AssociationTermsScreen() {
       >
         <View style={styles.content}>
           {/* Header */}
-          <Text style={styles.lastUpdated}>Last updated: {LEGAL_UPDATED}</Text>
+          <Text style={styles.lastUpdated}>Last updated: {legalUpdatedLabel()}</Text>
 
           <Paragraph>
             Welcome to the App. These Terms of service are an agreement

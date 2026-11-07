@@ -19,7 +19,7 @@ import type { FacilityLegal } from '@/config/facilityLegal';
  */
 export const LEGAL_TEXT_REVIEWED = false;
 
-export { LEGAL_UPDATED } from '@/config/legalVersion';
+export { LEGAL_UPDATED, legalUpdatedLabel } from '@/config/legalVersion';
 
 export const ASSOCIATION_NAME = 'Gujarat Cold Storage Association';
 

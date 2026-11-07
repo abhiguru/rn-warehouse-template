@@ -15,7 +15,6 @@ export const auth: Translation<typeof source> = {
     agreement: 'આગળ વધીને તમે અમારી {{terms}} અને {{privacy}} સ્વીકારો છો',
     termsOfService: 'સેવાની શરતો',
     privacyPolicy: 'ગોપનીયતા નીતિ',
-    notGivenYet: 'હજી આપેલ નથી',
     englishOnly: 'સેવાની શરતો અને ગોપનીયતા નીતિ ફક્ત અંગ્રેજીમાં ઉપલબ્ધ છે.',
   },
   rateLimit: {

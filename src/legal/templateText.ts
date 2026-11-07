@@ -21,6 +21,9 @@ export interface LegalSection {
   after?: string[];
 }
 
+/** Shown in English inside the English pages, whatever the phone's language (Product, WH-140). */
+export const NOT_GIVEN_YET = 'Not given yet';
+
 const UNNAMED = 'the cold storage that runs your server';
 
 /** The facility's name in a sentence, or the unnamed form. */

@@ -12,9 +12,8 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { LEGAL_UPDATED, legalParty } from '@/constants/legal';
-import { t } from '@/i18n';
-import { templatePrivacy, templateTerms } from './templateText';
+import { legalParty, legalUpdatedLabel } from '@/constants/legal';
+import { NOT_GIVEN_YET, templatePrivacy, templateTerms } from './templateText';
 import { layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export function TemplateLegalScreen({ kind }: { kind: 'terms' | 'privacy' }) {
@@ -22,7 +21,7 @@ export function TemplateLegalScreen({ kind }: { kind: 'terms' | 'privacy' }) {
   const tokens = useTokens();
   const styles = useThemedStyles(makeStyles);
   const party = legalParty();
-  const notGiven = t('auth.legal.notGivenYet');
+  const notGiven = NOT_GIVEN_YET;
   const sections = kind === 'terms' ? templateTerms(party, notGiven) : templatePrivacy(party, notGiven);
   const title = kind === 'terms' ? 'Terms of service' : 'Privacy policy';
 
@@ -42,7 +41,7 @@ export function TemplateLegalScreen({ kind }: { kind: 'terms' | 'privacy' }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.content}>
-          <Text style={styles.lastUpdated}>Last updated: {LEGAL_UPDATED}</Text>
+          <Text style={styles.lastUpdated}>Last updated: {legalUpdatedLabel()}</Text>
           {sections.map(section => (
             <View key={section.title} style={styles.section}>
               <Text style={styles.sectionTitle} accessibilityRole="header">

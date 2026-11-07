@@ -15,8 +15,6 @@ export const auth = {
     termsOfService: 'Terms of Service',
     privacyPolicy: 'Privacy Policy',
     // Shown in Gujarati only: the two pages are not translated.
-    // Shown in the contact sections of the terms and privacy pages in place of a contact the facility has not set.
-    notGivenYet: 'Not given yet',
     englishOnly: 'The terms and the privacy policy are available in English only.',
   },
   rateLimit: {
