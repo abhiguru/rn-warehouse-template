@@ -1,13 +1,14 @@
 /**
  * WH-109: the invoice details screen. Print is offered to admin, supervisor and staff (not a customer, not where printing
  * is off); the real print service runs against an answer the backend really gives. A failure is thrown to the print
- * dialog (it stays open and shows the text); an unconfirmed job closes the dialog and says so in the snackbar, so the job
+ * dialog (it stays open and shows the text); an unconfirmed job closes the dialog and shows the "Print not confirmed" alert, so the job
  * is not sent again on a guess. A financial year that is not a number is left out of the request.
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import InvoiceDetailScreen from '../../../app/invoice-details/[id]';
 import { getInvoiceDetails, getInvoiceItemsDetailed, getInvoiceReasons } from '@/services/invoice-service';
+import { showAlert } from '@/utils/alert';
 import type { InvoiceDetailsResponse, InvoiceItemsDetailedResponse } from '@/services/invoice-service';
 
 const mockAuth = { userProfile: { role: 'admin' } };
@@ -43,6 +44,7 @@ jest.mock('@/components/PrintRangeDialog', () => ({
 }));
 jest.mock('@/services/pdf-service', () => ({ generateInvoicePDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
+jest.mock('@/utils/alert', () => ({ ...jest.requireActual('@/utils/alert'), showAlert: jest.fn() }));
 jest.mock('@/config/supabaseConfig', () => ({
   createAuthenticatedFetch: () => mockFetch,
   getCurrentConfig: () => ({ url: 'https://example.invalid', anonKey: 'fictional-anon-key' }),
@@ -158,14 +160,14 @@ describe('printing from the screen', () => {
     expect(dialog().props.visible).toBe(true);
   });
 
-  it('an unconfirmed job closes the dialog and says to check the printer before printing again', async () => {
+  it('an unconfirmed job closes the dialog and shows the "Print not confirmed" alert (Product, 2026-11-07)', async () => {
     mockFetch.mockResolvedValue(reply(502, { success: false, error: 'The printer did not confirm the job', code: 'PRINT_UNCONFIRMED', unconfirmed: true, print_job_id: 'j1' }));
     await open();
     await openDialog();
     expect(dialog().props.visible).toBe(true);
     await act(async () => { await confirm(); });
     expect(dialog().props.visible).toBe(false);
-    expect(snackbar().props.visible).toBe(true);
-    expect(snackbar().props.children).toBe('The printer did not confirm the job. Check the printer before printing again.');
+    expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.');
+    expect(snackbar().props.visible).toBeFalsy();
   });
 });

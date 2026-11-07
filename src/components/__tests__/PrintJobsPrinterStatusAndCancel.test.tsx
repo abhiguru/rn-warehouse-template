@@ -33,10 +33,12 @@ jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: async () => 'to
 const JOB = '6f1c2d3e-0000-4000-8000-000000000001';
 const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => 'application/json' }, json: async () => body });
 const pendingJob = {
-  id: JOB, job_type: 'GRN', status: 'pending', printer_name: 'LQ1310_RAW', document_range_start: '101',
+  id: JOB, job_type: 'GRN', status: 'queued', printer_name: 'LQ1310_RAW', document_range_start: '101',
   document_range_end: '104', document_count: 4, created_at: '2026-10-09T10:00:00Z', completed_at: null, error_message: null,
 };
 const completedJob = { ...pendingJob, id: 'jc', status: 'completed', completed_at: '2026-10-09T10:01:00Z' };
+const printingJob = { ...pendingJob, id: 'jp', status: 'printing', document_range_start: '201', document_range_end: '204' };
+const unknownJob = { ...pendingJob, id: 'ju', status: 'unknown', document_range_start: '301', document_range_end: '304' };
 
 let printerStatus: () => unknown;
 let cancelAnswer: () => unknown;
@@ -59,7 +61,7 @@ beforeEach(() => {
     if (url.endsWith('/functions/v1/cancel-print-job')) return cancelAnswer();
     if (url.endsWith('/rest/v1/rpc/get_print_jobs')) {
       const { p_limit, p_status } = JSON.parse(init.body);
-      return reply(200, p_limit === 1 ? [completedJob] : p_status === 'pending' ? [pendingJob] : []);
+      return reply(200, { success: true, message: 'ok', data: p_limit === 1 ? [completedJob] : p_status === 'queued' ? [pendingJob] : p_status === 'printing' ? [printingJob] : p_status === 'unknown' ? [unknownJob] : [] });
     }
     throw new Error(`unexpected request ${url}`);
   });
@@ -144,6 +146,47 @@ describe('cancelling a job', () => {
     const tree = await openSheet();
     await cancel(tree);
     expect(texts(tree)).toContain("Couldn't cancel the print job. Try again.");
+    act(() => tree.unmount());
+  });
+});
+
+describe('what the sheet shows of a real answer (WH-109 review)', () => {
+  beforeEach(() => {
+    printerStatus = () => reply(200, { success: true, status: 'online', message: 'x', printer_name: 'P', transport: 'cups', timestamp: 't' });
+  });
+  const cancelButtons = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => /^Cancel print job /.test(String(n.props.accessibilityLabel)) && typeof n.props.onPress === 'function').map(n => n.props.accessibilityLabel);
+
+  it('lists the jobs of the {success, data} answer, with Cancel for a queued and a printing job and not for a job the printer did not confirm', async () => {
+    const tree = await openSheet();
+    expect(cancelButtons(tree)).toEqual(expect.arrayContaining(['Cancel print job 101 to 104', 'Cancel print job 201 to 204']));
+    expect(cancelButtons(tree)).not.toContain('Cancel print job 301 to 304');
+    act(() => tree.unmount());
+  });
+
+  it('RECORD_FAILED (cancelled at the printer, not recorded) says so and reads the list again', async () => {
+    cancelAnswer = () => reply(500, { success: false, code: 'RECORD_FAILED', error: 'The job was cancelled, but it could not be recorded.', print_job_id: JOB, timestamp: 't' });
+    const tree = await openSheet();
+    const reads = () => mockFetch.mock.calls.filter(c => String(c[0]).endsWith('get_print_jobs')).length;
+    const before = reads();
+    const button = tree.root.find(n => n.props.accessibilityLabel === 'Cancel print job 101 to 104' && typeof n.props.onPress === 'function');
+    await act(async () => { await button.props.onPress(); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+    expect(texts(tree)).toContain("The job was cancelled at the printer, but the record couldn't be updated. Refresh the list.");
+    expect(reads()).toBeGreaterThan(before);
+    act(() => tree.unmount());
+  });
+
+  // get-printer-status/index.ts: the bridge cases answer a non-2xx WITH a status
+  it.each([
+    [503, { success: false, status: 'offline', transport: 'bridge', error: 'The print bridge did not answer', printer_name: 'P', timestamp: 't' }, 'The printer is offline. Check that it is on and connected.'],
+    [503, { success: false, status: 'error', transport: 'bridge', error: 'The print bridge is not configured', printer_name: 'P', timestamp: 't' }, 'The printer reports a problem. Check the printer.'],
+    [502, { success: false, status: 'error', transport: 'bridge', error: 'The print bridge refused the token', printer_name: 'P', timestamp: 't' }, 'The printer reports a problem. Check the printer.'],
+  ])('a %i answer that carries status %j is shown as it is, not replaced by the latest job', async (httpStatus, body, message) => {
+    printerStatus = () => reply(httpStatus, body);
+    const tree = await openSheet();
+    expect(texts(tree)).toContain(message);
+    expect(texts(tree)).not.toContain('Printer ready');
     act(() => tree.unmount());
   });
 });

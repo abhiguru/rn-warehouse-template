@@ -77,13 +77,33 @@ describe('request_id', () => {
     expect(sentBody(2).request_id).not.toBe(sentBody(0).request_id);
   });
 
-  it('is reused after a gateway page (no usable answer) and after a cut answer', async () => {
+  it('is reused after a gateway page (no answer of the server itself)', async () => {
     const { printInvoiceRange } = load();
     mockFetch.mockResolvedValueOnce(gatewayPage(502));
-    mockFetch.mockResolvedValueOnce(answer(200, undefined)); // a 200 whose body is cut: JSON fails below
+    mockFetch.mockResolvedValueOnce(answer(200, SENT));
     await printInvoiceRange('412', '412', 2025);
     await printInvoiceRange('412', '412', 2025);
     expect(sentBody(1).request_id).toBe(sentBody(0).request_id);
+  });
+
+  it('is new after a 200 whose body is cut: the server did answer, a reprint is deliberate', async () => {
+    const { printInvoiceRange } = load();
+    mockFetch.mockResolvedValueOnce(answer(200, undefined));
+    mockFetch.mockResolvedValueOnce(answer(200, SENT));
+    await printInvoiceRange('412', '412', 2025);
+    await printInvoiceRange('412', '412', 2025);
+    expect(sentBody(1).request_id).not.toBe(sentBody(0).request_id);
+  });
+
+  it('is kept per document: an answer to one print does not clear the id of another that is still unanswered', async () => {
+    const { printGRNRange, printDispatchRange } = load();
+    mockFetch.mockRejectedValueOnce(new Error('Network request failed')); // dispatch, no answer
+    mockFetch.mockResolvedValueOnce(answer(200, SENT)); // an answer to a GRN print
+    mockFetch.mockResolvedValueOnce(answer(200, SENT)); // the dispatch retry
+    await printDispatchRange('B1', 'B1');
+    await printGRNRange('A1', 'A1');
+    await printDispatchRange('B1', 'B1');
+    expect(sentBody(2).request_id).toBe(sentBody(0).request_id);
   });
 
   it.each([
@@ -138,7 +158,8 @@ describe('failure kinds and texts, from the answers the backend gives', () => {
     ['the role may not print (auth-helpers: 403 PRINT_FORBIDDEN)', answer(403, PRINT_FORBIDDEN), 'notAllowed', "You aren't allowed to print. Ask an admin."],
     ['the printer did not confirm (502 PRINT_UNCONFIRMED)', answer(502, UNCONFIRMED), 'unconfirmed', 'The printer did not confirm the job. Check the printer before printing again.'],
     ['the printer failed (502 PRINTER_FAILED)', answer(502, PRINTER_FAILED), 'printerFailed', "The printer couldn't print the job. Check the printer and try again."],
-    ['an old server answers 500 without a code', answer(500, { success: false, error: 'boom' }), 'printerFailed', "The printer couldn't print the job. Check the printer and try again."],
+    ['a 500 for a range with no documents (print-grn-preprinted)', answer(500, { success: false, error: 'No GRNs found in specified range', timestamp: 't' }), 'other', 'No GRNs found in specified range'],
+    ['a 500 for a range of cancelled invoices (print-invoice-preprinted)', answer(500, { success: false, error: 'All 2 Invoices in the range are cancelled and were skipped (X1, X2)', timestamp: 't' }), 'other', 'All 2 Invoices in the range are cancelled and were skipped (X1, X2)'],
     ['a gateway page comes back', gatewayPage(502), 'serverUnavailable', 'Server error (502): The print server is unavailable. Please try again later.'],
   ])('%s', async (_name, response, kind, text) => {
     const { printInvoiceRange, printFailureMessage } = load();
@@ -215,5 +236,50 @@ describe('cancelPrintJob', () => {
     const { cancelPrintJob } = load();
     mockFetch.mockResolvedValue(answer(404, { success: false, code: 'NOT_FOUND', error: 'Print job not found', print_job_id: undefined }));
     expect(await cancelPrintJob(JOB)).toEqual({ success: false, code: 'NOT_FOUND', error: 'Print job not found' });
+  });
+});
+
+it('only PRINTER_FAILED blames the printer: a 500 never does', async () => {
+  const { printGRNRange, printFailureMessage } = load();
+  mockFetch.mockResolvedValue(answer(500, { success: false, error: 'No GRNs found in specified range' }));
+  expect(printFailureMessage(await printGRNRange('A1', 'A1'))).not.toMatch(/printer/i);
+});
+
+describe('cancel RECORD_FAILED (cancel-print-job/index.ts: 500, cancelled at the printer, not recorded)', () => {
+  it('has its own text, not the server English', async () => {
+    const { cancelPrintJob } = load();
+    mockFetch.mockResolvedValue(answer(500, { success: false, code: 'RECORD_FAILED', error: 'The job was cancelled, but it could not be recorded.', print_job_id: JOB, timestamp: 't' }));
+    expect(await cancelPrintJob(JOB)).toEqual({
+      success: false,
+      code: 'RECORD_FAILED',
+      error: "The job was cancelled at the printer, but the record couldn't be updated. Refresh the list.",
+    });
+  });
+});
+
+describe('getPrintJobs reads the {success, data} answer of get_print_jobs', () => {
+  it('returns its rows, and a bare array still works', async () => {
+    const { getPrintJobs } = load();
+    const rows = [{ id: JOB, status: 'queued' }];
+    mockFetch.mockResolvedValueOnce(answer(200, { success: true, data: rows, message: 'ok' }));
+    expect(await getPrintJobs()).toEqual({ success: true, data: rows });
+    mockFetch.mockResolvedValueOnce(answer(200, rows));
+    expect(await getPrintJobs()).toEqual({ success: true, data: rows });
+  });
+});
+
+describe('getPrinterStatus on a refusal that carries the server status', () => {
+  it.each([['offline'], ['error']])('keeps status %s of a 503', async (status) => {
+    const { getPrinterStatus } = load();
+    mockFetch.mockResolvedValue(answer(503, { success: false, status, transport: 'bridge', error: 'The print bridge did not answer', printer_name: 'P', timestamp: 't' }));
+    expect(await getPrinterStatus()).toMatchObject({ success: false, status });
+  });
+
+  it('keeps no status for the upgrading answer or a refusal without one', async () => {
+    const { getPrinterStatus } = load();
+    mockFetch.mockResolvedValueOnce(answer(503, { code: 'upgrading', message: 'x', status: 'offline' }));
+    expect(await getPrinterStatus()).not.toHaveProperty('status');
+    mockFetch.mockResolvedValueOnce(answer(403, { success: false, error: 'Admin, supervisor or staff access required to print', code: 'PRINT_FORBIDDEN' }));
+    expect(await getPrinterStatus()).not.toHaveProperty('status');
   });
 });

@@ -68,7 +68,7 @@ beforeEach(() => {
   getJobs.mockImplementation((_type: unknown, limit: number, status?: PrintJob['status']) => {
     const answer = () => ({
       success: true,
-      data: limit === 1 ? [latest] : status === 'pending' ? queued : [],
+      data: limit === 1 ? [latest] : status === 'queued' ? queued : [],
     });
     if (!deferAll) return Promise.resolve(answer());
     return new Promise(resolve => pending.push(() => resolve(answer())));
@@ -96,7 +96,7 @@ const texts = (tree: renderer.ReactTestRenderer) =>
 // The in-progress tab also asks for jobs the printer did not confirm ('unknown'), so a batch is 3 reads.
 test('while a job prints: 12 status reads and 6 job batches (30 requests) a minute on the in-progress tab', async () => {
   latest = job('j1', 'printing');
-  queued = [job('j2', 'pending')];
+  queued = [job('j2', 'queued')];
   const { tree } = await openSheet();
   await advance(10_000);
   getJobs.mockClear();
@@ -135,7 +135,7 @@ test('idle printer: 2 status reads and 1 job batch (5 requests) a minute', async
 
 test('slow reads never overlap, and a pull to refresh joins them', async () => {
   latest = job('j1', 'printing');
-  queued = [job('j2', 'pending')];
+  queued = [job('j2', 'queued')];
   const { tree } = await openSheet();
   // the first reads land and show the list; every later read hangs
   deferAll = true;
@@ -155,7 +155,7 @@ test('slow reads never overlap, and a pull to refresh joins them', async () => {
 
 test('closing the sheet stops reads and a late answer does not change it', async () => {
   latest = job('j1', 'printing');
-  queued = [job('j2', 'pending')];
+  queued = [job('j2', 'queued')];
   deferAll = true;
   const { tree, ref } = await openSheet();
   const before = texts(tree);
