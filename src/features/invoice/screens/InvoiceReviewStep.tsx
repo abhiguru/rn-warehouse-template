@@ -397,23 +397,21 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
       // Extract year from fin_year string (e.g., '2025-26' -> 2025)
       const finYearNum = parseInt(header.inv_fin_year.split('-')[0], 10);
 
-      // Generate PDF
-      const pdfResult = await generateInvoicePDF(
-        savedInvoiceData.invoice_no,
-        finYearNum
-      );
-      if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setShareError(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('invoice.review.pdfCreateFailed'));
-        return;
-      }
-
-      // Download and share
-      const shareResult = await downloadAndSharePDF(
-        pdfResult.pdfUrl,
-        `Invoice_${savedInvoiceData.invoice_no}_FY${header.inv_fin_year}.pdf`
-      );
-      if (!shareResult.success) {
-        setShareError(tr('invoice.review.pdfShareFailed'));
+      // WH-151: a save that made two documents shares both, one after the other (the share API takes one file at a time).
+      const numbers = savedInvoiceData.documents && savedInvoiceData.documents.length > 1
+        ? savedInvoiceData.documents.map((doc) => doc.inv_no)
+        : [savedInvoiceData.invoice_no];
+      for (const number of numbers) {
+        const pdfResult = await generateInvoicePDF(number, finYearNum);
+        if (!pdfResult.success || !pdfResult.pdfUrl) {
+          setShareError(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('invoice.review.pdfCreateFailed'));
+          return;
+        }
+        const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `Invoice_${number}_FY${header.inv_fin_year}.pdf`);
+        if (!shareResult.success) {
+          setShareError(tr('invoice.review.pdfShareFailed'));
+          return;
+        }
       }
     } catch (error) {
       log.error('Share PDF error:', error);
@@ -626,6 +624,11 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         onConfirm={handlePrintConfirm}
         title={tr('invoice.print.title')}
         defaultNumber={savedInvoiceData?.invoice_no?.toString() || ''}
+        defaultEndNumber={
+          savedInvoiceData?.documents && savedInvoiceData.documents.length > 1
+            ? String(savedInvoiceData.documents[savedInvoiceData.documents.length - 1].inv_no)
+            : undefined
+        }
         entity="invoice"
         placeholder={tr('invoice.print.example', { example: '123' })}
       />

@@ -1,3 +1,4 @@
+import { printSkippedNote } from '@/features/gst/printSkipped';
 import * as Crypto from 'expo-crypto';
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { discardBody } from '../config/discardBody';
@@ -21,7 +22,7 @@ export type PrintFailureKind =
   | 'printerFailed'
   | 'serverUnavailable'
   | 'connection'
-  | 'plainPaper'
+  | 'allSkipped'
   | 'other';
 
 export interface PrintJobResponse {
@@ -147,8 +148,9 @@ export function printFailureMessage(result: PrintJobResponse): string {
       return t('errors.print.serverUnavailable', { status: String(result.status ?? '') });
     case 'connection':
       return t('errors.print.connection');
-    case 'plainPaper':
-      return t('gst.print.noneFit');
+    case 'allSkipped':
+      // WH-151: ALL_SKIPPED, every invoice of the range was skipped: each is listed with its reason.
+      return printSkippedNote(result, 'gst.print.allSkippedTitle') ?? t('gst.print.noneFit');
     default:
       return serverText(result.error, t('errors.print.submitFailed'));
   }
@@ -277,8 +279,9 @@ async function sendPrintJob(
         success: false,
         status: response.status,
         ...(code ? { code } : {}),
-        // WH-151: every invoice of the range is an IGST invoice or has a value that does not fit the form (the server says "plain paper").
-        kind: upgrading ? 'other' : typeof data.error === 'string' && /plain paper/i.test(data.error) ? 'plainPaper' : classifyFailure(response.status, code, unconfirmed, true),
+        // WH-151: ALL_SKIPPED (HTTP 422): every invoice of the range was skipped, and `skipped` says why for each.
+        kind: upgrading ? 'other' : code === 'ALL_SKIPPED' ? 'allSkipped' : classifyFailure(response.status, code, unconfirmed, true),
+        ...(code === 'ALL_SKIPPED' && Array.isArray(data.skipped) ? { skipped: data.skipped as PrintSkipped[] } : {}),
         error: serverText(upgradingBody(data) ?? data.error, t('errors.print.submitFailed')),
         ...(unconfirmed ? { unconfirmed: true } : {}),
       };

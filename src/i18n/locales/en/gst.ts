@@ -126,6 +126,7 @@ export const gst = {
   },
   print: {
     skippedTitle: 'Sent, but not all invoices were printed',
+    allSkippedTitle: 'No invoice in the range was printed',
     skippedLine: 'Invoice {{number}}: {{reason}}',
     igstReason: 'PDF only',
     igstNote: 'IGST invoices print on plain paper.',

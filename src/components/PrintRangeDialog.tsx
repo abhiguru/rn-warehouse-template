@@ -60,6 +60,8 @@ interface PrintRangeDialogProps {
   onConfirm: (startNumber: string, endNumber: string) => Promise<void | string>;
   title: string;
   defaultNumber: string;
+  /** The range's end when it is not the start (WH-151: a pair of documents is prefilled as first to second). */
+  defaultEndNumber?: string;
   /** Which document's numbers are printed. Selects whole-sentence texts in both languages. */
   entity?: DocumentEntity;
   /**
@@ -293,6 +295,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   onConfirm,
   title,
   defaultNumber,
+  defaultEndNumber,
   entity,
   label = '',
   placeholder = '',
@@ -305,7 +308,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   const printingAvailable = useCapability('printing');
 
   const [startNumber, setStartNumber] = useState(defaultNumber);
-  const [endNumber, setEndNumber] = useState(defaultNumber);
+  const [endNumber, setEndNumber] = useState(defaultEndNumber ?? defaultNumber);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -322,12 +325,12 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
           defaultNumber
         );
       setStartNumber(defaultNumber);
-      setEndNumber(defaultNumber);
+      setEndNumber(defaultEndNumber ?? defaultNumber);
       setError(null);
       setNote(null);
       setLoading(false);
     }
-  }, [visible, defaultNumber]);
+  }, [visible, defaultNumber, defaultEndNumber]);
 
   // While a print is being sent the dialog stays open (backdrop, X and Android back are ignored), so its failure is seen.
   const dismissUnlessSending = () => {

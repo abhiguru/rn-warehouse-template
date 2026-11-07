@@ -97,7 +97,7 @@ export const gst: Translation<typeof source> = {
   },
   pair: {
     title: 'બંને કાઢી નાખવાં છે?',
-    message: 'આ ઇન્વોઇસ {{other}} સાથે બન્યું હતું. બંને કાઢી નાખવાં છે?',
+    message: 'આ ઇન્વૉઇસ {{other}} સાથે બન્યું હતું. બંને કાઢી નાખવાં છે?',
     deleteBoth: 'બંને કાઢો',
     done: 'ઇન્વૉઇસ {{first}} અને {{second}} ડિલીટ થયાં.',
     notAPair: 'આ ઇન્વૉઇસ સાથે બનેલો બીજો દસ્તાવેજ હવે નથી. તેને ફરી ખોલો.',
@@ -130,6 +130,7 @@ export const gst: Translation<typeof source> = {
   },
   print: {
     skippedTitle: 'મોકલ્યું, પણ બધાં ઇન્વૉઇસ છપાયાં નથી',
+    allSkippedTitle: 'શ્રેણીનું કોઈ ઇન્વૉઇસ છપાયું નથી',
     skippedLine: 'ઇન્વૉઇસ {{number}}: {{reason}}',
     igstReason: 'ફક્ત PDF',
     igstNote: 'IGST ઇન્વૉઇસ સાદા કાગળ પર છપાય છે.',

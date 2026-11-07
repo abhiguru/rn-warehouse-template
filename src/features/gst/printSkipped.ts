@@ -32,7 +32,10 @@ function fieldName(field: string | undefined): string {
 }
 
 /** The note for the print dialog, or null when every invoice of the range was printed. */
-export function printSkippedNote(result: Pick<PrintJobResponse, 'skipped'>): string | null {
+export function printSkippedNote(
+  result: Pick<PrintJobResponse, 'skipped'>,
+  title: 'gst.print.skippedTitle' | 'gst.print.allSkippedTitle' = 'gst.print.skippedTitle'
+): string | null {
   const skipped = Array.isArray(result.skipped) ? result.skipped : [];
   if (skipped.length === 0) return null;
   const lines = skipped.map((item) => {
@@ -46,5 +49,5 @@ export function printSkippedNote(result: Pick<PrintJobResponse, 'skipped'>): str
     if (item.reason === 'cancelled') return t('gst.print.skippedLine', { number, reason: t('gst.print.cancelledReason') });
     return t('gst.print.skippedLine', { number, reason: t('gst.print.otherReason') });
   });
-  return [t('gst.print.skippedTitle'), ...lines].join('\n');
+  return [t(title), ...lines].join('\n');
 }
