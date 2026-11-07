@@ -120,17 +120,17 @@ function AssociationTermsScreen() {
 
           <Paragraph>
             Welcome to the App. These Terms of service are an agreement
-            between you and {party.inline}. {provider.definition} provides this App to its member cold storages. Each
-            member cold storage runs its own server and is the party you deal
-            with. By using the App you agree to be bound by these Terms.
+            between you and {party.inline}.{' '}
+            {provider
+              ? `${provider.definition} provides this App to its member cold storages. Each member cold storage runs its own server and is the party you deal with.`
+              : 'The cold storage runs its own server and is the party you deal with.'} By using the App you agree to be bound by these Terms.
           </Paragraph>
 
           {/* Section 1 */}
           <Section title="1. Who provides what">
             <Paragraph>
               {party.leading} keeps your records on its own server and decides
-              who may use them. The {provider.term} provides the App and does not
-              hold the cold storage's records.
+              who may use them.{provider ? ` The ${provider.term} provides the App and does not hold the cold storage's records.` : ''}
             </Paragraph>
             {party.email ? <Paragraph>Email: {party.email}</Paragraph> : null}
           </Section>
@@ -258,7 +258,7 @@ function AssociationTermsScreen() {
             <Paragraph>
               All Content on the App, including but not limited to text,
               graphics, logos, images, software, and other material, is the
-              property of the {provider.term}, {party.inline} or their licensors and
+              property of {provider ? `the ${provider.term}, ` : ''}{party.inline} or their licensors and
               is protected by Indian and international intellectual property
               laws.
             </Paragraph>
@@ -298,8 +298,8 @@ function AssociationTermsScreen() {
           {/* Section 14 */}
           <Section title="14. Limitation of liability">
             <Paragraph>
-              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The{' '}
-              {provider.term}, {party.inline}, and their directors, officers,
+              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW:{' '}
+              {provider ? `The ${provider.term}, ${party.inline}, and their` : `${party.inline} and its`} directors, officers,
               employees, agents, and affiliates shall not be liable for any
               indirect, incidental, special, consequential, or punitive damages
               arising out of or related to your use of the App or services.
@@ -309,8 +309,8 @@ function AssociationTermsScreen() {
           {/* Section 15 */}
           <Section title="15. Indemnification">
             <Paragraph>
-              You agree to indemnify, defend, and hold harmless the {provider.term}
-              and {party.inline}, their directors, officers, employees, agents,
+              You agree to indemnify, defend, and hold harmless{' '}
+              {provider ? `the ${provider.term} and ` : ''}{party.inline}, their directors, officers, employees, agents,
               affiliates, and licensors from any claims, liabilities, damages,
               losses, costs, or expenses arising out of your use of the App or
               violation of these Terms.
@@ -320,7 +320,7 @@ function AssociationTermsScreen() {
           {/* Section 16 */}
           <Section title="16. Force majeure">
             <Paragraph>
-              Neither the {provider.term} nor the cold storage shall be liable for
+              Neither {provider ? `the ${provider.term} nor ` : ''}the cold storage shall be liable for
               any failure or delay in performance due to circumstances beyond
               its reasonable control, including acts of God, natural disasters,
               war, terrorism, pandemics, or government actions.

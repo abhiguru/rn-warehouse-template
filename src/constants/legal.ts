@@ -23,21 +23,20 @@ export const LEGAL_TEXT_REVIEWED = false;
 export { LEGAL_UPDATED, legalUpdatedLabel } from '@/config/legalVersion';
 
 export interface LegalProvider {
-  /** The defined term the pages use after the first mention: "Association" (a build with a brand pack that names one) or "Publisher". */
+  /** The defined term the pages use after the first mention: "Association". */
   term: string;
   /** The first mention, with its defined term: 'The <name> (the "Association")'. */
   definition: string;
 }
 
 /**
- * Who provides the App. A build whose brand pack names an association (brand-packs/README.md) says so;
- * any other build speaks of "the organisation that distributes your copy of the App".
+ * The association that provides the App, from the build's brand pack (brand-packs/README.md); null when
+ * the build has none, and then the pages name no one but the cold storage. A build that asks for the
+ * association's legal text without a pack naming it does not build (brand-packs/loadBrandPack.cjs).
  */
-export function legalProvider(): LegalProvider {
+export function legalProvider(): LegalProvider | null {
   const name = activeBrandPack()?.association?.name.trim();
-  return name
-    ? { term: 'Association', definition: `The ${name} (the "Association")` }
-    : { term: 'Publisher', definition: 'The organisation that distributes your copy of the App (the "Publisher")' };
+  return name ? { term: 'Association', definition: `The ${name} (the "Association")` } : null;
 }
 
 /**

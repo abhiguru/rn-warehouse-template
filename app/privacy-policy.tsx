@@ -123,9 +123,10 @@ function AssociationPrivacyScreen() {
 
           <Paragraph>
             {party.leading} ("we", "us", or "our") is responsible for the
-            records you enter in this mobile application (the "App"). {provider.definition} provides the App to its
-            member cold storages; each member keeps its own records on its own
-            server. This Privacy Policy explains what we collect, where it is
+            records you enter in this mobile application (the "App").{' '}
+            {provider
+              ? `${provider.definition} provides the App to its member cold storages; each member keeps its own records on its own server.`
+              : 'The records are kept on its own server.'} This Privacy Policy explains what we collect, where it is
             kept, how we use it and who can see it.
           </Paragraph>
 
@@ -206,8 +207,9 @@ function AssociationPrivacyScreen() {
               ]}
             />
             <Paragraph>
-              Where your copy of the App uses the {provider.term}'s sign-in, the
-              {provider.term}'s sign-in keeps your mobile number and, if you enter
+              {provider
+                ? `Where your copy of the App uses the ${provider.term}'s sign-in, the ${provider.term}'s sign-in keeps`
+                : 'Where your copy of the App uses central sign-in, the central sign-in service keeps'} your mobile number and, if you enter
               it, your name. A cold storage sees that name when you ask it for
               access.
             </Paragraph>
@@ -236,8 +238,7 @@ function AssociationPrivacyScreen() {
           <Section title="4. Data storage and security">
             <Paragraph>
               Your records (customers, GRNs, dispatches, invoices and stock) are
-              stored on {ownServer}. They are not kept on a shared server of the
-              {provider.term}.
+              stored on {ownServer}. They are not kept on a shared server{provider ? ` of the ${provider.term}` : ''}.
             </Paragraph>
             <Paragraph>
               We use appropriate technical and organizational measures to
