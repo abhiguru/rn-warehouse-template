@@ -7,7 +7,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
-import { uploadDeferredDispatchImages } from '@/features/dispatch/services/dispatchImageService';
+import { uploadDeferredDispatchImages, giveUpDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
 import { generateDispatchPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { showToast } from '@/utils/toast';
@@ -57,6 +57,7 @@ jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   uploadDeferredDispatchImages: jest.fn(),
+  giveUpDispatchPhotos: jest.fn(),
   unpreparedDispatchPhotos: () => 'ready',
   generateTempDispatchId: () => 'temp_dispatch_fixture',
   deleteDispatchImage: jest.fn(),
@@ -133,6 +134,7 @@ it('"Try again" uploads only the failed photos to the created dispatch', async (
   expect(uploadDeferredDispatchImages).toHaveBeenLastCalledWith(DISPATCH_ID, [mockImages[2]]);
   expect(photoDialog(tree).props.visible).toBe(false);
   // The photo dialog is closing: the success dialog waits for it (a second Modal would never show on iOS).
+  expect(giveUpDispatchPhotos).not.toHaveBeenCalled();
   expect(successShown(tree)).toBe(false);
   await dismissed(tree);
   expect(successShown(tree)).toBe(true);
@@ -170,6 +172,7 @@ it('"Continue without them" goes on to the success dialog without uploading', as
   await create_(tree);
   await act(async () => { photoDialog(tree).props.onCancel(); });
   expect(uploadDeferredDispatchImages).not.toHaveBeenCalled();
+  expect(giveUpDispatchPhotos).toHaveBeenCalledWith(DISPATCH_ID, [mockImages[0]]);
   // The photo dialog is closing: the success dialog waits for it (a second Modal would never show on iOS).
   expect(successShown(tree)).toBe(false);
   await dismissed(tree);

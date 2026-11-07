@@ -6,7 +6,7 @@
 import React from 'react';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
-import { uploadDeferredDispatchImages } from '@/features/dispatch/services/dispatchImageService';
+import { uploadDeferredDispatchImages, giveUpDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
 import { showAlert } from '@/utils/alert';
 import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 
@@ -50,6 +50,7 @@ jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   unpreparedDispatchPhotos: jest.requireActual('@/features/dispatch/services/dispatchImageService').unpreparedDispatchPhotos,
   uploadDeferredDispatchImages: jest.fn(),
+  giveUpDispatchPhotos: jest.fn(),
   generateTempDispatchId: () => 'temp_dispatch_fixture',
   deleteDispatchImage: jest.fn(),
   prepareDispatchImageForDeferredUpload: jest.fn(),
@@ -117,6 +118,7 @@ it('Continue without photos abandons the failed uploads and releases their files
   await act(async () => { dialog.props.onCancel(); });
   expect(abandonLocalPhotoUpload).toHaveBeenCalledWith('file:///cache/temp_a.webp');
   expect(abandonLocalPhotoUpload).toHaveBeenCalledWith('file:///cache/temp_b.webp');
+  expect(giveUpDispatchPhotos).toHaveBeenCalledWith('d1', failed);
   expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/temp_a.webp', 'file:///cache/temp_b.webp']);
   expect(uploadDeferredDispatchImages).not.toHaveBeenCalled();
 });
