@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { Image } from 'expo-image';
+import { LanImage } from '@/components/LanImage';
 import { RemoteAutocompleteInput, type RemoteAutocompleteInputHandle } from '@/components/RemoteAutocompleteInput';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
@@ -722,8 +722,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                         accessibilityRole="button"
                                         accessibilityLabel={tr('grn.item.removeMarkPhoto', { position: idx + 1 })}
                                     >
-                                        <Image
-                                            source={{ uri: img.imageUrl }}
+                                        <LanImage
+                                            uri={img.imageUrl}
                                             style={StyleSheet.absoluteFill}
                                             contentFit="cover"
                                             cachePolicy="memory-disk"

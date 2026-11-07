@@ -222,7 +222,7 @@ const ImageTile: React.FC<{
         {({ pressed }) => (
           <>
             <Image
-              source={{ uri: imageUri }}
+              source={imageUri ? { uri: imageUri } : undefined}
               style={styles.image}
               contentFit="cover"
               // A signed URL is new on every load, so a disk copy is never reused and

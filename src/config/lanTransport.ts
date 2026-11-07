@@ -398,6 +398,11 @@ export function viaCurrentPath(url: string): string {
   return url;
 }
 
+/** True for a URL of the selected facility's server (its canonical origin). */
+export function isFacilityUrl(url: string): boolean {
+  return !!context && startsWithOrigin(url, context.canonical);
+}
+
 /** The canonical form of a URL that may carry the LAN address (a response's `url`); other URLs come back unchanged. */
 export function toCanonicalUrl(url: string): string {
   const ctx = context;

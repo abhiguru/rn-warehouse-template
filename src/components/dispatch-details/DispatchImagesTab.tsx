@@ -75,7 +75,7 @@ const DispatchPhoto: React.FC<{ url: string; style: React.ComponentProps<typeof 
   return (
     <>
       <Image
-        source={{ uri }}
+        source={uri ? { uri } : undefined}
         style={style}
         contentFit="cover"
         // A signed URL is new on every load, so a disk copy is never reused and
