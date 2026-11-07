@@ -5,7 +5,7 @@ import { createErrorResponse, isJWTSignatureError, isOfflineFailure, isSessionIn
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import type { RpcGrnItemRow, RpcPagination } from '@/types/rpc-canonical.types';
 import { hasMoreItems } from '@/utils/paginationUtils';
-import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
+import { CACHE_DURATION_LAST_PAGE_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
 import { createBoundedCache, generateScopedCacheKey, getSessionCacheScope } from '@/utils/cacheManager';
 import { t } from '@/i18n';
 import { closeDateRange } from '@/utils/formatters';
@@ -763,7 +763,7 @@ const grnListCache = createBoundedCache(CACHE_PREFIXES.GRN_LIST, {
   maxEntries: GRN_CACHE_MAX_ENTRIES,
   maxTotalChars: GRN_CACHE_MAX_TOTAL_CHARS,
   maxEntryChars: GRN_CACHE_MAX_ENTRY_CHARS,
-  expiryMs: CACHE_DURATION_DEFAULT_MS,
+  expiryMs: CACHE_DURATION_LAST_PAGE_MS,
 });
 
 /** The list screen's one read: all GRNs, or the assigned customers' for a customer account. */
