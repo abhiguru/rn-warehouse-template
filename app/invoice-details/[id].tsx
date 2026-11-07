@@ -54,6 +54,8 @@ import { formatDate } from '@/utils/formatters';
 import { parseChargingRule } from '@/features/charging/chargingRule';
 import { buildInvoiceLineItems, relatedDispatchDocuments } from '@/features/invoice/utils/invoiceLineItems';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { usePaymentsVisible } from '@/features/payments/usePaymentsVisible';
+import { PaymentsTab } from '@/features/payments/PaymentsTab';
 // ============================================================================
 // STYLES
 // ============================================================================
@@ -108,7 +110,11 @@ const makeStyles = (t: ThemeTokens) => ({
 function InvoiceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
-  const { canUpdate, canDelete, isCustomer } = usePermissions();
+  const { canUpdate, canDelete, isCustomer, isAdmin, isSupervisor, isStaffRole } = usePermissions();
+  // The Payments tab (WH-143): administrators, supervisors and the invoice's customer, while payments are on. Staff see nothing new.
+  const paymentsOn = usePaymentsVisible();
+  const showPayments = paymentsOn && !isStaffRole;
+  const canManagePayments = isAdmin || isSupervisor;
   const canPrint = useCanPrint();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -657,6 +663,7 @@ function InvoiceDetailScreen() {
           active_tab={activeTab}
           on_tab_change={setActiveTab}
           item_count={lineItems.length}
+          show_payments={showPayments}
         />
 
         {/* Tab Content */}
@@ -698,6 +705,16 @@ function InvoiceDetailScreen() {
               loading={loading}
               on_view_grn={handleViewGRN}
               on_view_dispatch={handleViewDispatch}
+            />
+          )}
+
+          {activeTab === 'payments' && showPayments && (
+            <PaymentsTab
+              invoiceId={String(Array.isArray(id) ? id[0] : id)}
+              invoiceNumber={String(invoice.invoice_number)}
+              total={total}
+              cancelled={isCancelled}
+              canManage={canManagePayments}
             />
           )}
 

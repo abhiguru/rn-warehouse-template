@@ -3,7 +3,7 @@ import { invalidateReportQueries } from '@/lib/queryClient';
 import { createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
 import { isNetworkError, isStatementTimeout, isTimeoutError, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { REFUSAL } from '@/utils/serverRefusal';
@@ -41,6 +41,10 @@ export interface Invoice {
   /** Migration 134: set when the invoice is cancelled; a cancelled invoice is not counted in any sum. */
   cancelled_at?: string | null;
   cancel_reason?: string | null;
+  /** Migration 172, administrators, supervisors and the invoice's customer: the server's figures. Absent for staff and on an older server. */
+  paid_amount?: number | null;
+  due_amount?: number | null;
+  payment_status?: 'due' | 'part_paid' | 'paid' | null;
   customer: {
     id: string;
     name: string;
@@ -97,6 +101,8 @@ export interface GetInvoicesListParams {
   p_date_to?: string;
   /** Several customers; an empty list is no filter. */
   p_customer_ids?: string[];
+  /** Migration 172: only invoices with this payment status (administrators and supervisors). */
+  p_payment_status?: 'due' | 'part_paid' | 'paid';
 }
 
 export const getInvoicesList = async (
@@ -121,6 +127,7 @@ export const getInvoicesList = async (
       p_date_from,
       p_date_to,
       p_customer_ids,
+      p_payment_status,
     } = params;
 
     invoiceServiceLogger.debug('Getting authenticated client...');
@@ -142,6 +149,8 @@ export const getInvoicesList = async (
       p_date_from: p_date_from || null,
       p_date_to: p_date_to || null,
       p_customer_ids: p_customer_ids && p_customer_ids.length > 0 ? p_customer_ids : null,
+      // Sent only when chosen: a backend before migration 172 has no such parameter.
+      ...(p_payment_status ? { p_payment_status } : {}),
     });
 
     const duration = Date.now() - startTime;
@@ -524,6 +533,10 @@ export interface InvoiceDetail {
   cancelled_by_name?: string | null;
   /** Migration 164: the charging rule the invoice was made with, as the server sent it (read with parseChargingRule). Absent on an older server. */
   charging?: unknown;
+  /** Migration 172: the server's paid, due and status (absent for staff and on an older server). */
+  paid_amount?: number | null;
+  due_amount?: number | null;
+  payment_status?: 'due' | 'part_paid' | 'paid' | null;
 }
 
 export interface InvoiceItem {
@@ -964,12 +977,15 @@ export interface CancelInvoiceResponse {
 }
 
 /** The app's own words for each refusal of `cancel_invoice`. */
-export const cancelRefusalMessage = (reason: string | undefined): string | undefined => {
+export const cancelRefusalMessage = (reason: string | undefined, fields?: Record<string, unknown>): string | undefined => {
   switch (reason) {
     case REFUSAL.INVOICE_CANCELLED:
       return t('invoice.cancel.alreadyCancelled');
     case REFUSAL.INVOICE_HAS_PAYMENTS:
-      return t('invoice.cancel.hasPayments');
+      // Migration 172 names the invoice (`inv_no`); an older server's refusal carries none.
+      return fields?.inv_no !== undefined && fields.inv_no !== null
+        ? t('payments.hasPayments', { number: formatIdentifier(String(fields.inv_no)) })
+        : t('invoice.cancel.hasPayments');
     case REFUSAL.CANCEL_REASON_INVALID:
       return t('invoice.cancel.reasonInvalid', { min: formatNumber(CANCEL_REASON_MIN), max: formatNumber(CANCEL_REASON_MAX) });
     case REFUSAL.STALE_RECORD:
@@ -1001,7 +1017,7 @@ export const cancelInvoice = async (
       return { success: false, message: t('invoice.cancel.notFound'), error: result.error, reason: 'NOT_FOUND' };
     }
     if (result.lostAnswer) return { success: false, error: result.error, lostAnswer: true };
-    const refusalText = cancelRefusalMessage(result.reason);
+    const refusalText = cancelRefusalMessage(result.reason, result.fields);
     if (refusalText) {
       // The invoice changed or is already cancelled: a report under it may be out of date too.
       if (result.reason === REFUSAL.INVOICE_CANCELLED) void invalidateReportQueries();
@@ -1097,6 +1113,10 @@ export const deleteInvoice = async (
     // The invoice was changed by someone else since this screen read it: the caller reads it again.
     if (result.reason === REFUSAL.STALE_RECORD) {
       return { success: false, message: t('invoice.details.deleteStale'), error: result.error, reason: result.reason };
+    }
+    // Migration 172: the invoice has payments, named by its number.
+    if (result.reason === REFUSAL.INVOICE_HAS_PAYMENTS && result.fields?.inv_no !== undefined && result.fields.inv_no !== null) {
+      return { success: false, message: t('payments.hasPayments', { number: formatIdentifier(String(result.fields.inv_no)) }), error: result.error, reason: result.reason };
     }
     // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in
     // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.

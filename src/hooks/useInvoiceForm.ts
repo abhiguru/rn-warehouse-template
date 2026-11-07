@@ -85,6 +85,7 @@ import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
 import { REFUSAL, refusalNumber, refusalString } from '@/utils/serverRefusal';
+import { formatMoney } from '@/services/paymentsService';
 import { formatDate, formatFinancialYear, toCalendarDay } from '@/utils/formatters';
 import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { calculateFinancialYear, formatInvoiceAmount, serverLineDurations, serverLineRates } from '@/utils/invoiceCalculations';
@@ -948,6 +949,15 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       if (refusal?.reason === REFUSAL.DISCOUNT_TOTAL_ZERO) {
         // D8: the server refuses a discount that takes the total to 0; nothing was saved.
         const message = t('invoice.summary.discountTotalZero');
+        report(t(failedTitleKey), message);
+        return { success: false, error: message };
+      }
+      if (refusal?.reason === REFUSAL.TOTAL_BELOW_PAID) {
+        // WH-143: payments recorded on this invoice add up to more than the new total; nothing was saved. The figures are the server's.
+        const message = t('payments.belowPaid', {
+          paid: formatMoney(refusal.fields.paid),
+          total: formatMoney(refusal.fields.total),
+        });
         report(t(failedTitleKey), message);
         return { success: false, error: message };
       }

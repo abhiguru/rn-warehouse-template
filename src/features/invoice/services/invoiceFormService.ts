@@ -203,6 +203,8 @@ const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
   REFUSAL.CHARGING_CHANGED,
   // Migration 165: a dispatch line is on another live invoice.
   REFUSAL.DISPATCH_LINE_INVOICED,
+  // Migration 172: the new total is below what was paid on the invoice (`paid`, `total`).
+  REFUSAL.TOTAL_BELOW_PAID,
 ]);
 function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
   const refusal = refusalOf(answer);
