@@ -5,6 +5,7 @@ import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
 import { serverText, upgradingBody } from '@/utils/serverText';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 // Logging rule: the print endpoints carry the session credential, document
 // ranges and printer diagnostics. Only the HTTP status and ok flag of a
@@ -158,6 +159,7 @@ const logResponse = (operation: string, response: Pick<Response, 'status' | 'ok'
 const REQUEST_ID_REUSE_MS = 5 * 60 * 1000;
 // Kept per document (path + range), so an answer to one print never clears another print's id.
 const lastAttempts = new Map<string, { id: string; at: number }>();
+registerSessionScoped('print-request-ids', () => lastAttempts.clear());
 
 function requestIdFor(path: string, body: Record<string, unknown>): string {
   const key = `${path}:${JSON.stringify(body)}`;
