@@ -34,6 +34,7 @@
     "test": "jest --maxWorkers=50%",
     "test:setup": "node --test scripts/*.test.mjs",
     "check:backend": "node scripts/check-backend.mjs",
+    "check:legal": "node scripts/check-legal-reviewed.mjs",
     "update-supabase-keys": "bash scripts/update-supabase-keys.sh",
     "doctor": "node scripts/doctor.mjs",
     "audit:artifact": "node scripts/artifact-audit.mjs",

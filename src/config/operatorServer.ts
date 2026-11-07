@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { httpOrigin, validatePublicConfig } from './bootstrapValidation';
 import { withLocalizedBootstrapErrors } from './bootstrapErrors';
 import type { PublicConfig } from '@/services/configService';
+import { parseFacilityLegal, type FacilityLegal } from './facilityLegal';
 import { t } from '@/i18n';
 import { isHostPartChange, parseLanOrigin } from './lanAddress';
 import { getLanContext, setLanContext, toCanonicalUrl, transportFetch } from './lanTransport';
@@ -22,6 +23,8 @@ export type OperatorServer = {
   instanceId: string;
   displayName: string;
   companyName: string;
+  /** The facility's legal settings from its last discovery answer (WH-140); absent when the server sent none. */
+  legal?: FacilityLegal;
   /**
    * The server's address on the warehouse network, `urls.lan` of its last authenticated `get-config`
    * answered over the public path (WS-L; src/config/lanAddress.ts). Absent while the server offers none.
@@ -188,8 +191,12 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
       }, 15000);
     }),
   ]).finally(() => clearTimeout(timeout));
+  const legal = parseFacilityLegal(config.legal);
   return {
-    server: { origin, instanceId: config.instanceId, displayName: config.displayName, companyName: config.companyName },
+    server: {
+      origin, instanceId: config.instanceId, displayName: config.displayName, companyName: config.companyName,
+      ...(legal ? { legal } : {}),
+    },
     config,
   };
 }

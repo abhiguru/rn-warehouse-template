@@ -11,7 +11,8 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { ASSOCIATION_NAME, LEGAL_UPDATED, legalParty } from '@/constants/legal';
+import { ASSOCIATION_NAME, LEGAL_UPDATED, isAssociationLegalText, legalParty } from '@/constants/legal';
+import { TemplateLegalScreen } from '@/legal/TemplateLegalScreen';
 import {
   fontWeight,
   layout,
@@ -73,7 +74,15 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
+/**
+ * The page a build shows (WH-140): the facility template, or the Association's own text for the association's
+ * build (EXPO_PUBLIC_LEGAL_TEXT=association). The template is not lawyer-reviewed: see LEGAL_TEXT_REVIEWED.
+ */
 export default function TermsOfServiceScreen() {
+  return isAssociationLegalText() ? <AssociationTermsScreen /> : <TemplateLegalScreen kind="terms" />;
+}
+
+function AssociationTermsScreen() {
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);

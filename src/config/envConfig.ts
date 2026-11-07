@@ -11,6 +11,7 @@
  * Android USB/emulator: use adb reverse tcp:18000 tcp:18000.
  * Keep the supported demo origin http://localhost:18000.
  */
+import { LEGAL_UPDATED } from './legalVersion';
 
 /**
  * Base URL for configuration API
@@ -95,7 +96,7 @@ export const isCentralLoginConfigured = (): boolean => CENTRAL_LOGIN !== null;
 
 /**
  * The label of the terms of use the person accepts on central sign-in, sent as
- * `terms_version`. It follows the date on app/terms-of-service.tsx ("Last
- * updated: December 2025"): change both together.
+ * `terms_version`: the date of the legal text (WH-140, G85), so it always equals
+ * what the pages show as "Last updated". A new date asks every number for the tick again, once.
  */
-export const TERMS_VERSION = '2025-12';
+export const TERMS_VERSION = LEGAL_UPDATED;

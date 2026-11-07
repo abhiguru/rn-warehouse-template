@@ -35,6 +35,8 @@ export interface PublicConfig {
   displayName: string;
   companyName: string;
   canonicalOrigin: string;
+  /** The facility's legal settings for the terms and privacy pages (backend migration 167); absent on an older backend. */
+  legal?: Partial<Record<'legalName' | 'city' | 'state' | 'grievanceName' | 'grievanceEmail' | 'grievancePhone', string>>;
   supportedApiVersions: string[];
   minimumClientVersion: string;
   /** The backend's release tag; null when the server does not say (docs/API_CONTRACT.md, "Which app builds a release supports"). */
