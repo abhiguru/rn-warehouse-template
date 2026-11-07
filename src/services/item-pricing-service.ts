@@ -288,8 +288,6 @@ export const getItemPriceHistory = async (
 
 const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
   INVALID_PRICE_TYPE: 'pricing.error.generic',
-  PAST_DATE_NOT_ALLOWED: 'pricing.error.pastDateNotAllowed',
-  RATE_IN_FORCE_MANAGER_ONLY: 'pricing.error.rateInForceManagerOnly',
   ITEM_NOT_FOUND: 'pricing.error.itemNotFound',
   CUSTOMER_NOT_FOUND: 'pricing.error.customerNotFound',
   INVALID_BANDS: 'pricing.error.tooManyBands',
@@ -304,7 +302,6 @@ const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
   NOTHING_TO_MOVE: 'pricing.error.nothingToMove',
   STALE_RATES: 'pricing.error.staleRates',
   STALE_STANDARD_RATE: 'pricing.standard.error.stale',
-  STANDARD_RATE_MANAGER_ONLY: 'pricing.standard.error.managerOnly',
   // LATER_RATES_EXIST has no message: the screen's dialog explains.
 };
 

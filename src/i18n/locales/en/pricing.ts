@@ -210,7 +210,6 @@ export const pricing = {
     tagStandard: 'Standard',
     tagThisItem: 'This item',
     error: {
-      managerOnly: 'Only an administrator or supervisor can set the standard rate.',
       unconfirmed: "We couldn't confirm that the standard rate was saved. Reload it before you try again.",
       serverNeedsUpdate: "This cold storage's server needs an update before the standard rate is available.",
       serverNeedsUpdateSave: "This cold storage's server needs an update before the standard rate can be saved.",
@@ -275,8 +274,6 @@ export const pricing = {
     invalidDate: 'Choose a start date on or after {{date}}.',
     invalidDateWindow: 'Choose a start date within three years before today and two years after.',
     startTooFar: 'Choose a start date within two years after today.',
-    pastDateNotAllowed: 'Only an administrator or supervisor can start a rate in the past.',
-    rateInForceManagerOnly: 'Only an administrator or supervisor can change a rate that is already in force.',
     itemNotFound: 'This item is no longer active.',
     customerNotFound: 'This customer is no longer active.',
     tooManyBands: 'You can have up to 10 weight bands.',
