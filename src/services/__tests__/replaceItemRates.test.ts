@@ -86,8 +86,6 @@ describe('replaceItemRates', () => {
   it.each([
     ['INVALID_PRICE_TYPE', 'pricing.error.generic'],
     ['INVALID_DATE', 'pricing.error.invalidDateWindow'],
-    ['PAST_DATE_NOT_ALLOWED', 'pricing.error.pastDateNotAllowed'],
-    ['RATE_IN_FORCE_MANAGER_ONLY', 'pricing.error.rateInForceManagerOnly'],
     ['ITEM_NOT_FOUND', 'pricing.error.itemNotFound'],
     ['CUSTOMER_NOT_FOUND', 'pricing.error.customerNotFound'],
     ['INVALID_BANDS', 'pricing.error.tooManyBands'],
@@ -105,6 +103,14 @@ describe('replaceItemRates', () => {
     expect(result.message).toBe(t(key as TranslationKey));
     expect(result.message).not.toContain('English sentence');
   });
+
+  it.each(['PAST_DATE_NOT_ALLOWED', 'RATE_IN_FORCE_MANAGER_ONLY'])(
+    'has no text of its own for %s (the staff guard answers first): it falls to the generic text',
+    async code => {
+      rpc.mockResolvedValue(refused(code));
+      expect(await replaceItemRates(input)).toMatchObject({ success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic' as TranslationKey) });
+    }
+  );
 
   it('INVALID_DATE for a day more than two years ahead says so, with or without data.earliest', async () => {
     rpc.mockResolvedValue(refused('INVALID_DATE', { earliest: '2022-01-01' }));

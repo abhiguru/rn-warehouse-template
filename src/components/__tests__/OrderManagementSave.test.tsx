@@ -947,31 +947,31 @@ describe('a business that is deleted or deactivated', () => {
   it('shows the customer message for exactly the server refusal', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
     await act(async () => { renderer = create(editor()); });
-    expect(text()).toContain('This business is no longer active. Ask your cold storage.');
+    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
     expect(showAlert).not.toHaveBeenCalled();
     expect(service.getOrderWithItems).not.toHaveBeenCalled();
   });
 
-  it('gives staff the deactivated wording when they are refused, as the server only refuses deactivated or deleted', async () => {
+  it('gives staff the same not-in-the-list wording when they are refused (the server refuses only a deleted business)', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
     const onBusinessDeleted = jest.fn();
     await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView onBusinessDeleted={onBusinessDeleted} />); });
-    expect(text()).toContain('This business is deactivated. Turn it on in Customers to take orders.');
+    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
     expect(text()).not.toContain('Ask your cold storage');
     expect(onBusinessDeleted).toHaveBeenCalledTimes(1);
   });
 
-  it('older facility: staff refused for a business the record says is deactivated get the deactivated wording', async () => {
+  it('older facility: staff refused for a business the record says is deactivated get the not-in-the-list wording', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
     await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
-    expect(text()).toContain('This business is deactivated. Turn it on in Customers to take orders.');
+    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
     expect(text()).not.toContain('was deleted');
   });
 
-  it('older facility: a customer login refused for a deactivated business keeps the customer wording', async () => {
+  it('older facility: a customer login refused for a deactivated business gets the not-in-the-list wording', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
     await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" businessDeactivated />); });
-    expect(text()).toContain('This business is no longer active. Ask your cold storage.');
+    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
   });
 
   it('always asks the server, even when the record says deleted (an older facility marks deactivated businesses so)', async () => {
@@ -984,18 +984,18 @@ describe('a business that is deleted or deactivated', () => {
     expect(text()).not.toContain('was deleted');
   });
 
-  it('gives staff the deactivated wording after a refusal whenever the record says active=false (deleted or not)', async () => {
+  it('gives staff the not-in-the-list wording after a refusal whenever the record says active=false', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
     await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
     expect(service.getOrCreateOrder).toHaveBeenCalledTimes(1);
-    expect(text()).toContain('This business is deactivated. Turn it on in Customers to take orders.');
+    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
     expect(text()).not.toContain('was deleted');
   });
 
-  it('gives staff the plain sentence, not "was deleted", when the record could not be read', async () => {
+  it('gives staff the same sentence, not "was deleted", when the record could not be read', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
     await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessRecordUnread />); });
-    expect(text()).toContain('This business is no longer active. Ask your cold storage.');
+    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
     expect(text()).not.toContain('was deleted');
   });
 
