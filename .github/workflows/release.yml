@@ -16,12 +16,28 @@ jobs:
     # runner. No fork clause is needed: a tag is pushed only by a maintainer, and a fork's tag
     # runs in the fork, with the fork's own variables.
     runs-on: ${{ fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
+    # Whether the terms and privacy text is the lawyer-reviewed text (WH-140): the sign job attaches the APK only when this is 'true'.
+    outputs:
+      legal_reviewed: ${{ steps.legal.outputs.reviewed }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Legal text review flag (WH-140)
+        id: legal
+        # LEGAL_TEXT_REVIEWED in src/constants/legal.ts. A missing file or constant (a branch without WH-140) counts as not reviewed.
+        # The release still validates either way; only the APK attachment depends on it.
+        shell: bash
+        run: |
+          set -euo pipefail
+          reviewed=false
+          if [ -f src/constants/legal.ts ] && grep -Eq '^export const LEGAL_TEXT_REVIEWED[[:space:]]*(:[[:space:]]*boolean[[:space:]]*)?=[[:space:]]*true[[:space:]]*;' src/constants/legal.ts; then
+            reviewed=true
+          fi
+          echo "LEGAL_TEXT_REVIEWED reviewed=$reviewed"
+          echo "reviewed=$reviewed" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
@@ -152,6 +168,8 @@ jobs:
   sign:
     name: Sign and publish the neutral APK
     needs: release
+    # Refuses to attach the APK until the legal text is reviewed (WH-140); the job is then skipped, before any approval or secret is used.
+    if: ${{ needs.release.outputs.legal_reviewed == 'true' }}
     runs-on: ubuntu-latest
     environment: neutral-apk-release
     timeout-minutes: 15
@@ -219,7 +237,8 @@ jobs:
       RELEASE_TAG: ${{ github.ref_name }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      NOTE: 'No Android APK was published for this release: the signing step was rejected or failed. See the Release workflow run.'
+      NOTE: >-
+        ${{ needs.release.outputs.legal_reviewed == 'true' && 'No Android APK was published for this release: the signing step was rejected or failed. See the Release workflow run.' || 'No Android APK was published for this release: the terms and privacy text has not been reviewed by a lawyer yet (LEGAL_TEXT_REVIEWED is not true in src/constants/legal.ts).' }}
     steps:
       - shell: bash
         run: |
