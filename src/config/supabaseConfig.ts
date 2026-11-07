@@ -1237,8 +1237,7 @@ export type BreakGlassFailure =
   | 'session_changed'
   | 'failed';
 
-/** `retryAfterSeconds` is given only when the facility says how long a locked code must wait. */
-export type BreakGlassResult = AuthSuccessResult | { success: false; reason: BreakGlassFailure; retryAfterSeconds?: number };
+export type BreakGlassResult = AuthSuccessResult | { success: false; reason: BreakGlassFailure };
 
 const BREAK_GLASS_NAMED: readonly BreakGlassFailure[] = ['code_used', 'code_expired', 'code_locked'];
 
@@ -1269,12 +1268,7 @@ export const breakGlassSignIn = async (phone: string, code: string): Promise<Bre
       if (response.status === 503 || response.status === 404) return { success: false, reason: 'unavailable' };
       if (failureCode === 'invalid_code') return { success: false, reason: 'refused' };
       const named = BREAK_GLASS_NAMED.find(reason => reason === failureCode);
-      if (named) {
-        const wait = (result as { retry_after_seconds?: unknown } | undefined)?.retry_after_seconds;
-        return typeof wait === 'number' && Number.isFinite(wait) && wait > 0
-          ? { success: false, reason: named, retryAfterSeconds: Math.ceil(wait) }
-          : { success: false, reason: named };
-      }
+      if (named) return { success: false, reason: named };
       return { success: false, reason: 'failed' };
     }
     const session = result.data.session as { session_ends_at?: unknown } | undefined;

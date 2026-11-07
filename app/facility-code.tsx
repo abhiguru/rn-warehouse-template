@@ -18,7 +18,6 @@ import type { AppTooOldInfo } from '@/config/appTooOld';
 import { listFacilitiesForCode, prepareFacilityForCode } from '@/config/breakGlass';
 import type { MyFacility } from '@/config/centralFacilities';
 import { breakGlassSignIn, type BreakGlassFailure } from '@/config/supabaseConfig';
-import { formatTime } from '@/utils/formatters';
 import { useAppDispatch } from '@/store/hooks';
 import { setUserProfile } from '@/store/slices/authSlice';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -131,12 +130,7 @@ export default function FacilityCodeScreen() {
         dispatch(setUserProfile(result.data.userProfile));
         router.replace('/');
       } else if (!result.success && (result.reason === 'code_used' || result.reason === 'code_expired' || result.reason === 'code_locked')) {
-        const text = tr(REFUSAL_TEXT[result.reason]);
-        setCodeRefusal(
-          result.reason === 'code_locked' && result.retryAfterSeconds
-            ? `${text} ${tr('auth.facilityCode.tryAgainAfter', { time: formatTime(new Date(Date.now() + result.retryAfterSeconds * 1000)) })}`
-            : text
-        );
+        setCodeRefusal(tr(REFUSAL_TEXT[result.reason]));
       } else if (!result.success) {
         showAlert(tr('auth.facilityCode.couldNotSignInTitle'), tr(REFUSAL_TEXT[result.reason]));
       } else {
