@@ -89,6 +89,9 @@ export const REFUSAL = {
   INVOICE_HAS_PAYMENTS: 'INVOICE_HAS_PAYMENTS',
   /** The cancel reason is missing, blank, under 3 or over 500 characters (`min`, `max`). */
   CANCEL_REASON_INVALID: 'CANCEL_REASON_INVALID',
+  // Backend migration 162 (document numbering).
+  /** An invoice scheme change while an invoice exists in the current financial year. Nothing was changed. */
+  NUMBERING_SWITCH_MID_YEAR: 'NUMBERING_SWITCH_MID_YEAR',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

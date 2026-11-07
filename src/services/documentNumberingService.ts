@@ -10,6 +10,7 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t, type TranslationKey } from '@/i18n';
+import { refusalOf, REFUSAL } from '@/utils/serverRefusal';
 import { AppError } from '@/utils/appError';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { emptyAnswerAsError, errorCodeOf, isLostAnswer, serverText, transportText, withHttpStatus } from '@/utils/serverText';
@@ -98,6 +99,8 @@ export async function suggestDocumentNumber(type: DocumentType, date?: string): 
     handleGlobalAuthError(error);
     throw new Error(serverText(error.message, t(NEXT_FAILED[type])));
   }
+  // The server read the request and refused the switch of the invoice scheme mid-year; the text is the app's own.
+  if (refusalOf(data)?.reason === REFUSAL.NUMBERING_SWITCH_MID_YEAR) throw new Error(t('numbering.edit.switchMidYear'));
   if (!isRecord(data) || data.success === false) throw new Error(t(NEXT_FAILED[type]));
   const reason = data.reason === 'TYPE_IT' || data.reason === 'SERIES_FULL' ? data.reason : null;
   return {

@@ -97,6 +97,7 @@ export const numbering = {
     saveFailed: "Couldn't save the numbering. Check your connection and try again.",
     // The server answered and refused the values (SQLSTATE 22023): the connection is fine, so it is not blamed.
     refused: "The numbering wasn't saved because the server did not accept these values. Check them and try again.",
+    switchMidYear: 'Invoices already exist this financial year. The numbering can be changed from 1 April.',
     errors: {
       firstLetter: 'Enter one capital letter.',
       width: 'Enter a whole number from 1 to 7.',
