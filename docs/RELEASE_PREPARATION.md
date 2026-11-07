@@ -19,6 +19,37 @@ The `versionCode` formula leaves two digits for MINOR and for PATCH: from MINOR 
 Move to a new MAJOR (or change the formula in `app.config.js` and the test together) before that. `WAREHOUSE_ANDROID_VERSION_CODE`
 overrides the formula at build time; leave it unset, or keep it equal to the formula, so the code in the store follows the version.
 
+## Neutral APK
+
+Each `vX.Y.Z` tag publishes a neutral Android APK for facilities outside the association (package
+`in.gurucold.coldstorage`, name "Cold Storage", central sign-in off, version code from the tag). The association's
+Play build is built separately and is unchanged. `release.yml` builds the APK without any key, then the job `sign`
+waits for the owner's approval in the protected environment `neutral-apk-release`, signs the file with `apksigner`,
+checks that the certificate is the pinned one, and uploads `warehouse-vX.Y.Z.apk` and `SHA256SUMS` to the tag's
+release. If the build fails the release is not created; if the approval is rejected or signing fails, the release
+says that no APK was published. The build is marked neutral by `EXPO_PUBLIC_UPDATE_URL` (the latest-release page),
+which also makes **Update app** open that page ("Opens the download page").
+
+One-time setup by the owner (the key and the secrets are never handled by development):
+
+- Create the key and keep it, with its passwords, offline in a second place too. Never replace it: a different key
+  cannot be installed over the old app.
+  `keytool -genkeypair -v -keystore neutral.jks -alias neutral -keyalg RSA -keysize 4096 -validity 10000`
+- Settings, Environments: create `neutral-apk-release`, add the owner as required reviewer, restrict deployment to
+  tags `v*`.
+- In that environment, add the secrets `NEUTRAL_APK_KEYSTORE_BASE64` (`base64 -w0 neutral.jks`),
+  `NEUTRAL_APK_KEYSTORE_PASSWORD`, `NEUTRAL_APK_KEY_ALIAS` and `NEUTRAL_APK_KEY_PASSWORD`, and the (not secret)
+  variable `NEUTRAL_APK_CERT_SHA256`: the certificate's SHA-256 from `keytool -list -v -keystore neutral.jks`.
+- Register the package and its key for Google's Android developer verification before the first public release.
+
+Checklist for every release:
+
+- [ ] The run passed, the owner approved the signing, and the release carries `warehouse-vX.Y.Z.apk` and `SHA256SUMS`.
+- [ ] `sha256sum -c SHA256SUMS` passes on the downloaded files.
+- [ ] `apksigner verify --print-certs` shows the neutral key's certificate, not the debug key or the association's.
+- [ ] On one phone, install this APK over the previous release's APK: the sign-in and the facility are kept.
+- [ ] The Android target SDK follows [SDK_UPGRADE.md](SDK_UPGRADE.md).
+
 ## What is ready to use
 
 - `eas.json` has development, internal preview, and store production build
