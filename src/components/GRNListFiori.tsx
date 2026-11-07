@@ -550,6 +550,8 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   const [refreshError, setRefreshError] = useState(false);
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [loadedAt, setLoadedAt] = useState(() => Date.now());
+  // The rows on screen came from the phone's saved copy (the server could not be reached): they always say when they were loaded.
+  const [fromSavedCopy, setFromSavedCopy] = useState(false);
 
   // Filters, search and sort
   const filters = useListFilters(GRN_FILTERS);
@@ -660,6 +662,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           setLoadMoreFailed(false);
           // A page answered from the phone's saved copy was loaded when that copy was stored, not now.
           setLoadedAt(result.fromCache && result.cachedAt ? result.cachedAt : Date.now());
+          setFromSavedCopy(Boolean(result.fromCache));
           shownRequest.current = requestKey;
           if (!keepPlace) listRef.current?.scrollToOffset({ offset: 0, animated: false });
         }
@@ -905,7 +908,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
 
   // Offline with no failed refresh: the top of the list says when the cards were loaded (§14.9). A failed
   // refresh says it in its strip instead.
-  const offlineUpdatedAt = isOffline && !refreshError ? loadedAt : undefined;
+  const offlineUpdatedAt = (isOffline || fromSavedCopy) && !refreshError ? loadedAt : undefined;
   const renderListHeader = useCallback(
     () => (offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="grn-last-updated" /> : null),
     [offlineUpdatedAt]

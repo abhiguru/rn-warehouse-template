@@ -168,6 +168,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const [refreshError, setRefreshError] = useState(false);
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [loadedAt, setLoadedAt] = useState(() => Date.now());
+  // The rows on screen came from the phone's saved copy (the server could not be reached): they always say when they were loaded.
+  const [fromSavedCopy, setFromSavedCopy] = useState(false);
   /** A customer account's history is capped: a lasting fact about the list, not an event. */
   const [historyLimited, setHistoryLimited] = useState(false);
   const isOffline = useIsOffline();
@@ -251,6 +253,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         setLoadMoreFailed(false);
         // A list answered from the phone's saved copy was loaded when that copy was stored, not now.
         setLoadedAt(response.fromCache && response.cachedAt ? response.cachedAt : Date.now());
+        setFromSavedCopy(Boolean(response.fromCache));
         setHistoryLimited(Boolean(pagination.history_limit_reached));
         shownRequest.current = requestKey;
         // A new search, filter or sort starts from its first row.
@@ -435,7 +438,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 
   // Offline with no failed refresh: the first heading (or, with no headings, the top of the list) says when the
   // cards were loaded (§14.9). A failed refresh says it in its strip instead.
-  const offlineUpdatedAt = isOffline && !refreshError ? loadedAt : undefined;
+  const offlineUpdatedAt = (isOffline || fromSavedCopy) && !refreshError ? loadedAt : undefined;
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Dispatch>; index: number }) => {
     if (item.type === 'header') {
