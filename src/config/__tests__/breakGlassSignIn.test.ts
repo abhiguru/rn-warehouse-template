@@ -105,20 +105,6 @@ it.each([
   expect(await readSessionEnd()).toBeNull();
 });
 
-// WH-126. The facility today sends no wait with a facility-code answer (only the resend cooldown carries one); the app
-// passes a wait on when the facility sends a usable one, and ignores any other value.
-it.each([
-  [600, { retryAfterSeconds: 600 }],
-  [90.2, { retryAfterSeconds: 91 }],
-  [0, {}],
-  [-5, {}],
-  ['soon', {}],
-  [null, {}],
-])('a code_locked answer with retry_after_seconds %p gives %p', async (wait, extra) => {
-  jest.mocked(global.fetch).mockResolvedValue(answer({ success: false, error: 'x', code: 'code_locked', retry_after_seconds: wait }, 400));
-  expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason: 'code_locked', ...extra });
-});
-
 it('keeps a used or expired code apart from a locked one, with no wait', async () => {
   jest.mocked(global.fetch).mockResolvedValue(fail(400, 'code_used'));
   expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason: 'code_used' });

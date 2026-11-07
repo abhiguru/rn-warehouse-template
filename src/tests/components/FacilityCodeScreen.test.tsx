@@ -139,9 +139,9 @@ describe('a used, expired or locked facility code (WH-126)', () => {
   };
 
   it.each([
-    ['code_used', 'This code has already been used. Ask your administrator for a new one.'],
-    ['code_expired', 'This code has expired. Ask your administrator for a new one.'],
-    ['code_locked', 'Too many wrong tries. Wait and try again later.'],
+    ['code_used', 'This code has already been used. Ask your facility for a new code.'],
+    ['code_expired', 'This code has expired. Ask your facility for a new code.'],
+    ['code_locked', 'This code is locked after too many wrong tries. Ask your facility for a new code.'],
   ] as const)('%s shows its own text under the code boxes, keeps the typed code and raises no alert', async (reason, text) => {
     jest.mocked(breakGlassSignIn).mockResolvedValue({ success: false, reason });
     await toCodeStep();
@@ -154,21 +154,16 @@ describe('a used, expired or locked facility code (WH-126)', () => {
     expect(router.replace).not.toHaveBeenCalled();
   });
 
-  it('a locked answer with a wait adds the time, in the person\'s language and digits', async () => {
-    const now = new Date(2026, 10, 7, 9, 0, 0).getTime();
-    jest.spyOn(Date, 'now').mockReturnValue(now);
-    jest.mocked(breakGlassSignIn).mockResolvedValue({ success: false, reason: 'code_locked', retryAfterSeconds: 600 });
-    await toCodeStep();
-    await typeAndVerify();
-    expect(refusalText()).toBe('Too many wrong tries. Wait and try again later. Try again after 9:10 am.');
-
-    act(() => tree.unmount());
+  it.each([
+    ['code_used', 'આ કોડ વપરાઈ ગયો છે. તમારી ફેસિલિટી પાસેથી નવો કોડ માંગો.'],
+    ['code_expired', 'આ કોડનો સમય પૂરો થયો છે. તમારી ફેસિલિટી પાસેથી નવો કોડ માંગો.'],
+    ['code_locked', 'ઘણા ખોટા પ્રયાસો પછી આ કોડ બંધ થઈ ગયો છે. તમારી ફેસિલિટી પાસેથી નવો કોડ માંગો.'],
+  ] as const)('%s is told in Gujarati with the facility wording, and a locked code is never told to wait', async (reason, text) => {
     setLanguage('gu');
+    jest.mocked(breakGlassSignIn).mockResolvedValue({ success: false, reason });
     await toCodeStep();
     await typeAndVerify();
-    expect(refusalText()).toMatch(/૯:૧૦/);
-    expect(refusalText()).not.toMatch(/[0-9]/);
-    jest.restoreAllMocks();
+    expect(refusalText()).toBe(text);
   });
 
   it('the text goes when the person tries again and the next answer is another refusal', async () => {
