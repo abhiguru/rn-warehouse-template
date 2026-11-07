@@ -65,8 +65,12 @@ const LOAD_ERROR_KEY: TranslationKey = 'components.printJobs.loadFailed';
 const SNACKBAR_DURATION_MS = 4000;
 
 
-/** The states cancel-print-job accepts (backend CANCELLABLE_STATUSES). */
-const CANCELLABLE_STATUSES: ReadonlyArray<PrintJob['status']> = ['queued', 'printing'];
+/**
+ * Cancel works only for a job that is printing and has the CUPS job id the submission returned
+ * (backend cancelDecision: a queued row never has one, so Cancel would always answer "can't be cancelled").
+ */
+const canCancel = (job: PrintJob): boolean =>
+  job.status === 'printing' && typeof job.cups_job_id === 'number' && Number.isInteger(job.cups_job_id) && job.cups_job_id > 0;
 
 /** Print job status → Fiori status (guide §3.5). */
 const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: IconName; labelKey: TranslationKey }> = {
@@ -493,7 +497,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           <View style={styles.jobFooter}>
             <Text style={styles.timestampText}>{formatRelativeTime(job.created_at)}</Text>
 
-            {CANCELLABLE_STATUSES.includes(job.status) && activeTab === 'inProgress' && (
+            {canCancel(job) && activeTab === 'inProgress' && (
               <Pressable
                 onPress={() => handleCancelJob(job.id)}
                 style={({ pressed }) => [

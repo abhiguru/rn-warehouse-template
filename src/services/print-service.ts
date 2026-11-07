@@ -55,7 +55,7 @@ export interface PrintJobResponse {
 export interface PrintJob {
   id: string;
   job_type: string; // Backend returns "GRN", "Dispatch", "Invoice" (capitalized)
-  cups_job_id: number;
+  cups_job_id: number | null;
   status: 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'unknown';
   created_at: string;
   user_id: string;
@@ -261,7 +261,7 @@ async function sendPrintJob(
         status: response.status,
         ...(code ? { code } : {}),
         kind: upgrading ? 'other' : classifyFailure(response.status, code, unconfirmed, true),
-        error: serverText(upgradingBody(data) ?? data.error, t('errors.print.httpError', { status: String(response.status) })),
+        error: serverText(upgradingBody(data) ?? data.error, t('errors.print.submitFailed')),
         ...(unconfirmed ? { unconfirmed: true } : {}),
       };
     }
