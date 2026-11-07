@@ -91,9 +91,9 @@ it('posts the phone and the code with the anon key and stores the session with i
 
 it.each([
   ['invalid_code', 400, 'refused'],
-  ['code_used', 400, 'refused'],
-  ['code_expired', 400, 'refused'],
-  ['code_locked', 400, 'refused'],
+  ['code_used', 400, 'code_used'],
+  ['code_expired', 400, 'code_expired'],
+  ['code_locked', 400, 'code_locked'],
   ['customer_not_allowed', 403, 'failed'], // WH-32: the backend never sends it; no longer a reason of its own
   [undefined, 429, 'rate_limited'],
   [undefined, 503, 'unavailable'],
@@ -103,6 +103,27 @@ it.each([
   expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason });
   expect((await getStoredToken()).isValid).toBe(false);
   expect(await readSessionEnd()).toBeNull();
+});
+
+// WH-126. The facility today sends no wait with a facility-code answer (only the resend cooldown carries one); the app
+// passes a wait on when the facility sends a usable one, and ignores any other value.
+it.each([
+  [600, { retryAfterSeconds: 600 }],
+  [90.2, { retryAfterSeconds: 91 }],
+  [0, {}],
+  [-5, {}],
+  ['soon', {}],
+  [null, {}],
+])('a code_locked answer with retry_after_seconds %p gives %p', async (wait, extra) => {
+  jest.mocked(global.fetch).mockResolvedValue(answer({ success: false, error: 'x', code: 'code_locked', retry_after_seconds: wait }, 400));
+  expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason: 'code_locked', ...extra });
+});
+
+it('keeps a used or expired code apart from a locked one, with no wait', async () => {
+  jest.mocked(global.fetch).mockResolvedValue(fail(400, 'code_used'));
+  expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason: 'code_used' });
+  jest.mocked(global.fetch).mockResolvedValue(fail(400, 'code_expired'));
+  expect(await breakGlassSignIn('+919000000002', '482913')).toEqual({ success: false, reason: 'code_expired' });
 });
 
 it.each([

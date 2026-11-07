@@ -129,3 +129,56 @@ it('explains an empty list and goes back', async () => {
   await act(async () => { tree.root.findAllByType(Button).find(b => b.props.children === 'Back')!.props.onPress(); });
   expect(router.back).toHaveBeenCalled();
 });
+
+describe('a used, expired or locked facility code (WH-126)', () => {
+  const codeInput = () => tree.root.find(n => n.props.textContentType === 'oneTimeCode' && typeof n.props.onChangeText === 'function');
+  const refusalText = () => tree.root.findAll(n => n.props.testID === 'code-refusal' && typeof n.props.accessibilityLabel === 'string')[0]?.props.accessibilityLabel as string | undefined;
+  const typeAndVerify = async () => {
+    await act(async () => { codeInput().props.onChangeText('482913'); });
+    await act(async () => { await tree.root.findByType(CodeEntryForm).props.onVerify('482913'); });
+  };
+
+  it.each([
+    ['code_used', 'This code has already been used. Ask your administrator for a new one.'],
+    ['code_expired', 'This code has expired. Ask your administrator for a new one.'],
+    ['code_locked', 'Too many wrong tries. Wait and try again later.'],
+  ] as const)('%s shows its own text under the code boxes, keeps the typed code and raises no alert', async (reason, text) => {
+    jest.mocked(breakGlassSignIn).mockResolvedValue({ success: false, reason });
+    await toCodeStep();
+    expect(refusalText()).toBeUndefined();
+    await typeAndVerify();
+    expect(refusalText()).toBe(text);
+    expect(texts()).toContain(text);
+    expect(codeInput().props.value).toBe('482913');
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('a locked answer with a wait adds the time, in the person\'s language and digits', async () => {
+    const now = new Date(2026, 10, 7, 9, 0, 0).getTime();
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    jest.mocked(breakGlassSignIn).mockResolvedValue({ success: false, reason: 'code_locked', retryAfterSeconds: 600 });
+    await toCodeStep();
+    await typeAndVerify();
+    expect(refusalText()).toBe('Too many wrong tries. Wait and try again later. Try again after 9:10 am.');
+
+    act(() => tree.unmount());
+    setLanguage('gu');
+    await toCodeStep();
+    await typeAndVerify();
+    expect(refusalText()).toMatch(/૯:૧૦/);
+    expect(refusalText()).not.toMatch(/[0-9]/);
+    jest.restoreAllMocks();
+  });
+
+  it('the text goes when the person tries again and the next answer is another refusal', async () => {
+    jest.mocked(breakGlassSignIn).mockResolvedValueOnce({ success: false, reason: 'code_used' });
+    await toCodeStep();
+    await typeAndVerify();
+    expect(refusalText()).toContain('already been used');
+    jest.mocked(breakGlassSignIn).mockResolvedValueOnce({ success: false, reason: 'refused' });
+    await typeAndVerify();
+    expect(refusalText()).toBeUndefined();
+    expect(showAlert).toHaveBeenCalledWith("Couldn't sign in", expect.stringContaining("doesn't work"));
+  });
+});
