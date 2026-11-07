@@ -56,6 +56,8 @@ import { publishUserListChange } from '@/utils/userListSync';
 import { normalizeRole, userManagementActions, userPageKind } from '@/config/roles';
 import { SignedInDevicesSection } from '@/features/users/components/SignedInDevicesSection';
 import { mayListSessions } from '@/features/users/sessionDevices';
+import { MakeSignInCodeSection } from '@/features/users/components/MakeSignInCodeSection';
+import { getActiveOperatorServer } from '@/config/operatorServer';
 
 /** "… is now an admin." is one sentence per role: the article and word order differ by language. */
 const ROLE_CHANGED_KEYS: Record<UserRole, TranslationKey> = {
@@ -914,6 +916,11 @@ export default function UserEditScreen() {
           {/* Signed-in devices (backend migration 140): administrators, and supervisors for anyone but an administrator. */}
           {mayListSessions(normalizeRole(userProfile?.role), user?.role) && user?.id ? (
             <SignedInDevicesSection userId={user.id} />
+          ) : null}
+
+          {/* Pairing code (WH-146): a facility on its local network only has no SMS sign-in; an administrator signs a person in with a QR code. */}
+          {normalizeRole(userProfile?.role) === 'admin' && getActiveOperatorServer()?.kind === 'local' && user?.id && user.active !== false ? (
+            <MakeSignInCodeSection userId={user.id} name={user.name || ''} />
           ) : null}
           </>
         )}

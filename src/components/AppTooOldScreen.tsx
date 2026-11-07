@@ -40,9 +40,10 @@ const makeStyles = (t: ThemeTokens) => ({
   title: { ...typography.title2, color: t.text.primary, textAlign: 'center' as const, marginBottom: space.sm },
   message: { ...typography.body, color: t.text.secondary, textAlign: 'center' as const, marginBottom: space.xxl },
   actions: { alignSelf: 'stretch' as const, gap: space.sm },
+  hint: { ...typography.footnote, color: t.text.secondary, textAlign: 'center' as const },
 });
 
-const AppTooOldScreen: React.FC<AppTooOldScreenProps> = ({ minimum, current, updateUrl, onClose }) => {
+const AppTooOldScreen: React.FC<AppTooOldScreenProps> = ({ minimum, current, updateUrl, facilityDownload, onClose }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
@@ -77,8 +78,11 @@ const AppTooOldScreen: React.FC<AppTooOldScreenProps> = ({ minimum, current, upd
                 icon="open-in-new"
                 label={tr('components.appTooOld.update')}
                 onPress={openUpdate}
-                accessibilityHint={tr('components.appTooOld.updateHint')}
+                accessibilityHint={tr(facilityDownload ? 'components.appTooOld.opensFacilityDownload' : 'components.appTooOld.updateHint')}
               />
+            ) : null}
+            {updateUrl && facilityDownload ? (
+              <Text style={styles.hint}>{tr('components.appTooOld.opensFacilityDownload')}</Text>
             ) : null}
             <StateActionButton
               fullWidth

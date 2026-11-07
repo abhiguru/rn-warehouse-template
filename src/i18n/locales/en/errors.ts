@@ -213,6 +213,7 @@ export const errors = {
     otpTooMany: 'Too many codes have been requested. Try again later.',
     enrollmentLimited: 'Too many new access requests today. Try again tomorrow.',
     otpSendFailed: 'Failed to send OTP',
+    localOnly: 'This facility signs in with a code from its administrator. On the first screen, tap Scan facility code.',
     verificationFailed: 'Verification failed',
     otpVerificationFailed: 'OTP verification failed',
     invalidResponse: 'Invalid authentication response',

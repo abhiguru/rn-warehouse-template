@@ -738,6 +738,8 @@ async function operatorOtpRequest(
     honorSwitch: action !== 'signout',
   });
   if (!response.ok || result.success !== true) {
+    // A facility on its local network only has no SMS sign-in (WH-146): people come in by a pairing code.
+    if (response.status === 403 && result.code === 'local_only') return { success: false, error: t('errors.auth.localOnly') };
     const retryAfterSeconds = retryAfterSecondsOf(response, result);
     const limit = otpLimit(response.status, result.error || result.message, retryAfterSeconds);
     if (limit) return { success: false, ...limit, retryAfterSeconds };
@@ -1359,6 +1361,42 @@ export const breakGlassSignIn = async (phone: string, code: string): Promise<Bre
   } catch (error) {
     if (isGateSignal(error) || getAppErrorCode(error) === 'SESSION_CHANGED') return { success: false, reason: 'session_changed' };
     return { success: false, reason: 'network' };
+  }
+};
+
+export type PairedSignInResult = { success: true; userProfile: UserProfile } | { success: false; reason: 'session_changed' | 'failed' };
+
+/**
+ * Keeps the session a pairing code gave (WH-146; src/config/localPairing.ts opened it from the sealed answer): the tokens and
+ * the warehouse network key go to secure storage exactly as a sign-in's do (`completeOperatorSignIn`). The answer carries
+ * no profile, so it is read from the facility with the new session. A local facility signs everything, so a session
+ * without a well-formed key is not kept. A session that could not be kept in full is removed and ended on the server.
+ */
+export const pairedSignIn = async (session: Record<string, unknown>): Promise<PairedSignInResult> => {
+  const refreshToken = typeof session.refresh_token === 'string' ? session.refresh_token : null;
+  if (!parseLanKey(session.lan_key_id, session.lan_key)) {
+    if (refreshToken) void revokeSession(refreshToken);
+    return { success: false, reason: 'failed' };
+  }
+  const generation = await startNewSession();
+  try {
+    const completed = await completeOperatorSignIn({ action: 'login', session }, generation).catch(() => null);
+    if (generation !== getSessionGeneration()) {
+      if (refreshToken) void revokeSession(refreshToken);
+      return { success: false, reason: 'session_changed' };
+    }
+    const profile = completed?.success && completed.data.action === 'login' ? await loadUserProfile(generation, true).catch(() => null) : null;
+    if (!profile) {
+      if (generation === getSessionGeneration()) {
+        await clearStoredTokens().catch(() => {});
+        if (refreshToken) await revokeSession(refreshToken);
+      }
+      return { success: false, reason: generation !== getSessionGeneration() ? 'session_changed' : 'failed' };
+    }
+    return { success: true, userProfile: profile as UserProfile };
+  } catch (error) {
+    if (isGateSignal(error) || getAppErrorCode(error) === 'SESSION_CHANGED') return { success: false, reason: 'session_changed' };
+    return { success: false, reason: 'failed' };
   }
 };
 

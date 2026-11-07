@@ -86,12 +86,22 @@ export const components = {
     title: "This facility's server needs an update",
     message: "The facility's server is older than this version of the app works with. Ask the facility to update its server, then try again.",
   },
+  // Alerts of a facility on its local network only (WH-146), for administrators, at the top of Home
+  serverAlert: {
+    banner: 'Server alert: {{alert}}',
+    moreCount: '{{count}} more',
+    details: 'Details',
+    detailsHint: 'Shows when the alert started and what to do',
+    since: 'Since {{time}}',
+    close: 'Close',
+  },
   appTooOld: {
     title: 'Update the app',
     message: 'This facility needs app version {{minimum}} or newer. You have {{current}}.',
     update: 'Get the update',
     updateHint: 'Opens the page where the update is published',
     noLink: 'Ask the facility where to get the new version.',
+    opensFacilityDownload: "Opens your facility's download page",
   },
   upgrading: {
     title: 'Server being updated',

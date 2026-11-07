@@ -112,6 +112,11 @@ export type LanContext = {
   lan: string | null;
   /** The facility's `instanceId`: the LAN address must answer with it before a credential is sent. */
   instanceId: string;
+  /**
+   * A facility on its local network only (WH-146): `canonical` is a placeholder that never resolves, so the warehouse
+   * network is the only path: every request goes there, signed, with no public probe and no switching.
+   */
+  localOnly?: boolean;
 };
 
 export type LanStatus = {
@@ -244,6 +249,7 @@ export function setLanContext(next: LanContext | null): void {
       next !== null &&
       context.canonical === next.canonical &&
       context.lan === next.lan &&
+      context.localOnly === next.localOnly &&
       context.instanceId === next.instanceId);
   if (same) return;
   context = next;
@@ -251,6 +257,7 @@ export function setLanContext(next: LanContext | null): void {
   answerChanged = false;
   clockOffsetSec = null;
   resetPath();
+  if (next?.localOnly && next.lan) path = 'lan';
   if (next?.lan) void loadLanKey();
   publish();
 }
@@ -268,7 +275,10 @@ export function noteNetworkState(next: NetworkSnapshot): void {
   network = next;
   networkKey = key;
   // The first reading only says where the phone has been all along: nothing was remembered about another network.
-  if (!first) resetPath();
+  if (!first) {
+    resetPath();
+    if (context?.localOnly && context.lan) path = 'lan';
+  }
   for (const waiter of [...networkWaiters]) waiter();
   publish();
 }
@@ -1027,6 +1037,34 @@ function giveUp(attempt: Extract<Attempt, { ok: false }>): Response {
 }
 
 /**
+ * A request of a facility on its local network only (WH-146): always the warehouse network, signed like any request on it
+ * (`send` signs, and checks the answer). No public attempt, no probe and no switching: when the network is not the
+ * facility's, or the key is missing, the request fails as one that got no answer.
+ */
+async function localOnlyFetch(
+  ctx: LanContext,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  url: string,
+  read: boolean
+): Promise<Response> {
+  if (!ctx.lan) throw networkFailure('unsignable');
+  if (path !== 'lan') {
+    path = 'lan';
+    failure = null;
+    publish();
+  }
+  await whenNetworkKnown(NETWORK_KNOWN_WAIT_MS);
+  if (context !== ctx) throw networkFailure('unsignable');
+  // Nothing is sent to a private address from a network that cannot hold it.
+  if (!lanUsableHere()) throw networkFailure('netinfo');
+  await loadLanKey();
+  if (!isUnsignedRequest(input, init, url, ctx.canonical) && !currentKey()) throw networkFailure('lan-key');
+  const attempt = await send('lan', input, url, init, ctx, read, false);
+  return attempt.ok ? attempt.response : giveUp(attempt);
+}
+
+/**
  * `fetch` for a request to the facility's canonical origin, with the fallback rule above. With no LAN
  * address known (the server offers none, or nobody is signed in) this is exactly `fetch(input, init)`.
  * `read` is true for a request that changes nothing on the server and may be sent again.
@@ -1038,6 +1076,7 @@ export async function transportFetch(
 ): Promise<Response> {
   const ctx = context;
   const url = urlOf(input);
+  if (ctx?.localOnly && startsWithOrigin(url, ctx.canonical)) return localOnlyFetch(ctx, input, init, url, options.read);
   if (!ctx?.lan || !startsWithOrigin(url, ctx.canonical) || PUBLIC_ONLY.test(url.slice(ctx.canonical.length)))
     return fetch(input, init);
   // On the LAN path but no longer on a network that can hold the address (NetInfo has not said so yet, or the

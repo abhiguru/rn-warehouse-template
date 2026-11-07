@@ -6,7 +6,8 @@ import { withLocalizedBootstrapErrors } from './bootstrapErrors';
 import type { PublicConfig } from '@/services/configService';
 import { t } from '@/i18n';
 import { isHostPartChange, parseLanOrigin } from './lanAddress';
-import { setLanContext, toCanonicalUrl, transportFetch } from './lanTransport';
+import { getLanContext, setLanContext, toCanonicalUrl, transportFetch } from './lanTransport';
+import { isLocalOnlyOrigin } from './localFacility';
 import { rememberFacilityLan } from './facilityLanMemory';
 import { AppTooOldError } from './appTooOld';
 import { clearUpgradeNotice } from './upgradeNotice';
@@ -32,6 +33,11 @@ export type OperatorServer = {
    * while the server sends an address: it is dropped when the server sends a different value or none.
    */
   lanTyped?: { address: string; serverValue: string | null };
+  /**
+   * `local`: a facility on its local network only (WH-146), added by pairing and never by a typed address. Its `origin` is a
+   * placeholder (src/config/localFacility.ts), `lan` is its only path and `instanceId` its identity.
+   */
+  kind?: 'local';
 };
 
 let activeServer: OperatorServer | null = null;
@@ -51,13 +57,14 @@ export function lanAddressOf(server: OperatorServer | null | undefined): string 
  * stays only next to the server's own address, and only as a change of its host part.
  */
 function withValidLanFields(server: OperatorServer): OperatorServer {
-  const { lan, lanTyped, ...rest } = server;
+  const { lan, lanTyped, kind, ...rest } = server;
   const savedLan = parseLanOrigin(lan);
   const typed = lanTyped ? parseLanOrigin(lanTyped.address) : null;
   const typedFrom = lanTyped ? parseLanOrigin(lanTyped.serverValue) : null;
   const keepTyped = Boolean(savedLan && typed && typedFrom === savedLan && isHostPartChange(savedLan, typed));
   return {
     ...rest,
+    ...(kind === 'local' && isLocalOnlyOrigin(rest.origin) && savedLan ? { kind } : {}),
     ...(savedLan ? { lan: savedLan } : {}),
     ...(keepTyped && typed ? { lanTyped: { address: typed, serverValue: typedFrom } } : {}),
   };
@@ -66,7 +73,14 @@ function withValidLanFields(server: OperatorServer): OperatorServer {
 /** Tells the transport which server is selected and where its LAN address is. */
 function syncLanContext(server: OperatorServer | null): void {
   setLanContext(
-    server ? { canonical: server.origin, lan: lanAddressOf(server), instanceId: server.instanceId } : null
+    server
+      ? {
+          canonical: server.origin,
+          lan: lanAddressOf(server),
+          instanceId: server.instanceId,
+          ...(server.kind === 'local' ? { localOnly: true } : {}),
+        }
+      : null
   );
 }
 
@@ -93,7 +107,12 @@ export function compareVersions(current: string, minimum: string): number {
  * then says to ask the facility. The build's own id comes first so that a stale environment value can never send the person
  * to another app's listing.
  */
-export function updateUrlOf(): string | undefined {
+export function updateUrlOf(origin?: string): string | undefined {
+  // A facility on its local network only (WH-146): the update is the server's own download page, not a store listing.
+  if (origin && isLocalOnlyOrigin(origin)) {
+    const lan = getLanContext()?.lan;
+    return lan ? `${lan}/app` : undefined;
+  }
   if (Platform.OS !== 'android') return undefined;
   const isReal = (id: string) => /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}$/.test(id) && !id.startsWith('com.example');
   const built = (Constants.expoConfig?.android?.package || '').trim();
@@ -120,7 +139,8 @@ export function validateOperatorDiscovery(json: unknown, origin: string): Public
       t('errors.server.requiresAppVersion', { version: config.minimumClientVersion }),
       config.minimumClientVersion,
       currentVersion,
-      updateUrlOf()
+      updateUrlOf(origin),
+      isLocalOnlyOrigin(origin)
     );
   return config;
 }
@@ -182,6 +202,8 @@ export async function loadOperatorServer(): Promise<OperatorServer | null> {
     if (parseOperatorOrigin(saved.origin) !== saved.origin || !saved.instanceId || !saved.displayName)
       throw new Error('Invalid saved server');
     activeServer = withValidLanFields(saved);
+    // A local facility needs its placeholder origin and an address on the warehouse network: without them it is damaged.
+    if (saved.kind === 'local' && activeServer.kind !== 'local') throw new Error('Invalid saved local facility');
     syncLanContext(activeServer);
     return activeServer;
   } catch {
@@ -203,7 +225,12 @@ export async function saveOperatorServer(server: OperatorServer, notify = true):
   const previous = activeServer;
   const sameServer = previous?.origin === server.origin && previous.instanceId === server.instanceId;
   const next = sameServer && server.lan === undefined && server.lanTyped === undefined
-    ? withValidLanFields({ ...server, ...(previous.lan ? { lan: previous.lan } : {}), ...(previous.lanTyped ? { lanTyped: previous.lanTyped } : {}) })
+    ? withValidLanFields({
+        ...server,
+        ...(previous.lan ? { lan: previous.lan } : {}),
+        ...(previous.lanTyped ? { lanTyped: previous.lanTyped } : {}),
+        ...(previous.kind ? { kind: previous.kind } : {}),
+      })
     : withValidLanFields(server);
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   activeServer = next;
@@ -226,6 +253,8 @@ export async function saveOperatorServer(server: OperatorServer, notify = true):
 export async function recordServerLanAddress(origin: string, value: unknown): Promise<void> {
   const current = activeServer;
   if (!current || current.origin !== origin) return;
+  // A local facility's address is its only path and is changed by pairing or by the person (Change address), never by an answer.
+  if (current.kind === 'local') return;
   const offered = parseLanOrigin(value);
   const { lan: _lan, lanTyped, ...rest } = current;
   const typedStays = Boolean(offered && lanTyped && lanTyped.serverValue === offered && isHostPartChange(offered, lanTyped.address));

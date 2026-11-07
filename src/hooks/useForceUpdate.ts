@@ -13,6 +13,7 @@ import { useMemo } from 'react';
 import { Platform, Linking } from 'react-native';
 import Constants from 'expo-constants';
 import { useAppSelector } from '@/store/hooks';
+import { getActiveOperatorServer, lanAddressOf } from '@/config/operatorServer';
 
 /**
  * Default store URLs
@@ -34,6 +35,8 @@ export interface ForceUpdateStatus {
   isConfigLoaded: boolean;
   /** URL to the appropriate app store */
   storeUrl: string;
+  /** The update is the facility's own download page, `<lan>/app` (a facility on its local network only, WH-146) */
+  facilityDownload: boolean;
   /** Function to open the app store */
   openStore: () => Promise<void>;
 }
@@ -102,13 +105,18 @@ export function useForceUpdate(): ForceUpdateStatus {
   // Get store URLs from config or use defaults
   const storeUrls = publicConfig?.storeUrls ?? DEFAULT_STORE_URLS;
 
+  // A facility on its local network only has no store listing: the update is its own download page (WH-146).
+  const server = getActiveOperatorServer();
+  const facilityLan = server?.kind === 'local' ? lanAddressOf(server) : null;
+
   // Determine the appropriate store URL based on platform
   const storeUrl = useMemo(() => {
+    if (facilityLan) return `${facilityLan}/app`;
     if (Platform.OS === 'ios') {
       return storeUrls.ios ?? DEFAULT_STORE_URLS.ios;
     }
     return storeUrls.android ?? DEFAULT_STORE_URLS.android;
-  }, [storeUrls]);
+  }, [storeUrls, facilityLan]);
 
   // Check if update is required
   const updateRequired = useMemo(() => {
@@ -122,6 +130,11 @@ export function useForceUpdate(): ForceUpdateStatus {
   // Function to open the app store
   const openStore = async (): Promise<void> => {
     try {
+      if (facilityLan) {
+        // The page is plain http on the warehouse network; the phone's browser opens it.
+        await Linking.openURL(storeUrl);
+        return;
+      }
       const canOpen = await Linking.canOpenURL(storeUrl);
       if (canOpen) {
         await Linking.openURL(storeUrl);
@@ -145,6 +158,7 @@ export function useForceUpdate(): ForceUpdateStatus {
     currentVersion,
     minimumVersion,
     isConfigLoaded: publicConfig !== null,
+    facilityDownload: facilityLan !== null,
     storeUrl,
     openStore,
   };
