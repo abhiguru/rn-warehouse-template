@@ -5,6 +5,14 @@ Open-source React Native warehouse client built with Expo SDK 58 / React Native
 companion backend, [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template),
 through that installation's canonical HTTPS origin. MIT licensed.
 
+## What this release is for
+
+For cold storages, used on Android and iPhone phones. Each facility runs its own server.
+
+Not supported: e-invoicing (IRN), statutory warehouse receipts, one view across several facilities, tablets and office screens, and storage charged other than by package and month.
+
+General warehouses are not the target yet. Tell us in an issue if you need it.
+
 ## Quickstart
 
 Prerequisites:

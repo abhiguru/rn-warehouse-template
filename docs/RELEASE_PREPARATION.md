@@ -19,6 +19,11 @@ The `versionCode` formula leaves two digits for MINOR and for PATCH: from MINOR 
 Move to a new MAJOR (or change the formula in `app.config.js` and the test together) before that. `WAREHOUSE_ANDROID_VERSION_CODE`
 overrides the formula at build time; leave it unset, or keep it equal to the formula, so the code in the store follows the version.
 
+## Gujarati texts before a release
+
+Contributors may add English-only texts. Before a release, no English text may lack a Gujarati draft: add the drafts from
+[GUJARATI_GLOSSARY.md](GUJARATI_GLOSSARY.md). The release check fails if any key lacks Gujarati and passes once the draft is added.
+
 ## Neutral APK
 
 Each `vX.Y.Z` tag publishes a neutral Android APK for facilities outside the association (package

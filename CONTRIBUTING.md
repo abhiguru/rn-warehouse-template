@@ -15,6 +15,12 @@
 5. Run `npm run typecheck && npm run typecheck:tests && npm run lint && npm test && npm run test:setup`
    before opening a pull request. Stop Metro with Ctrl+C.
 
+## Texts and languages
+
+- Every on-screen text is in English and Gujarati. You may add English only; the maintainer adds the Gujarati before a release, and until then the app shows the English text.
+- Do not machine-translate Gujarati. Leave it to the maintainer, who writes it from `[docs/GUJARATI_GLOSSARY.md](docs/GUJARATI_GLOSSARY.md)`. If you do add Gujarati, it is accepted and checked against the glossary before the release.
+- Printed and PDF documents are English only.
+
 ## Code style
 
 - TypeScript strict mode.
