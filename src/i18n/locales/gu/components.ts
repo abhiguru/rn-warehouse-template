@@ -83,6 +83,7 @@ export const components: Translation<typeof source> = {
     updateApp: 'ઍપ અપડેટ કરો',
     opensAppStore: 'App Store ખોલે છે',
     opensPlayStore: 'Play Store ખોલે છે',
+    opensDownloadPage: 'ડાઉનલોડ પેજ ખોલે છે',
     securityNotice: 'આ અપડેટમાં સુરક્ષાના મહત્વના સુધારા છે.',
   },
   // Drafts for the owner's wording review (the version gate and the upgrade notice).

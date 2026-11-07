@@ -24,7 +24,16 @@ const DEFAULT_STORE_URLS = {
   android: `https://play.google.com/store/apps/details?id=${process.env.EXPO_PUBLIC_ANDROID_PACKAGE || 'com.example.warehousemanager'}`,
 };
 
+/**
+ * The neutral build (docs/RELEASE_PREPARATION.md, "Neutral APK") has no store listing. The release
+ * workflow sets EXPO_PUBLIC_UPDATE_URL to the project's latest-release page; its presence is what marks
+ * the build as neutral. Without it the build behaves as before (Play Store / App Store).
+ */
+const DOWNLOAD_PAGE_URL = process.env.EXPO_PUBLIC_UPDATE_URL?.trim() || null;
+
 export interface ForceUpdateStatus {
+  /** True in the neutral build: the update button opens a download page, not a store. */
+  opensDownloadPage: boolean;
   /** Whether an update is required */
   updateRequired: boolean;
   /** Current app version */
@@ -112,6 +121,10 @@ export function useForceUpdate(): ForceUpdateStatus {
   // Determine the appropriate store URL based on platform
   const storeUrl = useMemo(() => {
     if (facilityLan) return `${facilityLan}/app`;
+    // The neutral build (WH-134): the project's download page; a local-only facility's own page wins above.
+    if (DOWNLOAD_PAGE_URL) {
+      return DOWNLOAD_PAGE_URL;
+    }
     if (Platform.OS === 'ios') {
       return storeUrls.ios ?? DEFAULT_STORE_URLS.ios;
     }
@@ -136,7 +149,7 @@ export function useForceUpdate(): ForceUpdateStatus {
         return;
       }
       const canOpen = await Linking.canOpenURL(storeUrl);
-      if (canOpen) {
+      if (canOpen || DOWNLOAD_PAGE_URL) {
         await Linking.openURL(storeUrl);
       } else {
         // Fallback to web store URL if deep link doesn't work
@@ -160,6 +173,7 @@ export function useForceUpdate(): ForceUpdateStatus {
     isConfigLoaded: publicConfig !== null,
     facilityDownload: facilityLan !== null,
     storeUrl,
+    opensDownloadPage: DOWNLOAD_PAGE_URL !== null,
     openStore,
   };
 }

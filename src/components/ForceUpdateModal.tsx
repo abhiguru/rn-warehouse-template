@@ -146,6 +146,7 @@ export function ForceUpdateModal() {
     minimumVersion,
     isConfigLoaded,
     facilityDownload,
+    opensDownloadPage,
     openStore,
   } = useForceUpdate();
 
@@ -192,10 +193,18 @@ export function ForceUpdateModal() {
             style={({ pressed }) => [styles.updateButton, pressed && styles.updateButtonPressed]}
             accessibilityRole="button"
             accessibilityLabel={tr('components.forceUpdate.updateApp')}
-            accessibilityHint={tr(facilityDownload ? 'components.appTooOld.opensFacilityDownload' : Platform.OS === 'ios' ? 'components.forceUpdate.opensAppStore' : 'components.forceUpdate.opensPlayStore')}
+            accessibilityHint={tr(
+              facilityDownload
+                ? 'components.appTooOld.opensFacilityDownload'
+                : opensDownloadPage
+                  ? 'components.forceUpdate.opensDownloadPage'
+                  : Platform.OS === 'ios'
+                    ? 'components.forceUpdate.opensAppStore'
+                    : 'components.forceUpdate.opensPlayStore'
+            )}
           >
             <MaterialCommunityIcons
-              name={facilityDownload ? 'download' : Platform.OS === 'ios' ? 'apple' : 'google-play'}
+              name={facilityDownload || opensDownloadPage ? 'download' : Platform.OS === 'ios' ? 'apple' : 'google-play'}
               size={iconSize.md}
               color={t.brand.onFill}
             />

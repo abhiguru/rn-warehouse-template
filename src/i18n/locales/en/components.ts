@@ -80,6 +80,7 @@ export const components = {
     updateApp: 'Update app',
     opensAppStore: 'Opens the App Store',
     opensPlayStore: 'Opens the Play Store',
+    opensDownloadPage: 'Opens the download page',
     securityNotice: 'This update includes important security improvements.',
   },
   backendTooOld: {
