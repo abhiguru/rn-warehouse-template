@@ -8,14 +8,6 @@ export const components: Translation<typeof source> = {
   alert: {
     closeDialog: 'સંદેશ બંધ કરો',
   },
-  biometric: {
-    welcomeBack: 'ફરી સ્વાગત છે',
-    useToUnlock: 'ઍપ અનલૉક કરવા {{method}} વાપરો.',
-    unlocking: 'અનલૉક થઈ રહ્યું છે',
-    unlockWith: '{{method}} વડે અનલૉક કરો',
-    or: 'અથવા',
-    signInWithMobile: 'મોબાઇલ નંબરથી લૉગિન કરો',
-  },
   image: {
     loading: 'ફોટો લોડ થઈ રહ્યો છે',
     loadFailedRetry: 'ફોટો લોડ કરી શકાયો નથી. ફરી પ્રયાસ કરો',

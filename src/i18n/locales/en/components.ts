@@ -5,14 +5,6 @@ export const components = {
   alert: {
     closeDialog: 'Close dialog',
   },
-  biometric: {
-    welcomeBack: 'Welcome back',
-    useToUnlock: 'Use {{method}} to unlock the app.',
-    unlocking: 'Unlocking',
-    unlockWith: 'Unlock with {{method}}',
-    or: 'or',
-    signInWithMobile: 'Sign in with mobile number',
-  },
   image: {
     loading: 'Loading image',
     loadFailedRetry: "Couldn't load image. Try again",
