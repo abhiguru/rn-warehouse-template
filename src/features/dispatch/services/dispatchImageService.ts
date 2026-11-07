@@ -601,7 +601,29 @@ const dispatchPhotosInFlight = new Map<string, Promise<{ success: boolean; error
 // session. Only the lookup goes: a running upload keeps its own promise and finishes (its removal below is by identity).
 // The slots above keep no session data (a count and the waiting jobs, each already holding its own client) and are not
 // reset, as that would let new uploads exceed the limit while earlier ones still run.
-registerSessionScoped('dispatch-image-uploads', () => dispatchPhotosInFlight.clear(), { onGenerationChange: true });
+// Photos whose upload was confirmed after the save's wait ended (their phone copy is deleted then), by dispatch and
+// file: a retry counts them as uploaded instead of reading the deleted file. Photos the person gave up on stay out of
+// the queue. Both are cleared with the session.
+const dispatchPhotosUploaded = new Set<string>();
+const dispatchPhotosGivenUp = new Set<string>();
+const photoKey = (dispatchId: string, image: DispatchImageData) => `${dispatchId}|${image.image_url}`;
+
+/**
+ * "Continue without photos": these photos are not wanted any more. One still waiting for an upload place is not
+ * started. One already uploading cannot be stopped half way and still ends attached to the dispatch.
+ */
+export const giveUpDispatchPhotos = (dispatchId: string, images: DispatchImageData[]): void => {
+  images.forEach(image => {
+    dispatchPhotosGivenUp.add(photoKey(dispatchId, image));
+    dispatchPhotosUploaded.delete(photoKey(dispatchId, image));
+  });
+};
+
+registerSessionScoped('dispatch-image-uploads', () => {
+  dispatchPhotosInFlight.clear();
+  dispatchPhotosUploaded.clear();
+  dispatchPhotosGivenUp.clear();
+}, { onGenerationChange: true });
 
 /**
  * Upload deferred images after dispatch creation, at most
@@ -640,6 +662,9 @@ export const uploadDeferredDispatchImages = async (
     // A few at a time; each file is held from the start, also while it waits.
     const attempts = deferredImages.map(async (image): Promise<{ success: boolean; error?: string }> => {
       // An upload from an earlier try may still be running: its result counts.
+      const key = photoKey(realDispatchId, image);
+      // Uploaded after an earlier wait ended: nothing more to send (the phone copy is gone).
+      if (dispatchPhotosUploaded.has(key)) return { success: true };
       const earlier = dispatchPhotosInFlight.get(image.image_url);
       if (earlier) {
         const earlierResult = await earlier;
@@ -648,7 +673,12 @@ export const uploadDeferredDispatchImages = async (
       const release = holdLocalPhoto(image.image_url);
       let result: { success: boolean; error?: string } = { success: false };
       try {
-        result = await dispatchPhotoUploadSlots(() => uploadSingleDeferredImage(supabase, realDispatchId, image));
+        result = await dispatchPhotoUploadSlots(async () => {
+          // Given up while it waited for a place: not started.
+          if (dispatchPhotosGivenUp.has(key)) return { success: false, error: t('dispatch.photos.deferredFailed') };
+          return uploadSingleDeferredImage(supabase, realDispatchId, image);
+        });
+        if (result.success) dispatchPhotosUploaded.add(key);
       } catch (error) {
         logPhotoFailure(log, 'Dispatch photo upload ended unexpectedly', error);
       } finally {
