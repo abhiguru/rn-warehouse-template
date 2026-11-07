@@ -35,6 +35,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
 import { backendHasFeature } from '@/config/backendFeatures';
+import { useCapability } from '@/hooks/useCapability';
+import { RecordPaymentsUnconfirmedError, setRecordPayments } from '@/services/paymentsService';
 import {
   ChargingUnconfirmedError,
   PartialInvoicesOpenError,
@@ -64,6 +66,9 @@ export default function ChargingScreen() {
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [asking, setAsking] = useState(false);
   const [askingLeave, setAskingLeave] = useState(false);
+  // WH-143: Record payments. The value is the facility's capability (the server's setting), updated from the server's answer.
+  const recordPayments = useCapability('payments');
+  const [askingPayments, setAskingPayments] = useState<boolean | null>(null);
   // The latest read wins: an answer that arrives after a newer request is dropped.
   const requestRef = useRef(0);
 
@@ -156,6 +161,20 @@ export default function ChargingScreen() {
     },
     [stored, load]
   );
+  const changeRecordPayments = useCallback(async (on: boolean) => {
+    setAskingPayments(null);
+    setSaving(true);
+    try {
+      await setRecordPayments(on);
+      showToast(tr('payments.switch.changed'));
+    } catch (failure) {
+      showAlert(tr('payments.switch.label'), failure instanceof Error ? failure.message : tr('payments.switch.changeFailed'));
+      if (failure instanceof RecordPaymentsUnconfirmedError) void load();
+    } finally {
+      setSaving(false);
+    }
+  }, [load]);
+  const showsRecordPayments = backendHasFeature('recordPayments');
   const showsGoodsLeave = backendHasFeature('invoiceAsGoodsLeave') && stored !== null && stored.invoiceAsGoodsLeave !== null;
 
   const header = (
@@ -264,6 +283,17 @@ export default function ChargingScreen() {
                 />
               </View>
             ) : null}
+            {showsRecordPayments ? (
+              <View style={styles.switchBox}>
+                <Switch
+                  label={tr('payments.switch.label')}
+                  helperText={tr('payments.switch.help')}
+                  value={recordPayments}
+                  disabled={saving}
+                  onValueChange={on => setAskingPayments(on)}
+                />
+              </View>
+            ) : null}
             {stored?.updatedByName ? (
               <Text style={styles.intro}>{tr('charging.screen.changedBy', { name: stored.updatedByName })}</Text>
             ) : null}
@@ -295,6 +325,15 @@ export default function ChargingScreen() {
         cancelText={tr('common.cancel')}
         onConfirm={() => void changeGoodsLeave(true)}
         onCancel={() => setAskingLeave(false)}
+      />
+      <ConfirmDialog
+        visible={askingPayments !== null}
+        title={tr(askingPayments ? 'payments.switch.turnOnTitle' : 'payments.switch.turnOffTitle')}
+        message={tr(askingPayments ? 'payments.switch.turnOnBody' : 'payments.switch.turnOffBody')}
+        confirmText={tr(askingPayments ? 'payments.switch.turnOn' : 'payments.switch.turnOff')}
+        cancelText={tr('common.cancel')}
+        onConfirm={() => void changeRecordPayments(askingPayments === true)}
+        onCancel={() => setAskingPayments(null)}
       />
       <ConfirmDialog
         visible={asking}
