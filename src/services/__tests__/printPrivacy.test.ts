@@ -106,11 +106,11 @@ describe('print job submission privacy', () => {
 describe('print job queries privacy', () => {
   it('lists print jobs through the RPC without logging the rows, key or token', async () => {
     const jobs = [{ id: 'job-1', user_name: marker, document_range_start: marker, error_message: marker }];
-    jest.mocked(fetch).mockResolvedValue(jsonResponse(jobs));
-    expect(await getPrintJobs('grn', 10, 'pending')).toEqual({ success: true, data: jobs });
+    jest.mocked(fetch).mockResolvedValue(jsonResponse({ success: true, data: jobs, message: 'ok' }));
+    expect(await getPrintJobs('grn', 10, 'queued')).toEqual({ success: true, data: jobs });
     expect(fetch).toHaveBeenCalledWith('https://warehouse.example.test/rest/v1/rpc/get_print_jobs', expect.objectContaining({
       headers: expect.objectContaining({ Authorization: `Bearer ${token}`, apikey: 'fictional-anon-key-SENTINEL' }),
-      body: JSON.stringify({ p_job_type: 'grn', p_limit: 10, p_status: 'pending' }),
+      body: JSON.stringify({ p_job_type: 'grn', p_limit: 10, p_status: 'queued' }),
     }));
     expectPrivateLogs();
     expect(logOutput()).toMatch(/"status": 200/);
