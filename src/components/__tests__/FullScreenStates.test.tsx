@@ -29,7 +29,6 @@ jest.mock('react-native-safe-area-context', () => {
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() }, Stack: { Screen: () => null } }));
 jest.mock('@/config/sentryConfig', () => ({ captureException: jest.fn() }));
 jest.mock('@/hooks/useConfig', () => ({
-  useSupport: () => ({ email: 'support@example.test', phone: '+91 98765 43210' }),
   useEnvironment: () => ({ name: 'Test', version: '1.0.0', buildDate: '2026-10-09T10:00:00Z' }),
 }));
 jest.mock('@/hooks/useBiometricAuth', () => ({
