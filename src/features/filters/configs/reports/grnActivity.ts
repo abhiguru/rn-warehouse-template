@@ -55,7 +55,7 @@ export const GRN_ACTIVITY_CUSTOMER: FilterListConfig<GRNRecordsRequest> = {
   listKey: 'report-grn-activity-customer',
   get title() { return t('reports.titles.grnActivity'); },
   noun: ['GRN', 'GRNs'],
-  search: { get placeholder() { return t('filters.list.grn.search'); }, dates: false, range: null },
+  search: { get placeholder() { return t('filters.list.grnActivity.search'); }, dates: false, range: null },
   sort: {
     options: [
       { field: 'date', get label() { return t('common.date'); }, kind: 'date' },

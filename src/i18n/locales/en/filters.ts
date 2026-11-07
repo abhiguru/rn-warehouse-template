@@ -21,6 +21,7 @@ export const filters = {
   list: {
     // Says what it finds; it must fit the field on one line (docs/I18N.md).
     grn: { title: 'Filter GRNs', search: 'GRN no., customer, item or date' },
+    grnActivity: { search: 'GRN no., customer or item' },
     dispatch: { title: 'Filter dispatches', search: 'Search dispatches' },
     invoice: { title: 'Filter invoices', search: 'Search invoices' },
     order: { title: 'Filter orders', search: 'Search orders' },

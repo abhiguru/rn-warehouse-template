@@ -22,6 +22,7 @@ export const filters: Translation<typeof source> = {
   list: {
     // Draft for the owner's wording review (GRN list review 2026-10-18).
     grn: { title: 'આવક પાવતી ફિલ્ટર કરો', search: 'આવક નં., વેપારી, આઇટમ કે તારીખ' },
+    grnActivity: { search: 'આવક નં., વેપારી કે આઇટમ' },
     dispatch: { title: 'જાવક ફિલ્ટર કરો', search: 'જાવક શોધો' },
     invoice: { title: 'ઇન્વૉઇસ ફિલ્ટર કરો', search: 'ઇન્વૉઇસ શોધો' },
     order: { title: 'ઑર્ડર ફિલ્ટર કરો', search: 'ઑર્ડર શોધો' },
