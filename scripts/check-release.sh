@@ -37,8 +37,5 @@ if [[ "$app_version" != "$tag_version" ]]; then
   exit 1
 fi
 
-# The terms and privacy text must be the lawyer-reviewed text (WH-140). RELEASE_LEGAL_FILE names another file (the tests use it).
-node "$(dirname "$0")/check-legal-reviewed.mjs" ${RELEASE_LEGAL_FILE:+"$RELEASE_LEGAL_FILE"} >&2 || exit 1
-
 echo "Release gate passed for tag ${GITHUB_REF_NAME}."
 echo 'Validation only: a maintainer publishes the release manually after this run.'

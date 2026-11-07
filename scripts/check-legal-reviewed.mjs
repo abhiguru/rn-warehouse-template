@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Release gate for the legal text (WH-140). The template Terms of service and Privacy policy
-// (src/legal/templateText.ts) have not been reviewed by a lawyer. This refuses a release while
+// Make-public gate for the legal text (WH-140; `npm run check:legal`; the release workflow reads the same constant before it attaches the APK). The template Terms of service and Privacy policy
+// (src/legal/templateText.ts) have not been reviewed by a lawyer. This fails while
 // `LEGAL_TEXT_REVIEWED` in src/constants/legal.ts is not `true`. The owner records the review
 // (with its date) in product/specs/legal-pages-template.md, the reviewed text replaces the template
 // text, and only then is the constant set to `true`.

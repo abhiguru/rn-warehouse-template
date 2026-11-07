@@ -208,6 +208,12 @@ data.
 - Attach to the release record the Generate Privacy Report output, the exported Play Data safety
   answers, and the redacted received-event test (see "Evidence to attach").
 
+## Make public (WH-140)
+
+- [ ] Before the app is made public (a public store listing or a public APK): the owner's lawyer has reviewed the terms and privacy text,
+  the reviewed text has replaced the template, and `LEGAL_TEXT_REVIEWED` in `src/constants/legal.ts` is `true` (`npm run check:legal`
+  must pass). Release tags and the association build are not gated by it. The WH-135 and WH-147 checklists are not in this repository.
+
 ## Evidence to attach to the final release decision
 
 Record the mobile/backend source commits, app identity and version/build IDs,

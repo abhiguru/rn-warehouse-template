@@ -13,8 +13,8 @@ import type { FacilityLegal } from '@/config/facilityLegal';
  * RELEASE GATE (WH-140). The template legal text (src/legal/templateText.ts) is Product's reading of the
  * Digital Personal Data Protection Act 2023 and has NOT been reviewed by a lawyer. It stays `false` until the
  * owner records the lawyer's review (with its date) in product/specs/legal-pages-template.md and the reviewed
- * text has replaced the template text. `scripts/check-legal-reviewed.mjs` runs inside scripts/check-release.sh and
- * refuses a release tag while this is `false`; docs/RELEASE_CHECKLIST.md lists the same step. Do not set it to
+ * text has replaced the template text. `npm run check:legal` fails while this is `false`; the release workflow attaches
+ * the APK only when it is `true`, and docs/RELEASE_CHECKLIST.md lists the same step. Release tags are not gated. Do not set it to
  * `true` to get a build through.
  */
 export const LEGAL_TEXT_REVIEWED = false;
