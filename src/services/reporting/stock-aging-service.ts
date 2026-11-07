@@ -162,6 +162,7 @@ export async function getCustomerStockAging(
       (item: any) => ({
         grn_id: item.grn_id,
         gr_no: item.gr_no,
+        item_id: item.item_id ?? undefined,
         item_name: item.item_name,
         packaging: item.packaging ?? '',
         current_stock: item.current_stock ?? 0,

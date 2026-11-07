@@ -75,13 +75,22 @@ describe('setStandardRate', () => {
     ['INVALID_AMOUNT', 'pricing.error.invalidAmount'],
     ['BANDS_OVERLAP', 'pricing.error.bandsOverlap'],
     ['BANDS_GAP', 'pricing.error.bandsGap'],
-    ['STANDARD_RATE_MANAGER_ONLY', 'pricing.standard.error.managerOnly'],
     ['STALE_STANDARD_RATE', 'pricing.standard.error.stale'],
   ])('shows the app\'s own text for %s, never the server\'s', async (code, key) => {
     rpc.mockResolvedValue(refused(code, {}));
     const result = await setStandardRate(tiers);
     expect(result).toEqual({ success: false, errorCode: code, message: t(key as never) });
     expect(result.message).not.toContain('English sentence');
+  });
+
+  it('has no text of its own for STANDARD_RATE_MANAGER_ONLY (the staff guard answers first): it falls to the generic text', async () => {
+    rpc.mockResolvedValue(refused('STANDARD_RATE_MANAGER_ONLY', {}));
+    expect(await setStandardRate(tiers)).toEqual({ success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic') });
+  });
+
+  it('shows the no-permission text when the staff guard refuses the save', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'access required' } });
+    expect(await setStandardRate(tiers)).toMatchObject({ success: false, errorCode: 'PERMISSION_DENIED', message: t('errors.parsed.noPermission') });
   });
 
   it('names the tier and the field the server refused', async () => {

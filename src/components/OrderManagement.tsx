@@ -123,7 +123,7 @@ interface OrderManagementProps {
   staffView?: boolean;
   /** The customer record says the business is deactivated in Customers (it can still order its goods out). */
   businessDeactivated?: boolean;
-  /** The customer record could not be read, so the refusal screen cannot tell deleted from deactivated. */
+  /** Not used since WH-127: the refusal screen no longer tells deleted from deactivated (a deactivated business's orders work). */
   businessRecordUnread?: boolean;
   /** The facility refused to open an order because the business was deleted. */
   onBusinessDeleted?: () => void;
@@ -138,7 +138,6 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   onCloseItemCatalog,
   staffView = false,
   businessDeactivated = false,
-  businessRecordUnread = false,
   onBusinessDeleted,
   onOrderNumber,
 }) => {
@@ -1064,7 +1063,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       <View style={styles.emptyState}>
         <Icon name="store-off-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyText} accessibilityRole="header">{tr('orders.manage.couldNotOpenTitle')}</Text>
-        <Text style={styles.emptySubtext}>{tr(!staffView || businessRecordUnread ? 'orders.manage.businessInactive' : 'orders.manage.businessDeactivatedStaff')}</Text>
+        <Text style={styles.emptySubtext}>{tr('orders.manage.businessInactive')}</Text>
       </View>
     );
   }

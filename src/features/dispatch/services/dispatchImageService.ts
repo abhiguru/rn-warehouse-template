@@ -17,7 +17,8 @@ import {
 import type { DispatchImageData } from '@/types/dispatch.types';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
-import { mapWithConcurrency } from '@/utils/concurrency';
+import { createLimiter } from '@/utils/concurrency';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
 import { logPhotoFailure, photoUploadFailureText } from '@/utils/photoUploadError';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -587,14 +588,55 @@ export const unpreparedDispatchPhotos = (
   return null;
 };
 
+/** How long a save waits for its photos before reporting the rest as not uploaded (the GRN form waits the same). */
+export const DISPATCH_PHOTO_UPLOAD_WAIT_MS = 30000;
+
+// Shared by every call, so a retry started while an earlier save is still uploading does not add places of its own.
+const dispatchPhotoUploadSlots = createLimiter(DISPATCH_PHOTO_UPLOAD_CONCURRENCY);
+
+// Uploads still running after their wait ended, by file: a retry of the same photo waits for that upload instead of
+// starting a second one.
+const dispatchPhotosInFlight = new Map<string, Promise<{ success: boolean; error?: string }>>();
+// Cleared at sign-out and a server or facility switch, so a retry never waits on an upload started for the previous
+// session. Only the lookup goes: a running upload keeps its own promise and finishes (its removal below is by identity).
+// The slots above keep no session data (a count and the waiting jobs, each already holding its own client) and are not
+// reset, as that would let new uploads exceed the limit while earlier ones still run.
+// Photos whose upload was confirmed after the save's wait ended (their phone copy is deleted then), by dispatch and
+// file: a retry counts them as uploaded instead of reading the deleted file. Photos the person gave up on stay out of
+// the queue. Both are cleared with the session.
+const dispatchPhotosUploaded = new Set<string>();
+const dispatchPhotosGivenUp = new Set<string>();
+const photoKey = (dispatchId: string, image: DispatchImageData) => `${dispatchId}|${image.image_url}`;
+
+/**
+ * "Continue without photos": these photos are not wanted any more. One still waiting for an upload place is not
+ * started. One already uploading cannot be stopped half way and still ends attached to the dispatch.
+ */
+export const giveUpDispatchPhotos = (dispatchId: string, images: DispatchImageData[]): void => {
+  images.forEach(image => {
+    dispatchPhotosGivenUp.add(photoKey(dispatchId, image));
+    dispatchPhotosUploaded.delete(photoKey(dispatchId, image));
+  });
+};
+
+registerSessionScoped('dispatch-image-uploads', () => {
+  dispatchPhotosInFlight.clear();
+  dispatchPhotosUploaded.clear();
+  dispatchPhotosGivenUp.clear();
+}, { onGenerationChange: true });
+
 /**
  * Upload deferred images after dispatch creation, at most
- * DISPATCH_PHOTO_UPLOAD_CONCURRENCY at a time. A photo whose upload is
- * confirmed has its copy on the phone deleted; a failed one keeps it for a retry.
+ * DISPATCH_PHOTO_UPLOAD_CONCURRENCY at a time, and wait for them at most
+ * `waitMs` in all. A photo still uploading then is reported as not uploaded
+ * (like a failed one) while its upload carries on in the background. A photo
+ * whose upload is confirmed has its copy on the phone deleted; a failed one
+ * keeps it for a retry.
  */
 export const uploadDeferredDispatchImages = async (
   realDispatchId: string,
-  images: DispatchImageData[]
+  images: DispatchImageData[],
+  waitMs: number = DISPATCH_PHOTO_UPLOAD_WAIT_MS
 ): Promise<{ success: boolean; uploadedCount: number; errors: string[]; failed: DispatchImageData[] }> => {
   const errors: string[] = [];
   // The photos that did not arrive, so the caller can name them and try again.
@@ -610,36 +652,73 @@ export const uploadDeferredDispatchImages = async (
 
   let finishMutation: (() => void) | undefined;
   let started = false;
+  // Once the uploads are running, the mutation ends with the last of them, not with this call.
+  let handedOff = false;
   try {
     finishMutation = beginOperatorMutation();
     const supabase = await getAuthenticatedClient();
     started = true;
 
     // A few at a time; each file is held from the start, also while it waits.
-    const releases = deferredImages.map(image => holdLocalPhoto(image.image_url));
-    const results = await mapWithConcurrency(
-      deferredImages,
-      DISPATCH_PHOTO_UPLOAD_CONCURRENCY,
-      async (image, index) => {
-        let result: { success: boolean; error?: string } = { success: false };
-        try {
-          result = await uploadSingleDeferredImage(supabase, realDispatchId, image);
-        } finally {
-          localPhotoUploadEnded(image.image_url, result.success);
-          releases[index]();
-        }
-        return { ...result, image };
+    const attempts = deferredImages.map(async (image): Promise<{ success: boolean; error?: string }> => {
+      // An upload from an earlier try may still be running: its result counts.
+      const key = photoKey(realDispatchId, image);
+      // Uploaded after an earlier wait ended: nothing more to send (the phone copy is gone).
+      if (dispatchPhotosUploaded.has(key)) return { success: true };
+      const earlier = dispatchPhotosInFlight.get(image.image_url);
+      if (earlier) {
+        const earlierResult = await earlier;
+        if (earlierResult.success) return earlierResult;
       }
-    );
+      const release = holdLocalPhoto(image.image_url);
+      let result: { success: boolean; error?: string } = { success: false };
+      try {
+        result = await dispatchPhotoUploadSlots(async () => {
+          // Given up while it waited for a place: not started.
+          if (dispatchPhotosGivenUp.has(key)) return { success: false, error: t('dispatch.photos.deferredFailed') };
+          return uploadSingleDeferredImage(supabase, realDispatchId, image);
+        });
+        if (result.success) dispatchPhotosUploaded.add(key);
+      } catch (error) {
+        logPhotoFailure(log, 'Dispatch photo upload ended unexpectedly', error);
+      } finally {
+        localPhotoUploadEnded(image.image_url, result.success);
+        release();
+      }
+      return result;
+    });
+    deferredImages.forEach((image, index) => {
+      dispatchPhotosInFlight.set(image.image_url, attempts[index]);
+      void attempts[index].finally(() => {
+        if (dispatchPhotosInFlight.get(image.image_url) === attempts[index]) dispatchPhotosInFlight.delete(image.image_url);
+      });
+    });
+    // The uploads are not cancelled when the wait ends (queued ones still start later), so the mutation ends with the
+    // last of them.
+    void Promise.allSettled(attempts).then(() => finishMutation?.());
+    handedOff = true;
 
-    for (const result of results) {
-      if (result.success) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<null>(resolve => {
+      timer = setTimeout(() => resolve(null), waitMs);
+    });
+    const results = await Promise.all(attempts.map(attempt => Promise.race([attempt, deadline])));
+    if (timer !== undefined) clearTimeout(timer);
+
+    results.forEach((result, index) => {
+      const image = deferredImages[index];
+      if (result?.success) {
         uploadedCount++;
       } else {
-        failed.push(result.image);
-        errors.push(`${result.image.file_name}: ${result.error ?? t('dispatch.photos.deferredFailed')}`);
+        failed.push(image);
+        if (result) {
+          errors.push(`${image.file_name}: ${result.error ?? t('dispatch.photos.deferredFailed')}`);
+        } else {
+          log.warn('Dispatch photo upload still running when the wait ended');
+          errors.push(`${image.file_name}: ${t('dispatch.photos.deferredFailed')}`);
+        }
       }
-    }
+    });
 
     return {
       success: failed.length === 0,
@@ -665,7 +744,7 @@ export const uploadDeferredDispatchImages = async (
       failed: failed.length > 0 ? failed : deferredImages,
     };
   } finally {
-    finishMutation?.();
+    if (!handedOff) finishMutation?.();
   }
 };
 

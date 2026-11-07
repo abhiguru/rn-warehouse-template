@@ -7,7 +7,7 @@ import { unwrapNestedData } from '@/utils/responseUtils';
 import { createErrorResponse, executeRPC, handleGlobalAuthError, isOfflineFailure, type RPCResult } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { BackendDispatchData, RecentDispatchedOrdersResponse } from '@/types/dispatch.types';
-import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
+import { CACHE_DURATION_LAST_PAGE_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 // Import canonical types for migration
 import type { RpcPagination } from '@/types/rpc-canonical.types';
@@ -20,7 +20,7 @@ import { invalidateReportQueries } from '@/lib/queryClient';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
-const DISPATCH_CACHE_EXPIRY_MS = CACHE_DURATION_DEFAULT_MS;
+const DISPATCH_CACHE_EXPIRY_MS = CACHE_DURATION_LAST_PAGE_MS;
 
 /**
  * The offline copies of dispatch list answers are bounded (one entry per page,

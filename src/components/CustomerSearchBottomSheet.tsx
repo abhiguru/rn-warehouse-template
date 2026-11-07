@@ -101,7 +101,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         const [searchQuery, setSearchQuery] = useState('');
         const [searchResults, setSearchResults] = useState<CustomerSearchResult[]>([]);
         const [recentCustomers, setRecentCustomers] = useState<RecentCustomer[]>([]);
-        // Recent picks that were deactivated since (only in a sheet that lists deactivated customers).
+        // Recent picks that were deactivated since: tagged in every sheet; selectable only where deactivated customers can be picked.
         const [inactiveRecentIds, setInactiveRecentIds] = useState<Set<string>>(() => new Set());
         const [isSearching, setIsSearching] = useState(false);
         const [searchFailed, setSearchFailed] = useState(false);
@@ -138,10 +138,6 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         const loadRecentCustomers = useCallback(async () => {
             try {
                 const recent = (await RecentCustomersService.getRecentCustomers(userId)) || [];
-                if (!includeInactive) {
-                    setRecentCustomers(recent);
-                    return;
-                }
                 // A pick is stored by id and name only: ask which are deactivated or deleted now (deleted ones never show).
                 // If that cannot be read, the picks show as stored.
                 const states = await customerService.getCustomerStates(recent.map(c => c.id));
@@ -327,9 +323,12 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                 style={({ pressed }) => [
                                     styles.customerItem,
                                     pressed && styles.customerItemPressed,
+                                    item.inactive && !includeInactive && styles.customerItemDisabled,
                                 ]}
                                 onPress={() => handleSelect(item)}
+                                disabled={item.inactive && !includeInactive}
                                 accessibilityRole="button"
+                                accessibilityState={{ disabled: Boolean(item.inactive && !includeInactive) }}
                                 accessibilityLabel={[item.label, item.detail, item.inactive ? tr('common.deactivated') : undefined].filter(Boolean).join(', ')}
                             >
                                 <View style={styles.customerItemContent}>
@@ -503,6 +502,9 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   customerItemPressed: {
     backgroundColor: t.surface.cardPressed,
+  },
+  customerItemDisabled: {
+    opacity: t.interaction.disabledOpacity,
   },
   customerItemContent: {
     flexDirection: 'row' as const,

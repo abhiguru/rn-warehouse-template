@@ -3,6 +3,7 @@
  * returned to the caller, not only logged (the dispatch twin of M5-6).
  */
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
+import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { createDispatch } from '../dispatchFormService';
 import { uploadDeferredDispatchImages, uploadDispatchImage } from '../dispatchImageService';
 import type { DispatchImageData } from '@/types/dispatch.types';
@@ -48,6 +49,8 @@ function server(refused: string[]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // What an earlier test uploaded is remembered by dispatch and file until the session changes.
+  advanceSessionGeneration();
   for (const method of ['log', 'warn', 'error'] as const) jest.spyOn(console, method).mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());

@@ -515,3 +515,37 @@ describe.each(BRANDS.flatMap((brand) => (['light', 'dark'] as const).map((mode) 
     expect(backgrounds).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.table.headerFill, t.status.critical.background]));
   });
 });
+
+describe('a page served from the phone\'s saved copy while the phone is online (WH-124)', () => {
+  const OLD = new Date('2026-09-20T18:26:00').getTime();
+  const saved = (items: Line[]) => ({ ...answer(items), fromCache: true, cachedAt: OLD }) as never;
+  const updated = (tree: ReactTestRenderer) => texts(tree).filter((text) => /Last updated/.test(text)).join('|');
+
+  it('says when the page was loaded, with its date, though the phone has a connection', async () => {
+    mockOffline = false;
+    jest.mocked(getAllGRNItems).mockResolvedValue(saved(receipt(1)));
+    const tree = await renderList();
+
+    expect(card(tree, 1)).toBeDefined();
+    expect(host(tree, 'grn-last-updated')).toBeDefined();
+    expect(updated(tree)).toMatch(/20\/09\/26/);
+    expect(updated(tree)).toMatch(/6:26/);
+  });
+
+  it('the line goes when a later load succeeds', async () => {
+    jest.mocked(getAllGRNItems).mockResolvedValueOnce(saved(receipt(1))).mockResolvedValueOnce(answer(receipt(2)) as never);
+    const tree = await renderList();
+    expect(host(tree, 'grn-last-updated')).toBeDefined();
+    mockFilters = { ...mockFilters, request: { p_sort_by: 'date', p_sort_order: 'asc' }, sort: { field: 'date', order: 'asc' } };
+    await act(async () => { tree.update(grnListElement()); });
+
+    expect(card(tree, 2)).toBeDefined();
+    expect(host(tree, 'grn-last-updated')).toBeUndefined();
+  });
+
+  it('a page loaded from the server, online, shows no line', async () => {
+    jest.mocked(getAllGRNItems).mockResolvedValue(answer(receipt(1)) as never);
+    const tree = await renderList();
+    expect(host(tree, 'grn-last-updated')).toBeUndefined();
+  });
+});

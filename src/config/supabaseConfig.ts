@@ -1222,8 +1222,12 @@ export const exchangeCentralIdentity = async (
 
 /** Why a sign-in with a code from the facility did not happen. */
 export type BreakGlassFailure =
-  /** The code is wrong, used, expired or locked (the facility does not say which). */
+  /** The code is wrong (or the facility gave an answer this app does not know). */
   | 'refused'
+  /** The code was already used, has expired, or the number is locked after too many wrong tries (WH-126). */
+  | 'code_used'
+  | 'code_expired'
+  | 'code_locked'
   | 'rate_limited'
   /** The facility is not in operator mode, or its database is down (503), or it does not know the function. */
   | 'unavailable'
@@ -1235,7 +1239,7 @@ export type BreakGlassFailure =
 
 export type BreakGlassResult = AuthSuccessResult | { success: false; reason: BreakGlassFailure };
 
-const BREAK_GLASS_REFUSALS: readonly string[] = ['invalid_code', 'code_used', 'code_expired', 'code_locked'];
+const BREAK_GLASS_NAMED: readonly BreakGlassFailure[] = ['code_used', 'code_expired', 'code_locked'];
 
 /**
  * Signs in with a code the facility's operator made on the facility's own server (`POST
@@ -1262,7 +1266,9 @@ export const breakGlassSignIn = async (phone: string, code: string): Promise<Bre
       const failureCode = typeof result?.code === 'string' ? result.code : '';
       if (response.status === 429) return { success: false, reason: 'rate_limited' };
       if (response.status === 503 || response.status === 404) return { success: false, reason: 'unavailable' };
-      if (BREAK_GLASS_REFUSALS.includes(failureCode)) return { success: false, reason: 'refused' };
+      if (failureCode === 'invalid_code') return { success: false, reason: 'refused' };
+      const named = BREAK_GLASS_NAMED.find(reason => reason === failureCode);
+      if (named) return { success: false, reason: named };
       return { success: false, reason: 'failed' };
     }
     const session = result.data.session as { session_ends_at?: unknown } | undefined;

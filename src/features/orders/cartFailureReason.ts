@@ -185,7 +185,7 @@ export function isLineGone(failure: CartFailure | null | undefined): boolean {
 }
 
 /**
- * True when `get_or_create_cart` refused because the business is deactivated or deleted
+ * True when `get_or_create_cart` refused because the business is deleted (a deactivated business's orders work)
  * (backend migration 80: `RAISE EXCEPTION 'Business is not active'`, SQLSTATE P0001).
  * `OrderService.getOrCreateOrder` hands back the raised text in `error`. Only that
  * sentence counts; any other failure keeps the generic handling.

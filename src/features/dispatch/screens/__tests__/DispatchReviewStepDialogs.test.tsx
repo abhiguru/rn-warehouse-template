@@ -57,6 +57,7 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   uploadDeferredDispatchImages: jest.fn(),
+  giveUpDispatchPhotos: jest.fn(),
   unpreparedDispatchPhotos: () => 'ready',
   generateTempDispatchId: () => 'temp_dispatch_fixture',
   deleteDispatchImage: jest.fn(),

@@ -129,3 +129,51 @@ it('explains an empty list and goes back', async () => {
   await act(async () => { tree.root.findAllByType(Button).find(b => b.props.children === 'Back')!.props.onPress(); });
   expect(router.back).toHaveBeenCalled();
 });
+
+describe('a used, expired or locked facility code (WH-126)', () => {
+  const codeInput = () => tree.root.find(n => n.props.textContentType === 'oneTimeCode' && typeof n.props.onChangeText === 'function');
+  const refusalText = () => tree.root.findAll(n => n.props.testID === 'code-refusal' && typeof n.props.accessibilityLabel === 'string')[0]?.props.accessibilityLabel as string | undefined;
+  const typeAndVerify = async () => {
+    await act(async () => { codeInput().props.onChangeText('482913'); });
+    await act(async () => { await tree.root.findByType(CodeEntryForm).props.onVerify('482913'); });
+  };
+
+  it.each([
+    ['code_used', 'This code has already been used. Ask your facility for a new code.'],
+    ['code_expired', 'This code has expired. Ask your facility for a new code.'],
+    ['code_locked', 'This code is locked after too many wrong tries. Ask your facility for a new code.'],
+  ] as const)('%s shows its own text under the code boxes, keeps the typed code and raises no alert', async (reason, text) => {
+    jest.mocked(breakGlassSignIn).mockResolvedValue({ success: false, reason });
+    await toCodeStep();
+    expect(refusalText()).toBeUndefined();
+    await typeAndVerify();
+    expect(refusalText()).toBe(text);
+    expect(texts()).toContain(text);
+    expect(codeInput().props.value).toBe('482913');
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['code_used', 'આ કોડ વપરાઈ ગયો છે. તમારી ફેસિલિટી પાસેથી નવો કોડ માંગો.'],
+    ['code_expired', 'આ કોડનો સમય પૂરો થયો છે. તમારી ફેસિલિટી પાસેથી નવો કોડ માંગો.'],
+    ['code_locked', 'ઘણા ખોટા પ્રયાસો પછી આ કોડ બંધ થઈ ગયો છે. તમારી ફેસિલિટી પાસેથી નવો કોડ માંગો.'],
+  ] as const)('%s is told in Gujarati with the facility wording, and a locked code is never told to wait', async (reason, text) => {
+    setLanguage('gu');
+    jest.mocked(breakGlassSignIn).mockResolvedValue({ success: false, reason });
+    await toCodeStep();
+    await typeAndVerify();
+    expect(refusalText()).toBe(text);
+  });
+
+  it('the text goes when the person tries again and the next answer is another refusal', async () => {
+    jest.mocked(breakGlassSignIn).mockResolvedValueOnce({ success: false, reason: 'code_used' });
+    await toCodeStep();
+    await typeAndVerify();
+    expect(refusalText()).toContain('already been used');
+    jest.mocked(breakGlassSignIn).mockResolvedValueOnce({ success: false, reason: 'refused' });
+    await typeAndVerify();
+    expect(refusalText()).toBeUndefined();
+    expect(showAlert).toHaveBeenCalledWith("Couldn't sign in", expect.stringContaining("doesn't work"));
+  });
+});

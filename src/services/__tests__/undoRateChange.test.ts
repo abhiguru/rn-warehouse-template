@@ -47,7 +47,6 @@ describe('undoRateChange', () => {
 
   it.each([
     ['NOTHING_TO_UNDO', 'pricing.error.nothingToUndo'],
-    ['PAST_DATE_NOT_ALLOWED', 'pricing.error.pastDateNotAllowed'],
     ['ITEM_NOT_FOUND', 'pricing.error.itemNotFound'],
     ['CUSTOMER_NOT_FOUND', 'pricing.error.customerNotFound'],
     ['BANDS_OVERLAP', 'pricing.error.bandsOverlap'],
@@ -59,6 +58,11 @@ describe('undoRateChange', () => {
     expect(result.success).toBe(false);
     expect(result.message).toBe(t(key as never));
     expect(result.message).not.toContain('English sentence');
+  });
+
+  it('has no text of its own for PAST_DATE_NOT_ALLOWED (the staff guard answers first): it falls to the generic text', async () => {
+    rpc.mockResolvedValue(refused('PAST_DATE_NOT_ALLOWED'));
+    expect(await undoRateChange(input)).toMatchObject({ success: false, errorCode: 'UNKNOWN', message: t('pricing.error.generic') });
   });
 
   it('maps a refusal for a customer to PERMISSION_DENIED', async () => {

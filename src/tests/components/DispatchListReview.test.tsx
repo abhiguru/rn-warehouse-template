@@ -369,3 +369,31 @@ describe('open cards', () => {
     expect([1, 2, 3].map((n) => isOpen(tree, n))).toEqual([true, false, true]);
   });
 });
+
+describe('a list served from the phone\'s saved copy while the phone is online (WH-124)', () => {
+  const OLD = new Date('2026-09-20T18:26:00').getTime();
+  const saved = (dispatches: ReturnType<typeof dispatchOf>[]) => ({ ...answer(dispatches), fromCache: true, cachedAt: OLD }) as never;
+  const updated = (tree: ReactTestRenderer) => texts(tree).filter((text) => /Last updated/.test(text)).join('|');
+
+  it('says when the list was loaded, with its date, though the phone has a connection', async () => {
+    mockOffline = false;
+    jest.mocked(getDispatchListWithItems).mockResolvedValue(saved([dispatchOf(1)]));
+    const tree = await renderList();
+
+    expect(card(tree, 1)).toBeDefined();
+    expect(host(tree, 'dispatch-last-updated')).toBeDefined();
+    expect(updated(tree)).toMatch(/20\/09\/26/);
+    expect(updated(tree)).toMatch(/6:26/);
+  });
+
+  it('the line goes when a later load succeeds', async () => {
+    jest.mocked(getDispatchListWithItems).mockResolvedValueOnce(saved([dispatchOf(1)])).mockResolvedValueOnce(answer([dispatchOf(2)]) as never);
+    const tree = await renderList();
+    expect(host(tree, 'dispatch-last-updated')).toBeDefined();
+    mockFilters = { ...mockFilters, request: { p_sort_field: 'disp_date', p_sort_direction: 'asc' }, sort: { field: 'disp_date', order: 'asc' } };
+    await act(async () => { tree.update(<DispatchFlashList />); });
+
+    expect(card(tree, 2)).toBeDefined();
+    expect(host(tree, 'dispatch-last-updated')).toBeUndefined();
+  });
+});

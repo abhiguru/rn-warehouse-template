@@ -211,7 +211,6 @@ export const pricing: Translation<typeof source> = {
     tagStandard: 'પ્રમાણભૂત',
     tagThisItem: 'આ આઇટમનો',
     error: {
-      managerOnly: 'પ્રમાણભૂત દર ફક્ત એડમિન અથવા સુપરવાઇઝર નક્કી કરી શકે છે.',
       unconfirmed: 'પ્રમાણભૂત દર સચવાયો કે નહીં તે ખાતરી થઈ શકી નથી. ફરી પ્રયાસ કરતા પહેલાં તેને ફરી લોડ કરો.',
       serverNeedsUpdate: 'પ્રમાણભૂત દર માટે આ કોલ્ડ સ્ટોરેજના સર્વરને અપડેટ જોઈએ.',
       serverNeedsUpdateSave: 'પ્રમાણભૂત દર સાચવી શકાય તે પહેલાં આ કોલ્ડ સ્ટોરેજના સર્વરને અપડેટ જોઈએ.',
@@ -276,8 +275,6 @@ export const pricing: Translation<typeof source> = {
     invalidDate: '{{date}} અથવા તે પછીની શરૂઆતની તારીખ પસંદ કરો.',
     invalidDateWindow: 'આજથી ત્રણ વર્ષ પહેલાં અને બે વર્ષ પછી સુધીની શરૂઆતની તારીખ પસંદ કરો.',
     startTooFar: 'આજથી બે વર્ષની અંદરની શરૂઆતની તારીખ પસંદ કરો.',
-    pastDateNotAllowed: 'ભૂતકાળની તારીખથી દર ફક્ત એડમિન અથવા સુપરવાઇઝર શરૂ કરી શકે છે.',
-    rateInForceManagerOnly: 'લાગુ દર ફક્ત એડમિન અથવા સુપરવાઇઝર બદલી શકે છે.',
     itemNotFound: 'આ આઇટમ હવે ચાલુ નથી.',
     customerNotFound: 'આ વેપારી હવે ચાલુ નથી.',
     tooManyBands: 'વધુમાં વધુ ૧૦ વજન મર્યાદા રાખી શકાય.',

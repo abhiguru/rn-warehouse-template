@@ -19,6 +19,15 @@
 export const CACHE_DURATION_DEFAULT_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * The offline copy of the GRN list and the Dispatch list (decision OD-1): the last loaded page is kept without an age
+ * limit and shown with its time when a load fails for want of a connection, also after a restart. It goes when the
+ * next load succeeds replaces it, and when the session ends (the entries are scoped to the session). The caches stay
+ * bounded by their entry and size limits.
+ * Used by: grn-service.ts, dispatch-service.ts
+ */
+export const CACHE_DURATION_LAST_PAGE_MS = Number.POSITIVE_INFINITY;
+
+/**
  * Short-lived cache for frequently changing data (e.g., autocomplete)
  * Used by: autocomplete-service.ts
  */

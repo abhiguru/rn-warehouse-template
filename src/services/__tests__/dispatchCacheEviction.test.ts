@@ -6,7 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAuthenticatedClient, getSessionIdentity } from '@/config/supabaseConfig';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
-import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES } from '@/config/cacheConfig';
+import { CACHE_PREFIXES } from '@/config/cacheConfig';
 import { clearAllCaches } from '@/utils/cacheManager';
 import { getDispatchListWithItems, invalidateDispatchCache } from '../dispatch-service';
 
@@ -140,28 +140,37 @@ it('does not keep an answer longer than 256 KiB', async () => {
   expect((await getDispatchListWithItems({ p_limit: 20 })).success).toBe(false);
 });
 
-it('does not serve an answer older than its five minutes, and removes it at the next write', async () => {
+it('serves a stored answer of any age when the network fails, and replaces it when the same page is loaded again', async () => {
   rpc.mockResolvedValueOnce(listResponse('old'));
   await getDispatchListWithItems({ p_limit: 20, offset: 0 });
   await settle();
   const [oldKey] = await entryKeys();
   expect(oldKey).toBeDefined();
 
-  jest.advanceTimersByTime(CACHE_DURATION_DEFAULT_MS + 1000);
-  // Another page is fetched; the expired answer is never read, yet it goes.
-  rpc.mockResolvedValueOnce(listResponse('new'));
-  await getDispatchListWithItems({ p_limit: 20, offset: 20 });
-  await settle();
-  const keys = await entryKeys();
-  expect(keys).toHaveLength(1);
-  expect(keys).not.toContain(oldKey);
+  jest.advanceTimersByTime(30 * 24 * 60 * 60 * 1000);
+  rpc.mockResolvedValueOnce({ data: null, error: networkError });
+  const offline = await getDispatchListWithItems({ p_limit: 20, offset: 0 });
+  expect(offline.success).toBe(true);
+  expect(offline.data.dispatches.map(d => d.id)).toEqual(['old']);
 
+  // A successful load of the same page replaces the stored one.
+  rpc.mockResolvedValueOnce(listResponse('new'));
+  await getDispatchListWithItems({ p_limit: 20, offset: 0 });
+  await settle();
+  expect(await entryKeys()).toEqual([oldKey]);
   rpc.mockResolvedValueOnce({ data: null, error: networkError });
-  expect((await getDispatchListWithItems({ p_limit: 20, offset: 0 })).success).toBe(false);
-  rpc.mockResolvedValueOnce({ data: null, error: networkError });
-  const recent = await getDispatchListWithItems({ p_limit: 20, offset: 20 });
-  expect(recent.success).toBe(true);
-  expect(recent.data.dispatches.map(d => d.id)).toEqual(['new']);
+  const replaced = await getDispatchListWithItems({ p_limit: 20, offset: 0 });
+  expect(replaced.data.dispatches.map(d => d.id)).toEqual(['new']);
+});
+
+it('does not serve a stored answer when the load fails for a reason other than the connection', async () => {
+  rpc.mockResolvedValueOnce(listResponse('kept'));
+  await getDispatchListWithItems({ p_limit: 20, offset: 0 });
+  await settle();
+  jest.advanceTimersByTime(30 * 24 * 60 * 60 * 1000);
+  rpc.mockResolvedValueOnce({ data: null, error: { message: 'permission denied for function get_dispatch_list', details: '', hint: '', code: '42501', status: 403 } });
+  const refused = await getDispatchListWithItems({ p_limit: 20, offset: 0 });
+  expect(refused.success).toBe(false);
 });
 
 it('discards an answer to a request sent before a sign-out, sign-in or server switch', async () => {

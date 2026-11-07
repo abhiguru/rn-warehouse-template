@@ -11,7 +11,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
-import { uploadDeferredDispatchImages, unpreparedDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
+import { uploadDeferredDispatchImages, unpreparedDispatchPhotos, giveUpDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
 import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -490,6 +490,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         // The photos are given up, retry included: their files on the phone go (the
         // registry keeps a file while an upload of it still runs, until it ends).
         if (photosNotUploaded) {
+            giveUpDispatchPhotos(photosNotUploaded.dispatchId, photosNotUploaded.failed);
             const files = photosNotUploaded.failed.map((photo) => photo.image_url);
             files.forEach((file) => abandonLocalPhotoUpload(file));
             void releaseLocalPhotos(files);
