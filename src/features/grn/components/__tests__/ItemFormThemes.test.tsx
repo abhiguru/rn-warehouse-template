@@ -8,7 +8,6 @@ import { ImagePreviewGrid } from '../ImagePreviewGrid';
 import { ImageUploadButton } from '../ImageUploadButton';
 import {
   HeroBanner,
-  ItemSearchField,
   MarkImageField,
   QuantityWeightFields,
   RackChamberPicker,
@@ -118,7 +117,6 @@ describe.each(THEMES)('GRN item form components in %s %s', (brand, mode) => {
           savedItemsCount={2}
         />
         <HeroBanner isEditing editingItemNumber={2} savedItemsCount={3} packaging="Bag" isValid={false} onSave={noop} />
-        <ItemSearchField value="" onSelect={noop} error="Choose an item." />
         <QuantityWeightFields qty="1" weight="2" onQtyChange={noop} onWeightChange={noop} qtyError="Enter a quantity." />
         <RackChamberPicker value="20B/F1/C4" onChange={noop} error="Enter a rack." />
         <MarkImageField value="" onChange={noop} images={[image]} onImagePick={noop} onImageRemove={noop} />
