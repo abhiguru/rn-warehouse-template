@@ -57,7 +57,8 @@ let mockFilters = {
   clear: jest.fn(),
 };
 jest.mock('@/features/filters/useListFilters', () => ({ useListFilters: () => mockFilters }));
-let mockPermissions = { canCreate: true, canUpdate: true };
+let mockPermissions = { canCreate: true, canUpdate: true, role: 'staff' };
+jest.mock('@/hooks/useCapability', () => ({ useCapability: () => true }));
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => mockPermissions }));
 let mockOffline = false;
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }));
@@ -116,7 +117,7 @@ beforeEach(() => {
   jest.mocked(getAssignedCustomerGRNItems).mockReset();
   resetFlashListWindow();
   mockFilters = { ...mockFilters, request: { p_sort_by: 'gr_no', p_sort_order: 'desc' }, sort: { field: 'gr_no', order: 'desc' } };
-  mockPermissions = { canCreate: true, canUpdate: true };
+  mockPermissions = { canCreate: true, canUpdate: true, role: 'staff' };
   mockOffline = false;
   mockState = { ...mockState, auth: { userProfile: { ...mockState.auth.userProfile, role: 'staff' } } };
   jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -147,7 +148,7 @@ const texts = (tree: ReactTestRenderer) =>
 
 describe('actions by role', () => {
   it('a customer account gets a plain card: no swipe, no actions, no "Edit" anywhere', async () => {
-    mockPermissions = { canCreate: false, canUpdate: false };
+    mockPermissions = { canCreate: false, canUpdate: false, role: 'customer' };
     mockState = { ...mockState, auth: { userProfile: { ...mockState.auth.userProfile, role: 'customer' } } };
     jest.mocked(getAssignedCustomerGRNItems).mockResolvedValue(answer(receipt(1)) as never);
     const tree = await renderList();

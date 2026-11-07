@@ -307,6 +307,12 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
     }
   }, [visible, defaultNumber]);
 
+  // While a print is being sent the dialog stays open (backdrop, X and Android back are ignored), so its failure is seen.
+  const dismissUnlessSending = () => {
+    if (sending.current) return;
+    onDismiss();
+  };
+
   const handleConfirm = async () => {
     if (sending.current) return;
     setError(null);
@@ -411,14 +417,14 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
       animationType="fade"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={onDismiss}
+      onRequestClose={dismissUnlessSending}
       onDismiss={onDismissed}
     >
       <KeyboardAvoidingView style={styles.root} behavior="padding" keyboardVerticalOffset={-insets.bottom}>
         <View style={[styles.overlay, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg }]}>
           <Pressable
             style={StyleSheet.absoluteFill}
-            onPress={onDismiss}
+            onPress={dismissUnlessSending}
             accessibilityRole="button"
             accessibilityLabel={tr('components.printRange.cancelPrinting')}
           />
@@ -431,7 +437,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                 {title}
               </Text>
               <Pressable
-                onPress={onDismiss}
+                onPress={dismissUnlessSending}
                 style={({ pressed }) => [
                   styles.iconButton,
                   pressed && styles.iconButtonPressed,
@@ -548,7 +554,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
 
               <View style={styles.rightActions}>
                 <Pressable
-                  onPress={onDismiss}
+                  onPress={dismissUnlessSending}
                   disabled={loading}
                   style={({ pressed }) => [
                     styles.secondaryButton,

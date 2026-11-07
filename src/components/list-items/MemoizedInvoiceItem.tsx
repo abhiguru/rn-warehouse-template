@@ -26,6 +26,7 @@ import { getLanguage } from '@/i18n/language';
 import { formatIdentifier, t as translate } from '@/i18n';
 import type { Invoice } from '@/services/invoice-service';
 import { StatusTag } from '@/components/ui/StatusTag';
+import { PrintSwipe } from './PrintSwipe';
 import { HighlightedText } from '@/features/filters/components/HighlightedText';
 
 // ============================================================================
@@ -277,6 +278,8 @@ MetricsBar.displayName = 'MetricsBar';
 const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
   invoice,
   onPress,
+  onPrint,
+  canPrint = false,
   words,
 }) => {
   const styles = useThemedStyles(makeStyles);
@@ -333,13 +336,19 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
     invoice.cancelled_at ? translate('invoice.cancel.tag') : null,
   ].filter(Boolean).join(', ');
 
-  return (
+  // A cancelled invoice is not printed (as on its details screen).
+  const printable = canPrint && !!onPrint && !invoice.cancelled_at;
+  const printLabel = translate('lists.invoice.printLabel', { title: translate('lists.invoice.cardTitle', { number: formatIdentifier(invoice.invoice_number) }) });
+
+  const card = (
     <Pressable
       onPress={() => onPress(invoice)}
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityDescription}
-      accessibilityHint={translate('lists.invoice.openHint')}
+      accessibilityHint={translate(printable ? 'lists.invoice.openHintActions' : 'lists.invoice.openHint')}
+      accessibilityActions={printable ? [{ name: 'print', label: translate('common.print') }] : undefined}
+      onAccessibilityAction={printable ? () => onPrint?.(invoice) : undefined}
     >
       <View style={styles.cardHeader}>
         <View style={styles.invoiceBadge}>
@@ -381,6 +390,14 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
       </View>
     </Pressable>
   );
+
+  if (!printable) return card;
+  return (
+    // One swipe state per invoice: FlashList reuses this cell for another invoice, which must not appear already swiped open.
+    <PrintSwipe key={String(invoice.invoice_id)} onPrint={() => onPrint?.(invoice)} label={printLabel} cardMargin={space.xs}>
+      {card}
+    </PrintSwipe>
+  );
 };
 
 /**
@@ -410,6 +427,7 @@ export const invoiceItemPropsAreEqual = (
     prevInvoice.grn?.gr_no === nextInvoice.grn?.gr_no &&
     prevProps.onPress === nextProps.onPress &&
     prevProps.canPrint === nextProps.canPrint &&
+    prevProps.onPrint === nextProps.onPrint &&
     prevProps.words === nextProps.words
   );
 };

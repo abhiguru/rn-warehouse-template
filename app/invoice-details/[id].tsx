@@ -28,12 +28,13 @@ import { CancelInvoiceDialog } from '@/features/invoice/components/CancelInvoice
 import { REFUSAL } from '@/utils/serverRefusal';
 import { getUserFriendlyError, parseErrorToFriendly } from '@/utils/errorHandler';
 import { generateInvoicePDF } from '@/services/pdf-service';
-import { printInvoiceRange } from '@/services/print-service';
+import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCanPrint } from '@/hooks/useCanPrint';
 import {
   InvoiceHeroHeader,
   InvoiceTabNavigator,
@@ -107,6 +108,7 @@ function InvoiceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
   const { canUpdate, canDelete, isCustomer } = usePermissions();
+  const canPrint = useCanPrint();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -680,7 +682,7 @@ function InvoiceDetailScreen() {
               cancelled_by_name={!isCustomer ? invoice.cancelled_by_name : undefined}
               on_share_pdf={handleSharePDF}
               is_share_loading={isShareLoading}
-              on_print={!isCustomer && !isCancelled ? handlePrint : undefined}
+              on_print={canPrint && !isCancelled ? handlePrint : undefined}
             />
           )}
 
@@ -720,9 +722,11 @@ function InvoiceDetailScreen() {
         onConfirm={async (start, end) => {
           // Extract year from fin_year string (e.g., '2025-26' -> 2025)
           const finYear = invoice.financial_year;
-          const finYearNum = typeof finYear === 'string'
+          const parsedYear = typeof finYear === 'string'
             ? parseInt(finYear.split('-')[0], 10)
             : finYear;
+          // A year that is not a number is left out (the backend then uses the current year), never sent as null.
+          const finYearNum = typeof parsedYear === 'number' && Number.isFinite(parsedYear) ? parsedYear : undefined;
 
           const result = await printInvoiceRange(start, end, finYearNum);
           if (result.success) {
@@ -731,8 +735,14 @@ function InvoiceDetailScreen() {
                 ? tr('invoice.print.sentWithJob', { job: String(result.print_job.cups_job_id) })
                 : tr('invoice.print.sent')
             );
+          } else if (result.unconfirmed) {
+            // The job may still print: an alert (as on the lists) and the dialog closes, so it is not sent again on a guess.
+            showAlert(tr('grn.review.printUnconfirmedTitle'), printFailureMessage(result));
+            setShowPrintDialog(false);
+            return;
           } else {
-            setSnackbarMessage(tr(result.unconfirmed ? 'invoice.print.unconfirmed' : 'invoice.print.failed'));
+            // Thrown, so the dialog stays open and shows the reason above its buttons.
+            throw new Error(printFailureMessage(result));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);

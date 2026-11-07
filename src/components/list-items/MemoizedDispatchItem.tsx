@@ -19,6 +19,7 @@ import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { formatDate, formatSpokenDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
+import { PrintSwipe } from './PrintSwipe';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -462,6 +463,8 @@ DispatchLinesTable.displayName = 'DispatchLinesTable';
 const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   dispatch,
   onPress,
+  onPrint,
+  canPrint = false,
   expanded = false,
   onToggle,
   words = NO_WORDS,
@@ -503,14 +506,20 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
   ].filter(Boolean).join(', ');
 
-  return (
+  const printable = canPrint && !!onPrint;
+  const printTitle = translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) });
+  const printLabel = translate('lists.dispatch.printLabel', { title: printTitle });
+
+  const card = (
     <View style={styles.card} testID={`dispatch-card-${dispatchId}`}>
       <Pressable
         onPress={() => onPress(dispatch)}
         style={({ pressed }) => [styles.cardContent, pressed && styles.cardContentPressed]}
         accessibilityRole="button"
         accessibilityLabel={accessibilityDescription}
-        accessibilityHint={translate('lists.dispatch.openHint')}
+        accessibilityHint={translate(printable ? 'lists.dispatch.openHintActions' : 'lists.dispatch.openHint')}
+        accessibilityActions={printable ? [{ name: 'print', label: translate('common.print') }] : undefined}
+        onAccessibilityAction={printable ? () => onPrint?.(dispatch) : undefined}
       >
         <View style={styles.objectCellRow}>
           {/* Object icon (left) */}
@@ -591,6 +600,14 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
       )}
     </View>
   );
+
+  if (!printable) return card;
+  return (
+    // One swipe state per dispatch: FlashList reuses this cell for another dispatch, which must not appear already swiped open.
+    <PrintSwipe key={String(dispatchId)} onPrint={() => onPrint?.(dispatch)} label={printLabel} cardMargin={space.sm}>
+      {card}
+    </PrintSwipe>
+  );
 };
 
 // Custom comparison function for React.memo
@@ -616,6 +633,7 @@ const areEqual = (
     // Compare callback references
     prevProps.onPress === nextProps.onPress &&
     prevProps.canPrint === nextProps.canPrint &&
+    prevProps.onPrint === nextProps.onPrint &&
 
     // Open or closed, and who is told when it is toggled
     prevProps.expanded === nextProps.expanded &&

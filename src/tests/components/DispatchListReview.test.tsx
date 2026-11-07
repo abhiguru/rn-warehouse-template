@@ -21,6 +21,8 @@ jest.mock('expo-router', () => ({
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/windowedFlashListMock'));
 jest.mock('react-native-reanimated', () => ({ __esModule: true, ...jest.requireActual('react-native-reanimated'), useReducedMotion: () => true }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
+jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/features/filters/configs', () => ({ DISPATCH_FILTERS: { listKey: 'dispatch-list' } }));
 jest.mock('@/features/filters/filterModel', () => ({ readSearch: () => ({ text: '' }) }));
 // The header is the shared one; here it is a host element that keeps its props.

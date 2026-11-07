@@ -16,6 +16,8 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/windowedFlashListMock'));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
+jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 // The card is a host element that keeps its props.
 jest.mock('@/components/list-items', () => ({
   MemoizedInvoiceItem: (props: { invoice: { invoice_id: string } }) => require('react').createElement('InvoiceCard', { ...props, testID: `invoice-card-${props.invoice.invoice_id}` }),

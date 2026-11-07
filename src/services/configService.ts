@@ -116,11 +116,6 @@ export interface FullConfig {
     apiRateLimitPerMinute: number;
     apiRateLimitPerHour: number;
   };
-  support: {
-    email: string;
-    phone: string;
-    appName: string;
-  };
 }
 
 interface CachedConfig<T> {

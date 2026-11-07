@@ -184,7 +184,6 @@ export function validateFullConfig(
     throw new BootstrapValidationError('config.features', 'Invalid feature configuration.');
   for (const [group, names] of Object.entries({
     environment: ['name', 'version', 'buildDate', 'region'],
-    support: ['email', 'phone', 'appName'],
   })) {
     const fields = object(config[group]);
     if (names.some(k => typeof fields[k] !== 'string'))

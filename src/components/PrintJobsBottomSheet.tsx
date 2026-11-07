@@ -22,7 +22,7 @@
  * ```
  */
 
-import React, { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -52,7 +52,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { getPrintJobs, cancelPrintJob, PrintJob, PrinterStatus } from '@/services/print-service';
+import { getPrintJobs, cancelPrintJob, getPrinterStatus, PrintJob, PrinterStatus } from '@/services/print-service';
 import { usePrintJobPolling } from '@/hooks/usePrintJobPolling';
 import type { IsCurrent } from '@/hooks/usePolling';
 import { formatRelativeTime } from '@/utils/formatters';
@@ -65,9 +65,28 @@ const LOAD_ERROR_KEY: TranslationKey = 'components.printJobs.loadFailed';
 const SNACKBAR_DURATION_MS = 4000;
 
 
+/**
+ * Cancel works only for a job that is printing and has the CUPS job id the submission returned
+ * (backend cancelDecision: a queued row never has one, so Cancel would always answer "can't be cancelled").
+ */
+const canCancel = (job: PrintJob): boolean =>
+  job.status === 'printing' && typeof job.cups_job_id === 'number' && Number.isInteger(job.cups_job_id) && job.cups_job_id > 0;
+
+/** An 'unknown' job (the printer did not confirm it) stays In progress this long after its last change, then moves to history. */
+const UNCONFIRMED_IN_PROGRESS_MS = 5 * 60 * 1000;
+/** How often the sheet re-checks whether an unconfirmed job is old enough to move (no reload needed). */
+const UNCONFIRMED_RECHECK_MS = 15 * 1000;
+
+/** True when an 'unknown' job's newest timestamp (updated_at, else created_at) is older than the In progress window. */
+const isUnconfirmedExpired = (job: Pick<PrintJob, 'status' | 'updated_at' | 'created_at'>, now: number): boolean => {
+  if (job.status !== 'unknown') return false;
+  const changed = Date.parse(job.updated_at || job.created_at);
+  return Number.isFinite(changed) && now - changed >= UNCONFIRMED_IN_PROGRESS_MS;
+};
+
 /** Print job status → Fiori status (guide §3.5). */
 const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: IconName; labelKey: TranslationKey }> = {
-  pending: { kind: 'neutral', icon: 'circle-outline', labelKey: 'common.pending' },
+  queued: { kind: 'neutral', icon: 'circle-outline', labelKey: 'common.pending' },
   printing: { kind: 'informative', icon: 'information', labelKey: 'components.printJobs.status.printing' },
   completed: { kind: 'positive', icon: 'check-circle', labelKey: 'components.printJobs.status.completed' },
   failed: { kind: 'negative', icon: 'alert-circle', labelKey: 'components.printJobs.status.failed' },
@@ -107,7 +126,8 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
   PrintJobsBottomSheetProps
 > = ({ onDismiss }, ref) => {
     const bottomSheetRef = useRef<BottomSheet>(null);
-    const [printJobs, setPrintJobs] = useState<PrintJob[]>([]);
+    const [fetchedJobs, setPrintJobs] = useState<PrintJob[]>([]);
+    const [now, setNow] = useState(() => Date.now());
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
@@ -135,41 +155,41 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       },
     }));
 
-    // Fetch and update printer status from most recent print job. usePrintJobPolling owns
+    // The printer's own status from the print server. When the server cannot answer it (printing not set up, an older
+    // server, no connection), the status is derived from the most recent print job. usePrintJobPolling owns
     // the schedule; `isCurrent()` is false once the sheet closed, so a late answer is dropped.
     const updatePrinterStatus = useCallback(async (isCurrent: IsCurrent) => {
       try {
-        if (__DEV__) console.log('[PrintJobsBottomSheet] Fetching printer status from print_jobs...');
+        const printer = await getPrinterStatus();
+        if (!isCurrent()) return;
+        // A refusal that carries the server's own status (offline, error) is shown as it is: no fallback to the jobs.
+        if (printer.status) {
+          setPrinterStatus(printer.status);
+          setPrinterMessage(
+            printer.status === 'online'
+              ? tr('components.printJobs.message.ready')
+              : printer.status === 'busy'
+                ? tr('components.printJobs.message.printing')
+                : printer.status === 'offline'
+                  ? tr('components.printJobs.message.offline')
+                  : tr('components.printJobs.message.problem')
+          );
+          return;
+        }
 
-        // Query the print_jobs table for the most recent job (limit=1, no filters)
-        // This gets the absolute latest job regardless of type or status
+        // The most recent job, whatever its type, status or printer.
         const result = await getPrintJobs(undefined, 1, undefined);
         if (!isCurrent()) return;
 
         if (!result.success || !result.data || result.data.length === 0) {
-          if (__DEV__) console.log('[PrintJobsBottomSheet] No recent print jobs found');
-          setPrinterStatus('offline');
-          setPrinterMessage(tr('components.printJobs.message.noActivity'));
+          setPrinterStatus(null);
+          setPrinterMessage(
+            result.success ? tr('components.printJobs.message.noActivity') : tr('components.printJobs.message.unavailable')
+          );
           return;
         }
 
         const recentJob = result.data[0];
-        if (__DEV__) console.log('[PrintJobsBottomSheet] Most recent job:', {
-          id: recentJob.id,
-          printer: recentJob.printer_name,
-          status: recentJob.status,
-          error: recentJob.error_message,
-          created: recentJob.created_at,
-          completed: recentJob.completed_at
-        });
-
-        // Filter by LQ1310_RAW printer only
-        if (recentJob.printer_name !== 'LQ1310_RAW') {
-          if (__DEV__) console.log('[PrintJobsBottomSheet] Most recent job is not for LQ1310_RAW');
-          setPrinterStatus('offline');
-          setPrinterMessage(tr('components.printJobs.message.noActivity'));
-          return;
-        }
 
         // Derive printer status from job status
         if (recentJob.status === 'completed') {
@@ -184,11 +204,11 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // 🔄 Currently printing
           setPrinterStatus('busy');
           setPrinterMessage(tr('components.printJobs.message.printing'));
-        } else if (recentJob.status === 'pending') {
+        } else if (recentJob.status === 'queued') {
           // ⏳ Job queued
           setPrinterStatus('busy');
           setPrinterMessage(tr('components.printJobs.message.queued'));
-        } else if (recentJob.status === 'unknown') {
+        } else if (recentJob.status === 'unknown' && !isUnconfirmedExpired(recentJob, Date.now())) {
           // The printer did not confirm the job: not "ready", and not to be printed again on a guess.
           setPrinterStatus('error');
           setPrinterMessage(tr('components.printJobs.message.unconfirmed'));
@@ -228,7 +248,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // Fetch pending and printing jobs separately using Promise.allSettled
           // to handle partial failures gracefully
           const [pendingSettled, printingSettled, unknownSettled] = await Promise.allSettled([
-            getPrintJobs(undefined, 50, 'pending'),
+            getPrintJobs(undefined, 50, 'queued'),
             getPrintJobs(undefined, 50, 'printing'),
             getPrintJobs(undefined, 50, 'unknown'),
           ]);
@@ -283,10 +303,11 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         } else {
           // Fetch completed, failed, and cancelled jobs separately using Promise.allSettled
           // to handle partial failures gracefully
-          const [completedSettled, failedSettled, cancelledSettled] = await Promise.allSettled([
+          const [completedSettled, failedSettled, cancelledSettled, unknownSettled] = await Promise.allSettled([
             getPrintJobs(undefined, 50, 'completed'),
             getPrintJobs(undefined, 50, 'failed'),
             getPrintJobs(undefined, 50, 'cancelled'),
+            getPrintJobs(undefined, 50, 'unknown'),
           ]);
           if (!isCurrent()) return;
 
@@ -301,6 +322,14 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             ? cancelledSettled.value
             : { success: false, error: 'Failed to fetch cancelled jobs' };
 
+          // Unconfirmed jobs older than the In progress window are history, still marked "Not confirmed" (filtered below).
+          const unknownResult = unknownSettled.status === 'fulfilled'
+            ? unknownSettled.value
+            : { success: false, error: 'Failed to fetch unconfirmed jobs' };
+          if (unknownResult.success && unknownResult.data) {
+            allJobs = [...allJobs, ...unknownResult.data];
+          }
+
           if (completedResult.success && completedResult.data) {
             allJobs = [...allJobs, ...completedResult.data];
           }
@@ -312,8 +341,8 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           }
 
           // Check for errors
-          if (!completedResult.success || !failedResult.success || !cancelledResult.success) {
-            const error = completedResult.error || failedResult.error || cancelledResult.error;
+          if (!completedResult.success || !failedResult.success || !cancelledResult.success || !unknownResult.success) {
+            const error = completedResult.error || failedResult.error || cancelledResult.error || unknownResult.error;
             console.error('[PrintJobsBottomSheet] Failed to fetch completed jobs:', error);
             if (!isRefreshing) {
               setSnackbarMessage(tr(LOAD_ERROR_KEY));
@@ -344,6 +373,24 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
     // One owner polls the jobs and the printer status (see usePrintJobPolling for the
     // cadence): faster while a job is queued or printing, slower when idle.
+    // Which tab an unconfirmed job is on depends on its age, so the list is re-evaluated on a timer while any is shown.
+    const hasUnconfirmed = fetchedJobs.some((j) => j.status === 'unknown');
+    useEffect(() => {
+      if (!isOpen || !hasUnconfirmed) return;
+      setNow(Date.now());
+      const id = setInterval(() => setNow(Date.now()), UNCONFIRMED_RECHECK_MS);
+      return () => clearInterval(id);
+    }, [isOpen, hasUnconfirmed]);
+
+    const printJobs = useMemo(
+      () =>
+        fetchedJobs.filter((j) => {
+          if (j.status !== 'unknown') return true;
+          return (activeTab === 'inProgress') !== isUnconfirmedExpired(j, now);
+        }),
+      [fetchedJobs, activeTab, now],
+    );
+
     const hasActiveJob = printerStatus === 'busy' || (activeTab === 'inProgress' && printJobs.length > 0);
     const { fetchNow, updateStatusNow, refetchNow, refreshStatusNow } = usePrintJobPolling({
       isActive: isOpen,
@@ -376,7 +423,10 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // Read again after the cancel: a read already in flight was sent before it committed.
           void Promise.all([refetchNow(), refreshStatusNow()]);
         } else {
-          setSnackbarMessage(tr('components.printJobs.cancelFailed'));
+          // RECORD_FAILED: cancelled at the printer, record not updated: the list shows what the database holds, so read again.
+          if (result.code === 'RECORD_FAILED') void Promise.all([refetchNow(), refreshStatusNow()]);
+          // A refusal the backend explained (cannot be stopped, already finished, not confirmed) is shown as it is.
+          setSnackbarMessage(result.code && result.error ? result.error : tr('components.printJobs.cancelFailed'));
           setSnackbarVisible(true);
         }
       } catch (error) {
@@ -439,7 +489,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
     // Render job card
     const renderJobCard = ({ item: job }: { item: PrintJob }) => {
-      const status = JOB_STATUS[job.status] ?? JOB_STATUS.pending;
+      const status = JOB_STATUS[job.status] ?? JOB_STATUS.queued;
       const type = getJobType(job.job_type);
       const docCount = tr('components.printJobs.documentCount', { count: job.document_count ?? 0 });
       const typeLabel = tr(type.labelKey);
@@ -487,7 +537,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           <View style={styles.jobFooter}>
             <Text style={styles.timestampText}>{formatRelativeTime(job.created_at)}</Text>
 
-            {job.status === 'pending' && activeTab === 'inProgress' && (
+            {canCancel(job) && activeTab === 'inProgress' && (
               <Pressable
                 onPress={() => handleCancelJob(job.id)}
                 style={({ pressed }) => [

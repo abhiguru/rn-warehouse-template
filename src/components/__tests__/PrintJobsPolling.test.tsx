@@ -6,7 +6,7 @@
 import React, { createRef } from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { AppState, type AppStateStatus } from 'react-native';
-import { getPrintJobs, type PrintJob } from '@/services/print-service';
+import { getPrintJobs, getPrinterStatus, type PrintJob } from '@/services/print-service';
 import PrintJobsBottomSheet, { type PrintJobsBottomSheetRef } from '../PrintJobsBottomSheet';
 
 jest.mock('@/store/hooks', () => ({
@@ -24,17 +24,19 @@ jest.mock('@gorhom/bottom-sheet', () => {
     React.createElement(View, { testID: 'sheet' }, children));
   return { __esModule: true, default: BottomSheet, BottomSheetBackdrop: () => null, BottomSheetFlatList: FlatList };
 });
-jest.mock('@/services/print-service', () => ({ getPrintJobs: jest.fn(), cancelPrintJob: jest.fn() }));
+jest.mock('@/services/print-service', () => ({ getPrintJobs: jest.fn(), cancelPrintJob: jest.fn(), getPrinterStatus: jest.fn() }));
 
 const job = (id: string, status: PrintJob['status']): PrintJob => ({
   id,
-  job_type: 'grn',
+  cups_job_id: status === 'queued' ? null : 7,
+  job_type: 'GRN',
   status,
   printer_name: 'LQ1310_RAW',
   document_range_start: '101',
   document_range_end: '104',
   document_count: 4,
   created_at: '2026-10-09T10:00:00Z',
+  updated_at: '2026-10-09T10:00:00Z',
   completed_at: null,
   error_message: null,
 } as unknown as PrintJob);
@@ -62,11 +64,13 @@ beforeEach(() => {
   }) as never);
   deferAll = false;
   pending = [];
+  // The print server cannot answer for the printer here (an older server): the status is derived from the latest job.
+  jest.mocked(getPrinterStatus).mockReset().mockResolvedValue({ success: false, error: 'unavailable' });
   getJobs.mockReset();
   getJobs.mockImplementation((_type: unknown, limit: number, status?: PrintJob['status']) => {
     const answer = () => ({
       success: true,
-      data: limit === 1 ? [latest] : status === 'pending' ? queued : [],
+      data: limit === 1 ? [latest] : status === 'queued' ? queued : [],
     });
     if (!deferAll) return Promise.resolve(answer());
     return new Promise(resolve => pending.push(() => resolve(answer())));
@@ -94,7 +98,7 @@ const texts = (tree: renderer.ReactTestRenderer) =>
 // The in-progress tab also asks for jobs the printer did not confirm ('unknown'), so a batch is 3 reads.
 test('while a job prints: 12 status reads and 6 job batches (30 requests) a minute on the in-progress tab', async () => {
   latest = job('j1', 'printing');
-  queued = [job('j2', 'pending')];
+  queued = [job('j2', 'queued')];
   const { tree } = await openSheet();
   await advance(10_000);
   getJobs.mockClear();
@@ -105,7 +109,7 @@ test('while a job prints: 12 status reads and 6 job batches (30 requests) a minu
   act(() => tree.unmount());
 });
 
-test('while a job prints: 30 requests a minute on the finished tab', async () => {
+test('while a job prints: 36 requests a minute on the finished tab (4 reads per batch: completed, failed, cancelled, unconfirmed)', async () => {
   latest = job('j1', 'printing');
   queued = [];
   const { tree } = await openSheet();
@@ -115,7 +119,7 @@ test('while a job prints: 30 requests a minute on the finished tab', async () =>
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(12);
-  expect(jobReads()).toBe(18);
+  expect(jobReads()).toBe(24);
   act(() => tree.unmount());
 });
 
@@ -133,7 +137,7 @@ test('idle printer: 2 status reads and 1 job batch (5 requests) a minute', async
 
 test('slow reads never overlap, and a pull to refresh joins them', async () => {
   latest = job('j1', 'printing');
-  queued = [job('j2', 'pending')];
+  queued = [job('j2', 'queued')];
   const { tree } = await openSheet();
   // the first reads land and show the list; every later read hangs
   deferAll = true;
@@ -153,7 +157,7 @@ test('slow reads never overlap, and a pull to refresh joins them', async () => {
 
 test('closing the sheet stops reads and a late answer does not change it', async () => {
   latest = job('j1', 'printing');
-  queued = [job('j2', 'pending')];
+  queued = [job('j2', 'queued')];
   deferAll = true;
   const { tree, ref } = await openSheet();
   const before = texts(tree);

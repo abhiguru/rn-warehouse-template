@@ -31,10 +31,11 @@ import {
 } from '@/services/grn-service';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCanPrint } from '@/hooks/useCanPrint';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
-import { printGRNRange } from '@/services/print-service';
+import { printGRNRange, printFailureMessage } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 import { StatusTag } from '@/components/ui';
@@ -575,7 +576,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   // Permissions - use centralized permission system
   const { canCreate, canUpdate } = usePermissions();
   const canCreateGRN = canCreate;
-  const canPrint = canCreate || canUpdate; // Staff can print (they have update permission)
+  const canPrint = useCanPrint();
   const canEdit = canUpdate;
 
   // A print-range link opens the list on exactly that range.
@@ -732,27 +733,24 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
     setShowPrintDialog(true);
   }, []);
 
-  // A job sent is a short confirmation; a failure needs the person to act, so it is a dialog (§13.9).
+  // A job sent is a short confirmation. A failure is thrown, so the dialog stays open and shows it above its buttons; an
+  // unconfirmed job closes the dialog with a dialog of its own, so nobody sends it again on a guess (§13.9).
   const handlePrintConfirm = useCallback(async (start: string, end: string) => {
-    try {
-      const result = await printGRNRange(start, end);
-      if (result.success) {
-        showToast(
-          result.print_job?.cups_job_id
-            ? translate('lists.grn.printSentNumbered', { job: String(result.print_job.cups_job_id) })
-            : translate('lists.grn.printSent')
-        );
-      } else {
-        logger.warn('Print failed:', result.error);
-        showAlert(
-          translate(result.unconfirmed ? 'grn.review.printUnconfirmedTitle' : 'grn.review.printFailedTitle'),
-          result.unconfirmed ? translate('grn.details.printUnconfirmed') : translate('lists.grn.printFailedPrinter')
-        );
-      }
-    } catch (error) {
-      logger.error('Print exception:', error);
-      showAlert(translate('grn.review.printFailedTitle'), translate('lists.grn.printFailedConnection'));
+    const result = await printGRNRange(start, end);
+    if (result.success) {
+      showToast(
+        result.print_job?.cups_job_id
+          ? translate('lists.grn.printSentNumbered', { job: String(result.print_job.cups_job_id) })
+          : translate('lists.grn.printSent')
+      );
+      return;
     }
+    logger.warn('Print failed:', result.status);
+    if (result.unconfirmed) {
+      showAlert(translate('grn.review.printUnconfirmedTitle'), printFailureMessage(result));
+      return;
+    }
+    throw new Error(printFailureMessage(result));
   }, []);
 
   const onRefresh = useCallback(() => {

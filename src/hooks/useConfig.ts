@@ -68,16 +68,6 @@ export const useLimits = () => {
 };
 
 /**
- * Hook to get support contact information
- * @returns Support contact details or null if not available
- */
-export const useSupport = () => {
-  const { fullConfig } = useConfig();
-
-  return fullConfig?.support || null;
-};
-
-/**
  * Hook to check if app is in test mode (SMS bypass)
  * @returns true if in test mode, false otherwise
  */

@@ -20,6 +20,8 @@ jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
 jest.mock('react-native-paper', () => ({ ActivityIndicator: 'ActivityIndicator' }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
+jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
 jest.mock('@/components/list-items', () => ({ MemoizedInvoiceItem: () => null }));
 // The empty list's "Create invoice" button, kept so the test can tap it.
