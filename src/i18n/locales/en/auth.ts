@@ -7,7 +7,6 @@ export const auth = {
   },
   brand: {
     logoLabel: '{{name}} logo',
-    associationCaption: 'COLD STORAGE ASSOCIATION',
   },
   legal: {
     // {{terms}} and {{privacy}} are replaced by the two links below.

@@ -81,7 +81,6 @@ export const settings: Translation<typeof source> = {
     footer: 'આખી ઍપના રંગ. લાઇટ અને ડાર્ક બંને મોડમાં ચાલે છે.',
     optionLabel: '{{brand}} રંગ',
     orange: 'નારંગી',
-    gcsa: 'GCSA નેવી',
   },
   account: {
     title: 'એકાઉન્ટ',

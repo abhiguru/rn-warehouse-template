@@ -9,7 +9,6 @@ export const auth: Translation<typeof source> = {
   },
   brand: {
     logoLabel: '{{name}} લોગો',
-    associationCaption: 'કોલ્ડ સ્ટોરેજ ઍસોસિએશન',
   },
   legal: {
     agreement: 'આગળ વધીને તમે અમારી {{terms}} અને {{privacy}} સ્વીકારો છો',

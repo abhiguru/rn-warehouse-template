@@ -11,7 +11,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { ASSOCIATION_NAME, isAssociationLegalText, legalParty, legalUpdatedLabel } from '@/constants/legal';
+import { isAssociationLegalText, legalParty, legalProvider, legalUpdatedLabel } from '@/constants/legal';
 import { TemplateLegalScreen } from '@/legal/TemplateLegalScreen';
 import {
   fontWeight,
@@ -87,6 +87,7 @@ function AssociationPrivacyScreen() {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const party = legalParty();
+  const provider = legalProvider();
   const ownServer = party.name
     ? `${party.name}'s own server`
     : 'the server of the cold storage you connected to';
@@ -122,8 +123,7 @@ function AssociationPrivacyScreen() {
 
           <Paragraph>
             {party.leading} ("we", "us", or "our") is responsible for the
-            records you enter in this mobile application (the "App"). The{' '}
-            {ASSOCIATION_NAME} (the "Association") provides the App to its
+            records you enter in this mobile application (the "App"). {provider.definition} provides the App to its
             member cold storages; each member keeps its own records on its own
             server. This Privacy Policy explains what we collect, where it is
             kept, how we use it and who can see it.
@@ -206,8 +206,8 @@ function AssociationPrivacyScreen() {
               ]}
             />
             <Paragraph>
-              Where your copy of the App uses the Association's sign-in, the
-              Association's sign-in keeps your mobile number and, if you enter
+              Where your copy of the App uses the {provider.term}'s sign-in, the
+              {provider.term}'s sign-in keeps your mobile number and, if you enter
               it, your name. A cold storage sees that name when you ask it for
               access.
             </Paragraph>
@@ -237,7 +237,7 @@ function AssociationPrivacyScreen() {
             <Paragraph>
               Your records (customers, GRNs, dispatches, invoices and stock) are
               stored on {ownServer}. They are not kept on a shared server of the
-              Association.
+              {provider.term}.
             </Paragraph>
             <Paragraph>
               We use appropriate technical and organizational measures to

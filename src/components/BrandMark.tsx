@@ -1,19 +1,16 @@
 /**
  * BrandMark: the logo area for sign-in and other branded spots.
  *
- * Orange brand: the template's logo image.
- * GCSA brand: a typeset "GCSA" wordmark in the association's navy and grey. The
- * association's own logo file is not part of this public template; a branded
- * build can add it once the association has agreed.
+ * A typeset wordmark in the brand's colours. Without a brand pack it reads "COLD STORAGE" with no
+ * caption; a pack supplies its own wordmark lines and caption (src/theme/brandPack.ts).
  */
 import React from 'react';
-import { Image, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useThemedStyles, useTheme } from '@/hooks/useTheme';
 import { radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { t as tr } from '@/i18n';
-
-const templateLogo = require('../../assets/logo.png');
+import { t as tr, getLanguage } from '@/i18n';
+import { NEUTRAL_WORDMARK, getBrandPack, localized } from '@/theme/brandPack';
 
 export interface BrandMarkProps {
   /** Accessible name of the organisation shown. */
@@ -28,10 +25,6 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingVertical: space.lg,
     borderRadius: radius.sheet,
     backgroundColor: t.brandMark.panel,
-  },
-  image: {
-    width: 120,
-    height: 64,
   },
   wordmark: {
     ...typography.wordmark,
@@ -56,18 +49,16 @@ const makeStyles = (t: ThemeTokens) => ({
 export function BrandMark({ label }: BrandMarkProps) {
   const { brand } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  if (brand === 'gcsa') {
-    return (
-      <View style={styles.card} accessible accessibilityRole="image" accessibilityLabel={tr('auth.brand.logoLabel', { name: label })}>
-        <Text style={styles.wordmark}>GCSA</Text>
-        <View style={styles.rule} />
-        <Text style={styles.caption}>{tr('auth.brand.associationCaption')}</Text>
-      </View>
-    );
-  }
+  const pack = getBrandPack(brand);
+  const lines = pack ? pack.wordmark : NEUTRAL_WORDMARK;
+  const caption = pack ? localized(pack.caption, getLanguage()) : '';
   return (
     <View style={styles.card} accessible accessibilityRole="image" accessibilityLabel={tr('auth.brand.logoLabel', { name: label })}>
-      <Image source={templateLogo} style={styles.image} resizeMode="contain" />
+      {lines.map(line => (
+        <Text key={line} style={styles.wordmark}>{line}</Text>
+      ))}
+      <View style={styles.rule} />
+      {caption ? <Text style={styles.caption}>{caption}</Text> : null}
     </View>
   );
 }

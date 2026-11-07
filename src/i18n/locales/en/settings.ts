@@ -82,7 +82,6 @@ export const settings = {
     footer: 'Colours for the whole app. Works with light and dark mode.',
     optionLabel: '{{brand}} colours',
     orange: 'Orange',
-    gcsa: 'GCSA navy',
   },
   account: {
     title: 'Account',

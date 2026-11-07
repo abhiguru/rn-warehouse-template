@@ -8,6 +8,7 @@
  */
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import type { FacilityLegal } from '@/config/facilityLegal';
+import { activeBrandPack } from '@/theme/brandPack';
 
 /**
  * RELEASE GATE (WH-140). The template legal text (src/legal/templateText.ts) is Product's reading of the
@@ -21,11 +22,27 @@ export const LEGAL_TEXT_REVIEWED = false;
 
 export { LEGAL_UPDATED, legalUpdatedLabel } from '@/config/legalVersion';
 
-export const ASSOCIATION_NAME = 'Gujarat Cold Storage Association';
+export interface LegalProvider {
+  /** The defined term the pages use after the first mention: "Association" (a build with a brand pack that names one) or "Publisher". */
+  term: string;
+  /** The first mention, with its defined term: 'The <name> (the "Association")'. */
+  definition: string;
+}
 
 /**
- * Which text a build shows: the facility template (the default) or the Gujarat Cold Storage Association's own
- * pages, for the association's build (EXPO_PUBLIC_LEGAL_TEXT=association).
+ * Who provides the App. A build whose brand pack names an association (brand-packs/README.md) says so;
+ * any other build speaks of "the organisation that distributes your copy of the App".
+ */
+export function legalProvider(): LegalProvider {
+  const name = activeBrandPack()?.association?.name.trim();
+  return name
+    ? { term: 'Association', definition: `The ${name} (the "Association")` }
+    : { term: 'Publisher', definition: 'The organisation that distributes your copy of the App (the "Publisher")' };
+}
+
+/**
+ * Which text a build shows: the facility template (the default) or an association's own pages, for a build
+ * whose brand pack names the association (EXPO_PUBLIC_LEGAL_TEXT=association).
  */
 export const isAssociationLegalText = (): boolean =>
   process.env.EXPO_PUBLIC_LEGAL_TEXT?.trim().toLowerCase() === 'association';

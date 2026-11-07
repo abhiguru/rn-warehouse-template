@@ -32,7 +32,6 @@ const PROPS = new Set([
 // English that stays. An entry matches on every field it gives: file (path), kind (prop or key name), text.
 const ALLOW = [
   { file: /^app\/(.+\/)?_layout\.tsx$/, kind: /^name$/, reason: 'route name of a Stack.Screen or Tabs.Screen, never shown' },
-  { file: /^src\/components\/BrandMark\.tsx$/, text: /^GCSA$/, reason: "the association's wordmark, the same in every language" },
   { kind: /^placeholder$/, text: /^(https:\/\/warehouse\.example\.com|[a-z]+@example\.com)$/, reason: 'sample address: an address is written in Latin letters' },
   { file: /^src\/components\/PrintJobsBottomSheet\.tsx$/, kind: /^error$/, text: /^Failed to fetch \w+ jobs$/, reason: 'only written to the log; the sheet shows components.printJobs.loadFailed' },
   { file: /^src\/utils\/schemaValidator\.ts$/, kind: /^error$/, reason: 'developer diagnostics of stored-data checks; no screen shows them' },
