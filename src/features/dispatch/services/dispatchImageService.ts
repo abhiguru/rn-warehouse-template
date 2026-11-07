@@ -18,6 +18,7 @@ import type { DispatchImageData } from '@/types/dispatch.types';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLimiter } from '@/utils/concurrency';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
 import { logPhotoFailure, photoUploadFailureText } from '@/utils/photoUploadError';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -596,6 +597,11 @@ const dispatchPhotoUploadSlots = createLimiter(DISPATCH_PHOTO_UPLOAD_CONCURRENCY
 // Uploads still running after their wait ended, by file: a retry of the same photo waits for that upload instead of
 // starting a second one.
 const dispatchPhotosInFlight = new Map<string, Promise<{ success: boolean; error?: string }>>();
+// Cleared at sign-out and a server or facility switch, so a retry never waits on an upload started for the previous
+// session. Only the lookup goes: a running upload keeps its own promise and finishes (its removal below is by identity).
+// The slots above keep no session data (a count and the waiting jobs, each already holding its own client) and are not
+// reset, as that would let new uploads exceed the limit while earlier ones still run.
+registerSessionScoped('dispatch-image-uploads', () => dispatchPhotosInFlight.clear(), { onGenerationChange: true });
 
 /**
  * Upload deferred images after dispatch creation, at most
