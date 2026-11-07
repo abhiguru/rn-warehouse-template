@@ -3,6 +3,7 @@
  * The two levels sort and search separately; they share the period.
  */
 import { t } from '@/i18n';
+import { backendHasFeature } from '@/config/backendFeatures';
 import type { CustomerGRNSummary, GRNActivityRecord } from '@/types/report.types';
 import { todayInIST } from '@/utils/formatters';
 import { matchesSearch } from '../../searchMatch';
@@ -48,7 +49,7 @@ export function grnCustomersView(rows: readonly CustomerGRNSummary[], view: Repo
   );
 }
 
-export type GRNInvoicedChoice = 'all' | 'invoiced' | 'not_invoiced';
+export type GRNInvoicedChoice = 'all' | 'invoiced' | 'not_invoiced' | 'partly_invoiced';
 export type GRNRecordsRequest = PeriodReportRequest<{ invoiced: GRNInvoicedChoice }>;
 
 export const GRN_ACTIVITY_CUSTOMER: FilterListConfig<GRNRecordsRequest> = {
@@ -73,11 +74,15 @@ export const GRN_ACTIVITY_CUSTOMER: FilterListConfig<GRNRecordsRequest> = {
       get label() { return t('reports.filters.invoicing'); },
       icon: 'receipt-text-outline',
       defaultValue: 'all',
-      options: [
-        { value: 'all', get label() { return t('common.all'); } },
-        { value: 'invoiced', get label() { return t('reports.grnActivity.invoiced'); } },
-        { value: 'not_invoiced', get label() { return t('reports.grnActivity.notInvoiced'); } },
-      ],
+      get options() {
+        return [
+          { value: 'all', label: t('common.all') },
+          { value: 'invoiced', label: t('reports.grnActivity.invoiced') },
+          // Migration 165: a GRN with a live invoice that is not yet Invoiced. An older backend has none.
+          ...(backendHasFeature('invoiceAsGoodsLeave') ? [{ value: 'partly_invoiced', label: t('charging.invoiceState.partly_invoiced') }] : []),
+          { value: 'not_invoiced', label: t('reports.grnActivity.notInvoiced') },
+        ];
+      },
     },
   ],
   fastFilters: ['invoiced'],
@@ -85,7 +90,8 @@ export const GRN_ACTIVITY_CUSTOMER: FilterListConfig<GRNRecordsRequest> = {
     period: reportPeriod(values, today),
     view: {
       ...reportView(GRN_ACTIVITY_CUSTOMER, values, sort),
-      invoiced: values.invoiced === 'invoiced' || values.invoiced === 'not_invoiced' ? values.invoiced : 'all',
+      invoiced:
+        values.invoiced === 'invoiced' || values.invoiced === 'not_invoiced' || values.invoiced === 'partly_invoiced' ? values.invoiced : 'all',
     },
   }),
 };
@@ -104,7 +110,9 @@ const grnColumns = (grn: GRNActivityRecord) => [
 export function grnRecordsView(rows: readonly GRNActivityRecord[], view: GRNRecordsRequest['view']): GRNActivityRecord[] {
   return sortRows(
     rows.filter(grn => {
-      if (view.invoiced !== 'all' && Boolean(grn.invoice_status?.is_invoiced) !== (view.invoiced === 'invoiced')) return false;
+      // The server's state when it sent one (migration 165); otherwise invoiced or not as before.
+      const state = grn.invoice_status?.invoice_state ?? (grn.invoice_status?.is_invoiced ? 'invoiced' : 'not_invoiced');
+      if (view.invoiced !== 'all' && state !== view.invoiced) return false;
       return matchesSearch(view.words, grnColumns(grn));
     }),
     view.sort,

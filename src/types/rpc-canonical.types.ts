@@ -242,6 +242,9 @@ export interface RpcGrnItemRow {
   // Vehicle info
   registration: string | null;
 
+  /** Migration 165: Not invoiced, Partly invoiced or Invoiced (parseInvoiceState); absent on an older server. */
+  invoice_state?: string;
+
   // Item-specific fields
   item_id?: string;
   item_name: string;

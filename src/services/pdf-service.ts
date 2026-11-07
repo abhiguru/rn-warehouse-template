@@ -417,7 +417,7 @@ export interface ReportPdfSort {
 /** The payment status an invoice history PDF is narrowed to. */
 export type ReportPdfStatus = 'paid' | 'pending';
 /** The GRNs a GRN activity PDF is narrowed to: those invoiced, or those not yet invoiced. */
-export type ReportPdfInvoicing = 'invoiced' | 'not_invoiced';
+export type ReportPdfInvoicing = 'invoiced' | 'not_invoiced' | 'partly_invoiced';
 /** The stock age a stock aging PDF is narrowed to, in days (the app's AgingBucketId). */
 export type ReportPdfBucket = '0-120' | '121-240' | '241-364' | 'over-364';
 
