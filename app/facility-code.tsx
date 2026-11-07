@@ -3,10 +3,14 @@
  * association's sign-in. Three steps on one screen: choose the facility from the facilities this phone has used,
  * the mobile number, the 6-digit code the facility's operator made. Back goes one step back; the first step goes back
  * to the association's sign-in. The layouts are the sign-in's own (PhoneSignInForm, CodeEntryForm).
+ *
+ * With `mode=sms` (WH-148) the same list is the way to the facility's OWN SMS sign-in, offered when the association's sign-in
+ * cannot send a code: choosing a facility makes it the selected server and opens its sign-in screen (app/login.tsx, app/otp.tsx),
+ * which gives a session for that facility only. A phone with no facility types the facility's address instead.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, FlatList, Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { CentralHeader } from '@/components/central/CentralHeader';
@@ -16,6 +20,10 @@ import { PhoneSignInForm, isValidMobile, toInternationalMobile } from '@/compone
 import AppTooOldScreen from '@/components/AppTooOldScreen';
 import type { AppTooOldInfo } from '@/config/appTooOld';
 import { listFacilitiesForCode, prepareFacilityForCode } from '@/config/breakGlass';
+import { OperatorServerSelection } from '@/components/OperatorServerSelection';
+import { setCentralState } from '@/config/centralState';
+import { getActiveOperatorServer } from '@/config/operatorServer';
+import { facilityNameOf } from '@/config/openFacility';
 import type { MyFacility } from '@/config/centralFacilities';
 import { breakGlassSignIn, type BreakGlassFailure } from '@/config/supabaseConfig';
 import { useAppDispatch } from '@/store/hooks';
@@ -26,7 +34,7 @@ import { showAlert } from '@/utils/alert';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { clearSignInDraft } from '@/utils/signInDraft';
 
-type Step = 'choose' | 'phone' | 'code';
+type Step = 'choose' | 'phone' | 'code' | 'address';
 
 /** The words for each way the facility can refuse a code (a used, expired or locked code each has its own text). */
 const REFUSAL_TEXT: Record<BreakGlassFailure, TranslationKey> = {
@@ -45,6 +53,8 @@ const NO_RATE_LIMIT = { isRateLimited: false, countdown: '', message: '' };
 
 export default function FacilityCodeScreen() {
   const dispatch = useAppDispatch();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const smsMode = mode === 'sms';
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const [step, setStep] = useState<Step>('choose');
@@ -71,7 +81,8 @@ export default function FacilityCodeScreen() {
 
   const goBack = useCallback(() => {
     setCodeRefusal(null);
-    if (step === 'code') setStep('phone');
+    if (step === 'address') setStep('choose');
+    else if (step === 'code') setStep('phone');
     else if (step === 'phone') setStep('choose');
     else router.back();
   }, [step]);
@@ -95,6 +106,12 @@ export default function FacilityCodeScreen() {
       if (!prepared.ok) {
         if (prepared.appTooOld) setTooOld(prepared.appTooOld);
         else showAlert(tr('auth.facilityCode.couldNotSignInTitle'), prepared.message);
+        return;
+      }
+      if (smsMode) {
+        // The facility's own SMS sign-in: the existing screens take over for the selected server.
+        setCentralState({ facilitySmsOrigin: getActiveOperatorServer()?.origin ?? facility.origin });
+        router.replace('/login');
         return;
       }
       setChosen(facility);
@@ -143,6 +160,19 @@ export default function FacilityCodeScreen() {
   };
 
   if (tooOld) return <AppTooOldScreen {...tooOld} onClose={() => setTooOld(null)} />;
+
+  // No facility on this phone: the facility's address is typed (the "Choose your warehouse server" screen's own entry).
+  if (step === 'address') {
+    return (
+      <OperatorServerSelection
+        onCancel={() => setStep('choose')}
+        onChoose={({ server }) => {
+          const name = facilityNameOf(server);
+          void choose({ origin: server.origin, instanceId: server.instanceId, name, city: '', status: 'requested', lastOpenedAt: null, addedAt: new Date().toISOString(), source: 'address', gone: false });
+        }}
+      />
+    );
+  }
 
   if (step === 'phone' && chosen) {
     return (
@@ -201,7 +231,12 @@ export default function FacilityCodeScreen() {
         <View style={styles.empty} testID="facility-code-empty">
           <Icon name="office-building-plus-outline" size={iconSize.hero} color={t.icon.secondary} />
           <Text style={styles.emptyTitle}>{tr('auth.facilityCode.emptyTitle')}</Text>
-          <Text style={styles.emptyMessage}>{tr('auth.facilityCode.emptyMessage')}</Text>
+          <Text style={styles.emptyMessage}>{smsMode ? tr('central.signIn.noFacilitiesYet') : tr('auth.facilityCode.emptyMessage')}</Text>
+          {smsMode ? (
+            <Button type="primary" onPress={() => setStep('address')} testID="facility-code-enter-address">
+              {tr('central.catalogue.enterAddress')}
+            </Button>
+          ) : null}
           <Button type="secondary" onPress={goBack} testID="facility-code-back">
             {tr('common.back')}
           </Button>
@@ -211,7 +246,7 @@ export default function FacilityCodeScreen() {
           data={list}
           keyExtractor={item => item.origin}
           contentContainerStyle={styles.listContent}
-          ListHeaderComponent={<Text style={styles.lead}>{tr('auth.facilityCode.chooseLead')}</Text>}
+          ListHeaderComponent={<Text style={styles.lead}>{smsMode ? tr('central.signIn.smsChooseLead') : tr('auth.facilityCode.chooseLead')}</Text>}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           renderItem={({ item }) => {
             const opening = preparing === item.origin;
