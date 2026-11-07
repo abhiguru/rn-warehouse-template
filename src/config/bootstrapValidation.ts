@@ -210,5 +210,9 @@ export function validateFullConfig(
     )
   )
     throw new BootstrapValidationError('config.limits', 'Invalid configuration limits.');
-  return config as unknown as FullConfig;
+  // The warehouse network key (WH-133) is a secret of the session: it is read from the raw answer into secure storage
+  // (src/config/lanKey.ts) and never travels on in the configuration, which is cached in plain storage.
+  const kept: Record<string, unknown> = { ...config };
+  delete kept.lanKey;
+  return kept as unknown as FullConfig;
 }

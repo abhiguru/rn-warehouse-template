@@ -32,6 +32,7 @@ import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
 import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
+import { forgetLanKey, LAN_KEY_STORE_KEY, parseLanKey, storeLanKey } from './lanKey';
 
 const authLogger = createLogger('Auth');
 
@@ -975,6 +976,59 @@ async function startNewSession(): Promise<number> {
   return generation;
 }
 
+/** Keeps the warehouse network key of a sign-in answer, when it names this session. Never throws and never logs the key. */
+async function keepLanKeyOfSignIn(
+  session: { lan_key_id?: unknown; lan_key?: unknown },
+  accessToken: string,
+  generation: number
+): Promise<void> {
+  try {
+    const key = parseLanKey(session.lan_key_id, session.lan_key);
+    const operator = getActiveOperatorServer();
+    if (!key || !operator || sessionIdOf(accessToken) !== key.id) return;
+    await serializeCredentials(async () => {
+      if (generation !== getSessionGeneration()) return;
+      await storeLanKey(key, operator.origin, operator.instanceId);
+      if (generation !== getSessionGeneration()) forgetLanKey();
+    });
+  } catch {
+    // No key: the phone uses only the internet.
+  }
+}
+
+/**
+ * Keeps the key the signed-in `get-config` answer carries (`data.lanKey`), which the server sends only over the public https
+ * address. Called only for an answer that came over the internet (https); a key for another session is ignored.
+ */
+export async function keepLanKeyFromConfig(answer: unknown, accessToken: string, generation: number): Promise<void> {
+  try {
+    const operator = getActiveOperatorServer();
+    if (!operator || !operator.origin.startsWith('https://')) return;
+    const raw = (answer as { data?: { lanKey?: { id?: unknown; key?: unknown } } } | null)?.data?.lanKey;
+    const key = parseLanKey(raw?.id, raw?.key);
+    if (!key || sessionIdOf(accessToken) !== key.id) return;
+    await serializeCredentials(async () => {
+      if (generation !== getSessionGeneration()) return;
+      await storeLanKey(key, operator.origin, operator.instanceId);
+      if (generation !== getSessionGeneration()) forgetLanKey();
+    });
+  } catch {
+    // No key: the phone uses only the internet.
+  }
+}
+
+/** The `session_id` claim of an access token, or null. */
+export function sessionIdOf(accessToken: string): string | null {
+  try {
+    const part = accessToken.split('.')[1] ?? '';
+    const text = atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '='));
+    const claims = JSON.parse(text) as { session_id?: unknown };
+    return typeof claims.session_id === 'string' ? claims.session_id : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * What a facility's successful sign-in answer leads to, whichever way the
  * person proved who they are (the facility's SMS code in `operator-otp/verify`,
@@ -1042,6 +1096,9 @@ async function completeOperatorSignIn(data: Record<string, unknown>, generation:
   // Store the JWT tokens
   await storeTokens(accessTokenStr, refreshTokenStr, expiresAt, generation);
   lastIssued = { token: accessTokenStr, at: Date.now() };
+  // The warehouse network key of this session (WH-133). A sign-in without one, or one that cannot be kept, still
+  // signs in: the phone then uses only the internet until `get-config` brings the key.
+  await keepLanKeyOfSignIn(session as { lan_key_id?: unknown; lan_key?: unknown }, accessTokenStr, generation);
   await clearPendingEnrollment();
 
   // Clear cached authenticated client so it picks up the new token
@@ -1975,6 +2032,8 @@ export const clearStoredTokens = () => {
 // Clear all stored tokens
 // S2/S3 Fix: Clears from both SecureStore and AsyncStorage
 const clearStoredTokensRaw = async (): Promise<boolean> => {
+  // The warehouse network key goes with the session, from memory first (src/config/lanKey.ts).
+  forgetLanKey();
   clearAuthenticatedClientCache();
   invalidateStoredTokenCache();
   // True only when every session key was really deleted (a delete that rejects is retried once).
@@ -1997,6 +2056,8 @@ const clearStoredTokensRaw = async (): Promise<boolean> => {
     SECURE_KEYS.OPERATOR_IDENTITY,
     // The end of a session started with a code from the facility (src/config/sessionEnd.ts).
     SESSION_ENDS_AT_KEY,
+    // The warehouse network key of the session (WH-133).
+    LAN_KEY_STORE_KEY,
     // Obsolete alternate helper used this expiry spelling.
     'secure_token_expires_at',
     'cached_user_profile',
