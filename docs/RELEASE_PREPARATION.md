@@ -22,7 +22,7 @@ overrides the formula at build time; leave it unset, or keep it equal to the for
 ## Gujarati texts before a release
 
 Contributors may add English-only texts. Before a release, no English text may lack a Gujarati draft: add the drafts from
-[GUJARATI_GLOSSARY.md](GUJARATI_GLOSSARY.md). The release check fails if any key lacks Gujarati and passes once the draft is added.
+[GUJARATI_GLOSSARY.md](GUJARATI_GLOSSARY.md). Run `npm run i18n:release-check`: it lists every English key without Gujarati and fails while any is missing, and it passes once the drafts are added. `release.yml` runs it with the other checks.
 
 ## Neutral APK
 

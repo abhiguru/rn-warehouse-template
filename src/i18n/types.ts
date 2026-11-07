@@ -9,9 +9,18 @@ export interface Plural {
   other: string;
 }
 
-/** The shape another language must have: the same keys, text for text and plural for plural. */
+/**
+ * The shape another language may have: the same keys, text for text and plural for plural, but a key may be missing
+ * (the app then shows the English text; `npm run i18n:release-check` fails a release while any is missing).
+ * A key that English does not have, or a text of the wrong kind, is still a compile error.
+ */
 export type Translation<T> = {
-  [K in keyof T]: T[K] extends string ? string : T[K] extends Plural ? Plural : Translation<T[K]>;
+  [K in keyof T]?: T[K] extends string ? string : T[K] extends Plural ? Plural : Translation<T[K]>;
+};
+
+/** The same shape with every key present: the type other code sees for the Gujarati table. */
+export type FullTranslation<T> = {
+  [K in keyof T]: T[K] extends string ? string : T[K] extends Plural ? Plural : FullTranslation<T[K]>;
 };
 
 /** Every key path that ends in a text: "filters.clearAll", "grn.list.title". */

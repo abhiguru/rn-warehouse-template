@@ -55,6 +55,8 @@ jobs:
       # The same command and warning limit as ci.yml (scripts/workflows.test.mjs checks).
       - run: npm run lint -- --max-warnings 636
       - run: npm run test:setup
+      # Every English text needs a Gujarati text at release (a pull request may leave it out).
+      - run: npm run i18n:release-check
       - name: Audit dependencies and verify every local security backport
         run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
       - name: Preserve raw audit and installed-source verification
