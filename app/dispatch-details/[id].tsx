@@ -758,8 +758,10 @@ function DispatchDetailScreen() {
                 : tr('dispatch.details.printSent')
             );
           } else if (result.unconfirmed) {
-            // The job may still print: close the dialog so it is not sent again on a guess.
-            setSnackbarMessage(printFailureMessage(result));
+            // The job may still print: an alert (as on the lists) and the dialog closes, so it is not sent again on a guess.
+            showAlert(tr('grn.review.printUnconfirmedTitle'), printFailureMessage(result));
+            setShowPrintDialog(false);
+            return;
           } else {
             // Thrown, so the dialog stays open and shows the reason above its buttons.
             throw new Error(printFailureMessage(result));
