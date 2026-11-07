@@ -100,6 +100,22 @@ export const REFUSAL = {
   PARTIAL_INVOICES_OPEN: 'PARTIAL_INVOICES_OPEN',
   /** A dispatch line of the invoice is already on another live invoice (WH409). Nothing was saved. */
   DISPATCH_LINE_INVOICED: 'DISPATCH_LINE_INVOICED',
+  // Backend migration 172 (record payments, WH-143).
+  /** The facility's Record payments setting is off. */
+  PAYMENTS_OFF: 'PAYMENTS_OFF',
+  /** A payment dated after today in India (`date`, `today`). */
+  PAYMENT_DATE_FUTURE: 'PAYMENT_DATE_FUTURE',
+  /** A payment dated before the invoice (`date`, `invoice_date`). */
+  PAYMENT_BEFORE_INVOICE: 'PAYMENT_BEFORE_INVOICE',
+  /** An amount above what is due (`due`, `paid`, `total`). */
+  PAYMENT_OVER_DUE: 'PAYMENT_OVER_DUE',
+  INVOICE_NOT_FOUND: 'INVOICE_NOT_FOUND',
+  PAYMENT_NOT_FOUND: 'PAYMENT_NOT_FOUND',
+  /** A payment that came from the old accounting link is read-only. */
+  PAYMENT_NOT_EDITABLE: 'PAYMENT_NOT_EDITABLE',
+  USER_REQUIRED: 'USER_REQUIRED',
+  /** An invoice edit would take the total below what was paid (`paid`, `total`). */
+  TOTAL_BELOW_PAID: 'TOTAL_BELOW_PAID',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

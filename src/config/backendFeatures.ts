@@ -31,6 +31,8 @@ const INTRODUCED_BY_MIGRATION = {
   chargingRule: 164,
   /** The setting `invoice_as_goods_leave`, `invoice_state` on GRN lists and details, several invoices per GRN (WH-138). */
   invoiceAsGoodsLeave: 165,
+  /** `set_record_payments`, `record_payment`, `update_payment`, `delete_payment`, paid and due figures on invoices (WH-143). */
+  recordPayments: 172,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 
