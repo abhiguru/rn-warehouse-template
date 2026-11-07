@@ -65,9 +65,12 @@ const LOAD_ERROR_KEY: TranslationKey = 'components.printJobs.loadFailed';
 const SNACKBAR_DURATION_MS = 4000;
 
 
+/** The states cancel-print-job accepts (backend CANCELLABLE_STATUSES). */
+const CANCELLABLE_STATUSES: ReadonlyArray<PrintJob['status']> = ['queued', 'printing'];
+
 /** Print job status → Fiori status (guide §3.5). */
 const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: IconName; labelKey: TranslationKey }> = {
-  pending: { kind: 'neutral', icon: 'circle-outline', labelKey: 'common.pending' },
+  queued: { kind: 'neutral', icon: 'circle-outline', labelKey: 'common.pending' },
   printing: { kind: 'informative', icon: 'information', labelKey: 'components.printJobs.status.printing' },
   completed: { kind: 'positive', icon: 'check-circle', labelKey: 'components.printJobs.status.completed' },
   failed: { kind: 'negative', icon: 'alert-circle', labelKey: 'components.printJobs.status.failed' },
@@ -142,7 +145,8 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       try {
         const printer = await getPrinterStatus();
         if (!isCurrent()) return;
-        if (printer.success && printer.status) {
+        // A refusal that carries the server's own status (offline, error) is shown as it is: no fallback to the jobs.
+        if (printer.status) {
           setPrinterStatus(printer.status);
           setPrinterMessage(
             printer.status === 'online'
@@ -183,7 +187,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // 🔄 Currently printing
           setPrinterStatus('busy');
           setPrinterMessage(tr('components.printJobs.message.printing'));
-        } else if (recentJob.status === 'pending') {
+        } else if (recentJob.status === 'queued') {
           // ⏳ Job queued
           setPrinterStatus('busy');
           setPrinterMessage(tr('components.printJobs.message.queued'));
@@ -227,7 +231,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // Fetch pending and printing jobs separately using Promise.allSettled
           // to handle partial failures gracefully
           const [pendingSettled, printingSettled, unknownSettled] = await Promise.allSettled([
-            getPrintJobs(undefined, 50, 'pending'),
+            getPrintJobs(undefined, 50, 'queued'),
             getPrintJobs(undefined, 50, 'printing'),
             getPrintJobs(undefined, 50, 'unknown'),
           ]);
@@ -375,6 +379,8 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // Read again after the cancel: a read already in flight was sent before it committed.
           void Promise.all([refetchNow(), refreshStatusNow()]);
         } else {
+          // RECORD_FAILED: cancelled at the printer, record not updated: the list shows what the database holds, so read again.
+          if (result.code === 'RECORD_FAILED') void Promise.all([refetchNow(), refreshStatusNow()]);
           // A refusal the backend explained (cannot be stopped, already finished, not confirmed) is shown as it is.
           setSnackbarMessage(result.code && result.error ? result.error : tr('components.printJobs.cancelFailed'));
           setSnackbarVisible(true);
@@ -439,7 +445,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
     // Render job card
     const renderJobCard = ({ item: job }: { item: PrintJob }) => {
-      const status = JOB_STATUS[job.status] ?? JOB_STATUS.pending;
+      const status = JOB_STATUS[job.status] ?? JOB_STATUS.queued;
       const type = getJobType(job.job_type);
       const docCount = tr('components.printJobs.documentCount', { count: job.document_count ?? 0 });
       const typeLabel = tr(type.labelKey);
@@ -487,7 +493,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           <View style={styles.jobFooter}>
             <Text style={styles.timestampText}>{formatRelativeTime(job.created_at)}</Text>
 
-            {job.status === 'pending' && activeTab === 'inProgress' && (
+            {CANCELLABLE_STATUSES.includes(job.status) && activeTab === 'inProgress' && (
               <Pressable
                 onPress={() => handleCancelJob(job.id)}
                 style={({ pressed }) => [

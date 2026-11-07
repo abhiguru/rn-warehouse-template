@@ -541,6 +541,7 @@ export const errors = {
     cancelled: 'Print job cancelled successfully',
     cannotCancel: "This job can't be cancelled: it may already be printing. Check the printer.",
     cancelFinished: "This job has already finished or been cancelled.",
+    cancelNotRecorded: "The job was cancelled at the printer, but the record couldn't be updated. Refresh the list.",
     cancelUnconfirmed: "The cancel wasn't confirmed. The job may still print. Check the printer.",
     statusFailed: 'Failed to check printer status',
   },

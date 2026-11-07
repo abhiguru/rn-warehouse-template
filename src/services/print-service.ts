@@ -56,7 +56,7 @@ export interface PrintJob {
   id: string;
   job_type: string; // Backend returns "GRN", "Dispatch", "Invoice" (capitalized)
   cups_job_id: number;
-  status: 'pending' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'unknown';
+  status: 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'unknown';
   created_at: string;
   user_id: string;
   user_name: string;
@@ -104,7 +104,7 @@ export interface GetPrinterStatusResponse {
 /**
  * Decide the failure kind from the backend's code, else (today's backend, no code) from the HTTP status.
  * A 503 whose JSON body is not the "upgrading" answer is "printing not set up"; a 502 or 504, or an answer that is
- * not JSON, is "server unavailable"; a 500 from a print function is a printer failure.
+ * not JSON, is "server unavailable"; only the code PRINTER_FAILED (502) names a printer failure; any other error shows the server's message.
  */
 function classifyFailure(status: number, code: string | undefined, unconfirmed: boolean, jsonBody: boolean): PrintFailureKind {
   if (unconfirmed || code === 'PRINT_UNCONFIRMED') return 'unconfirmed';
@@ -115,7 +115,6 @@ function classifyFailure(status: number, code: string | undefined, unconfirmed: 
   if (status === 503) return 'notSetUp';
   if (status === 403) return 'notAllowed';
   if (status === 502 || status === 504) return 'serverUnavailable';
-  if (status === 500) return 'printerFailed';
   return 'other';
 }
 
@@ -157,14 +156,17 @@ const logResponse = (operation: string, response: Pick<Response, 'status' | 'ok'
 // next tap is then the retry of the same action. After any answer the server gave (success, refusal, "unconfirmed",
 // printer failed) the next tap is a new action with a new id; a deliberate second copy must print.
 const REQUEST_ID_REUSE_MS = 5 * 60 * 1000;
-let lastAttempt: { key: string; id: string; at: number } | null = null;
+// Kept per document (path + range), so an answer to one print never clears another print's id.
+const lastAttempts = new Map<string, { id: string; at: number }>();
 
 function requestIdFor(path: string, body: Record<string, unknown>): string {
   const key = `${path}:${JSON.stringify(body)}`;
   const now = Date.now();
-  if (lastAttempt && lastAttempt.key === key && now - lastAttempt.at < REQUEST_ID_REUSE_MS) return lastAttempt.id;
-  lastAttempt = { key, id: Crypto.randomUUID(), at: now };
-  return lastAttempt.id;
+  const last = lastAttempts.get(key);
+  if (last && now - last.at < REQUEST_ID_REUSE_MS) return last.id;
+  const id = Crypto.randomUUID();
+  lastAttempts.set(key, { id, at: now });
+  return id;
 }
 
 /**
@@ -176,12 +178,13 @@ async function submitPrintJob(
   path: string,
   body: Record<string, unknown>
 ): Promise<PrintJobResponse> {
+  const key = `${path}:${JSON.stringify(body)}`;
   let answered = false;
   try {
     const result = await sendPrintJob(operation, path, body, () => { answered = true; });
     return result;
   } finally {
-    if (answered) lastAttempt = null;
+    if (answered) lastAttempts.delete(key);
   }
 }
 
@@ -231,7 +234,9 @@ async function sendPrintJob(
       data = null;
     }
     if (data === null || typeof data !== 'object') {
-      // On a success the job may be on its way: never resubmit on a guess.
+      // On a success the job may be on its way, but the server did answer: the next tap is a deliberate new print
+      // (new id). Only a request that got no answer at all is retried with the same id.
+      if (response.ok) markAnswered();
       return response.ok
         ? { success: false, status: response.status, kind: 'unconfirmed', unconfirmed: true, error: t('errors.print.unconfirmed') }
         : {
@@ -338,13 +343,13 @@ export async function printInvoiceRange(
  * Get list of print jobs from the database
  * @param jobType - Optional filter by job type (grn, dispatch, invoice)
  * @param limit - Maximum number of jobs to return (default: 50)
- * @param status - Optional filter by status (pending, processing, completed, failed, cancelled)
+ * @param status - Optional filter by status (queued, printing, completed, failed, cancelled, unknown)
  * @returns List of print jobs with status
  */
 export async function getPrintJobs(
   jobType?: 'grn' | 'dispatch' | 'invoice',
   limit = 50,
-  status?: 'pending' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'unknown'
+  status?: 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled' | 'unknown'
 ): Promise<GetPrintJobsResponse> {
   try {
     const authenticatedFetch = createAuthenticatedFetch();
@@ -382,10 +387,9 @@ export async function getPrintJobs(
       };
     }
 
-    return {
-      success: true,
-      data: Array.isArray(data) ? data : [],
-    };
+    // The RPC answers {success, data: [...], message}; a bare array is tolerated.
+    const rows = Array.isArray(data) ? data : data && Array.isArray(data.data) ? data.data : [];
+    return { success: true, data: rows };
   } catch (error) {
     log.error('getPrintJobs failed');
     return {
@@ -435,6 +439,7 @@ export async function cancelPrintJob(
         CANNOT_CANCEL: t('errors.print.cannotCancel'),
         INVALID_STATUS: t('errors.print.cancelFinished'),
         CANCEL_FAILED: t('errors.print.cancelUnconfirmed'),
+        RECORD_FAILED: t('errors.print.cancelNotRecorded'),
       };
       if (code && known[code]) return { success: false, code, error: known[code] };
       return {
@@ -496,8 +501,13 @@ export async function getPrinterStatus(
     }
 
     if (!response.ok) {
+      // The server's own status (offline, error) on a refusal such as 503 offline: the caller shows it, not a fallback.
+      const serverStatus: PrinterStatus | undefined =
+        upgradingBody(data) === undefined && (data.status === 'offline' || data.status === 'error') ? data.status : undefined;
       return {
         success: false,
+        ...(serverStatus ? { status: serverStatus } : {}),
+        printer_name: data.printer_name,
         error:
           serverText(upgradingBody(data) ?? (data.error ||
           data.message), t('errors.print.httpError', { status: String(response.status) })),
