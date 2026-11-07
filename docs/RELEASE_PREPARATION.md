@@ -24,6 +24,14 @@ overrides the formula at build time; leave it unset, or keep it equal to the for
 Contributors may add English-only texts. Before a release, no English text may lack a Gujarati draft: add the drafts from
 [GUJARATI_GLOSSARY.md](GUJARATI_GLOSSARY.md). Run `npm run i18n:release-check`: it lists every English key without Gujarati and fails while any is missing, and it passes once the drafts are added. `release.yml` runs it with the other checks.
 
+### Gujarati review before going public
+
+Gujarati drafts are fine for daily use and for tags. Before the app goes public, a native speaker reviews every Gujarati text once; only going public is gated, not a tag.
+
+1. `npm run i18n:review-sheet` writes `gujarati-review-<date>/Texts.csv` (key, screen, English, Gujarati draft, empty "Reviewer's Gujarati" and "Comment") and `Glossary.csv`. Texts are sorted by screen. Open them in a spreadsheet (UTF-8); the reviewer fills "Reviewer's Gujarati" only where the draft should change, and writes a comment where a question or a note is needed, then saves as CSV UTF-8.
+2. `npm run i18n:review-apply -- <folder>` applies the returned files (`--dry-run` first). It writes changes into `src/i18n/locales/gu`, refuses a row whose `{{placeholders}}` differ from the English or whose draft changed since the list was made, lists comment-only rows for Product (they stay unreviewed), marks the glossary rows "Reviewed (date)" and records the reviewed texts in `docs/GUJARATI_REVIEWED.json`. Run the text tests and commit it as one batch.
+3. `npm run i18n:public-check` fails while any Gujarati text is unreviewed, including a text added or edited after the review; run it before going public. `npm run i18n:release-check` (the tag check) only reports the count.
+
 ## Neutral APK
 
 Each `vX.Y.Z` tag publishes a neutral Android APK for facilities outside the association (package
