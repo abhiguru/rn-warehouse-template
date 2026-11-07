@@ -269,6 +269,12 @@ describe('a planned later rate (criterion 9)', () => {
     expect(bandBlockedByPlanned(draft, context, '2023-11-06')).toContain('06/11/23');
   });
 
+  it('the refusal line says the band can only start today and that saving replaces the planned rate (WH-103)', () => {
+    const rows = [row(0, 30, 11.25, 2.5, 5, '2020-01-01'), row(0, 30, 13, 2.5, 5, '2027-01-01')];
+    const { draft, context } = open(rows, null);
+    expect(bandBlockedByPlanned(draft, context, '2023-11-06')).toBe("A rate from 01/01/27 is planned, so this band can't start from 06/11/23. It can only start today, and saving it replaces that planned rate. You'll be asked first.");
+  });
+
   it('is not blocked when nothing is planned', () => {
     const { draft, context } = open([row(0, 30, 11.25, 2.5, 5, '2020-01-01')], '2023-11-06');
     expect(bandBlockedByPlanned(draft, context)).toBeNull();

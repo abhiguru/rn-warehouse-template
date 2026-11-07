@@ -186,7 +186,7 @@ describe('criterion 9: a planned later rate', () => {
 
     it('offers only Today and gives the planned rate as the reason', async () => {
       const t = await openWith([own(), planned()]);
-      expect(textOf(t, 'add-rate-mixed-starts')).toEqual(['A rate from 01/01/27 is planned, so a new band can only start today. To start it earlier, cancel the planned rate first.']);
+      expect(textOf(t, 'add-rate-mixed-starts')).toEqual(['A rate from 01/01/27 is planned. A new band can only start today, and saving it replaces that planned rate. You\'ll be asked first. Afterwards, use Change rate to plan it again.']);
       expect(ids(t, 'add-rate-band-start')).toHaveLength(0);
     });
 
@@ -212,6 +212,48 @@ describe('criterion 9: a planned later rate', () => {
       expect(replace).toHaveBeenCalledTimes(1);
       expect(router.back).not.toHaveBeenCalled();
     });
+
+    it('"Replace it" saves the bands from today and leaves (WH-103)', async () => {
+      const t = await openWith([own(), planned()]);
+      await type(t, 'Up to (kg)', '50');
+      await type(t, 'Rent ₹/month', '4');
+      replace.mockResolvedValueOnce({
+        success: false,
+        errorCode: 'LATER_RATES_EXIST',
+        later: [{ effective_from: '2027-01-01', weight_min: 0, weight_max: 30, unit_price: 4 }],
+      } as never);
+      await pressSave(t);
+      const question = () => t.root.findAllByType(ConfirmDialog).find(d => d.props.confirmText === 'Replace it')!;
+      replace.mockResolvedValueOnce({ success: true } as never);
+      await act(async () => { await question().props.onConfirm(); });
+      expect(replace).toHaveBeenCalledTimes(2);
+      expect(replace.mock.calls[1][0]).toMatchObject({ mode: 'change', starts_on: '2026-10-14', replace_later: true });
+      expect(replace.mock.calls[1][0].bands).toHaveLength(2);
+      expect(router.back).toHaveBeenCalled();
+    });
+  });
+
+  describe('a refused save on the rate\'s own start (WH-103)', () => {
+    it('reads the new bandLaterBlocked text in the strip at the top', async () => {
+      clearRateStartFloor();
+      const t = await openWith([own(), rate('onion', null, 0, 30, 4, 1.5, 5, '2027-01-01', null, 'monthly', 'Review Onion Red')]);
+      await type(t, 'Up to (kg)', '50');
+      await type(t, 'Rent ₹/month', '4');
+      replace.mockResolvedValueOnce({
+        success: false,
+        errorCode: 'LATER_RATES_EXIST',
+        later: [{ effective_from: '2027-01-01', weight_min: 0, weight_max: 30, unit_price: 4 }],
+      } as never);
+      await pressSave(t);
+      const all = t.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+      expect(all).toContain("A rate from 01/01/27 is planned, so this band can't start from 01/01/25. It can only start today, and saving it replaces that planned rate. You'll be asked first.");
+    });
+  });
+
+  describe('(WH-81 continued)', () => {
+    beforeEach(() => { rememberRateStartFloor('2025-06-01'); });
+    afterEach(() => { clearRateStartFloor(); });
+    const planned = () => rate('onion', null, 0, 30, 4, 1.5, 5, '2027-01-01', null, 'monthly', 'Review Onion Red');
 
     it('keeps the differing-dates line when an ended band is at risk as well', async () => {
       const t = await openWith([
