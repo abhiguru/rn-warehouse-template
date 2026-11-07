@@ -8,17 +8,17 @@ The app has **two theme axes**, and every screen supports every combination of t
 
 | Axis | Values | Chosen under | What it changes | Rules |
 |---|---|---|---|---|
-| **Brand** | Orange, GCSA navy | Settings → Preferences → App colours. A build sets the default with `EXPO_PUBLIC_DEFAULT_BRAND=orange\|gcsa`. | The brand colour group only: primary fills, tints, selected states, the brand mark | [3.7](#37-the-brand-axis) |
+| **Brand** | Orange; a build may add a second brand from a brand pack ([3.10](#310-adding-your-own-brand)) | Settings → Preferences → App colours, shown only when the build has two brands. A build sets the default with `EXPO_PUBLIC_DEFAULT_BRAND=<brand id>`; a saved brand the build does not have falls back to it. | The brand colour group only: primary fills, tints, selected states, the brand mark | [3.7](#37-the-brand-axis) |
 | **Mode** | Light, dark | Settings → Preferences → Appearance (System, Light, Dark) | Neutrals, status colours, shadows, table edges, charts and avatars | [3.8](#38-the-mode-axis) |
 
-Together they make four themes:
+Together they make four themes (two with the sample brand, which stands for any pack):
 
 | Theme | Brand fill | Use |
 |---|---|---|
 | Orange light | `#F69000` with dark text | The template's original look, made accessible |
 | Orange dark | `#FFA733` with dark text | Same brand in dark mode |
-| GCSA light | navy `#2E3192` with white text | Gujarat Cold Storage Association members |
-| GCSA dark | navy `#9DA0F0` with dark text | Same brand in dark mode |
+| Sample light | teal `#00695C` with white text | The fictional sample pack, `brand-packs/sample-teal/` |
+| Sample dark | teal `#4DB6AC` with dark text | Same brand in dark mode |
 
 Status colours, type, spacing, shape and touch sizes are the same in all four ([3.9](#39-what-the-axes-never-change)). A component is designed once, in tokens, and checked in all four.
 
@@ -134,7 +134,7 @@ There are no other colour APIs.
 ### 3.1 How the palette is built
 
 - **Neutrals, fields, status colours and shadows** are SAP Morning Horizon (light) and Evening Horizon (dark), taken from SAP's published theme parameters (`sap_horizon` and `sap_horizon_dark` in `SAP/theming-base-content`). They are the same in both brands.
-- **The brand group** is the only part that changes between Orange and GCSA.
+- **The brand group** is the only part that changes between Orange and a pack's brand.
 - **Three values differ from Horizon on purpose**, so that text keeps 4.5:1 on pressed rows:
 
 | Token | Horizon value | Our value | Reason |
@@ -153,19 +153,7 @@ There are no other colour APIs.
 
 Extra values: dark subtle `#3D2510`, dark subtle strong `#4F3015`, secondary yellow `#F6C624` (decoration only).
 
-**GCSA navy**, sampled from the association's logo. `600` is the logo navy.
-
-| Step | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Hex | `#EEEFFA` | `#D6D7F2` | `#B3B5E8` | `#9DA0F0` | `#7175D6` | `#4A4EBF` | `#2E3192` | `#262879` | `#1E1F60` | `#161747` |
-
-Extra values: dark subtle `#23254F`, dark subtle strong `#2D3066`.
-
-**GCSA grey**, sampled from the association's logo. `400` is the logo grey.
-
-| Step | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Hex | `#F4F4F5` | `#E6E7E8` | `#CFD0D2` | `#B9BBBD` | `#A7A9AC` | `#8C8F93` | `#6E7175` | `#5C5F63` | `#3F4245` | `#26282A` |
+A pack's colours are in its own `brand.json` ([3.10](#310-adding-your-own-brand)); the fictional sample pack is `brand-packs/sample-teal/brand.json`.
 
 **Ink** `#131E29` is Horizon's text colour. It is the text colour on every bright fill.
 
@@ -192,20 +180,20 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 
 #### brand
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
-| `brand.fill` | `#F69000` | `#FFA733` | `#2E3192` | `#9DA0F0` |
+| `brand.fill` | `#F69000` | `#FFA733` | `#00695C` | `#4DB6AC` |
 | `brand.onFill` | `#131E29` | `#131E29` | `#FFFFFF` | `#131E29` |
-| `brand.fillPressed` | `#DD8200` | `#F69000` | `#262879` | `#B3B5E8` |
-| `brand.tint` | `#A85000` | `#FFA733` | `#2E3192` | `#9DA0F0` |
-| `brand.subtle` | `#FFF4E6` | `#3D2510` | `#EEEFFA` | `#23254F` |
-| `brand.subtleStrong` | `#FFD399` | `#4F3015` | `#D6D7F2` | `#2D3066` |
-| `brand.secondary` | `#F6C624` | `#F6C624` | `#A7A9AC` | `#A7A9AC` |
-| `brand.secondaryText` | `#924F00` | `#F6C624` | `#5C5F63` | `#A7A9AC` |
+| `brand.fillPressed` | `#DD8200` | `#F69000` | `#004D40` | `#80CBC4` |
+| `brand.tint` | `#A85000` | `#FFA733` | `#00695C` | `#4DB6AC` |
+| `brand.subtle` | `#FFF4E6` | `#3D2510` | `#E0F2F1` | `#16312E` |
+| `brand.subtleStrong` | `#FFD399` | `#4F3015` | `#B2DFDB` | `#1F4642` |
+| `brand.secondary` | `#F6C624` | `#F6C624` | `#80CBC4` | `#80CBC4` |
+| `brand.secondaryText` | `#924F00` | `#F6C624` | `#37474F` | `#80CBC4` |
 
 #### destructive
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `destructive.fill` | `#AA0808` | `#FA6161` | `#AA0808` | `#FA6161` |
 | `destructive.onFill` | `#FFFFFF` | `#131E29` | `#FFFFFF` | `#131E29` |
@@ -213,7 +201,7 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 
 #### background
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `background.base` | `#F5F6F7` | `#12171C` | `#F5F6F7` | `#12171C` |
 | `background.grouped` | `#F2F2F7` | `#12171C` | `#F2F2F7` | `#12171C` |
@@ -221,7 +209,7 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 
 #### surface
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `surface.card` | `#FFFFFF` | `#1D232A` | `#FFFFFF` | `#1D232A` |
 | `surface.cardPressed` | `#F2F4F5` | `#222B35` | `#F2F4F5` | `#222B35` |
@@ -236,7 +224,7 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 
 #### text
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `text.primary` | `#131E29` | `#F5F6F7` | `#131E29` | `#F5F6F7` |
 | `text.secondary` | `#556B82` | `#8396A8` | `#556B82` | `#8396A8` |
@@ -247,14 +235,14 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 
 #### icon
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `icon.primary` | `#131E29` | `#F5F6F7` | `#131E29` | `#F5F6F7` |
 | `icon.secondary` | `#758CA4` | `#A9B4BE` | `#758CA4` | `#A9B4BE` |
 
 #### border
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `border.divider` | `#E5E5E5` | `#2E3742` | `#E5E5E5` | `#2E3742` |
 | `border.separator` | `#D9D9D9` | `#3C4957` | `#D9D9D9` | `#3C4957` |
@@ -267,7 +255,7 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 A shadow does not show on the dark page, so a table card is outlined, and in dark mode its
 heading row is lighter than its rows rather than darker. `table.accent` is the brand tint.
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `table.outline` | `#E5E5E5` | `#4A5868` | `#E5E5E5` | `#4A5868` |
 | `table.headerFill` | `#EFF1F2` | `#2A3440` | `#EFF1F2` | `#2A3440` |
@@ -275,11 +263,11 @@ heading row is lighter than its rows rather than darker. `table.accent` is the b
 | `table.divider` | `#E5E5E5` | `#3C4957` | `#E5E5E5` | `#3C4957` |
 | `table.separator` | `#D9D9D9` | `#4A5868` | `#D9D9D9` | `#4A5868` |
 | `table.insetFill` | `#F0F3F6` | `#242E38` | `#F0F3F6` | `#242E38` |
-| `table.accent` | `#A85000` | `#FFA733` | `#2E3192` | `#9DA0F0` |
+| `table.accent` | `#A85000` | `#FFA733` | `#00695C` | `#4DB6AC` |
 
 #### status
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `status.negative.text` | `#AA0808` | `#FA6161` | `#AA0808` | `#FA6161` |
 | `status.negative.element` | `#F53232` | `#FA6161` | `#F53232` | `#FA6161` |
@@ -304,21 +292,21 @@ heading row is lighter than its rows rather than darker. `table.accent` is the b
 
 #### control
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `control.thumb` | `#FFFFFF` | `#FFFFFF` | `#FFFFFF` | `#FFFFFF` |
 | `control.trackOff` | `#788FA6` | `#8396A8` | `#788FA6` | `#8396A8` |
 
 #### interaction
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `interaction.focus` | `#0032A5` | `#9AD3FF` | `#0032A5` | `#9AD3FF` |
 | `interaction.pressedOverlay` | `rgba(19,30,41,0.08)` | `rgba(245,246,247,0.12)` | `rgba(19,30,41,0.08)` | `rgba(245,246,247,0.12)` |
 
 #### overlay
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | `overlay.scrim` | `rgba(0,0,0,0.4)` | `rgba(0,0,0,0.6)` | `rgba(0,0,0,0.4)` | `rgba(0,0,0,0.6)` |
 | `overlay.onImage` | `#FFFFFF` | `#FFFFFF` | `#FFFFFF` | `#FFFFFF` |
@@ -327,7 +315,7 @@ heading row is lighter than its rows rather than darker. `table.accent` is the b
 
 #### Key contrast pairs
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | brand.onFill on brand.fill | 7.15:1 | 8.69:1 | 10.66:1 | 7.00:1 |
 | destructive.onFill on destructive.fill | 7.64:1 | 5.58:1 | 7.64:1 | 5.58:1 |
@@ -462,27 +450,27 @@ A new status value gets a row here before it ships.
 - **Do** put dark ink on bright orange. White on `#F69000` is 2.36:1 and fails.
 - **Do** use `brand.tint`, not `brand.fill`, for brand text and icons. Orange `#F69000` as text on white is 2.18:1.
 - **Do** keep large areas neutral. Brand colour is for the primary action, the selected state and a little identity.
-- **Don't** use GCSA grey `#A7A9AC` for text in light mode. It is 2.36:1 on white. Use `brand.secondaryText`.
+- **Don't** use `brand.secondary` for text in light mode: a pale decoration colour fails 4.5:1 on white. Use `brand.secondaryText`.
 - **Don't** invent tints with opacity, such as `brand.fill + '20'`. Use `brand.subtle` or the status background.
 - **Don't** use pure black or pure white backgrounds. Use `background.base` and `surface.card`.
 - **Don't** change status colours per brand or per screen.
 
 ### 3.7 The brand axis
 
-The brand changes one token group and the brand mark. Everything else is the same in Orange and GCSA.
+The brand changes one token group and the brand mark. Everything else is the same in every brand.
 
-| | Orange | GCSA navy |
+| | Orange | Sample teal (a pack's brand) |
 |---|---|---|
-| `brand.fill`, light / dark | `#F69000` / `#FFA733` | `#2E3192` / `#9DA0F0` |
+| `brand.fill`, light / dark | `#F69000` / `#FFA733` | `#00695C` / `#4DB6AC` |
 | `brand.onFill` (text and icons on the fill) | ink `#131E29` in both modes | white in light mode, ink in dark mode |
-| `brand.tint` (links, selected tab, active filter, `table.accent`) | `#A85000` / `#FFA733` | `#2E3192` / `#9DA0F0` |
-| `brand.secondary` | yellow `#F6C624`, decoration only | grey `#A7A9AC`, decoration only |
-| Brand mark (`BrandMark.tsx`) | The template logo image | The GCSA wordmark; on a white panel in dark mode ([13.12](#1312-branding)) |
+| `brand.tint` (links, selected tab, active filter, `table.accent`) | `#A85000` / `#FFA733` | `#00695C` / `#4DB6AC` |
+| `brand.secondary` | yellow `#F6C624`, decoration only | light teal `#80CBC4`, decoration only |
+| Brand mark (`BrandMark.tsx`) | The wordmark "COLD STORAGE", no caption | The pack's wordmark and caption; a pack may give a panel behind the mark ([13.12](#1312-branding)) |
 
 Rules:
 
-- **Use the brand tokens and nothing else.** A component never checks the brand to pick a colour. The brand is read in one place only: `BrandMark.tsx` reads it to choose which mark to draw. The colours themselves are switched in `brandGroup()` and `brandMark` in `semantic.ts`.
-- **Never assume the ink on a fill.** `brand.onFill` is white in GCSA light and dark ink in the other three themes. Draw text and icons on `brand.fill` with `brand.onFill`, and choose a brand-filled header's status bar style from it ([5.2](#52-layout)).
+- **Use the brand tokens and nothing else.** A component never checks the brand to pick a colour. The brand is read in one place only: `BrandMark.tsx` reads it to choose which wordmark to draw. The colours themselves come from `brandGroup()` and `brandMark` in `semantic.ts`, and a pack's from `src/theme/brandPack.ts`.
+- **Never assume the ink on a fill.** `brand.onFill` is white in some themes (the sample brand in light mode) and dark ink in others. Draw text and icons on `brand.fill` with `brand.onFill`, and choose a brand-filled header's status bar style from it ([5.2](#52-layout)).
 - **Brand never carries status** ([3.5](#35-status-colours)). Orange's fill and critical status are close, so a critical item always carries its icon and word.
 - **Build-time colours do not follow the brand.** The splash screen and the launcher icon are fixed per build ([15](#15-platform-notes)).
 - Settings shows each brand choice with two swatches drawn from that brand's own tokens ([14.12](#1412-settings)). A new brand follows [17.4](#174-a-new-brand).
@@ -512,7 +500,7 @@ Rules:
   - The splash screen follows the build.
   - The photo viewer is always black (`overlay.imageBackdrop`).
   - Camera views always use `light-content` status bar icons.
-  - The GCSA mark sits on a white panel in dark mode, so the logo keeps its navy.
+  - A pack may set a panel behind its mark (for example white in dark mode), so a logo colour stays as designed.
 
 ### 3.9 What the axes never change
 
@@ -526,6 +514,20 @@ Rules:
   - Render tests draw each area of the app in `BRANDS × ['light', 'dark']`.
   - The live gallery switches brand and mode in place.
   - A UI change is checked on a device in all four themes before merge ([18](#18-review-checklist)).
+
+---
+
+### 3.10 Adding your own brand
+
+A build can carry one extra brand beside Orange. It is a folder (a brand pack) that you keep with your build settings, outside this repository if the brand is not yours to publish.
+
+1. Copy `brand-packs/sample-teal/` and edit `brand.json`:
+   - `id`: lowercase letters, digits and dashes (not `orange`). `name`: `en`, and `gu` if you have it. `wordmark`: one or more lines. `caption`: optional, `en` and `gu`. `association`: optional `{ "name": "…" }`, named in the Terms of service and Privacy policy.
+   - `light` and `dark`: the eight brand tokens of [3.7](#37-the-brand-axis) as `#RRGGBB`: `fill`, `onFill`, `fillPressed`, `tint`, `subtle`, `subtleStrong`, `secondary`, `secondaryText`. Optional `mark` with `panel`, `wordmark`, `rule`, `caption`.
+2. Build with `WAREHOUSE_BRAND_PACK=<folder>`. To open the app in that brand, also set `EXPO_PUBLIC_DEFAULT_BRAND=<id>`.
+3. The build stops, naming the token, if one is missing or fails the contrast rule: `tint` and `secondaryText` 4.5:1 on the page and card colours, `tint` 4.5:1 on `subtle`, `onFill` 4.5:1 on `fill` and `fillPressed`, and, with a `mark`, the wordmark 3:1 and the caption 4.5:1 on its panel.
+
+The sample pack is a fictional teal brand used by the tests and by the checklist ([18](#18-review-checklist)).
 
 ---
 
@@ -732,7 +734,7 @@ The target is WCAG 2.2 level AA, which is what SAP's Horizon themes meet.
 Every token pair in [3.3](#33-semantic-tokens-for-all-four-themes) is tested in all four themes by `src/theme/tokens/__tests__/contrast.test.ts`. The key pairs:
 
 
-| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+| Token | Orange light | Orange dark | Sample light | Sample dark |
 |---|---|---|---|---|
 | brand.onFill on brand.fill | 7.15:1 | 8.69:1 | 10.66:1 | 7.00:1 |
 | destructive.onFill on destructive.fill | 7.64:1 | 5.58:1 | 7.64:1 | 5.58:1 |
@@ -878,7 +880,7 @@ Rules: one primary button per view. Label in `callout`, radius `radius.button`. 
 
 React Native Paper buttons and checked controls use Paper's `primary`, which is `brand.fill`. That is a fill colour only: a Paper text-mode button must set `textColor={tokens.brand.tint}`, or orange text fails contrast in Orange light. Prefer `ui/Button`.
 
-**Brand and mode:** the primary label is ink in three themes and white in GCSA light (`brand.onFill`). The filled destructive button is white on dark red in light mode and dark ink on light red in dark mode.
+**Brand and mode:** the primary label is ink in three themes and white in a light brand such as the sample teal (`brand.onFill`). The filled destructive button is white on dark red in light mode and dark ink on light red in dark mode.
 
 ### 13.2 Text fields — `ui/Input.tsx`, `GhostTextInput.tsx`, `RemoteAutocompleteInput.tsx`, `form/*`, `FormFieldWrapper.tsx`
 
@@ -952,7 +954,7 @@ The keypad's buttons wrap in a centred row with `space.sm` between them, and eac
 | `StockIndicator.tsx` | Bar track `brand.subtleStrong`; fill and tag follow the single stock rule in [3.5](#35-status-colours) (in stock, low stock below 20%, out of stock); text "120 of 200 bags" beside it; `flashRed` pulses once, not in a loop. |
 | `FioriLinearProgress.tsx` | Height 4 (default) or 8 (prominent), pill radius; track `brand.subtleStrong` or the status background with `coloredTrack`; fill `brand.fill` (`default`) or `status.*.element` (`success`, `warning`, `error`, `info`); percentage in `caption1`. Segmented progress uses chart colours in order. |
 
-**Brand and mode:** a plain count badge is `brand.onFill` on `brand.fill`, so its number is white in GCSA light and ink elsewhere. Avatar initials are ink in light mode and white in dark mode (`avatarColors`).
+**Brand and mode:** a plain count badge is `brand.onFill` on `brand.fill`, so its number is white in the sample brand in light mode and ink elsewhere. Avatar initials are ink in light mode and white in dark mode (`avatarColors`).
 
 ### 13.6 Cells, cards and lists
 
@@ -1189,7 +1191,7 @@ More rules:
 
 | Component | Spec |
 |---|---|
-| `BrandMark.tsx` | Orange brand: the template logo image. GCSA brand: the "GCSA" wordmark (`typography.wordmark`, `brandMark.wordmark`), a 4 px rule (`brandMark.rule`) and "COLD STORAGE ASSOCIATION" in `caption1` (`brandMark.caption`). In dark mode the GCSA mark sits on `brandMark.panel` (white) with `radius.sheet` so the logo navy is kept. The association's own logo file replaces the wordmark once the association approves its use. |
+| `BrandMark.tsx` | A typeset wordmark (`typography.wordmark`, `brandMark.wordmark`), a 4 px rule (`brandMark.rule`) and, when the brand has one, a caption in `caption1` (`brandMark.caption`). Without a brand pack: "COLD STORAGE" on two lines, no caption. A pack gives its own lines and caption, and may set `brandMark.panel` with `radius.sheet`. A logo file is not part of this repository; a build that has the right to one adds it in its own configuration. |
 | App name | `EXPO_PUBLIC_APP_NAME`, shown under the mark on sign-in in `subhead` `text.secondary`. |
 
 ### 13.13 Other components
@@ -1326,7 +1328,7 @@ The app has one central sign-in that only proves who the user is, then facility 
 - The header button that opens Settings is the cog, spoken "Tools and settings".
 - Sections, in order: profile card; Warehouse tools (the role's rows from `settingsFeatureRows`, `src/config/roles.ts`; none for a customer); Preferences; Account; Help and about (Help, which opens `/help`, then Terms of service and Privacy policy; in Gujarati the footer says the two pages are in English); Development (development builds only, with the style guide gallery); then `AppVersionFooter`. A Security section joins when the app gets a lock setting.
 - Rows and sections are `SettingsSection` and `SettingsRow` (`src/features/settings/components/SettingsList.tsx`). A row may show its current value before the chevron and is read as "label, value, subtitle".
-- Preferences are three rows with their current value: Appearance (System, Light, Dark), Language on this phone (Phone language, English, ગુજરાતી) and App colours (Orange, GCSA navy; the row and each choice lead with two swatches drawn from that brand's own tokens). Each opens a `PreferenceSheet` on `SheetFrame`: a radio group with a check on the chosen row; a tap applies the choice at once and keeps the sheet open; Done closes it. The sheet's note says what the choice does. A language change rebuilds the navigation tree, so the language sheet is noted in `preferenceSheetMemory.ts` and opens again on the rebuilt Settings.
+- Preferences are three rows (two when the build has one brand) with their current value: Appearance (System, Light, Dark), Language on this phone (Phone language, English, ગુજરાતી) and App colours (Orange, plus the pack's brand when the build has one; with one brand the row is not shown; the row and each choice lead with two swatches drawn from that brand's own tokens). Each opens a `PreferenceSheet` on `SheetFrame`: a radio group with a check on the chosen row; a tap applies the choice at once and keeps the sheet open; Done closes it. The sheet's note says what the choice does. A language change rebuilds the navigation tree, so the language sheet is noted in `preferenceSheetMemory.ts` and opens again on the rebuilt Settings.
 - Account: "Change warehouse server" without central login, then the actions of `useAccountActions` (§14.8 item 6), then deletion last. "Change warehouse server" shows "Now using <facility>" as its subtitle and opens with Back and an "In use now" card.
 
 ---
@@ -1345,7 +1347,7 @@ The app has one central sign-in that only proves who the user is, then facility 
 | Haptics | Light impact on toggle and save | Same, via `expo-haptics` |
 | Pickers | Native date picker in a sheet | Native date picker dialog |
 
-**Build-time colours.** The splash screen background and the launcher icon come from `app.json` and the Android resources (`colorPrimary`). They are fixed per build and cannot follow the brand chosen in Settings. A build for the association sets them to GCSA navy; the template build keeps the current values.
+**Build-time colours.** The splash screen background and the launcher icon come from `app.json` and the Android resources (`colorPrimary`). They are fixed per build and cannot follow the brand chosen in Settings. A build with a brand pack sets them to that brand's colours; the neutral build keeps the current values.
 
 **Splash before the store loads.** The JavaScript splash shown before preferences are restored uses the build's splash colour from `app.json` (read through `Constants.expoConfig`), never a token, so it matches the native splash.
 
@@ -1414,7 +1416,7 @@ Before merging any UI change:
 
 - [ ] `npm run lint` shows no style-guard errors; no module-scope colours.
 - [ ] Text uses `typography` styles; spacing uses `space`; radii use `radius`.
-- [ ] Checked on both theme axes: Orange light, Orange dark, GCSA light and GCSA dark. Nothing checks the brand or the mode to pick a colour ([3.7](#37-the-brand-axis), [3.8](#38-the-mode-axis)).
+- [ ] Checked on both theme axes: the default brand and the sample brand, light and dark. Nothing checks the brand or the mode to pick a colour ([3.7](#37-the-brand-axis), [3.8](#38-the-mode-axis)).
 - [ ] Checked at the largest font size and with a screen reader.
 - [ ] Every pressable element is at least 44 or 48 and has a role and label.
 - [ ] Status has a word or icon as well as colour.
@@ -1435,4 +1437,3 @@ Before merging any UI change:
 - Web Content Accessibility Guidelines (WCAG) 2.2. https://www.w3.org/TR/WCAG22/
 - Apple Human Interface Guidelines: typography, layout, accessibility. https://developer.apple.com/design/human-interface-guidelines/
 - Material Design 3: touch targets, elevation. https://m3.material.io/
-- Gujarat Cold Storage Association, source of the navy and grey brand colours. https://gcsa.in/

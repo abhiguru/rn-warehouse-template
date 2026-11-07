@@ -79,3 +79,11 @@ font notices. This release publishes source archives only.
 No unresolved provenance item blocks this source-only prerelease. Future added
 assets, vendored files, dependency replacements, or native binaries require a
 new review; this record must not be reused as blanket approval.
+
+## Association brand — 2026-11-07
+
+No material of any association (name, logo, wordmark or colour values) is in this repository.
+The repository's brand is neutral: "Cold Storage" in the Orange colours. A build that has the
+right to another brand supplies it as a brand pack, a folder kept outside the repository and
+named by `WAREHOUSE_BRAND_PACK` at build time (`brand-packs/README.md`). The only pack in the
+repository, `brand-packs/sample-teal/`, is fictional. Git history is not rewritten.

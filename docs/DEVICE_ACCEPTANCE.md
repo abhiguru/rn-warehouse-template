@@ -409,7 +409,7 @@ Document numbers > the row > the scheme and fields as they were).
     such call, so the row is left out). Put Dev back on the current backend.
 11. Setup: language set to Gujarati. Action: open Document numbers and its sheet. Expected: Gujarati drafts; counts in Gujarati digits ("૩ હાલના નંબર ..."),
     the numbers and patterns (A0001, GRN/26-27/0001) in 0-9.
-12. Setup: each of the four themes (Orange and GCSA, light and dark) and the largest font size. Action: open the screen and a sheet. Expected: no cut-off text,
+12. Setup: each of the four themes (the default and sample brands, light and dark) and the largest font size. Action: open the screen and a sheet. Expected: no cut-off text,
     every control at least 44 high, the pinned Save numbering button above the keyboard.
 
 Unit tests that cover what a phone cannot show here: `documentNumberingService.test.ts` (the suggestion and the older backend),
