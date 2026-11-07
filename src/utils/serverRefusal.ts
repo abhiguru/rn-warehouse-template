@@ -116,6 +116,19 @@ export const REFUSAL = {
   USER_REQUIRED: 'USER_REQUIRED',
   /** An invoice edit would take the total below what was paid (`paid`, `total`). */
   TOTAL_BELOW_PAID: 'TOTAL_BELOW_PAID',
+  // Backend migration 173 (GST documents, WH-151).
+  /** An edit whose lines need a tax invoice and a separate bill of supply (`invoice_id`, `exempt_lines`, `taxable_lines`). Nothing was saved. */
+  EDIT_NEEDS_TWO_DOCUMENTS: 'EDIT_NEEDS_TWO_DOCUMENTS',
+  /** The invoice number is used (`number`; with `documents` 2 it is the SECOND number of a two-document save). */
+  NUMBER_TAKEN: 'NUMBER_TAKEN',
+  /** A two-document save would need a number above the last one (`number`: the second, `documents`). */
+  NUMBER_OUT_OF_RANGE: 'NUMBER_OUT_OF_RANGE',
+  /** A dispatch line is not on this GRN's invoice form (the review step's preview). */
+  UNKNOWN_LINE: 'UNKNOWN_LINE',
+  /** delete_invoice on one document of a pair (`linked_invoice`: id, inv_no, inv_fin_year, doc_type). */
+  INVOICE_PAIR: 'INVOICE_PAIR',
+  /** delete_invoice_pair on an invoice with no live other document. */
+  NOT_A_PAIR: 'NOT_A_PAIR',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

@@ -33,6 +33,8 @@ const INTRODUCED_BY_MIGRATION = {
   invoiceAsGoodsLeave: 165,
   /** `set_record_payments`, `record_payment`, `update_payment`, `delete_payment`, paid and due figures on invoices (WH-143). */
   recordPayments: 172,
+  /** `get_gst_details`, `set_gst_details`, `set_item_gst_treatment`, `preview_invoice_documents`, `delete_invoice_pair`, the document type on invoices and `p_doc_type` on the list (WH-151). */
+  gstDocuments: 173,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

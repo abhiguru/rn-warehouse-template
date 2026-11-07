@@ -27,7 +27,14 @@ export interface InvoiceListRequest {
   p_date_to?: string;
   p_customer_ids?: string[];
   p_payment_status?: 'due' | 'part_paid' | 'paid';
+  p_doc_type?: 'invoice' | 'bill' | 'bill_of_supply' | 'tax_invoice' | 'invoice_cum_bos';
 }
+
+/** WH-151: the document types the list can be filtered by (the filter's values are the server's names). */
+const DOC_TYPE_FILTERS = ['tax_invoice', 'bill_of_supply', 'invoice_cum_bos', 'bill', 'invoice'] as const;
+/** The Document type filter is for the warehouse's own roles, and only on a backend with migration 173. */
+const docTypeFilterVisible = (role: string | null | undefined): boolean =>
+  backendHasFeature('gstDocuments') && (role === 'admin' || role === 'supervisor' || role === 'staff');
 
 /** How many financial years the Year filter offers, the current one first. */
 const YEARS_OFFERED = 5;
@@ -99,6 +106,21 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
         ];
       },
     },
+    {
+      // WH-151: Tax invoice / Bill of supply / Invoice-cum-bill of supply / Bill / Invoice (saved before GST details).
+      kind: 'choice',
+      key: 'docType',
+      get label() { return t('gst.filter.label'); },
+      icon: 'file-document-outline',
+      visibleTo: ctx => docTypeFilterVisible(ctx.role),
+      defaultValue: 'all',
+      get options() {
+        return [
+          { value: 'all', get label() { return t('common.all'); } },
+          ...DOC_TYPE_FILTERS.map(type => ({ value: type, get label() { return t(`gst.doc.${type}`); } })),
+        ];
+      },
+    },
     { kind: 'text', key: 'grn', get label() { return t('common.grnNumber'); }, icon: 'package-down', get placeholder() { return t('common.grnNumber'); } },
   ],
   fastFilters: ['date', 'customers', 'year'],
@@ -129,6 +151,12 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
     const payment = values.payment;
     if ((payment === 'due' || payment === 'part_paid' || payment === 'paid') && ctx.payments === true && (ctx.role === 'admin' || ctx.role === 'supervisor')) {
       request.p_payment_status = payment;
+    }
+
+    // The Document type choice is dropped when the filter is hidden (a customer account, an older backend).
+    const docType = values.docType;
+    if (typeof docType === 'string' && (DOC_TYPE_FILTERS as readonly string[]).includes(docType) && docTypeFilterVisible(ctx.role)) {
+      request.p_doc_type = docType as NonNullable<InvoiceListRequest['p_doc_type']>;
     }
 
     if (typeof values.grn === 'string' && values.grn.trim()) request.p_search_grn_no = values.grn.trim();

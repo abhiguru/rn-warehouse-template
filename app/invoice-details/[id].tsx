@@ -26,6 +26,8 @@ import { resolveLostInvoiceDelete } from '@/features/invoice/services/invoiceDel
 import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
 import { CancelInvoiceDialog } from '@/features/invoice/components/CancelInvoiceDialog';
 import { REFUSAL } from '@/utils/serverRefusal';
+import { deleteInvoicePair } from '@/services/gstService';
+import { docTypeKey } from '@/features/gst/docType';
 import { getUserFriendlyError, parseErrorToFriendly } from '@/utils/errorHandler';
 import { generateInvoicePDF, pdfRefusalText } from '@/services/pdf-service';
 import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
@@ -55,6 +57,8 @@ import { parseChargingRule } from '@/features/charging/chargingRule';
 import { buildInvoiceLineItems, relatedDispatchDocuments } from '@/features/invoice/utils/invoiceLineItems';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { usePaymentsVisible } from '@/features/payments/usePaymentsVisible';
+import { GstDocumentCard } from '@/features/gst/GstDocumentCard';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { PaymentsTab } from '@/features/payments/PaymentsTab';
 // ============================================================================
 // STYLES
@@ -341,8 +345,10 @@ function InvoiceDetailScreen() {
     }
   };
 
-  // Handle Delete Invoice: one question, then delete_invoice is sent with the version this page read.
-  const handleDeleteInvoice = async () => {
+  // Handle Delete Invoice: one question, then delete_invoice is sent with the version this page read. An invoice made
+  // together with another (WH-151) asks "Delete both?" instead, and delete_invoice_pair deletes the two in one go: there is
+  // no way to delete only one of them.
+  const handleDeleteInvoice = async (pairedWith?: { id: string; inv_no: string; doc_type: string }) => {
     if (!id || !data?.header) return;
     // The page's Delete invoice button pressed twice calls this twice: the second call finds the first one's question.
     if (deleteLock.current || cancelLock.current) return;
@@ -352,17 +358,25 @@ function InvoiceDetailScreen() {
     const invoiceNumber = data.header.invoice_number;
     const expectedUpdatedAt = data.header.updated_at;
     const customerName = data.header.customer?.name || data.header.invoice_customer_name;
+    const live = data.header.linked_invoice;
+    const pair = pairedWith ?? (live ? { id: live.id, inv_no: String(live.inv_no), doc_type: live.doc_type } : undefined);
 
     // The invoice is gone: told once, and Done leaves for the list only if this screen is still the one in front.
     const reportDeleted = () => {
-      showAlert(tr('invoice.details.deletedTitle', { number: formatIdentifier(invoiceNumber) }), undefined, [
-        {
-          text: tr('common.done'),
-          onPress: () => {
-            if (focusedRef.current) router.back();
+      showAlert(
+        pair
+          ? tr('gst.pair.done', { first: formatIdentifier(invoiceNumber), second: formatIdentifier(pair.inv_no) })
+          : tr('invoice.details.deletedTitle', { number: formatIdentifier(invoiceNumber) }),
+        undefined,
+        [
+          {
+            text: tr('common.done'),
+            onPress: () => {
+              if (focusedRef.current) router.back();
+            },
           },
-        },
-      ]);
+        ]
+      );
     };
 
     // The question's Delete pressed twice calls this twice: only the first one deletes.
@@ -373,8 +387,11 @@ function InvoiceDetailScreen() {
       setIsDeleting(true);
       const controller = new AbortController();
       deleteAbort.current = controller;
+      // One document, or both: the pair goes together or not at all, so one check of the invoice settles a lost answer.
+      const send = (resend?: boolean) =>
+        pair ? deleteInvoicePair(invoiceId, expectedUpdatedAt) : resend ? deleteInvoice(invoiceId, expectedUpdatedAt, { resend: true }) : deleteInvoice(invoiceId, expectedUpdatedAt);
       try {
-        let result = await deleteInvoice(invoiceId, expectedUpdatedAt);
+        let result = await send();
 
         // No answer came, and the request may have reached the server (W22): the page is locked, the app waits for the
         // connection and for the server, and reads the invoice. Gone: it was deleted, as the person wanted. Still
@@ -387,7 +404,7 @@ function InvoiceDetailScreen() {
             reportDeleted();
             return;
           }
-          result = await deleteInvoice(invoiceId, expectedUpdatedAt, { resend: true });
+          result = await send(true);
           if (controller.signal.aborted) return;
         }
 
@@ -397,7 +414,17 @@ function InvoiceDetailScreen() {
           return;
         }
         // Changed by someone else: the page reads the invoice again and shows what it is now.
-        if (result.reason === REFUSAL.STALE_RECORD) await fetchInvoiceDetails();
+        if (result.reason === REFUSAL.STALE_RECORD || result.reason === REFUSAL.NOT_A_PAIR) await fetchInvoiceDetails();
+        // The pair was found only now: the question is asked again as "Delete both?".
+        const refusedAsPair = (result as { linkedInvoice?: { id: string; inv_no: string; doc_type: string } }).linkedInvoice;
+        if (refusedAsPair) {
+          deleteAbort.current = null;
+          setLostDelete(false);
+          setIsDeleting(false);
+          deleteLock.current = false;
+          void handleDeleteInvoice(refusedAsPair);
+          return;
+        }
         // The worded message: a refusal in the app's words, or the connection failing before the request was sent.
         showAlert(tr('invoice.details.deleteFailedTitle'), result.message || getUserFriendlyError('invoice', 'delete'));
       } catch (error) {
@@ -411,16 +438,22 @@ function InvoiceDetailScreen() {
       }
     };
 
+    // Cancel, the Android Back key and a tap outside all end here: the next Delete may start again.
+    const cancelButton = { text: tr('common.cancel'), style: 'cancel' as const, onPress: () => { deleteLock.current = false; } };
+    if (pair) {
+      showAlert(
+        tr('gst.pair.title'),
+        tr('gst.pair.message', { other: `${tr(docTypeKey(pair.doc_type))} ${formatIdentifier(pair.inv_no)}` }),
+        [cancelButton, { text: tr('gst.pair.deleteBoth'), style: 'destructive', onPress: runDelete }]
+      );
+      return;
+    }
     showAlert(
       tr('invoice.details.deleteTitle', { number: formatIdentifier(invoiceNumber) }),
       customerName
         ? tr('invoice.details.deleteMessageFor', { number: formatIdentifier(invoiceNumber), customer: customerName })
         : tr('invoice.details.deleteMessage', { number: formatIdentifier(invoiceNumber) }),
-      [
-        // Cancel, the Android Back key and a tap outside all end here: the next Delete may start again.
-        { text: tr('common.cancel'), style: 'cancel', onPress: () => { deleteLock.current = false; } },
-        { text: tr('invoice.details.deleteConfirm'), style: 'destructive', onPress: runDelete },
-      ]
+      [cancelButton, { text: tr('invoice.details.deleteConfirm'), style: 'destructive', onPress: runDelete }]
     );
   };
 
@@ -687,7 +720,7 @@ function InvoiceDetailScreen() {
               can_edit={canUpdate && !isCancelled}
               can_cancel={canDelete && !isCancelled}
               is_cancelling={isCancelling}
-              on_delete_invoice={handleDeleteInvoice}
+              on_delete_invoice={() => void handleDeleteInvoice()}
               can_delete={canDelete}
               is_deleting={isDeleting}
               cancelled_at={invoice.cancelled_at}
@@ -696,6 +729,11 @@ function InvoiceDetailScreen() {
               on_share_pdf={handleSharePDF}
               is_share_loading={isShareLoading}
               on_print={canPrint && !isCancelled ? handlePrint : undefined}
+              gst_card={
+                backendHasFeature('gstDocuments') && invoice.doc_type
+                  ? <GstDocumentCard header={invoice} onOpenLinked={(linkedId) => router.push(`/invoice-details/${linkedId}`)} />
+                  : undefined
+              }
             />
           )}
 

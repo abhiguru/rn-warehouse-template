@@ -45,6 +45,10 @@ export interface Invoice {
   paid_amount?: number | null;
   due_amount?: number | null;
   payment_status?: 'due' | 'part_paid' | 'paid' | null;
+  /** Migration 173 (WH-151): the document type the server made; absent on an older server and read as 'invoice'. */
+  doc_type?: string;
+  /** The other document of a two-document save, while it exists. */
+  linked_invoice_id?: string | null;
   customer: {
     id: string;
     name: string;
@@ -103,6 +107,8 @@ export interface GetInvoicesListParams {
   p_customer_ids?: string[];
   /** Migration 172: only invoices with this payment status (administrators and supervisors). */
   p_payment_status?: 'due' | 'part_paid' | 'paid';
+  /** Migration 173 (WH-151): only invoices of this document type. */
+  p_doc_type?: 'invoice' | 'bill' | 'bill_of_supply' | 'tax_invoice' | 'invoice_cum_bos';
 }
 
 export const getInvoicesList = async (
@@ -128,6 +134,7 @@ export const getInvoicesList = async (
       p_date_to,
       p_customer_ids,
       p_payment_status,
+      p_doc_type,
     } = params;
 
     invoiceServiceLogger.debug('Getting authenticated client...');
@@ -151,6 +158,8 @@ export const getInvoicesList = async (
       p_customer_ids: p_customer_ids && p_customer_ids.length > 0 ? p_customer_ids : null,
       // Sent only when chosen: a backend before migration 172 has no such parameter.
       ...(p_payment_status ? { p_payment_status } : {}),
+      // Sent only when chosen: a backend before migration 173 has no such parameter.
+      ...(p_doc_type ? { p_doc_type } : {}),
     });
 
     const duration = Date.now() - startTime;
@@ -537,6 +546,26 @@ export interface InvoiceDetail {
   paid_amount?: number | null;
   due_amount?: number | null;
   payment_status?: 'due' | 'part_paid' | 'paid' | null;
+  /** Migration 173 (WH-151): the document type; absent on an older server (read as 'invoice'). */
+  doc_type?: string;
+  /** The other document of a two-document save while it exists (null otherwise). `total` is the server's. */
+  linked_invoice?: { id: string; inv_no: number | string; inv_fin_year?: number | string; doc_type: string; total?: number | string | null; cancelled?: boolean } | null;
+  /** What the document was made with and the server's tax split; null for an 'invoice'. */
+  gst?: GstFacts | null;
+}
+
+/** The GST facts of a saved document (`get_invoice_data` header `gst`, migration 173): all the server's figures. */
+export interface GstFacts {
+  supplier?: { legal_name?: string | null; address?: string | null; gstin?: string | null; state_code?: string | null; state_name?: string | null };
+  customer?: { gstin?: string | null; state_code?: string | null; state_name?: string | null; address?: string | null };
+  place_of_supply?: { code?: string; name?: string } | null;
+  tax_head?: 'cgst_sgst' | 'igst' | null;
+  sac_storage?: string | null;
+  sac_labour?: string | null;
+  cgst_amount?: number | string | null;
+  sgst_amount?: number | string | null;
+  igst_amount?: number | string | null;
+  reverse_charge?: boolean | null;
 }
 
 export interface InvoiceItem {
@@ -1062,6 +1091,8 @@ export interface DeleteInvoiceResponse {
   sentAt?: number;
   /** The server answered "Invoice not found": someone else deleted it, so it is gone, as the person wanted. */
   notFound?: boolean;
+  /** Reason INVOICE_PAIR (WH-151): the invoice was made together with another and only both can be deleted. */
+  linkedInvoice?: { id: string; inv_no: string; doc_type: string };
 }
 
 /**
@@ -1113,6 +1144,19 @@ export const deleteInvoice = async (
     // The invoice was changed by someone else since this screen read it: the caller reads it again.
     if (result.reason === REFUSAL.STALE_RECORD) {
       return { success: false, message: t('invoice.details.deleteStale'), error: result.error, reason: result.reason };
+    }
+    // Migration 173 (WH-151): one document of a pair is not deleted alone; the screen asks "Delete both?".
+    if (result.reason === REFUSAL.INVOICE_PAIR) {
+      const linked = result.fields?.linked_invoice as { id?: unknown; inv_no?: unknown; doc_type?: unknown } | undefined;
+      return {
+        success: false,
+        message: t('gst.pair.isPair'),
+        error: result.error,
+        reason: result.reason,
+        ...(linked && typeof linked.id === 'string'
+          ? { linkedInvoice: { id: linked.id, inv_no: String(linked.inv_no ?? ''), doc_type: String(linked.doc_type ?? 'invoice') } }
+          : {}),
+      };
     }
     // Migration 172: the invoice has payments, named by its number.
     if (result.reason === REFUSAL.INVOICE_HAS_PAYMENTS && result.fields?.inv_no !== undefined && result.fields.inv_no !== null) {
