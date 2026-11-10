@@ -5,10 +5,15 @@
  * (and is not the listener's own 403) is given the proof or the signature a real listener would add. The HMAC here is Node's
  * own, over the canonical strings of src/config/lanSigner.ts, so the app's HMAC is checked against an independent one.
  */
-import { createHmac } from 'node:crypto';
-import { canonicalAnswer, canonicalProof, EMPTY_BODY_HASH } from '@/config/lanSigner';
+import { canonicalAnswer, canonicalProof, EMPTY_BODY_HASH, fromHex } from '@/config/lanSigner';
 import { forgetLanKey, storeLanKey } from '@/config/lanKey';
-import { createHash } from 'node:crypto';
+
+// Node's crypto, loaded at run time: the app's own typecheck (tsc --noEmit) has no Node types.
+type NodeCrypto = {
+  createHmac: (algorithm: string, key: Uint8Array) => { update: (data: string) => { digest: (encoding: 'hex') => string } };
+  createHash: (algorithm: string) => { update: (data: Uint8Array) => { digest: (encoding: 'hex') => string } };
+};
+const nodeCrypto = (): NodeCrypto => require('node:crypto') as NodeCrypto;
 
 export const LAN_KEY_ID = '0b9f1c52-6a1d-4f7e-9c0e-2d4f6a8b1c3d';
 export const LAN_KEY = 'a1'.repeat(32);
@@ -20,8 +25,8 @@ export async function installLanKey(canonical: string, instanceId: string): Prom
 
 export const removeLanKey = (): void => forgetLanKey();
 
-const hmac = (message: string, key: string = LAN_KEY): string => createHmac('sha256', Buffer.from(key, 'hex')).update(message).digest('hex');
-const sha = (bytes: Uint8Array): string => (bytes.length === 0 ? EMPTY_BODY_HASH : createHash('sha256').update(bytes).digest('hex'));
+const hmac = (message: string, key: string = LAN_KEY): string => nodeCrypto().createHmac('sha256', fromHex(key)).update(message).digest('hex');
+const sha = (bytes: Uint8Array): string => (bytes.length === 0 ? EMPTY_BODY_HASH : nodeCrypto().createHash('sha256').update(bytes).digest('hex'));
 
 function lowerHeaders(init?: RequestInit): Record<string, string> {
   const out: Record<string, string> = {};
