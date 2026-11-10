@@ -37,6 +37,8 @@ const INTRODUCED_BY_MIGRATION = {
   gstDocuments: 173,
   /** `can_create_invoice` in get_grn_details' invoice summary, and invoicing goods as they leave on by default (WH-162). */
   grnCreateInvoice: 174,
+  /** The optional invoice number prefix: `prefix` in the invoice rule, `invoice_label` and `inv_prefix` in the reads (WH-139). */
+  invoicePrefix: 175,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

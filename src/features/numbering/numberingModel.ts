@@ -3,6 +3,7 @@
  * the draft an administrator edits, its checks, the request it makes, the example number it gives and the words for
  * a rule. The server checks the same limits again (migration 127, `apply_document_numbering`).
  */
+import { backendHasFeature } from '@/config/backendFeatures';
 import { calculateFinancialYear } from '@/utils/invoiceCalculations';
 import { indiaDay } from '@/utils/formatters';
 import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
@@ -38,7 +39,8 @@ export function draftFor(rule: NumberingRule, scheme: NumberingScheme = rule.sch
   const same = scheme === rule.scheme;
   return {
     scheme,
-    prefix: same ? rule.prefix : DEFAULTS.prefix,
+    // An invoice rule keeps its prefix when the scheme changes: the prefix does not belong to a scheme.
+    prefix: same || rule.document_type === 'invoice' ? rule.prefix : DEFAULTS.prefix,
     width: same ? String(rule.width) : DEFAULTS.width,
     start: same ? String(rule.start) : DEFAULTS.start,
     firstLetter: same && rule.first_letter ? rule.first_letter : DEFAULTS.firstLetter,
@@ -47,11 +49,12 @@ export function draftFor(rule: NumberingRule, scheme: NumberingScheme = rule.sch
   };
 }
 
-/** The fields a scheme has, for the screen (an invoice has the first number only). */
+/** The fields a scheme has, for the screen (an invoice has the prefix and the first number). */
 export type NumberingField = 'firstLetter' | 'width' | 'perLetter' | 'prefix' | 'start';
 
 export function fieldsOf(type: DocumentType, scheme: NumberingScheme): NumberingField[] {
-  if (type === 'invoice') return ['start'];
+  // A backend older than migration 175 has no invoice prefix: the field is left out and the rule is sent without it.
+  if (type === 'invoice') return backendHasFeature('invoicePrefix') ? ['prefix', 'start'] : ['start'];
   if (scheme === 'letters') return ['firstLetter', 'width', 'perLetter'];
   if (scheme === 'year' || scheme === 'sequence') return ['prefix', 'width', 'start'];
   return [];
@@ -65,6 +68,7 @@ export type FieldErrorKey =
   | 'numbering.edit.errors.width'
   | 'numbering.edit.errors.perLetter'
   | 'numbering.edit.errors.prefix'
+  | 'numbering.edit.invoicePrefixHelp'
   | 'numbering.edit.errors.start'
   | 'numbering.edit.errors.tooLong';
 
@@ -81,7 +85,9 @@ export function draftErrors(type: DocumentType, draft: NumberingDraft): Partial<
   if (fields.includes('firstLetter') && !/^[A-Z]$/.test(draft.firstLetter)) errors.firstLetter = 'numbering.edit.errors.firstLetter';
   if (fields.includes('width') && whole(draft.width, 1, MAX_DIGITS) === null) errors.width = 'numbering.edit.errors.width';
   if (fields.includes('perLetter') && whole(draft.perLetter, 1, MAX_NUMBER) === null) errors.perLetter = 'numbering.edit.errors.perLetter';
-  if (fields.includes('prefix') && !/^[A-Z0-9/-]{0,10}$/.test(draft.prefix)) errors.prefix = 'numbering.edit.errors.prefix';
+  // An invoice prefix is up to 8 characters, so that the full number (prefix and up to 8 digits) stays within 16.
+  if (fields.includes('prefix') && type === 'invoice' && !/^[A-Z0-9/-]{0,8}$/.test(draft.prefix)) errors.prefix = 'numbering.edit.invoicePrefixHelp';
+  else if (fields.includes('prefix') && type !== 'invoice' && !/^[A-Z0-9/-]{0,10}$/.test(draft.prefix)) errors.prefix = 'numbering.edit.errors.prefix';
   if (fields.includes('start') && whole(draft.start, 1, MAX_NUMBER) === null) errors.start = 'numbering.edit.errors.start';
   // A financial-year number is the prefix, "26-27/" and the digits.
   if (
@@ -162,7 +168,7 @@ export function financialYearLabelOf(today: string = indiaDay(new Date())): stri
 export function exampleNumber(type: DocumentType, draft: NumberingDraft, today?: string): string | null {
   if (Object.keys(draftErrors(type, draft)).length > 0) return null;
   const width = Number(draft.width);
-  if (type === 'invoice') return String(Number(draft.start));
+  if (type === 'invoice') return draft.prefix + String(Number(draft.start));
   switch (draft.scheme) {
     case 'letters':
       return draft.firstLetter + pad(1, width);
@@ -180,7 +186,11 @@ export function describeRule(rule: NumberingRule, today?: string): string {
   const draft = draftFor(rule);
   const example = formatIdentifier(exampleNumber(rule.document_type, draft, today) ?? '');
   if (rule.document_type === 'invoice') {
-    return t(rule.scheme === 'sequence' ? 'numbering.rule.invoiceSequence' : 'numbering.rule.invoiceYear', { start: formatIdentifier(String(rule.start)) });
+    const start = formatIdentifier(String(rule.start));
+    if (rule.prefix) {
+      return t(rule.scheme === 'sequence' ? 'numbering.rule.invoiceSequencePrefix' : 'numbering.rule.invoiceYearPrefix', { prefix: formatIdentifier(rule.prefix), start });
+    }
+    return t(rule.scheme === 'sequence' ? 'numbering.rule.invoiceSequence' : 'numbering.rule.invoiceYear', { start });
   }
   switch (rule.scheme) {
     case 'letters':

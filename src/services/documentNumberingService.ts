@@ -24,6 +24,8 @@ export interface NumberSuggestion {
   /** The pattern of the rule (`A####`, `GRN/26-27/####`), null for free text. */
   hint: string | null;
   scheme: string;
+  /** An invoice's prefix (migration 175, WH-139): goes in front of the digits in `number`. '' when none or on an older backend. */
+  prefix: string;
   /** `TYPE_IT`: the rule is free text. `SERIES_FULL`: no number is left. */
   reason: 'TYPE_IT' | 'SERIES_FULL' | null;
 }
@@ -107,6 +109,7 @@ export async function suggestDocumentNumber(type: DocumentType, date?: string): 
     number: textOrNull(data.number),
     hint: textOrNull(data.hint),
     scheme: typeof data.scheme === 'string' ? data.scheme : '',
+    prefix: typeof data.prefix === 'string' ? data.prefix : '',
     reason,
   };
 }
@@ -228,6 +231,11 @@ export async function setDocumentNumbering(type: DocumentType, rule: NumberingRu
     const refused = errorCodeOf(error) === '22023';
     throw new Error(transportText(error, { write: true, form: true }) ?? t(refused ? 'numbering.edit.refused' : 'numbering.edit.saveFailed'));
   }
+  // The server read the request and refused a change of the invoice scheme or prefix mid-year; nothing changed. The sheet
+  // shows the app's own text and stays open.
+  const midYear = refusalOf(data)?.reason;
+  if (midYear === REFUSAL.NUMBERING_PREFIX_MID_YEAR) throw new Error(t('numbering.edit.prefixLockedMidYear'));
+  if (midYear === REFUSAL.NUMBERING_SWITCH_MID_YEAR) throw new Error(t('numbering.edit.switchMidYear'));
   if (!isRecord(data) || data.success === false) throw new Error(t('numbering.edit.saveFailed'));
   const whole = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
   return {

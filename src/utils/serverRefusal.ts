@@ -129,6 +129,9 @@ export const REFUSAL = {
   INVOICE_PAIR: 'INVOICE_PAIR',
   /** delete_invoice_pair on an invoice with no live other document. */
   NOT_A_PAIR: 'NOT_A_PAIR',
+  // Backend migration 175 (WH-139).
+  /** An invoice prefix change while an invoice exists in the current financial year. Nothing was changed. */
+  NUMBERING_PREFIX_MID_YEAR: 'NUMBERING_PREFIX_MID_YEAR',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];
