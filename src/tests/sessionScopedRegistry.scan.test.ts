@@ -153,6 +153,18 @@ const ALLOWED: Record<string, { why: string; clearedBy?: readonly string[] }> = 
   'src/config/supabaseConfig.ts': {
     why: "activeRequests; storedSessionCache is invalidated through onSessionChange (file owned by another PR)",
   },
+  'src/config/lanKey.ts': {
+    why: "held: the warehouse network key of the session (WH-133); forgetLanKey is called by clearStoredTokensRaw in supabaseConfig.ts, which every sign-out and server switch goes through, and the stored copy is deleted with the session's other keys",
+  },
+  'src/config/lanPhotos.ts': {
+    why: "settled: photo links already written to a cache file on the warehouse network (WH-133); emptied, with the files, by sweepLanPhotos, which src/store/sessionScopedState.ts registers as 'lan-photos'", clearedBy: ["sweepLanPhotos"],
+  },
+  'src/features/gst/useGstSaved.ts': {
+    why: "listeners: the Home strips that ask again when the GST details screen saves (WH-151); each removes itself on unmount, and nothing of a session is held",
+  },
+  'src/features/invoice/utils/invoiceFormOrigin.ts': {
+    why: "origin, pending: the GRN a new invoice form was opened from (WH-162), an id and a number; cleared by clearInvoiceFormOrigin when the form's layout closes, which a sign-out or a server switch does by unmounting it",
+  },
 };
 
 function sourceFiles(dir: string): string[] {
