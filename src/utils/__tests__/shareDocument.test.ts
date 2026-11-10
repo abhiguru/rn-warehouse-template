@@ -2,6 +2,7 @@ import * as Sharing from 'expo-sharing';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { getConnectionPath, resetLanTransport, setLanContext, transportFetch } from '@/config/lanTransport';
 import { onWarehouseWifi } from '@/tests/helpers/lanNetwork';
+import { installLanKey, removeLanKey, signingLan } from '@/tests/helpers/lanSigning';
 import {
   MAX_SHARED_DOCUMENT_BYTES,
   downloadAndSharePDF,
@@ -39,7 +40,8 @@ jest.mock('expo-file-system', () => {
     constructor(...parts: Array<string | { uri: string }>) { this.uri = join(parts); }
     get exists() { return entries.get(this.uri)?.kind === 'file'; }
     get size() { return entries.get(this.uri)?.size ?? 0; }
-    write(bytes: Uint8Array) { entries.set(this.uri, { kind: 'file', bytes }); }
+    create() { entries.set(this.uri, { kind: 'file', size: 0 }); }
+    write(bytes: Uint8Array) { entries.set(this.uri, { kind: 'file', bytes, size: bytes.byteLength }); }
     delete() {
       if (failing.has(this.uri)) throw new Error('locked');
       if (!entries.delete(this.uri)) throw new Error('File does not exist');
@@ -331,23 +333,33 @@ describe('downloads on the warehouse network path', () => {
   const originalFetch = global.fetch;
   let publicUp: boolean;
   const answer = (path: 'lan' | 'public', body: unknown = 'Hello') =>
-    ({ ok: true, status: 200, headers: { get: () => path }, json: async () => body, clone: () => answer(path, body) }) as unknown as Response;
+    ({
+      ok: true,
+      status: 200,
+      headers: { get: (name: string) => (name.toLowerCase() === 'x-warehouse-path' ? path : null) },
+      json: async () => body,
+      clone: () => answer(path, body),
+    }) as unknown as Response;
+  const listener = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith(PUBLIC)) {
+      if (!publicUp) throw new TypeError('Network request failed');
+      return answer('public');
+    }
+    return answer('lan', url.endsWith('/get-public-config') ? { success: true, data: { instanceId: 'instance-0001' } } : 'Hello');
+  };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     publicUp = false;
     resetLanTransport();
     setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: 'instance-0001' });
+    await installLanKey(PUBLIC, 'instance-0001');
     onWarehouseWifi();
-    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.startsWith(PUBLIC)) {
-        if (!publicUp) throw new TypeError('Network request failed');
-        return answer('public');
-      }
-      return answer('lan', url.endsWith('/get-public-config') ? { success: true, data: { instanceId: 'instance-0001' } } : 'Hello');
-    }) as unknown as typeof fetch;
+    // The listener signs its answers (WH-133).
+    global.fetch = jest.fn(signingLan(listener, LAN)) as unknown as typeof fetch;
   });
   afterEach(() => {
+    removeLanKey();
     global.fetch = originalFetch;
     resetLanTransport();
   });
@@ -358,19 +370,39 @@ describe('downloads on the warehouse network path', () => {
     expect(download.mock.calls[0][0]).toBe(signedUrl);
   });
 
-  it('downloads from the LAN address, same path and token, once the phone is on that path', async () => {
+  const requestsTo = (url: string) => jest.mocked(global.fetch).mock.calls.filter(([input]) => String(input) === url);
+
+  // WH-133: a native download cannot sign, so on the warehouse network the document is fetched by the transport (signed,
+  // answer checked over its whole body) and only then written to the file.
+  it('fetches the document from the LAN address signed, and writes it to the file, once the phone is on that path', async () => {
     await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true });
     expect(getConnectionPath()).toBe('lan');
     const result = await downloadPDF(signedUrl, 'GRN_1.pdf');
     expect(result.success).toBe(true);
-    expect(download.mock.calls[0][0]).toBe(lanUrl);
+    expect(download).not.toHaveBeenCalled();
+    const [request] = requestsTo(lanUrl);
+    expect(request?.[1]?.headers).toMatchObject({ 'x-lan-key-id': expect.any(String), 'x-lan-signature': expect.stringMatching(/^[0-9a-f]{64}$/) });
+    const written = [...fs.entries.entries()].filter(([uri, entry]) => uri.startsWith(`${sharedDir}/`) && entry.kind === 'file' && (entry.size ?? 0) > 0);
+    expect(written).toHaveLength(1);
   });
 
-  it('asks the other path once when a download fails without an answer, and tries once more there', async () => {
+  it('writes nothing when the answer on the warehouse network is not the server\'s own (wrong signature)', async () => {
+    await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true });
+    expect(getConnectionPath()).toBe('lan');
+    global.fetch = jest.fn(signingLan(listener, LAN, { key: 'b2'.repeat(32) })) as unknown as typeof fetch;
+    const result = await downloadPDF(signedUrl, 'GRN_1.pdf');
+    expect(result.success).toBe(false);
+    expect(download).not.toHaveBeenCalled();
+    expect([...fs.entries.keys()].filter(uri => uri.startsWith(`${sharedDir}/`))).toEqual([]);
+    expect(Sharing.shareAsync).not.toHaveBeenCalled();
+  });
+
+  it('asks the other path once when a download fails without an answer, and fetches it there', async () => {
     download.mockRejectedValueOnce(new Error('Unable to resolve host warehouse.example.test'));
     const result = await downloadPDF(signedUrl, 'GRN_1.pdf');
     expect(result.success).toBe(true);
-    expect(download.mock.calls.map(call => call[0])).toEqual([signedUrl, lanUrl]);
+    expect(download.mock.calls.map(call => call[0])).toEqual([signedUrl]);
+    expect(requestsTo(lanUrl)).toHaveLength(1);
     expect(getConnectionPath()).toBe('lan');
   });
 
