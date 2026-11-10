@@ -402,6 +402,7 @@ const invoiceFormSlice = createSlice({
       // Preserve invoice number and financial year when loading GRN data
       const preservedInvNo = state.header.inv_no;
       const preservedInvNoTyped = state.header.inv_no_typed;
+      const preservedInvPrefix = state.header.inv_prefix;
       const preservedInvDate = state.header.inv_date;
       const preservedInvFinYear = state.header.inv_fin_year;
       // An invoice (new, or an edit) moving to another GRN starts that GRN's invoice clean: the discount and the
@@ -453,6 +454,7 @@ const invoiceFormSlice = createSlice({
         // Preserve these fields that were already set by the user
         inv_no: preservedInvNo,
         inv_no_typed: preservedInvNoTyped,
+        inv_prefix: preservedInvPrefix,
         inv_date: preservedInvDate,
         inv_fin_year: preservedInvFinYear,
         one_time_charge: oneTimeCharge,
@@ -639,6 +641,7 @@ const invoiceFormSlice = createSlice({
         ...saved.header,
         inv_no: state.header.inv_no,
         inv_no_typed: state.header.inv_no_typed,
+        inv_prefix: state.header.inv_prefix,
         inv_date: state.header.inv_date,
         inv_fin_year: state.header.inv_fin_year,
       };

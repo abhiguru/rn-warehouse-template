@@ -34,6 +34,7 @@ import { toCalendarDay } from '@/utils/formatters';
 import { invalidateReportQueries } from '@/lib/queryClient';
 import { parseOrderEffects } from '@/services/orderEffects';
 import { forgetUnfinishedSave, releaseUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 
 const log = createLogger('dispatch');
 
@@ -832,7 +833,7 @@ export const loadDispatchData = async (
           disp_quantity: item.disp_qty || 0,
           original_disp_quantity: item.disp_qty || 0,
           // The live invoice this line is on, if any: the line is then read only in the edit.
-          ...(item.invoice_details ? { invoice_no: String(item.invoice_details.invoice_no ?? '') } : {}),
+          ...(item.invoice_details ? { invoice_no: invoiceLabelOf(item.invoice_details.invoice_label, item.invoice_details.invoice_no ?? '') } : {}),
         };
       });
 
@@ -840,7 +841,7 @@ export const loadDispatchData = async (
     // on that invoice: its date and number are locked (D2). Lines that were skipped above (no GRN details) still count.
     const invoicedLine = (dispatch.items || []).find((item: any) => item?.invoice_details);
     const invoicedNumber: string | undefined = invoicedLine
-      ? String(invoicedLine.invoice_details.invoice_no ?? '')
+      ? invoiceLabelOf(invoicedLine.invoice_details.invoice_label, invoicedLine.invoice_details.invoice_no ?? '')
       : undefined;
     const updatedAt: string | undefined =
       typeof dispatch.updated_at === 'string' && dispatch.updated_at !== '' ? dispatch.updated_at : undefined;

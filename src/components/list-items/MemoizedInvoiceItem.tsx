@@ -25,6 +25,7 @@ import { formatCardDate, formatCurrency, formatFinancialYear, formatSpokenDate }
 import { getLanguage } from '@/i18n/language';
 import { formatIdentifier, t as translate } from '@/i18n';
 import type { Invoice } from '@/services/invoice-service';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { asDocType, docTypeKey } from '@/features/gst/docType';
 import { PaymentStatusTag } from '@/features/payments/PaymentStatusTag';
@@ -86,7 +87,7 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.pill,
     paddingHorizontal: space.sm,
     paddingVertical: space.xxs,
-    maxWidth: '30%' as const,
+    maxWidth: '45%' as const,
     flexShrink: 1,
   },
   invoiceBadgeText: {
@@ -330,7 +331,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
 
   // One element for screen readers (style guide §11.3)
   const accessibilityDescription = [
-    translate('lists.invoice.cardTitle', { number: formatIdentifier(invoice.invoice_number) }),
+    translate('lists.invoice.cardTitle', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) }),
     customerName,
     translate('lists.invoice.totalAmount', { amount: totalText }),
     // Every amount of the bar below is read here: the bar itself is hidden from screen readers.
@@ -348,7 +349,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
 
   // A cancelled invoice is not printed (as on its details screen).
   const printable = canPrint && !!onPrint && !invoice.cancelled_at;
-  const printLabel = translate('lists.invoice.printLabel', { title: translate('lists.invoice.cardTitle', { number: formatIdentifier(invoice.invoice_number) }) });
+  const printLabel = translate('lists.invoice.printLabel', { title: translate('lists.invoice.cardTitle', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) }) });
 
   const card = (
     <Pressable
@@ -362,7 +363,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
     >
       <View style={styles.cardHeader}>
         <View style={styles.invoiceBadge}>
-          <HighlightedText style={styles.invoiceBadgeText} text={formatIdentifier(invoice.invoice_number)} words={words} />
+          <HighlightedText style={styles.invoiceBadgeText} text={formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number))} words={words} />
         </View>
         <View style={styles.cardInfo}>
           <HighlightedText style={styles.customerName} numberOfLines={2} text={customerName ?? ''} words={words} />
@@ -427,6 +428,7 @@ export const invoiceItemPropsAreEqual = (
   return (
     prevInvoice.invoice_id === nextInvoice.invoice_id &&
     prevInvoice.invoice_number === nextInvoice.invoice_number &&
+    prevInvoice.invoice_label === nextInvoice.invoice_label &&
     prevInvoice.invoice_date === nextInvoice.invoice_date &&
     prevInvoice.total === nextInvoice.total &&
     prevInvoice.tax_amount === nextInvoice.tax_amount &&

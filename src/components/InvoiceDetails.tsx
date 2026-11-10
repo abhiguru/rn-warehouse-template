@@ -5,6 +5,7 @@
  * is kept for embedding. Styles follow docs/STYLE_GUIDE.md (§13.6 cells, §13.11
  * calculation summary).
  */
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -278,7 +279,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         {/* Object header */}
         <View style={styles.card}>
           <Text style={styles.docType}>{tr('common.invoice')}</Text>
-          <Text style={styles.docNumber}>{invoiceHeader.invoice_number}</Text>
+          <Text style={styles.docNumber}>{invoiceLabelOf(invoiceHeader.invoice_label, invoiceHeader.invoice_number)}</Text>
           <Text style={styles.docDate}>{formatDisplayDate(invoiceHeader.invoice_date)}</Text>
         </View>
 

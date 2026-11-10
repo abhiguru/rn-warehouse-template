@@ -4,6 +4,7 @@
  */
 import { formatIdentifier, t } from '@/i18n';
 import type { PrintJobResponse } from '@/services/print-service';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 
 const FIELD_KEYS: Record<string, string> = {
   address: 'address',
@@ -39,7 +40,7 @@ export function printSkippedNote(
   const skipped = Array.isArray(result.skipped) ? result.skipped : [];
   if (skipped.length === 0) return null;
   const lines = skipped.map((item) => {
-    const number = formatIdentifier(String(item.inv_no ?? ''));
+    const number = formatIdentifier(invoiceLabelOf(item.invoice_label, item.inv_no));
     if (item.reason === 'igst') {
       return t('gst.print.skippedLine', { number, reason: `${t('gst.print.igstReason')}. ${t('gst.print.igstNote')}` });
     }

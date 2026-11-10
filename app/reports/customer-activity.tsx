@@ -64,6 +64,7 @@ import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllCustomerActivityData, CustomerActivityDetailData, CustomerActivityRow } from '@/types/report.types';
 import { formatCount, formatCurrency, formatIndiaDate, formatIndiaSpokenDate, formatNumber, indiaDay } from '@/utils/formatters';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { formatPackages, itemWithPackaging, MIXED_PACKAGING, sharedPackaging } from '@/utils/packagingWord';
 
 const REPORT_ID = 'customer-activity';
@@ -595,7 +596,7 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
       return data.recent_invoices.slice(0, PREVIEWS).map(invoice => (
         <Preview
           key={invoice.invoice_id}
-          label={tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) })}
+          label={tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) })}
           sublabel={formatIndiaDate(invoice.invoice_date)}
           spokenSublabel={formatIndiaSpokenDate(invoice.invoice_date)}
           value={formatCurrency(invoice.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

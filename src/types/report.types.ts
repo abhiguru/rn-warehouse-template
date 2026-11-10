@@ -393,6 +393,8 @@ export interface GRNInvoiceStatus {
   invoiced_amount?: number | null;
   invoice_id: string | null;
   invoice_number: string | null;
+  /** Migration 175 (WH-139): the full number ("SRT/12"); absent on an older server, where the digits are the number. */
+  invoice_label?: string | null;
 }
 
 /**
@@ -565,6 +567,8 @@ export interface InvoiceLineItem {
 export interface InvoiceHistoryRecord {
   invoice_id: string;
   invoice_number: string;
+  /** Migration 175 (WH-139): the full number ("SRT/12"); absent on an older server, where the digits are the number. */
+  invoice_label?: string | null;
   invoice_date: string;
   financial_year: string;
   grn_ref: string;
@@ -755,6 +759,8 @@ export interface StockItemPreview {
 export interface RecentInvoicePreview {
   invoice_id: string;
   invoice_number: string;
+  /** Migration 175 (WH-139): the full number ("SRT/12"); absent on an older server, where the digits are the number. */
+  invoice_label?: string | null;
   invoice_date: string;
   net_total: number;
   /** `cancelled` from backend migration 134: such an invoice is in no sum. */

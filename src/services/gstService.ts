@@ -6,6 +6,7 @@
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { serverReason } from '@/utils/serverText';
 import { REFUSAL } from '@/utils/serverRefusal';
@@ -260,7 +261,7 @@ export function pairDeleteRefusalText(reason: string | undefined, fields?: Recor
       return t('invoice.details.deleteStale');
     case REFUSAL.INVOICE_HAS_PAYMENTS:
       return fields?.inv_no !== undefined && fields.inv_no !== null
-        ? t('payments.hasPayments', { number: String(fields.inv_no) })
+        ? t('payments.hasPayments', { number: invoiceLabelOf(fields.invoice_label, String(fields.inv_no)) })
         : t('invoice.cancel.hasPayments');
     case REFUSAL.NOT_A_PAIR:
       return t('gst.pair.notAPair');

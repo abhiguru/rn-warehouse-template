@@ -13,6 +13,7 @@ import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatIdentifier, t as tr } from '@/i18n';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { asDocType, docTypeKey } from '@/features/gst/docType';
 import { stateNameOf } from '@/features/gst/indianStates';
 import type { InvoiceDetail } from '@/services/invoice-service';
@@ -68,7 +69,7 @@ export function GstDocumentCard({ header, onOpenLinked }: Props) {
   }
 
   const linkedLabel = linked
-    ? tr('gst.detail.madeWith', { number: formatIdentifier(String(linked.inv_no)), type: tr(docTypeKey(linked.doc_type)) })
+    ? tr('gst.detail.madeWith', { number: formatIdentifier(invoiceLabelOf(linked.invoice_label, linked.inv_no)), type: tr(docTypeKey(linked.doc_type)) })
     : null;
 
   return (
@@ -92,7 +93,7 @@ export function GstDocumentCard({ header, onOpenLinked }: Props) {
           onPress={onOpenLinked ? () => onOpenLinked(linked.id) : undefined}
           disabled={!onOpenLinked}
           accessibilityRole="button"
-          accessibilityLabel={tr('gst.detail.openLinked', { number: formatIdentifier(String(linked.inv_no)) })}
+          accessibilityLabel={tr('gst.detail.openLinked', { number: formatIdentifier(invoiceLabelOf(linked.invoice_label, linked.inv_no)) })}
           testID="invoice-gst-linked"
         >
           <Icon name="link-variant" size={iconSize.md} color={t.brand.tint} />

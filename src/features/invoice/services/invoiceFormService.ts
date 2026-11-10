@@ -324,7 +324,7 @@ export const getNextInvoiceNumber = async (
       const suggestion = await suggestDocumentNumber('invoice', startYear === null ? undefined : `${startYear}-04-01`);
       const suggested = suggestion.number !== null && /^\d+$/.test(suggestion.number) ? Number(suggestion.number) : NaN;
       if (!Number.isSafeInteger(suggested) || suggested < 1) throw new Error(t('invoice.service.nextNumberFailed'));
-      return { success: true, data: { next_invoice_number: suggested, financial_year: finYear } };
+      return { success: true, data: { next_invoice_number: suggested, prefix: suggestion.prefix, financial_year: finYear } };
     }
 
     const authenticatedClient = await getAuthenticatedClient();
@@ -705,6 +705,7 @@ function savedDocuments(answer: any): SavedInvoiceDocument[] {
     .map((doc) => ({
       invoice_id: String(doc.invoice_id ?? ''),
       inv_no: Number(doc.inv_no),
+      ...(typeof doc.invoice_label === 'string' && doc.invoice_label !== '' ? { invoice_label: doc.invoice_label } : {}),
       inv_fin_year: typeof doc.inv_fin_year === 'string' || typeof doc.inv_fin_year === 'number' ? doc.inv_fin_year : undefined,
       doc_type: typeof doc.doc_type === 'string' ? doc.doc_type : 'invoice',
       total: serverAmount(doc.total),
@@ -726,6 +727,7 @@ async function createdInvoice(
     data: {
       invoice_id: answer.invoice_id,
       invoice_no: answer.invoice_no || payload.header.inv_no,
+      ...(typeof answer.invoice_label === 'string' && answer.invoice_label !== '' ? { invoice_label: answer.invoice_label } : {}),
       // Two documents: the first one's own total (each document's is in `documents`).
       total: documents.length > 1 ? documents[0].total : await savedInvoiceTotal(client, answer, answer.invoice_id),
       ...(typeof answer.doc_type === 'string' ? { doc_type: answer.doc_type } : {}),
@@ -748,6 +750,7 @@ async function updatedInvoice(
     data: {
       invoice_id: answer.invoice_id,
       invoice_no: parseInt(answer.invoice_number) || payload.header.inv_no,
+      ...(typeof answer.invoice_label === 'string' && answer.invoice_label !== '' ? { invoice_label: answer.invoice_label } : {}),
       total: await savedInvoiceTotal(client, answer, answer.invoice_id || invoiceId),
       ...(typeof answer.doc_type === 'string' ? { doc_type: answer.doc_type } : {}),
     },
@@ -1082,6 +1085,7 @@ export const loadInvoiceData = async (
       // A text that is not a date at all keeps its first ten characters, as before, and no text gives today.
       inv_date: indiaDay(header.inv_date) || header.inv_date?.slice(0, 10) || toLocalISODate(new Date()),
       inv_fin_year: finYear,
+      inv_prefix: typeof header.inv_prefix === 'string' ? header.inv_prefix : '',
       inv_no: typeof header.inv_no === 'string' ? parseInt(header.inv_no.replace(/\D/g, ''), 10) || 0 : header.inv_no || 0,
       // The GRN's pricing mode, not the flag stored with the invoice: the
       // server charges by the GRN whatever that flag says.

@@ -22,6 +22,8 @@ export interface InvoiceHeaderData {
   inv_no: number;
   /** The number was typed by the user (client only, never sent). A typed number is never replaced by the server's suggestion. */
   inv_no_typed?: boolean;
+  /** The prefix in front of the number (WH-139): the suggestion's for a new invoice, the saved one for an edit. Client only, never sent. '' or absent: none. */
+  inv_prefix?: string;
   customer_id: string;
   customer_name: string;
   gr_id: string;
@@ -240,6 +242,8 @@ export interface CreateInvoicePayload {
 export interface SavedInvoiceDocument {
   invoice_id: string;
   inv_no: number;
+  /** The full number ("SRT/12", migration 175, WH-139); absent on an older server: the digits. */
+  invoice_label?: string;
   inv_fin_year?: number | string;
   doc_type: string;
   total: number | null;
@@ -248,6 +252,8 @@ export interface SavedInvoiceDocument {
 export interface SavedInvoiceData {
   invoice_id: string;
   invoice_no: number;
+  /** The full number the server answered with ("SRT/12"); absent: the digits. */
+  invoice_label?: string;
   fin_year: string;
   customer_name: string;
   /** The total the server stored. null when it could not be read back after the save. */
@@ -266,6 +272,8 @@ export interface NextInvoiceNumberResponse {
   success: boolean;
   data: {
     next_invoice_number: number;
+    /** The prefix of that financial year's invoices (migration 175); '' or absent: none. */
+    prefix?: string;
     financial_year: string;
   };
   message?: string;
@@ -295,6 +303,8 @@ export interface CreateInvoiceResponse {
   data: {
     invoice_id: string;
     invoice_no: number;
+    /** The full number the server answered with ("SRT/12", migration 175); absent on an older server. */
+    invoice_label?: string;
     /** The total the server computed and stored; null when it could not be read back. */
     total?: number | null;
     /** WH-151: the document type the server made. */

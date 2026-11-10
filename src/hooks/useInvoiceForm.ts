@@ -110,6 +110,8 @@ export interface SubmitSuccess {
   success: true;
   invoiceId?: string;
   invoiceNo?: number;
+  /** The full number the server answered with ("SRT/12"); absent on an older server. */
+  invoiceLabel?: string;
   /** The total the server stored, or null when it could not be read back after the save. */
   total: number | null;
   /** WH-151: the document type the server made, and every document of the save (two for a tax invoice with a bill of supply). */
@@ -394,6 +396,8 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       const result = await withTimeout(getNextInvoiceNumber(finYear), NUMBER_REQUEST_TIMEOUT_MS);
       if (id !== latestNumberRequest) return;
       const number = result.success && result.data ? result.data.next_invoice_number : null;
+      // The prefix of the year the number belongs to goes with it (WH-139); a failed answer leaves it as it was.
+      if (number !== null) dispatch(updateHeader({ inv_prefix: result.data.prefix ?? '' }));
       dispatch(numberAnswered({ id, number }));
     } catch (error) {
       if (id !== latestNumberRequest) return;
@@ -484,15 +488,19 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         void (async () => {
           try {
             let next: number | null = null;
+            let nextPrefix = '';
             try {
               const answer = await withTimeout(getNextInvoiceNumber(toYear), NUMBER_REQUEST_TIMEOUT_MS);
-              if (answer.success && answer.data && answer.data.next_invoice_number > 0) next = answer.data.next_invoice_number;
+              if (answer.success && answer.data && answer.data.next_invoice_number > 0) {
+                next = answer.data.next_invoice_number;
+                nextPrefix = answer.data.prefix ?? '';
+              }
             } catch (error) {
               log.warn('Could not read the next invoice number for the question about a financial year:', error);
             }
             const move = await askAlert(
               t('invoice.form.moveYearTitle', { year: formatFinancialYear(toYear) }),
-              next ? t('invoice.form.moveYearMessage', { old: formatIdentifier(header.inv_no), new: formatIdentifier(next) }) : t('invoice.form.moveYearMessageNoNumber'),
+              next ? t('invoice.form.moveYearMessage', { old: formatIdentifier(`${header.inv_prefix ?? ''}${header.inv_no}`), new: formatIdentifier(`${nextPrefix}${next}`) }) : t('invoice.form.moveYearMessageNoNumber'),
               [
                 { text: t('invoice.form.moveYearKeep'), style: 'cancel', value: false },
                 { text: t('invoice.form.moveYearConfirm'), value: true },
@@ -504,7 +512,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
             if (store.getState().invoiceForm.header.inv_fin_year !== header.inv_fin_year) return;
             dropNumberRequest();
             dispatch(numberCancelled());
-            dispatch(updateHeader({ ...updates, inv_no: next ?? 0, inv_no_typed: false }));
+            dispatch(updateHeader({ ...updates, inv_no: next ?? 0, inv_no_typed: false, ...(next ? { inv_prefix: nextPrefix } : {}) }));
             Object.keys(updates).forEach((field) => dispatch(clearValidationError(field)));
             // No number came with the question: it is asked for as before.
             if (!next) void requestNextNumber(toYear);
@@ -540,7 +548,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
           // Back in the year the invoice was saved in: its own number returns.
           dropNumberRequest();
           dispatch(numberCancelled());
-          dispatch(updateHeader({ inv_no: baseline.inv_no, inv_no_typed: false }));
+          dispatch(updateHeader({ inv_no: baseline.inv_no, inv_no_typed: false, inv_prefix: baseline.header.inv_prefix ?? '' }));
         } else {
           // The number in the field was the next one of the year before. It leaves
           // the field now, not when the answer arrives: until then it could be
@@ -753,26 +761,33 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
   const handleNumberTaken = useCallback(async (takenNumber: number, second = false): Promise<string> => {
     const current = store.getState().invoiceForm.header;
     let next: number | null = null;
+    let nextPrefix = '';
     try {
       const answer = await withTimeout(getNextInvoiceNumber(current.inv_fin_year), NUMBER_REQUEST_TIMEOUT_MS);
-      if (answer.success && answer.data && answer.data.next_invoice_number > 0) next = answer.data.next_invoice_number;
+      if (answer.success && answer.data && answer.data.next_invoice_number > 0) {
+        next = answer.data.next_invoice_number;
+        nextPrefix = answer.data.prefix ?? '';
+      }
     } catch (error) {
       log.warn('Could not read the next invoice number after a taken number:', error);
     }
     // WH-151: a save that makes two documents needs the number sent and the one after it; it is the second that is used.
+    // WH-139: every number is named in full (the year's prefix in front of the digits).
+    const prefix = current.inv_prefix ?? '';
+    const full = (digits: number, front: string = prefix) => formatIdentifier(`${front}${digits}`);
     const first = current.inv_no;
     const message = second
       ? next
-        ? t('gst.refusal.numberSecondTaken', { first: formatIdentifier(first), second: formatIdentifier(takenNumber), next: formatIdentifier(next) })
-        : t('gst.refusal.numberSecondTakenNoNext', { first: formatIdentifier(first), second: formatIdentifier(takenNumber) })
+        ? t('gst.refusal.numberSecondTaken', { first: full(first), second: full(takenNumber), next: full(next, nextPrefix) })
+        : t('gst.refusal.numberSecondTakenNoNext', { first: full(first), second: full(takenNumber) })
       : next
-      ? t('invoice.form.numberTaken', { number: formatIdentifier(takenNumber), next: formatIdentifier(next) })
-      : t('invoice.form.numberTakenNoNext', { number: formatIdentifier(takenNumber) });
+      ? t('invoice.form.numberTaken', { number: full(takenNumber), next: full(next, nextPrefix) })
+      : t('invoice.form.numberTakenNoNext', { number: full(takenNumber) });
     if (next && !store.getState().invoiceForm.header.inv_no_typed) {
       // A request for a suggestion that is still on its way is no longer wanted.
       dropNumberRequest();
       dispatch(numberCancelled());
-      dispatch(updateHeader({ inv_no: next, inv_no_typed: false }));
+      dispatch(updateHeader({ inv_no: next, inv_no_typed: false, inv_prefix: nextPrefix }));
       dispatch(clearValidationError('inv_no'));
     } else {
       dispatch(setValidationError({ field: 'inv_no', message }));
@@ -885,6 +900,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
           success: true,
           invoiceId: result.data?.invoice_id,
           invoiceNo: result.data?.invoice_no,
+          invoiceLabel: result.data?.invoice_label,
           total: result.data?.total ?? null,
           ...(result.data?.doc_type ? { docType: result.data.doc_type } : {}),
           ...(result.data?.documents ? { documents: result.data.documents } : {}),
@@ -893,7 +909,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       if (result.numberMaybeSaved) {
         // The identical save was refused for the number after a lost answer, and again after the check: the first send
         // may have saved it. No next number; the screen shows this with only a way to close the form.
-        const message = t('invoice.form.numberMaybeSaved', { number: formatIdentifier(result.numberTaken?.number ?? header.inv_no) });
+        const message = t('invoice.form.numberMaybeSaved', { number: formatIdentifier(`${header.inv_prefix ?? ''}${result.numberTaken?.number ?? header.inv_no}`) });
         report(t(failedTitleKey), message, { numberMaybeSaved: true });
         return { success: false, error: message };
       }
@@ -946,7 +962,11 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         return { success: false, error: message };
       }
       if (refusal?.reason === REFUSAL.NUMBER_OUT_OF_RANGE) {
-        const message = documentRefusalText(refusal.reason, refusal.fields) ?? '';
+        // WH-139: the second number is named in full, with the prefix of the invoice's year in front.
+        const second = refusal.fields?.number;
+        const prefix = store.getState().invoiceForm.header.inv_prefix ?? '';
+        const fields = second === undefined || second === null || second === '' ? refusal.fields : { ...refusal.fields, number: `${prefix}${String(second)}` };
+        const message = documentRefusalText(refusal.reason, fields) ?? '';
         dispatch(setValidationError({ field: 'inv_no', message }));
         report(t(failedTitleKey), message, { numberTaken: true });
         return { success: false, error: message };

@@ -32,6 +32,7 @@ import { getUserFriendlyError, parseErrorToFriendly } from '@/utils/errorHandler
 import { generateInvoicePDF, pdfRefusalText } from '@/services/pdf-service';
 import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
+import { invoiceFileName, invoiceLabelOf } from '@/utils/invoiceLabel';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
@@ -312,7 +313,7 @@ function InvoiceDetailScreen() {
   const runCancel = async (reason: string) => {
     if (!id || !data?.header || isCancelling) return;
     const invoiceId = Array.isArray(id) ? id[0] : id;
-    const invoiceNumber = data.header.invoice_number;
+    const invoiceNumber = invoiceLabelOf(data.header.invoice_label, data.header.invoice_number);
     setIsCancelling(true);
     try {
       const result = await cancelInvoice(invoiceId, reason, data.header.updated_at);
@@ -349,24 +350,24 @@ function InvoiceDetailScreen() {
   // Handle Delete Invoice: one question, then delete_invoice is sent with the version this page read. An invoice made
   // together with another (WH-151) asks "Delete both?" instead, and delete_invoice_pair deletes the two in one go: there is
   // no way to delete only one of them.
-  const handleDeleteInvoice = async (pairedWith?: { id: string; inv_no: string; doc_type: string }) => {
+  const handleDeleteInvoice = async (pairedWith?: { id: string; inv_no: string; label: string; doc_type: string }) => {
     if (!id || !data?.header) return;
     // The page's Delete invoice button pressed twice calls this twice: the second call finds the first one's question.
     if (deleteLock.current || cancelLock.current) return;
     deleteLock.current = true;
 
     const invoiceId = Array.isArray(id) ? id[0] : id;
-    const invoiceNumber = data.header.invoice_number;
+    const invoiceNumber = invoiceLabelOf(data.header.invoice_label, data.header.invoice_number);
     const expectedUpdatedAt = data.header.updated_at;
     const customerName = data.header.customer?.name || data.header.invoice_customer_name;
     const live = data.header.linked_invoice;
-    const pair = pairedWith ?? (live ? { id: live.id, inv_no: String(live.inv_no), doc_type: live.doc_type } : undefined);
+    const pair = pairedWith ?? (live ? { id: live.id, inv_no: String(live.inv_no), label: invoiceLabelOf(live.invoice_label, String(live.inv_no)), doc_type: live.doc_type } : undefined);
 
     // The invoice is gone: told once, and Done leaves for the list only if this screen is still the one in front.
     const reportDeleted = () => {
       showAlert(
         pair
-          ? tr('gst.pair.done', { first: formatIdentifier(invoiceNumber), second: formatIdentifier(pair.inv_no) })
+          ? tr('gst.pair.done', { first: formatIdentifier(invoiceNumber), second: formatIdentifier(pair.label) })
           : tr('invoice.details.deletedTitle', { number: formatIdentifier(invoiceNumber) }),
         undefined,
         [
@@ -417,7 +418,7 @@ function InvoiceDetailScreen() {
         // Changed by someone else: the page reads the invoice again and shows what it is now.
         if (result.reason === REFUSAL.STALE_RECORD || result.reason === REFUSAL.NOT_A_PAIR) await fetchInvoiceDetails();
         // The pair was found only now: the question is asked again as "Delete both?".
-        const refusedAsPair = (result as { linkedInvoice?: { id: string; inv_no: string; doc_type: string } }).linkedInvoice;
+        const refusedAsPair = (result as { linkedInvoice?: { id: string; inv_no: string; label: string; doc_type: string } }).linkedInvoice;
         if (refusedAsPair) {
           deleteAbort.current = null;
           setLostDelete(false);
@@ -444,7 +445,7 @@ function InvoiceDetailScreen() {
     if (pair) {
       showAlert(
         tr('gst.pair.title'),
-        tr('gst.pair.message', { other: `${tr(docTypeKey(pair.doc_type))} ${formatIdentifier(pair.inv_no)}` }),
+        tr('gst.pair.message', { other: `${tr(docTypeKey(pair.doc_type))} ${formatIdentifier(pair.label)}` }),
         [cancelButton, { text: tr('gst.pair.deleteBoth'), style: 'destructive', onPress: runDelete }]
       );
       return;
@@ -498,7 +499,7 @@ function InvoiceDetailScreen() {
       // Download and share
       const shareResult = await downloadAndSharePDF(
         pdfResult.pdfUrl,
-        `Invoice_${invoiceNo}_FY${finYear}.pdf`
+        `Invoice_${invoiceFileName(invoiceLabelOf(data.header.invoice_label, invoiceNo))}_FY${finYear}.pdf`
       );
 
       if (!shareResult.success) {
@@ -661,10 +662,10 @@ function InvoiceDetailScreen() {
               style={styles.headerTitleContainer}
               accessible
               accessibilityRole="header"
-              accessibilityLabel={tr('invoice.details.titleNumber', { number: formatIdentifier(invoice.invoice_number) })}
+              accessibilityLabel={tr('invoice.details.titleNumber', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) })}
             >
               <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
-                {tr('invoice.details.titleNumber', { number: formatIdentifier(invoice.invoice_number) })}
+                {tr('invoice.details.titleNumber', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) })}
               </Text>
               {/* Two lines when the date and the GRN number do not fit on one: the number is never cut. */}
               <Text style={styles.headerSubtitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>
@@ -683,7 +684,7 @@ function InvoiceDetailScreen() {
       >
         {/* Hero header */}
         <InvoiceHeroHeader
-          invoice_number={invoice.invoice_number || 0}
+          invoice_number={invoiceLabelOf(invoice.invoice_label, invoice.invoice_number || 0)}
           date={invoice.invoice_date || new Date().toISOString()}
           total_items={totalItems}
           total_amount={total}
@@ -713,7 +714,7 @@ function InvoiceDetailScreen() {
               financial_year={invoice.financial_year}
               reasons={!isCustomer ? reasons ?? undefined : undefined}
               notes={invoice.notes ?? undefined}
-              invoice_number={String(invoice.invoice_number)}
+              invoice_number={invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)}
               invoice_id={id}
               on_view_grn={handleViewGRN}
               on_edit_invoice={handleEditInvoice}
@@ -750,7 +751,7 @@ function InvoiceDetailScreen() {
           {activeTab === 'payments' && showPayments && (
             <PaymentsTab
               invoiceId={String(Array.isArray(id) ? id[0] : id)}
-              invoiceNumber={String(invoice.invoice_number)}
+              invoiceNumber={invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)}
               total={total}
               cancelled={isCancelled}
               canManage={canManagePayments}
@@ -771,7 +772,7 @@ function InvoiceDetailScreen() {
 
       <CancelInvoiceDialog
         visible={cancelOpen}
-        invoiceNumber={invoice.invoice_number}
+        invoiceNumber={invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)}
         customerName={customerName}
         busy={isCancelling}
         onConfirm={(reason) => void runCancel(reason)}

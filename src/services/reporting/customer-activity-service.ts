@@ -315,6 +315,7 @@ export async function getCustomerActivityDetail(
     ).map((invoice: any) => ({
       invoice_id: invoice.invoice_id,
       invoice_number: invoice.invoice_number,
+      invoice_label: typeof invoice.invoice_label === 'string' && invoice.invoice_label !== '' ? invoice.invoice_label : null,
       invoice_date: invoice.invoice_date,
       net_total: invoice.net_total ?? 0,
       status: invoice.status ?? 'pending',

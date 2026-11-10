@@ -294,6 +294,8 @@ export interface RpcGrnInvoicesSummary {
   invoice_state?: string;
   /** Migration 174: the server would accept an invoice for a dispatch line of this GRN now (the rule of get_invoiceable_grns). */
   can_create_invoice?: boolean;
+  /** Migration 175 (WH-139): one full number per invoice, in the order of `invoice_numbers`; absent on an older server. */
+  invoice_labels?: string[];
 }
 
 /**
@@ -516,6 +518,8 @@ export interface RpcDispatchItemDetails {
     tax?: number | null;
     labour_rate?: number | null;
     invoice_no: number;
+    /** Migration 175 (WH-139): the full number ("SRT/12"); absent on an older server. */
+    invoice_label?: string | null;
     invoice_date: string | null;
     total: number | null;
   } | null;
@@ -549,6 +553,8 @@ export interface RpcDispatchInvoicesSummary {
   total_invoices: number;
   total_amount: number;
   invoice_numbers?: number[];
+  /** Migration 175 (WH-139): one full number per invoice, in the order of `invoice_numbers`; absent on an older server. */
+  invoice_labels?: string[];
 }
 
 /**

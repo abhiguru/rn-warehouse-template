@@ -103,6 +103,7 @@ const grnColumns = (grn: GRNActivityRecord) => [
   grn.supervisor_name,
   grn.registration,
   grn.invoice_status?.invoice_number,
+  grn.invoice_status?.invoice_label,
   ...(grn.items ?? []).flatMap(item => [item.item_name, item.packaging, item.package_mark]),
 ];
 

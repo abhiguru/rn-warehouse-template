@@ -816,6 +816,7 @@ function GRNDetailScreen() {
     invoiceRows?.map((invoice) => ({
       invoice_id: invoice.invoice_id,
       invoice_no: invoice.invoice_number,
+      invoice_label: invoice.invoice_label,
       invoice_date: invoice.invoice_date,
       total: invoice.total,
     })),

@@ -16,6 +16,7 @@ import { isUnsettledFailure } from '@/utils/serverText';
 import { REFUSAL } from '@/utils/serverRefusal';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import { formatIdentifier } from '@/i18n';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { createLogger } from '@/utils/logger';
 
 const log = createLogger('PaymentsService');
@@ -180,7 +181,8 @@ function readDone(kind: PaymentWrite['kind'], body: unknown): PaymentWriteDone |
   const amount = payment?.amount ?? null;
   return {
     invoiceId: text(body.invoice_id) ?? text(invoice.invoice_id),
-    invoiceNumber: invoice.inv_no === undefined || invoice.inv_no === null ? null : String(invoice.inv_no),
+    // WH-139: the full number (invoice_label), the digits on an older server.
+    invoiceNumber: invoice.inv_no === undefined || invoice.inv_no === null ? null : invoiceLabelOf(invoice.invoice_label, String(invoice.inv_no)),
     figures: readFigures(invoice),
     payment,
     amountText: formatMoney(amount),

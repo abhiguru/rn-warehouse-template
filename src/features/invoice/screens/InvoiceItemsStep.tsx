@@ -147,7 +147,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
     }
   }, [handleBack, handleNext]);
 
-  const invoiceNo = header.inv_no > 0 ? header.inv_no : undefined;
+  const invoiceNo = header.inv_no > 0 ? `${header.inv_prefix ?? ''}${header.inv_no}` : undefined;
   // Elements kept between keystrokes (same element, no draw). The texts follow `language`.
   const stepIndicator = useMemo(
     () => (

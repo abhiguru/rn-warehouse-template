@@ -60,6 +60,7 @@ import type {
 } from '@/types/report.types';
 import { formatCount, formatCurrency, formatIndiaDate, formatIndiaSpokenDate, formatMonth, formatNumber, indiaDay } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 
 const REPORT_ID = 'invoice-history';
 
@@ -715,7 +716,7 @@ interface InvoiceCardProps {
 const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, payments, onOpen }: InvoiceCardProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const number = tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) });
+  const number = tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) });
   const grn = invoice.grn_ref ? tr('reports.customerActivity.grnNumber', { number: formatIdentifier(invoice.grn_ref) }) : '';
   // Paid only when nothing is owed, whatever the server's word is; a part-paid invoice is Pending.
   const payment = invoicePayment(invoice);
@@ -734,7 +735,7 @@ const InvoiceCard = memo(function InvoiceCard({ invoice, words, showDate, paymen
   const matched = hiddenMatches(invoice, words, [number, grn]);
   const label = [
     tr(status ? 'reports.invoiceHistory.cardLabel' : 'reports.invoiceHistory.cardLabelPlain', {
-      number: formatIdentifier(invoice.invoice_number),
+      number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)),
       // The date is read with the card: a heading above it is not.
       subtitle: [formatIndiaSpokenDate(invoice.invoice_date), grn].filter(Boolean).join(' · '),
       amount,

@@ -64,6 +64,7 @@ const makeDetailsStyles = (t: ThemeTokens) => {
       paddingHorizontal: space.sm,
       borderRadius: radius.button,
     },
+    prefixText: { flexGrow: 0, flexShrink: 0, color: t.text.secondary },
     retryButtonText: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.brand.tint },
   };
 };
@@ -331,7 +332,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
         // The Android Back key asks the same question as the X once something was entered.
         backOnFirstStep={isEdit ? undefined : { hasData: hasEnteredData, exitRoute: invoiceFormExitRoute(), exitWith: 'dismissTo' }}
         onStepPress={handleStepPress}
-        invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}
+        invoiceNo={header.inv_no > 0 ? `${header.inv_prefix ?? ''}${header.inv_no}` : undefined}
         isEditMode={isEdit}
       />
 
@@ -395,6 +396,12 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
             {tr('common.invoiceNumber')} <Text style={styles.required}>*</Text>
           </Text>
           <View style={[styles.field, styles.fieldRow, !!invNoError && styles.fieldError]}>
+            {/* The prefix is fixed text in front; only the digits are typed (WH-139). */}
+            {!!header.inv_prefix && (
+              <Text style={[styles.fieldValue, styles.numeric, styles.prefixText]} accessibilityLabel={header.inv_prefix} testID="invoice-number-prefix">
+                {header.inv_prefix}
+              </Text>
+            )}
             <TextInput
               style={[styles.fieldValue, styles.numeric]}
               {...identifierInput(header.inv_no > 0 ? header.inv_no : '', handleInvoiceNumberChange)}

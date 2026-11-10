@@ -39,6 +39,7 @@ import { printInvoiceRange } from '@/services/print-service';
 import { printSkippedNote } from '@/features/gst/printSkipped';
 import { generateInvoicePDF, pdfRefusalSentence } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
+import { invoiceFileName, invoiceLabelOf } from '@/utils/invoiceLabel';
 import { showAlert } from '@/utils/alert';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { showToast } from '@/utils/toast';
@@ -144,6 +145,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   };
 
   const { role } = useRoleBasedAccess();
+  // The full number as it will read: the prefix in front of the digits (WH-139).
+  const formLabel = `${header.inv_prefix ?? ''}${header.inv_no}`;
   const reasonRequired = discountNeedsReason(header, role);
   // Stable, so that the memoized charges card is not drawn again when only something else changed.
   const handleDiscountReasonChange = useCallback((reason: string) => {
@@ -352,6 +355,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
       const saved: SavedInvoiceData = {
         invoice_id: result.invoiceId || invoiceId || '',
         invoice_no: result.invoiceNo || 0,
+        // The server's full number; an older server sends none, and the prefix of the form (none there) goes in front.
+        invoice_label: result.invoiceLabel || `${header.inv_prefix ?? ''}${result.invoiceNo || 0}`,
         fin_year: header.inv_fin_year,
         customer_name: header.customer_name,
         // The server's stored total; the form's figure was only an estimate.
@@ -401,16 +406,17 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
       const finYearNum = parseInt(header.inv_fin_year.split('-')[0], 10);
 
       // WH-151: a save that made two documents shares both, one after the other (the share API takes one file at a time).
-      const numbers = savedInvoiceData.documents && savedInvoiceData.documents.length > 1
-        ? savedInvoiceData.documents.map((doc) => doc.inv_no)
-        : [savedInvoiceData.invoice_no];
-      for (const number of numbers) {
+      // WH-139: the file name carries the full number ("SRT/12" as "SRT-12").
+      const documents = savedInvoiceData.documents && savedInvoiceData.documents.length > 1
+        ? savedInvoiceData.documents.map((doc) => ({ number: doc.inv_no, label: invoiceLabelOf(doc.invoice_label, doc.inv_no) }))
+        : [{ number: savedInvoiceData.invoice_no, label: invoiceLabelOf(savedInvoiceData.invoice_label, savedInvoiceData.invoice_no) }];
+      for (const { number, label } of documents) {
         const pdfResult = await generateInvoicePDF(number, finYearNum);
         if (!pdfResult.success || !pdfResult.pdfUrl) {
           setShareError(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('invoice.review.pdfCreateFailed'));
           return;
         }
-        const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `Invoice_${number}_FY${header.inv_fin_year}.pdf`);
+        const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `Invoice_${invoiceFileName(label)}_FY${header.inv_fin_year}.pdf`);
         if (!shareResult.success) {
           setShareError(tr('invoice.review.pdfShareFailed'));
           return;
@@ -481,8 +487,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   };
 
   const confirmTitle = isEdit
-    ? tr('invoice.review.updateTitle', { number: formatIdentifier(header.inv_no) })
-    : tr('invoice.review.saveTitle', { number: formatIdentifier(header.inv_no) });
+    ? tr('invoice.review.updateTitle', { number: formatIdentifier(formLabel) })
+    : tr('invoice.review.saveTitle', { number: formatIdentifier(formLabel) });
   const toggleSection = (section: string) => toggle(section as ReviewSectionId);
   const saveLabel = isEdit ? tr('invoice.review.updateInvoice') : tr('invoice.review.saveInvoice');
 
@@ -500,7 +506,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         leaveWarning={lostAnswer ? tr('errors.lostAnswer.leaveWarning') : undefined}
         // The step circles go nowhere while the answer is lost, or while the invoice is read again (D1).
         onStepPress={lostAnswer || reloading ? undefined : handleStepPress}
-        invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}
+        invoiceNo={header.inv_no > 0 ? formLabel : undefined}
         isEditMode={isEdit}
       />
       {lostAnswer && <LostAnswerNotice />}
@@ -523,12 +529,12 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             onEdit={lostAnswer || reloading ? undefined : () => handleStepPress(STEP_NUMBERS.HEADER)}
             editLabel={tr('invoice.review.editDetailsA11y')}
             closedLine={[
-              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(header.inv_no) }) : null,
+              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(formLabel) }) : null,
               formatInvoiceDate(header.inv_date) || null,
               header.customer_name || null,
             ].filter(Boolean).join(' · ')}
             spokenClosedLine={[
-              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(header.inv_no) }) : null,
+              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(formLabel) }) : null,
               formatSpokenInvoiceDate(header.inv_date) || null,
               header.customer_name || null,
             ].filter(Boolean).join(' · ')}
@@ -537,7 +543,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             first
           >
             <ReviewKeyValues>
-              <ReviewKeyValue label={tr('common.invoiceNumber')} value={header.inv_no > 0 ? formatIdentifier(header.inv_no) : EMPTY} emphasized first />
+              <ReviewKeyValue label={tr('common.invoiceNumber')} value={header.inv_no > 0 ? formatIdentifier(formLabel) : EMPTY} emphasized first />
               <ReviewKeyValue label={tr('invoice.form.invoiceDate')} value={formatInvoiceDate(header.inv_date) || EMPTY} spokenValue={formatSpokenInvoiceDate(header.inv_date) || EMPTY} />
               <ReviewKeyValue label={tr('invoice.label.financialYear')} value={header.inv_fin_year ? formatFinancialYear(header.inv_fin_year) : EMPTY} />
               <ReviewKeyValue label={tr('common.grn')} value={header.gr_no ? formatIdentifier(header.gr_no) : EMPTY} />

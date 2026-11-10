@@ -62,6 +62,8 @@ export interface PrintJobResponse {
 
 export interface PrintSkipped {
   inv_no?: number | string;
+  /** The full number ("SRT/12", WH-139); absent on an older server. */
+  invoice_label?: string;
   inv_fin_year?: number | string;
   reason?: string;
   field?: string;

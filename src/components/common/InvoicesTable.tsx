@@ -27,6 +27,7 @@ import type { InvoiceRow, InvoiceTable } from './invoiceTable';
 import { makeTableStyles, useTableLayout, ONE_LINE, numberColumnWidth } from './DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 
 export interface InvoicesTableProps {
   invoices: InvoiceTable;
@@ -143,7 +144,7 @@ export const InvoicesTable: React.FC<InvoicesTableProps> = ({
             const showDate = row.invoice_id !== null;
             return (
               <>
-                <Text style={canOpen ? styles.link : styles.primary}>{formatIdentifier(row.invoice_no)}</Text>
+                <Text style={canOpen ? styles.link : styles.primary}>{formatIdentifier(invoiceLabelOf(row.invoice_label, row.invoice_no))}</Text>
                 {showDate && !wide ? <Text style={styles.secondary}>{dateText(row.invoice_date)}</Text> : null}
               </>
             );
@@ -220,8 +221,8 @@ export const InvoicesTable: React.FC<InvoicesTableProps> = ({
           const r = row.original;
           const spokenDate = toDate(r.invoice_date) ? formatSpokenDate(r.invoice_date) : tr('components.invoiceTable.dateUnavailable');
           return r.total === null
-            ? tr('components.invoiceTable.numbered', { number: formatIdentifier(r.invoice_no) })
-            : tr('components.invoiceTable.rowLabel', { number: formatIdentifier(r.invoice_no), date: spokenDate, amount: invoiceAmount(r.total) });
+            ? tr('components.invoiceTable.numbered', { number: formatIdentifier(invoiceLabelOf(r.invoice_label, r.invoice_no)) })
+            : tr('components.invoiceTable.rowLabel', { number: formatIdentifier(invoiceLabelOf(r.invoice_label, r.invoice_no)), date: spokenDate, amount: invoiceAmount(r.total) });
         }}
         rowHint={() => tr('components.invoiceTable.opensInvoice')}
         rowTestID={(row) => `${testIDPrefix}-invoice-row-${row.original.key}`}

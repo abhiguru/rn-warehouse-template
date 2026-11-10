@@ -243,6 +243,7 @@ export async function getCustomerInvoiceHistory(
       (inv: any) => ({
         invoice_id: inv.invoice_id,
         invoice_number: inv.invoice_number,
+        invoice_label: typeof inv.invoice_label === 'string' && inv.invoice_label !== '' ? inv.invoice_label : null,
         invoice_date: inv.invoice_date,
         financial_year: inv.financial_year ?? '',
         grn_ref: inv.grn_ref ?? '',

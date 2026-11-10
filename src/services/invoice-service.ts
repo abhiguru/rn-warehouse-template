@@ -10,6 +10,7 @@ import { REFUSAL } from '@/utils/serverRefusal';
 import { formatNumber } from '@/utils/formatters';
 import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/features/invoice/utils/cancelReason';
 import { createLogger } from '@/utils/logger';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
 
@@ -25,6 +26,8 @@ export interface InvoiceFilters {
 export interface Invoice {
   invoice_id: string;
   invoice_number: number;
+  /** Migration 175 (WH-139): the full number, prefix and digits ("SRT/12"). Absent on an older server: the digits are the number. */
+  invoice_label?: string | null;
   invoice_date: string;
   financial_year: string;
   inv_fin_year: number;
@@ -235,6 +238,8 @@ interface CustomerInvoiceRow {
   invoice_id: string;
   /** "<financial year start>-<zero-padded number>", for example "2026-0014". */
   invoice_number: string;
+  /** Migration 175 (WH-139): the full number ("SRT/14"); absent on an older server. */
+  invoice_label?: string | null;
   invoice_date: string;
   /** For example "2026-2027". */
   financial_year: string;
@@ -264,6 +269,7 @@ const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, cust
   return {
     invoice_id: row.invoice_id,
     invoice_number: Number(numberPart) || 0,
+    invoice_label: typeof row.invoice_label === 'string' && row.invoice_label !== '' ? row.invoice_label : null,
     invoice_date: row.invoice_date,
     financial_year: row.financial_year || '',
     inv_fin_year: Number(yearPart) || 0,
@@ -324,6 +330,7 @@ export function selectCustomerInvoices(all: Invoice[], params: AssignedCustomerI
     }
     return matchesSearch(terms, [
       invoice.invoice_number,
+      invoiceLabelOf(invoice.invoice_label, invoice.invoice_number),
       invoice.customer.name,
       invoice.grn.gr_no,
       `${invoice.inv_fin_year}-${invoice.invoice_number}`,
@@ -493,6 +500,8 @@ export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise
 export interface InvoiceDetail {
   invoice_id: string;
   invoice_number: number;
+  /** Migration 175 (WH-139): the full number ("SRT/12"); absent on an older server. */
+  invoice_label?: string | null;
   invoice_date: string;
   financial_year: string;
   total: number;
@@ -549,7 +558,7 @@ export interface InvoiceDetail {
   /** Migration 173 (WH-151): the document type; absent on an older server (read as 'invoice'). */
   doc_type?: string;
   /** The other document of a two-document save while it exists (null otherwise). `total` is the server's. */
-  linked_invoice?: { id: string; inv_no: number | string; inv_fin_year?: number | string; doc_type: string; total?: number | string | null; cancelled?: boolean } | null;
+  linked_invoice?: { id: string; inv_no: number | string; invoice_label?: string; inv_fin_year?: number | string; doc_type: string; total?: number | string | null; cancelled?: boolean } | null;
   /** What the document was made with and the server's tax split; null for an 'invoice'. */
   gst?: GstFacts | null;
 }
@@ -1092,7 +1101,8 @@ export interface DeleteInvoiceResponse {
   /** The server answered "Invoice not found": someone else deleted it, so it is gone, as the person wanted. */
   notFound?: boolean;
   /** Reason INVOICE_PAIR (WH-151): the invoice was made together with another and only both can be deleted. */
-  linkedInvoice?: { id: string; inv_no: string; doc_type: string };
+  /** `label`: its full number (WH-139), the digits on an older server. */
+  linkedInvoice?: { id: string; inv_no: string; label: string; doc_type: string };
 }
 
 /**
@@ -1147,20 +1157,20 @@ export const deleteInvoice = async (
     }
     // Migration 173 (WH-151): one document of a pair is not deleted alone; the screen asks "Delete both?".
     if (result.reason === REFUSAL.INVOICE_PAIR) {
-      const linked = result.fields?.linked_invoice as { id?: unknown; inv_no?: unknown; doc_type?: unknown } | undefined;
+      const linked = result.fields?.linked_invoice as { id?: unknown; inv_no?: unknown; invoice_label?: unknown; doc_type?: unknown } | undefined;
       return {
         success: false,
         message: t('gst.pair.isPair'),
         error: result.error,
         reason: result.reason,
         ...(linked && typeof linked.id === 'string'
-          ? { linkedInvoice: { id: linked.id, inv_no: String(linked.inv_no ?? ''), doc_type: String(linked.doc_type ?? 'invoice') } }
+          ? { linkedInvoice: { id: linked.id, inv_no: String(linked.inv_no ?? ''), label: invoiceLabelOf(linked.invoice_label, String(linked.inv_no ?? '')), doc_type: String(linked.doc_type ?? 'invoice') } }
           : {}),
       };
     }
     // Migration 172: the invoice has payments, named by its number.
     if (result.reason === REFUSAL.INVOICE_HAS_PAYMENTS && result.fields?.inv_no !== undefined && result.fields.inv_no !== null) {
-      return { success: false, message: t('payments.hasPayments', { number: formatIdentifier(String(result.fields.inv_no)) }), error: result.error, reason: result.reason };
+      return { success: false, message: t('payments.hasPayments', { number: formatIdentifier(invoiceLabelOf(result.fields.invoice_label, String(result.fields.inv_no))) }), error: result.error, reason: result.reason };
     }
     // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in
     // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.
