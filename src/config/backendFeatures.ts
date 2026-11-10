@@ -39,6 +39,8 @@ const INTRODUCED_BY_MIGRATION = {
   grnCreateInvoice: 174,
   /** The optional invoice number prefix: `prefix` in the invoice rule, `invoice_label` and `inv_prefix` in the reads (WH-139). */
   invoicePrefix: 175,
+  /** `get_customer_statement`, `get_customer_dues` and generate-statement-pdf: the customer statement and the dues list (WH-155). */
+  customerStatement: 176,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

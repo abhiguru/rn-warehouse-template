@@ -76,7 +76,10 @@ export type RoleGatedScreen =
   | 'charging'
   | 'gstDetails'
   | 'rackPresets'
-  | 'masterData';
+  | 'masterData'
+  | 'customerDues'
+  | 'customerStatement'
+  | 'customerStatementCard';
 
 /**
  * Whether the app offers `screen` to `role`. With `capabilities` (the facility's, from
@@ -121,6 +124,16 @@ export function canOpenScreen(
     case 'charging':
       // How storage time is counted and totals are rounded: administrators only (get_charging_rule, set_charging_rule, migration 164).
       return normalizeRole(role) === 'admin';
+    case 'customerDues':
+      // What every customer owes: administrators and supervisors (owner, 2026-11-10; get_customer_dues, migration 176).
+      return isManager(role);
+    case 'customerStatement':
+      // A customer's statement: administrators, supervisors and the customer's own account; never staff (get_customer_statement, migration 176).
+      return isManager(role) || isCustomerAccount(role);
+    case 'customerStatementCard':
+      // The Statement card of the Reports tab is a customer account's way in; administrators and supervisors reach a
+      // statement from Customer dues or Customer activity (WH-155 spec step 5).
+      return isCustomerAccount(role);
   }
 }
 

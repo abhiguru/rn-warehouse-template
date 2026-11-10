@@ -60,6 +60,9 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier, type TranslationKey } from '@/i18n';
 import { getAllCustomerActivity, getCustomerActivityDetail } from '@/services/reporting/customer-activity-service';
 import { useAppDispatch } from '@/store/hooks';
+import { backendHasFeature } from '@/config/backendFeatures';
+import { canOpenScreen } from '@/config/roles';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllCustomerActivityData, CustomerActivityDetailData, CustomerActivityRow } from '@/types/report.types';
@@ -277,7 +280,7 @@ const CustomerRow = memo(function CustomerRow({ customer, words, sortField, onOp
 // ============================================================================
 
 /** The reports a quick-access card opens for the customer. */
-type QuickReport = 'grn-activity' | 'dispatch-activity' | 'stock-aging' | 'invoice-history';
+type QuickReport = 'grn-activity' | 'dispatch-activity' | 'stock-aging' | 'invoice-history' | 'statement';
 
 type DashboardRow =
   | { kind: 'heading'; id: 'charts' | 'stockAge' | 'quickAccess'; title: TranslationKey }
@@ -296,6 +299,8 @@ const DASHBOARD_ROWS: readonly DashboardRow[] = [
   { kind: 'quick', report: 'stock-aging' },
   { kind: 'quick', report: 'invoice-history' },
 ];
+/** With the customer's Statement (WH-155): for administrators, supervisors and customer accounts on a server with migration 176. */
+const DASHBOARD_ROWS_WITH_STATEMENT: readonly DashboardRow[] = [...DASHBOARD_ROWS, { kind: 'quick', report: 'statement' }];
 const NO_ROWS: readonly DashboardRow[] = [];
 
 const dashboardKey = (row: DashboardRow) => (row.kind === 'heading' ? `heading-${row.id}` : row.kind === 'quick' ? row.report : row.kind);
@@ -343,7 +348,9 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
       ],
     [data]
   );
-  const rows = data && hasActivity(data) ? DASHBOARD_ROWS : NO_ROWS;
+  const { role } = useRoleBasedAccess();
+  const withStatement = canOpenScreen(role, 'customerStatement') && backendHasFeature('customerStatement');
+  const rows = data && hasActivity(data) ? (withStatement ? DASHBOARD_ROWS_WITH_STATEMENT : DASHBOARD_ROWS) : NO_ROWS;
   const { exportPdf, busy, available } = useReportExport({
     buildRequest: () => ({ report: REPORT_ID, customer_id: customerId, from: period.from, to: period.to }),
     filenameParts: () => ({ title: reportById(REPORT_ID)?.title, customerName: name }),
@@ -535,6 +542,14 @@ function quickAccessHead(
         action: tr('reports.customerActivity.quickInvoicesAction', { period: range }),
         previewHeading: tr('reports.customerActivity.latestInvoices'),
       };
+    case 'statement':
+      // The statement's figures are its own read (get_customer_statement): the card names it and shows no preview.
+      return {
+        icon: 'file-account-outline',
+        head: tr('reports.statement.quickHead'),
+        action: tr('reports.statement.quickAction'),
+        previewHeading: '',
+      };
   }
 }
 
@@ -605,6 +620,8 @@ function quickAccessPreviews(report: QuickReport, data: CustomerActivityDetailDa
           accessibilityHint={tr('reports.invoiceHistory.openHint')}
         />
       ));
+    case 'statement':
+      return [];
   }
 }
 

@@ -9,6 +9,8 @@ export const reports = {
     invoiceHistory: 'Invoice history',
     stockAging: 'Stock aging',
     operationsDashboard: 'Operations dashboard',
+    customerDues: 'Customer dues',
+    statement: 'Statement',
   },
   shared: {
     // A label under a stock figure; pass `count` to get "unit" for 1.
@@ -391,6 +393,34 @@ export const reports = {
   },
   // Report PDFs (generateReportPDF in src/services/pdf-service.ts, useReportExport).
   // Connection: common.checkConnection; session ended: errors.code.sessionExpired.
+  // The customer statement and the customer dues list (WH-155, backend migration 176). Every amount is the server's.
+  statement: {
+    asOf: 'As of {{dateTime}}',
+    dueOnInvoices: 'Due on invoices',
+    notInvoicedLeft: 'Not yet invoiced: goods that have left',
+    notInvoicedInStore: 'Not yet invoiced: goods in store (estimate)',
+    estimateNote: 'Estimate if the goods left today. The invoice may differ.',
+    lotsNoRate: { one: '{{value}} lot has no rate and is not counted.', other: '{{value}} lots have no rate and are not counted.' },
+    noRateYet: 'No rate yet',
+    stockInStore: 'Stock in store',
+    daysInStore: '{{days}} days in store',
+    statementEmpty: 'No stock in store and no invoices.',
+    invoices: 'Invoices',
+    dueAmount: 'Due {{amount}}',
+    loadError: "Couldn't load the statement. Check your connection and try again.",
+    errorTitle: "Couldn't load the statement",
+    showLots: 'Shows the lots',
+    hideLots: 'Hides the lots',
+    // Customer activity, Quick access: the card that opens the customer's statement.
+    quickHead: 'Statement',
+    quickAction: 'View statement',
+  },
+  dues: {
+    duesEmpty: 'No customer owes anything.',
+    loadError: "Couldn't load customer dues. Check your connection and try again.",
+    errorTitle: "Couldn't load customer dues",
+    opensStatementHint: "Opens the customer's statement",
+  },
   export: {
     /** The header action of a report screen that shares what it shows as a PDF. */
     sharePdf: 'Share PDF',

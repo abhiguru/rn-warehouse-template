@@ -51,6 +51,8 @@ export const nav: Translation<typeof source> = {
       invoiceHistory: 'બિલિંગનો ઇતિહાસ અને ચુકવણીની સ્થિતિ',
       stockAging: 'માલ કેટલા સમયથી રાખેલો છે તે જુઓ',
       operationsDashboard: 'રોજના આંકડા અને કામગીરીની ઝલક',
+      customerDues: 'દરેક વેપારી પાસે કેટલું લેવાનું છે તે જુઓ',
+      statement: 'સ્ટોરમાં તમારો માલ અને તમારી બાકી રકમ',
     },
   },
 };

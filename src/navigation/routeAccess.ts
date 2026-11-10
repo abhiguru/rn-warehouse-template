@@ -49,6 +49,8 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'sensor-detail': 'sensors',
   'sensor-edit': 'sensorWrite',
   'reports/operations-dashboard': 'operationsDashboard',
+  'reports/customer-dues': 'customerDues',
+  'reports/statement': 'customerStatement',
 };
 
 /**
