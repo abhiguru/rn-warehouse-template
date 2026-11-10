@@ -89,7 +89,7 @@ describe('invoice edit, items step', () => {
   // Every other failure of the items check used to be answered with "Every
   // item needs a duration greater than 0.", a rule the line already met.
   it.each([
-    ['a duration under half a month', { duration: 0.3 }, 'Duration must be at least 0.5 months'],
+    ['a duration under half a month', { duration: 0.3 }, 'Duration must be at least half a month'],
     ['days below 0', { no_of_days: -1 }, 'Days cannot be negative'],
     ['a tax above 100%', { tax: 150 }, 'Tax cannot exceed 100%'],
     ['a charge out of range', { charge: 1000000 }, 'Charge is too large'],
@@ -111,7 +111,7 @@ describe('invoice edit, items step', () => {
 
     await pressNext(tree);
 
-    expect(showAlert).toHaveBeenCalledWith('Check the item prices', 'Duration must be at least 0.5 months\nTax cannot exceed 100%');
+    expect(showAlert).toHaveBeenCalledWith('Check the item prices', 'Duration must be at least half a month\nTax cannot exceed 100%');
     await act(async () => { tree.unmount(); });
   });
 
@@ -123,7 +123,7 @@ describe('invoice edit, items step', () => {
     setLanguage('gu');
     await pressNext(tree);
 
-    expect(showAlert).toHaveBeenCalledWith('આઇટમના દર તપાસો', 'મુદત ઓછામાં ઓછી ૦.૫ મહિના હોવી જોઈએ');
+    expect(showAlert).toHaveBeenCalledWith('આઇટમના દર તપાસો', 'સમયગાળો ઓછામાં ઓછો અડધો મહિનો હોવો જોઈએ');
     await act(async () => { tree.unmount(); });
     setLanguage('en');
   });

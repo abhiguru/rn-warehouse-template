@@ -206,7 +206,7 @@ describe('choosing another GRN in an edit', () => {
 
     await act(async () => { await shown()[0].props.onConfirm(); });
 
-    expect(loadInvoiceFormData).toHaveBeenCalledWith(IDS.otherGrn);
+    expect(loadInvoiceFormData).toHaveBeenCalledWith(IDS.otherGrn, 'inv-42');
     expect(state().header).toMatchObject({ gr_id: IDS.otherGrn, gr_no: 'A0011', inv_no: 42 });
     expect(state().items.map((line) => line.charge)).toEqual([9]);
     expect(screenText()).toContain('GRN changed. The items now come from the new GRN.');
@@ -263,7 +263,7 @@ describe('choosing another GRN in a new invoice', () => {
     await choose();
 
     expect(shown()).toHaveLength(0);
-    expect(loadInvoiceFormData).toHaveBeenCalledWith(IDS.otherGrn);
+    expect(loadInvoiceFormData).toHaveBeenCalledWith(IDS.otherGrn, undefined);
     expect(state().header.gr_no).toBe('A0011');
   });
 
