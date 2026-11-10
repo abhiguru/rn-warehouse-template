@@ -12,8 +12,8 @@ export const central: Translation<typeof source> = {
     // Draft from the glossary (WH-148), for the owner's wording review.
     cantSend: 'ઍસોસિએશનનું લૉગિન અત્યારે કોડ મોકલી શકતું નથી.',
     useFacilityCode: 'તમારા કોલ્ડ સ્ટોરેજના કોડથી લૉગિન કરો',
-    useFacilityCodeHint: 'તમારું કોલ્ડ સ્ટોરેજ પસંદ કરો; તે SMS થી કોડ મોકલે છે',
-    smsChooseLead: 'તમારું કોલ્ડ સ્ટોરેજ પસંદ કરો. તે તમને SMS થી કોડ મોકલશે.',
+    useFacilityCodeHint: 'તમારું કોલ્ડ સ્ટોરેજ પસંદ કરો; તે એસએમએસ થી કોડ મોકલે છે',
+    smsChooseLead: 'તમારું કોલ્ડ સ્ટોરેજ પસંદ કરો. તે તમને એસએમએસ થી કોડ મોકલશે.',
     noFacilitiesYet: 'તમારા કોલ્ડ સ્ટોરેજને તેનું સરનામું મોકલવા કહો',
   },
   facilities: {

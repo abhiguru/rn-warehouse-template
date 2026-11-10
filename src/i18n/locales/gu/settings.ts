@@ -204,7 +204,7 @@ export const settings: Translation<typeof source> = {
     statusNetworkUnknown: 'Wi-Fi સરનામું જાણી શકાયું નથી',
     detailNetworkUnknown: 'આ ફોન પોતાનું Wi-Fi સરનામું વાંચી શક્યો નહીં, તેથી તે વખારના નેટવર્કનો ઉપયોગ કરતો નથી. થોડી વાર પછી ફરી પ્રયાસ કરો.',
     // The warehouse network key (WH-133): a phone without one uses only the internet; a changed answer is shown under "Connected via".
-    statusNoKey: 'હજી તૈયાર નથી',
+    statusNoKey: 'હજુ તૈયાર નથી',
     detailNoKey:
       'આ ફોન આગલી વખતે ઇન્ટરનેટથી તમારા સર્વર સુધી પહોંચશે ત્યારે તેને વખારના નેટવર્કની ચાવી મળશે. ત્યાં સુધી તે ફક્ત ઇન્ટરનેટ વાપરે છે.',
     answerChanged:
