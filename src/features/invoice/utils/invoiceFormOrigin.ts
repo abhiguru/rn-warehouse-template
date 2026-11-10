@@ -1,12 +1,11 @@
 /**
  * A new invoice started from GRN details (WH-162).
  *
- * GRN details → Invoices → "Create invoice" opens the invoice form at Review, filled as if the person had gone
+ * GRN details → Invoices → "Create invoice" opens the invoice form straight at Review, filled as if the person had gone
  * through Details and Items without changing anything: this GRN, today's date, the suggested number and every free
- * dispatch line with the server's figures. The steps do that themselves, one after the other, through their own
- * checks: Details loads the GRN and goes on once the number is in; Items goes on as its Next would. A step whose
- * checks refuse stays open with today's message (a line with no rate keeps the form at Items), and the rest of the
- * way is not taken.
+ * dispatch line with the server's figures (prepareInvoiceFromGrn reads them while GRN details is still in front).
+ * When the checks of Details or Items would stop the person (no number, a line with no rate), the form opens at that
+ * step instead, and the step runs its own Next once, so it shows today's message; a step whose checks pass goes on.
  *
  * Leaving a form opened this way (Cancel, Back on Details, or after the save) returns to the GRN details it came
  * from, not to the Invoices tab. The form's layout forgets the origin when it closes.
@@ -24,10 +23,13 @@ type Stage = 'details' | 'items';
 let origin: InvoiceFormOrigin | null = null;
 let pending: Stage | null = null;
 
-/** Called by GRN details just before it opens the form (the form slice already reset). */
-export function startInvoiceFromGrn(from: InvoiceFormOrigin): void {
+/**
+ * Called by GRN details just before it opens the form (the form slice already filled). `stage`: the step the form opens
+ * at when that step must run its own Next once; null when the form opens at Review.
+ */
+export function startInvoiceFromGrn(from: InvoiceFormOrigin, stage: Stage | null): void {
   origin = from;
-  pending = 'details';
+  pending = stage;
 }
 
 /** The GRN a step should take the form on from, once; null when the form was not opened from GRN details or the way was left. */

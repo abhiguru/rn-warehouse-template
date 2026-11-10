@@ -25,9 +25,11 @@ interface GRNInvoicesTabProps {
   state?: InvoiceState;
   /** WH-162: "Create invoice", given only when the person may create invoices and the server would accept one for this GRN now. */
   onCreateInvoice?: () => void;
+  /** WH-162: the form is being filled for "Create invoice" (the button shows its spinner and ignores presses). */
+  creatingInvoice?: boolean;
 }
 
-export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loading = false, onViewInvoice, state, onCreateInvoice }) => (
+export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loading = false, onViewInvoice, state, onCreateInvoice, creatingInvoice = false }) => (
   <>
     {state || onCreateInvoice ? (
       <View
@@ -43,7 +45,7 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loadin
       >
         {state ? <StatusTag status={invoiceStateKind(state)} label={invoiceStateLabel(state)} testID="grn-invoice-state" /> : <View />}
         {onCreateInvoice ? (
-          <Button type="primary" size="auto" leftIcon="plus" onPress={onCreateInvoice} testID="grn-create-invoice">
+          <Button type="primary" size="auto" leftIcon="plus" onPress={onCreateInvoice} loading={creatingInvoice} testID="grn-create-invoice">
             {tr('lists.invoice.create')}
           </Button>
         ) : null}

@@ -139,20 +139,14 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
   // today's date are filled in by the form itself and are not counted.
   const hasEnteredData = !!header.gr_id || items.length > 0 || !!header.inv_no_typed;
 
-  // WH-162: opened from GRN details, this step loads that GRN as if it were chosen here, and once the suggested number
-  // is in it goes on as Next would, through the same checks. A failed load, a number that could not be had or a check
-  // that refuses leaves the form here with today's message. Taken once (an effect that runs twice finds nothing).
+  // WH-162: a form opened from GRN details opens here only when Details' checks would stop the person (no suggested
+  // number, a date the lines refuse): the GRN and its lines are already in the form. This step then goes on as Next
+  // would, once the number is in, so a refusal shows today's message and a form whose checks pass reaches Review.
+  // Taken once (an effect that runs twice finds nothing).
   const [autoWaiting, setAutoWaiting] = useState(false);
   useEffect(() => {
-    if (isEdit) return;
-    const fromGrn = takeAutoAdvance('details');
-    if (!fromGrn) return;
-    void loadGRNData(fromGrn.grnId, fromGrn.grNo).then((loaded) => {
-      if (loaded) setAutoWaiting(true);
-      else stopAutoAdvance();
-    });
-    // Once, when the step opens.
-  }, []);
+    if (!isEdit && takeAutoAdvance('details')) setAutoWaiting(true);
+  }, [isEdit]);
   useEffect(() => {
     if (!autoWaiting || isGettingNextNumber) return;
     if (nextNumberFailed) {
