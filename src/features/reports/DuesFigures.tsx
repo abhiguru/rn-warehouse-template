@@ -47,9 +47,11 @@ interface DuesFiguresProps {
   /** The server's moment of the read. */
   asOf: string;
   lotsWithoutRate: number;
+  /** Payments that name no invoice: one line under the figures when above 0, added to nothing. */
+  unlinkedPaid?: number | null;
 }
 
-export function DuesFigures({ figures, basis, asOf, lotsWithoutRate }: DuesFiguresProps) {
+export function DuesFigures({ figures, basis, asOf, lotsWithoutRate, unlinkedPaid }: DuesFiguresProps) {
   const styles = useThemedStyles(makeStyles);
   const lines: [string, number][] = [
     [invoicesLabel(basis), figures.invoices_amount],
@@ -70,6 +72,9 @@ export function DuesFigures({ figures, basis, asOf, lotsWithoutRate }: DuesFigur
           <Text style={styles.amount}>{rupees(amount)}</Text>
         </View>
       ))}
+      {unlinkedPaid !== null && unlinkedPaid !== undefined && unlinkedPaid > 0 ? (
+        <Text style={styles.label}>{tr('reports.statement.unlinkedPaid', { amount: rupees(unlinkedPaid) })}</Text>
+      ) : null}
       <Text style={styles.note}>{tr('reports.statement.estimateNote')}</Text>
       {lotsWithoutRate > 0 ? (
         <Text style={styles.warn}>{tr('reports.statement.lotsNoRate', { count: lotsWithoutRate, value: formatNumber(lotsWithoutRate) })}</Text>

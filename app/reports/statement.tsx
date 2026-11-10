@@ -239,7 +239,7 @@ function CustomerStatementView({ customerId, customerName, canOpenLeft, onChange
       empty={{ icon: 'file-account-outline', title: tr('reports.statement.statementEmpty') }}
       errorTitle={tr('reports.statement.errorTitle')}
     >
-      {data ? <DuesFigures figures={data.figures} basis={data.invoices_basis} asOf={data.as_of} lotsWithoutRate={data.lots_without_rate} /> : null}
+      {data ? <DuesFigures figures={data.figures} basis={data.invoices_basis} asOf={data.as_of} lotsWithoutRate={data.lots_without_rate} unlinkedPaid={data.unlinked_paid_amount} /> : null}
     </ReportScaffold>
   );
 }

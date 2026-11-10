@@ -67,6 +67,8 @@ export interface CustomerStatement {
   invoices_basis: InvoicesBasis;
   figures: DuesFigures;
   lots_without_rate: number;
+  /** Payments that name no invoice (Record payments on), null otherwise: shown, added to nothing. */
+  unlinked_paid_amount: number | null;
   left: StatementLeftRow[];
   in_store: StatementStoreRow[];
   invoices: StatementInvoice[];
@@ -77,6 +79,8 @@ export interface CustomerDuesRow extends DuesFigures {
   name: string;
   active: boolean;
   lots_without_rate: number;
+  /** As on the statement: shown as a fourth figure, added to nothing and no part of the order. */
+  unlinked_paid_amount: number | null;
 }
 
 export interface CustomerDues {
@@ -119,6 +123,7 @@ function mapStatement(body: Record<string, unknown>): CustomerStatement {
     invoices_basis: basis(body.invoices_basis),
     figures: figures(body.figures),
     lots_without_rate: num(body.lots_without_rate),
+    unlinked_paid_amount: numOrNull(body.unlinked_paid_amount),
     left: list(body.left).map(row => ({ gr_id: text(row.gr_id), gr_no: text(row.gr_no), bags: num(row.bags), amount: num(row.amount) })),
     in_store: list(body.in_store).map(row => ({
       gr_id: text(row.gr_id),
@@ -161,6 +166,7 @@ function mapDues(body: Record<string, unknown>): CustomerDues {
       name: text(row.name),
       active: row.active !== false,
       lots_without_rate: num(row.lots_without_rate),
+      unlinked_paid_amount: numOrNull(row.unlinked_paid_amount),
       ...figures(row),
     })),
   };

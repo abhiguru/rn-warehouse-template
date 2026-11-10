@@ -92,6 +92,10 @@ const DuesRow = memo(function DuesRow({ row, basis, onOpen }: DuesRowProps) {
     [invoicesLabel(basis), row.invoices_amount],
     [tr('reports.statement.notInvoicedLeft'), row.not_invoiced_left],
     [tr('reports.statement.notInvoicedInStore'), row.not_invoiced_in_store],
+    // A fourth figure when above 0: payments that name no invoice, added to nothing and no part of the order.
+    ...(row.unlinked_paid_amount !== null && row.unlinked_paid_amount > 0
+      ? [[tr('reports.statement.unlinkedPaidLabel'), row.unlinked_paid_amount] as [string, number]]
+      : []),
   ];
   const deactivated = row.active ? null : tr('customers.list.statusDeactivated');
   return (

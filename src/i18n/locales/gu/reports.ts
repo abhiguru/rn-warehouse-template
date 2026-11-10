@@ -376,6 +376,8 @@ export const reports: Translation<typeof source> = {
     stockInStore: 'સ્ટોકમાં પડેલો માલ',
     daysInStore: '{{days}} દિવસથી સ્ટોરમાં',
     statementEmpty: 'સ્ટોકમાં માલ નથી અને કોઈ ઇન્વૉઇસ નથી.',
+    unlinkedPaid: 'ચૂકવેલી રકમ, કોઈ ઇન્વૉઇસ સાથે જોડાયેલી નથી: {{amount}}',
+    unlinkedPaidLabel: 'ચૂકવેલી રકમ, કોઈ ઇન્વૉઇસ સાથે જોડાયેલી નથી',
     invoices: 'ઇન્વૉઇસ',
     dueAmount: 'બાકી {{amount}}',
     loadError: 'સ્ટેટમેન્ટ લોડ ન થયું. કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',

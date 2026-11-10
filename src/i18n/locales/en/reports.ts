@@ -405,6 +405,9 @@ export const reports = {
     stockInStore: 'Stock in store',
     daysInStore: '{{days}} days in store',
     statementEmpty: 'No stock in store and no invoices.',
+    // Payments that name no invoice: shown under the three figures, added to nothing (WH-155, Product 2026-11-11).
+    unlinkedPaid: 'Paid, not matched to an invoice: {{amount}}',
+    unlinkedPaidLabel: 'Paid, not matched to an invoice',
     invoices: 'Invoices',
     dueAmount: 'Due {{amount}}',
     loadError: "Couldn't load the statement. Check your connection and try again.",
