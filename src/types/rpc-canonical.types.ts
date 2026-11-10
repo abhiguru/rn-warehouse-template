@@ -292,6 +292,8 @@ export interface RpcGrnInvoicesSummary {
   invoice_numbers: number[];
   /** Migration 165: Not invoiced, Partly invoiced or Invoiced; absent on an older server (read with parseInvoiceState). */
   invoice_state?: string;
+  /** Migration 174: the server would accept an invoice for a dispatch line of this GRN now (the rule of get_invoiceable_grns). */
+  can_create_invoice?: boolean;
 }
 
 /**

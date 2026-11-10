@@ -59,6 +59,7 @@ import { invoiceGroupKey } from '@/features/invoice/utils/groupInvoiceItems';
 import { useDocumentsPreview } from '@/features/gst/useDocumentsPreview';
 import { DocumentsPreviewNote } from '@/features/gst/DocumentsPreviewNote';
 import type { InvoiceStepProps } from './InvoiceDetailsStep';
+import { invoiceFormExitRoute } from '@/features/invoice/utils/invoiceFormOrigin';
 
 const log = createLogger('InvoiceReviewStep');
 
@@ -165,14 +166,16 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     setErrorDialog({ visible: false, title: '', message: '' });
   };
 
-  // Where the form goes when it is left: the invoice's page after an edit, the Invoices tab for a new one.
+  // Where the form goes when it is left: the invoice's page after an edit, the Invoices tab (or the GRN details it was opened from) for a new one.
   const leaveForm = (savedId?: string) => {
     if (isEdit) {
       router.dismissTo(`/invoice-details/${savedId || invoiceId}` as Href);
       return;
     }
+    // WH-162: back to the GRN details the form was opened from, else the Invoices tab.
+    const exitRoute = invoiceFormExitRoute();
     resetFormState();
-    router.dismissTo('/(tabs)/invoices');
+    router.dismissTo(exitRoute as Href);
   };
 
   // Leaving while the answer of the save is lost (D22): the server is not asked any more and nothing is sent. The

@@ -35,6 +35,8 @@ const INTRODUCED_BY_MIGRATION = {
   recordPayments: 172,
   /** `get_gst_details`, `set_gst_details`, `set_item_gst_treatment`, `preview_invoice_documents`, `delete_invoice_pair`, the document type on invoices and `p_doc_type` on the list (WH-151). */
   gstDocuments: 173,
+  /** `can_create_invoice` in get_grn_details' invoice summary, and invoicing goods as they leave on by default (WH-162). */
+  grnCreateInvoice: 174,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

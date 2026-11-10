@@ -7,7 +7,7 @@
  * pressed, and go when the field changes.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, type Href } from 'expo-router';
@@ -35,6 +35,12 @@ import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInpu
 import { formatFinancialYear } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
 import { INVOICE_NUMBER_DIGITS } from '@/features/invoice/schemas/invoiceValidation';
+import {
+  continueAutoAdvance,
+  invoiceFormExitRoute,
+  stopAutoAdvance,
+  takeAutoAdvance,
+} from '@/features/invoice/utils/invoiceFormOrigin';
 
 /** An invoice saved before the 8-digit ceiling may have a longer number; 10 digits are the most the server stores. */
 const EDIT_NUMBER_DIGITS = 10;
@@ -132,6 +138,38 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
   // today's date are filled in by the form itself and are not counted.
   const hasEnteredData = !!header.gr_id || items.length > 0 || !!header.inv_no_typed;
 
+  // WH-162: opened from GRN details, this step loads that GRN as if it were chosen here, and once the suggested number
+  // is in it goes on as Next would, through the same checks. A failed load, a number that could not be had or a check
+  // that refuses leaves the form here with today's message. Taken once (an effect that runs twice finds nothing).
+  const [autoWaiting, setAutoWaiting] = useState(false);
+  useEffect(() => {
+    if (isEdit) return;
+    const fromGrn = takeAutoAdvance('details');
+    if (!fromGrn) return;
+    void loadGRNData(fromGrn.grnId, fromGrn.grNo).then((loaded) => {
+      if (loaded) setAutoWaiting(true);
+      else stopAutoAdvance();
+    });
+    // Once, when the step opens.
+  }, []);
+  useEffect(() => {
+    if (!autoWaiting || isGettingNextNumber) return;
+    if (nextNumberFailed) {
+      // The number field asks for a number to be typed, as today: the person goes on from here.
+      setAutoWaiting(false);
+      stopAutoAdvance();
+      return;
+    }
+    if (!(header.inv_no > 0)) return; // the number is still to be asked for
+    setAutoWaiting(false);
+    continueAutoAdvance('items');
+    void navigateToStep(STEP_NUMBERS.ITEMS).then((result) => {
+      if (result === 'ok') return;
+      stopAutoAdvance();
+      if (result === 'noItems') setShowNoItemsDialog(true);
+    });
+  }, [autoWaiting, isGettingNextNumber, nextNumberFailed, header.inv_no, navigateToStep]);
+
   // Nothing is reloaded when this screen comes back into focus (after the GRN
   // was viewed, or on the way back from a later step). A reload replaced the
   // lines with the price list's rates and threw away rates typed on step 2.
@@ -226,8 +264,10 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
       leaveEdit();
       return;
     }
+    // WH-162: back to the GRN details the form was opened from, else the Invoices tab.
+    const exitRoute = invoiceFormExitRoute();
     resetFormState();
-    router.dismissTo('/(tabs)/invoices');
+    router.dismissTo(exitRoute as Href);
   };
 
   const goToStep = async (step: number) => {
@@ -289,7 +329,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
         // The Android Back key asks the same question as the X once something was entered.
-        backOnFirstStep={isEdit ? undefined : { hasData: hasEnteredData, exitRoute: '/(tabs)/invoices', exitWith: 'dismissTo' }}
+        backOnFirstStep={isEdit ? undefined : { hasData: hasEnteredData, exitRoute: invoiceFormExitRoute(), exitWith: 'dismissTo' }}
         onStepPress={handleStepPress}
         invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}
         isEditMode={isEdit}

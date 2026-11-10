@@ -7,7 +7,7 @@
  * useInvoiceForm({ mode, step: 2 }).
  */
 
-import React, { useCallback, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { View } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
@@ -24,6 +24,7 @@ import { STEP_NUMBERS, getCompletedSteps, makeInvoiceWizardStyles } from '@/cons
 import { t as tr } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 import type { InvoiceStepProps } from './InvoiceDetailsStep';
+import { invoiceFormExitRoute, takeAutoAdvance } from '@/features/invoice/utils/invoiceFormOrigin';
 
 export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
   // Closing the keyboard lets go of the field it was for (its text is formatted and checked).
@@ -103,8 +104,10 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       router.dismissTo(`/invoice-details/${id}` as Href);
       return;
     }
+    // WH-162: back to the GRN details the form was opened from, else the Invoices tab.
+    const exitRoute = invoiceFormExitRoute();
     reset();
-    router.dismissTo('/(tabs)/invoices');
+    router.dismissTo(exitRoute as Href);
   }, []);
 
   const handleNext = useCallback(async () => {
@@ -127,6 +130,13 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
     // days below 0, a rate out of range) is reported in its own words.
     await latest.current.navigateToStep(STEP_NUMBERS.REVIEW);
   }, [store]);
+
+  // WH-162: a form opened from GRN details goes on to Review as Next would, with Next's own checks: a line the form
+  // would not let through (no rate, no duration) keeps it here with today's message. Once, when the step opens.
+  useEffect(() => {
+    if (isEdit || !takeAutoAdvance('items')) return;
+    void handleNext();
+  }, []);
 
   const handleStepPress = useCallback(async (stepNumber: number) => {
     if (stepNumber === STEP_NUMBERS.ITEMS) return; // Already on this step

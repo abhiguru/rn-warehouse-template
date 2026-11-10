@@ -8,6 +8,7 @@ import {
   type OpenInvoiceForm,
 } from '@/features/invoice/utils/openInvoiceForms';
 import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
+import { clearInvoiceFormOrigin } from '@/features/invoice/utils/invoiceFormOrigin';
 
 export default function InvoiceFormLayout() {
   const { canCreate } = usePermissions();
@@ -36,9 +37,14 @@ export default function InvoiceFormLayout() {
   }, []);
 
   // Open for as long as this layout is: an edit of an invoice is not opened over it.
+  // WH-162: a form opened from GRN details forgets where it came from when it closes.
   useEffect(() => {
     if (blocker) return;
-    return registerInvoiceForm({ kind: 'create' });
+    const unregister = registerInvoiceForm({ kind: 'create' });
+    return () => {
+      unregister();
+      clearInvoiceFormOrigin();
+    };
   }, []);
 
   if (!canCreate || blocker) {

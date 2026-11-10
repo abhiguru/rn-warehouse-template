@@ -15,6 +15,7 @@ import { View } from 'react-native';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { invoiceStateKind, invoiceStateLabel, type InvoiceState } from '@/features/charging/invoiceState';
 import { space } from '@/theme/tokens';
+import { Button } from '@/components/ui/Button';
 
 interface GRNInvoicesTabProps {
   invoices: InvoiceTable;
@@ -22,13 +23,30 @@ interface GRNInvoicesTabProps {
   onViewInvoice?: (invoice_id: string) => void;
   /** Migration 165: the GRN's invoice state, shown above the invoices (a GRN may have several). Absent on an older server. */
   state?: InvoiceState;
+  /** WH-162: "Create invoice", given only when the person may create invoices and the server would accept one for this GRN now. */
+  onCreateInvoice?: () => void;
 }
 
-export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loading = false, onViewInvoice, state }) => (
+export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loading = false, onViewInvoice, state, onCreateInvoice }) => (
   <>
-    {state ? (
-      <View style={{ alignItems: 'flex-start', paddingHorizontal: space.lg, paddingTop: space.md }}>
-        <StatusTag status={invoiceStateKind(state)} label={invoiceStateLabel(state)} testID="grn-invoice-state" />
+    {state || onCreateInvoice ? (
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: space.sm,
+          paddingHorizontal: space.lg,
+          paddingTop: space.md,
+        }}
+      >
+        {state ? <StatusTag status={invoiceStateKind(state)} label={invoiceStateLabel(state)} testID="grn-invoice-state" /> : <View />}
+        {onCreateInvoice ? (
+          <Button type="primary" size="auto" leftIcon="plus" onPress={onCreateInvoice} testID="grn-create-invoice">
+            {tr('lists.invoice.create')}
+          </Button>
+        ) : null}
       </View>
     ) : null}
     <InvoicesTable

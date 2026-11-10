@@ -33,7 +33,12 @@ import { printGRNRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
+import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
+import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
+import { startInvoiceFromGrn } from '@/features/invoice/utils/invoiceFormOrigin';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
@@ -189,7 +194,10 @@ function GRNDetailScreen() {
   }, [user, session, userProfile]);
 
   // Use centralized permission system
-  const { canUpdate, canDelete } = usePermissions();
+  const { canCreate, canUpdate, canDelete } = usePermissions();
+  const reduxDispatch = useAppDispatch();
+  // WH-162: set by the first tap on "Create invoice" until this page is in front again (one form for a double tap).
+  const openingInvoiceRef = useRef(false);
   const canPrint = useCanPrint();
 
   // Check edit permissions
@@ -444,6 +452,7 @@ function GRNDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
+      openingInvoiceRef.current = false;
       focusCountRef.current += 1;
       if (focusCountRef.current > 1) void fetchGRNDetailsRef.current();
       return () => {
@@ -513,6 +522,27 @@ function GRNDetailScreen() {
       setGrnInvoices({ key: invoiceKey, invoices: result.success ? result.invoices : null });
     });
   }, [activeTab, data, invoiceKey, grnInvoices, isWarehouseRole, assignedCustomerIds]);
+
+  // WH-162: "Create invoice" opens the invoice form for this GRN at Review (the steps fill it as Details and Items
+  // would). Another open invoice form is named first, as on the Invoices tab; nothing is reset then.
+  const handleCreateInvoice = () => {
+    const current = data?.grn;
+    if (openingInvoiceRef.current || !current) return;
+    const blocker = openFormBlocking({ kind: 'create' });
+    if (blocker) {
+      showOpenFormRefusal(blocker);
+      return;
+    }
+    openingInvoiceRef.current = true;
+    reduxDispatch(resetInvoiceForm());
+    const entryTab = Array.isArray(tab) ? tab[0] : tab;
+    startInvoiceFromGrn({
+      grnId: current.id,
+      grNo: current.gr_no,
+      exitRoute: `/grn-details/${current.id}${entryTab ? `?tab=${encodeURIComponent(entryTab)}` : ''}`,
+    });
+    router.push('/invoice-form/step1');
+  };
 
   // The invoice page keeps the PDF and sharing; its server call checks the role and customer.
   const handleViewInvoice = (invoiceId: string) => {
@@ -930,7 +960,17 @@ function GRNDetailScreen() {
           )}
 
           {activeTab === 'invoices' && (
-            <GRNInvoicesTab invoices={invoiceTable} loading={invoicesLoading} onViewInvoice={handleViewInvoice} state={parseInvoiceState(grn.invoices_summary?.invoice_state)} />
+            <GRNInvoicesTab
+              invoices={invoiceTable}
+              loading={invoicesLoading}
+              onViewInvoice={handleViewInvoice}
+              state={parseInvoiceState(grn.invoices_summary?.invoice_state)}
+              onCreateInvoice={
+                canCreate && backendHasFeature('grnCreateInvoice') && grn.invoices_summary?.can_create_invoice === true
+                  ? handleCreateInvoice
+                  : undefined
+              }
+            />
           )}
         </View>
       </View>
