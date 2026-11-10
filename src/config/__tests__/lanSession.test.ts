@@ -14,6 +14,7 @@ import {
 import { discoverOperator, loadOperatorServer, saveOperatorServer } from '../operatorServer';
 import { answeredPath, getConnectionPath, getLanStatus, resetLanTransport } from '../lanTransport';
 import { onWarehouseWifi } from '@/tests/helpers/lanNetwork';
+import { installLanKey, removeLanKey, signingLan } from '@/tests/helpers/lanSigning';
 import { store as appStore } from '@/store';
 
 jest.mock('@/services/recent-customers-service', () => ({
@@ -95,7 +96,7 @@ beforeEach(async () => {
   jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => { secure.set(key, value); });
   jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async key => { secure.delete(key); });
   jest.mocked(createClient).mockReturnValue({ rpc: jest.fn(), from: jest.fn() } as unknown as ReturnType<typeof createClient>);
-  global.fetch = jest.fn(route) as unknown as typeof fetch;
+  global.fetch = jest.fn(signingLan(route, LAN)) as unknown as typeof fetch;
   resetLanTransport();
   initializeSupabase(PUBLIC, 'local-test-anon');
   await saveOperatorServer(
@@ -103,10 +104,12 @@ beforeEach(async () => {
     false
   );
   await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  await installLanKey(PUBLIC, 'instance-0001'); // the session holds the warehouse network key (WH-133)
   onWarehouseWifi();
 });
 
 afterEach(() => {
+  removeLanKey();
   resetLanTransport();
 });
 afterAll(() => {
@@ -191,10 +194,12 @@ describe('discovery', () => {
   it('accepts a redirect check against the LAN address the answer came from', async () => {
     await loadOperatorServer();
     net.public = 'down';
-    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const response = await route(input, init);
-      return Object.assign(response, { url: String(input) });
-    }) as unknown as typeof fetch;
+    global.fetch = jest.fn(
+      signingLan(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await route(input, init);
+        return Object.assign(response, { url: String(input) });
+      }, LAN)
+    ) as unknown as typeof fetch;
     await expect(discoverOperator(PUBLIC)).resolves.toBeDefined();
   });
 

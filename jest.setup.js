@@ -14,7 +14,22 @@ jest.mock('expo-secure-store', () => ({
   deleteItemAsync: jest.fn(() => Promise.resolve()),
 }));
 
-// Worklets 0.10 (Reanimated 4.5) installs native unpackers on import; use its
+// expo-crypto is native; the warehouse network signer (src/config/lanSigner.ts) needs its SHA-256 digest and random bytes.
+// A test may still mock the module itself.
+jest.mock('expo-crypto', () => {
+  const nodeCrypto = require('node:crypto');
+  return {
+    CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+    digest: async (_algorithm, data) => {
+      const out = nodeCrypto.createHash('sha256').update(Buffer.from(data.buffer, data.byteOffset, data.byteLength)).digest();
+      return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+    },
+    getRandomBytesAsync: async count => new Uint8Array(nodeCrypto.randomBytes(count)),
+    randomUUID: () => nodeCrypto.randomUUID(),
+  };
+});
+
+// Worklets 0.10(Reanimated 4.5) installs native unpackers on import; use its
 // published JS mock so Reanimated runs on the JS thread in tests.
 jest.mock('react-native-worklets', () => require('react-native-worklets/src/mock'));
 
