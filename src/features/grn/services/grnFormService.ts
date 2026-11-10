@@ -1047,7 +1047,7 @@ const readGrnEditState = async (
     data.invoice && typeof data.invoice === 'object' && data.invoice.id
       ? {
           id: String(data.invoice.id),
-          invNo: formatIdentifier(textOrUndefined(data.invoice.inv_no) ?? ''),
+          invNo: formatIdentifier(textOrUndefined(data.invoice.invoice_label) ?? textOrUndefined(data.invoice.inv_no) ?? ''),
         }
       : null;
   const lines = new Map<string, GRNLineLocks>();

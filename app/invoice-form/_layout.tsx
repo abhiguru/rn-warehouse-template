@@ -32,7 +32,7 @@ export default function InvoiceFormLayout() {
     turnedAway.current = true;
     // The number of the invoice that is open, from its own loaded form (the slice was not touched by this visit).
     const open = store.getState().invoiceForm;
-    showOpenFormRefusal(blocker, open.baseline?.inv_no || open.header.inv_no || undefined);
+    showOpenFormRefusal(blocker, (open.baseline?.inv_no || open.header.inv_no) ? `${(open.baseline?.header ?? open.header).inv_prefix ?? ''}${open.baseline?.inv_no || open.header.inv_no}` : undefined);
     router.back();
   }, []);
 

@@ -8,12 +8,12 @@ import { invoiceFormRoute, type OpenInvoiceForm } from './openInvoiceForms';
  * back to that form, which may be hidden under other screens. `number` is the open invoice's own number when the
  * caller knows it (the form's baseline); a form that has told the registry its number is named by that.
  */
-export function showOpenFormRefusal(blocker: OpenInvoiceForm, number?: number): void {
+export function showOpenFormRefusal(blocker: OpenInvoiceForm, number?: string): void {
   const known = number || (blocker.kind === 'edit' ? blocker.number : undefined);
   const message =
     blocker.kind === 'create'
       ? tr('invoice.edit.finishOtherNew')
-      : known && known > 0
+      : known
         ? tr('invoice.edit.finishOtherEdit', { number: formatIdentifier(known) })
         : tr('invoice.edit.finishOtherEditNoNumber');
   showAlert(tr('invoice.edit.finishOtherTitle'), message, [
