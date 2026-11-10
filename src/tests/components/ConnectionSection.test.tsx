@@ -12,6 +12,7 @@ import { clearOperatorServer, getActiveOperatorServer, saveOperatorServer } from
 import { noteNetworkState, resetLanTransport, transportFetch } from '@/config/lanTransport';
 import { HOME_WIFI, WIFI_UNKNOWN_SUBNET, onWarehouseWifi } from '@/tests/helpers/lanNetwork';
 import { checkLanNow } from '@/config/lanCheck';
+import { installLanKey, removeLanKey, signingLan } from '@/tests/helpers/lanSigning';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -38,7 +39,7 @@ const answer = (status: number, path: 'lan' | 'public' | null, body: unknown = '
     clone: () => answer(status, path, body),
     body: null,
   }) as unknown as Response;
-const route = async (input: RequestInfo | URL): Promise<Response> => {
+const route = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
   const url = String(input);
   if (url.startsWith(PUBLIC)) {
     if (!net.public) throw new TypeError('Network request failed');
@@ -85,9 +86,12 @@ beforeEach(async () => {
   onWarehouseWifi();
   await clearOperatorServer();
   await saveOperatorServer({ ...facility, lan: LAN }, false);
-  global.fetch = jest.fn(route) as unknown as typeof fetch;
+  // The listener signs its answers and the session holds the warehouse network key (WH-133).
+  global.fetch = jest.fn(signingLan(route, LAN)) as unknown as typeof fetch;
+  await installLanKey(PUBLIC, 'instance-north');
 });
 afterEach(async () => {
+  removeLanKey();
   if (tree) await act(async () => { tree!.unmount(); });
   tree = undefined;
   jest.useRealTimers();
@@ -136,10 +140,14 @@ describe('connected via', () => {
     expect(texts().some(text => text.includes('old configuration'))).toBe(false);
     net.public = false;
     await act(async () => { await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true }); });
-    global.fetch = jest.fn(async (input: RequestInfo | URL) =>
-      String(input).startsWith(LAN) && String(input).includes('/rest/')
-        ? answer(401, 'lan', { message: 'Unauthorized' })
-        : route(input)
+    global.fetch = jest.fn(
+      signingLan(
+        async (input: RequestInfo | URL) =>
+          String(input).startsWith(LAN) && String(input).includes('/rest/')
+            ? answer(401, 'lan', { message: 'Unauthorized' })
+            : route(input),
+        LAN
+      )
     ) as unknown as typeof fetch;
     await act(async () => { await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true }).catch(() => undefined); });
     const warning = "The warehouse network answered with an old configuration. Ask whoever runs your server to run the server's start step again.";

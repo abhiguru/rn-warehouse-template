@@ -397,7 +397,7 @@ describe('central sign-in', () => {
 
   it('shows a refusal without a wait in the app\'s words', async () => {
     jest.mocked(requestCentralCode).mockResolvedValue({
-      ok: false, code: 'invalid_phone', message: 'That number is not valid.',
+      ok: false, code: 'invalid_request', message: 'That number is not valid.',
     });
     await render(<CentralLoginScreen />);
     await tick();
