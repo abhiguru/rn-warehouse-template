@@ -13,6 +13,7 @@ import { QuantityWeightFields } from '../item-form';
 
 // The weight box and the scroll offsets follow the text size (WH-56): 1 unless a test sets it.
 let mockFontScale = 1;
+jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ isStaffRole: false }) })); // WH-79: staff may add an item
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
   default: () => ({ width: 392, height: 780, scale: 3, fontScale: mockFontScale }),
