@@ -434,6 +434,8 @@ export const invoice = {
     bags: 'Bags',
     amount: 'Amount',
     total: 'Total',
+    /** Read aloud in place of the dash on a cancelled invoice's line whose figures were never kept. */
+    notRecorded: 'not recorded',
     groupCount: { one: '{{count}} item', other: '{{count}} items' },
     lineCount: { one: '{{count}} dispatch line', other: '{{count}} dispatch lines' },
     rate: 'Rate {{amount}}',

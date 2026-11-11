@@ -444,6 +444,7 @@ export const invoice: Translation<typeof source> = {
     bags: 'નંગ',
     amount: 'રકમ',
     total: 'કુલ',
+    notRecorded: 'નોંધાયેલ નથી',
     groupCount: { one: '{{count}} આઇટમ', other: '{{count}} આઇટમ' },
     lineCount: { one: 'જાવકની {{count}} નોંધ', other: 'જાવકની {{count}} નોંધ' },
     rate: 'દર {{amount}}',

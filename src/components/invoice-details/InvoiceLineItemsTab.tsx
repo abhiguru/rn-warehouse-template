@@ -50,6 +50,8 @@ import { ReadOnlyLineTable, readOnlyLayout, type ReadOnlyLine } from '@/features
 // Legacy interface for backward compatibility
 export interface InvoiceLineItem {
   id: string;
+  /** The line's quantity, rates and amounts were never kept (a cancelled invoice): the screen shows dashes, never a worked-out figure. */
+  unrecorded?: boolean;
   item_name: string;
   duration?: string;
   no_of_days?: number;
@@ -88,6 +90,8 @@ export interface InvoiceLineItem {
 /** One dispatch line of a lot. */
 export interface DispatchLineItem {
   id: string;
+  /** See InvoiceLineItem.unrecorded. */
+  unrecorded?: boolean;
   dispatch_no?: string;
   dispatch_id?: string;
   dispatch_date?: string;
@@ -115,6 +119,8 @@ export interface InvoiceLineItemGroupData {
   /** The lot's GRN is priced ONE_TIME: no months, no labour. */
   one_time: boolean;
   total_dispatch_qty: number;
+  /** Every line of the lot is unrecorded: its quantity, rate and amounts show dashes. */
+  all_unrecorded: boolean;
   /** Undefined when the lines of the lot have different charges (the summary then shows no rate). */
   charge_per_unit?: number;
   /** Undefined when the lines of the lot have different tax rates. */
@@ -158,8 +164,9 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
         grn_quantity: item.grn_quantity || 0,
         one_time: !!item.one_time,
         total_dispatch_qty: 0,
+        all_unrecorded: true,
         charge_per_unit: undefined,
-        tax_rate: item.tax || 0,
+        tax_rate: item.unrecorded ? undefined : item.tax || 0,
         labour_rate: undefined,
         total_base_amount: 0,
         total_tax_amount: 0,
@@ -173,6 +180,28 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
     }
 
     const group = groupMap.get(groupKey)!;
+
+    if (item.unrecorded) {
+      // No figure is worked out for this line, and it adds nothing to the lot's rates or sums.
+      group.dispatch_items.push({
+        id: item.id,
+        unrecorded: true,
+        dispatch_no: item.dispatch_no,
+        dispatch_id: item.dispatch_id,
+        dispatch_date: item.dispatch_date,
+        dispatch_qty: 0,
+        grn_date: item.grn_date,
+        no_of_days: item.no_of_days || 0,
+        duration: 1,
+        charge_per_unit: 0,
+        labour_rate: 0,
+        tax_rate: 0,
+        line_item_amount: 0,
+        tax: 0,
+      });
+      return;
+    }
+    group.all_unrecorded = false;
 
     const parsedDuration = item.duration ? parseFloat(item.duration) : NaN;
     const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 1;
@@ -204,14 +233,16 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
     const baseAmount = hasServerAmounts ? roundMoney(lineTotal - taxAmount) : computed.taxable_amount;
 
     // A group-level rate is only meaningful when every dispatch uses the same rate (the first line sets it).
-    if (group.dispatch_items.length === 0) {
+    if (group.dispatch_items.every((line) => line.unrecorded)) {
       group.charge_per_unit = charge_per_unit;
       group.labour_rate = labour_rate;
     } else {
       if (group.charge_per_unit !== undefined && group.charge_per_unit !== charge_per_unit) group.charge_per_unit = undefined;
       if (group.labour_rate !== undefined && group.labour_rate !== labour_rate) group.labour_rate = undefined;
     }
-    if (group.tax_rate !== undefined && group.tax_rate !== taxRate) {
+    if (group.dispatch_items.every((line) => line.unrecorded)) {
+      group.tax_rate = taxRate;
+    } else if (group.tax_rate !== undefined && group.tax_rate !== taxRate) {
       group.tax_rate = undefined;
     }
 
@@ -304,7 +335,9 @@ const lotLine = (group: Pick<InvoiceLineItemGroupData, 'package_mark' | 'weight'
 
 /** "Rate ₹9.00 · Labour ₹3.00 · Tax 5%"; each part only when every line of the lot agrees, labour (never in a one-time lot) and tax only when there are any. */
 const rateLine = (group: InvoiceLineItemGroupData): string =>
-  [
+  group.all_unrecorded
+    ? tr('invoice.detailsTable.rate', { amount: NOT_RECORDED })
+    : [
     group.charge_per_unit !== undefined ? tr('invoice.detailsTable.rate', { amount: formatInvoiceAmount(group.charge_per_unit) }) : null,
     !group.one_time && group.labour_rate !== undefined && group.labour_rate > 0
       ? tr('invoice.detailsTable.labour', { amount: formatInvoiceAmount(group.labour_rate) })
@@ -314,12 +347,18 @@ const rateLine = (group: InvoiceLineItemGroupData): string =>
     .filter(Boolean)
     .join(' · ');
 
+/** What a figure that was never kept shows; a screen reader says "not recorded". */
+const NOT_RECORDED = '—';
+const spokenOr = (group: Pick<InvoiceLineItemGroupData, 'all_unrecorded'>, figure: string): string =>
+  group.all_unrecorded ? tr('invoice.detailsTable.notRecorded') : figure;
+
 const groupHelper = createAppColumnHelper<InvoiceLineItemGroupData>();
 
 /** A lot's dispatch lines as the read-only table shows them. */
 const toReadOnlyLines = (group: InvoiceLineItemGroupData): ReadOnlyLine[] =>
   group.dispatch_items.map((line) => ({
     id: line.id,
+    unrecorded: line.unrecorded,
     dispatchNo: line.dispatch_no,
     dispatchId: line.dispatch_id,
     dispatchDate: line.dispatch_date,
@@ -350,8 +389,8 @@ const DispatchLines = React.memo(function DispatchLines({ group, lines, layout, 
       <Text style={styles.secondary}>
         {nb(
           tr('invoice.detailsTable.baseAndTax', {
-            base: formatInvoiceAmount(group.total_base_amount),
-            tax: formatInvoiceAmount(group.total_tax_amount),
+            base: group.all_unrecorded ? NOT_RECORDED : formatInvoiceAmount(group.total_base_amount),
+            tax: group.all_unrecorded ? NOT_RECORDED : formatInvoiceAmount(group.total_tax_amount),
           })
         )}
       </Text>
@@ -377,6 +416,8 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     () => readOnlyLayout(screen, groups.map((group) => ({ lines: lotLines.get(group.grn_item_id) ?? [], oneTime: group.one_time }))),
     [screen, groups, lotLines]
   );
+  // Every lot unrecorded: the footer has no figures of its own either.
+  const noneRecorded = groups.every((group) => group.all_unrecorded);
   const totalBags = groups.reduce((sum, group) => sum + group.total_dispatch_qty, 0);
   // What the invoice's lots are counted in: one word when they share it, "units" when they differ.
   const packaging = useMemo(() => sharedPackaging(groups.map((group) => group.packaging)), [groups]);
@@ -411,9 +452,9 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
                 <Text style={styles.primary}>{group.item_name}</Text>
                 {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
                 {table.stacked || rates !== '' ? (
-                  <Text style={styles.secondary}>{nb(table.stacked ? [rates, formatPackages(group.total_dispatch_qty, group.packaging)].filter(Boolean).join(' · ') : rates)}</Text>
+                  <Text style={styles.secondary}>{nb(table.stacked ? [rates, group.all_unrecorded ? NOT_RECORDED : formatPackages(group.total_dispatch_qty, group.packaging)].filter(Boolean).join(' · ') : rates)}</Text>
                 ) : null}
-                {amountUnder ? <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(group.total_amount)}</Text> : null}
+                {amountUnder ? <Text style={styles.number} {...ONE_LINE}>{group.all_unrecorded ? NOT_RECORDED : formatInvoiceAmount(group.total_amount)}</Text> : null}
               </>
             );
           },
@@ -425,7 +466,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
                 id: 'bags',
                 header: packNounCapital(packaging),
                 meta: { width: bagsWidth, numeric: true },
-                cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.total_dispatch_qty)}</Text>,
+                cell: (info) => <Text style={styles.number} {...ONE_LINE}>{info.row.original.all_unrecorded ? NOT_RECORDED : formatNumber(info.row.original.total_dispatch_qty)}</Text>,
               }),
             ]),
         groupHelper.accessor('total_amount', {
@@ -433,7 +474,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
           header: tr('invoice.detailsTable.amount'),
           // Under the item the amount has no column of its own, only its heading over the end of the row.
           meta: { width: amountUnder ? 'auto' : amountWidth, numeric: true, headerOnly: amountUnder },
-          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatInvoiceAmount(info.row.original.total_amount)}</Text>,
+          cell: (info) => <Text style={styles.number} {...ONE_LINE}>{info.row.original.all_unrecorded ? NOT_RECORDED : formatInvoiceAmount(info.row.original.total_amount)}</Text>,
         }),
       ]),
     [table.stacked, amountUnder, bagsWidth, amountWidth, styles, packaging]
@@ -473,8 +514,8 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
         accessibilityLabel={tr('invoice.detailsTable.totalLabel', {
           groups: groupCount,
           lines: lineCount,
-          bags: totalCount(totalBags),
-          amount: formatInvoiceAmount(totalAmount),
+          bags: noneRecorded ? tr('invoice.detailsTable.notRecorded') : totalCount(totalBags),
+          amount: noneRecorded ? tr('invoice.detailsTable.notRecorded') : formatInvoiceAmount(totalAmount),
         })}
         testID="invoice-lines-total"
       >
@@ -482,14 +523,14 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
         <View style={styles.grow}>
           <Text style={styles.primaryStrong}>{tr('invoice.detailsTable.total')}</Text>
           <Text style={styles.secondary}>{nb(`${groupCount} · ${lineCount}`)}</Text>
-          {table.stacked ? <Text style={styles.secondary}>{nb(totalCount(totalBags))}</Text> : null}
-          {amountUnder ? <Text style={styles.numberStrong} {...ONE_LINE}>{formatInvoiceAmount(totalAmount)}</Text> : null}
+          {table.stacked ? <Text style={styles.secondary}>{nb(noneRecorded ? NOT_RECORDED : totalCount(totalBags))}</Text> : null}
+          {amountUnder ? <Text style={styles.numberStrong} {...ONE_LINE}>{noneRecorded ? NOT_RECORDED : formatInvoiceAmount(totalAmount)}</Text> : null}
         </View>
         {!table.stacked ? (
-          <Text style={[styles.numberStrong, { width: bagsWidth }]} {...ONE_LINE}>{formatNumber(totalBags)}</Text>
+          <Text style={[styles.numberStrong, { width: bagsWidth }]} {...ONE_LINE}>{noneRecorded ? NOT_RECORDED : formatNumber(totalBags)}</Text>
         ) : null}
         {!amountUnder ? (
-          <Text style={[styles.numberStrong, { width: amountWidth }]} {...ONE_LINE}>{formatInvoiceAmount(totalAmount)}</Text>
+          <Text style={[styles.numberStrong, { width: amountWidth }]} {...ONE_LINE}>{noneRecorded ? NOT_RECORDED : formatInvoiceAmount(totalAmount)}</Text>
         ) : null}
       </View>
       <View style={own.cardEnd}>
@@ -528,8 +569,8 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
         return tr('invoice.detailsTable.groupRowLabel', {
           item: group.item_name,
           details: [lotLine(group), rateLine(group)].filter(Boolean).map((part) => `, ${part}`).join(''),
-          bags: formatPackages(group.total_dispatch_qty, group.packaging),
-          amount: formatInvoiceAmount(group.total_amount),
+          bags: spokenOr(group, formatPackages(group.total_dispatch_qty, group.packaging)),
+          amount: spokenOr(group, formatInvoiceAmount(group.total_amount)),
         });
       }}
       rowHint={(row) => (row.getIsExpanded() ? tr('invoice.lineItem.hidesDispatchesHint') : tr('invoice.lineItem.showsDispatchesHint'))}

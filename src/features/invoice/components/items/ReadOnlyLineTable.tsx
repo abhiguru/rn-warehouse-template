@@ -43,6 +43,8 @@ import { HeadingRow } from './TableParts';
 /** One saved dispatch line, as the table shows it. */
 export interface ReadOnlyLine {
   id: string;
+  /** Quantity, rates and amount were never kept (a cancelled invoice): each shows a dash, and a screen reader says "not recorded". */
+  unrecorded?: boolean;
   dispatchNo?: string;
   dispatchId?: string;
   /** The stored dispatch date; empty or invalid shows a dash. */
@@ -83,6 +85,9 @@ const NO_LINES: InvoiceItemData[] = [];
 const FIRST_ROWS = 40;
 const ROWS_PER_STEP = 80;
 
+const DASH = '—';
+/** The text of a figure, or the dash when the line has none. */
+const figure = (line: ReadOnlyLine, text: () => string): string => (line.unrecorded ? DASH : text());
 const dateOf = (line: ReadOnlyLine): string => (line.dispatchDate ? tableDateText(line.dispatchDate) : '—');
 const distinct = (values: string[]): string[] => Array.from(new Set(values));
 
@@ -101,11 +106,11 @@ export function readOnlyLayout(screen: TableLayout, lots: readonly ReadOnlyLot[]
       date: texts(({ line }) => dateOf(line)),
       duration: texts(({ line, oneTime }) => monthsText(line.months, oneTime)),
       days: texts(({ line }) => countText(line.days)),
-      qty: texts(({ line }) => countText(line.qty)),
-      charge: texts(({ line }) => localizeDigits(rateText('charge', line.charge))),
-      labour: texts(({ line }) => localizeDigits(rateText('labour_rate', line.labour)), ({ oneTime }) => oneTime),
-      tax: texts(({ line }) => localizeDigits(rateText('tax', line.taxRate))),
-      amount: texts(({ line }) => formatInvoiceAmount(line.amount)),
+      qty: texts(({ line }) => figure(line, () => countText(line.qty))),
+      charge: texts(({ line }) => figure(line, () => localizeDigits(rateText('charge', line.charge)))),
+      labour: texts(({ line }) => figure(line, () => localizeDigits(rateText('labour_rate', line.labour))), ({ oneTime }) => oneTime),
+      tax: texts(({ line }) => figure(line, () => localizeDigits(rateText('tax', line.taxRate)))),
+      amount: texts(({ line }) => figure(line, () => formatInvoiceAmount(line.amount))),
     },
     {
       dispatch: tr('common.dispatch'),
@@ -167,15 +172,15 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
       case 'days':
         return countText(line.days);
       case 'qty':
-        return countText(line.qty);
+        return figure(line, () => countText(line.qty));
       case 'charge':
-        return localizeDigits(rateText('charge', line.charge));
+        return figure(line, () => localizeDigits(rateText('charge', line.charge)));
       case 'labour_rate':
-        return localizeDigits(rateText('labour_rate', line.labour));
+        return figure(line, () => localizeDigits(rateText('labour_rate', line.labour)));
       case 'tax':
-        return localizeDigits(rateText('tax', line.taxRate));
+        return figure(line, () => localizeDigits(rateText('tax', line.taxRate)));
       case 'amount':
-        return formatInvoiceAmount(line.amount);
+        return figure(line, () => formatInvoiceAmount(line.amount));
       default:
         return '';
     }
@@ -189,16 +194,17 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
   };
 
   const spoken = (line: ReadOnlyLine): string => {
+    const notRecorded = tr('invoice.detailsTable.notRecorded');
     const args = {
       number: formatIdentifier(line.dispatchNo || '—'),
       date: line.dispatchDate && toDate(line.dispatchDate) ? spokenDateText(line.dispatchDate) : '—',
       months: oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(line.months * 100) / 100, 'month'),
       days: formatCount(line.days, 'day'),
-      bags: formatPackages(line.qty, line.packaging),
-      charge: formatInvoiceAmount(line.charge),
-      labour: formatInvoiceAmount(line.labour),
-      tax: localizeDigits(rateText('tax', line.taxRate)),
-      amount: formatInvoiceAmount(line.amount),
+      bags: line.unrecorded ? notRecorded : formatPackages(line.qty, line.packaging),
+      charge: line.unrecorded ? notRecorded : formatInvoiceAmount(line.charge),
+      labour: line.unrecorded ? notRecorded : formatInvoiceAmount(line.labour),
+      tax: line.unrecorded ? notRecorded : localizeDigits(rateText('tax', line.taxRate)),
+      amount: line.unrecorded ? notRecorded : formatInvoiceAmount(line.amount),
     };
     return tr(oneTime ? 'invoice.detailsTable.lineSpokenOneTime' : 'invoice.detailsTable.lineSpoken', args);
   };
