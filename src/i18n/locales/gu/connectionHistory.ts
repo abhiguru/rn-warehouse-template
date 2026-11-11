@@ -12,6 +12,6 @@ export const connectionHistory = {
   loadFailed: 'કનેક્શનનો ઇતિહાસ લોડ થઈ શક્યો નહીં.',
   unsupported: 'કનેક્શનનો ઇતિહાસ બતાવવા માટે આ સર્વર અપડેટ કરવું પડશે.',
   adminsOnlyTitle: 'ફક્ત એડમિન માટે',
-  adminsOnlyMessage: 'કનેક્શનનો ઇતિહાસ ફક્ત ઍડમિન જોઈ શકે છે.',
+  adminsOnlyMessage: 'કનેક્શનનો ઇતિહાસ ફક્ત એડમિન જોઈ શકે છે.',
   backToSettings: 'સેટિંગ પર પાછા જાઓ',
 };
