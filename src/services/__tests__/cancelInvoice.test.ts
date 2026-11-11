@@ -66,6 +66,20 @@ describe.each([
   });
 });
 
+describe('INVOICE_HAS_PAYMENTS names the invoice (WH-170 item 2)', () => {
+  it('shows the full prefixed number of a facility with a prefix', async () => {
+    answer(refusal('INVOICE_HAS_PAYMENTS', { inv_no: 12, invoice_label: 'SRT/12' }));
+    const result = await cancelInvoice('inv-1', 'Duplicate');
+    expect(result.message).toBe('Invoice SRT/12 has payments recorded. Delete them first.');
+  });
+
+  it('shows the digits when the server sends no label (before migration 175)', async () => {
+    answer(refusal('INVOICE_HAS_PAYMENTS', { inv_no: 12 }));
+    const result = await cancelInvoice('inv-1', 'Duplicate');
+    expect(result.message).toBe('Invoice 12 has payments recorded. Delete them first.');
+  });
+});
+
 it('leaves the reports alone after a refusal that changed nothing', async () => {
   answer(refusal('INVOICE_HAS_PAYMENTS'));
   await cancelInvoice('inv-1', 'Duplicate');
