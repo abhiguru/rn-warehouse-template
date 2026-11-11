@@ -142,6 +142,8 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const ownSave = useRef(false);
   // This phone's own save got no answer (timed out): the rows that come back may be that save, not another phone.
   const maybeSaved = useRef(false);
+  // The rate this form was adding to ended on another phone: the form was reset, so the warning stays though nothing differs.
+  const endedRate = useRef(false);
   const saveKey = useRateSaveKey('replace');
   const checked = useRef(false);
   const onSavedRef = useRef(onSaved);
@@ -149,6 +151,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
 
   // ---- open a draft whenever a set of rows arrives (also the same array again after the rows were null) ----
   const openDraft = (fromRows: ItemStoragePrice[]) => {
+    endedRate.current = false;
     ownSave.current = false;
     maybeSaved.current = false;
     setRowsChanged(false);
@@ -205,10 +208,10 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
           setCore({ rows, draft: merged, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
         } else if (core.draft.locked !== undefined) {
           // The rate this form was adding to has ended on the server (WH-76): nothing is locked now, and Save must not
-          // send the rate's old bands. The form is a plain Add rate; the bands typed in the new part stay.
-          const typed = core.draft.bands.slice(core.draft.locked);
-          const draftNow = { ...opened.draft, bands: typed.length > 0 ? typed : opened.draft.bands };
-          setCore({ rows, draft: draftNow, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
+          // send the rate's old bands. The form is a plain Add rate with one blank band from 0 kg; nothing typed is
+          // carried over (Product, 2026-11-11). The warning stays until the person types.
+          endedRate.current = true;
+          setCore({ rows, draft: opened.draft, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
         } else {
           setCore({ ...core, rows, ctx: { ...opened.context, copied: core.ctx.copied } });
         }
@@ -219,7 +222,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     }
   } else if (rows && !core) {
     openDraft(rows);
-  } else if (rows && core && rowsChanged && !hasChanges(core.draft, core.initial)) {
+  } else if (rows && core && rowsChanged && !endedRate.current && !hasChanges(core.draft, core.initial)) {
     // The typing was undone after the rows changed: rebuild from the rows now held and drop the warning.
     openDraft(core.rows);
   }
@@ -231,6 +234,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
 
   const bandCountNow = draft?.bands.length ?? 0;
   const setDraft = useCallback((next: Draft) => {
+    endedRate.current = false;
     ownSave.current = false;
     maybeSaved.current = false;
     setCore(current => (current ? { ...current, draft: next } : current));
