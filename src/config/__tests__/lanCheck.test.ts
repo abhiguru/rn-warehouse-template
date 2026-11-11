@@ -15,6 +15,7 @@ import {
   subscribeLanCheck,
 } from '../lanCheck';
 import { noteNetworkState, resetLanTransport, setLanContext, transportFetch } from '../lanTransport';
+import { installLanKey, removeLanKey, signingLan } from '@/tests/helpers/lanSigning';
 
 jest.mock('@react-native-community/netinfo', () => ({ __esModule: true, default: { fetch: jest.fn() } }));
 jest.mock('@/services/configService', () => ({ __esModule: true, default: { getFullConfig: jest.fn(async () => null) } }));
@@ -55,9 +56,11 @@ beforeEach(async () => {
   onWarehouseWifi();
   jest.mocked(ConfigService.getFullConfig).mockClear();
   net('wifi', true, true);
-  global.fetch = jest.fn(route) as unknown as typeof fetch;
+  global.fetch = jest.fn(signingLan(route, 'http://192.168.1.')) as unknown as typeof fetch;
+  await installLanKey(PUBLIC, 'instance-0001'); // the session holds the warehouse network key (WH-133)
 });
 afterEach(() => {
+  removeLanKey();
   resetLanTransport();
   jest.useRealTimers();
   global.fetch = originalFetch;
@@ -68,7 +71,18 @@ describe('checkLanNow', () => {
     const answer = await checkLanNow('manual');
     expect(answer).toEqual({ at: Date.now(), address: LAN, outcome: 'reachable', ms: 0, trigger: 'manual' });
     expect(await readLastLanCheck()).toEqual(answer);
-    for (const [, init] of jest.mocked(global.fetch).mock.calls) expect(init?.headers).toBeUndefined();
+    // hello has no header; the identity question only the key id and a fresh challenge (WH-133), never a token.
+    for (const [input, init] of jest.mocked(global.fetch).mock.calls) {
+      if (String(input).endsWith('/hello')) expect(init?.headers).toBeUndefined();
+      else expect(Object.keys(init?.headers as object).sort()).toEqual(['x-lan-challenge', 'x-lan-key-id']);
+    }
+  });
+
+  it('asks nothing and keeps "no key" when the session holds no warehouse network key', async () => {
+    removeLanKey();
+    asked = [];
+    expect(await checkLanNow('manual')).toMatchObject({ outcome: 'no-key' });
+    expect(asked).toEqual([]);
   });
 
   it.each([

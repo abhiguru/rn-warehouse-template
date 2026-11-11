@@ -486,7 +486,7 @@ export const invoice: Translation<typeof source> = {
     discountTooSmall: 'છૂટ ઘણી ઓછી છે',
     durationRequired: 'મુદત જરૂરી છે',
     durationPositive: 'મુદત શૂન્યથી વધુ હોવી જોઈએ',
-    durationMin: 'મુદત ઓછામાં ઓછી ૦.૫ મહિના હોવી જોઈએ',
+    durationMin: 'સમયગાળો ઓછામાં ઓછો {{minimum}} હોવો જોઈએ',
     daysRequired: 'દિવસની સંખ્યા જરૂરી છે',
     daysWhole: 'દિવસ પૂર્ણ સંખ્યામાં હોવા જોઈએ',
     daysNegative: 'દિવસ શૂન્યથી ઓછા ન હોઈ શકે',

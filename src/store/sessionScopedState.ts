@@ -14,6 +14,7 @@ import { resetAllListFilters } from './slices/listFilterSlice';
 import { forgetReportCustomers } from './slices/reportPrefsSlice';
 import { clearAllCaches } from '@/utils/cacheManager';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
+import { sweepLanPhotos } from '@/config/lanPhotos';
 import { clearImageCaches } from '@/utils/imageCache';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { forgetRecentSearches } from '@/features/filters/recentSearches';
@@ -67,6 +68,11 @@ registerSessionScoped('local-photo-files', async () => {
 // Local teardown must not fail because a cached file could not be removed.
 registerSessionScoped('shared-documents', async () => {
   await sweepSharedDocuments().catch(() => {});
+});
+
+// And the photos fetched over the warehouse network (WH-133).
+registerSessionScoped('lan-photos', async () => {
+  await sweepLanPhotos();
 });
 
 export async function clearSessionScopedState(

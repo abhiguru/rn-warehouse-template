@@ -16,11 +16,11 @@ export const spokenDateText = (date: string): string => formatSpokenDate(date);
 
 /** "1.6 months", or "One-time" for a one-time GRN, from the stored duration in months. */
 export const durationText = (duration: number, oneTime: boolean): string =>
-  oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(duration * 10) / 10, 'month');
+  oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(duration * 100) / 100, 'month');
 
 /** The months column of the sideways table: the number alone ("1", "1.6", same rounding as `durationText`), or "One-time"; the heading says "Months". */
 export const monthsText = (duration: number, oneTime: boolean): string =>
-  oneTime ? tr('invoice.items.oneTime') : formatNumber(Math.round(duration * 10) / 10);
+  oneTime ? tr('invoice.items.oneTime') : formatNumber(Math.round(duration * 100) / 100);
 
 /** A day or quantity count ("48", "120") in the language's digits. */
 export const countText = (value: number): string => formatNumber(value);

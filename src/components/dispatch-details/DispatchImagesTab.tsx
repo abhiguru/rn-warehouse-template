@@ -7,7 +7,7 @@
  * - Empty state when no images, with "Add photo" when uploads are allowed
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
@@ -64,22 +65,28 @@ interface DispatchImagesTabProps {
 const DispatchPhoto: React.FC<{ url: string; style: React.ComponentProps<typeof Image>['style'] }> = ({ url, style }) => {
   const uri = useViaCurrentPath(url);
   const t = useTokens();
-  const [missing, setMissing] = useState(false);
+  // 'missing': the load failed with a connection (the file is gone); 'offline': it failed with none, so the tile says nothing about the file.
+  const [failure, setFailure] = useState<'missing' | 'offline' | null>(null);
+  const network = useNetworkStatus();
+  const online = network.isConnected && network.isInternetReachable !== false;
+  const onlineRef = useRef(online);
+  onlineRef.current = online;
+  const missing = failure === 'missing';
   return (
     <>
       <Image
-        source={{ uri }}
+        source={uri ? { uri } : undefined}
         style={style}
         contentFit="cover"
         // A signed URL is new on every load, so a disk copy is never reused and
         // would only leave the private photo on the device.
         cachePolicy="memory"
         transition={150}
-        onLoadStart={() => setMissing(false)}
-        onError={() => setMissing(true)}
+        onLoadStart={() => setFailure(null)}
+        onError={() => setFailure(onlineRef.current ? 'missing' : 'offline')}
       />
-      {missing ? (
-        // A photo whose file is gone says so, instead of an empty tile.
+      {failure ? (
+        // A photo whose file is gone says so, instead of an empty tile; with no connection the tile shows only the broken icon.
         <View
           style={{
             position: 'absolute',
@@ -93,13 +100,15 @@ const DispatchPhoto: React.FC<{ url: string; style: React.ComponentProps<typeof 
           }}
         >
           <Icon name="image-broken-variant" size={iconSize.lg} color={t.icon.secondary} />
-          <Text
-            style={{ ...typography.caption2, color: t.text.secondary, textAlign: 'center', marginTop: space.xs }}
-            maxFontSizeMultiplier={1.4}
-            testID="photo-missing"
-          >
-            {tr('common.photoMissing')}
-          </Text>
+          {missing ? (
+            <Text
+              style={{ ...typography.caption2, color: t.text.secondary, textAlign: 'center', marginTop: space.xs }}
+              maxFontSizeMultiplier={1.4}
+              testID="photo-missing"
+            >
+              {tr('common.photoMissing')}
+            </Text>
+          ) : null}
         </View>
       ) : null}
     </>

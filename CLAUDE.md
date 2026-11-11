@@ -66,7 +66,7 @@ the request path (`src/config/lanTransport.ts`, which also holds the switching r
   A bare `fetch` to a facility address, a native download, a `createSignedUrl` or any cleartext URL needs a look
   at `lanTransport.ts`; `src/config/__tests__/lanCallSites.test.ts` fails until the new place is listed.
 - A link the server or client builds from the facility's address and the app then opens itself goes through
-  `viaCurrentPath(url)`.
+  `viaCurrentPath(url)` (since WH-133 it returns the link unchanged: a native loader cannot sign).
 - A 401 with the gateway's key-rejection body ends the session over the public path only; over the LAN path it is
   a failure of that path (`gatewayRejection.ts`). A write is never sent again after a path change.
 - The only cleartext URL the app builds comes from `src/config/lanAddress.ts` (RFC 1918 IPv4 and a port). Android
@@ -79,6 +79,11 @@ the request path (`src/config/lanTransport.ts`, which also holds the switching r
   `hello` counts a 200, a 429 and any answer with the gateway's header as "reachable" (`publicAnswered`).
 - A typed LAN address changes only the host part of the address the server sends, and exists only while the server
   sends one. A photo link is shown through `useViaCurrentPath` (or `viaCurrentPath(toCanonicalUrl(url))`).
+- Signing (WH-133): every request on the LAN path except `hello`, `get-public-config`, `GET /rest/v1/` and break-glass
+  sign-in is signed with the session's warehouse network key (`lanSigner.ts`, `lanKey.ts`, `prepareLanRequest` in
+  `lanTransport.ts`), every answer is checked before use, and the identity check is a challenge. The key lives only in
+  secure storage, is removed with the session, and is never logged, sent to Sentry or kept in the cached configuration.
+  A body the app cannot hash (FormData, Blob) is not sent over the LAN path; send uploads as an ArrayBuffer.
 
 When building toward central login, reuse the existing pieces rather than replacing them:
 server switching and its cleanup (`beginOperatorSwitch`, `sessionLifecycle.ts`,

@@ -75,6 +75,21 @@ export const users: Translation<typeof source> = {
     actions: 'વિકલ્પો',
     signOutSubtitle: 'આ ફોન પર આ કોલ્ડ સ્ટોરેજમાંથી લૉગઆઉટ કરો.',
   },
+  // Pairing code of a facility on its local network only (WH-146), on the administrator's user page
+  signInCode: {
+    title: 'સાઇન-ઇન કોડ',
+    make: 'સાઇન-ઇન કોડ બનાવો',
+    makeHint: 'આ વ્યક્તિને એક ફોન પર સાઇન-ઇન કરાવતો QR કોડ બનાવે છે',
+    valid: 'ફક્ત {{name}} માટે, ૧૦ મિનિટ માન્ય.',
+    scanHint: '{{name}} ને ઍપની પહેલી સ્ક્રીન પર “ફેસિલિટીનો કોડ સ્કેન કરો” દબાવીને આ કોડ સ્કેન કરવા કહો.',
+    timeLeft: 'બાકી સમય {{time}}',
+    expired: 'આ કોડનો સમય પૂરો થયો છે.',
+    makeAnother: 'નવો કોડ બનાવો',
+    qrLabel: '{{name}} માટે સાઇન-ઇન કોડ. સાઇન-ઇન કરવા ફોનથી સ્કેન કરો.',
+    failedTitle: 'કોડ બનાવી શકાયો નથી',
+    failed: 'સાઇન-ઇન કોડ બનાવી શકાયો નથી. ફરી પ્રયાસ કરો.',
+    notAllowed: 'સાઇન-ઇન કોડ ફક્ત એડમિનિસ્ટ્રેટર બનાવી શકે, અને આ ફેસિલિટીની સક્રિય વ્યક્તિ માટે જ.',
+  },
   devices: {
     title: 'લૉગિન થયેલા ઉપકરણો',
     thisDevice: 'આ ઉપકરણ',

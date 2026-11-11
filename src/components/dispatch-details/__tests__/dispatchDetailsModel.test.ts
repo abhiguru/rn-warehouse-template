@@ -181,8 +181,8 @@ describe('buildInvoiceTable', () => {
       count: 2,
       total: 15700,
       rows: [
-        { key: 'inv-241', invoice_id: 'inv-241', invoice_no: 241, invoice_date: '2026-10-15T10:00:00+05:30', total: 12450 },
-        { key: 'inv-242', invoice_id: 'inv-242', invoice_no: 242, invoice_date: '2026-10-16T09:00:00+05:30', total: 3250 },
+        { key: 'inv-241', invoice_id: 'inv-241', invoice_label: null, invoice_no: 241, invoice_date: '2026-10-15T10:00:00+05:30', total: 12450 },
+        { key: 'inv-242', invoice_id: 'inv-242', invoice_label: null, invoice_no: 242, invoice_date: '2026-10-16T09:00:00+05:30', total: 3250 },
       ],
     });
   });
@@ -201,8 +201,8 @@ describe('buildInvoiceTable', () => {
       count: 2,
       total: 15700,
       rows: [
-        { key: 'number:241:0', invoice_id: null, invoice_no: 241, invoice_date: null, total: null },
-        { key: 'number:242:1', invoice_id: null, invoice_no: 242, invoice_date: null, total: null },
+        { key: 'number:241:0', invoice_id: null, invoice_label: null, invoice_no: 241, invoice_date: null, total: null },
+        { key: 'number:242:1', invoice_id: null, invoice_label: null, invoice_no: 242, invoice_date: null, total: null },
       ],
     });
   });

@@ -53,15 +53,24 @@
  *    LAN listener that was not recreated after a key rotation answers with the old keys. It counts as a
  *    failure of the LAN path (the app goes back to the public path when that works, or reports an "old
  *    configuration" when it does not), and the 401 is never handed to the session code.
- *  - Not proved by the identity check: it compares the server's public `instanceId`, so it tells this
- *    warehouse from another one but not from a device that copies the answer. An authenticated proof (a
- *    challenge answered with an HMAC) is a recorded follow-up (docs/RELEASE_PREPARATION.md).
+ *  - Signing (WH-133, backend docs/API_CONTRACT.md "Signing on the LAN path"; helpers in lanSigner.ts and lanKey.ts):
+ *    the identity check is a challenge. The phone sends a fresh random value and its key id, and the server must
+ *    answer with an HMAC of it under the session's warehouse network key (`probeLan`); no token goes to the LAN
+ *    address before that proof checks out. Every request on the LAN path except the four unsigned ones (`hello`,
+ *    `get-public-config`, `GET /rest/v1/`, break-glass sign-in) carries a signature, and every answer to it is
+ *    checked over its whole body, in constant time, before anything uses it. An answer that is unsigned or changed
+ *    is discarded, the phone leaves the LAN path and Help shows that an answer was changed (`answerChanged`).
+ *    A phone with no key does not use the LAN path, except for those four requests (break-glass has no key yet).
+ *    A body the app cannot hash (FormData, Blob) cannot be signed and is not sent over the LAN path; photo uploads
+ *    are raw ArrayBuffer bodies, so they are signed.
  *
  * This module imports nothing from the session code, so `supabaseConfig.ts` and `operatorServer.ts` can
  * use it.
  */
 import { isGatewayKeyRejection } from './gatewayRejection';
 import { lanAddressInSubnet, parseIPv4, subnetPrefixLength } from './lanAddress';
+import { lanKeyFor, loadLanKey, type LanKey } from './lanKey';
+import { HEX64, SECONDS, randomHex, sha256Hex, signRequest, verifyAnswerSignature, verifyProof, EMPTY_BODY_HASH, SIGNED_REQUEST_HEADERS } from './lanSigner';
 
 export type ConnectionPath = 'public' | 'lan';
 /** `old-configuration`: the LAN listener answered a REST call with the gateway's key-rejection 401. */
@@ -103,6 +112,11 @@ export type LanContext = {
   lan: string | null;
   /** The facility's `instanceId`: the LAN address must answer with it before a credential is sent. */
   instanceId: string;
+  /**
+   * A facility on its local network only (WH-146): `canonical` is a placeholder that never resolves, so the warehouse
+   * network is the only path: every request goes there, signed, with no public probe and no switching.
+   */
+  localOnly?: boolean;
 };
 
 export type LanStatus = {
@@ -111,6 +125,8 @@ export type LanStatus = {
   failure: LanFailure;
   /** The LAN address in use, or null. */
   lan: string | null;
+  /** An answer on the warehouse network was unsigned or changed on the way and was discarded; kept until a check succeeds. */
+  answerChanged: boolean;
 };
 
 /**
@@ -120,7 +136,7 @@ export type LanStatus = {
  */
 export type LanProbeResult =
   | { ok: true; ms: number }
-  | { ok: false; reason: 'not-set' | 'other-network' | 'network-unknown' | 'unreachable' | 'refused' | 'wrong-server' };
+  | { ok: false; reason: 'not-set' | 'other-network' | 'network-unknown' | 'no-key' | 'unreachable' | 'refused' | 'wrong-server' };
 
 /** What the app knows of the phone's network (NetInfo, src/config/netReachability.ts). */
 export type NetworkSnapshot = {
@@ -131,7 +147,16 @@ export type NetworkSnapshot = {
 };
 
 /** `tunnel`: Cloudflare or the tunnel answered (a 530, or a 5xx without the gateway's header), not the facility. */
-type FailureReason = 'rejected' | 'slow' | 'tunnel' | 'lan-key' | 'lan-refused' | 'lan-other-device' | 'netinfo';
+type FailureReason =
+  | 'rejected'
+  | 'slow'
+  | 'tunnel'
+  | 'lan-key'
+  | 'lan-refused'
+  | 'lan-other-device'
+  | 'lan-changed'
+  | 'unsignable'
+  | 'netinfo';
 type Attempt =
   | { ok: true; response: Response }
   | { ok: false; why: FailureReason; response?: Response; error?: unknown; switched?: boolean };
@@ -161,12 +186,23 @@ let decision: Promise<boolean> | null = null;
 const lastProbeFailureAt: Record<ConnectionPath, number> = { public: 0, lan: 0 };
 const lastFoundWorkingAt: Record<ConnectionPath, number> = { public: 0, lan: 0 };
 
-let status: LanStatus = { path: 'public', failure: null, lan: null };
+/** The server's clock minus this phone's, in whole seconds, from the last proof or verified answer; null until one. */
+let clockOffsetSec: number | null = null;
+let clockOffsetAt = 0;
+let answerChanged = false;
+
+let status: LanStatus = { path: 'public', failure: null, lan: null, answerChanged: false };
 const listeners = new Set<() => void>();
 
 function publish(): void {
-  const next: LanStatus = { path, failure, lan: context?.lan ?? null };
-  if (next.path === status.path && next.failure === status.failure && next.lan === status.lan) return;
+  const next: LanStatus = { path, failure, lan: context?.lan ?? null, answerChanged };
+  if (
+    next.path === status.path &&
+    next.failure === status.failure &&
+    next.lan === status.lan &&
+    next.answerChanged === status.answerChanged
+  )
+    return;
   status = next;
   for (const listener of [...listeners]) listener();
 }
@@ -213,10 +249,16 @@ export function setLanContext(next: LanContext | null): void {
       next !== null &&
       context.canonical === next.canonical &&
       context.lan === next.lan &&
+      context.localOnly === next.localOnly &&
       context.instanceId === next.instanceId);
   if (same) return;
   context = next;
+  // Nothing learned about one facility's server is true of another's.
+  answerChanged = false;
+  clockOffsetSec = null;
   resetPath();
+  if (next?.localOnly && next.lan) path = 'lan';
+  if (next?.lan) void loadLanKey();
   publish();
 }
 
@@ -233,7 +275,10 @@ export function noteNetworkState(next: NetworkSnapshot): void {
   network = next;
   networkKey = key;
   // The first reading only says where the phone has been all along: nothing was remembered about another network.
-  if (!first) resetPath();
+  if (!first) {
+    resetPath();
+    if (context?.localOnly && context.lan) path = 'lan';
+  }
   for (const waiter of [...networkWaiters]) waiter();
   publish();
 }
@@ -283,8 +328,11 @@ export function resetLanTransport(): void {
   netInfoCheckSkipped = false;
   resetPath();
   returning = false;
+  answerChanged = false;
+  clockOffsetSec = null;
+  clockOffsetAt = 0;
   listeners.clear();
-  status = { path: 'public', failure: null, lan: null };
+  status = { path: 'public', failure: null, lan: null, answerChanged: false };
 }
 
 function setFailure(next: LanFailure): void {
@@ -350,16 +398,19 @@ function retarget(input: RequestInfo | URL, target: string): RequestInfo | URL {
 }
 
 /**
- * A URL of the facility's canonical origin, as the path in use reaches it: on the LAN path the host
- * becomes the LAN address, on the public path the URL is returned as it is. For URLs the server hands
- * out or the client builds (storage signed URLs, `pdf_url`) that the app then opens itself. A URL of
- * another origin, or the association exchange, is never changed.
+ * A URL of the facility's canonical origin, as a native loader (an image view) should open it. Since WH-133 every
+ * request on the warehouse network must be signed, and a native loader cannot sign (each request needs its own
+ * signature and the answer must be checked), so a link is NEVER turned into a warehouse network link: it is
+ * returned as it is, and a photo loads only over the internet. A document is fetched on the warehouse network by
+ * `transportFetch`, which signs and checks it (src/utils/shareDocument.ts).
  */
 export function viaCurrentPath(url: string): string {
-  const ctx = context;
-  if (path !== 'lan' || !ctx?.lan || typeof url !== 'string' || !lanUsableHere()) return url;
-  if (PUBLIC_ONLY.test(url.slice(ctx.canonical.length))) return url;
-  return swapOrigin(url, ctx.canonical, ctx.lan) ?? url;
+  return url;
+}
+
+/** True for a URL of the selected facility's server (its canonical origin). */
+export function isFacilityUrl(url: string): boolean {
+  return !!context && startsWithOrigin(url, context.canonical);
 }
 
 /** The canonical form of a URL that may carry the LAN address (a response's `url`); other URLs come back unchanged. */
@@ -408,13 +459,13 @@ function dropBody(response: Response): void {
 // Probes
 // -----------------------------------------------------------------------------
 
-async function timedFetch(url: string, ms: number): Promise<Response> {
+async function timedFetch(url: string, ms: number, headers?: Record<string, string>): Promise<Response> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     // The race ends the wait even when the platform's fetch does not settle on abort.
     return await Promise.race([
-      fetch(url, { method: 'GET', signal: controller.signal }),
+      fetch(url, { method: 'GET', signal: controller.signal, ...(headers ? { headers } : {}) }),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           controller.abort();
@@ -441,25 +492,54 @@ export async function probePublic(): Promise<boolean> {
   }
 }
 
+const currentKey = (): LanKey | null => (context ? lanKeyFor(context.canonical, context.instanceId) : null);
+
+/** True when this phone holds the warehouse network key of the selected facility's session. */
+export const hasLanKey = (): boolean => currentKey() !== null;
+
+function noteServerTime(serverTime: string, receivedMs: number = Date.now()): void {
+  clockOffsetSec = Number(serverTime) - Math.floor(receivedMs / 1000);
+  clockOffsetAt = receivedMs;
+}
+
+function setAnswerChanged(next: boolean): void {
+  if (answerChanged === next) return;
+  answerChanged = next;
+  publish();
+}
+
 /**
  * Asks the LAN address, without any credential, whether it is there and is this warehouse: `hello` for
- * liveness (and the time it took), and `get-public-config` for who answers (`X-Warehouse-Path: lan` and
- * the saved `instanceId`), at the same time. A 403 of the listener means this phone's address is outside
- * the range the operator allowed.
+ * liveness (and the time it took), and `get-public-config` for who answers, at the same time. A 403 of the
+ * listener means this phone's address is outside the range the operator allowed.
+ *
+ * Who answers is a challenge (WH-133): the phone sends a fresh random value and its key id, and the answer must carry
+ * an HMAC of it under the session's warehouse network key, with `X-Warehouse-Path: lan`, status 200 and the saved
+ * `instanceId`. A phone with no key answers `no-key` and asks nothing. Only `keyless` (a request that needs no
+ * signature: break-glass sign-in, discovery) falls back to the `instanceId` alone, because no key exists then.
  */
-export async function probeLan(): Promise<LanProbeResult> {
+export async function probeLan(options?: { keyless?: boolean }): Promise<LanProbeResult> {
   const ctx = context;
   if (!ctx?.lan) return { ok: false, reason: 'not-set' };
   // Mobile data, another Wi-Fi, no subnet known: nothing is sent to a private address there.
   const unusable = lanUnusableReason();
   if (unusable) return { ok: false, reason: unusable };
+  await loadLanKey();
+  if (context !== ctx) return { ok: false, reason: 'not-set' };
+  const key = currentKey();
+  if (!key && !options?.keyless) return { ok: false, reason: 'no-key' };
   const lan = ctx.lan;
+  const challenge = key ? await randomHex(32) : null;
   const started = Date.now();
   const hello = timedFetch(`${lan}${HELLO_PATH}`, PROBE_TIMEOUT_MS).then(
     response => ({ response, ms: Date.now() - started }),
     () => null
   );
-  const identity = timedFetch(`${lan}${IDENTITY_PATH}`, PROBE_TIMEOUT_MS).then(
+  const identity = timedFetch(
+    `${lan}${IDENTITY_PATH}`,
+    PROBE_TIMEOUT_MS,
+    key && challenge ? { 'x-lan-key-id': key.id, 'x-lan-challenge': challenge } : undefined
+  ).then(
     response => response,
     () => null
   );
@@ -483,11 +563,28 @@ export async function probeLan(): Promise<LanProbeResult> {
     return { ok: false, reason: 'wrong-server' };
   }
   try {
-    const body = (await identityAnswer.json()) as { data?: { instanceId?: unknown } } | null;
+    const bytes = new Uint8Array(await identityAnswer.arrayBuffer());
+    if (key && challenge) {
+      const received = Date.now();
+      const proof = identityAnswer.headers.get('x-lan-proof') ?? '';
+      const serverTime = identityAnswer.headers.get('x-lan-server-time') ?? '';
+      if (!HEX64.test(proof) || !SECONDS.test(serverTime)) return { ok: false, reason: 'wrong-server' };
+      const valid = await verifyProof(
+        key.key,
+        { keyId: key.id, challenge, serverTime, status: identityAnswer.status, bodyHash: await sha256Hex(bytes) },
+        proof
+      );
+      if (!valid) return { ok: false, reason: 'wrong-server' };
+      // The key may have ended or changed while the question was out: a proof under another key is about something else.
+      if (currentKey()?.id !== key.id || context !== ctx) return { ok: false, reason: 'wrong-server' };
+      noteServerTime(serverTime, received);
+    }
+    const body = JSON.parse(new TextDecoder().decode(bytes)) as { data?: { instanceId?: unknown } } | null;
     if (body?.data?.instanceId !== ctx.instanceId) return { ok: false, reason: 'wrong-server' };
   } catch {
     return { ok: false, reason: 'wrong-server' };
   }
+  if (key) setAnswerChanged(false);
   return { ok: true, ms };
 }
 
@@ -499,7 +596,7 @@ export async function probeLan(): Promise<LanProbeResult> {
  * A path failed. Decides, once for everyone who asks at the same time, whether to move to the other
  * path. True: the path has changed (or had already changed). False: stay.
  */
-function failOver(from: ConnectionPath, why: FailureReason): Promise<boolean> {
+function failOver(from: ConnectionPath, why: FailureReason, keylessOk: boolean): Promise<boolean> {
   if (path !== from) return Promise.resolve(true);
   if (decision) return decision;
   // A 530, the gateway's own refusals on the LAN path and the like prove the path down; a rejected or slow
@@ -509,7 +606,9 @@ function failOver(from: ConnectionPath, why: FailureReason): Promise<boolean> {
   let run: Promise<boolean> | undefined;
   run = (async () => {
     try {
-      return from === 'public' ? await decideFromPublic(why, definitive, started) : await decideFromLan(why, started);
+      return from === 'public'
+        ? await decideFromPublic(why, definitive, started, keylessOk)
+        : await decideFromLan(why, started);
     } finally {
       if (decision === run) decision = null;
     }
@@ -519,7 +618,12 @@ function failOver(from: ConnectionPath, why: FailureReason): Promise<boolean> {
 }
 
 /** The public path failed: move to the LAN path when it is usable here, answers and is this warehouse. */
-async function decideFromPublic(why: FailureReason, definitive: boolean, started: number): Promise<boolean> {
+async function decideFromPublic(
+  why: FailureReason,
+  definitive: boolean,
+  started: number,
+  keylessOk: boolean
+): Promise<boolean> {
   // Nothing to fall back to: no address, or a network that cannot hold it (mobile data, another Wi-Fi, an unknown
   // subnet). Nothing is probed, so a phone on mobile data pays no 3 s for a question that cannot help.
   if (!context?.lan) return false;
@@ -528,6 +632,10 @@ async function decideFromPublic(why: FailureReason, definitive: boolean, started
     if (generation !== started) return false;
   }
   if (!lanUsableHere()) return false;
+  // A phone with no key does not use the warehouse network, except for a request that needs no signature (WH-133).
+  await loadLanKey();
+  if (generation !== started) return false;
+  if (!currentKey() && !keylessOk) return false;
   if (!definitive && uploadsInFlight > 0) {
     // Our own upload may be what makes the public path slow: it is no evidence that the path is down.
     if (why === 'netinfo') netInfoCheckSkipped = true;
@@ -547,7 +655,7 @@ async function decideFromPublic(why: FailureReason, definitive: boolean, started
       return false;
     }
   }
-  const lan = await probeLan();
+  const lan = await probeLan({ keyless: !currentKey() });
   if (generation !== started) return false;
   if (!lan.ok) {
     lastProbeFailureAt.lan = Date.now();
@@ -563,6 +671,14 @@ async function decideFromPublic(why: FailureReason, definitive: boolean, started
  * probe cannot explain must not keep receiving credentials (review H1).
  */
 async function decideFromLan(why: FailureReason, started: number): Promise<boolean> {
+  // A request this phone could not sign says nothing about the address.
+  if (why === 'unsignable') return false;
+  if (why === 'lan-changed') {
+    // An answer that is not the server's own (WH-133): nothing of it is used, and Help says so until a check succeeds.
+    setAnswerChanged(true);
+    leaveLan();
+    return true;
+  }
   if (why === 'lan-other-device' || why === 'lan-refused') {
     leaveLan();
     return true;
@@ -578,7 +694,7 @@ async function decideFromLan(why: FailureReason, started: number): Promise<boole
   // Rejected or slow: the LAN's own identity probe is asked first. While it answers as this warehouse the
   // request was at fault, not the address.
   if (Date.now() - lastFoundWorkingAt.lan < PROBE_BACKOFF_MS) return false;
-  const lan = await probeLan();
+  const lan = await probeLan({ keyless: !currentKey() });
   if (generation !== started) return false;
   if (lan.ok) {
     lastFoundWorkingAt.lan = Date.now();
@@ -616,22 +732,12 @@ async function returnToPublicIfDue(): Promise<void> {
 }
 
 /**
- * A read the app makes without `transportFetch` (a native file download) failed. Asks, as for a failed
- * fetch, whether the other path works; true means the path changed and the caller may try the read once
- * more with `viaCurrentPath`. `startedOn` is the path the failed read used.
- */
-export function noteNativeReadFailed(startedOn: ConnectionPath): Promise<boolean> {
-  if (!context?.lan) return Promise.resolve(false);
-  return failOver(startedOn, 'rejected');
-}
-
-/**
  * NetInfo's own probe of the public `hello` found the internet unreachable (src/config/netReachability.ts).
  * That is a failure of the public path as good as a request's: the app asks the public `hello` once more
  * (a single lost probe must not move the phone), then the LAN address, and uses it when it answers.
  */
 export function notePublicUnreachable(): void {
-  if (context?.lan && path === 'public') void failOver('public', 'netinfo');
+  if (context?.lan && path === 'public') void failOver('public', 'netinfo', false);
 }
 
 function endUpload(): void {
@@ -662,12 +768,186 @@ async function refusesKey(response: Response): Promise<boolean> {
   }
 }
 
-async function classify(on: ConnectionPath, response: Response, url: string, ctx: LanContext): Promise<Attempt> {
+// -----------------------------------------------------------------------------
+// Signing (WH-133)
+// -----------------------------------------------------------------------------
+
+type SignedRequest = { keyId: string; key: string; requestId: string };
+
+/** Requests the listener takes without a signature: method and target exactly, no query (backend contract item 7). */
+const UNSIGNED_REQUESTS = new Set([
+  'GET /functions/v1/hello',
+  'GET /functions/v1/get-public-config',
+  'GET /rest/v1/',
+  'POST /functions/v1/operator-otp/break-glass',
+]);
+/** After this long without a proof or a verified answer the phone asks the challenge again before it signs (spec edge cases). */
+const CLOCK_FRESH_MS = 10 * 60 * 1000;
+/** What a URL parser leaves alone in a request target: no space, quote, angle bracket, backtick, brace, bar, backslash, caret, apostrophe or non-ASCII. */
+const CANONICAL_TARGET = /^\/[A-Za-z0-9\-._~!$&()*+,;=:@/?]*(?:%[0-9A-Fa-f]{2}[A-Za-z0-9\-._~!$&()*+,;=:@/?]*)*$/;
+
+function methodOf(input: RequestInfo | URL, init: RequestInit | undefined): string {
+  const own = init?.method ?? (typeof input === 'object' && input !== null && 'method' in input ? input.method : undefined);
+  return (own || 'GET').toUpperCase();
+}
+
+/** The part of a URL after the origin, without a fragment. */
+const targetOf = (url: string, origin: string): string => url.slice(origin.length).replace(/#.*$/s, '');
+
+function isUnsignedRequest(input: RequestInfo | URL, init: RequestInit | undefined, url: string, canonical: string): boolean {
+  return UNSIGNED_REQUESTS.has(`${methodOf(input, init)} ${targetOf(url, canonical)}`);
+}
+
+/** The bytes of a body the app knows, or null for one the platform builds (FormData, Blob, a stream) that cannot be signed. */
+function bodyBytes(body: unknown): Uint8Array | null {
+  if (body === undefined || body === null) return new Uint8Array(0);
+  if (typeof body === 'string') return new TextEncoder().encode(body);
+  if (body instanceof ArrayBuffer) return new Uint8Array(body);
+  if (ArrayBuffer.isView(body)) return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  return null;
+}
+
+function headerMap(input: RequestInfo | URL, init: RequestInit | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  const add = (headers: HeadersInit | undefined) => {
+    if (!headers) return;
+    if (Array.isArray(headers)) for (const [name, value] of headers) out[name.toLowerCase()] = String(value);
+    else if (typeof (headers as Headers).forEach === 'function' && typeof (headers as Headers).get === 'function')
+      (headers as Headers).forEach((value, name) => {
+        out[name.toLowerCase()] = value;
+      });
+    else for (const [name, value] of Object.entries(headers as Record<string, string>)) out[name.toLowerCase()] = String(value);
+  };
+  if (typeof input === 'object' && input !== null && 'headers' in input) add(input.headers);
+  add(init?.headers);
+  return out;
+}
+
+type Prepared =
+  | { ok: true; input: RequestInfo | URL; init: RequestInit | undefined; signed: SignedRequest | null }
+  | { ok: false; why: FailureReason };
+
+/**
+ * What goes out on the LAN path: the request as it is for the four unsigned ones, otherwise the same request with only
+ * the ten signed headers and the four `X-Lan-*` headers. Nothing is sent when the request cannot be signed.
+ */
+async function prepareLanRequest(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  url: string,
+  ctx: LanContext
+): Promise<Prepared> {
+  const lan = ctx.lan as string;
+  const target = targetOf(url, ctx.canonical);
+  if (isUnsignedRequest(input, init, url, ctx.canonical)) {
+    return { ok: true, input: retarget(input, `${lan}${target}`), init, signed: null };
+  }
+  await loadLanKey();
+  const key = currentKey();
+  if (!key) return { ok: false, why: 'unsignable' };
+  const method = methodOf(input, init);
+  const bytes = bodyBytes(init?.body);
+  const hasRequestBody = typeof input === 'object' && input !== null && 'body' in input && input.body != null;
+  if (!bytes || hasRequestBody || !CANONICAL_TARGET.test(target) || target.split(/[/?]/).includes('..')) {
+    return { ok: false, why: 'unsignable' };
+  }
+  // The server's clock is learned from the proof; it is asked again when it is old, before anything is signed.
+  if (clockOffsetSec === null || Date.now() - clockOffsetAt > CLOCK_FRESH_MS) {
+    const proof = await probeLan();
+    if (context !== ctx) return { ok: false, why: 'unsignable' };
+    if (!proof.ok) {
+      const why: FailureReason =
+        proof.reason === 'wrong-server' || proof.reason === 'no-key'
+          ? 'lan-other-device'
+          : proof.reason === 'refused'
+            ? 'lan-refused'
+            : 'rejected';
+      return { ok: false, why };
+    }
+  }
+  if (clockOffsetSec === null || currentKey()?.id !== key.id) return { ok: false, why: 'unsignable' };
+  const given = headerMap(input, init);
+  const headers: Record<string, string> = {};
+  for (const name of SIGNED_REQUEST_HEADERS) if (given[name] !== undefined) headers[name] = given[name];
+  // Set what a platform would add itself, so the signature covers what is sent.
+  if (headers.accept === undefined) headers.accept = '*/*';
+  if (bytes.length > 0 && headers['content-type'] === undefined)
+    headers['content-type'] = typeof init?.body === 'string' ? 'text/plain;charset=UTF-8' : 'application/octet-stream';
+  const requestId = await randomHex(16);
+  const time = String(Math.floor(Date.now() / 1000) + clockOffsetSec);
+  const bodyHash = bytes.length === 0 ? EMPTY_BODY_HASH : await sha256Hex(bytes);
+  const signature = await signRequest(key.key, {
+    method,
+    target,
+    keyId: key.id,
+    time,
+    requestId,
+    bodyHash,
+    header: name => headers[name],
+  });
+  headers['x-lan-key-id'] = key.id;
+  headers['x-lan-time'] = time;
+  headers['x-lan-request-id'] = requestId;
+  headers['x-lan-signature'] = signature;
+  return {
+    ok: true,
+    input: `${lan}${target}`,
+    init: { ...init, method, headers },
+    signed: { keyId: key.id, key: key.key, requestId },
+  };
+}
+
+/**
+ * True when the answer to a signed request is the server's own: it carries the id the phone sent, the server's time and
+ * a signature that matches under this session's key over the whole body (compared in constant time).
+ */
+async function answerIsServers(response: Response, signed: SignedRequest): Promise<boolean> {
+  try {
+    const signature = response.headers.get('x-lan-signature') ?? '';
+    const serverTime = response.headers.get('x-lan-server-time') ?? '';
+    if (response.headers.get('x-lan-request-id') !== signed.requestId || !SECONDS.test(serverTime) || !HEX64.test(signature))
+      return false;
+    const received = Date.now();
+    const bytes = new Uint8Array(await response.clone().arrayBuffer());
+    const valid = await verifyAnswerSignature(
+      signed.key,
+      {
+        keyId: signed.keyId,
+        requestId: signed.requestId,
+        serverTime,
+        status: response.status,
+        bodyHash: bytes.length === 0 ? EMPTY_BODY_HASH : await sha256Hex(bytes),
+        header: name => response.headers.get(name),
+      },
+      signature
+    );
+    // The session may have ended while the answer was coming: a key that is gone vouches for nothing.
+    if (!valid || currentKey()?.id !== signed.keyId) return false;
+    noteServerTime(serverTime, received);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function classify(
+  on: ConnectionPath,
+  response: Response,
+  url: string,
+  ctx: LanContext,
+  signed: SignedRequest | null
+): Promise<Attempt> {
   if (on === 'public') return isTunnelFailure(response) ? { ok: false, why: 'tunnel', response } : { ok: true, response };
   if (pathOf(response) !== 'lan') {
     // Not the fallback listener: the address belongs to another device now.
     dropBody(response);
     return { ok: false, why: 'lan-other-device' };
+  }
+  if (signed && !(await answerIsServers(response, signed))) {
+    // Unsigned, wrongly signed, or for another request: not the server's own answer (WH-133). Nothing of it is used.
+    dropBody(response);
+    // The listener's own unsigned refusals are 403s; a 403 is no proof of tampering and never a sign-out.
+    return { ok: false, why: response.status === 403 ? 'lan-refused' : 'lan-changed' };
   }
   if (response.status === 403) {
     dropBody(response);
@@ -692,16 +972,23 @@ async function send(
   read: boolean,
   mayFailOver: boolean
 ): Promise<Attempt> {
-  const lan = ctx.lan as string;
+  // On the LAN path the request is signed first (and the clock asked for when it is old): nothing is sent unsigned.
+  let sending: { input: RequestInfo | URL; init: RequestInit | undefined; signed: SignedRequest | null } = {
+    input,
+    init,
+    signed: null,
+  };
+  if (on === 'lan') {
+    const prepared = await prepareLanRequest(input, init, url, ctx);
+    if (!prepared.ok) return { ok: false, why: prepared.why, error: networkFailure(prepared.why) };
+    sending = prepared;
+  }
   const outer = init?.signal ?? undefined;
   const own = new AbortController();
   const forward = () => own.abort();
   if (outer?.aborted) own.abort();
   else outer?.addEventListener('abort', forward, { once: true });
-  const request = fetch(on === 'lan' ? retarget(input, swapOrigin(url, ctx.canonical, lan) ?? url) : input, {
-    ...init,
-    signal: own.signal,
-  });
+  const request = fetch(sending.input, { ...sending.init, signal: own.signal });
   const outcome = request.then(
     response => ({ response }),
     (error: unknown) => ({ error })
@@ -711,6 +998,7 @@ async function send(
     timer = setTimeout(() => resolve('slow'), PUBLIC_HEADERS_TIMEOUT_MS);
     (timer as { unref?: () => void }).unref?.();
   });
+  const exemptRequest = isUnsignedRequest(input, init, url, ctx.canonical);
   try {
     let result = await Promise.race([outcome, slow]);
     if (result === 'slow') {
@@ -721,7 +1009,7 @@ async function send(
         // No headers yet. The path is judged in the background; this read is not given up until the verdict is in.
         const winner = await Promise.race([
           outcome.then(value => ({ value }) as const),
-          failOver(on, 'slow').then(switched => ({ switched }) as const),
+          failOver(on, 'slow', exemptRequest).then(switched => ({ switched }) as const),
         ]);
         if ('value' in winner) result = winner.value;
         else if (winner.switched) {
@@ -735,7 +1023,7 @@ async function send(
       if (outer?.aborted) throw result.error; // the caller stopped it: not a failure of the path
       return { ok: false, why: 'rejected', error: result.error };
     }
-    return await classify(on, result.response, url, ctx);
+    return await classify(on, result.response, url, ctx, sending.signed);
   } finally {
     clearTimeout(timer);
     outer?.removeEventListener('abort', forward);
@@ -746,6 +1034,34 @@ function giveUp(attempt: Extract<Attempt, { ok: false }>): Response {
   if (attempt.response) return attempt.response; // Cloudflare's 530 reaches the callers as it always did
   if (attempt.error !== undefined) throw attempt.error;
   throw networkFailure(attempt.why);
+}
+
+/**
+ * A request of a facility on its local network only (WH-146): always the warehouse network, signed like any request on it
+ * (`send` signs, and checks the answer). No public attempt, no probe and no switching: when the network is not the
+ * facility's, or the key is missing, the request fails as one that got no answer.
+ */
+async function localOnlyFetch(
+  ctx: LanContext,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  url: string,
+  read: boolean
+): Promise<Response> {
+  if (!ctx.lan) throw networkFailure('unsignable');
+  if (path !== 'lan') {
+    path = 'lan';
+    failure = null;
+    publish();
+  }
+  await whenNetworkKnown(NETWORK_KNOWN_WAIT_MS);
+  if (context !== ctx) throw networkFailure('unsignable');
+  // Nothing is sent to a private address from a network that cannot hold it.
+  if (!lanUsableHere()) throw networkFailure('netinfo');
+  await loadLanKey();
+  if (!isUnsignedRequest(input, init, url, ctx.canonical) && !currentKey()) throw networkFailure('lan-key');
+  const attempt = await send('lan', input, url, init, ctx, read, false);
+  return attempt.ok ? attempt.response : giveUp(attempt);
 }
 
 /**
@@ -760,11 +1076,16 @@ export async function transportFetch(
 ): Promise<Response> {
   const ctx = context;
   const url = urlOf(input);
+  if (ctx?.localOnly && startsWithOrigin(url, ctx.canonical)) return localOnlyFetch(ctx, input, init, url, options.read);
   if (!ctx?.lan || !startsWithOrigin(url, ctx.canonical) || PUBLIC_ONLY.test(url.slice(ctx.canonical.length)))
     return fetch(input, init);
   // On the LAN path but no longer on a network that can hold the address (NetInfo has not said so yet, or the
   // subnet is unknown): no credential goes there.
   if (path === 'lan' && !lanUsableHere()) switchTo('public');
+  // A phone with no key uses the warehouse network only for the requests that need no signature (WH-133).
+  await loadLanKey();
+  const exempt = isUnsignedRequest(input, init, url, ctx.canonical);
+  if (path === 'lan' && !exempt && !currentKey()) switchTo('public');
   void returnToPublicIfDue();
   const started = path;
   // A photo going out over the public path: the uplink is busy with it, so a slow probe proves nothing.
@@ -773,7 +1094,7 @@ export async function transportFetch(
   try {
     const first = await send(started, input, url, init, ctx, options.read, true);
     if (first.ok) return first.response;
-    const switched = first.switched ?? (await failOver(started, first.why));
+    const switched = first.switched ?? (await failOver(started, first.why, exempt));
     if (switched && options.read && context === ctx) {
       const second = await send(path, input, url, init, ctx, options.read, false);
       if (second.ok) return second.response;

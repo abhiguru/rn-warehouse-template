@@ -319,7 +319,7 @@ describe('getCustomerInvoiceHistory', () => {
       ];
       const full = (partial: Record<string, unknown>) => ({
         invoice_id: undefined, invoice_number: undefined, invoice_date: undefined, financial_year: '', grn_ref: '', grn_id: '', total: 0, labour: 0, discount: 0, tax_amount: 0,
-        net_total: 0, item_count: 0, total_quantity: 0, notes: null, line_items: [], ...partial,
+        net_total: 0, item_count: 0, total_quantity: 0, notes: null, line_items: [], invoice_label: null, ...partial,
       });
       // What the service gave before it merged anything: the mapping, field for field.
       const TODAY = [
@@ -332,6 +332,11 @@ describe('getCustomerInvoiceHistory', () => {
       it('comes out exactly as the mapping always gave it: the same fields and the same order, nothing merged or dropped', async () => {
         const invoices = await mapped(server);
         expect(invoices).toStrictEqual(TODAY);
+      });
+
+      it('carries the full invoice number the server sends (WH-139, migration 175)', async () => {
+        const [first] = await mapped([{ ...server[0], invoice_label: 'SRT/12' }]);
+        expect(first.invoice_label).toBe('SRT/12');
       });
 
       it('is the same from migration 61 on: one row with the summed amount', async () => {

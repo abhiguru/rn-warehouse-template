@@ -1,4 +1,5 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { invoiceStateLabel, parseInvoiceState } from '@/features/charging/invoiceState';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
 import { formatDate, toLocalISODate } from '@/utils/formatters';
@@ -228,6 +229,7 @@ class SearchService {
         gr_no: string;
         customer_name: string;
         date: string;
+        invoice_state?: unknown;
       }>;
     }
 
@@ -251,7 +253,9 @@ class SearchService {
           return grns.map((grn) => ({
             label: grn.gr_no,
             value: grn.id,
-            detail: `${grn.customer_name} • ${formatDate(grn.date)}`,
+            detail: `${grn.customer_name} • ${formatDate(grn.date)}${
+              parseInvoiceState(grn.invoice_state) === 'partly_invoiced' ? ` • ${invoiceStateLabel('partly_invoiced')}` : ''
+            }`,
             type: 'grn' as const
           }));
         }

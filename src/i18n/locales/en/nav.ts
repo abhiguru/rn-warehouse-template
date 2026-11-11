@@ -53,6 +53,8 @@ export const nav = {
       invoiceHistory: 'Billing history with payment status',
       stockAging: 'Analyse how long stock has been stored',
       operationsDashboard: 'Daily KPIs and activity overview',
+      customerDues: 'See what each customer owes',
+      statement: 'Your goods in store and what you owe',
     },
   },
 };

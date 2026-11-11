@@ -97,6 +97,7 @@ export const INVOICE_HISTORY_CUSTOMER: FilterListConfig<InvoiceRecordsRequest> =
 /** What a search looks in: the invoice and GRN numbers, and the name of every item billed. */
 const invoiceColumns = (invoice: InvoiceHistoryRecord) => [
   invoice.invoice_number,
+  invoice.invoice_label,
   invoice.grn_ref,
   ...(invoice.line_items ?? []).map(line => line.item_name),
 ];

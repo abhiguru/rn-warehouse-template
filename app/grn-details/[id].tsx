@@ -33,7 +33,13 @@ import { printGRNRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector, useAppStore } from '@/store/hooks';
+import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
+import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
+import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
+import { startInvoiceFromGrn } from '@/features/invoice/utils/invoiceFormOrigin';
+import { prepareInvoiceFromGrn } from '@/features/invoice/utils/prepareInvoiceFromGrn';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
@@ -68,6 +74,7 @@ import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText, failureText } from '@/utils/serverText';
 import { deleteBlockedText } from '@/features/grn/utils/deleteRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
+import { parseInvoiceState } from '@/features/charging/invoiceState';
 import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
 import { invoiceTableFrom } from '@/components/common/invoiceTable';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
@@ -188,7 +195,13 @@ function GRNDetailScreen() {
   }, [user, session, userProfile]);
 
   // Use centralized permission system
-  const { canUpdate, canDelete } = usePermissions();
+  const { canCreate, canUpdate, canDelete } = usePermissions();
+  const reduxDispatch = useAppDispatch();
+  // WH-162: set by the first tap on "Create invoice" until this page is in front again (one form for a double tap).
+  const openingInvoiceRef = useRef(false);
+  const reduxStore = useAppStore();
+  // The GRN's preview and the suggested number are being read for "Create invoice": the button shows its spinner.
+  const [preparingInvoice, setPreparingInvoice] = useState(false);
   const canPrint = useCanPrint();
 
   // Check edit permissions
@@ -443,6 +456,7 @@ function GRNDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
+      openingInvoiceRef.current = false;
       focusCountRef.current += 1;
       if (focusCountRef.current > 1) void fetchGRNDetailsRef.current();
       return () => {
@@ -512,6 +526,52 @@ function GRNDetailScreen() {
       setGrnInvoices({ key: invoiceKey, invoices: result.success ? result.invoices : null });
     });
   }, [activeTab, data, invoiceKey, grnInvoices, isWarehouseRole, assignedCustomerIds]);
+
+  // WH-162: "Create invoice" opens the invoice form for this GRN straight at Review. The GRN's preview and the suggested
+  // number are read first, here: when the preview fails or does not answer nothing opens and this page says why. A step
+  // whose checks would stop the person (no number, a line with no rate) is where the form opens instead. Another open
+  // invoice form is named first, as on the Invoices tab; nothing is reset then.
+  const handleCreateInvoice = async () => {
+    const current = data?.grn;
+    if (openingInvoiceRef.current || !current) return;
+    const blocker = openFormBlocking({ kind: 'create' });
+    if (blocker) {
+      showOpenFormRefusal(blocker);
+      return;
+    }
+    openingInvoiceRef.current = true;
+    setPreparingInvoice(true);
+    reduxDispatch(resetInvoiceForm());
+    let prepared: Awaited<ReturnType<typeof prepareInvoiceFromGrn>>;
+    try {
+      prepared = await prepareInvoiceFromGrn(reduxDispatch, reduxStore.getState, current.id);
+    } finally {
+      setPreparingInvoice(false);
+    }
+    // The page was left meanwhile, or another form was opened: nothing opens, and the slice is not left half filled.
+    if (!focusedRef.current || openFormBlocking({ kind: 'create' })) {
+      if (!openFormBlocking({ kind: 'create' })) reduxDispatch(resetInvoiceForm());
+      openingInvoiceRef.current = false;
+      return;
+    }
+    if (!prepared.ok) {
+      reduxDispatch(resetInvoiceForm());
+      openingInvoiceRef.current = false;
+      showAlert(tr('invoice.form.grnLoadFailedTitle'), prepared.message);
+      return;
+    }
+    const entryTab = Array.isArray(tab) ? tab[0] : tab;
+    startInvoiceFromGrn(
+      {
+        grnId: current.id,
+        grNo: current.gr_no,
+        exitRoute: `/grn-details/${current.id}${entryTab ? `?tab=${encodeURIComponent(entryTab)}` : ''}`,
+      },
+      prepared.step === 'review' ? null : prepared.step
+    );
+    const step = prepared.step === 'review' ? 3 : prepared.step === 'items' ? 2 : 1;
+    router.push(`/invoice-form/step${step}`);
+  };
 
   // The invoice page keeps the PDF and sharing; its server call checks the role and customer.
   const handleViewInvoice = (invoiceId: string) => {
@@ -785,6 +845,7 @@ function GRNDetailScreen() {
     invoiceRows?.map((invoice) => ({
       invoice_id: invoice.invoice_id,
       invoice_no: invoice.invoice_number,
+      invoice_label: invoice.invoice_label,
       invoice_date: invoice.invoice_date,
       total: invoice.total,
     })),
@@ -929,7 +990,18 @@ function GRNDetailScreen() {
           )}
 
           {activeTab === 'invoices' && (
-            <GRNInvoicesTab invoices={invoiceTable} loading={invoicesLoading} onViewInvoice={handleViewInvoice} />
+            <GRNInvoicesTab
+              invoices={invoiceTable}
+              loading={invoicesLoading}
+              onViewInvoice={handleViewInvoice}
+              state={parseInvoiceState(grn.invoices_summary?.invoice_state)}
+              onCreateInvoice={
+                canCreate && backendHasFeature('grnCreateInvoice') && grn.invoices_summary?.can_create_invoice === true
+                  ? () => void handleCreateInvoice()
+                  : undefined
+              }
+              creatingInvoice={preparingInvoice}
+            />
           )}
         </View>
       </View>

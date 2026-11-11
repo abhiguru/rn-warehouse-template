@@ -47,6 +47,8 @@ import {
   type CustomerFormFields,
 } from '@/features/customer/schemas/customerValidation';
 import { useCustomerEditor } from '@/features/customer/useCustomerEditor';
+import { CustomerStatePicker } from '@/features/gst/CustomerStatePicker';
+import { backendHasFeature } from '@/config/backendFeatures';
 import type { TextInputRef } from '@/types/nativeRefs';
 
 /** Top to bottom: the order errors are scrolled to. */
@@ -497,19 +499,24 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="postal-address-locality"
                 textContentType="addressCity"
               />
-              <Field
-                label={tr('customers.form.state')}
-                error={errors.state}
-                inputRef={node => (inputs.current.state = node)}
-                value={fields.state}
-                onChangeText={text => change('state', text)}
-                maxLength={50}
-                returnKeyType="next"
-                onSubmitEditing={() => inputs.current.pincode?.focus()}
-                autoCapitalize="words"
-                autoComplete="postal-address-region"
-                textContentType="addressState"
-              />
+              {backendHasFeature('gstDocuments') ? (
+                // WH-151: the State is picked from the states and union territories (the server derives the code from the name).
+                <CustomerStatePicker value={fields.state} onChange={name => change('state', name)} error={errors.state} />
+              ) : (
+                <Field
+                  label={tr('customers.form.state')}
+                  error={errors.state}
+                  inputRef={node => (inputs.current.state = node)}
+                  value={fields.state}
+                  onChangeText={text => change('state', text)}
+                  maxLength={50}
+                  returnKeyType="next"
+                  onSubmitEditing={() => inputs.current.pincode?.focus()}
+                  autoCapitalize="words"
+                  autoComplete="postal-address-region"
+                  textContentType="addressState"
+                />
+              )}
               <Field
                 label={tr('customers.form.pincode')}
                 error={errors.pincode}

@@ -26,6 +26,7 @@ import { CopyTiersSheet, confirmReplaceBands } from './CopyTiersSheet';
 import { EditorStrip } from './EditorStrip';
 import type { FieldRegistry } from './fieldLink';
 import { RateBandFields } from './RateBandFields';
+import { ExemptNoTaxNote } from '@/features/gst/ExemptNoTaxNote';
 import { RateStartLine } from './RateStartLine';
 
 export interface RateBoxProps {
@@ -115,6 +116,8 @@ export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, l
       {draft.firstBandZeroed ? <Text style={styles.note}>{t('pricing.edit.firstBandZeroed')}</Text> : null}
       {locked ? <Text style={styles.note} testID={`${testID}-locked`}>{t('pricing.box.locked')}</Text> : null}
 
+      {/* WH-151: an Exempt item charges no tax whatever the tax % below. */}
+      <ExemptNoTaxNote itemId={ctx.itemId} />
       <RateBandFields
         draft={draft}
         ctx={ctx}

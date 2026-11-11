@@ -14,7 +14,7 @@
 export type OpenInvoiceForm =
   | { kind: 'create' }
   // `number`: the invoice's own number, set by its layout once the invoice is loaded (the refusal names it).
-  | { kind: 'edit'; id: string; number?: number };
+  | { kind: 'edit'; id: string; number?: string };
 
 /** Where an open form is: the route a refusal takes the person back to ("Open it"). */
 export function invoiceFormRoute(form: OpenInvoiceForm): string {

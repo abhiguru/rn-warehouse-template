@@ -22,7 +22,6 @@ describe('errors in Gujarati', () => {
   it('fills placeholders; an HTTP status and a version stay as they are', () => {
     expect(t('errors.server.discoveryFailedHttp', { status: '503' }, 'gu')).toBe('સર્વરની માહિતી મેળવી શકાઈ નથી (HTTP 503).');
     expect(t('errors.server.requiresAppVersion', { version: '1.4.0' }, 'gu')).toBe('આ સર્વર માટે ઍપનું વર્ઝન 1.4.0 અથવા તેનાથી નવું જોઈએ.');
-    expect(t('errors.biometric.unlockWith', { method: t('errors.biometric.fingerprint', undefined, 'gu') }, 'gu')).toBe('ફિંગરપ્રિન્ટ વડે અનલૉક કરો');
   });
 
   it('keeps the noun unchanged after a count', () => {

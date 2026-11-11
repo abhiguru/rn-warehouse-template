@@ -25,6 +25,7 @@ import { iconSize, motion, radius, space } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
+import { useLanPhotoUri } from '@/hooks/useLanStatus';
 
 // Placeholder image as base64 (gray background with image icon)
 const PLACEHOLDER_BLURHASH = '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7teleayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
@@ -107,10 +108,13 @@ export function CachedImage({
   // Add retry count to URI to bust cache on retry
   const sourceUri = retryCount > 0 ? `${currentUri}?retry=${retryCount}` : currentUri;
 
+  // On the warehouse network the photo is fetched with a signed request and shown from a file (WH-133).
+  const shownUri = useLanPhotoUri(sourceUri);
+
   return (
     <View style={[styles.container, style]}>
       <Image
-        source={{ uri: sourceUri }}
+        source={shownUri ? { uri: shownUri } : undefined}
         style={StyleSheet.absoluteFill}
         contentFit={contentFit}
         cachePolicy="memory-disk"

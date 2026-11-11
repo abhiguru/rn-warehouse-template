@@ -132,6 +132,18 @@ const SettingsScreen: React.FC = () => {
       subtitle: t('settings.features.documentNumbersSubtitle'),
       route: '/document-numbering',
     },
+    charging: {
+      icon: 'calculator-variant-outline',
+      label: t('settings.features.charging'),
+      subtitle: t('settings.features.chargingSubtitle'),
+      route: '/charging',
+    },
+    gstDetails: {
+      icon: 'file-percent-outline',
+      label: t('gst.settings.title'),
+      subtitle: t('gst.settings.subtitle'),
+      route: '/gst-details',
+    },
     rackPresets: {
       icon: 'view-grid-outline',
       label: t('settings.features.rackPresets'),
@@ -146,6 +158,8 @@ const SettingsScreen: React.FC = () => {
   const featureRows = settingsFeatureRows(userProfile?.role, capabilities).filter(
     feature =>
       (feature !== 'documentNumbering' || backendHasFeature('documentNumbering')) &&
+      (feature !== 'charging' || backendHasFeature('chargingRule')) &&
+      (feature !== 'gstDetails' || backendHasFeature('gstDocuments')) &&
       (feature !== 'rackPresets' || backendHasFeature('rackPresets'))
   );
   const showsRequests = featureRows.includes('enrollmentReview');

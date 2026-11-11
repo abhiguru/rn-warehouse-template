@@ -14,6 +14,9 @@ import { pricing } from './pricing';
 import { reports } from './reports';
 import { settings } from './settings';
 import { numbering } from './numbering';
+import { charging } from './charging';
+import { payments } from './payments';
+import { gst } from './gst';
 import { users } from './users';
 import { sensors } from './sensors';
 import { errors } from './errors';
@@ -38,6 +41,9 @@ export const en = {
   reports,
   settings,
   numbering,
+  charging,
+  payments,
+  gst,
   users,
   sensors,
   errors,

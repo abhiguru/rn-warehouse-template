@@ -3,13 +3,14 @@ import { invalidateReportQueries } from '@/lib/queryClient';
 import { createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
 import { isNetworkError, isStatementTimeout, isTimeoutError, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { REFUSAL } from '@/utils/serverRefusal';
 import { formatNumber } from '@/utils/formatters';
 import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/features/invoice/utils/cancelReason';
 import { createLogger } from '@/utils/logger';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
 
@@ -25,6 +26,8 @@ export interface InvoiceFilters {
 export interface Invoice {
   invoice_id: string;
   invoice_number: number;
+  /** Migration 175 (WH-139): the full number, prefix and digits ("SRT/12"). Absent on an older server: the digits are the number. */
+  invoice_label?: string | null;
   invoice_date: string;
   financial_year: string;
   inv_fin_year: number;
@@ -41,6 +44,14 @@ export interface Invoice {
   /** Migration 134: set when the invoice is cancelled; a cancelled invoice is not counted in any sum. */
   cancelled_at?: string | null;
   cancel_reason?: string | null;
+  /** Migration 172, administrators, supervisors and the invoice's customer: the server's figures. Absent for staff and on an older server. */
+  paid_amount?: number | null;
+  due_amount?: number | null;
+  payment_status?: 'due' | 'part_paid' | 'paid' | null;
+  /** Migration 173 (WH-151): the document type the server made; absent on an older server and read as 'invoice'. */
+  doc_type?: string;
+  /** The other document of a two-document save, while it exists. */
+  linked_invoice_id?: string | null;
   customer: {
     id: string;
     name: string;
@@ -97,6 +108,10 @@ export interface GetInvoicesListParams {
   p_date_to?: string;
   /** Several customers; an empty list is no filter. */
   p_customer_ids?: string[];
+  /** Migration 172: only invoices with this payment status (administrators and supervisors). */
+  p_payment_status?: 'due' | 'part_paid' | 'paid';
+  /** Migration 173 (WH-151): only invoices of this document type. */
+  p_doc_type?: 'invoice' | 'bill' | 'bill_of_supply' | 'tax_invoice' | 'invoice_cum_bos';
 }
 
 export const getInvoicesList = async (
@@ -121,6 +136,8 @@ export const getInvoicesList = async (
       p_date_from,
       p_date_to,
       p_customer_ids,
+      p_payment_status,
+      p_doc_type,
     } = params;
 
     invoiceServiceLogger.debug('Getting authenticated client...');
@@ -142,6 +159,10 @@ export const getInvoicesList = async (
       p_date_from: p_date_from || null,
       p_date_to: p_date_to || null,
       p_customer_ids: p_customer_ids && p_customer_ids.length > 0 ? p_customer_ids : null,
+      // Sent only when chosen: a backend before migration 172 has no such parameter.
+      ...(p_payment_status ? { p_payment_status } : {}),
+      // Sent only when chosen: a backend before migration 173 has no such parameter.
+      ...(p_doc_type ? { p_doc_type } : {}),
     });
 
     const duration = Date.now() - startTime;
@@ -217,6 +238,8 @@ interface CustomerInvoiceRow {
   invoice_id: string;
   /** "<financial year start>-<zero-padded number>", for example "2026-0014". */
   invoice_number: string;
+  /** Migration 175 (WH-139): the full number ("SRT/14"); absent on an older server. */
+  invoice_label?: string | null;
   invoice_date: string;
   /** For example "2026-2027". */
   financial_year: string;
@@ -246,6 +269,7 @@ const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, cust
   return {
     invoice_id: row.invoice_id,
     invoice_number: Number(numberPart) || 0,
+    invoice_label: typeof row.invoice_label === 'string' && row.invoice_label !== '' ? row.invoice_label : null,
     invoice_date: row.invoice_date,
     financial_year: row.financial_year || '',
     inv_fin_year: Number(yearPart) || 0,
@@ -306,6 +330,7 @@ export function selectCustomerInvoices(all: Invoice[], params: AssignedCustomerI
     }
     return matchesSearch(terms, [
       invoice.invoice_number,
+      invoiceLabelOf(invoice.invoice_label, invoice.invoice_number),
       invoice.customer.name,
       invoice.grn.gr_no,
       `${invoice.inv_fin_year}-${invoice.invoice_number}`,
@@ -475,6 +500,8 @@ export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise
 export interface InvoiceDetail {
   invoice_id: string;
   invoice_number: number;
+  /** Migration 175 (WH-139): the full number ("SRT/12"); absent on an older server. */
+  invoice_label?: string | null;
   invoice_date: string;
   financial_year: string;
   total: number;
@@ -522,10 +549,38 @@ export interface InvoiceDetail {
   cancel_reason?: string | null;
   /** Administrators, supervisors and staff only. */
   cancelled_by_name?: string | null;
+  /** Migration 164: the charging rule the invoice was made with, as the server sent it (read with parseChargingRule). Absent on an older server. */
+  charging?: unknown;
+  /** Migration 172: the server's paid, due and status (absent for staff and on an older server). */
+  paid_amount?: number | null;
+  due_amount?: number | null;
+  payment_status?: 'due' | 'part_paid' | 'paid' | null;
+  /** Migration 173 (WH-151): the document type; absent on an older server (read as 'invoice'). */
+  doc_type?: string;
+  /** The other document of a two-document save while it exists (null otherwise). `total` is the server's. */
+  linked_invoice?: { id: string; inv_no: number | string; invoice_label?: string; inv_fin_year?: number | string; doc_type: string; total?: number | string | null; cancelled?: boolean } | null;
+  /** What the document was made with and the server's tax split; null for an 'invoice'. */
+  gst?: GstFacts | null;
+}
+
+/** The GST facts of a saved document (`get_invoice_data` header `gst`, migration 173): all the server's figures. */
+export interface GstFacts {
+  supplier?: { legal_name?: string | null; address?: string | null; gstin?: string | null; state_code?: string | null; state_name?: string | null };
+  customer?: { gstin?: string | null; state_code?: string | null; state_name?: string | null; address?: string | null };
+  place_of_supply?: { code?: string; name?: string } | null;
+  tax_head?: 'cgst_sgst' | 'igst' | null;
+  sac_storage?: string | null;
+  sac_labour?: string | null;
+  cgst_amount?: number | string | null;
+  sgst_amount?: number | string | null;
+  igst_amount?: number | string | null;
+  reverse_charge?: boolean | null;
 }
 
 export interface InvoiceItem {
   item_id: string;
+  /** Migration 164: the line's storage as the server worked it out under the invoice's rule; null with no quantity, absent on an older server. */
+  storage_amount?: number | string | null;
   /** Migration 143. False for a cancelled invoice's line whose dispatch went before the details were kept; absent on an older server. */
   details_available?: boolean;
   charge: number;
@@ -960,12 +1015,15 @@ export interface CancelInvoiceResponse {
 }
 
 /** The app's own words for each refusal of `cancel_invoice`. */
-export const cancelRefusalMessage = (reason: string | undefined): string | undefined => {
+export const cancelRefusalMessage = (reason: string | undefined, fields?: Record<string, unknown>): string | undefined => {
   switch (reason) {
     case REFUSAL.INVOICE_CANCELLED:
       return t('invoice.cancel.alreadyCancelled');
     case REFUSAL.INVOICE_HAS_PAYMENTS:
-      return t('invoice.cancel.hasPayments');
+      // Migration 172 names the invoice (`inv_no`); an older server's refusal carries none.
+      return fields?.inv_no !== undefined && fields.inv_no !== null
+        ? t('payments.hasPayments', { number: formatIdentifier(String(fields.inv_no)) })
+        : t('invoice.cancel.hasPayments');
     case REFUSAL.CANCEL_REASON_INVALID:
       return t('invoice.cancel.reasonInvalid', { min: formatNumber(CANCEL_REASON_MIN), max: formatNumber(CANCEL_REASON_MAX) });
     case REFUSAL.STALE_RECORD:
@@ -997,7 +1055,7 @@ export const cancelInvoice = async (
       return { success: false, message: t('invoice.cancel.notFound'), error: result.error, reason: 'NOT_FOUND' };
     }
     if (result.lostAnswer) return { success: false, error: result.error, lostAnswer: true };
-    const refusalText = cancelRefusalMessage(result.reason);
+    const refusalText = cancelRefusalMessage(result.reason, result.fields);
     if (refusalText) {
       // The invoice changed or is already cancelled: a report under it may be out of date too.
       if (result.reason === REFUSAL.INVOICE_CANCELLED) void invalidateReportQueries();
@@ -1042,6 +1100,9 @@ export interface DeleteInvoiceResponse {
   sentAt?: number;
   /** The server answered "Invoice not found": someone else deleted it, so it is gone, as the person wanted. */
   notFound?: boolean;
+  /** Reason INVOICE_PAIR (WH-151): the invoice was made together with another and only both can be deleted. */
+  /** `label`: its full number (WH-139), the digits on an older server. */
+  linkedInvoice?: { id: string; inv_no: string; label: string; doc_type: string };
 }
 
 /**
@@ -1093,6 +1154,23 @@ export const deleteInvoice = async (
     // The invoice was changed by someone else since this screen read it: the caller reads it again.
     if (result.reason === REFUSAL.STALE_RECORD) {
       return { success: false, message: t('invoice.details.deleteStale'), error: result.error, reason: result.reason };
+    }
+    // Migration 173 (WH-151): one document of a pair is not deleted alone; the screen asks "Delete both?".
+    if (result.reason === REFUSAL.INVOICE_PAIR) {
+      const linked = result.fields?.linked_invoice as { id?: unknown; inv_no?: unknown; invoice_label?: unknown; doc_type?: unknown } | undefined;
+      return {
+        success: false,
+        message: t('gst.pair.isPair'),
+        error: result.error,
+        reason: result.reason,
+        ...(linked && typeof linked.id === 'string'
+          ? { linkedInvoice: { id: linked.id, inv_no: String(linked.inv_no ?? ''), label: invoiceLabelOf(linked.invoice_label, String(linked.inv_no ?? '')), doc_type: String(linked.doc_type ?? 'invoice') } }
+          : {}),
+      };
+    }
+    // Migration 172: the invoice has payments, named by its number.
+    if (result.reason === REFUSAL.INVOICE_HAS_PAYMENTS && result.fields?.inv_no !== undefined && result.fields.inv_no !== null) {
+      return { success: false, message: t('payments.hasPayments', { number: formatIdentifier(invoiceLabelOf(result.fields.invoice_label, String(result.fields.inv_no))) }), error: result.error, reason: result.reason };
     }
     // A refusal by the server (it has payments, staff may not delete) is worded by the app, in English and in
     // Gujarati. A failure of the connection keeps executeRPC's words: a server sentence would hide it.

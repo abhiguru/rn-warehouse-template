@@ -397,14 +397,32 @@ describe('central sign-in', () => {
 
   it('shows a refusal without a wait in the app\'s words', async () => {
     jest.mocked(requestCentralCode).mockResolvedValue({
-      ok: false, code: 'sms_unavailable', message: "The code couldn't be sent just now. Try again in a few minutes.",
+      ok: false, code: 'invalid_request', message: 'That number is not valid.',
     });
     await render(<CentralLoginScreen />);
     await tick();
     await type('9000000001');
     await press(button('Send code'));
-    expect(alerts()[0]).toEqual(["Couldn't send the code", "The code couldn't be sent just now. Try again in a few minutes."]);
+    expect(alerts()[0]).toEqual(["Couldn't send the code", 'That number is not valid.']);
+    expect(texts()).not.toContain("The association's sign-in can't send a code right now.");
   });
+
+  // WH-148: when the association cannot send a code (an outage, no answer, no SMS), the screen says so on a strip with the
+  // facility's own SMS sign-in, instead of an alert.
+  it.each(['network', 'timeout', 'unavailable', 'sms_unavailable', 'failed'])(
+    'offers the facility\'s own SMS sign-in when the service cannot send a code (%s)',
+    async code => {
+      jest.mocked(requestCentralCode).mockResolvedValue({ ok: false, code, message: 'The code could not be sent.' } as never);
+      await render(<CentralLoginScreen />);
+      await tick();
+      await type('9000000001');
+      await press(button('Send code'));
+      expect(alerts()).toHaveLength(0);
+      expect(texts()).toContain("The association's sign-in can't send a code right now.");
+      await press(byTestID('sign-in-with-facility-sms'));
+      expect(router.push).toHaveBeenCalledWith({ pathname: '/facility-code', params: { mode: 'sms' } });
+    }
+  );
 
   it('explains once why the person was signed out', async () => {
     setCentralState({ endedMessage: 'Your association sign-in has ended. Sign in again. If you did not expect this, open your account after signing in and choose Sign out on all phones.' });

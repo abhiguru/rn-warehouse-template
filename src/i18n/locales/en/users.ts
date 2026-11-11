@@ -74,6 +74,21 @@ export const users = {
     signOutSubtitle: 'Sign out of this facility on this phone.',
   },
   // An admin or supervisor edits another user (app/user-edit/[id].tsx)
+  // Pairing code of a facility on its local network only (WH-146), on the administrator's user page
+  signInCode: {
+    title: 'Sign-in code',
+    make: 'Make sign-in code',
+    makeHint: 'Makes a QR code that signs this person in on one phone',
+    valid: 'Valid for 10 minutes, for {{name}} only.',
+    scanHint: 'Ask {{name}} to tap Scan facility code on the first screen of the app and scan this code.',
+    timeLeft: 'Time left {{time}}',
+    expired: 'This code has expired.',
+    makeAnother: 'Make a new code',
+    qrLabel: 'Sign-in code for {{name}}. Scan it with the phone to sign in.',
+    failedTitle: "Couldn't make the code",
+    failed: "Couldn't make the sign-in code. Try again.",
+    notAllowed: 'Only an administrator can make a sign-in code, and only for an active person of this facility.',
+  },
   devices: {
     title: 'Signed-in devices',
     thisDevice: 'This device',

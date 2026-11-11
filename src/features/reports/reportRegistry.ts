@@ -5,6 +5,7 @@
  * root stack (app/_layout.tsx). A report added here needs its screen at
  * app/reports/<id>.tsx; reportRegistry.test.ts checks that the three agree.
  */
+import type { BackendFeature } from '@/config/backendFeatures';
 import type { RoleGatedScreen } from '@/config/roles';
 import type { IconName } from '@/types/icon.types';
 import { t, type TranslationKey } from '@/i18n';
@@ -17,7 +18,9 @@ export type ReportId =
   | 'grn-activity'
   | 'invoice-history'
   | 'stock-aging'
-  | 'operations-dashboard';
+  | 'operations-dashboard'
+  | 'customer-dues'
+  | 'statement';
 
 export type ReportCategory = 'stock' | 'movement' | 'financial' | 'operations';
 
@@ -39,6 +42,13 @@ export interface ReportDefinition {
    * guards the route with the same gate.
    */
   gate?: RoleGatedScreen;
+  /**
+   * Who the Reports tab offers the report to, when that is fewer than the route admits (`gate`): the Statement card is a
+   * customer account's, while administrators and supervisors open a statement from another report. Without one, `gate`.
+   */
+  hubGate?: RoleGatedScreen;
+  /** The backend feature the report needs (src/config/backendFeatures.ts): an older server is offered no such report. */
+  feature?: BackendFeature;
 }
 
 interface ReportEntry {
@@ -49,6 +59,8 @@ interface ReportEntry {
   category: ReportCategory;
   hasPeriod: boolean;
   gate?: RoleGatedScreen;
+  hubGate?: RoleGatedScreen;
+  feature?: BackendFeature;
 }
 
 // Title and description are getters, so they follow the app's language (docs/I18N.md
@@ -63,6 +75,8 @@ const define = (entry: ReportEntry): ReportDefinition => ({
   category: entry.category,
   hasPeriod: entry.hasPeriod,
   gate: entry.gate,
+  hubGate: entry.hubGate,
+  feature: entry.feature,
 });
 
 export const REPORTS: readonly ReportDefinition[] = [
@@ -131,6 +145,30 @@ export const REPORTS: readonly ReportDefinition[] = [
     category: 'operations',
     hasPeriod: true,
     gate: 'operationsDashboard',
+  }),
+  // What each customer owes (WH-155, backend migration 176): administrators and supervisors.
+  define({
+    id: 'customer-dues',
+    title: 'reports.titles.customerDues',
+    description: 'nav.reports.descriptions.customerDues',
+    icon: 'cash-clock',
+    category: 'financial',
+    hasPeriod: false,
+    gate: 'customerDues',
+    feature: 'customerStatement',
+  }),
+  // A customer's statement (WH-155): the card is a customer account's; administrators and supervisors open one from
+  // Customer dues or Customer activity, through the same route.
+  define({
+    id: 'statement',
+    title: 'reports.titles.statement',
+    description: 'nav.reports.descriptions.statement',
+    icon: 'file-account-outline',
+    category: 'financial',
+    hasPeriod: false,
+    gate: 'customerStatement',
+    hubGate: 'customerStatementCard',
+    feature: 'customerStatement',
   }),
 ];
 

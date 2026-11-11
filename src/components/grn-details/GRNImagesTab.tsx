@@ -6,9 +6,10 @@
  * thumbnail when the grid is editable. Tap a thumbnail to view it full screen.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { View, Text, Pressable, FlatList, Dimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
@@ -200,6 +201,12 @@ const ImageTile: React.FC<{
 }> = ({ item, onPress, onDelete, styles, t }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  // The load failed with a connection: the file is gone. With none the tile shows only the broken icon.
+  const [fileGone, setFileGone] = useState(false);
+  const network = useNetworkStatus();
+  const online = network.isConnected && network.isInternetReachable !== false;
+  const onlineRef = useRef(online);
+  onlineRef.current = online;
   const label = imageLabel(item);
   const imageUri = useViaCurrentPath(item.image_url);
 
@@ -215,7 +222,7 @@ const ImageTile: React.FC<{
         {({ pressed }) => (
           <>
             <Image
-              source={{ uri: imageUri }}
+              source={imageUri ? { uri: imageUri } : undefined}
               style={styles.image}
               contentFit="cover"
               // A signed URL is new on every load, so a disk copy is never reused and
@@ -225,6 +232,7 @@ const ImageTile: React.FC<{
               onLoadStart={() => {
                 setIsLoading(true);
                 setHasError(false);
+                setFileGone(false);
               }}
               onLoad={() => {
                 setIsLoading(false);
@@ -233,6 +241,7 @@ const ImageTile: React.FC<{
               onError={(error) => {
                 setIsLoading(false);
                 setHasError(true);
+                setFileGone(onlineRef.current);
                 console.error(`${LOG_PREFIX} Image failed to load:`, {
                   id: item.id,
                   url: item.image_url?.substring(0, 100),
@@ -248,7 +257,7 @@ const ImageTile: React.FC<{
                   size={iconSize.lg}
                   color={t.icon.secondary}
                 />
-                {hasError ? (
+                {hasError && fileGone ? (
                   <Text style={styles.missingText} maxFontSizeMultiplier={1.4} testID="photo-missing">
                     {tr('common.photoMissing')}
                   </Text>

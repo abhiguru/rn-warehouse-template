@@ -36,8 +36,10 @@ import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSucce
 import { LostAnswerNotice } from '@/features/invoice/components/LostAnswerNotice';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printInvoiceRange } from '@/services/print-service';
+import { printSkippedNote } from '@/features/gst/printSkipped';
 import { generateInvoicePDF, pdfRefusalSentence } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
+import { invoiceFileName, invoiceLabelOf } from '@/utils/invoiceLabel';
 import { showAlert } from '@/utils/alert';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { showToast } from '@/utils/toast';
@@ -55,7 +57,10 @@ import { formatFinancialYear } from '@/utils/formatters';
 import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { createLogger } from '@/utils/logger';
 import { invoiceGroupKey } from '@/features/invoice/utils/groupInvoiceItems';
+import { useDocumentsPreview } from '@/features/gst/useDocumentsPreview';
+import { DocumentsPreviewNote } from '@/features/gst/DocumentsPreviewNote';
 import type { InvoiceStepProps } from './InvoiceDetailsStep';
+import { invoiceFormExitRoute } from '@/features/invoice/utils/invoiceFormOrigin';
 
 const log = createLogger('InvoiceReviewStep');
 
@@ -94,6 +99,9 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     leaveAfterLostAnswer,
     resetFormState,
   } = useInvoiceForm({ mode, step: STEP_NUMBERS.REVIEW });
+
+  // WH-151: which document(s) the server will make from these lines (its own answer; nothing is worked out here).
+  const documentsPreview = useDocumentsPreview(header.gr_id, items.map((item) => item.disp_trl_id), isEdit ? invoiceId : null);
 
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [savedInvoiceData, setSavedInvoiceData] = useState<SavedInvoiceData | null>(null);
@@ -137,6 +145,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   };
 
   const { role } = useRoleBasedAccess();
+  // The full number as it will read: the prefix in front of the digits (WH-139).
+  const formLabel = `${header.inv_prefix ?? ''}${header.inv_no}`;
   const reasonRequired = discountNeedsReason(header, role);
   // Stable, so that the memoized charges card is not drawn again when only something else changed.
   const handleDiscountReasonChange = useCallback((reason: string) => {
@@ -159,14 +169,16 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     setErrorDialog({ visible: false, title: '', message: '' });
   };
 
-  // Where the form goes when it is left: the invoice's page after an edit, the Invoices tab for a new one.
+  // Where the form goes when it is left: the invoice's page after an edit, the Invoices tab (or the GRN details it was opened from) for a new one.
   const leaveForm = (savedId?: string) => {
     if (isEdit) {
       router.dismissTo(`/invoice-details/${savedId || invoiceId}` as Href);
       return;
     }
+    // WH-162: back to the GRN details the form was opened from, else the Invoices tab.
+    const exitRoute = invoiceFormExitRoute();
     resetFormState();
-    router.dismissTo('/(tabs)/invoices');
+    router.dismissTo(exitRoute as Href);
   };
 
   // Leaving while the answer of the save is lost (D22): the server is not asked any more and nothing is sent. The
@@ -343,11 +355,16 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
       const saved: SavedInvoiceData = {
         invoice_id: result.invoiceId || invoiceId || '',
         invoice_no: result.invoiceNo || 0,
+        // The server's full number; an older server sends none, and the prefix of the form (none there) goes in front.
+        invoice_label: result.invoiceLabel || `${header.inv_prefix ?? ''}${result.invoiceNo || 0}`,
         fin_year: header.inv_fin_year,
         customer_name: header.customer_name,
         // The server's stored total; the form's figure was only an estimate.
         total: result.total ?? null,
-        estimated_total: header.total,
+        // Two documents: the form's total is for both, so there is no estimate to compare with the first one's.
+        ...(result.documents && result.documents.length > 1 ? {} : { estimated_total: header.total }),
+        ...(result.docType ? { doc_type: result.docType } : {}),
+        ...(result.documents ? { documents: result.documents } : {}),
       };
       confirmClosed.later(() => {
         setSavedInvoiceData(saved);
@@ -388,23 +405,22 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
       // Extract year from fin_year string (e.g., '2025-26' -> 2025)
       const finYearNum = parseInt(header.inv_fin_year.split('-')[0], 10);
 
-      // Generate PDF
-      const pdfResult = await generateInvoicePDF(
-        savedInvoiceData.invoice_no,
-        finYearNum
-      );
-      if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setShareError(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('invoice.review.pdfCreateFailed'));
-        return;
-      }
-
-      // Download and share
-      const shareResult = await downloadAndSharePDF(
-        pdfResult.pdfUrl,
-        `Invoice_${savedInvoiceData.invoice_no}_FY${header.inv_fin_year}.pdf`
-      );
-      if (!shareResult.success) {
-        setShareError(tr('invoice.review.pdfShareFailed'));
+      // WH-151: a save that made two documents shares both, one after the other (the share API takes one file at a time).
+      // WH-139: the file name carries the full number ("SRT/12" as "SRT-12").
+      const documents = savedInvoiceData.documents && savedInvoiceData.documents.length > 1
+        ? savedInvoiceData.documents.map((doc) => ({ number: doc.inv_no, label: invoiceLabelOf(doc.invoice_label, doc.inv_no) }))
+        : [{ number: savedInvoiceData.invoice_no, label: invoiceLabelOf(savedInvoiceData.invoice_label, savedInvoiceData.invoice_no) }];
+      for (const { number, label } of documents) {
+        const pdfResult = await generateInvoicePDF(number, finYearNum);
+        if (!pdfResult.success || !pdfResult.pdfUrl) {
+          setShareError(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('invoice.review.pdfCreateFailed'));
+          return;
+        }
+        const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `Invoice_${invoiceFileName(label)}_FY${header.inv_fin_year}.pdf`);
+        if (!shareResult.success) {
+          setShareError(tr('invoice.review.pdfShareFailed'));
+          return;
+        }
       }
     } catch (error) {
       log.error('Share PDF error:', error);
@@ -428,6 +444,14 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     const result = await printInvoiceRange(start, end, printFinYear(header.inv_fin_year));
     printAnswered.current = true;
     if (result.success) {
+      // WH-151: invoices the form did not print are named in the dialog, which stays open (Close returns to the saved-invoice
+      // dialog); the form is left from there.
+      const skippedNote = printSkippedNote(result);
+      if (skippedNote) {
+        printAnswered.current = false;
+        showToast(tr('invoice.print.sent'));
+        return skippedNote;
+      }
       setShowPrintDialog(false);
       // The toast shows on the screen the form returns to.
       const message = end && end !== start
@@ -463,8 +487,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   };
 
   const confirmTitle = isEdit
-    ? tr('invoice.review.updateTitle', { number: formatIdentifier(header.inv_no) })
-    : tr('invoice.review.saveTitle', { number: formatIdentifier(header.inv_no) });
+    ? tr('invoice.review.updateTitle', { number: formatIdentifier(formLabel) })
+    : tr('invoice.review.saveTitle', { number: formatIdentifier(formLabel) });
   const toggleSection = (section: string) => toggle(section as ReviewSectionId);
   const saveLabel = isEdit ? tr('invoice.review.updateInvoice') : tr('invoice.review.saveInvoice');
 
@@ -482,7 +506,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         leaveWarning={lostAnswer ? tr('errors.lostAnswer.leaveWarning') : undefined}
         // The step circles go nowhere while the answer is lost, or while the invoice is read again (D1).
         onStepPress={lostAnswer || reloading ? undefined : handleStepPress}
-        invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}
+        invoiceNo={header.inv_no > 0 ? formLabel : undefined}
         isEditMode={isEdit}
       />
       {lostAnswer && <LostAnswerNotice />}
@@ -495,6 +519,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         enableOnAndroid={true}
         extraScrollHeight={100}
       >
+        <DocumentsPreviewNote state={documentsPreview} hasDiscount={header.discount > 0} />
         <ReviewCard testID="invoice-review">
           {/* Invoice details */}
           <ReviewSection
@@ -504,12 +529,12 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             onEdit={lostAnswer || reloading ? undefined : () => handleStepPress(STEP_NUMBERS.HEADER)}
             editLabel={tr('invoice.review.editDetailsA11y')}
             closedLine={[
-              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(header.inv_no) }) : null,
+              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(formLabel) }) : null,
               formatInvoiceDate(header.inv_date) || null,
               header.customer_name || null,
             ].filter(Boolean).join(' · ')}
             spokenClosedLine={[
-              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(header.inv_no) }) : null,
+              header.inv_no > 0 ? tr('invoice.review.closedInvoice', { number: formatIdentifier(formLabel) }) : null,
               formatSpokenInvoiceDate(header.inv_date) || null,
               header.customer_name || null,
             ].filter(Boolean).join(' · ')}
@@ -518,7 +543,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
             first
           >
             <ReviewKeyValues>
-              <ReviewKeyValue label={tr('common.invoiceNumber')} value={header.inv_no > 0 ? formatIdentifier(header.inv_no) : EMPTY} emphasized first />
+              <ReviewKeyValue label={tr('common.invoiceNumber')} value={header.inv_no > 0 ? formatIdentifier(formLabel) : EMPTY} emphasized first />
               <ReviewKeyValue label={tr('invoice.form.invoiceDate')} value={formatInvoiceDate(header.inv_date) || EMPTY} spokenValue={formatSpokenInvoiceDate(header.inv_date) || EMPTY} />
               <ReviewKeyValue label={tr('invoice.label.financialYear')} value={header.inv_fin_year ? formatFinancialYear(header.inv_fin_year) : EMPTY} />
               <ReviewKeyValue label={tr('common.grn')} value={header.gr_no ? formatIdentifier(header.gr_no) : EMPTY} />
@@ -608,6 +633,11 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         onConfirm={handlePrintConfirm}
         title={tr('invoice.print.title')}
         defaultNumber={savedInvoiceData?.invoice_no?.toString() || ''}
+        defaultEndNumber={
+          savedInvoiceData?.documents && savedInvoiceData.documents.length > 1
+            ? String(savedInvoiceData.documents[savedInvoiceData.documents.length - 1].inv_no)
+            : undefined
+        }
         entity="invoice"
         placeholder={tr('invoice.print.example', { example: '123' })}
       />

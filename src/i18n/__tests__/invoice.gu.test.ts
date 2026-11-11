@@ -71,14 +71,14 @@ describe('invoice texts in Gujarati', () => {
     expect(english.errors).toMatchObject({
       charge: 'Charge cannot be negative',
       tax: 'Tax cannot exceed 100%',
-      duration: 'Duration must be at least 0.5 months',
+      duration: 'Duration must be at least half a month',
     });
     setLanguage('gu');
     const gujarati = await validateItemPricing(bad);
     expect(gujarati.errors).toMatchObject({
       charge: 'ભાડાનો દર શૂન્યથી ઓછો ન હોઈ શકે',
       tax: 'ટેક્સ ૧૦૦% થી વધુ ન હોઈ શકે',
-      duration: 'મુદત ઓછામાં ઓછી ૦.૫ મહિના હોવી જોઈએ',
+      duration: 'સમયગાળો ઓછામાં ઓછો અડધો મહિનો હોવો જોઈએ',
     });
   });
 });

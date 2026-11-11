@@ -45,6 +45,8 @@ jest.mock('@/features/invoice/schemas/invoiceValidation', () => ({
   // A new invoice is checked with the number's ceiling (backend migration 73).
   validateNewInvoiceStep1: jest.fn(async () => ({ isValid: true, errors: {} })),
   validateNewInvoice: jest.fn(async () => ({ isValid: true, errors: {} })),
+  // The form hands the invoice's stored charging rule to the validation (WH-137).
+  setInvoiceChargingRule: jest.fn(),
 }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 

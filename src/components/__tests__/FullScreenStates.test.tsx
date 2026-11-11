@@ -10,7 +10,6 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { ListErrorFallback } from '@/components/list/ListErrorBoundary';
 import { InvalidRouteScreen } from '@/components/InvalidRouteScreen';
-import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 
 let mockTheme: { preference: Mode; brand: Brand } = { preference: 'light', brand: 'orange' };
 jest.mock('@/store/hooks', () => ({
@@ -30,14 +29,6 @@ jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() 
 jest.mock('@/config/sentryConfig', () => ({ captureException: jest.fn() }));
 jest.mock('@/hooks/useConfig', () => ({
   useEnvironment: () => ({ name: 'Test', version: '1.0.0', buildDate: '2026-10-09T10:00:00Z' }),
-}));
-jest.mock('@/hooks/useBiometricAuth', () => ({
-  useBiometricAuth: () => ({
-    biometricType: 'fingerprint',
-    biometricLabel: 'Fingerprint',
-    authenticateWithBiometric: jest.fn(() => Promise.resolve(false)),
-    isLoading: false,
-  }),
 }));
 jest.mock('@/hooks/useHaptics', () => ({
   triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn(),
@@ -103,11 +94,5 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     const text = textOf(tree!);
     expect(text).toContain('Page not found');
     expect(text).toContain('Go back');
-  });
-
-  it('BiometricLockScreen renders on the theme background', async () => {
-    await act(async () => { tree = create(<BiometricLockScreen onSuccess={jest.fn()} onUsePhoneLogin={jest.fn()} />); });
-    expect(textOf(tree!)).toContain('Welcome back');
-    expect(hasBackground(tree!, t.background.base)).toBe(true);
   });
 });

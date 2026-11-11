@@ -192,7 +192,7 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
     const args = {
       number: formatIdentifier(line.dispatchNo || '—'),
       date: line.dispatchDate && toDate(line.dispatchDate) ? spokenDateText(line.dispatchDate) : '—',
-      months: oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(line.months * 10) / 10, 'month'),
+      months: oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(line.months * 100) / 100, 'month'),
       days: formatCount(line.days, 'day'),
       bags: formatPackages(line.qty, line.packaging),
       charge: formatInvoiceAmount(line.charge),

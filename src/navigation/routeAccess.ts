@@ -42,11 +42,15 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'item-price-history': 'itemPriceHistory',
   'standard-rate': 'standardRate',
   'document-numbering': 'documentNumbering',
+  charging: 'charging',
+  'gst-details': 'gstDetails',
   'rack-presets': 'rackPresets',
   sensors: 'sensors',
   'sensor-detail': 'sensors',
   'sensor-edit': 'sensorWrite',
   'reports/operations-dashboard': 'operationsDashboard',
+  'reports/customer-dues': 'customerDues',
+  'reports/statement': 'customerStatement',
 };
 
 /**

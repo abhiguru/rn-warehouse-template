@@ -130,6 +130,7 @@ export function buildInvoiceTable(
     (lines ?? []).map((line) => ({
       invoice_id: line.invoice_details?.invoice_id,
       invoice_no: line.invoice_details?.invoice_no,
+      invoice_label: line.invoice_details?.invoice_label,
       invoice_date: line.invoice_details?.invoice_date,
       total: line.invoice_details?.total,
     })),

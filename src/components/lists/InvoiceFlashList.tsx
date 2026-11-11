@@ -51,9 +51,11 @@ import { useCanPrint } from '@/hooks/useCanPrint';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
 import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
+import { printSkippedNote } from '@/features/gst/printSkipped';
 import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { usePaymentsVisible } from '@/features/payments/usePaymentsVisible';
 
 // Filters, search and sort
 import { INVOICE_FILTERS } from '@/features/filters/configs';
@@ -134,6 +136,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const { userProfile } = useAppSelector(state => state.auth);
   const dispatch = useAppDispatch();
   const { canCreate } = usePermissions();
+  // WH-143: the status tag shows only while payments are on (the server sends no status to staff).
+  const showPayment = usePaymentsVisible();
   const { canManageOrders: isWarehouseRole, assignedCustomerIds } = useRoleBasedAccess();
   const assignedCustomerNames = useMemo(
     () => Object.fromEntries((userProfile?.assignedCustomers || []).map(customer => [customer.id, customer.name])),
@@ -365,7 +369,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
           ? translate('invoice.print.sentWithJob', { job: String(result.print_job.cups_job_id) })
           : translate('invoice.print.sent')
       );
-      return;
+      // WH-151: invoices the form did not print are named in the dialog, which stays open until it is closed.
+      return printSkippedNote(result) ?? undefined;
     }
     if (result.unconfirmed) {
       showAlert(translate('grn.review.printUnconfirmedTitle'), printFailureMessage(result));
@@ -422,9 +427,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         canPrint={canPrint}
         onPrint={handlePrint}
         words={words}
+        showPayment={showPayment}
       />
     );
-  }, [handleInvoicePress, canPrint, handlePrint, words, offlineUpdatedAt]);
+  }, [handleInvoicePress, canPrint, handlePrint, words, offlineUpdatedAt, showPayment]);
 
   const ListFooter = useMemo(() => {
     if (loadMoreFailed && !isLoadingMore) {

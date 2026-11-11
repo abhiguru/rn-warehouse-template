@@ -17,7 +17,9 @@ export class AppTooOldError extends Error {
     /** This build's version. */
     readonly current: string,
     /** The build's public Google Play listing (`updateUrlOf`, operatorServer.ts); absent when its application id is not a real one. */
-    readonly updateUrl?: string
+    readonly updateUrl?: string,
+    /** The update is the facility's own download page (a facility on its local network only, WH-146). */
+    readonly facilityDownload?: boolean
   ) {
     super(message);
     this.name = 'AppTooOldError';
@@ -29,12 +31,13 @@ export const isAppTooOld = (error: unknown): error is AppTooOldError =>
   (typeof error === 'object' && error !== null && (error as { code?: unknown }).code === APP_TOO_OLD);
 
 /** What the screen shows: the two versions and the update link, if there is one. */
-export type AppTooOldInfo = { minimum: string; current: string; updateUrl?: string };
+export type AppTooOldInfo = { minimum: string; current: string; updateUrl?: string; facilityDownload?: boolean };
 
 export const appTooOldInfo = (error: AppTooOldError): AppTooOldInfo => ({
   minimum: error.minimum,
   current: error.current,
   ...(error.updateUrl ? { updateUrl: error.updateUrl } : {}),
+  ...(error.facilityDownload ? { facilityDownload: true } : {}),
 });
 
 /**
@@ -51,7 +54,7 @@ export const subscribeAppTooOld = (listener: () => void): (() => void) => {
   return () => { listeners.delete(listener); };
 };
 function setAppTooOld(next: AppTooOldInfo | null): void {
-  if (tooOld === next || (tooOld && next && tooOld.minimum === next.minimum && tooOld.current === next.current && tooOld.updateUrl === next.updateUrl)) return;
+  if (tooOld === next || (tooOld && next && tooOld.minimum === next.minimum && tooOld.current === next.current && tooOld.updateUrl === next.updateUrl && tooOld.facilityDownload === next.facilityDownload)) return;
   tooOld = next;
   for (const listener of [...listeners]) listener();
 }

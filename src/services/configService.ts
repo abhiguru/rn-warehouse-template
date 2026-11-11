@@ -12,7 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getActiveOperatorOrigin, recordServerLanAddress } from '@/config/operatorServer';
 import { answeredPath, isTunnelFailure, transportFetch, type ConnectionPath } from '@/config/lanTransport';
 import { withLocalizedBootstrapErrors } from '@/config/bootstrapErrors';
-import { createSessionReadFetch } from '@/config/supabaseConfig';
+import { createSessionReadFetch, keepLanKeyFromConfig } from '@/config/supabaseConfig';
 import { discardBody } from '@/config/discardBody';
 import { getAuthToken } from '@/utils/authTokenUtils';
 import {
@@ -322,6 +322,8 @@ class ConfigService {
       if (!current() || this.fullKey !== key) return null;
       // The warehouse network address the server offers is refreshed from every answer of the public path.
       if (answeredOver === 'public') {
+        // The warehouse network key, only from an answer that came over the internet (WH-133).
+        await keepLanKeyFromConfig(fetched, token, generation);
         try {
           await recordServerLanAddress(origin, data.urls.lan);
         } catch {

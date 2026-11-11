@@ -15,6 +15,8 @@ export const settings = {
     standardRateSubtitle: 'The rate new items get',
     documentNumbers: 'Document numbers',
     documentNumbersSubtitle: 'How GRN, dispatch and invoice numbers are written',
+    charging: 'Charging',
+    chargingSubtitle: 'How storage time is counted and totals are rounded',
     rackPresets: 'Rack buttons',
     rackPresetsSubtitle: 'The Floor and Chamber buttons on the GRN item form',
     sensors: 'Temperature and humidity',
@@ -217,6 +219,12 @@ export const settings = {
     detailOtherNetwork: 'Connect this phone to the warehouse Wi-Fi, then check again.',
     statusNetworkUnknown: 'Wi-Fi address not known',
     detailNetworkUnknown: 'This phone could not read its own Wi-Fi address, so it does not use the warehouse network. Try again in a moment.',
+    // The warehouse network key (WH-133): a phone without one uses only the internet; a changed answer is shown under "Connected via".
+    statusNoKey: 'Not ready',
+    detailNoKey:
+      'This phone gets its warehouse network key the next time it reaches your server over the internet. Until then it uses only the internet.',
+    answerChanged:
+      'An answer on the warehouse network was changed on the way, so this phone stopped using it. Tell whoever runs your server.',
     resultNotSet: 'No address to check',
     lastChecked: 'Last checked {{when}}: {{result}}',
     neverChecked: 'Not checked yet',

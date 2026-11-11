@@ -37,10 +37,11 @@ export type LanCheckRecord = {
 };
 
 /**
- * `not-set`: the server offers no address. `other-network`: this phone's network cannot hold it. `network-unknown`:
+ * `no-key` (WH-133): this phone has no warehouse network key yet, so it does not use the warehouse network; nothing was
+ * asked. `not-set`: the server offers no address. `other-network`: this phone's network cannot hold it. `network-unknown`:
  * the phone could not read its own Wi-Fi address. Nothing was asked in the last two cases.
  */
-export type LanCheckAnswer = LanCheckRecord | { outcome: 'not-set' | 'other-network' | 'network-unknown' };
+export type LanCheckAnswer = LanCheckRecord | { outcome: 'not-set' | 'other-network' | 'network-unknown' | 'no-key' };
 
 export const DAILY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** While the last check did not find the address reachable, the next one is due after this long (about hourly). */
@@ -92,7 +93,12 @@ export function checkLanNow(trigger: LanCheckRecord['trigger'] = 'manual'): Prom
     const probe = await probeLan();
     let outcome: LanCheckOutcome = 'reachable';
     if (!probe.ok) {
-      if (probe.reason === 'not-set' || probe.reason === 'other-network' || probe.reason === 'network-unknown')
+      if (
+        probe.reason === 'not-set' ||
+        probe.reason === 'other-network' ||
+        probe.reason === 'network-unknown' ||
+        probe.reason === 'no-key'
+      )
         return { outcome: probe.reason };
       outcome = probe.reason;
     }

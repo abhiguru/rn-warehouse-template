@@ -26,6 +26,7 @@ in Gujarati script; **English** = left in English letters.
 5. **Spelling**: ઑ in ઑર્ડર, ઑગસ્ટ, ઑક્ટોબર; પહેલાં with its dot; plural વિગતો, પરિણામો.
 6. **Kept in English letters**: GRN (where the code itself is meant), GST, PAN, OTP, kg in
    narrow columns.
+   UPI, GSTIN, SAC and SMS are not on this list: they are written in Gujarati script (see Trade words).
 
 ## Trade words
 
@@ -74,6 +75,10 @@ in Gujarati script; **English** = left in English letters.
 | Discount reason | છૂટનું કારણ | translate | Owner's choice (wording review) |
 | Tax | ટેક્સ | Gujarati letters | Owner's choice |
 | GST | GST | English | Checked |
+| UPI (payment mode) | યુપીઆઈ | Gujarati letters | Owner's choice (2026-11-11) |
+| GSTIN (the 15-character GST number) | જીએસટીઆઈએન | Gujarati letters | Owner's choice (2026-11-11) |
+| SAC (service accounting code) | એસએસી | Gujarati letters | Owner's choice (2026-11-11) |
+| SMS | એસએમએસ | Gujarati letters | Owner's choice (2026-11-11) |
 | Total | કુલ | translate | Checked |
 | Net before tax | ટેક્સ પહેલાંની રકમ | translate | Checked |
 | Amount | રકમ | translate | Checked |
@@ -91,6 +96,7 @@ in Gujarati script; **English** = left in English letters.
 | Weight band (a range of bag weights with one rate; English "weight band", not "tier", in the rate editor) | વજન મર્યાદા | translate | Draft |
 | Warehouse, godown | વખાર | translate | Owner's choice |
 | Warehouse network (the LAN fallback to the server) | વખારનું નેટવર્ક | translate | Draft (2026-10-26) |
+| Warehouse network key (the secret that signs requests on the warehouse network) | વખારના નેટવર્કની ચાવી | translate | Draft (2026-11-07) |
 | Photo | ફોટો | Gujarati letters | Checked |
 | Order status: open | બાકી | translate | Owner's choice |
 | Order status: closed | પૂર્ણ | translate | Owner's choice |

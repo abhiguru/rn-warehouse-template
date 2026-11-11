@@ -84,12 +84,11 @@ overrides the formula at build time; leave it unset, or keep it equal to the for
     which is harmless on 36. **Before raising the target SDK to 37** add the runtime request
     (`PermissionsAndroid.request`, best asked from Help, Connection, Check now). `scripts/android-lan-cleartext.test.mjs`
     fails when the target reaches 37 and no such request is in `src/`.
-  - Not in this release, recorded for the owner: an authenticated proof of the LAN address. Today the identity
-    check compares the server's public `instanceId`, so it tells this warehouse from another one but not from a
-    device that copies the answer. A challenge that the server answers with an HMAC (a per-session secret from the
-    authenticated `get-config`; server side with pgcrypto and the service key) would make it real authentication and
-    close the "rogue device on the warehouse Wi-Fi" class that the plain-http decision accepts. It needs both
-    repositories.
+  - Built (WH-133): requests and answers on the warehouse network are signed with a per-session key (HMAC-SHA256), and the
+    LAN address must answer a challenge with an HMAC before any token is sent there. Reading the traffic stays possible
+    (plain http); a changed request or answer is refused, and a phone with no key uses only the internet. Photos shown
+    on screen load over the internet only (a native image view cannot sign); documents are checked before they are
+    shared. Needs the backend with migration 163 and `gateway-lan` with the signer. Spec: WH-133.
   - Both native changes need a new APK and iOS build; an OTA update cannot carry them.
 - `.env.example` leaves the optional Sentry/GlitchTip DSN commented out.
   `src/config/sentryConfig.ts` enables it only outside development with a

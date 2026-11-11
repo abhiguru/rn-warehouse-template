@@ -14,9 +14,13 @@ import { requestCentralCode } from '@/config/centralSession';
 import { getCentralLoginConfig } from '@/config/envConfig';
 import { hasAcceptedTerms } from '@/config/centralTerms';
 import { SignOutReasonStrip } from '@/components/central/SignOutReasonStrip';
+import { CantSendStrip } from '@/components/central/CantSendStrip';
 import { showAlert } from '@/utils/alert';
 import { getLanguage, localizeDigits, t as tr } from '@/i18n';
 import { clearSignInDraft, readSignInDraft, saveSignInDraft } from '@/utils/signInDraft';
+
+/** The failures that mean the service cannot send a code now (not a wait it named, not a mistake in the number). */
+const CANT_SEND_CODES: readonly string[] = ['network', 'timeout', 'unavailable', 'sms_unavailable', 'failed'];
 
 export default function CentralLoginScreen() {
   const central = useCentralState();
@@ -39,6 +43,8 @@ export default function CentralLoginScreen() {
   }, [draftKey]);
 
   const [busy, setBusy] = useState(false);
+  // The service could not send a code (error, outage, no answer in time): the facility's own SMS sign-in is offered.
+  const [cantSend, setCantSend] = useState(false);
   // The first sign-in of a NUMBER on this phone: the terms are accepted with a tick.
   // The box is shown unless the number on screen is the one the store was asked
   // about and it has accepted before; a number just typed therefore shows the box
@@ -87,12 +93,16 @@ export default function CentralLoginScreen() {
     try {
       const result = await requestCentralCode(formattedPhone);
       if (result.ok) {
+        setCantSend(false);
         setCentralState({ signInPhone: formattedPhone });
         router.push('/central-otp');
       } else if (result.retryAfterSeconds) {
         // A wait the service named: count it down instead of an alert.
         triggerRateLimit(result.retryAfterSeconds * 1000, result.message);
+      } else if (CANT_SEND_CODES.includes(result.code)) {
+        setCantSend(true);
       } else {
+        setCantSend(false);
         showAlert(tr('auth.login.couldNotSendTitle'), result.message);
       }
     } finally {
@@ -116,7 +126,10 @@ export default function CentralLoginScreen() {
       } : undefined}
       onOpenTerms={() => router.push('/terms-of-service')}
       onOpenPrivacy={() => router.push('/privacy-policy')}
-      banner={<SignOutReasonStrip />}
+      banner={<>
+        <SignOutReasonStrip />
+        {cantSend ? <CantSendStrip onPress={() => router.push({ pathname: '/facility-code', params: { mode: 'sms' } })} /> : null}
+      </>}
       alternative={{
         label: tr('auth.facilityCode.link'),
         hint: tr('auth.facilityCode.linkHint'),

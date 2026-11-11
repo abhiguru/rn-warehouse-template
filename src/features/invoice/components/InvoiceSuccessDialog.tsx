@@ -25,8 +25,10 @@ import {
 } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { SavedInvoiceData } from '@/types/invoice.types';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { formatFinancialYear } from '@/utils/formatters';
+import { asDocType, docTypeKey } from '@/features/gst/docType';
 
 interface InvoiceSuccessDialogProps {
   isVisible: boolean;
@@ -217,11 +219,22 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
   const t = useTokens();
 
   if (!invoiceData) return null;
+  const invoiceLabel = invoiceLabelOf(invoiceData.invoice_label, invoiceData.invoice_no);
 
+  // WH-151: a save that made two documents (a tax invoice and a bill of supply) names both, each with its own total.
+  const documents = invoiceData.documents && invoiceData.documents.length > 1 ? invoiceData.documents : null;
+  const docType = asDocType(invoiceData.doc_type);
   const title = isEditMode ? tr('invoice.success.updatedTitle') : tr('invoice.success.savedTitle');
-  const message = isEditMode
-    ? tr('invoice.success.updatedMessage', { number: formatIdentifier(invoiceData.invoice_no) })
-    : tr('invoice.success.savedMessage', { number: formatIdentifier(invoiceData.invoice_no) });
+  const message = documents
+    ? tr('gst.saved.twoNumbers', {
+        first: formatIdentifier(invoiceLabelOf(documents[0].invoice_label, documents[0].inv_no)),
+        firstType: tr(docTypeKey(documents[0].doc_type)),
+        second: formatIdentifier(invoiceLabelOf(documents[1].invoice_label, documents[1].inv_no)),
+        secondType: tr(docTypeKey(documents[1].doc_type)),
+      })
+    : isEditMode
+    ? tr('invoice.success.updatedMessage', { number: formatIdentifier(invoiceLabel) })
+    : tr('invoice.success.savedMessage', { number: formatIdentifier(invoiceLabel) });
   // The total is the one the server stored. When it could not be read back
   // after the save, no amount is shown: the form's own figure is an estimate.
   const totalKnown = typeof invoiceData.total === 'number';
@@ -229,6 +242,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
   // The server accepts a total within 1 of the one confirmed, so a difference of 1 or less is not worth a note.
   const { total: storedTotal, estimated_total: estimatedTotal } = invoiceData;
   const totalDiffers =
+    !documents &&
     typeof storedTotal === 'number' && typeof estimatedTotal === 'number' && Math.abs(estimatedTotal - storedTotal) > 1;
 
   return (
@@ -261,7 +275,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
               style={styles.detailsCard}
               accessible
               accessibilityLabel={tr(totalKnown ? 'invoice.success.detailsWithTotalA11y' : 'invoice.success.detailsA11y', {
-                number: formatIdentifier(invoiceData.invoice_no),
+                number: formatIdentifier(invoiceLabel),
                 year: formatFinancialYear(invoiceData.fin_year),
                 customer: invoiceData.customer_name,
                 total,
@@ -269,7 +283,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
             >
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>{tr('common.invoiceNumber')}</Text>
-                <Text style={styles.detailValue}>{invoiceData.invoice_no}</Text>
+                <Text style={styles.detailValue}>{invoiceLabel}</Text>
               </View>
 
               <View style={styles.detailRow}>
@@ -284,7 +298,21 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                 </Text>
               </View>
 
-              {totalKnown && (
+              {documents
+                ? documents.map((doc) => (
+                    <View key={doc.invoice_id} style={styles.totalRow} testID={`invoice-saved-document-${doc.inv_no}`}>
+                      <Text style={styles.totalLabel}>{`${formatIdentifier(invoiceLabelOf(doc.invoice_label, doc.inv_no))} · ${tr(docTypeKey(doc.doc_type))}`}</Text>
+                      <Text style={styles.totalValue}>{typeof doc.total === 'number' ? formatInvoiceAmount(doc.total) : ''}</Text>
+                    </View>
+                  ))
+                : null}
+              {!documents && docType !== 'invoice' ? (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>{tr('gst.detail.type')}</Text>
+                  <Text style={styles.detailValue}>{tr(docTypeKey(docType))}</Text>
+                </View>
+              ) : null}
+              {!documents && totalKnown && (
                 <View style={styles.totalRow}>
                   <Text style={styles.totalLabel}>{tr('common.total')}</Text>
                   <Text style={styles.totalValue}>{total}</Text>
@@ -292,7 +320,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
               )}
             </View>
 
-            {!totalKnown && <Text style={styles.totalNote}>{tr('invoice.success.totalNotRead')}</Text>}
+            {!documents && !totalKnown && <Text style={styles.totalNote}>{tr('invoice.success.totalNotRead')}</Text>}
             {totalDiffers && (
               <Text style={styles.totalNote}>
                 {tr('invoice.success.totalDiffers', { estimate: formatInvoiceAmount(estimatedTotal) })}

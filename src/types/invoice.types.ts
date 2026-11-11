@@ -1,5 +1,6 @@
 // Invoice form types for creation and editing
 import type { ServerRefusal } from '@/utils/serverRefusal';
+import type { ChargingRule } from '@/features/charging/chargingRule';
 
 // Invoiceable GRN (available for invoice creation)
 export interface InvoiceableGrn {
@@ -21,6 +22,8 @@ export interface InvoiceHeaderData {
   inv_no: number;
   /** The number was typed by the user (client only, never sent). A typed number is never replaced by the server's suggestion. */
   inv_no_typed?: boolean;
+  /** The prefix in front of the number (WH-139): the suggestion's for a new invoice, the saved one for an edit. Client only, never sent. '' or absent: none. */
+  inv_prefix?: string;
   customer_id: string;
   customer_name: string;
   gr_id: string;
@@ -41,6 +44,11 @@ export interface InvoiceHeaderData {
    * An invoice being edited starts with the stored reason. Only the person changes this text: the app never clears it.
    */
   zero_charge_reason?: string;
+  /**
+   * The charging rule the figures were made under (WH-137): the facility's rule for a new invoice, as the preview answered it
+   * and as the save sends it back (`charging`); the invoice's own stored rule for an edit. Absent on a backend before migration 164.
+   */
+  charging?: ChargingRule;
   labour: number; // Calculated sum
   tax_amount: number; // Calculated sum
   total: number; // Calculated grand total
@@ -91,6 +99,22 @@ export interface InvoiceItemData {
   charge: number; // ₹ per unit per duration
   labour_rate: number; // ₹ per unit
   tax: number; // Percentage (e.g., 18 for 18%)
+
+  /**
+   * The storage the server worked out for this line (`storage_amount`, WH-137) with the charge, duration and days it was
+   * worked out from. The app shows it while the line still has all three; once any of them changes (a typed rate, the
+   * server's own durations after TOTAL_CHANGED) the figure is stale and storage is worked out again. `by_days` is set when
+   * the rule charges by the day, where storage is rate x quantity x the line's days (never below `minimum_days`, the rule's
+   * minimum in days, or 1) / 30, not rate x quantity x the rounded months. Absent on a backend before migration 164.
+   */
+  server_storage?: {
+    amount: number;
+    charge: number;
+    duration: number;
+    no_of_days: number;
+    by_days: boolean;
+    minimum_days: number;
+  };
 
   // Calculated fields (read-only)
   amount: number; // qty × charge × duration
@@ -201,6 +225,8 @@ export interface CreateInvoicePayload {
      * the save when its own total differs by more than 1. Left out of the request when not given.
      */
     expected_total?: number;
+    /** The charging rule the form showed (WH-137), sent as `charging`: the server refuses the save when the facility's rule is another now. */
+    charging?: ChargingRule;
   };
   items: {
     disp_trl_id: string;
@@ -221,15 +247,32 @@ export interface CreateInvoicePayload {
   }[];
 }
 
+/** One document of a save (migration 173, WH-151): a save makes one, or two (a tax invoice and a bill of supply). All the server's. */
+export interface SavedInvoiceDocument {
+  invoice_id: string;
+  inv_no: number;
+  /** The full number ("SRT/12", migration 175, WH-139); absent on an older server: the digits. */
+  invoice_label?: string;
+  inv_fin_year?: number | string;
+  doc_type: string;
+  total: number | null;
+}
+
 export interface SavedInvoiceData {
   invoice_id: string;
   invoice_no: number;
+  /** The full number the server answered with ("SRT/12"); absent: the digits. */
+  invoice_label?: string;
   fin_year: string;
   customer_name: string;
   /** The total the server stored. null when it could not be read back after the save. */
   total: number | null;
   /** The total the form showed before saving, to say so when the stored one differs. */
   estimated_total?: number;
+  /** WH-151: the document type the server made (absent on an older backend). */
+  doc_type?: string;
+  /** WH-151: every document the save made, in number order; two for a tax invoice with a bill of supply. */
+  documents?: SavedInvoiceDocument[];
 }
 
 // Response types
@@ -238,6 +281,8 @@ export interface NextInvoiceNumberResponse {
   success: boolean;
   data: {
     next_invoice_number: number;
+    /** The prefix of that financial year's invoices (migration 175); '' or absent: none. */
+    prefix?: string;
     financial_year: string;
   };
   message?: string;
@@ -267,12 +312,21 @@ export interface CreateInvoiceResponse {
   data: {
     invoice_id: string;
     invoice_no: number;
+    /** The full number the server answered with ("SRT/12", migration 175); absent on an older server. */
+    invoice_label?: string;
     /** The total the server computed and stored; null when it could not be read back. */
     total?: number | null;
+    /** WH-151: the document type the server made. */
+    doc_type?: string;
+    /** WH-151: every document of the save (two for a mixed save to a customer with a GSTIN). */
+    documents?: SavedInvoiceDocument[];
   };
   message?: string;
-  /** The save was refused because the invoice number is taken (the number that was refused). */
-  numberTaken?: { number: number };
+  /**
+   * The save was refused because the invoice number is taken (the number that was refused). `second`: the save makes two
+   * documents and it is the SECOND number (the one after the number sent) that is used (WH-151).
+   */
+  numberTaken?: { number: number; second?: boolean };
   /**
    * The request may have reached the server, but no answer came back (owner rule D22). `sentAt` is when it was sent
    * (ms since 1970): the caller waits for the connection and for the server, then asks what became of the request.

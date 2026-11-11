@@ -51,6 +51,11 @@ export const SENSITIVE_STRING_PATTERNS = [
     pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     replacement: '[REDACTED_EMAIL]',
   },
+  // A warehouse network key (WH-133) is 64 hex characters; so is a session token, and a hash that is redacted too is harmless.
+  {
+    pattern: /\b[a-f0-9]{64}\b/gi,
+    replacement: '[REDACTED_KEY]',
+  },
   // API keys (e.g. Supabase, Stripe, Sentry prefixes)
   {
     pattern: /\b(sk|pk|sbp)_[a-zA-Z0-9]{20,}\b/g,
@@ -70,7 +75,7 @@ const SENSITIVE_KEY_REGEX =
 // broad; a harmless key that contains one (`footprint` contains `otp`) is
 // redacted too, which is the safe direction. Review 2026-10-17, M01.
 const SENSITIVE_KEY_SUBSTRING_REGEX =
-  /token|secret|passw|otp|authorization|cookie|credential|phone/i;
+  /token|secret|passw|otp|authorization|cookie|credential|phone|lan[_-]?key|x-lan-/i;
 
 function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_REGEX.test(key) || SENSITIVE_KEY_SUBSTRING_REGEX.test(key);
@@ -100,6 +105,14 @@ const SENSITIVE_HEADERS = [
   'proxy-authorization',
   'x-api-key',
   'authentication',
+  // The warehouse network path (WH-133): the key id, challenge, time, request id, signature and proof of every request.
+  'x-lan-key-id',
+  'x-lan-challenge',
+  'x-lan-time',
+  'x-lan-request-id',
+  'x-lan-signature',
+  'x-lan-server-time',
+  'x-lan-proof',
 ];
 
 /**

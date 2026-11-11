@@ -6,6 +6,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { getConnectionPath, noteNetworkState, resetLanTransport, setLanContext, transportFetch } from '../lanTransport';
 import { OTHER_WIFI_SAME_RANGE, onWarehouseWifi } from '@/tests/helpers/lanNetwork';
+import { installLanKey, removeLanKey, signingLan } from '@/tests/helpers/lanSigning';
 
 let mockSignedFails = false;
 jest.mock('@/config/supabaseConfig', () => {
@@ -30,7 +31,19 @@ jest.mock('@/config/supabaseConfig', () => {
 jest.mock('expo-image-manipulator', () => ({ SaveFormat: { WEBP: 'webp' }, manipulateAsync: jest.fn() }));
 jest.mock('expo-file-system', () => ({ File: jest.fn() }));
 jest.mock('expo-image-picker', () => ({}));
-jest.mock('expo-crypto', () => ({ CryptoDigestAlgorithm: { SHA256: 'SHA-256' }, digestStringAsync: jest.fn(), randomUUID: jest.fn() }));
+jest.mock('expo-crypto', () => {
+  const nodeCrypto = jest.requireActual('node:crypto');
+  return {
+    CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+    digestStringAsync: jest.fn(),
+    digest: async (_algorithm: string, data: Uint8Array) => {
+      const out = nodeCrypto.createHash('sha256').update(Buffer.from(data.buffer, data.byteOffset, data.byteLength)).digest();
+      return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+    },
+    getRandomBytesAsync: async (count: number) => new Uint8Array(nodeCrypto.randomBytes(count)),
+    randomUUID: jest.fn(),
+  };
+});
 
 const root = join(__dirname, '..', '..', '..');
 const sourceFiles = (directory: string): string[] =>
@@ -60,7 +73,14 @@ const countIn = (file: string, pattern: RegExp) =>
 describe('the places the host is rewritten', () => {
   it('the gated fetch, discovery and the configuration fetch send through the transport, and no one else does', () => {
     expect(filesWith(/\btransportFetch\(/)).toEqual(
-      ['src/config/lanTransport.ts', 'src/config/operatorServer.ts', 'src/config/supabaseConfig.ts', 'src/services/configService.ts'].sort()
+      [
+        'src/config/lanPhotos.ts', // a photo on the warehouse network: fetched signed, verified, shown from a cache file (WH-133)
+        'src/config/lanTransport.ts',
+        'src/config/operatorServer.ts',
+        'src/config/supabaseConfig.ts',
+        'src/services/configService.ts',
+        'src/utils/shareDocument.ts', // a document on the warehouse network: fetched signed, verified, then written to the file (WH-133)
+      ].sort()
     );
   });
 
@@ -76,7 +96,6 @@ describe('the places the host is rewritten', () => {
         'src/components/ImageOverlay.tsx', // the full-screen viewer
         'src/services/dispatch-detail-service.ts',
         'src/services/grn-detail-service.ts',
-        'src/utils/shareDocument.ts',
       ].sort()
     );
   });
@@ -105,7 +124,7 @@ describe('the places the host is rewritten', () => {
 
   it('the share download is the only native download', () => {
     expect(filesWith(/\.downloadFileAsync\(/)).toEqual(['src/utils/shareDocument.ts']);
-    expect(filesWith(/\bnoteNativeReadFailed\(/)).toEqual(['src/config/lanTransport.ts', 'src/utils/shareDocument.ts']);
+    expect(filesWith(/\bnoteNativeReadFailed\(/)).toEqual([]);
   });
 
   it('no other module calls fetch by itself: the central service, local photo files and the transport are the only ones', () => {
@@ -115,9 +134,11 @@ describe('the places the host is rewritten', () => {
         // the association service, not a facility
         'src/config/centralSession.ts: const response = await fetch(`${config.origin}${path}`, {',
         // the transport itself
-        "src/config/lanTransport.ts: fetch(url, { method: 'GET', signal: controller.signal }),",
-        "src/config/lanTransport.ts: const request = fetch(on === 'lan' ? retarget(input, swapOrigin(url, ctx.canonical, lan) ?? url) : input, {",
+        "src/config/lanTransport.ts: fetch(url, { method: 'GET', signal: controller.signal, ...(headers ? { headers } : {}) }),",
+        'src/config/lanTransport.ts: const request = fetch(sending.input, { ...sending.init, signal: own.signal });',
         'src/config/lanTransport.ts: return fetch(input, init);',
+        // the pairing code of a local-only facility is redeemed at the address in the scanned code (WH-146)
+        'src/config/localPairing.ts: const response = await fetch(`${payload.addr}/functions/v1/pairing-redeem`, {',
         // `fetch(uri)` of a photo file on the phone
         'src/features/dispatch/services/dispatchImageService.ts: const response = await fetch(uri);',
         'src/features/grn/services/imageUploadService.ts: const response = await fetch(uri);',
@@ -134,6 +155,10 @@ describe('the places the host is rewritten', () => {
     );
     expect(aliases).toEqual(
       [
+        'app/reports/statement.tsx: const fetch = useCallback(() => getCustomerStatement(customerId), [customerId]);', // a callback named fetch
+        "app/reports/statement.tsx: const query = useLiveReport('', fetch, tr(''));",
+        'src/features/reports/useLiveReport.ts: const fetchRef = useRef(fetch);',
+        'src/features/reports/useLiveReport.ts: fetchRef.current = fetch;',
         'src/features/reports/useReportQuery.ts: fetch,', // the callback named fetch, destructured
         'src/services/configService.ts: private static readonly viaTransport: typeof fetch = (input, init) =>', // a type
         'src/services/configService.ts: fetchImpl: typeof fetch = ConfigService.viaTransport,', // a type
@@ -171,31 +196,35 @@ describe('the signed-URL helpers on the warehouse network path', () => {
     resetLanTransport();
     setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: 'instance-0001' });
     onWarehouseWifi();
-    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      const answer = (path: 'lan' | 'public', body: unknown) =>
-        ({ ok: true, status: 200, headers: { get: () => path }, json: async () => body, clone: () => answer(path, body) }) as unknown as Response;
-      if (url.startsWith(PUBLIC)) throw new TypeError('Network request failed');
-      return answer('lan', url.endsWith('/get-public-config') ? { success: true, data: { instanceId: 'instance-0001' } } : 'Hello');
-    }) as unknown as typeof fetch;
+    await installLanKey(PUBLIC, 'instance-0001');
+    global.fetch = jest.fn(
+      signingLan(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        const answer = (path: 'lan' | 'public', body: unknown) =>
+          ({ ok: true, status: 200, headers: { get: (name: string) => (name.toLowerCase() === 'x-warehouse-path' ? path : null) }, json: async () => body, clone: () => answer(path, body) }) as unknown as Response;
+        if (url.startsWith(PUBLIC)) throw new TypeError('Network request failed');
+        return answer('lan', url.endsWith('/get-public-config') ? { success: true, data: { instanceId: 'instance-0001' } } : 'Hello');
+      }, LAN)
+    ) as unknown as typeof fetch;
   });
   afterEach(() => {
+    removeLanKey();
     global.fetch = originalFetch;
     resetLanTransport();
   });
 
-  it('give a link on the public address while the phone is on that path, and on the LAN address after it moves', async () => {
+  it('always give a link on the public address, also on the warehouse network path (WH-133: a native loader cannot sign)', async () => {
     const { getImageSignedUrl } = require('@/features/grn/services/imageUploadService');
     const { getDispatchImageSignedUrl } = require('@/features/dispatch/services/dispatchImageService');
     expect(await getImageSignedUrl('a/b.jpg')).toBe(mockSigned('grn-images/a/b.jpg'));
     await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true });
     expect(getConnectionPath()).toBe('lan');
     const lan = (path: string) => mockSigned(path).replace(PUBLIC, LAN);
-    expect(await getImageSignedUrl('a/b.jpg')).toBe(lan('grn-images/a/b.jpg'));
-    expect(await getDispatchImageSignedUrl('c/d.jpg')).toBe(lan('dispatch-images/c/d.jpg'));
-    // A link already signed on the public address is moved too, and one already on the LAN address is left as it is.
-    expect(await getImageSignedUrl(mockSigned('grn-images/x.jpg'))).toBe(lan('grn-images/x.jpg'));
-    expect(await getImageSignedUrl(lan('grn-images/x.jpg'))).toBe(lan('grn-images/x.jpg'));
+    expect(await getImageSignedUrl('a/b.jpg')).toBe(mockSigned('grn-images/a/b.jpg'));
+    expect(await getDispatchImageSignedUrl('c/d.jpg')).toBe(mockSigned('dispatch-images/c/d.jpg'));
+    // A link already on the public address is left as it is, and one on the LAN address (saved by an older app) comes back on the public one.
+    expect(await getImageSignedUrl(mockSigned('grn-images/x.jpg'))).toBe(mockSigned('grn-images/x.jpg'));
+    expect(await getImageSignedUrl(lan('grn-images/x.jpg'))).toBe(mockSigned('grn-images/x.jpg'));
     // Back on the public path (a change of network), a link that was signed on the LAN address comes back on the public one (review L6).
     noteNetworkState(OTHER_WIFI_SAME_RANGE);
     expect(getConnectionPath()).toBe('public');
@@ -203,15 +232,15 @@ describe('the signed-URL helpers on the warehouse network path', () => {
     expect(await getDispatchImageSignedUrl(lan('dispatch-images/y.jpg'))).toBe(mockSigned('dispatch-images/y.jpg'));
     await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true });
     expect(getConnectionPath()).toBe('lan');
-    // The fallbacks that build a storage URL from the client URL follow the path as well.
+    // The fallbacks that build a storage URL from the client URL stay on the public address too.
     mockSignedFails = true;
     const quiet = ['log', 'warn', 'error'].map(method => jest.spyOn(console, method as 'log').mockImplementation(() => {}));
     jest.useFakeTimers();
     try {
       const grn = getImageSignedUrl('a/b.jpg'); // three attempts, half a second and one second apart
       await jest.advanceTimersByTimeAsync(2000);
-      expect(await grn).toBe(`${LAN}/storage/v1/object/grn-images/a/b.jpg`);
-      expect(await getDispatchImageSignedUrl('c/d.jpg')).toBe(`${LAN}/storage/v1/object/dispatch-images/c/d.jpg`);
+      expect(await grn).toBe(`${PUBLIC}/storage/v1/object/grn-images/a/b.jpg`);
+      expect(await getDispatchImageSignedUrl('c/d.jpg')).toBe(`${PUBLIC}/storage/v1/object/dispatch-images/c/d.jpg`);
     } finally {
       jest.useRealTimers();
       quiet.forEach(spy => spy.mockRestore());

@@ -26,6 +26,8 @@ export const numbering: Translation<typeof source> = {
     free: 'હાથે લખવાનો: ૨૦ અક્ષર સુધીનું કોઈ પણ લખાણ',
     invoiceYear: 'પૂર્ણ સંખ્યા, દર નાણાકીય વર્ષે {{start}}થી ફરી શરૂ',
     invoiceSequence: 'પૂર્ણ સંખ્યા, {{start}}થી શરૂ કરીને વર્ષો સુધી ચાલુ',
+    invoiceYearPrefix: '{{prefix}} આગળ સાથે આખા નંબર, દર નાણાકીય વર્ષે {{start}}થી ફરી શરૂ', // Draft
+    invoiceSequencePrefix: '{{prefix}} આગળ સાથે આખા નંબર, {{start}}થી વર્ષો સુધી ચાલુ', // Draft
     checkOn: 'નિયમ બહારનો નંબર નકારાય છે',
     checkOff: 'નિયમ બહારનો નંબર સાચવાય છે (તપાસ બંધ)',
     notFollowing: {
@@ -52,6 +54,7 @@ export const numbering: Translation<typeof source> = {
     perLetterHelp: 'આટલા પછી આગળનો અક્ષર શરૂ થાય છે.',
     prefix: 'આગળનો ભાગ',
     prefixHelp: '૧૦ સુધી કેપિટલ અક્ષર, આંકડા, / અથવા -. ખાલી પણ ચાલે.',
+    invoicePrefixHelp: '૮ સુધી કેપિટલ અક્ષરો, આંકડા, / અથવા -. ખાલી રાખી શકાય. દરેક ઇન્વૉઇસ નંબરની આગળ છપાશે.', // Draft
     start: 'પહેલો નંબર',
     startHelp: 'આપવાનો પહેલો નંબર.',
     startHelpYear: 'દરેક નાણાકીય વર્ષમાં આપવાનો પહેલો નંબર.',
@@ -93,6 +96,8 @@ export const numbering: Translation<typeof source> = {
     notSaved: 'સચવાયું નથી.',
     saveFailed: 'નંબરિંગ સાચવી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     refused: 'સર્વરે આ મૂલ્યો સ્વીકાર્યા નથી, તેથી નંબરિંગ સાચવાયું નથી. મૂલ્યો તપાસો અને ફરી પ્રયાસ કરો.',
+    prefixLockedMidYear: 'જે નાણાકીય વર્ષમાં ઇન્વૉઇસ બની ગયાં હોય તેમાં આગળનો ભાગ બદલી શકાય નહીં. ૧ એપ્રિલથી બદલી શકો છો.', // Draft
+    switchMidYear: 'આ નાણાકીય વર્ષમાં ઇન્વૉઇસ બની ચૂક્યા છે. નંબરિંગ ૧ એપ્રિલથી બદલી શકાશે.', // Draft
     errors: {
       firstLetter: 'એક કેપિટલ અક્ષર લખો.',
       width: '૧ થી ૭ વચ્ચેની પૂર્ણ સંખ્યા લખો.',

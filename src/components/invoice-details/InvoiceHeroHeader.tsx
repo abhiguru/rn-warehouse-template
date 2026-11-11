@@ -19,7 +19,8 @@ import { StatusTag } from '@/components/ui/StatusTag';
 // TYPES
 // ============================================================================
 interface InvoiceHeroHeaderProps {
-  invoice_number: number;
+  /** The full number as shown ("SRT/12"; the digits when the invoice has no prefix). */
+  invoice_number: number | string;
   date: string;
   total_items: number;
   total_amount: number;

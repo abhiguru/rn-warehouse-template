@@ -13,6 +13,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { switchOperatorServer } from '@/store/operatorSwitch';
 import { appTooOldInfo, isAppTooOld, type AppTooOldInfo } from '@/config/appTooOld';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
+import { FacilityCodeScanner } from '@/components/auth/FacilityCodeScanner';
 import { discoverOperator, getActiveOperatorServer, parseOperatorOrigin } from '@/config/operatorServer';
 
 import { showAlert } from '@/utils/alert';
@@ -66,6 +67,8 @@ export function OperatorServerSelection({
   // The facility checked needs a newer app: the "Update the app" screen, until the person goes back.
   const [tooOld, setTooOld] = useState<AppTooOldInfo | null>(null);
   const [scanning, setScanning] = useState(false);
+  // Scan facility code (WH-146): a facility on its local network only is added by the QR code an administrator makes.
+  const [pairing, setPairing] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const inspection = useRef(0);
   const scanLocked = useRef(false);
@@ -188,6 +191,7 @@ export function OperatorServerSelection({
           <View style={styles.actions}>
             <Button type={candidate ? 'secondary' : 'primary'} size="fullWidth" onPress={() => void inspect(origin)} disabled={busy}>{tr('auth.server.check')}</Button>
             <Button type="secondary" size="fullWidth" onPress={() => void scan()} disabled={busy}>{tr('auth.server.scan')}</Button>
+            {!onChoose && <Button type="secondary" size="fullWidth" onPress={() => setPairing(true)} disabled={busy}>{tr('auth.localFacility.scan')}</Button>}
             {onCancel && <Button type="secondary" variant="normal" size="fullWidth" onPress={onCancel} disabled={busy}>{tr('common.back')}</Button>}
           </View>
 
@@ -215,6 +219,7 @@ export function OperatorServerSelection({
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    <FacilityCodeScanner visible={pairing} onClose={() => setPairing(false)} onAppTooOld={info => { setPairing(false); setTooOld(info); }} />
     <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)}>
       <SafeAreaView style={styles.cameraContainer}>
         <CameraView style={styles.camera} barcodeScannerSettings={{ barcodeTypes: ['qr'] }}

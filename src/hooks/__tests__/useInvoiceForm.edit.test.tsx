@@ -9,7 +9,8 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { router } from 'expo-router';
-import { setCurrentStep } from '@/store/slices/invoiceFormSlice';
+import { setCurrentStep, updateHeader } from '@/store/slices/invoiceFormSlice';
+import { validateItemPricing } from '@/features/invoice/schemas/invoiceValidation';
 import {
   checkGrnStillInvoiceable,
   createInvoice,
@@ -345,6 +346,30 @@ describe('the changed flag of an edit', () => {
 
     await act(async () => { form().updateDiscountAmount(0); });
     expect(form().getIsChanged()).toBe(false);
+    await unmount();
+  });
+});
+
+describe('the duration check follows the invoice\'s charging rule (WH-169)', () => {
+  const oneStepByDay = { step_days: 1, minimum_days: 0, days_counted: 'standard', rounding: 'none' } as const;
+  const durationAccepted = async (duration: number) =>
+    (await validateItemPricing({ duration, no_of_days: 10, charge: 1, labour_rate: 0, tax: 0 })).isValid;
+
+  it('closing one step screen does not reset the minimum; resetForm restores the default', async () => {
+    const { form, store, unmount } = await mount('create', 2, (s) => fillNewInvoice(s));
+    await act(async () => { store.dispatch(updateHeader({ charging: oneStepByDay })); });
+    expect(await durationAccepted(0.33)).toBe(true);
+
+    // Another step screen of the same form comes to the front and then closes (Review closing on Back).
+    const Other = () => { useInvoiceForm({ mode: 'create', step: 3 }); return null; };
+    let other!: ReturnType<typeof create>;
+    await act(async () => { other = create(<Other />); });
+    await act(async () => { other.unmount(); });
+    expect(await durationAccepted(0.33)).toBe(true);
+
+    await act(async () => { form().resetFormState(); });
+    expect(await durationAccepted(0.33)).toBe(false);
+    expect(await durationAccepted(0.5)).toBe(true);
     await unmount();
   });
 });

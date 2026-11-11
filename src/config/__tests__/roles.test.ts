@@ -135,7 +135,7 @@ describe('report routing', () => {
 
 describe('settings feature rows', () => {
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'rackPresets', 'sensors']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'rackPresets', 'sensors']],
     ['supervisor', ['customers', 'items', 'users', 'standardRate', 'rackPresets', 'sensors']],
     ['staff', ['sensors']],
     ['customer', []],
@@ -145,7 +145,7 @@ describe('settings feature rows', () => {
   });
 
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'rackPresets']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'rackPresets']],
     ['supervisor', ['customers', 'items', 'users', 'standardRate', 'rackPresets']],
     ['staff', []],
     ['customer', []],

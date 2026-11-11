@@ -39,6 +39,7 @@ import { printGRNRange, printFailureMessage } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 import { StatusTag } from '@/components/ui';
+import { invoiceStateKind, invoiceStateLabel, parseInvoiceState, type InvoiceState } from '@/features/charging/invoiceState';
 import { getStatusColors, getStockBadgeLabel, getStockValueLevel, STOCK_VALUE_ICONS } from '@/utils/stockStatus';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
@@ -114,6 +115,8 @@ interface GRNGroupData {
   grNo: string;
   date: string;
   registration?: string;
+  /** Migration 165: shown as a tag only when Partly invoiced. */
+  invoiceState?: InvoiceState;
   customerName: string;
   items: GRNItem[];
 }
@@ -388,6 +391,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             stock,
             badgeLabel,
             weightText,
+            group.invoiceState === 'partly_invoiced' ? invoiceStateLabel('partly_invoiced') : null,
             filteredNote,
             matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
           ].filter(Boolean).join(', ')}
@@ -428,6 +432,11 @@ const GRNCardFiori = memo<GRNCardProps>(({
                 <Text style={styles.itemCountText} {...singleLineText()}>{itemCountLabel}</Text>
               </View>
             </View>
+            {group.invoiceState === 'partly_invoiced' ? (
+              <View style={{ alignItems: 'flex-start', marginTop: space.xs }}>
+                <StatusTag status={invoiceStateKind('partly_invoiced')} label={invoiceStateLabel('partly_invoiced')} testID={`grn-card-invoice-state-${group.grnId}`} />
+              </View>
+            ) : null}
             {filteredNote ? (
               <Text style={styles.filteredNote} testID={`grn-card-filtered-note-${group.grnId}`}>{filteredNote}</Text>
             ) : null}
@@ -808,6 +817,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           grNo: item.gr_no,
           date: item.date,
           registration: item.registration ?? undefined,
+          invoiceState: parseInvoiceState(item.invoice_state),
           customerName: item.customer_name,
           items: [],
         };

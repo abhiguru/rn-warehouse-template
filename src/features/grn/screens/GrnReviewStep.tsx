@@ -954,7 +954,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     const lineIndex = lineId ? items.findIndex((item) => item.grn_trl_id === lineId) : -1;
     const itemName = refusalString(refusal, 'item_name') ?? (lineIndex >= 0 ? items[lineIndex].item_name : '');
     const grNo = refusalString(refusal, 'gr_no') ?? header.gr_no;
-    const invoiceNo = refusalString(refusal, 'invoice_no');
+    const invoiceNo = refusalString(refusal, 'invoice_label') ?? refusalString(refusal, 'invoice_no');
     const lineTitle = lineIndex >= 0 ? tr('grn.refusal.lineTitle', { position: lineIndex + 1 }) : saveFailedTitle();
     const ok = (onPress?: () => void) => [{ text: tr('common.ok'), onPress }];
 

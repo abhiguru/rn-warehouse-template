@@ -53,9 +53,15 @@ interface PrintRangeDialogProps {
    * `visible`, not removed.
    */
   onDismissed?: () => void;
-  onConfirm: (startNumber: string, endNumber: string) => Promise<void>;
+  /**
+   * Prints the range. A text it resolves with (WH-151: the invoices of the range the form did not print, with the reason) is
+   * shown in the dialog, which then stays open until it is closed; nothing is printed again.
+   */
+  onConfirm: (startNumber: string, endNumber: string) => Promise<void | string>;
   title: string;
   defaultNumber: string;
+  /** The range's end when it is not the start (WH-151: a pair of documents is prefilled as first to second). */
+  defaultEndNumber?: string;
   /** Which document's numbers are printed. Selects whole-sentence texts in both languages. */
   entity?: DocumentEntity;
   /**
@@ -178,6 +184,22 @@ const makeStyles = (t: ThemeTokens) => ({
     borderColor: t.status.negative.border,
     backgroundColor: t.status.negative.background,
   },
+  noteContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.button,
+    marginTop: space.lg,
+    borderWidth: 1,
+    borderColor: t.status.informative.border,
+    backgroundColor: t.status.informative.background,
+  },
+  noteText: {
+    ...typography.footnote,
+    flex: 1,
+    color: t.text.primary,
+  },
   errorText: {
     ...typography.footnote,
     flex: 1,
@@ -273,6 +295,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   onConfirm,
   title,
   defaultNumber,
+  defaultEndNumber,
   entity,
   label = '',
   placeholder = '',
@@ -285,9 +308,10 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   const printingAvailable = useCapability('printing');
 
   const [startNumber, setStartNumber] = useState(defaultNumber);
-  const [endNumber, setEndNumber] = useState(defaultNumber);
+  const [endNumber, setEndNumber] = useState(defaultEndNumber ?? defaultNumber);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [focused, setFocused] = useState<'start' | 'end' | null>(null);
   // A print job is on its way. Set before the first await: two presses before the next render (a double tap, or
   // Return and then the button) would both find `loading` still false and send two jobs to the printer (J3).
@@ -301,11 +325,12 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
           defaultNumber
         );
       setStartNumber(defaultNumber);
-      setEndNumber(defaultNumber);
+      setEndNumber(defaultEndNumber ?? defaultNumber);
       setError(null);
+      setNote(null);
       setLoading(false);
     }
-  }, [visible, defaultNumber]);
+  }, [visible, defaultNumber, defaultEndNumber]);
 
   // While a print is being sent the dialog stays open (backdrop, X and Android back are ignored), so its failure is seen.
   const dismissUnlessSending = () => {
@@ -326,8 +351,12 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
     setLoading(true);
 
     try {
-      await onConfirm(startNumber.trim(), endNumber.trim());
-      onDismiss();
+      const printedNote = await onConfirm(startNumber.trim(), endNumber.trim());
+      if (typeof printedNote === 'string' && printedNote !== '') {
+        setNote(printedNote);
+      } else {
+        onDismiss();
+      }
     } catch (err) {
       setError(
         err instanceof Error && err.message
@@ -513,6 +542,14 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                 </View>
               </View>
 
+              {/* What was not printed (WH-151) */}
+              {note && (
+                <View style={styles.noteContainer} accessibilityRole="alert" testID="print-range-note">
+                  <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
+                  <Text style={styles.noteText}>{note}</Text>
+                </View>
+              )}
+
               {/* Error message strip */}
               {error && (
                 <View style={styles.errorContainer} accessibilityRole="alert">
@@ -562,18 +599,19 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                     loading && styles.buttonDisabled,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel={tr('common.cancel')}
+                  accessibilityLabel={tr(note !== null ? 'common.close' : 'common.cancel')}
                   accessibilityState={{ disabled: loading }}
                 >
-                  <Text style={styles.secondaryButtonText}>{tr('common.cancel')}</Text>
+                  <Text style={styles.secondaryButtonText}>{tr(note !== null ? 'common.close' : 'common.cancel')}</Text>
                 </Pressable>
 
                 <Pressable
                   onPress={handleConfirm}
-                  disabled={loading}
+                  disabled={loading || note !== null}
                   style={({ pressed }) => [
                     styles.primaryButton,
                     pressed && styles.primaryButtonPressed,
+                    note !== null && styles.buttonDisabled,
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={loading ? tr('components.printRange.printingLabel') : tr('common.print')}

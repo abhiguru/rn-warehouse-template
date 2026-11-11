@@ -73,8 +73,13 @@ export type RoleGatedScreen =
   | 'userManagement'
   | 'enrollmentReview'
   | 'documentNumbering'
+  | 'charging'
+  | 'gstDetails'
   | 'rackPresets'
-  | 'masterData';
+  | 'masterData'
+  | 'customerDues'
+  | 'customerStatement'
+  | 'customerStatementCard';
 
 /**
  * Whether the app offers `screen` to `role`. With `capabilities` (the facility's, from
@@ -113,6 +118,22 @@ export function canOpenScreen(
     case 'documentNumbering':
       // How GRN, dispatch and invoice numbers are written: administrators only (set_document_numbering, migration 127).
       return normalizeRole(role) === 'admin';
+    case 'gstDetails':
+      // The facility's GST details: administrators only (get_gst_details, set_gst_details, migration 173).
+      return normalizeRole(role) === 'admin';
+    case 'charging':
+      // How storage time is counted and totals are rounded: administrators only (get_charging_rule, set_charging_rule, migration 164).
+      return normalizeRole(role) === 'admin';
+    case 'customerDues':
+      // What every customer owes: administrators and supervisors (owner, 2026-11-10; get_customer_dues, migration 176).
+      return isManager(role);
+    case 'customerStatement':
+      // A customer's statement: administrators, supervisors and the customer's own account; never staff (get_customer_statement, migration 176).
+      return isManager(role) || isCustomerAccount(role);
+    case 'customerStatementCard':
+      // The Statement card of the Reports tab is a customer account's way in; administrators and supervisors reach a
+      // statement from Customer dues or Customer activity (WH-155 spec step 5).
+      return isCustomerAccount(role);
   }
 }
 
@@ -128,6 +149,8 @@ export type SettingsFeature =
   | 'users'
   | 'standardRate'
   | 'documentNumbering'
+  | 'charging'
+  | 'gstDetails'
   | 'rackPresets'
   | 'sensors';
 
@@ -142,6 +165,8 @@ export function settingsFeatureRows(
   if (canOpenScreen(role, 'userManagement')) rows.push('users');
   if (canOpenScreen(role, 'standardRate')) rows.push('standardRate');
   if (canOpenScreen(role, 'documentNumbering')) rows.push('documentNumbering');
+  if (canOpenScreen(role, 'charging')) rows.push('charging');
+  if (canOpenScreen(role, 'gstDetails')) rows.push('gstDetails');
   if (canOpenScreen(role, 'rackPresets')) rows.push('rackPresets');
   if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
   return rows;

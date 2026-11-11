@@ -7,7 +7,7 @@
  * pressed, and go when the field changes.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, type Href } from 'expo-router';
@@ -35,6 +35,12 @@ import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInpu
 import { formatFinancialYear } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
 import { INVOICE_NUMBER_DIGITS } from '@/features/invoice/schemas/invoiceValidation';
+import {
+  continueAutoAdvance,
+  invoiceFormExitRoute,
+  stopAutoAdvance,
+  takeAutoAdvance,
+} from '@/features/invoice/utils/invoiceFormOrigin';
 
 /** An invoice saved before the 8-digit ceiling may have a longer number; 10 digits are the most the server stores. */
 const EDIT_NUMBER_DIGITS = 10;
@@ -58,6 +64,7 @@ const makeDetailsStyles = (t: ThemeTokens) => {
       paddingHorizontal: space.sm,
       borderRadius: radius.button,
     },
+    prefixText: { flexGrow: 0, flexShrink: 0, color: t.text.secondary },
     retryButtonText: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.brand.tint },
   };
 };
@@ -131,6 +138,32 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
   // What the user has put into a new invoice. The suggested number and
   // today's date are filled in by the form itself and are not counted.
   const hasEnteredData = !!header.gr_id || items.length > 0 || !!header.inv_no_typed;
+
+  // WH-162: a form opened from GRN details opens here only when Details' checks would stop the person (no suggested
+  // number, a date the lines refuse): the GRN and its lines are already in the form. This step then goes on as Next
+  // would, once the number is in, so a refusal shows today's message and a form whose checks pass reaches Review.
+  // Taken once (an effect that runs twice finds nothing).
+  const [autoWaiting, setAutoWaiting] = useState(false);
+  useEffect(() => {
+    if (!isEdit && takeAutoAdvance('details')) setAutoWaiting(true);
+  }, [isEdit]);
+  useEffect(() => {
+    if (!autoWaiting || isGettingNextNumber) return;
+    if (nextNumberFailed) {
+      // The number field asks for a number to be typed, as today: the person goes on from here.
+      setAutoWaiting(false);
+      stopAutoAdvance();
+      return;
+    }
+    if (!(header.inv_no > 0)) return; // the number is still to be asked for
+    setAutoWaiting(false);
+    continueAutoAdvance('items');
+    void navigateToStep(STEP_NUMBERS.ITEMS).then((result) => {
+      if (result === 'ok') return;
+      stopAutoAdvance();
+      if (result === 'noItems') setShowNoItemsDialog(true);
+    });
+  }, [autoWaiting, isGettingNextNumber, nextNumberFailed, header.inv_no, navigateToStep]);
 
   // Nothing is reloaded when this screen comes back into focus (after the GRN
   // was viewed, or on the way back from a later step). A reload replaced the
@@ -226,8 +259,10 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
       leaveEdit();
       return;
     }
+    // WH-162: back to the GRN details the form was opened from, else the Invoices tab.
+    const exitRoute = invoiceFormExitRoute();
     resetFormState();
-    router.dismissTo('/(tabs)/invoices');
+    router.dismissTo(exitRoute as Href);
   };
 
   const goToStep = async (step: number) => {
@@ -289,9 +324,9 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
         // The Android Back key asks the same question as the X once something was entered.
-        backOnFirstStep={isEdit ? undefined : { hasData: hasEnteredData, exitRoute: '/(tabs)/invoices', exitWith: 'dismissTo' }}
+        backOnFirstStep={isEdit ? undefined : { hasData: hasEnteredData, exitRoute: invoiceFormExitRoute(), exitWith: 'dismissTo' }}
         onStepPress={handleStepPress}
-        invoiceNo={header.inv_no > 0 ? header.inv_no : undefined}
+        invoiceNo={header.inv_no > 0 ? `${header.inv_prefix ?? ''}${header.inv_no}` : undefined}
         isEditMode={isEdit}
       />
 
@@ -355,6 +390,12 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
             {tr('common.invoiceNumber')} <Text style={styles.required}>*</Text>
           </Text>
           <View style={[styles.field, styles.fieldRow, !!invNoError && styles.fieldError]}>
+            {/* The prefix is fixed text in front; only the digits are typed (WH-139). */}
+            {!!header.inv_prefix && (
+              <Text style={[styles.fieldValue, styles.numeric, styles.prefixText]} accessibilityLabel={header.inv_prefix} testID="invoice-number-prefix">
+                {header.inv_prefix}
+              </Text>
+            )}
             <TextInput
               style={[styles.fieldValue, styles.numeric]}
               {...identifierInput(header.inv_no > 0 ? header.inv_no : '', handleInvoiceNumberChange)}

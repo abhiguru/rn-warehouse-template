@@ -18,7 +18,9 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { OrderFlashList, SupervisorOrderQueueList } from '@/components/lists';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
 import { SegmentedControl } from '@/components/ui/RadioButton';
+import { ServerAlertBanner } from '@/components/ServerAlertBanner';
 import { t } from '@/i18n';
+import { GstStrip } from '@/features/gst/GstStrip';
 
 type OrdersView = 'orders' | 'queue';
 
@@ -66,6 +68,10 @@ export default function OrdersTab() {
 
   return (
     <View style={styles.container}>
+      {/* Alerts of a facility on its local network only, for administrators (WH-146) */}
+      <ServerAlertBanner />
+      {/* WH-151: administrators are asked for the GST details until they are saved. */}
+      <GstStrip />
       {/* A list that fails to draw shows "Try again" under the view switch; switching view clears it (keyed). */}
       <ListErrorBoundary key={view} listName="orders" header={viewSwitch}>
         {canManageOrders && view === 'queue' ? (

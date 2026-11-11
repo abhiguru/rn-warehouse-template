@@ -12,6 +12,15 @@ export const central = {
     acceptTermsHint: 'Tick this to send the code',
     acceptFirst: 'Tick the box above to continue',
     endedTitle: 'Signed out',
+    // Shown when the association's service could not send the code (error, outage or no answer in time).
+    cantSend: "The association's sign-in can't send a code right now.",
+    // The button under it: the facility's own SMS sign-in.
+    useFacilityCode: "Sign in with your facility's code",
+    useFacilityCodeHint: "Choose your facility; it sends the code by SMS",
+    // The facility list of that sign-in.
+    smsChooseLead: 'Choose your facility. It sends you a code by SMS.',
+    // This phone has no facility yet: the address is typed instead.
+    noFacilitiesYet: 'Ask your facility to send you its address',
   },
   facilities: {
     title: 'My facilities',

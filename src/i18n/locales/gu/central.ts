@@ -9,6 +9,12 @@ export const central: Translation<typeof source> = {
     acceptTermsHint: 'OTP મોકલવા માટે આ પસંદ કરો',
     acceptFirst: 'આગળ વધવા માટે ઉપરનું ખાનું પસંદ કરો',
     endedTitle: 'લૉગઆઉટ થયું',
+    // Draft from the glossary (WH-148), for the owner's wording review.
+    cantSend: 'ઍસોસિએશનનું લૉગિન અત્યારે કોડ મોકલી શકતું નથી.',
+    useFacilityCode: 'તમારા કોલ્ડ સ્ટોરેજના કોડથી લૉગિન કરો',
+    useFacilityCodeHint: 'તમારું કોલ્ડ સ્ટોરેજ પસંદ કરો; તે એસએમએસ થી કોડ મોકલે છે',
+    smsChooseLead: 'તમારું કોલ્ડ સ્ટોરેજ પસંદ કરો. તે તમને એસએમએસ થી કોડ મોકલશે.',
+    noFacilitiesYet: 'તમારા કોલ્ડ સ્ટોરેજને તેનું સરનામું મોકલવા કહો',
   },
   facilities: {
     title: 'મારાં કોલ્ડ સ્ટોરેજ',

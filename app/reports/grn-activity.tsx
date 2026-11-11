@@ -47,6 +47,7 @@ import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { AllGRNActivityData, CustomerGRNSummary, GRNActivityData, GRNActivityRecord } from '@/types/report.types';
 import { formatCount, formatIndiaDate, formatIndiaSpokenDate, formatNumber, indiaDay } from '@/utils/formatters';
+import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { formatPackages, packNounCapital, sharedPackaging } from '@/utils/packagingWord';
 
 const REPORT_ID = 'grn-activity';
@@ -380,9 +381,13 @@ const GRNCard = memo(function GRNCard({ grn, words, showDate, onOpen }: GRNCardP
   const styles = useThemedStyles(makeStyles);
   const number = tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) });
   const invoiced = grn.invoice_status.is_invoiced;
-  const invoiceLabel = invoiced
+  // A GRN with some of its lots invoiced says so (migration 165); the other states read as before.
+  const partly = grn.invoice_status.invoice_state === 'partly_invoiced';
+  const invoiceLabel = partly
+    ? tr('charging.invoiceState.partly_invoiced')
+    : invoiced
     ? grn.invoice_status.invoice_number
-      ? tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(grn.invoice_status.invoice_number) })
+      ? tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoiceLabelOf(grn.invoice_status.invoice_label, grn.invoice_status.invoice_number)) })
       : tr('reports.grnActivity.invoiced')
     : tr('reports.grnActivity.notInvoiced');
   const dispatchCount = grn.dispatch_summary.dispatch_count;

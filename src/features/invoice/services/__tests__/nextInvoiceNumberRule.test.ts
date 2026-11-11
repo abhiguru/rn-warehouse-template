@@ -29,7 +29,13 @@ it('asks suggest_document_number for 1 April of the financial year and reads the
   const result = await getNextInvoiceNumber('2027-28');
   expect(mockRpc).toHaveBeenCalledTimes(1);
   expect(mockRpc).toHaveBeenCalledWith('suggest_document_number', { p_document_type: 'invoice', p_date: '2027-04-01' });
-  expect(result).toEqual({ success: true, data: { next_invoice_number: 1214, financial_year: '2027-28' } });
+  expect(result).toEqual({ success: true, data: { next_invoice_number: 1214, prefix: '', financial_year: '2027-28' } });
+});
+
+it('carries the rule\'s invoice prefix (WH-139) beside the digits, and none as an empty prefix', async () => {
+  mockRpc.mockResolvedValue({ data: { success: true, number: '12', prefix: 'SRT/', hint: '#', scheme: 'sequence', reason: null }, error: null });
+  const result = await getNextInvoiceNumber('2027-28');
+  expect(result).toEqual({ success: true, data: { next_invoice_number: 12, prefix: 'SRT/', financial_year: '2027-28' } });
 });
 
 it('is a failure (the form asks for the number to be typed) when the rule has no number left', async () => {

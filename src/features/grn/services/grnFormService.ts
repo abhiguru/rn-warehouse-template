@@ -1047,7 +1047,7 @@ const readGrnEditState = async (
     data.invoice && typeof data.invoice === 'object' && data.invoice.id
       ? {
           id: String(data.invoice.id),
-          invNo: formatIdentifier(textOrUndefined(data.invoice.inv_no) ?? ''),
+          invNo: formatIdentifier(textOrUndefined(data.invoice.invoice_label) ?? textOrUndefined(data.invoice.inv_no) ?? ''),
         }
       : null;
   const lines = new Map<string, GRNLineLocks>();
@@ -1058,7 +1058,7 @@ const readGrnEditState = async (
       dispatched: Number.isFinite(dispatchedQty) && dispatchedQty > 0,
       hasHistory: line.has_history === true,
       invoiced: line.on_invoice === true,
-      invoiceNo: textOrUndefined(line.invoice_no),
+      invoiceNo: textOrUndefined(line.invoice_label) ?? textOrUndefined(line.invoice_no),
       onOrder: line.on_order === true,
       customerName: textOrUndefined(line.order_customer_name),
     });

@@ -9,6 +9,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LanImage } from '@/components/LanImage';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -234,8 +235,8 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 accessibilityHint={onImagePress ? tr('grn.images.openHint') : undefined}
                 accessibilityState={{ busy: isUploading || isDeleting, disabled: !onImagePress || isDeleting || isUploading }}
               >
-                <Image
-                  source={{ uri: imageData.imageUrl }}
+                <LanImage
+                  uri={imageData.imageUrl}
                   style={[
                     styles.image,
                     (isDeleting || isUploading) && styles.imageLoading,

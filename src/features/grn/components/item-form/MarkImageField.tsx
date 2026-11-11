@@ -9,7 +9,7 @@
 import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Platform } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { Image } from 'expo-image';
+import { LanImage } from '@/components/LanImage';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -128,8 +128,8 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
                 accessibilityRole="button"
                 accessibilityLabel={tr('grn.item.removeMarkPhoto', { position: idx + 1 })}
               >
-                <Image
-                  source={{ uri: img.imageUrl }}
+                <LanImage
+                  uri={img.imageUrl}
                   style={StyleSheet.absoluteFill}
                   contentFit="cover"
                   cachePolicy="memory-disk"

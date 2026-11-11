@@ -10,11 +10,13 @@ import {
   InvoiceableGrn,
   InvoiceItemData,
   InvoiceHeaderData,
+  SavedInvoiceDocument,
 } from '@/types/invoice.types';
 import { t } from '@/i18n';
 
 import { indiaDay, toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts, hasZeroChargeLine } from '@/utils/invoiceCalculations';
+import { parseChargingRule, type ChargingRule } from '@/features/charging/chargingRule';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { emptyAnswerAsError, expiredSessionText, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { isLostAnswer } from '@/utils/lostAnswer';
@@ -42,6 +44,29 @@ const errorForLog = (error: unknown): { code?: string; message: string } => {
 
 /** The server's words for a GRN that the preview refuses: not fully dispatched, or already invoiced. */
 const NOT_INVOICEABLE = /not (be )?ready for invoicing/i;
+
+/**
+ * The server's storage figure of a line (`storage_amount`, migration 164) with the charge, duration and days it was worked
+ * out from, or undefined when the server sent none (an older backend, or a line without a quantity).
+ */
+export const serverStorageOf = (
+  value: unknown,
+  line: { charge: number; duration: number; no_of_days: number },
+  rule: ChargingRule | undefined
+): InvoiceItemData['server_storage'] => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? {
+        amount,
+        charge: line.charge,
+        duration: line.duration,
+        no_of_days: line.no_of_days,
+        by_days: rule?.step_days === 1,
+        minimum_days: rule?.minimum_days ?? 0,
+      }
+    : undefined;
+};
 
 /** Thrown inside loadInvoiceFormData so the caller can tell this refusal from a failed request. */
 class GrnNotInvoiceableError extends Error {}
@@ -146,7 +171,7 @@ function invoiceSaveMessage(text: unknown, fallback: string, code?: unknown): st
  * answer is any other refusal. `fallbackNumber` is the number that was sent, for an answer that does not repeat it.
  */
 type MaybeRefusal = { reason?: unknown; number?: unknown; error?: unknown; message?: unknown; details?: unknown; code?: unknown; error_code?: unknown };
-function numberTakenFrom(answer: MaybeRefusal | null | undefined, fallbackNumber: number): { number: number } | null {
+function numberTakenFrom(answer: MaybeRefusal | null | undefined, fallbackNumber: number): { number: number; second?: boolean } | null {
   if (!answer) return null;
   const code = typeof answer.error_code === 'string' ? answer.error_code : typeof answer.code === 'string' ? answer.code : undefined;
   const text = [answer.error, answer.message, answer.details].filter((part) => typeof part === 'string').join(' ');
@@ -154,16 +179,20 @@ function numberTakenFrom(answer: MaybeRefusal | null | undefined, fallbackNumber
   const olderServer = code === '23505' && /unique_inv_no_per_year/i.test(text);
   if (!named && !olderServer) return null;
   const given = Number(answer.number);
-  return { number: Number.isFinite(given) && given > 0 ? given : fallbackNumber };
+  // Migration 173: a save that makes two documents names the SECOND number (`documents` 2), the one after the number sent.
+  const second = named && (answer as { documents?: unknown }).documents === 2;
+  return { number: Number.isFinite(given) && given > 0 ? given : fallbackNumber, ...(second ? { second: true } : {}) };
 }
 
 /** Thrown inside createInvoice so its catch can answer with the taken number instead of a worded failure. */
 class NumberTakenError extends Error {
   taken: number;
+  second: boolean;
 
-  constructor(taken: number) {
+  constructor(taken: number, second = false) {
     super(t('invoice.form.numberTakenNoNext', { number: String(taken) }));
     this.taken = taken;
+    this.second = second;
     markRefusal(this, 'NUMBER_TAKEN');
   }
 }
@@ -184,6 +213,15 @@ const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
   REFUSAL.INVOICE_BEFORE_DISPATCH,
   REFUSAL.DISCOUNT_TOTAL_ZERO,
   REFUSAL.RATES_CHANGED,
+  // Migration 164: the facility's charging rule changed since the form opened.
+  REFUSAL.CHARGING_CHANGED,
+  // Migration 165: a dispatch line is on another live invoice.
+  REFUSAL.DISPATCH_LINE_INVOICED,
+  // Migration 172: the new total is below what was paid on the invoice (`paid`, `total`).
+  REFUSAL.TOTAL_BELOW_PAID,
+  // Migration 173 (WH-151): the lines need two documents on an edit; the second number of a two-document save is past the last.
+  REFUSAL.EDIT_NEEDS_TWO_DOCUMENTS,
+  REFUSAL.NUMBER_OUT_OF_RANGE,
 ]);
 function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
   const refusal = refusalOf(answer);
@@ -295,7 +333,7 @@ export const getNextInvoiceNumber = async (
       const suggestion = await suggestDocumentNumber('invoice', startYear === null ? undefined : `${startYear}-04-01`);
       const suggested = suggestion.number !== null && /^\d+$/.test(suggestion.number) ? Number(suggestion.number) : NaN;
       if (!Number.isSafeInteger(suggested) || suggested < 1) throw new Error(t('invoice.service.nextNumberFailed'));
-      return { success: true, data: { next_invoice_number: suggested, financial_year: finYear } };
+      return { success: true, data: { next_invoice_number: suggested, prefix: suggestion.prefix, financial_year: finYear } };
     }
 
     const authenticatedClient = await getAuthenticatedClient();
@@ -437,7 +475,9 @@ export const getInvoiceableGrns = async (
  * Uses the same RPC as web app: generate_invoice_data_for_grn_with_pricing
  */
 export const loadInvoiceFormData = async (
-  grId: string
+  grId: string,
+  /** An invoice being edited (including a move to another GRN): the preview prices with that invoice's stored rule (`p_invoice_id`). */
+  invoiceId?: string
 ): Promise<InvoiceFormDataResponse> => {
   try {
     // Extract the actual GRN ID if it includes a reset counter suffix
@@ -450,6 +490,7 @@ export const loadInvoiceFormData = async (
       'generate_invoice_data_for_grn_with_pricing',
       {
         p_gr_id: actualGrnId,
+        ...(invoiceId ? { p_invoice_id: invoiceId } : {}),
       }
     );
 
@@ -490,6 +531,10 @@ export const loadInvoiceFormData = async (
 
     const headerData = responseData.header;
 
+    // The rule the figures were made under (migration 164); absent on an older backend.
+    const previewRule = parseChargingRule(responseData.charging);
+    const rule = previewRule ?? undefined;
+
     // Check if there are any items to invoice
     if (!itemsData || itemsData.length === 0) {
       throw new Error(t('invoice.service.noDispatchedItemsLong'));
@@ -515,6 +560,7 @@ export const loadInvoiceFormData = async (
       gr_id: headerData.grn_id,
       gr_no: headerData.grn_no,
       one_time_charge: isOneTimeCharge,
+      ...(rule ? { charging: rule } : {}),
     };
 
     // Transform items to include temp_id and mobile-specific fields
@@ -554,6 +600,8 @@ export const loadInvoiceFormData = async (
       const oneTime = item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode
         ? isOneTime(item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode)
         : isOneTimeCharge;
+      // The storage the server worked out for the line (migration 164): shown as it is, not worked out again here.
+      const serverStorage = serverStorageOf(item.storage_amount, { charge, duration, no_of_days: noOfDays }, rule);
 
       return {
         // Generate temp_id for React keys
@@ -594,7 +642,8 @@ export const loadInvoiceFormData = async (
 
         // Amounts as the server computes them for this pricing mode
         one_time: oneTime,
-        ...calculateItemAmounts(qty, charge, labourRate, tax, duration, oneTime),
+        ...(serverStorage ? { server_storage: serverStorage } : {}),
+        ...calculateItemAmounts(qty, charge, labourRate, tax, duration, oneTime, serverStorage, noOfDays),
       };
     });
 
@@ -656,6 +705,23 @@ export const checkGrnStillInvoiceable = async (
   return { ok: true };
 };
 
+/** The documents a save made (migration 173, `documents` of the answer): empty on an older backend. The figures are the server's. */
+function savedDocuments(answer: any): SavedInvoiceDocument[] {
+  const list: unknown = answer?.documents;
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((doc): doc is Record<string, unknown> => typeof doc === 'object' && doc !== null)
+    .map((doc) => ({
+      invoice_id: String(doc.invoice_id ?? ''),
+      inv_no: Number(doc.inv_no),
+      ...(typeof doc.invoice_label === 'string' && doc.invoice_label !== '' ? { invoice_label: doc.invoice_label } : {}),
+      inv_fin_year: typeof doc.inv_fin_year === 'string' || typeof doc.inv_fin_year === 'number' ? doc.inv_fin_year : undefined,
+      doc_type: typeof doc.doc_type === 'string' ? doc.doc_type : 'invoice',
+      total: serverAmount(doc.total),
+    }))
+    .filter((doc) => doc.invoice_id !== '' && Number.isFinite(doc.inv_no));
+}
+
 /** The result of a save_invoice that succeeded: the invoice, and the total the server stored for it. */
 async function createdInvoice(
   client: RpcClient | null,
@@ -664,12 +730,17 @@ async function createdInvoice(
 ): Promise<CreateInvoiceResponse> {
   // The write changed what reports count: a report on screen asks again (SR-10).
   void invalidateReportQueries();
+  const documents = savedDocuments(answer);
   return {
     success: true,
     data: {
       invoice_id: answer.invoice_id,
       invoice_no: answer.invoice_no || payload.header.inv_no,
-      total: await savedInvoiceTotal(client, answer, answer.invoice_id),
+      ...(typeof answer.invoice_label === 'string' && answer.invoice_label !== '' ? { invoice_label: answer.invoice_label } : {}),
+      // Two documents: the first one's own total (each document's is in `documents`).
+      total: documents.length > 1 ? documents[0].total : await savedInvoiceTotal(client, answer, answer.invoice_id),
+      ...(typeof answer.doc_type === 'string' ? { doc_type: answer.doc_type } : {}),
+      ...(documents.length > 0 ? { documents } : {}),
     },
   };
 }
@@ -688,7 +759,9 @@ async function updatedInvoice(
     data: {
       invoice_id: answer.invoice_id,
       invoice_no: parseInt(answer.invoice_number) || payload.header.inv_no,
+      ...(typeof answer.invoice_label === 'string' && answer.invoice_label !== '' ? { invoice_label: answer.invoice_label } : {}),
       total: await savedInvoiceTotal(client, answer, answer.invoice_id || invoiceId),
+      ...(typeof answer.doc_type === 'string' ? { doc_type: answer.doc_type } : {}),
     },
     message: serverText(answer.message, t('invoice.service.updated')),
   };
@@ -799,6 +872,8 @@ const sendCreateInvoice = async (
       ...zeroChargeHeader(payload),
       // The total the person confirmed: the server refuses the save when its own total differs by more than 1 (D18).
       ...givenTotal(payload.header.expected_total),
+      // The rule the form showed: the server refuses the save when the facility's rule is another now (CHARGING_CHANGED).
+      ...(payload.header.charging ? { charging: payload.header.charging } : {}),
       ...(requestKey ? { request_key: requestKey } : {}),
     };
 
@@ -847,13 +922,13 @@ const sendCreateInvoice = async (
       // a failure of a resend that is not the server's answer: that attempt is not settled either.
       if (isLostAnswer(error) || (options.resend && isUnsettledFailure(error))) return lostAnswerResponse(sentAt, requestKey);
       const taken = numberTakenFrom(error, payload.header.inv_no);
-      if (taken) throw new NumberTakenError(taken.number);
+      if (taken) throw new NumberTakenError(taken.number, taken.second === true);
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed'), error.code));
     }
 
     if (!data || !data.success) {
       const taken = numberTakenFrom(data, payload.header.inv_no);
-      if (taken) throw new NumberTakenError(taken.number);
+      if (taken) throw new NumberTakenError(taken.number, taken.second === true);
       const refusal = actedOnRefusal(data);
       if (refusal) return refusedResponse(refusal, t('invoice.service.createFailed'), requestKey);
       const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
@@ -871,7 +946,7 @@ const sendCreateInvoice = async (
         success: false,
         data: { invoice_id: '', invoice_no: 0 },
         message: error.message,
-        numberTaken: { number: error.taken },
+        numberTaken: { number: error.taken, ...(error.second ? { second: true } : {}) },
       };
     }
     return {
@@ -1006,6 +1081,8 @@ export const loadInvoiceData = async (
     // the fallback, and without either the lines are monthly.
     const oneTime = isOneTime(grnPricing.mode ?? header.pricing_mode);
 
+    const editRule = parseChargingRule(header.charging) ?? undefined;
+
     // Convert header data - full InvoiceHeaderData format
     const formattedHeader: InvoiceHeaderData = {
       customer_id: header.customer_id || '',
@@ -1017,6 +1094,7 @@ export const loadInvoiceData = async (
       // A text that is not a date at all keeps its first ten characters, as before, and no text gives today.
       inv_date: indiaDay(header.inv_date) || header.inv_date?.slice(0, 10) || toLocalISODate(new Date()),
       inv_fin_year: finYear,
+      inv_prefix: typeof header.inv_prefix === 'string' ? header.inv_prefix : '',
       inv_no: typeof header.inv_no === 'string' ? parseInt(header.inv_no.replace(/\D/g, ''), 10) || 0 : header.inv_no || 0,
       // The GRN's pricing mode, not the flag stored with the invoice: the
       // server charges by the GRN whatever that flag says.
@@ -1027,6 +1105,8 @@ export const loadInvoiceData = async (
       labour: header.labour || 0,
       tax_amount: header.tax_amount || 0,
       total: header.total || 0,
+      // The rule the invoice was made with (migration 164); an edit keeps it.
+      ...(editRule ? { charging: editRule } : {}),
     };
 
     // Convert items data - backend now returns all needed fields
@@ -1042,6 +1122,8 @@ export const loadInvoiceData = async (
       const tax = item.tax || 0;
       const no_of_days = Math.round(item.no_of_days || 30);
       const qty = item.qty || 0;
+      // The storage the server worked out under the invoice's own rule: shown as it is, not worked out again here.
+      const serverStorage = serverStorageOf(item.storage_amount, { charge, duration, no_of_days }, editRule);
 
       return {
         // Generate temp_id for React keys
@@ -1082,7 +1164,8 @@ export const loadInvoiceData = async (
 
         // Calculated fields, as the server computes them for this pricing mode
         one_time: oneTime,
-        ...calculateItemAmounts(qty, charge, labour_rate, tax, duration, oneTime),
+        ...(serverStorage ? { server_storage: serverStorage } : {}),
+        ...calculateItemAmounts(qty, charge, labour_rate, tax, duration, oneTime, serverStorage, no_of_days),
       };
     });
 
@@ -1165,6 +1248,8 @@ export const updateInvoice = async (
       ...(payload.header.expected_updated_at ? { expected_updated_at: payload.header.expected_updated_at } : {}),
       // The total the person confirmed: the server refuses the update when its own total differs by more than 1 (D18).
       ...givenTotal(payload.header.expected_total),
+      // The invoice's own stored rule, as read. The server edits under that rule whatever the facility's is now.
+      ...(payload.header.charging ? { charging: payload.header.charging } : {}),
       ...(requestKey ? { request_key: requestKey } : {}),
     };
 

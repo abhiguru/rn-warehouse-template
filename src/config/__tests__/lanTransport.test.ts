@@ -10,7 +10,6 @@ import {
   getLanStatus,
   isTunnelFailure,
   lanUsableHere,
-  noteNativeReadFailed,
   noteNetworkState,
   notePublicUnreachable,
   probeLan,
@@ -33,6 +32,7 @@ import {
   WIFI_UNKNOWN_SUBNET,
   onWarehouseWifi,
 } from '@/tests/helpers/lanNetwork';
+import { LAN_KEY_ID, installLanKey, removeLanKey, signingLan } from '@/tests/helpers/lanSigning';
 
 const PUBLIC = 'https://warehouse.example.test';
 const LAN = 'http://192.168.1.20:8080';
@@ -130,20 +130,23 @@ const flush = async () => {
   for (let i = 0; i < 30; i++) await Promise.resolve();
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date('2026-10-26T10:00:00Z'));
   net.public = 'up';
   net.lan = 'up';
   calls = [];
   signals = {};
-  global.fetch = jest.fn(route) as unknown as typeof fetch;
+  // The listener signs its answers (WH-133); the session holds the warehouse network key.
+  global.fetch = jest.fn(signingLan(route, LAN)) as unknown as typeof fetch;
+  await installLanKey(PUBLIC, INSTANCE);
   resetLanTransport();
   setLanContext({ canonical: PUBLIC, lan: LAN, instanceId: INSTANCE });
   onWarehouseWifi();
 });
 
 afterEach(() => {
+  removeLanKey();
   resetLanTransport();
   jest.useRealTimers();
 });
@@ -200,7 +203,7 @@ describe('when the public path fails', () => {
     expect(await response.json()).toEqual({ from: 'lan' });
     expect(answeredPath(response)).toBe('lan');
     expect(getConnectionPath()).toBe('lan');
-    // The probes carry no credential and no header; the retry carries the request's own.
+    // The retry carries the request's own header and, signed by the phone, only the signed headers and the four X-Lan-* ones.
     const probes = probesOnly(calls);
     expect(probes).toEqual(
       expect.arrayContaining([`GET ${PUBLIC}/functions/v1/hello`, `GET ${LAN}/functions/v1/hello`, `GET ${LAN}/functions/v1/get-public-config`])
@@ -208,7 +211,11 @@ describe('when the public path fails', () => {
     expect(calls.filter(call => call === `GET ${lanRest()}`)).toHaveLength(1);
     expect(calls.filter(call => call === `GET ${rest()}`)).toHaveLength(1);
     const retry = jest.mocked(global.fetch).mock.calls.find(([input]) => input === lanRest());
-    expect(retry?.[1]?.headers).toEqual({ apikey: 'k' });
+    const sentHeaders = retry?.[1]?.headers as Record<string, string>;
+    expect(Object.keys(sentHeaders).sort()).toEqual(['accept', 'apikey', 'x-lan-key-id', 'x-lan-request-id', 'x-lan-signature', 'x-lan-time']);
+    expect(sentHeaders.apikey).toBe('k');
+    expect(sentHeaders['x-lan-key-id']).toBe(LAN_KEY_ID);
+    expect(sentHeaders['x-lan-signature']).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('never sends a WRITE again: it fails as it did, and the next request goes over the LAN path', async () => {
@@ -475,9 +482,12 @@ describe('the gateway key rejection over the LAN path (WS-L review H1)', () => {
   it('leaves a PostgREST 401 (an expired access token) to the session code', async () => {
     net.public = 'up';
     const expired = reply(401, { code: 'PGRST301', message: 'JWT expired' }, { 'X-Warehouse-Path': 'lan' });
-    jest.mocked(global.fetch).mockImplementation((input, init) => (String(input) === lanRest('x') ? Promise.resolve(expired) : route(input, init)));
+    jest.mocked(global.fetch).mockImplementation(
+      signingLan((input, init) => (String(input) === lanRest('x') ? Promise.resolve(expired) : route(input, init)), LAN)
+    );
     const response = await transportFetch(rest('x'), undefined, READ);
-    expect(response).toBe(expired);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ code: 'PGRST301', message: 'JWT expired' });
     expect(getConnectionPath()).toBe('lan');
     expect(getLanStatus().failure).toBeNull();
   });
@@ -519,8 +529,12 @@ describe('other answers of the LAN listener', () => {
   it('a 429 or 5xx of the listener is the server answering, not a transport failure', async () => {
     for (const status of [429, 500, 502, 503, 504]) {
       const answer = reply(status, { message: 'x' }, { 'X-Warehouse-Path': 'lan' });
-      jest.mocked(global.fetch).mockImplementation((input, init) => (String(input) === lanRest('busy') ? Promise.resolve(answer) : route(input, init)));
-      expect(await transportFetch(rest('busy'), undefined, READ)).toBe(answer);
+      jest.mocked(global.fetch).mockImplementation(
+        signingLan((input, init) => (String(input) === lanRest('busy') ? Promise.resolve(answer) : route(input, init)), LAN)
+      );
+      const response = await transportFetch(rest('busy'), undefined, READ);
+      expect(response.status).toBe(status);
+      expect(answeredPath(response)).toBe('lan');
       expect(getConnectionPath()).toBe('lan');
     }
   });
@@ -539,12 +553,13 @@ describe('what never goes over the LAN path', () => {
 });
 
 describe('viaCurrentPath and toCanonicalUrl', () => {
-  it('change only the host, and only on the LAN path', async () => {
+  it('leave a link as it is (a native loader cannot sign, WH-133); toCanonicalUrl puts the public host back', async () => {
     const signed = `${PUBLIC}/storage/v1/object/sign/grn-images/a.jpg?token=abc`;
     expect(viaCurrentPath(signed)).toBe(signed);
     net.public = 'down';
     await transportFetch(rest(), undefined, READ);
-    expect(viaCurrentPath(signed)).toBe(`${LAN}/storage/v1/object/sign/grn-images/a.jpg?token=abc`);
+    expect(getConnectionPath()).toBe('lan');
+    expect(viaCurrentPath(signed)).toBe(signed);
     expect(viaCurrentPath(`${LAN}/storage/v1/object/x`)).toBe(`${LAN}/storage/v1/object/x`);
     expect(viaCurrentPath('https://other.example.test/x')).toBe('https://other.example.test/x');
     expect(viaCurrentPath(`${PUBLIC}.evil.test/x`)).toBe(`${PUBLIC}.evil.test/x`);
@@ -562,15 +577,20 @@ describe('viaCurrentPath and toCanonicalUrl', () => {
 
 describe('probeLan', () => {
   it('answers with the time hello took when the address is this warehouse', async () => {
-    jest.mocked(global.fetch).mockImplementation(async (input, init) => {
-      if (String(input).endsWith('/hello')) {
-        jest.setSystemTime(Date.now() + 42);
-      }
-      return route(input, init);
-    });
+    jest.mocked(global.fetch).mockImplementation(
+      signingLan(async (input, init) => {
+        if (String(input).endsWith('/hello')) {
+          jest.setSystemTime(Date.now() + 42);
+        }
+        return route(input, init);
+      }, LAN)
+    );
     expect(await probeLan()).toEqual({ ok: true, ms: 42 });
-    // No credential and no header go with a probe.
-    for (const [, init] of jest.mocked(global.fetch).mock.calls) expect(init?.headers).toBeUndefined();
+    // No credential goes with a probe: hello has no header, the identity question only the key id and a fresh challenge.
+    for (const [input, init] of jest.mocked(global.fetch).mock.calls) {
+      if (String(input).endsWith('/hello')) expect(init?.headers).toBeUndefined();
+      else expect(Object.keys(init?.headers as object).sort()).toEqual(['x-lan-challenge', 'x-lan-key-id']);
+    }
   });
 
   it.each([
@@ -624,14 +644,6 @@ describe('other triggers and resets', () => {
     expect(calls).toEqual([]);
   });
 
-  it('a native download that failed asks the other path once', async () => {
-    net.public = 'down';
-    expect(await noteNativeReadFailed('public')).toBe(true);
-    expect(getConnectionPath()).toBe('lan');
-    // Already moved by someone else: the caller may try again at once.
-    expect(await noteNativeReadFailed('public')).toBe(true);
-  });
-
   it('a new facility or a new address starts on the public path again', async () => {
     net.public = 'down';
     await transportFetch(rest(), undefined, READ);
@@ -639,14 +651,14 @@ describe('other triggers and resets', () => {
     setLanContext({ canonical: PUBLIC, lan: 'http://192.168.1.21:8080', instanceId: INSTANCE });
     expect(getConnectionPath()).toBe('public');
     setLanContext({ canonical: PUBLIC, lan: 'http://192.168.1.21:8080', instanceId: INSTANCE });
-    expect(getLanStatus()).toEqual({ path: 'public', failure: null, lan: 'http://192.168.1.21:8080' });
+    expect(getLanStatus()).toEqual({ path: 'public', failure: null, answerChanged: false, lan: 'http://192.168.1.21:8080' });
   });
 
   it('forgets the facility on sign-out of the last one', async () => {
     net.public = 'down';
     await transportFetch(rest(), undefined, READ);
     setLanContext(null);
-    expect(getLanStatus()).toEqual({ path: 'public', failure: null, lan: null });
+    expect(getLanStatus()).toEqual({ path: 'public', failure: null, answerChanged: false, lan: null });
   });
 });
 
@@ -655,7 +667,12 @@ describe('other triggers and resets', () => {
 // -----------------------------------------------------------------------------
 
 const lanCalls = () => calls.filter(call => call.includes(LAN));
-const lanCredentialed = () => jest.mocked(global.fetch).mock.calls.filter(([input, init]) => String(input).startsWith(LAN) && init?.headers);
+// A request that carries the session's credential. The identity probes carry only the key id and a challenge (WH-133).
+const lanCredentialed = () =>
+  jest.mocked(global.fetch).mock.calls.filter(([input, init]) => {
+    const names = Object.keys((init?.headers ?? {}) as object).map(name => name.toLowerCase());
+    return String(input).startsWith(LAN) && (names.includes('authorization') || names.includes('apikey'));
+  });
 const AUTH = { headers: { Authorization: 'Bearer token', apikey: 'k' } };
 const moveToLan = async () => {
   net.public = 'down';
@@ -870,13 +887,15 @@ describe('leaving the LAN path (review H1)', () => {
   it('a failed request whose identity probe passes stays on the LAN path: the request was at fault', async () => {
     await moveToLan();
     let first = true;
-    jest.mocked(global.fetch).mockImplementation((input, init) => {
-      if (String(input) === lanRest('a') && first) {
-        first = false;
-        return Promise.reject(new TypeError('Network request failed'));
-      }
-      return route(input, init);
-    });
+    jest.mocked(global.fetch).mockImplementation(
+      signingLan((input, init) => {
+        if (String(input) === lanRest('a') && first) {
+          first = false;
+          return Promise.reject(new TypeError('Network request failed'));
+        }
+        return route(input, init);
+      }, LAN)
+    );
     await expect(transportFetch(rest('a'), AUTH, READ)).rejects.toThrow('Network request failed');
     expect(getConnectionPath()).toBe('lan');
   });
@@ -1018,6 +1037,7 @@ describe('uploads (review M1)', () => {
   it('while a photo goes out, a rejected READ does not start the public hello probe either', async () => {
     net.public = 'slow-up';
     const upload = transportFetch(photo, { method: 'POST' }, WRITE);
+    await flush(); // the upload is on its way (the key is read first) before the next fetch is made to fail
     jest.mocked(global.fetch).mockImplementationOnce(() => Promise.reject(new TypeError('Network request failed')));
     await expect(transportFetch(rest('items'), undefined, READ)).rejects.toThrow('Network request failed');
     expect(probesOnly(calls)).toEqual([]);

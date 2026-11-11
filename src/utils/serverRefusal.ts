@@ -89,6 +89,49 @@ export const REFUSAL = {
   INVOICE_HAS_PAYMENTS: 'INVOICE_HAS_PAYMENTS',
   /** The cancel reason is missing, blank, under 3 or over 500 characters (`min`, `max`). */
   CANCEL_REASON_INVALID: 'CANCEL_REASON_INVALID',
+  // Backend migration 162 (document numbering).
+  /** An invoice scheme change while an invoice exists in the current financial year. Nothing was changed. */
+  NUMBERING_SWITCH_MID_YEAR: 'NUMBERING_SWITCH_MID_YEAR',
+  // Backend migration 164 (charging rule).
+  /** The facility's charging rule is not the one the form showed (`charging`: the rule now, `sent`: the rule the form sent). Nothing was saved. */
+  CHARGING_CHANGED: 'CHARGING_CHANGED',
+  // Backend migration 165 (invoice goods as they leave).
+  /** The setting cannot be turned off while GRNs with goods in store have an invoice (`count`, `gr_nos`). Nothing changed. */
+  PARTIAL_INVOICES_OPEN: 'PARTIAL_INVOICES_OPEN',
+  /** A dispatch line of the invoice is already on another live invoice (WH409). Nothing was saved. */
+  DISPATCH_LINE_INVOICED: 'DISPATCH_LINE_INVOICED',
+  // Backend migration 172 (record payments, WH-143).
+  /** The facility's Record payments setting is off. */
+  PAYMENTS_OFF: 'PAYMENTS_OFF',
+  /** A payment dated after today in India (`date`, `today`). */
+  PAYMENT_DATE_FUTURE: 'PAYMENT_DATE_FUTURE',
+  /** A payment dated before the invoice (`date`, `invoice_date`). */
+  PAYMENT_BEFORE_INVOICE: 'PAYMENT_BEFORE_INVOICE',
+  /** An amount above what is due (`due`, `paid`, `total`). */
+  PAYMENT_OVER_DUE: 'PAYMENT_OVER_DUE',
+  INVOICE_NOT_FOUND: 'INVOICE_NOT_FOUND',
+  PAYMENT_NOT_FOUND: 'PAYMENT_NOT_FOUND',
+  /** A payment that came from the old accounting link is read-only. */
+  PAYMENT_NOT_EDITABLE: 'PAYMENT_NOT_EDITABLE',
+  USER_REQUIRED: 'USER_REQUIRED',
+  /** An invoice edit would take the total below what was paid (`paid`, `total`). */
+  TOTAL_BELOW_PAID: 'TOTAL_BELOW_PAID',
+  // Backend migration 173 (GST documents, WH-151).
+  /** An edit whose lines need a tax invoice and a separate bill of supply (`invoice_id`, `exempt_lines`, `taxable_lines`). Nothing was saved. */
+  EDIT_NEEDS_TWO_DOCUMENTS: 'EDIT_NEEDS_TWO_DOCUMENTS',
+  /** The invoice number is used (`number`; with `documents` 2 it is the SECOND number of a two-document save). */
+  NUMBER_TAKEN: 'NUMBER_TAKEN',
+  /** A two-document save would need a number above the last one (`number`: the second, `documents`). */
+  NUMBER_OUT_OF_RANGE: 'NUMBER_OUT_OF_RANGE',
+  /** A dispatch line is not on this GRN's invoice form (the review step's preview). */
+  UNKNOWN_LINE: 'UNKNOWN_LINE',
+  /** delete_invoice on one document of a pair (`linked_invoice`: id, inv_no, inv_fin_year, doc_type). */
+  INVOICE_PAIR: 'INVOICE_PAIR',
+  /** delete_invoice_pair on an invoice with no live other document. */
+  NOT_A_PAIR: 'NOT_A_PAIR',
+  // Backend migration 175 (WH-139).
+  /** An invoice prefix change while an invoice exists in the current financial year. Nothing was changed. */
+  NUMBERING_PREFIX_MID_YEAR: 'NUMBERING_PREFIX_MID_YEAR',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

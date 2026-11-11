@@ -1,3 +1,4 @@
+import { printSkippedNote } from '@/features/gst/printSkipped';
 import * as Crypto from 'expo-crypto';
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { discardBody } from '../config/discardBody';
@@ -21,6 +22,7 @@ export type PrintFailureKind =
   | 'printerFailed'
   | 'serverUnavailable'
   | 'connection'
+  | 'allSkipped'
   | 'other';
 
 export interface PrintJobResponse {
@@ -51,6 +53,20 @@ export interface PrintJobResponse {
   unconfirmed?: boolean;
   /** The server had already handled this request_id and printed nothing again. That is a success. */
   duplicate?: boolean;
+  /**
+   * Invoices of the range that were not printed on the form (print-invoice-preprinted): `cancelled`, `igst` (no field for
+   * IGST on the form; print on plain paper) or `does_not_fit` (a value is longer than its field, named in `field`). The rest printed.
+   */
+  skipped?: PrintSkipped[];
+}
+
+export interface PrintSkipped {
+  inv_no?: number | string;
+  /** The full number ("SRT/12", WH-139); absent on an older server. */
+  invoice_label?: string;
+  inv_fin_year?: number | string;
+  reason?: string;
+  field?: string;
 }
 
 export interface PrintJob {
@@ -134,6 +150,9 @@ export function printFailureMessage(result: PrintJobResponse): string {
       return t('errors.print.serverUnavailable', { status: String(result.status ?? '') });
     case 'connection':
       return t('errors.print.connection');
+    case 'allSkipped':
+      // WH-151: ALL_SKIPPED, every invoice of the range was skipped: each is listed with its reason.
+      return printSkippedNote(result, 'gst.print.allSkippedTitle') ?? t('gst.print.noneFit');
     default:
       return serverText(result.error, t('errors.print.submitFailed'));
   }
@@ -262,7 +281,9 @@ async function sendPrintJob(
         success: false,
         status: response.status,
         ...(code ? { code } : {}),
-        kind: upgrading ? 'other' : classifyFailure(response.status, code, unconfirmed, true),
+        // WH-151: ALL_SKIPPED (HTTP 422): every invoice of the range was skipped, and `skipped` says why for each.
+        kind: upgrading ? 'other' : code === 'ALL_SKIPPED' ? 'allSkipped' : classifyFailure(response.status, code, unconfirmed, true),
+        ...(code === 'ALL_SKIPPED' && Array.isArray(data.skipped) ? { skipped: data.skipped as PrintSkipped[] } : {}),
         error: serverText(upgradingBody(data) ?? data.error, t('errors.print.submitFailed')),
         ...(unconfirmed ? { unconfirmed: true } : {}),
       };

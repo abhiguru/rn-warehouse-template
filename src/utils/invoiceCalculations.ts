@@ -6,6 +6,7 @@
  */
 
 import type { GroupRates, InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
+import type { TotalRounding } from '@/features/charging/chargingRule';
 import { localizeDigits, t } from '@/i18n';
 
 /**
@@ -135,6 +136,50 @@ export interface ItemAmounts {
 }
 
 /**
+ * Storage of a monthly line under a rule that charges by the day, as the server works it out
+ * (warehouse_security.storage_amount, backend migration 164): round(charge x qty x max(minimum, max(1, days)) / 30, 2),
+ * ties away from zero. Worked out on whole paise, as NUMERIC does, so a figure such as 35.685 is not lost to binary noise;
+ * plain floating point only for a product too large for that (or a fractional quantity, which the server does not have).
+ */
+function storageByDays(qty: number, charge: number, noOfDays: number, minimumDays: number): number {
+  const days = Math.max(minimumDays, Math.max(1, noOfDays));
+  const paiseTimesThirty = Math.round(charge * 100) * qty * days;
+  if (!Number.isSafeInteger(paiseTimesThirty)) return roundMoney((charge * qty * days) / 30);
+  return Math.floor((paiseTimesThirty + 15) / 30) / 100;
+}
+
+/**
+ * The storage of one line. The server's own figure (`storage_amount`, WH-137) is used while the line's charge, duration
+ * and days are the ones it was worked out from: a typed charge or new durations (the server's own, after TOTAL_CHANGED)
+ * make it stale, and storage is worked out again by the server's formula. Under a rule that charges by the day that is
+ * rate x quantity x days / 30 (whatever charge was looked up, 0 included), otherwise rate x quantity x the months. The save
+ * question and the server's own total check (W18) still settle the amount.
+ */
+function storageAmount(
+  qty: number,
+  charge: number,
+  duration: number,
+  noOfDays: number | undefined,
+  oneTime: boolean,
+  server?: InvoiceItemData['server_storage']
+): number {
+  if (
+    server &&
+    Number.isFinite(server.amount) &&
+    roundMoney(server.charge) === roundMoney(charge) &&
+    server.duration === duration &&
+    server.no_of_days === noOfDays
+  ) {
+    return roundMoney(server.amount);
+  }
+  if (oneTime) return roundMoney(qty * charge);
+  if (server?.by_days && noOfDays !== undefined && Number.isFinite(noOfDays)) {
+    return storageByDays(qty, charge, noOfDays, server.minimum_days);
+  }
+  return roundMoney(qty * charge * duration);
+}
+
+/**
  * The amounts of one line, computed as the server computes them
  * (recalculate_invoice_header, backend docs/INVOICE_RULES.md).
  *
@@ -149,7 +194,9 @@ export function calculateItemAmounts(
   labour_rate: number,
   tax: number,
   duration: number,
-  oneTime: boolean = false
+  oneTime: boolean = false,
+  serverStorage?: InvoiceItemData['server_storage'],
+  noOfDays?: number
 ): ItemAmounts {
   // Guard against NaN - use 0 as safe default for invalid values
   const safeQty = isNaN(qty) || qty < 0 ? 0 : qty;
@@ -158,7 +205,7 @@ export function calculateItemAmounts(
   const safeTax = isNaN(tax) || tax < 0 ? 0 : tax;
   const safeDuration = isNaN(duration) || duration <= 0 ? 1 : duration;
 
-  const amount = roundMoney(oneTime ? safeQty * safeCharge : safeQty * safeCharge * safeDuration);
+  const amount = storageAmount(safeQty, safeCharge, safeDuration, noOfDays, oneTime, serverStorage);
   const labour_amount = oneTime ? 0 : roundMoney(safeQty * safeLabourRate);
   const taxable_amount = roundMoney(amount + labour_amount);
   const tax_amount = roundMoney(taxable_amount * (safeTax / 100));
@@ -196,7 +243,9 @@ export function applyPricingToItem(
     labour_rate,
     tax,
     duration,
-    item.one_time
+    item.one_time,
+    item.server_storage,
+    item.no_of_days
   );
 
   return {
@@ -218,9 +267,22 @@ export interface HeaderTotals {
   total: number;
 }
 
+/**
+ * Rounds `value` as the invoice's rule says (backend warehouse_security.round_invoice_total): up to the next whole rupee,
+ * to the nearest rupee with 50 paise rounding up, or to paise. Done on whole paise so a figure such as 1234.50 is not
+ * lost to binary noise.
+ */
+export function roundByRule(value: number, rounding: TotalRounding = 'up'): number {
+  const paise = Math.round(value * 100);
+  if (rounding === 'none') return paise / 100;
+  if (rounding === 'nearest') return Math.sign(paise) * Math.floor((Math.abs(paise) + 50) / 100);
+  return Math.ceil(paise / 100);
+}
+
 export function calculateHeaderTotals(
   items: InvoiceItemData[],
-  discount: number = 0
+  discount: number = 0,
+  rounding: TotalRounding = 'up'
 ): HeaderTotals {
   // Guard against NaN values (allow negative discounts as they act as surcharges)
   const safeDiscount = isNaN(discount) ? 0 : discount;
@@ -241,10 +303,16 @@ export function calculateHeaderTotals(
     return sum + (Number.isFinite(baseCents) && Number.isFinite(rateHundredths)
       ? baseCents * Math.max(0, rateHundredths) : 0);
   }, 0);
-  const tax_amount = Math.ceil(taxUnits / 1_000_000);
+  // The tax is the sum of the unrounded line taxes, in millionths of a rupee, rounded as the invoice's rule says.
+  const tax_amount =
+    rounding === 'up'
+      ? Math.ceil(taxUnits / 1_000_000)
+      : rounding === 'nearest'
+        ? Math.floor((taxUnits + 500_000) / 1_000_000)
+        : Math.floor((taxUnits + 5_000) / 10_000) / 100;
   // save_invoice and update_invoice cast total to NUMERIC(12,2), then CEIL.
   // Preserve the existing absolute discount (negative means surcharge).
-  const total = Math.ceil(roundMoney(subtotal + labour + tax_amount - safeDiscount));
+  const total = roundByRule(roundMoney(subtotal + labour + tax_amount - safeDiscount), rounding);
 
   return {
     labour,
@@ -333,7 +401,7 @@ export function recalculateItemWithEdits(
   const tax = editedValues.tax ?? item.tax;
   const no_of_days = Math.round(editedValues.no_of_days ?? item.no_of_days);
 
-  const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, duration, item.one_time);
+  const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, duration, item.one_time, item.server_storage, no_of_days);
 
   return {
     ...item,
@@ -474,7 +542,7 @@ export function applyBulkGroupPricing(
     const tax = rate('tax');
 
     // Recalculate amounts
-    const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time);
+    const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time, item.server_storage, item.no_of_days);
 
     return {
       ...item,

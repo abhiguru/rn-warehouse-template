@@ -168,6 +168,28 @@ export const auth = {
     backToSettings: 'Back to settings',
   },
   // Sign-in with a code made by the facility's own server, for when the association's sign-in cannot be used.
+  // A facility on its local network only (WH-146): paired by the QR code an administrator makes
+  localFacility: {
+    scan: 'Scan facility code',
+    scanHint: 'Point the camera at the sign-in code shown by your administrator.',
+    cantScan: "Can't scan? Ask for the code to be shown again, larger and brighter, and hold the phone 20–30 cm away.",
+    pairing: 'Signing in to the facility',
+    switchTitle: 'Switch to {{next}}?',
+    switchMessage: "You'll be signed out of {{current}}.",
+    switchAction: 'Switch',
+    notCodeTitle: 'Not a facility code',
+    notCodeMessage: "This is not a facility sign-in code. Ask your administrator to show it again.",
+    usedOrExpiredTitle: 'Code not accepted',
+    usedOrExpired: 'This code was used or has expired. Ask for a new one.',
+    tooManyTries: 'Too many tries. Wait a few minutes and scan again.',
+    unreachableTitle: "Can't reach the facility",
+    unreachable: "Couldn't reach the facility. Check that your phone is on the facility's Wi-Fi, then scan again.",
+    wrongServerTitle: 'Not your facility',
+    wrongServer: "The device at this address did not prove that it is your facility's server. Nothing was sent to it. Ask your administrator.",
+    failedTitle: "Couldn't sign in",
+    failed: "Couldn't finish signing in. Ask for a new code and scan again.",
+    appTooOld: 'This facility needs a newer app. Update the app and scan again.',
+  },
   facilityCode: {
     link: 'Sign in with a code from your facility',
     linkHint: 'Opens the sign-in that uses a code made by your facility',

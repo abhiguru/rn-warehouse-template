@@ -8,14 +8,6 @@ export const components: Translation<typeof source> = {
   alert: {
     closeDialog: 'સંદેશ બંધ કરો',
   },
-  biometric: {
-    welcomeBack: 'ફરી સ્વાગત છે',
-    useToUnlock: 'ઍપ અનલૉક કરવા {{method}} વાપરો.',
-    unlocking: 'અનલૉક થઈ રહ્યું છે',
-    unlockWith: '{{method}} વડે અનલૉક કરો',
-    or: 'અથવા',
-    signInWithMobile: 'મોબાઇલ નંબરથી લૉગિન કરો',
-  },
   image: {
     loading: 'ફોટો લોડ થઈ રહ્યો છે',
     loadFailedRetry: 'ફોટો લોડ કરી શકાયો નથી. ફરી પ્રયાસ કરો',
@@ -98,12 +90,22 @@ export const components: Translation<typeof source> = {
     title: 'આ કોલ્ડ સ્ટોરેજના સર્વરને અપડેટ કરવાની જરૂર છે',
     message: 'કોલ્ડ સ્ટોરેજનું સર્વર આ એપ્લિકેશનના વર્ઝન સાથે ચાલવા માટે બહુ જૂનું છે. કોલ્ડ સ્ટોરેજને તેનું સર્વર અપડેટ કરવા કહો, પછી ફરી પ્રયાસ કરો.',
   },
+  // Alerts of a facility on its local network only (WH-146), for administrators, at the top of Home
+  serverAlert: {
+    banner: 'સર્વર ચેતવણી: {{alert}}',
+    moreCount: 'બીજી {{count}}',
+    details: 'વિગતો',
+    detailsHint: 'ચેતવણી ક્યારે શરૂ થઈ અને શું કરવું તે બતાવે છે',
+    since: '{{time}} થી',
+    close: 'બંધ કરો',
+  },
   appTooOld: {
     title: 'ઍપ અપડેટ કરો',
     message: 'આ કોલ્ડ સ્ટોરેજ માટે ઍપનું વર્ઝન {{minimum}} અથવા તેનાથી નવું જોઈએ. તમારી પાસે {{current}} છે.',
     update: 'અપડેટ મેળવો',
     updateHint: 'અપડેટ જ્યાં મૂકેલું છે તે પેજ ખોલે છે',
     noLink: 'નવું વર્ઝન ક્યાંથી મળશે તે કોલ્ડ સ્ટોરેજને પૂછો.',
+    opensFacilityDownload: 'તમારી ફેસિલિટીનું ડાઉનલોડ પેજ ખોલે છે',
   },
   upgrading: {
     title: 'સર્વર અપડેટ થઈ રહ્યું છે',

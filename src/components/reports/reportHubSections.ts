@@ -10,6 +10,7 @@
  * that names a report this role may not open, is skipped (and does not count toward the
  * three recent ones): the stored lists outlive a role change and an app update.
  */
+import { backendHasFeature } from '@/config/backendFeatures';
 import { canOpenScreen } from '@/config/roles';
 import { REPORTS, reportById, type ReportCategory, type ReportDefinition } from '@/features/reports/reportRegistry';
 
@@ -26,9 +27,14 @@ export const HUB_RECENT_LIMIT = 3;
 
 const CATEGORIES: readonly ReportCategory[] = ['stock', 'movement', 'financial', 'operations'];
 
-/** Whether this role is offered the report: the gate the route guard uses (src/navigation/routeAccess.ts). */
+/**
+ * Whether the Reports tab offers this role the report: its hub gate, else the gate the route guard uses
+ * (src/navigation/routeAccess.ts), and a server that has the report's backend feature.
+ */
 export function mayOpenReport(role: string | null | undefined, report: ReportDefinition): boolean {
-  return !report.gate || canOpenScreen(role, report.gate);
+  const gate = report.hubGate ?? report.gate;
+  if (gate && !canOpenScreen(role, gate)) return false;
+  return !report.feature || backendHasFeature(report.feature);
 }
 
 /** The reports these stored ids name that the role may open, each once, in the stored order. */

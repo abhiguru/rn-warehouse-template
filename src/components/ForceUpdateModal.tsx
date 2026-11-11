@@ -109,6 +109,11 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     gap: space.sm,
   },
+  downloadNote: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
   securityText: {
     ...typography.footnote,
     color: t.text.secondary,
@@ -140,6 +145,7 @@ export function ForceUpdateModal() {
     currentVersion,
     minimumVersion,
     isConfigLoaded,
+    facilityDownload,
     openStore,
   } = useForceUpdate();
 
@@ -186,15 +192,16 @@ export function ForceUpdateModal() {
             style={({ pressed }) => [styles.updateButton, pressed && styles.updateButtonPressed]}
             accessibilityRole="button"
             accessibilityLabel={tr('components.forceUpdate.updateApp')}
-            accessibilityHint={tr(Platform.OS === 'ios' ? 'components.forceUpdate.opensAppStore' : 'components.forceUpdate.opensPlayStore')}
+            accessibilityHint={tr(facilityDownload ? 'components.appTooOld.opensFacilityDownload' : Platform.OS === 'ios' ? 'components.forceUpdate.opensAppStore' : 'components.forceUpdate.opensPlayStore')}
           >
             <MaterialCommunityIcons
-              name={Platform.OS === 'ios' ? 'apple' : 'google-play'}
+              name={facilityDownload ? 'download' : Platform.OS === 'ios' ? 'apple' : 'google-play'}
               size={iconSize.md}
               color={t.brand.onFill}
             />
             <Text style={styles.updateButtonLabel}>{tr('components.forceUpdate.updateApp')}</Text>
           </Pressable>
+          {facilityDownload ? <Text style={styles.downloadNote}>{tr('components.appTooOld.opensFacilityDownload')}</Text> : null}
 
           <View style={styles.securityNotice}>
             <MaterialCommunityIcons name="shield-check-outline" size={iconSize.sm} color={t.status.positive.text} />

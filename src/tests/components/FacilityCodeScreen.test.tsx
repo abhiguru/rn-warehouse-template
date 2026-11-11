@@ -21,6 +21,7 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() },
+  useLocalSearchParams: jest.fn(() => ({})),
 }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/components/LanguageSwitch', () => ({ LanguageSwitch: () => null }));

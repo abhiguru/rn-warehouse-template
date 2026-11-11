@@ -944,7 +944,7 @@ export function useDispatchForm({
         case REFUSAL.DISPATCH_INVOICED: {
           // The dispatch was put on an invoice after this form read it. The date and the number are locked now and are put
           // back to what was read; the person is taken to step 1, where the two fields say why.
-          const invoice = refusalString(refusal, 'invoice_no') ?? store.getState().dispatchForm.invoicedNumber ?? '';
+          const invoice = refusalString(refusal, 'invoice_label') ?? refusalString(refusal, 'invoice_no') ?? store.getState().dispatchForm.invoicedNumber ?? '';
           const message = t('dispatch.refusal.dispatchInvoiced', {
             dispatch: formatIdentifier(refusalString(refusal, 'dispatch_no') ?? header.disp_no),
             invoice: formatIdentifier(invoice),

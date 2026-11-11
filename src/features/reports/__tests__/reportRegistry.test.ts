@@ -49,7 +49,7 @@ const ROLES = ['admin', 'supervisor', 'staff', 'customer'];
 afterEach(() => setLanguage('en'));
 
 describe('report registry', () => {
-  it('lists the eight reports once each, in the order of the Reports tab', () => {
+  it('lists the ten reports once each, in the order of the Reports tab', () => {
     expect(REPORTS.map((report) => report.id)).toEqual([
       'customer-activity',
       'stock-summary',
@@ -59,8 +59,10 @@ describe('report registry', () => {
       'invoice-history',
       'stock-aging',
       'operations-dashboard',
+      'customer-dues',
+      'statement',
     ]);
-    expect(new Set(REPORTS.map((report) => report.id)).size).toBe(8);
+    expect(new Set(REPORTS.map((report) => report.id)).size).toBe(10);
   });
 
   it('has a screen file for every route, and no report screen is left out', () => {
@@ -91,14 +93,22 @@ describe('report registry', () => {
     const byCategory = (category: string) => REPORTS.filter((report) => report.category === category).map((report) => report.id);
     expect(byCategory('stock')).toEqual(['stock-summary', 'item-stock-summary', 'stock-aging']);
     expect(byCategory('movement')).toEqual(['dispatch-activity', 'grn-activity']);
-    expect(byCategory('financial')).toEqual(['invoice-history']);
+    expect(byCategory('financial')).toEqual(['invoice-history', 'customer-dues', 'statement']);
     expect(byCategory('operations')).toEqual(['customer-activity', 'operations-dashboard']);
-    expect(REPORTS.filter((report) => !report.hasPeriod).map((report) => report.id)).toEqual(['stock-summary', 'item-stock-summary', 'stock-aging']);
+    expect(REPORTS.filter((report) => !report.hasPeriod).map((report) => report.id)).toEqual([
+      'stock-summary',
+      'item-stock-summary',
+      'stock-aging',
+      'customer-dues',
+      'statement',
+    ]);
   });
 
-  it('gates the operations dashboard only, with the gate the route guard uses', () => {
+  it('gates the operations dashboard, the customer dues and the statement, with the gate the route guard uses', () => {
     expect(REPORTS.filter((report) => report.gate).map((report) => [report.id, report.gate])).toEqual([
       ['operations-dashboard', 'operationsDashboard'],
+      ['customer-dues', 'customerDues'],
+      ['statement', 'customerStatement'],
     ]);
     for (const report of REPORTS) {
       for (const role of ROLES) {

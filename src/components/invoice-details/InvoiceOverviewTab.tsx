@@ -83,6 +83,8 @@ interface InvoiceOverviewTabProps {
   is_share_loading?: boolean;
   on_print?: () => void;
   is_print_loading?: boolean;
+  /** WH-151: the document type and its GST facts, drawn between the reference and the amounts. */
+  gst_card?: React.ReactNode;
 }
 
 const formatDisplayDate = (value?: string) => (toDate(value) ? formatDate(value) : '');
@@ -215,6 +217,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   is_share_loading = false,
   on_print,
   is_print_loading = false,
+  gst_card,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -483,6 +486,14 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
           {renderGRNReferenceCard()}
         </>
       )}
+
+      {/* SECTION: DOCUMENT TYPE AND GST (WH-151) */}
+      {gst_card ? (
+        <>
+          <SectionHeader title={tr('gst.detail.section')} />
+          {gst_card}
+        </>
+      ) : null}
 
       {/* SECTION: FINANCIAL SUMMARY */}
       <SectionHeader title={tr('invoice.details.financialSummary')} />

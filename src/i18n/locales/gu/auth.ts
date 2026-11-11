@@ -166,6 +166,28 @@ export const auth: Translation<typeof source> = {
     backToSettings: 'સેટિંગ પર પાછા જાઓ',
   },
   // Draft for the owner's wording review: sign-in with a code made by the facility's own server.
+  // A facility on its local network only (WH-146): paired by the QR code an administrator makes
+  localFacility: {
+    scan: 'ફેસિલિટીનો કોડ સ્કેન કરો',
+    scanHint: 'એડમિનિસ્ટ્રેટર બતાવે તે સાઇન-ઇન કોડ પર કૅમેરા રાખો.',
+    cantScan: 'સ્કેન નથી થતું? કોડ ફરીથી મોટો અને વધુ પ્રકાશવાળો બતાવવા કહો, અને ફોન ૨૦–૩૦ સેમી દૂર રાખો.',
+    pairing: 'ફેસિલિટીમાં સાઇન-ઇન થઈ રહ્યું છે',
+    switchTitle: '{{next}} પર જવું છે?',
+    switchMessage: 'તમે {{current}}માંથી લૉગઆઉટ થશો.',
+    switchAction: 'બદલો',
+    notCodeTitle: 'ફેસિલિટીનો કોડ નથી',
+    notCodeMessage: 'આ ફેસિલિટીનો સાઇન-ઇન કોડ નથી. એડમિનિસ્ટ્રેટરને ફરીથી બતાવવા કહો.',
+    usedOrExpiredTitle: 'કોડ સ્વીકારાયો નથી',
+    usedOrExpired: 'આ કોડ વપરાઈ ગયો છે અથવા સમય પૂરો થયો છે. નવો કોડ માંગો.',
+    tooManyTries: 'ઘણા પ્રયાસ થયા. થોડી મિનિટ રાહ જુઓ અને ફરી સ્કેન કરો.',
+    unreachableTitle: 'ફેસિલિટી સુધી પહોંચાતું નથી',
+    unreachable: 'ફેસિલિટી સુધી પહોંચી શકાયું નથી. ફોન ફેસિલિટીના વાઇ-ફાઇ પર છે તે તપાસો, પછી ફરી સ્કેન કરો.',
+    wrongServerTitle: 'તમારી ફેસિલિટી નથી',
+    wrongServer: 'આ સરનામા પરનું ઉપકરણ તમારી ફેસિલિટીનું સર્વર છે તે સાબિત કરી શક્યું નથી. તેને કંઈ મોકલાયું નથી. એડમિનિસ્ટ્રેટરને પૂછો.',
+    failedTitle: 'લૉગિન થઈ શક્યું નથી',
+    failed: 'સાઇન-ઇન પૂરું થઈ શક્યું નથી. નવો કોડ માંગો અને ફરી સ્કેન કરો.',
+    appTooOld: 'આ ફેસિલિટીને નવી ઍપ જોઈએ. ઍપ અપડેટ કરો અને ફરી સ્કેન કરો.',
+  },
   facilityCode: {
     link: 'તમારા કોલ્ડ સ્ટોરેજના કોડથી લૉગિન કરો',
     linkHint: 'કોલ્ડ સ્ટોરેજે બનાવેલા કોડથી લૉગિન ખોલે છે',

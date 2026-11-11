@@ -68,7 +68,6 @@
     "expo-image-picker": "~58.0.10",
     "expo-linear-gradient": "~58.0.3",
     "expo-linking": "~58.0.16",
-    "expo-local-authentication": "~58.0.2",
     "expo-navigation-bar": "~58.0.4",
     "expo-router": "~58.0.30",
     "expo-secure-store": "~58.0.2",
@@ -114,7 +113,7 @@
     "typescript": "~6.0.3"
   },
   "overrides": {
-    "node-forge": "1.4.1",
+    "node-forge": "1.4.3",
     "postcss": "8.5.28",
     "compression": "1.8.2",
     "source-map-js": "1.2.2",

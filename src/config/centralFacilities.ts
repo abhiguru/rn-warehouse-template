@@ -257,7 +257,11 @@ export async function noteFacilitySmsSignIn(status: 'approved' | 'requested'): P
   if (!isCentralLoginConfigured()) return;
   const user = getCentralState().user;
   const server = getActiveOperatorServer();
-  if (!user || !server) return;
+  if (!user || !server) {
+    // Signed in at the facility with its own SMS code and no association session (WH-148): the sign-in screens are done with.
+    setCentralState({ facilitySmsOrigin: null });
+    return;
+  }
   await updateMyFacility(user.id, server.origin, { status, opened: true }).catch(() => {});
   // Either way the facility's sign-in screens are done with: a session has been
   // stored, or the waiting screen takes over and the way on is My facilities.

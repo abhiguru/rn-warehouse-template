@@ -4,6 +4,11 @@ import { GRNImagesTab } from '../GRNImagesTab';
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-image', () => ({ Image: 'Image' }));
+// The tab reads the connection; the native NetInfo module is absent under Jest, so the connection is faked online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true, isInternetReachable: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (sel: (s: unknown) => unknown) =>

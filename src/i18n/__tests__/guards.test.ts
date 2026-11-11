@@ -194,7 +194,10 @@ export function unformattedIdentifiers(source: ts.SourceFile, rel: string): stri
           const name = property.name?.getText(source);
           if (!name || !IDENTIFIER_PARAMS.has(name)) continue;
           const value = ts.isPropertyAssignment(property) ? property.initializer.getText(source) : name;
-          if (!/^(formatIdentifier|String)\(/.test(value)) {
+          // Strings already: formatIdentifier/String, invoiceLabelOf (returns the string label, WH-139), the local helper
+          // `full` of useInvoiceForm (wraps formatIdentifier), or a name bound in the file to formatIdentifier(...).
+          const boundFormatted = /^\w+$/.test(value) && new RegExp(`const ${value} = formatIdentifier\\(`).test(source.text);
+          if (!boundFormatted && !/^(formatIdentifier|String|invoiceLabelOf|full)\(/.test(value)) {
             const { line } = source.getLineAndCharacterOfPosition(property.getStart());
             found.push(`${rel}:${line + 1}  ${name}: ${value.slice(0, 50)}`);
           }
@@ -221,6 +224,12 @@ describe('identifiers given to t are not formatted as numbers', () => {
     expect(check(`import { t, formatIdentifier } from '@/i18n';\nconst a = (n: number) => t('lists.invoice.cardTitle', { number: formatIdentifier(n) });`)).toEqual([]);
     expect(check(`import { t } from '@/i18n';\nconst a = (n: number) => t('lists.invoice.cardTitle', { number: String(n) });`)).toEqual([]);
     expect(check(`import { t } from '@/i18n';\nconst a = (index: number) => t('grn.item.itemNumber', { number: index + 1 });`)).toEqual([]);
+  });
+
+  it('the check accepts a full invoice label and a name bound to formatIdentifier, and still finds a bare number', () => {
+    expect(check(`import { t } from '@/i18n';\nconst a = (l: string, n: number) => t('payments.hasPayments', { number: invoiceLabelOf(l, String(n)) });`)).toEqual([]);
+    expect(check(`import { t, formatIdentifier } from '@/i18n';\nconst a = (n: number) => { const number = formatIdentifier(n); return t('gst.print.skippedLine', { number }); };`)).toEqual([]);
+    expect(check(`import { t } from '@/i18n';\nconst a = (number: number) => t('gst.print.skippedLine', { number });`)).toHaveLength(1);
   });
 
   it('no file under app/ or src/ does it', () => {

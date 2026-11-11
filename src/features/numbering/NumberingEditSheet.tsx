@@ -296,7 +296,7 @@ function Editor({ rule, onClose, onSaved, onRefreshed, onUnconfirmed, styles }: 
             label={tr('numbering.edit.prefix')}
             value={draft.prefix}
             onChangeText={text => update({ prefix: text.toUpperCase() })}
-            helperText={tr('numbering.edit.prefixHelp')}
+            helperText={tr(type === 'invoice' ? 'numbering.edit.invoicePrefixHelp' : 'numbering.edit.prefixHelp')}
             error={fieldError('prefix')}
             identifier
             autoCapitalize="characters"

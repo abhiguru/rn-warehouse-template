@@ -126,7 +126,7 @@ export default function InvoiceEditLayout() {
     turnedAway.current = true;
     // The number of the invoice that is open, from its own loaded form (the slice was not touched by this visit).
     const open = store.getState().invoiceForm;
-    showOpenFormRefusal(blocker, open.baseline?.inv_no || open.header.inv_no || undefined);
+    showOpenFormRefusal(blocker, (open.baseline?.inv_no || open.header.inv_no) ? `${(open.baseline?.header ?? open.header).inv_prefix ?? ''}${open.baseline?.inv_no || open.header.inv_no}` : undefined);
     router.back();
   }, []);
 
@@ -156,7 +156,7 @@ export default function InvoiceEditLayout() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (openForm.current?.kind === 'edit' && baseline?.inv_no) openForm.current.number = baseline.inv_no;
+    if (openForm.current?.kind === 'edit' && baseline?.inv_no) openForm.current.number = `${baseline.header.inv_prefix ?? ''}${baseline.inv_no}`;
   }, [baseline]);
 
   // Don't render if no permission, or while this visit is being turned away

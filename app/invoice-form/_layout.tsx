@@ -8,6 +8,7 @@ import {
   type OpenInvoiceForm,
 } from '@/features/invoice/utils/openInvoiceForms';
 import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
+import { clearInvoiceFormOrigin } from '@/features/invoice/utils/invoiceFormOrigin';
 
 export default function InvoiceFormLayout() {
   const { canCreate } = usePermissions();
@@ -31,14 +32,19 @@ export default function InvoiceFormLayout() {
     turnedAway.current = true;
     // The number of the invoice that is open, from its own loaded form (the slice was not touched by this visit).
     const open = store.getState().invoiceForm;
-    showOpenFormRefusal(blocker, open.baseline?.inv_no || open.header.inv_no || undefined);
+    showOpenFormRefusal(blocker, (open.baseline?.inv_no || open.header.inv_no) ? `${(open.baseline?.header ?? open.header).inv_prefix ?? ''}${open.baseline?.inv_no || open.header.inv_no}` : undefined);
     router.back();
   }, []);
 
   // Open for as long as this layout is: an edit of an invoice is not opened over it.
+  // WH-162: a form opened from GRN details forgets where it came from when it closes.
   useEffect(() => {
     if (blocker) return;
-    return registerInvoiceForm({ kind: 'create' });
+    const unregister = registerInvoiceForm({ kind: 'create' });
+    return () => {
+      unregister();
+      clearInvoiceFormOrigin();
+    };
   }, []);
 
   if (!canCreate || blocker) {

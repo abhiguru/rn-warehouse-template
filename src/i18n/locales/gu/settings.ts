@@ -18,6 +18,8 @@ export const settings: Translation<typeof source> = {
     standardRateSubtitle: 'નવી આઇટમને મળતો દર',
     documentNumbers: 'દસ્તાવેજ નંબર',
     documentNumbersSubtitle: 'આવક પાવતી, જાવક અને ઇન્વૉઇસ નંબર કેવી રીતે લખાય છે',
+    charging: 'ભાડાની ગણતરી',
+    chargingSubtitle: 'સંગ્રહનો સમય કેવી રીતે ગણાય અને કુલ રકમ કેવી રીતે રાઉન્ડ થાય',
     rackPresets: 'રેકના બટન',
     rackPresetsSubtitle: 'આવક પાવતીની આઇટમમાં માળ અને ચેમ્બરના બટન',
     sensors: 'તાપમાન અને ભેજ',
@@ -201,6 +203,12 @@ export const settings: Translation<typeof source> = {
     detailOtherNetwork: 'આ ફોનને વખારના Wi-Fi સાથે જોડો, પછી ફરી તપાસો.',
     statusNetworkUnknown: 'Wi-Fi સરનામું જાણી શકાયું નથી',
     detailNetworkUnknown: 'આ ફોન પોતાનું Wi-Fi સરનામું વાંચી શક્યો નહીં, તેથી તે વખારના નેટવર્કનો ઉપયોગ કરતો નથી. થોડી વાર પછી ફરી પ્રયાસ કરો.',
+    // The warehouse network key (WH-133): a phone without one uses only the internet; a changed answer is shown under "Connected via".
+    statusNoKey: 'હજુ તૈયાર નથી',
+    detailNoKey:
+      'આ ફોન આગલી વખતે ઇન્ટરનેટથી તમારા સર્વર સુધી પહોંચશે ત્યારે તેને વખારના નેટવર્કની ચાવી મળશે. ત્યાં સુધી તે ફક્ત ઇન્ટરનેટ વાપરે છે.',
+    answerChanged:
+      'વખારના નેટવર્ક પરનો એક જવાબ રસ્તામાં બદલાયો હતો, તેથી આ ફોને તેનો ઉપયોગ બંધ કર્યો. તમારું સર્વર ચલાવનાર વ્યક્તિને જણાવો.',
     resultNotSet: 'તપાસવા માટે કોઈ સરનામું નથી',
     lastChecked: 'છેલ્લે તપાસ્યું {{when}}: {{result}}',
     neverChecked: 'હજુ તપાસ્યું નથી',

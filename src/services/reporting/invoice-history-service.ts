@@ -236,12 +236,14 @@ export async function getCustomerInvoiceHistory(
       pending_count: responseData?.summary?.pending_count ?? 0,
       paid_amount: responseData?.summary?.paid_amount ?? 0,
       pending_amount: responseData?.summary?.pending_amount ?? 0,
+      ...(typeof responseData?.summary?.unlinked_paid_amount === 'number' ? { unlinked_paid_amount: responseData.summary.unlinked_paid_amount } : {}),
     };
 
     const invoiceRows: InvoiceHistoryRecord[] = (responseData?.invoices ?? []).map(
       (inv: any) => ({
         invoice_id: inv.invoice_id,
         invoice_number: inv.invoice_number,
+        invoice_label: typeof inv.invoice_label === 'string' && inv.invoice_label !== '' ? inv.invoice_label : null,
         invoice_date: inv.invoice_date,
         financial_year: inv.financial_year ?? '',
         grn_ref: inv.grn_ref ?? '',

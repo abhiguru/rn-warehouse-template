@@ -16,12 +16,14 @@ import { t } from '@/i18n';
 // TYPES
 // ============================================================================
 
-export type TabKey = 'overview' | 'items' | 'breakdown';
+export type TabKey = 'overview' | 'items' | 'breakdown' | 'payments';
 
 interface InvoiceTabNavigatorProps {
   active_tab: TabKey;
   on_tab_change: (tab: TabKey) => void;
   item_count?: number;
+  /** The Payments tab (WH-143): only while the facility records payments. */
+  show_payments?: boolean;
 }
 
 // ============================================================================
@@ -32,6 +34,7 @@ export const InvoiceTabNavigator: React.FC<InvoiceTabNavigatorProps> = ({
   active_tab,
   on_tab_change,
   item_count = 0,
+  show_payments = false,
 }) => {
   const tabs = useMemo<TabConfig<TabKey>[]>(() => [
     {
@@ -50,7 +53,10 @@ export const InvoiceTabNavigator: React.FC<InvoiceTabNavigatorProps> = ({
       label: t('invoice.tabs.breakdown'),
       icon: TAB_ICONS.breakdown,
     },
-  ], [item_count]);
+    ...(show_payments
+      ? [{ key: 'payments' as const, label: t('payments.section.title'), icon: { filled: 'cash-multiple', outline: 'cash-multiple' } as const }]
+      : []),
+  ], [item_count, show_payments]);
 
   return (
     <GenericDetailTabNavigator

@@ -5,6 +5,7 @@
  * Returns GRN history with items, invoice status, and dispatch summary.
  */
 
+import { parseInvoiceState } from '@/features/charging/invoiceState';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type {
   GRNActivityResponse,
@@ -147,8 +148,11 @@ export async function getCustomerGRNActivity(
         image_count: grn.image_count ?? 0,
         invoice_status: {
           is_invoiced: grn.invoice_status?.is_invoiced ?? false,
+          invoice_state: parseInvoiceState(grn.invoice_status?.invoice_state),
+          invoiced_amount: Number.isFinite(Number(grn.invoice_status?.invoiced_amount)) && grn.invoice_status?.invoiced_amount !== null ? Number(grn.invoice_status.invoiced_amount) : undefined,
           invoice_id: grn.invoice_status?.invoice_id ?? null,
           invoice_number: grn.invoice_status?.invoice_number ?? null,
+          invoice_label: typeof grn.invoice_status?.invoice_label === 'string' && grn.invoice_status.invoice_label !== '' ? grn.invoice_status.invoice_label : null,
         },
         dispatch_summary: {
           total_dispatched: grn.dispatch_summary?.total_dispatched ?? 0,

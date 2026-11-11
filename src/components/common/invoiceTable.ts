@@ -12,6 +12,8 @@ export interface InvoiceRow {
   /** Null in the fallback: the row then cannot be opened. */
   invoice_id: string | null;
   invoice_no: number;
+  /** The full number ("SRT/12") when the server sent one; the row then shows it instead of the digits. */
+  invoice_label?: string | null;
   invoice_date: string | null;
   /** The whole invoice's total (with tax, less discount); null in the fallback. */
   total: number | null;
@@ -31,12 +33,15 @@ export interface InvoiceSummaryLike {
   total_invoices?: number | null;
   total_amount?: number | null;
   invoice_numbers?: ReadonlyArray<number | string> | null;
+  /** One full number per invoice, in the order of `invoice_numbers` (migration 175). */
+  invoice_labels?: ReadonlyArray<string> | null;
 }
 
 /** A candidate row read from a server answer, before it is checked. */
 export interface InvoiceCandidate {
   invoice_id?: string | null;
   invoice_no?: number | string | null;
+  invoice_label?: string | null;
   invoice_date?: string | null;
   total?: number | string | null;
 }
@@ -78,6 +83,7 @@ export function invoiceTableFrom(
       key: id,
       invoice_id: id,
       invoice_no: number,
+      invoice_label: text(candidate.invoice_label),
       invoice_date: text(candidate.invoice_date),
       total: finite(candidate.total) ?? null,
     });
@@ -87,9 +93,12 @@ export function invoiceTableFrom(
     rows.sort((a, b) => time(a.invoice_date) - time(b.invoice_date) || a.invoice_no - b.invoice_no);
     return { rows, total, count, detailed: true };
   }
-  const numbers = (summary?.invoice_numbers ?? []).map(Number).filter((n) => Number.isFinite(n));
+  const allNumbers = (summary?.invoice_numbers ?? []).map(Number);
+  // The labels belong to the numbers by position; they are used only when there is one for each.
+  const labels = summary?.invoice_labels && summary.invoice_labels.length === allNumbers.length ? summary.invoice_labels : null;
+  const numbers = allNumbers.map((n, index) => ({ n, label: text(labels?.[index]) })).filter(({ n }) => Number.isFinite(n));
   return {
-    rows: numbers.map((n, index) => ({ key: `number:${n}:${index}`, invoice_id: null, invoice_no: n, invoice_date: null, total: null })),
+    rows: numbers.map(({ n, label }, index) => ({ key: `number:${n}:${index}`, invoice_id: null, invoice_no: n, invoice_label: label, invoice_date: null, total: null })),
     total,
     count,
     detailed: false,

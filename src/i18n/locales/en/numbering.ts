@@ -28,6 +28,8 @@ export const numbering = {
     free: 'Typed by hand: any text up to 20 characters',
     invoiceYear: 'Whole numbers, starting again at {{start}} every financial year',
     invoiceSequence: 'Whole numbers, counting on across years from {{start}}',
+    invoiceYearPrefix: 'Whole numbers with prefix {{prefix}}, starting again at {{start}} every financial year',
+    invoiceSequencePrefix: 'Whole numbers with prefix {{prefix}}, counting on across years from {{start}}',
     checkOn: 'A number outside the rule is refused',
     checkOff: 'A number outside the rule is saved (not checked)',
     notFollowing: {
@@ -54,6 +56,7 @@ export const numbering = {
     perLetterHelp: 'After this many, the next letter starts.',
     prefix: 'Prefix',
     prefixHelp: 'Up to 10 capital letters, digits, / or -. May be empty.',
+    invoicePrefixHelp: 'Up to 8 capital letters, digits, / or -. May be empty. Printed in front of every invoice number.',
     start: 'First number',
     startHelp: 'The first number to give.',
     startHelpYear: 'The first number to give in each financial year.',
@@ -97,6 +100,8 @@ export const numbering = {
     saveFailed: "Couldn't save the numbering. Check your connection and try again.",
     // The server answered and refused the values (SQLSTATE 22023): the connection is fine, so it is not blamed.
     refused: "The numbering wasn't saved because the server did not accept these values. Check them and try again.",
+    prefixLockedMidYear: "The prefix can't change during a financial year that already has invoices. You can change it from 1 April.",
+    switchMidYear: 'Invoices already exist this financial year. The numbering can be changed from 1 April.',
     errors: {
       firstLetter: 'Enter one capital letter.',
       width: 'Enter a whole number from 1 to 7.',

@@ -385,6 +385,74 @@ export async function generateCustomerStockPDF(
   }
 }
 
+/**
+ * One customer's statement as an English PDF (backend generate-statement-pdf, migration 176, WH-155): the figures of
+ * get_customer_statement, read by the server with the caller's token.
+ */
+export async function generateStatementPDF(
+  customerId: string
+): Promise<PDFResponse> {
+  try {
+    const authenticatedFetch = createAuthenticatedFetch();
+    const authToken = await getAuthToken();
+    if (!authToken) {
+      return {
+        success: false,
+        error: t('errors.auth.loginAgain'),
+      };
+    }
+
+    const config = getCurrentConfig();
+    const url = `${config.url}/functions/v1/generate-statement-pdf`;
+
+    const response = await authenticatedFetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ customer_id: customerId }),
+    });
+
+    // Handle non-JSON responses
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      discardBody(response);
+      return {
+        success: false,
+        error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
+      };
+    }
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return {
+        success: false,
+        error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
+        refusal: pdfRefusal(response.status, data.error),
+      };
+    }
+
+    const pdfUrl = acceptSignedUrl(fixInternalUrl(data.pdf_url));
+    if (!pdfUrl) {
+      return { success: false, error: insecureDownloadError() };
+    }
+
+    return {
+      success: true,
+      pdfUrl,
+      expiresIn: data.expires_in,
+      document: data.document,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Report PDFs: backend edge function generate-report-pdf (the backend release
 // with migrations 52-53).
@@ -417,7 +485,7 @@ export interface ReportPdfSort {
 /** The payment status an invoice history PDF is narrowed to. */
 export type ReportPdfStatus = 'paid' | 'pending';
 /** The GRNs a GRN activity PDF is narrowed to: those invoiced, or those not yet invoiced. */
-export type ReportPdfInvoicing = 'invoiced' | 'not_invoiced';
+export type ReportPdfInvoicing = 'invoiced' | 'not_invoiced' | 'partly_invoiced';
 /** The stock age a stock aging PDF is narrowed to, in days (the app's AgingBucketId). */
 export type ReportPdfBucket = '0-120' | '121-240' | '241-364' | 'over-364';
 

@@ -2,7 +2,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { REQUEST_TIME_LIMIT_MS, awaitIdentityGate, trackReadRequest } from '@/config/supabaseConfig';
 import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
-import { getConnectionPath, noteNativeReadFailed, viaCurrentPath } from '@/config/lanTransport';
+import { getConnectionPath, transportFetch } from '@/config/lanTransport';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { AppError } from '@/utils/appError';
 import { createLogger } from '@/utils/logger';
@@ -200,7 +200,7 @@ async function downloadDocument(pdfUrl: string, filename: string): Promise<Downl
   try {
     if (stopped || generation !== getSessionGeneration()) stop('session');
     else {
-      const download = (url: string) =>
+      const nativeDownload = (url: string) =>
         File.downloadFileAsync(url, file, {
           idempotent: true,
           signal: controller.signal,
@@ -208,16 +208,38 @@ async function downloadDocument(pdfUrl: string, filename: string): Promise<Downl
             if (bytesWritten > MAX_SHARED_DOCUMENT_BYTES || totalBytes > MAX_SHARED_DOCUMENT_BYTES) stop('too-large');
           },
         });
-      // The signed URL names the facility's public address; on the warehouse network path (WS-L,
-      // src/config/lanTransport.ts) it is fetched from the LAN address instead. A download that fails
-      // without an answer is a read: the other path is asked once, and the download is tried once more there.
-      const startedOn = getConnectionPath();
-      try {
-        await download(viaCurrentPath(pdfUrl));
-      } catch (error) {
-        if (stopped || statusOf(error) || !(await noteNativeReadFailed(startedOn))) throw error;
-        deleteQuietly(file);
-        await download(viaCurrentPath(pdfUrl));
+      // Over the internet the body goes from the network straight to the file. On the warehouse network (WH-133)
+      // every request is signed and every answer checked over its whole body before it is used, which a native
+      // download cannot do: the document is fetched by `transportFetch` (at most 25 MB in memory), checked, and only
+      // then written to the file. A document that does not check out never reaches the file or the share sheet.
+      // A fetch that fails without an answer is a read: the other path is asked once, and it is tried there.
+      const overLan = async () => {
+        const response = await transportFetch(pdfUrl, { signal: controller.signal }, { read: true });
+        if (!response.ok) throw new Error(`Download response has status: ${response.status}`);
+        const declared = Number(response.headers.get('content-length'));
+        if (Number.isFinite(declared) && declared > MAX_SHARED_DOCUMENT_BYTES) {
+          stop('too-large');
+          return;
+        }
+        const bytes = await response.arrayBuffer();
+        if (bytes.byteLength > MAX_SHARED_DOCUMENT_BYTES) {
+          stop('too-large');
+          return;
+        }
+        if (stopped) return;
+        if (!file.exists) file.create();
+        await file.write(bytes);
+      };
+      // `transportFetch` also covers the internet, so a phone that has just moved to the warehouse network is served.
+      if (getConnectionPath() === 'lan') await overLan();
+      else {
+        try {
+          await nativeDownload(pdfUrl);
+        } catch (error) {
+          if (stopped || statusOf(error)) throw error;
+          deleteQuietly(file);
+          await overLan();
+        }
       }
       // The last progress event can be skipped; the file on disk has the final word.
       if (!stopped && (file.size ?? 0) > MAX_SHARED_DOCUMENT_BYTES) stop('too-large');
