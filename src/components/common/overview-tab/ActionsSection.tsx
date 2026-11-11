@@ -262,7 +262,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             disabled={busyAny}
             accessibilityRole="button"
             accessibilityLabel={deleteLabel ?? labels.delete}
-            accessibilityState={{ disabled: isDeleting, busy: isDeleting }}
+            accessibilityState={{ disabled: busyAny, busy: isDeleting }}
           >
             {isDeleting ? (
               <ActivityIndicator size="small" color={colorStyles.iconError} />
