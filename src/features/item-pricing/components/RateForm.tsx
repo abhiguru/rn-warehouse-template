@@ -18,7 +18,7 @@
  * bottom, disabled until something differs from the copy; leaving with changes asks "Discard this rate?" (both for the
  * default rate and for a customer's rate); a save goes back to the Pricing tab.
  */
-import { itemWithPackaging } from '@/utils/packagingWord';
+import { itemWithPackaging, pickedItemName } from '@/utils/packagingWord';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
@@ -627,7 +627,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
             setCopyOpen(false);
             // Typed figures are not replaced without asking.
             if (!editor.dirty) editor.copyFrom(picked, pickedRows);
-            else void confirmReplaceBands(picked.name).then(yes => { if (yes) editor.copyFrom(picked, pickedRows); });
+            else void confirmReplaceBands(pickedItemName(picked)).then(yes => { if (yes) editor.copyFrom(picked, pickedRows); });
           }}
         />
       ) : null}

@@ -48,6 +48,10 @@ export const itemWithPackaging = (name: string, packaging: string | null | undef
   return word ? `${name} \u00B7 ${word}` : name;
 };
 
+/** A picked item's name as the list shows it, "Egg \u00B7 Trey"; the bare name when its packaging is not known (field absent). */
+export const pickedItemName = (item: { name: string; packaging?: string | null }): string =>
+  item.packaging === undefined ? item.name : itemWithPackaging(item.name, item.packaging);
+
 /** The word to put beside an item's name when the lots show it: the shared word (a blank word is Bag), nothing when the lots differ. */
 export const itemWordOfLots = (packagings: ReadonlyArray<string | null | undefined>): string | undefined => sharedPackaging(packagings);
 

@@ -14,7 +14,7 @@ import { t } from '@/i18n';
 import { replaceItemRates } from '@/services/item-pricing-service';
 import { getRateStartFloor } from '@/services/rateStartFloor';
 import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/item-pricing.types';
-import { itemWithPackaging } from '@/utils/packagingWord';
+import { pickedItemName } from '@/utils/packagingWord';
 import { showToast } from '@/utils/toast';
 import { useRateSaveKey } from './useRateSaveKey';
 import { notifyRatesChanged, type EditorMode, type EditorParams } from './contract';
@@ -276,7 +276,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const copyFrom = (from: { id: string; name: string; packaging?: string | null }, fromRows: ItemStoragePrice[]) => {
     if (!draft) return;
     // Named as the list names it, "Amachur · Borry" (WH-71); an item without a packaging field keeps its bare name.
-    setCopiedFrom(from.packaging === undefined ? from.name : itemWithPackaging(from.name, from.packaging));
+    setCopiedFrom(pickedItemName(from));
     setDraft(copyTiersFrom(draft, fromRows));
   };
 
