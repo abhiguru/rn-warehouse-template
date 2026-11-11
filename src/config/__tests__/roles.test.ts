@@ -133,9 +133,21 @@ describe('report routing', () => {
   });
 });
 
+describe('connection history screen (WH-177)', () => {
+  it.each([
+    ['admin', true],
+    ['supervisor', false],
+    ['staff', false],
+    ['customer', false],
+    [undefined, false],
+  ])('%s: %s', (role, allowed) => {
+    expect(canOpenScreen(role, 'connectionHistory')).toBe(allowed);
+  });
+});
+
 describe('settings feature rows', () => {
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'rackPresets', 'sensors']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'rackPresets', 'sensors', 'connectionHistory']],
     ['supervisor', ['customers', 'items', 'users', 'standardRate', 'rackPresets', 'sensors']],
     ['staff', ['sensors']],
     ['customer', []],
@@ -145,7 +157,7 @@ describe('settings feature rows', () => {
   });
 
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'rackPresets']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'rackPresets', 'connectionHistory']],
     ['supervisor', ['customers', 'items', 'users', 'standardRate', 'rackPresets']],
     ['staff', []],
     ['customer', []],
