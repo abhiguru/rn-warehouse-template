@@ -157,6 +157,8 @@ describe('the places the host is rewritten', () => {
       [
         'app/reports/statement.tsx: const fetch = useCallback(() => getCustomerStatement(customerId), [customerId]);', // a callback named fetch
         "app/reports/statement.tsx: const query = useLiveReport('', fetch, tr(''));",
+        'app/reports/temperature-report.tsx: const fetch = useCallback(() => getReportSensors(), []);', // a callback named fetch
+        "app/reports/temperature-report.tsx: const query = useLiveReport('', fetch, tr(''));",
         'src/features/reports/useLiveReport.ts: const fetchRef = useRef(fetch);',
         'src/features/reports/useLiveReport.ts: fetchRef.current = fetch;',
         'src/features/reports/useReportQuery.ts: fetch,', // the callback named fetch, destructured
