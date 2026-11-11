@@ -25,6 +25,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
+import { packNounCapital } from '@/utils/packagingWord';
 import { useAppSelector } from '@/store/hooks';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { PriceType } from '@/types/item-pricing.types';
@@ -222,6 +223,9 @@ export function ItemPricingTab({ itemId, itemName, packaging, active = true }: I
               </Button>
             ) : null}
           </View>
+        ) : null}
+        {hasRateInForce && lastUpTo < 9999 ? (
+          <Text style={styles.note} testID="item-heavier-no-rate">{t('pricing.edit.heavierNoRate', { things: packNounCapital(packaging), kg: localizeDigits(String(lastUpTo)) })}</Text>
         ) : null}
         {canChange && noNextBand ? <Text style={styles.note} testID="period-add-blocked">{noNextText}</Text> : null}
         {periods.length === 0 ? (

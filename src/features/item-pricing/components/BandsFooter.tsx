@@ -10,7 +10,8 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { typography, type ThemeTokens } from '@/theme/tokens';
 import { packNounCapital } from '@/utils/packagingWord';
-import { appendBandBlock, appendEmptyBand, type Draft, type EditorContext } from '../editModel';
+import { localizeDigits } from '@/i18n';
+import { appendBandBlock, appendEmptyBand, COVER_TOP_KG, topUpTo, type Draft, type EditorContext } from '../editModel';
 
 interface Props {
   draft: Draft;
@@ -27,6 +28,8 @@ interface Props {
   addPanel?: ReactNode;
   /** The item's own rate form draws Add band and its reasons itself, above the bands: leave them out here. */
   hideAdd?: boolean;
+  /** The item's own rate form: say that weights above the last band have no rate (WH-66). */
+  heavierNote?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -34,8 +37,9 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPress, addPanel, hideAdd }: Props) {
+export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPress, addPanel, hideAdd, heavierNote }: Props) {
   const styles = useThemedStyles(makeStyles);
+  const topKg = heavierNote && !ctx.customerId ? topUpTo(draft) : null;
   const addBlock = appendBandBlock(draft);
   return (
     <>
@@ -53,6 +57,9 @@ export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPres
           {addBlock === 'upTo' ? <Text style={styles.note}>{t('pricing.edit.addBandNeedsUpTo')}</Text> : null}
         </>
       )}
+      {topKg !== null && topKg < COVER_TOP_KG ? (
+        <Text style={styles.note} testID="heavier-no-rate">{t('pricing.edit.heavierNoRate', { things: packNounCapital(packaging), kg: localizeDigits(String(topKg)) })}</Text>
+      ) : null}
       {ctx.customerId ? <Text style={styles.note}>{packaging === undefined ? t('pricing.edit.outsidePay') : t('pricing.edit.outsidePayFor', { things: packNounCapital(packaging) })}</Text> : null}
     </>
   );

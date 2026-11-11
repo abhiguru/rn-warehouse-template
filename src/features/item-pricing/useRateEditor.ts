@@ -24,6 +24,7 @@ import {
   correcting,
   fieldOrder,
   hasChanges,
+  heavierBagsAsk,
   initialDraft,
   resyncToday,
   savedStop,
@@ -89,6 +90,8 @@ export interface UseRateEditor {
   saving: boolean;
   /** The later rates the save would delete, for the confirm dialog; null when no question is open. */
   later: LaterRates | null;
+  /** The heavier-bags question (WH-66) while it is open: the new top, the old top and the start day; null otherwise. */
+  heavier: { kg: number; oldKg: number; date: string } | null;
   /** The name of the item whose bands were copied into the draft. */
   copiedFrom: string | null;
   /**
@@ -112,7 +115,9 @@ export interface UseRateEditor {
   /** Take the bands of another item into the draft. */
   copyFrom: (item: { id: string; name: string; packaging?: string | null }, rows: ItemStoragePrice[]) => void;
   /** Save. `replaceLater` true is the answer Yes of the later-rates question. */
-  submit: (replaceLater?: boolean) => Promise<void>;
+  submit: (replaceLater?: boolean, leaveHeavier?: boolean) => Promise<void>;
+  /** Keep editing, on the heavier-bags question. */
+  dismissHeavier: () => void;
   /** The answer No of the later-rates question. */
   dismissLater: () => void;
   /** Clear the strip (the person started typing again). */
@@ -135,6 +140,9 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const [strip, setStrip] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [later, setLater] = useState<LaterRates | null>(null);
+  const [heavier, setHeavier] = useState<{ kg: number; oldKg: number; date: string } | null>(null);
+  // The figures the person already answered "Save anyway" for: a retry of the same figures does not ask again.
+  const heavierOk = useRef<string | null>(null);
   // The item whose tiers were copied into the draft (names the note under the start day).
   const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
   const [rowsChanged, setRowsChanged] = useState(false);
@@ -326,7 +334,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     return `band.${i}.upTo`;
   };
 
-  const submit = async (replaceLater = false) => {
+  const submit = async (replaceLater = false, leaveHeavier = false) => {
     if (!open || saving) return;
     const { draft: data, ctx: context } = open;
     // Left open past midnight (India): the day chips move to the new day and the person looks again.
@@ -355,6 +363,15 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       view?.current?.scrollToTop();
       return;
     }
+    // Heavier bags left with no rate where the rate being replaced covered them: ask first, once per set of figures (WH-66).
+    const heavierKey = JSON.stringify(toReplaceInput(data, context).bands);
+    const ask = heavierBagsAsk(data, context);
+    if (leaveHeavier) heavierOk.current = heavierKey;
+    if (ask && heavierOk.current !== heavierKey) {
+      setHeavier(ask);
+      return;
+    }
+    setHeavier(null);
     const keepsLater = context.mode === 'addBand' && data.startsOnChoice === 'ownStart';
     if (!replaceLater && !correcting(data, context) && !keepsLater && data.startsOn) {
       const hidden = plannedOnDay(context.rows, { customerId: context.customerId, priceType: data.priceType }, data.startsOn, context.today, context.editingIds);
@@ -456,6 +473,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     strip,
     saving,
     later,
+    heavier,
     copiedFrom,
     earliest: ctx?.earliestStart,
     dirty,
@@ -468,6 +486,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     copyFrom,
     submit,
     dismissLater: () => setLater(null),
+    dismissHeavier: () => setHeavier(null),
     clearStrip: () => setStrip(null),
   };
 }

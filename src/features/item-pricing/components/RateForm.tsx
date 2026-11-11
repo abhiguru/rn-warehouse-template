@@ -18,7 +18,7 @@
  * bottom, disabled until something differs from the copy; leaving with changes asks "Discard this rate?" (both for the
  * default rate and for a customer's rate); a save goes back to the Pricing tab.
  */
-import { itemWithPackaging, pickedItemName } from '@/utils/packagingWord';
+import { itemWithPackaging, packNoun, pickedItemName } from '@/utils/packagingWord';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
@@ -231,7 +231,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
     returnKeyType: order.indexOf(key) < order.length - 1 ? ('next' as const) : ('done' as const),
   });
 
-  const { draft, ctx, errors, saving, later } = editor;
+  const { draft, ctx, errors, saving, later, heavier } = editor;
   const priceType: PriceType = draft?.priceType ?? 'monthly';
   const oneTime = priceType === 'one_time';
   const defaultBands = useMemo(
@@ -373,7 +373,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
         bandsErrors.bands ? <Text style={styles.warning} accessibilityRole="alert">{bandsErrors.bands}</Text> : null
       ) : (
         <>
-          <BandsFooter draft={draft} ctx={ctx} errors={bandsErrors} onChange={set} hideAdd={!customerId} />
+          <BandsFooter draft={draft} ctx={ctx} errors={bandsErrors} onChange={set} hideAdd={!customerId} heavierNote={!customerId} packaging={packaging} />
           <Button type="tertiary" leftIcon="content-copy" onPress={() => setCopyOpen(true)} disabled={offline} testID="add-rate-copy">
             {t('pricing.edit.copyTiers')}
           </Button>
@@ -631,6 +631,17 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
           }}
         />
       ) : null}
+      <ConfirmDialog
+        visible={!!heavier}
+        variant="warning"
+        title={t('pricing.edit.heavierTitle', { things: packNoun(packaging) })}
+        message={heavier ? t('pricing.edit.heavierMessage', { things: packNoun(packaging), date: dateText(heavier.date), kg: localizeDigits(String(heavier.kg)), oldKg: localizeDigits(String(heavier.oldKg)) }) : ''}
+        confirmText={t('pricing.edit.heavierConfirm')}
+        cancelText={t('common.keepEditing')}
+        busy={saving}
+        onConfirm={() => void editor.submit(false, true)}
+        onCancel={editor.dismissHeavier}
+      />
       <ConfirmDialog
         visible={!!later?.[0]}
         variant="warning"
