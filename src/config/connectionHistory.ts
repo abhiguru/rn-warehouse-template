@@ -16,6 +16,12 @@
  * because the server is reachable again, the app coming back to the foreground, or a sign-in. A failed hand-over leaves the notes
  * for the next of those; nothing retries on a timer.
  *
+ * Each note is stamped when it is made with the session scope the list caches use (`getSessionCacheScope`: server origin,
+ * facility instance id and signed-in subject). A hand-over sends only the notes whose stamp is the current session's; the others
+ * stay on the phone until their own facility and user sign in again, and the 500-note and 30-day limits still age them out. A gap
+ * open when the facility or user changes is closed under the old stamp (the scope is replaced only after the gap is closed). A
+ * note without a stamp (the first stored format) is dropped when read, and so is a note made while no scope is known.
+ *
  * A save tried is a GRN, dispatch or invoice Save pressed during a gap (`noteSavePressed`), or one that ended as an offline failure
  * with no gap open (`noteSaveEndedOffline`). A lost answer is counted separately (`noteLostAnswer`). A save or lost answer
  * outside any gap is kept as a note of length 0: it counts as a save or an answer lost, not as a gap.
@@ -44,6 +50,8 @@ const BATCH = 500;
 export interface GapNote {
   id: string;
   endedAt: number;
+  /** The session scope (origin, instance id, subject) the note was made under; only that session hands it over. */
+  scope: string;
   /** Seconds; 0 for a save or lost answer outside any gap. */
   lengthS: number;
   savesTried: number;
@@ -59,8 +67,8 @@ export interface TrackerDeps {
   mono: () => number;
   wall: () => number;
   newId: () => string;
-  /** A note is complete. */
-  onNote: (note: GapNote) => void;
+  /** A note is complete (the caller stamps it with its session scope). */
+  onNote: (note: Omit<GapNote, 'scope'>) => void;
   /** A gap ended because the server could be reached again (not by leaving the foreground or the session). */
   onRecovered: () => void;
 }
@@ -165,6 +173,8 @@ const isNote = (value: unknown): value is GapNote => {
   return (
     typeof n.id === 'string' &&
     n.id !== '' &&
+    typeof n.scope === 'string' &&
+    n.scope !== '' &&
     typeof n.endedAt === 'number' &&
     Number.isFinite(n.endedAt) &&
     count(n.lengthS) &&
@@ -251,8 +261,11 @@ export async function handOverConnectionNotes(): Promise<void> {
     // Loaded when used: the data layer is not needed to track a gap.
     const { getAuthenticatedClient } = require('./supabaseConfig') as typeof import('./supabaseConfig');
     const { getSessionGeneration } = require('./sessionLifecycle') as typeof import('./sessionLifecycle');
+    const { getSessionCacheScope } = require('@/utils/cacheManager') as typeof import('@/utils/cacheManager');
+    const scope = await getSessionCacheScope();
+    if (scope === null) return;
     for (;;) {
-      const notes = await readNotes();
+      const notes = (await readNotes()).filter(n => n.scope === scope);
       if (notes.length === 0) return;
       const generation = getSessionGeneration();
       const client = await getAuthenticatedClient();
@@ -276,12 +289,16 @@ export async function handOverConnectionNotes(): Promise<void> {
 
 const monotonicNow = (): number => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
 
+/** The session scope notes are stamped with now; null while signed out or not known. */
+let currentScope: string | null = null;
+
 const tracker: GapTracker = createGapTracker({
   mono: monotonicNow,
   wall: () => Date.now(),
   newId: () => Crypto.randomUUID(),
   onNote: note => {
-    void storeNote(note);
+    // The scope is replaced only after the gap is closed, so a gap that ends at a switch is stamped with the old session.
+    if (currentScope !== null) void storeNote({ ...note, scope: currentScope });
   },
   onRecovered: () => {
     void handOverConnectionNotes();
@@ -314,10 +331,14 @@ async function refreshSignedIn(): Promise<void> {
   try {
     const { getSessionCacheScope } = require('@/utils/cacheManager') as typeof import('@/utils/cacheManager');
     const scope = await getSessionCacheScope();
+    // A different facility or user: close what is open under the old stamp first.
+    if (scope !== currentScope) tracker.setFlags({ signedIn: false });
+    currentScope = scope;
     tracker.setFlags({ signedIn: scope !== null });
     if (scope !== null) void handOverConnectionNotes();
   } catch {
     tracker.setFlags({ signedIn: false });
+    currentScope = null;
   }
 }
 
@@ -354,6 +375,7 @@ registerSessionScoped('connection-history-gap', () => {
 /** Tests only: forget the feeds. */
 export function resetConnectionHistoryForTests(): void {
   lastNet = null;
+  currentScope = null;
   handingOver = false;
   queue = Promise.resolve();
   tracker.setFlags({ signedIn: false, offline: false, foreground: true });
