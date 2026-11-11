@@ -443,7 +443,7 @@ const invoiceFormSlice = createSlice({
       // object at once; an unfrozen one it walks and freezes field by field (thousands of lines: ~100 ms+).
       const items = action.payload.items.map((item) => Object.freeze({
         ...item,
-        ...calculateItemAmounts(item.qty, item.charge, item.labour_rate, item.tax, item.duration, item.one_time, item.server_storage),
+        ...calculateItemAmounts(item.qty, item.charge, item.labour_rate, item.tax, item.duration, item.one_time, item.server_storage, item.no_of_days),
       }));
       const oneTimeCharge = items.length > 0 && items.every((item) => item.one_time === true);
 

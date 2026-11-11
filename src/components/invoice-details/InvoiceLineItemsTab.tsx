@@ -194,7 +194,10 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
       taxRate,
       duration,
       item.one_time,
-      typeof item.server_storage_amount === 'number' ? { amount: item.server_storage_amount, charge: charge_per_unit, by_days: false } : undefined
+      typeof item.server_storage_amount === 'number'
+        ? { amount: item.server_storage_amount, charge: charge_per_unit, duration, no_of_days: item.no_of_days ?? 0, by_days: false }
+        : undefined,
+      item.no_of_days ?? 0
     );
     const taxAmount = hasServerAmounts ? item.server_tax_amount! : computed.tax_amount;
     const lineTotal = hasServerAmounts ? item.server_total_amount! : computed.item_total;

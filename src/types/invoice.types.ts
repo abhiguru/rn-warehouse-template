@@ -101,11 +101,13 @@ export interface InvoiceItemData {
   tax: number; // Percentage (e.g., 18 for 18%)
 
   /**
-   * The storage the server worked out for this line (`storage_amount`, WH-137) at the charge it had then. The app shows it
-   * and never works storage out again for a line whose rate was not changed; `by_days` is set when the rule charges by the
-   * day, where storage is not rate x quantity x the rounded months. Absent on a backend before migration 164.
+   * The storage the server worked out for this line (`storage_amount`, WH-137) with the charge, duration and days it was
+   * worked out from. The app shows it while the line still has all three; once any of them changes (a typed rate, the
+   * server's own durations after TOTAL_CHANGED) the figure is stale and storage is worked out again. `by_days` is set when
+   * the rule charges by the day, where storage is not rate x quantity x the rounded months. Absent on a backend before
+   * migration 164.
    */
-  server_storage?: { amount: number; charge: number; by_days: boolean };
+  server_storage?: { amount: number; charge: number; duration: number; no_of_days: number; by_days: boolean };
 
   // Calculated fields (read-only)
   amount: number; // qty × charge × duration

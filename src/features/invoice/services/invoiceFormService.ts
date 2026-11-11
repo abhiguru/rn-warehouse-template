@@ -46,17 +46,19 @@ const errorForLog = (error: unknown): { code?: string; message: string } => {
 const NOT_INVOICEABLE = /not (be )?ready for invoicing/i;
 
 /**
- * The server's storage figure of a line (`storage_amount`, migration 164) with the charge it was worked out at, or
- * undefined when the server sent none (an older backend, or a line without a quantity).
+ * The server's storage figure of a line (`storage_amount`, migration 164) with the charge, duration and days it was worked
+ * out from, or undefined when the server sent none (an older backend, or a line without a quantity).
  */
 export const serverStorageOf = (
   value: unknown,
-  charge: number,
+  line: { charge: number; duration: number; no_of_days: number },
   rule: ChargingRule | undefined
 ): InvoiceItemData['server_storage'] => {
   if (value === null || value === undefined || value === '') return undefined;
   const amount = Number(value);
-  return Number.isFinite(amount) ? { amount, charge, by_days: rule?.step_days === 1 } : undefined;
+  return Number.isFinite(amount)
+    ? { amount, charge: line.charge, duration: line.duration, no_of_days: line.no_of_days, by_days: rule?.step_days === 1 }
+    : undefined;
 };
 
 /** Thrown inside loadInvoiceFormData so the caller can tell this refusal from a failed request. */
@@ -592,7 +594,7 @@ export const loadInvoiceFormData = async (
         ? isOneTime(item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode)
         : isOneTimeCharge;
       // The storage the server worked out for the line (migration 164): shown as it is, not worked out again here.
-      const serverStorage = serverStorageOf(item.storage_amount, charge, rule);
+      const serverStorage = serverStorageOf(item.storage_amount, { charge, duration, no_of_days: noOfDays }, rule);
 
       return {
         // Generate temp_id for React keys
@@ -634,7 +636,7 @@ export const loadInvoiceFormData = async (
         // Amounts as the server computes them for this pricing mode
         one_time: oneTime,
         ...(serverStorage ? { server_storage: serverStorage } : {}),
-        ...calculateItemAmounts(qty, charge, labourRate, tax, duration, oneTime, serverStorage),
+        ...calculateItemAmounts(qty, charge, labourRate, tax, duration, oneTime, serverStorage, noOfDays),
       };
     });
 
@@ -1114,7 +1116,7 @@ export const loadInvoiceData = async (
       const no_of_days = Math.round(item.no_of_days || 30);
       const qty = item.qty || 0;
       // The storage the server worked out under the invoice's own rule: shown as it is, not worked out again here.
-      const serverStorage = serverStorageOf(item.storage_amount, charge, editRule);
+      const serverStorage = serverStorageOf(item.storage_amount, { charge, duration, no_of_days }, editRule);
 
       return {
         // Generate temp_id for React keys
@@ -1156,7 +1158,7 @@ export const loadInvoiceData = async (
         // Calculated fields, as the server computes them for this pricing mode
         one_time: oneTime,
         ...(serverStorage ? { server_storage: serverStorage } : {}),
-        ...calculateItemAmounts(qty, charge, labour_rate, tax, duration, oneTime, serverStorage),
+        ...calculateItemAmounts(qty, charge, labour_rate, tax, duration, oneTime, serverStorage, no_of_days),
       };
     });
 

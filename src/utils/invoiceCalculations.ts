@@ -136,8 +136,9 @@ export interface ItemAmounts {
 }
 
 /**
- * The storage of one line. The server's own figure (`storage_amount`, WH-137) is used while the line's charge is the one it
- * was worked out for. A charge typed since then cannot be sent to the server on every key: under a rule that charges by the
+ * The storage of one line. The server's own figure (`storage_amount`, WH-137) is used while the line's duration and days
+ * are the ones it was worked out from: new durations (the server's own, after TOTAL_CHANGED) make it stale, and storage is
+ * worked out again. A charge typed since then cannot be sent to the server on every key: under a rule that charges by the
  * day the server's figure is scaled to the new charge (it is not rate x quantity x the rounded months), otherwise the
  * product the server uses for whole and half months is the same figure. The save question and the server's own total check
  * (W18) still settle the amount.
@@ -146,10 +147,11 @@ function storageAmount(
   qty: number,
   charge: number,
   duration: number,
+  noOfDays: number | undefined,
   oneTime: boolean,
   server?: InvoiceItemData['server_storage']
 ): number {
-  if (server && Number.isFinite(server.amount)) {
+  if (server && Number.isFinite(server.amount) && server.duration === duration && server.no_of_days === noOfDays) {
     if (roundMoney(server.charge) === roundMoney(charge)) return roundMoney(server.amount);
     if (server.by_days && server.charge > 0) return roundMoney((server.amount * charge) / server.charge);
   }
@@ -172,7 +174,8 @@ export function calculateItemAmounts(
   tax: number,
   duration: number,
   oneTime: boolean = false,
-  serverStorage?: InvoiceItemData['server_storage']
+  serverStorage?: InvoiceItemData['server_storage'],
+  noOfDays?: number
 ): ItemAmounts {
   // Guard against NaN - use 0 as safe default for invalid values
   const safeQty = isNaN(qty) || qty < 0 ? 0 : qty;
@@ -181,7 +184,7 @@ export function calculateItemAmounts(
   const safeTax = isNaN(tax) || tax < 0 ? 0 : tax;
   const safeDuration = isNaN(duration) || duration <= 0 ? 1 : duration;
 
-  const amount = storageAmount(safeQty, safeCharge, safeDuration, oneTime, serverStorage);
+  const amount = storageAmount(safeQty, safeCharge, safeDuration, noOfDays, oneTime, serverStorage);
   const labour_amount = oneTime ? 0 : roundMoney(safeQty * safeLabourRate);
   const taxable_amount = roundMoney(amount + labour_amount);
   const tax_amount = roundMoney(taxable_amount * (safeTax / 100));
@@ -220,7 +223,8 @@ export function applyPricingToItem(
     tax,
     duration,
     item.one_time,
-    item.server_storage
+    item.server_storage,
+    item.no_of_days
   );
 
   return {
@@ -376,7 +380,7 @@ export function recalculateItemWithEdits(
   const tax = editedValues.tax ?? item.tax;
   const no_of_days = Math.round(editedValues.no_of_days ?? item.no_of_days);
 
-  const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, duration, item.one_time, item.server_storage);
+  const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, duration, item.one_time, item.server_storage, no_of_days);
 
   return {
     ...item,
@@ -517,7 +521,7 @@ export function applyBulkGroupPricing(
     const tax = rate('tax');
 
     // Recalculate amounts
-    const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time, item.server_storage);
+    const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time, item.server_storage, item.no_of_days);
 
     return {
       ...item,
