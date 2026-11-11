@@ -42,6 +42,10 @@ function sourceFilesUnder(dir: string): string[] {
   });
 }
 
+// Screens that call canOpenScreen only to decide whether to show a link to another screen (WH-155: Customer activity
+// shows its Statement shortcut). They do not gate their own route, so they need no row in ROLE_GATED_ROUTES.
+const SHOWS_LINK_ONLY = ['reports/customer-activity'];
+
 describe('route tables', () => {
   it('finds the app routes it is checked against', () => {
     expect(ROUTES.files).toEqual(expect.arrayContaining(['login', 'customers', 'reports/operations-dashboard']));
@@ -65,6 +69,7 @@ describe('route tables', () => {
     expect(checking.length).toBeGreaterThanOrEqual(6);
     const missing = checking
       .map(file => path.relative(APP_DIR, file).replace(SOURCE, '').split(path.sep))
+      .filter(parts => !SHOWS_LINK_ONLY.includes(parts.join('/')))
       .filter(parts => {
         const [first, second] = parts;
         return !(`${first}/${second}` in ROLE_GATED_ROUTES) && !(first in ROLE_GATED_ROUTES);

@@ -18,6 +18,11 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-image', () => ({ Image: 'Image' }));
+// The Images tab reads the connection; the native NetInfo module is absent under Jest, so the connection is faked online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true, isInternetReachable: true }), addEventListener: () => () => undefined },
+}));
 
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));

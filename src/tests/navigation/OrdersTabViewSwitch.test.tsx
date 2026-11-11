@@ -9,9 +9,14 @@ jest.mock('@/hooks/useRoleBasedAccess', () => ({
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: { preference: 'light', brand: 'orange' } }),
+    selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: null } }),
 }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSelection: jest.fn() }));
+// The server-alert banner (an administrator of a local-only facility) refreshes on focus; there is no navigator here.
+jest.mock('expo-router', () => ({
+  ...jest.requireActual('expo-router'),
+  useFocusEffect: require('../components/focusHarness').useFocusEffect,
+}));
 jest.mock('@/components/lists', () => {
   const { View } = jest.requireActual('react-native');
   return {
