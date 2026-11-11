@@ -12,7 +12,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { t } from '@/i18n';
 import { replaceItemRates } from '@/services/item-pricing-service';
-import { getRateStartFloor } from '@/services/rateStartFloor';
+import { getRateStartFloor, rememberRateStartFloor } from '@/services/rateStartFloor';
 import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/item-pricing.types';
 import { pickedItemName } from '@/utils/packagingWord';
 import { showToast } from '@/utils/toast';
@@ -173,6 +173,42 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     setLater(null);
     checked.current = false;
   };
+  /**
+   * The draft for rows held now, with the typing kept: Add rate on a rate in force keeps the new bands typed and takes the
+   * rate's own bands from the rows; a rate that ended meanwhile gives a plain Add rate with nothing typed (WH-76). The
+   * context is worked out again for the earliest day given, so the lost-rows guard sees the day the server named (WH-92).
+   */
+  const rebuildCore = (cur: Core, newRows: ItemStoragePrice[], earliest: string | null): Core => {
+    const type = cur.draft.priceType;
+    const opened = initialDraft({
+      mode,
+      params: { ...params, mode, item_id: item.id, item_name: item.name, customer_id: customer?.id, customer_name: customer?.name, price_type: type } as EditorParams,
+      rows: newRows,
+      role,
+      today: todayNow(),
+      earliest,
+    });
+    if (mode === 'addBand' && cur.draft.locked !== undefined && opened.draft.locked !== undefined) {
+      // Add rate on a rate in force: the rate's own bands are the ones now held; the new bands typed stay.
+      const typed = cur.draft.bands.slice(cur.draft.locked);
+      const choice = cur.draft.startsOnChoice;
+      const merged = {
+        ...opened.draft,
+        bands: [...opened.draft.bands.slice(0, opened.draft.locked), ...typed],
+        ...(choice === 'today' ? { startsOnChoice: choice, startsOn: cur.draft.startsOn } : {}),
+      };
+      return { rows: newRows, draft: merged, initial: opened.draft, ctx: { ...opened.context, copied: cur.ctx.copied } };
+    }
+    if (cur.draft.locked !== undefined) {
+      // The rate this form was adding to has ended on the server (WH-76): nothing is locked now, and Save must not
+      // send the rate's old bands. The form is a plain Add rate with one blank band from 0 kg; nothing typed is
+      // carried over (Product, 2026-11-11). The warning stays until the person types.
+      endedRate.current = true;
+      return { rows: newRows, draft: opened.draft, initial: opened.draft, ctx: { ...opened.context, copied: cur.ctx.copied } };
+    }
+    return { ...cur, rows: newRows, ctx: { ...opened.context, copied: cur.ctx.copied } };
+  };
+
   if (!rows && core) {
     setCore(null);
   } else if (rows && core && core.rows !== rows) {
@@ -188,33 +224,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
         setCore({ ...core, rows, ctx: { ...core.ctx, rows } });
       } else {
         // The rows of this rate changed: Save must send the rows now held (p_seen_rows), with the typing kept.
-        const opened = initialDraft({
-          mode,
-          params: { ...params, mode, item_id: item.id, item_name: item.name, customer_id: customer?.id, customer_name: customer?.name, price_type: type } as EditorParams,
-          rows,
-          role,
-          today: todayNow(),
-          earliest: core.ctx.earliestStart ?? getRateStartFloor(),
-        });
-        if (mode === 'addBand' && core.draft.locked !== undefined && opened.draft.locked !== undefined) {
-          // Add rate on a rate in force: the rate's own bands are the ones now held; the new bands typed stay.
-          const typed = core.draft.bands.slice(core.draft.locked);
-          const choice = core.draft.startsOnChoice;
-          const merged = {
-            ...opened.draft,
-            bands: [...opened.draft.bands.slice(0, opened.draft.locked), ...typed],
-            ...(choice === 'today' ? { startsOnChoice: choice, startsOn: core.draft.startsOn } : {}),
-          };
-          setCore({ rows, draft: merged, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
-        } else if (core.draft.locked !== undefined) {
-          // The rate this form was adding to has ended on the server (WH-76): nothing is locked now, and Save must not
-          // send the rate's old bands. The form is a plain Add rate with one blank band from 0 kg; nothing typed is
-          // carried over (Product, 2026-11-11). The warning stays until the person types.
-          endedRate.current = true;
-          setCore({ rows, draft: opened.draft, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
-        } else {
-          setCore({ ...core, rows, ctx: { ...opened.context, copied: core.ctx.copied } });
-        }
+        setCore(rebuildCore(core, rows, core.ctx.earliestStart ?? getRateStartFloor()));
         setRowsChanged(true);
       }
     } else {
@@ -402,7 +412,12 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
         const earliest = result.earliest;
         if (data.startsOnChoice === 'ownStart' && earliest && context.ownStart && context.ownStart < earliest) {
           const moved = { ...data, startsOn: earliest };
-          setCore(cur => (cur ? { ...cur, draft: { ...cur.draft, startsOn: earliest }, initial: { ...cur.initial, startsOn: earliest }, ctx: { ...cur.ctx, earliestStart: earliest } } : cur));
+          // The day the server named is the floor from now on, and the lost-rows guard runs again for it (WH-92): the
+          // context is worked out afresh, so a band that ended on that day makes this a "today" save with the usual
+          // warning, never a change from the moved day by itself. The rows are read again; they take the same path.
+          rememberRateStartFloor(earliest);
+          setCore(cur => (cur ? rebuildCore(cur, cur.rows, earliest) : cur));
+          refreshRows();
           setStrip(bandBlockedByPlanned(moved, { ...context, earliestStart: earliest }) ?? t('pricing.edit.bandMoved', { date: dateText(earliest) }));
         } else {
           setStrip(result.message ?? t('pricing.error.generic'));
