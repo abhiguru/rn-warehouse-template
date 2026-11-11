@@ -911,9 +911,10 @@ export function nowText(draft: Draft, ctx: EditorContext, index: number): string
 }
 
 /** The "What changes" card: the old rate until the day before, then the new one. Empty until the form is valid. */
-export function summaryLines(draft: Draft, ctx: EditorContext): string[] {
+export function summaryLines(draft: Draft, ctx: EditorContext, packaging?: string | null): string[] {
   if (!draft.startsOn) return [];
-  const unit = unitText(draft.priceType);
+  // The item's own word, as on the rate card: "per Borry" (WH-71); unknown keeps "per bag".
+  const unit = unitText(draft.priceType, packaging);
   const rents = draft.bands.map(b => priceNumber(b.rent, 2));
   const spans = draft.bands.map((b, i) => [fromOf(draft, i), wholeKg(b.upTo)] as const);
   if (rents.some(r => r === null) || spans.some(([a, b]) => a === null || b === null)) return [];

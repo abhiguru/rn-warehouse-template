@@ -14,6 +14,7 @@ import { t } from '@/i18n';
 import { replaceItemRates } from '@/services/item-pricing-service';
 import { getRateStartFloor } from '@/services/rateStartFloor';
 import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/item-pricing.types';
+import { itemWithPackaging } from '@/utils/packagingWord';
 import { showToast } from '@/utils/toast';
 import { useRateSaveKey } from './useRateSaveKey';
 import { notifyRatesChanged, type EditorMode, type EditorParams } from './contract';
@@ -109,7 +110,7 @@ export interface UseRateEditor {
   /** Monthly / One-time on a new rate (re-seeds the bands from the default where there is one). */
   switchType: (value: PriceType) => void;
   /** Take the bands of another item into the draft. */
-  copyFrom: (item: { id: string; name: string }, rows: ItemStoragePrice[]) => void;
+  copyFrom: (item: { id: string; name: string; packaging?: string | null }, rows: ItemStoragePrice[]) => void;
   /** Save. `replaceLater` true is the answer Yes of the later-rates question. */
   submit: (replaceLater?: boolean) => Promise<void>;
   /** The answer No of the later-rates question. */
@@ -272,9 +273,10 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     if (checked.current) setErrors(validate(nextDraft, ctx).errors);
   };
 
-  const copyFrom = (from: { id: string; name: string }, fromRows: ItemStoragePrice[]) => {
+  const copyFrom = (from: { id: string; name: string; packaging?: string | null }, fromRows: ItemStoragePrice[]) => {
     if (!draft) return;
-    setCopiedFrom(from.name);
+    // Named as the list names it, "Amachur · Borry" (WH-71); an item without a packaging field keeps its bare name.
+    setCopiedFrom(from.packaging === undefined ? from.name : itemWithPackaging(from.name, from.packaging));
     setDraft(copyTiersFrom(draft, fromRows));
   };
 

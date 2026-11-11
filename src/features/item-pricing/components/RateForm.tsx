@@ -252,6 +252,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
           : t('pricing.rateForm.kickerAdd', { type });
 
   // The item's word beside its name once the item is known (the loading placeholder has no name).
+  const packaging = 'packaging' in item ? item.packaging : undefined;
   const itemTitle = item.name && 'packaging' in item ? itemWithPackaging(item.name, item.packaging) : item.name;
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
@@ -289,7 +290,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
   // The default rate: why it cannot be saved (a rate that was cancelled meanwhile, or a role that may not correct), and the lines of what changes.
   const refusal = ctx.managerOnly ? t('pricing.edit.managerOnly') : ctx.plannedGone ? t('pricing.error.notARateStart') : null;
   const lots = customerId ? null : lotsRule(draft, ctx);
-  const changeLines = customerId ? [] : summaryLines(draft, ctx);
+  const changeLines = customerId ? [] : summaryLines(draft, ctx, packaging);
   const addingBand = ctx.mode === 'addBand';
   const plannedNote = addingBand ? bandPlannedNote(draft, ctx) : null;
   const ownDay = addingBand ? ownStartDay(ctx) : null;
@@ -573,7 +574,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
             </Pressable>
             {defaultOpen ? (
               <View style={styles.refBody}>
-                <Text style={styles.note} numberOfLines={1}>{t('pricing.addForm.inForceToday', { unit: unitText(priceType) })}</Text>
+                <Text style={styles.note} numberOfLines={1}>{t('pricing.addForm.inForceToday', { unit: unitText(priceType, packaging) })}</Text>
                 {defaultBands.length === 0 ? (
                   <Text style={styles.note} testID="add-rate-no-default">{t('pricing.addForm.noDefault')}</Text>
                 ) : (
