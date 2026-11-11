@@ -22,8 +22,8 @@ export const invoice = {
     surchargeIncluded: 'Surcharge (included)',
     rounding: 'Rounding',
     netBeforeTax: 'Net before tax',
-    // The Invoices list card's word for the same figure (WH-59).
-    subtotal: 'Subtotal',
+    // The Invoices list card's word for the same figure (WH-104; the form's "Subtotal (storage)" is a different figure).
+    beforeTax: 'Before tax',
     totalAmount: 'Total amount',
     percent: '{{value}}%',
     gst: 'GST',
