@@ -62,7 +62,7 @@ export function scanDirectoryText(directory, names, { maxFileBytes = MAX_AUDIT_F
  *   CAMERA                  expo-camera, expo-image-picker (QR codes, GRN and dispatch photos)
  *   INTERNET                the app itself
  *   ACCESS_LOCAL_NETWORK    plugins/with-android-lan-cleartext.js (warehouse-network fallback; Android 17 runtime permission)
- *   ACCESS_NETWORK_STATE    @react-native-community/netinfo, expo-image, expo-updates
+ *   ACCESS_NETWORK_STATE    @react-native-community/netinfo, expo-image
  *   ACCESS_WIFI_STATE       @react-native-community/netinfo
  *   USE_BIOMETRIC,
  *   USE_FINGERPRINT         expo-local-authentication (app lock)
