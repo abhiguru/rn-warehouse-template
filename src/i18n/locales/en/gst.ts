@@ -89,7 +89,7 @@ export const gst = {
     unknownLine: 'A dispatch line is not on this GRN. Go back and read the lines again.',
     numberOutOfRange: 'This save makes 2 documents and the second number {{number}} is past the last invoice number allowed. Choose a lower number.',
     numberSecondTaken: 'This save makes 2 documents with numbers {{first}} and {{second}}, but {{second}} is already used. The next free number is {{next}}.',
-    pairOtherYear: 'This bill has two documents, {{first}} and {{second}}. Their date can\'t move to another financial year. Delete both and make the bill again.',
+    pairOtherYear: 'This invoice has two documents, {{first}} and {{second}}. Their date can\'t move to another financial year. Delete both and make the invoice again.',
     afterPayment: 'This invoice has a payment dated {{date}}. The invoice date can\'t be after it.',
     numberSecondTakenNoNext: 'This save makes 2 documents with numbers {{first}} and {{second}}, but {{second}} is already used. Choose another number.',
   },
