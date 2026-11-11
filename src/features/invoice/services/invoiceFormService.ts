@@ -1120,7 +1120,7 @@ export const loadInvoiceData = async (
       const duration = item.duration || 1;
       const labour_rate = item.labour_rate || 0;
       const tax = item.tax || 0;
-      const no_of_days = Math.round(item.no_of_days || 30);
+      const no_of_days = Math.round(item.no_of_days ?? 30);
       const qty = item.qty || 0;
       // The storage the server worked out under the invoice's own rule: shown as it is, not worked out again here.
       const serverStorage = serverStorageOf(item.storage_amount, { charge, duration, no_of_days }, editRule);
