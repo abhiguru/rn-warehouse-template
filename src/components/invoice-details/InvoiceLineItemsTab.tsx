@@ -195,7 +195,7 @@ export const groupItemsByGrnItem = (items: InvoiceLineItem[]): InvoiceLineItemGr
       duration,
       item.one_time,
       typeof item.server_storage_amount === 'number'
-        ? { amount: item.server_storage_amount, charge: charge_per_unit, duration, no_of_days: item.no_of_days ?? 0, by_days: false }
+        ? { amount: item.server_storage_amount, charge: charge_per_unit, duration, no_of_days: item.no_of_days ?? 0, by_days: false, minimum_days: 0 }
         : undefined,
       item.no_of_days ?? 0
     );

@@ -136,12 +136,24 @@ export interface ItemAmounts {
 }
 
 /**
- * The storage of one line. The server's own figure (`storage_amount`, WH-137) is used while the line's duration and days
- * are the ones it was worked out from: new durations (the server's own, after TOTAL_CHANGED) make it stale, and storage is
- * worked out again. A charge typed since then cannot be sent to the server on every key: under a rule that charges by the
- * day the server's figure is scaled to the new charge (it is not rate x quantity x the rounded months), otherwise the
- * product the server uses for whole and half months is the same figure. The save question and the server's own total check
- * (W18) still settle the amount.
+ * Storage of a monthly line under a rule that charges by the day, as the server works it out
+ * (warehouse_security.storage_amount, backend migration 164): round(charge x qty x max(minimum, max(1, days)) / 30, 2),
+ * ties away from zero. Worked out on whole paise, as NUMERIC does, so a figure such as 35.685 is not lost to binary noise;
+ * plain floating point only for a product too large for that (or a fractional quantity, which the server does not have).
+ */
+function storageByDays(qty: number, charge: number, noOfDays: number, minimumDays: number): number {
+  const days = Math.max(minimumDays, Math.max(1, noOfDays));
+  const paiseTimesThirty = Math.round(charge * 100) * qty * days;
+  if (!Number.isSafeInteger(paiseTimesThirty)) return roundMoney((charge * qty * days) / 30);
+  return Math.floor((paiseTimesThirty + 15) / 30) / 100;
+}
+
+/**
+ * The storage of one line. The server's own figure (`storage_amount`, WH-137) is used while the line's charge, duration
+ * and days are the ones it was worked out from: a typed charge or new durations (the server's own, after TOTAL_CHANGED)
+ * make it stale, and storage is worked out again by the server's formula. Under a rule that charges by the day that is
+ * rate x quantity x days / 30 (whatever charge was looked up, 0 included), otherwise rate x quantity x the months. The save
+ * question and the server's own total check (W18) still settle the amount.
  */
 function storageAmount(
   qty: number,
@@ -151,11 +163,20 @@ function storageAmount(
   oneTime: boolean,
   server?: InvoiceItemData['server_storage']
 ): number {
-  if (server && Number.isFinite(server.amount) && server.duration === duration && server.no_of_days === noOfDays) {
-    if (roundMoney(server.charge) === roundMoney(charge)) return roundMoney(server.amount);
-    if (server.by_days && server.charge > 0) return roundMoney((server.amount * charge) / server.charge);
+  if (
+    server &&
+    Number.isFinite(server.amount) &&
+    roundMoney(server.charge) === roundMoney(charge) &&
+    server.duration === duration &&
+    server.no_of_days === noOfDays
+  ) {
+    return roundMoney(server.amount);
   }
-  return roundMoney(oneTime ? qty * charge : qty * charge * duration);
+  if (oneTime) return roundMoney(qty * charge);
+  if (server?.by_days && noOfDays !== undefined && Number.isFinite(noOfDays)) {
+    return storageByDays(qty, charge, noOfDays, server.minimum_days);
+  }
+  return roundMoney(qty * charge * duration);
 }
 
 /**

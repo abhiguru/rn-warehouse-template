@@ -57,7 +57,14 @@ export const serverStorageOf = (
   if (value === null || value === undefined || value === '') return undefined;
   const amount = Number(value);
   return Number.isFinite(amount)
-    ? { amount, charge: line.charge, duration: line.duration, no_of_days: line.no_of_days, by_days: rule?.step_days === 1 }
+    ? {
+        amount,
+        charge: line.charge,
+        duration: line.duration,
+        no_of_days: line.no_of_days,
+        by_days: rule?.step_days === 1,
+        minimum_days: rule?.minimum_days ?? 0,
+      }
     : undefined;
 };
 

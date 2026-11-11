@@ -104,10 +104,17 @@ export interface InvoiceItemData {
    * The storage the server worked out for this line (`storage_amount`, WH-137) with the charge, duration and days it was
    * worked out from. The app shows it while the line still has all three; once any of them changes (a typed rate, the
    * server's own durations after TOTAL_CHANGED) the figure is stale and storage is worked out again. `by_days` is set when
-   * the rule charges by the day, where storage is not rate x quantity x the rounded months. Absent on a backend before
-   * migration 164.
+   * the rule charges by the day, where storage is rate x quantity x the line's days (never below `minimum_days`, the rule's
+   * minimum in days, or 1) / 30, not rate x quantity x the rounded months. Absent on a backend before migration 164.
    */
-  server_storage?: { amount: number; charge: number; duration: number; no_of_days: number; by_days: boolean };
+  server_storage?: {
+    amount: number;
+    charge: number;
+    duration: number;
+    no_of_days: number;
+    by_days: boolean;
+    minimum_days: number;
+  };
 
   // Calculated fields (read-only)
   amount: number; // qty × charge × duration
