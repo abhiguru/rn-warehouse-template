@@ -604,12 +604,16 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     [dispatch]
   );
 
-  // The duration check follows the charging rule of the form (WH-137), and goes back to its default when the form closes.
+  // The duration check follows the charging rule of the form (WH-137). The step in front sets it when it comes to the
+  // front and whenever the rule changes, and nothing takes it away when a step leaves: Review closing on Back would
+  // otherwise leave Items checking against the default. Every way out of the form resets the form while a step is still
+  // in front, so the rule goes back to its default (no rule) then.
   const chargingInForm = header.charging;
-  useEffect(() => {
-    setInvoiceChargingRule(chargingInForm);
-    return () => setInvoiceChargingRule(undefined);
-  }, [chargingInForm]);
+  useFocusEffect(
+    useCallback(() => {
+      setInvoiceChargingRule(chargingInForm);
+    }, [chargingInForm])
+  );
 
   // The invoice number may differ from the saved one only within the server's range.
   const numberChanged = !isCreateMode && baseline !== null && header.inv_no !== baseline.inv_no;
