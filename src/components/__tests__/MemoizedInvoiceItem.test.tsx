@@ -135,16 +135,16 @@ describe('the four places of the amounts bar (WH-59)', () => {
   const label = (tree: ReactTestRenderer) => tree.root.findAll(n => n.props.accessibilityRole === 'button')[0].props.accessibilityLabel as string;
   /** The bar's rows: each the list of [value, label] of its places. */
   const rows = (tree: ReactTestRenderer) => {
-    const names = ['Subtotal', 'Tax', 'Labour', 'Discount', 'Surcharge'];
+    const names = ['Before tax', 'Tax', 'Labour', 'Discount', 'Surcharge'];
     const all = texts(tree);
     const places = all.flatMap((text, i) => (names.includes(text) ? [[all[i - 1], text] as const] : []));
     return places;
   };
   afterEach(() => { mockWidth = 392; mockFontScale = 1; });
 
-  it('has Subtotal, Tax, Labour and Discount in that order, in whole rupees, with a dash for a place with nothing', () => {
+  it('has Before tax, Tax, Labour and Discount in that order, in whole rupees, with a dash for a place with nothing', () => {
     const tree = mount({ total: 1050, tax_amount: 50, labour: 0, discount: 0 });
-    expect(rows(tree)).toEqual([['₹1,000', 'Subtotal'], ['₹50', 'Tax'], ['–', 'Labour'], ['–', 'Discount']]);
+    expect(rows(tree)).toEqual([['₹1,000', 'Before tax'], ['₹50', 'Tax'], ['–', 'Labour'], ['–', 'Discount']]);
     // The total keeps its two decimals.
     expect(texts(tree)).toContain('₹1,050.00');
     act(() => tree.unmount());
@@ -152,14 +152,14 @@ describe('the four places of the amounts bar (WH-59)', () => {
 
   it('shows every place, in the same order, when everything has an amount', () => {
     const tree = mount({ total: 1020, tax_amount: 50, labour: 20, discount: 250 });
-    expect(rows(tree).map(([, name]) => name)).toEqual(['Subtotal', 'Tax', 'Labour', 'Discount']);
+    expect(rows(tree).map(([, name]) => name)).toEqual(['Before tax', 'Tax', 'Labour', 'Discount']);
     expect(rows(tree)[3]).toEqual(['−₹250', 'Discount']);
     act(() => tree.unmount());
   });
 
   it('a surcharge invoice says Surcharge with a plus in the last place, and has no Discount', () => {
     const tree = mount({ total: 1100, tax_amount: 50, labour: 0, discount: -100 });
-    expect(rows(tree).map(([, name]) => name)).toEqual(['Subtotal', 'Tax', 'Labour', 'Surcharge']);
+    expect(rows(tree).map(([, name]) => name)).toEqual(['Before tax', 'Tax', 'Labour', 'Surcharge']);
     expect(rows(tree)[3]).toEqual(['+₹100', 'Surcharge']);
     act(() => tree.unmount());
   });
@@ -167,7 +167,7 @@ describe('the four places of the amounts bar (WH-59)', () => {
   it('reads every amount aloud as the exact figure, and a place with nothing says nothing (no dash)', () => {
     const tree = mount({ total: 1050, tax_amount: 50, labour: 0, discount: 0 });
     const spoken = label(tree);
-    expect(spoken).toContain('Subtotal ₹1,000.00');
+    expect(spoken).toContain('Before tax ₹1,000.00');
     expect(spoken).toContain('Tax ₹50.00');
     expect(spoken).not.toContain('Labour');
     expect(spoken).not.toContain('Discount');
@@ -182,8 +182,8 @@ describe('the four places of the amounts bar (WH-59)', () => {
   });
 
   it('is four across at 392 dp and normal text, and 2 x 2 at a large text size, on every card alike', () => {
-    const rowsOf = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.type === 'string' && n.props.style && StyleSheet.flatten(n.props.style).flexDirection === 'row' && n.findAll(c => (c.type as unknown) === 'Text' && ['Subtotal', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length > 0 && n.findAll(c => (c.type as unknown) === 'Text' && ['Subtotal', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length < 5);
-    const placesIn = (node: ReactTestRenderer['root']) => node.findAll(c => (c.type as unknown) === 'Text' && ['Subtotal', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length;
+    const rowsOf = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.type === 'string' && n.props.style && StyleSheet.flatten(n.props.style).flexDirection === 'row' && n.findAll(c => (c.type as unknown) === 'Text' && ['Before tax', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length > 0 && n.findAll(c => (c.type as unknown) === 'Text' && ['Before tax', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length < 5);
+    const placesIn = (node: ReactTestRenderer['root']) => node.findAll(c => (c.type as unknown) === 'Text' && ['Before tax', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length;
     const one = mount();
     const normal = rowsOf(one).filter(r => placesIn(r) === 4);
     expect(normal.length).toBeGreaterThan(0);
