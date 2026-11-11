@@ -9,6 +9,7 @@
  * dialog, because a message under it would be hidden by it.
  */
 
+import { noteSavePressed } from '@/config/connectionHistory';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -217,6 +218,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   };
 
   const handleSubmit = () => {
+    // Counted by the connection history when a gap is open (WH-177).
+    noteSavePressed();
     // Final validation check
     if (items.length === 0) {
       showError(tr('invoice.form.noItemsTitle'), tr('invoice.review.noItemsMessage'));

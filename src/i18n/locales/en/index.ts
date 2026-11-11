@@ -17,6 +17,7 @@ import { numbering } from './numbering';
 import { charging } from './charging';
 import { payments } from './payments';
 import { gst } from './gst';
+import { connectionHistory } from './connectionHistory';
 import { users } from './users';
 import { sensors } from './sensors';
 import { errors } from './errors';
@@ -44,6 +45,7 @@ export const en = {
   charging,
   payments,
   gst,
+  connectionHistory,
   users,
   sensors,
   errors,

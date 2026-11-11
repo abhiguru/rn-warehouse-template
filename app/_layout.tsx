@@ -103,6 +103,7 @@ import { showAlert } from '@/utils/alert';
 import { isNetworkError, isUpgradingAnswer } from '@/utils/serverText';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
+import { installConnectionHistory } from '@/config/connectionHistory';
 import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
@@ -606,6 +607,7 @@ function BootstrapApp() {
     // selected server from here on; the server saved on the phone is read inside verifySelectedOperator,
     // so it is applied again once that has run, whatever its outcome.
     installNetReachability();
+    installConnectionHistory();
 
     try {
       let result;

@@ -45,6 +45,7 @@
  *
  */
 
+import { noteSavePressed } from '@/config/connectionHistory';
 import type { OrderEffect } from '@/services/orderEffects';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -876,6 +877,8 @@ export function useDispatchForm({
     // session: whatever answer comes late must not touch the next form (its `formCreated`, its saving flags, its alerts).
     const formSession = currentDispatchFormSession();
     const formChanged = () => currentDispatchFormSession() !== formSession;
+    // Counted by the connection history when a gap is open (WH-177).
+    noteSavePressed();
 
     // The caller may hold the error until a dialog still closing is gone (iOS shows no Modal over it)
     const report = onFailure ?? showAlert;

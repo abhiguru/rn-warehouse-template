@@ -75,6 +75,7 @@ export type RoleGatedScreen =
   | 'documentNumbering'
   | 'charging'
   | 'gstDetails'
+  | 'connectionHistory'
   | 'rackPresets'
   | 'masterData'
   | 'customerDues'
@@ -122,6 +123,9 @@ export function canOpenScreen(
     case 'gstDetails':
       // The facility's GST details: administrators only (get_gst_details, set_gst_details, migration 173).
       return normalizeRole(role) === 'admin';
+    case 'connectionHistory':
+      // The phones' connection gaps: administrators only (get_connection_history, migration 188).
+      return normalizeRole(role) === 'admin';
     case 'charging':
       // How storage time is counted and totals are rounded: administrators only (get_charging_rule, set_charging_rule, migration 164).
       return normalizeRole(role) === 'admin';
@@ -159,6 +163,7 @@ export type SettingsFeature =
   | 'documentNumbering'
   | 'charging'
   | 'gstDetails'
+  | 'connectionHistory'
   | 'rackPresets'
   | 'sensors';
 
@@ -177,6 +182,7 @@ export function settingsFeatureRows(
   if (canOpenScreen(role, 'gstDetails')) rows.push('gstDetails');
   if (canOpenScreen(role, 'rackPresets')) rows.push('rackPresets');
   if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
+  if (canOpenScreen(role, 'connectionHistory')) rows.push('connectionHistory');
   return rows;
 }
 

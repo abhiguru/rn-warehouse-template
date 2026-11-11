@@ -49,6 +49,8 @@ const INTRODUCED_BY_MIGRATION = {
   customerStatement: 176,
   /** `get_temperature_report`, `get_sensor_report_devices` and generate-temperature-report-pdf (WH-157). */
   temperatureReport: 187,
+  /** `submit_connection_notes` and `get_connection_history`: the connection history of the phones (WH-177). */
+  connectionHistory: 188,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

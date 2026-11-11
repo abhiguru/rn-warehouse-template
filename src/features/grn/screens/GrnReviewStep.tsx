@@ -88,6 +88,7 @@ import { formatCount, formatDate, formatSpokenDate, formatNumber, formatWeightEa
 import { ONE_LINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
+import { noteSavePressed } from '@/config/connectionHistory';
 import { GrnRatesSection } from '@/features/grn/rates/GrnRatesSection';
 import { GrnRateSheet } from '@/features/grn/rates/GrnRateSheet';
 import { useGrnRates } from '@/features/grn/rates/useGrnRates';
@@ -484,6 +485,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       if (!photosNotUploaded) setShowSuccessDialog(true);
       return;
     }
+    // Counted by the connection history when a gap is open (WH-177).
+    noteSavePressed();
 
     const isValid = await validateFormData();
     if (!isValid) return;
