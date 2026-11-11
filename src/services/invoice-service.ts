@@ -1020,9 +1020,9 @@ export const cancelRefusalMessage = (reason: string | undefined, fields?: Record
     case REFUSAL.INVOICE_CANCELLED:
       return t('invoice.cancel.alreadyCancelled');
     case REFUSAL.INVOICE_HAS_PAYMENTS:
-      // Migration 172 names the invoice (`inv_no`); an older server's refusal carries none.
+      // The refusal names the invoice (`invoice_label`, the full number; `inv_no` alone before migration 175); an older server's carries none.
       return fields?.inv_no !== undefined && fields.inv_no !== null
-        ? t('payments.hasPayments', { number: formatIdentifier(String(fields.inv_no)) })
+        ? t('payments.hasPayments', { number: formatIdentifier(invoiceLabelOf(fields.invoice_label, String(fields.inv_no))) })
         : t('invoice.cancel.hasPayments');
     case REFUSAL.CANCEL_REASON_INVALID:
       return t('invoice.cancel.reasonInvalid', { min: formatNumber(CANCEL_REASON_MIN), max: formatNumber(CANCEL_REASON_MAX) });
