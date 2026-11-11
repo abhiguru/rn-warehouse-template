@@ -453,6 +453,7 @@ export const invoice: Translation<typeof source> = {
     baseAndTax: 'ટેક્સ પહેલાં {{base}} · ટેક્સ {{tax}}',
     groupRowLabel: '{{item}}{{details}}, {{bags}}, કુલ {{amount}}',
     lineSpoken: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, ભાડાનો દર {{charge}}, મજૂરી {{labour}}, ટેક્સ {{tax}}%, રકમ {{amount}}',
+    lineSpokenUnrecorded: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, નંગ, દર અને રકમ નોંધાયેલ નથી',
     lineSpokenOneTime: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, ભાડાનો દર {{charge}}, ટેક્સ {{tax}}%, રકમ {{amount}}',
     totalLabel: 'કુલ: {{groups}}, {{lines}}, {{bags}}, {{amount}}',
     linesNote: 'દરેક લાઇનની રકમ ટેક્સ સાથે છે, ઇન્વૉઇસના રાઉન્ડિંગ અને છૂટ પહેલાં. ઇન્વૉઇસની કુલ રકમ હિસાબમાં છે.',

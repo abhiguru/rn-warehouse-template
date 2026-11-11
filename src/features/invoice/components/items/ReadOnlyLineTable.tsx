@@ -194,18 +194,18 @@ export const ReadOnlyLineTable = React.memo(function ReadOnlyLineTable({ groupKe
   };
 
   const spoken = (line: ReadOnlyLine): string => {
-    const notRecorded = tr('invoice.detailsTable.notRecorded');
     const args = {
       number: formatIdentifier(line.dispatchNo || '—'),
       date: line.dispatchDate && toDate(line.dispatchDate) ? spokenDateText(line.dispatchDate) : '—',
       months: oneTime ? tr('invoice.items.oneTime') : formatCount(Math.round(line.months * 100) / 100, 'month'),
       days: formatCount(line.days, 'day'),
-      bags: line.unrecorded ? notRecorded : formatPackages(line.qty, line.packaging),
-      charge: line.unrecorded ? notRecorded : formatInvoiceAmount(line.charge),
-      labour: line.unrecorded ? notRecorded : formatInvoiceAmount(line.labour),
-      tax: line.unrecorded ? notRecorded : localizeDigits(rateText('tax', line.taxRate)),
-      amount: line.unrecorded ? notRecorded : formatInvoiceAmount(line.amount),
+      bags: formatPackages(line.qty, line.packaging),
+      charge: formatInvoiceAmount(line.charge),
+      labour: formatInvoiceAmount(line.labour),
+      tax: localizeDigits(rateText('tax', line.taxRate)),
+      amount: formatInvoiceAmount(line.amount),
     };
+    if (line.unrecorded) return tr('invoice.detailsTable.lineSpokenUnrecorded', args);
     return tr(oneTime ? 'invoice.detailsTable.lineSpokenOneTime' : 'invoice.detailsTable.lineSpoken', args);
   };
 

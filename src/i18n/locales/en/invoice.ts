@@ -444,6 +444,7 @@ export const invoice = {
     baseAndTax: 'Before tax {{base}} · Tax {{tax}}',
     groupRowLabel: '{{item}}{{details}}, {{bags}}, total {{amount}}',
     lineSpoken: 'Dispatch {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, charge {{charge}}, labour {{labour}}, tax {{tax}}%, amount {{amount}}',
+    lineSpokenUnrecorded: 'Dispatch {{number}}, {{date}}, {{months}}, {{days}}, bags, rates and amount not recorded',
     lineSpokenOneTime: 'Dispatch {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, charge {{charge}}, tax {{tax}}%, amount {{amount}}',
     totalLabel: 'Total: {{groups}}, {{lines}}, {{bags}}, {{amount}}',
     linesNote: "Line totals with tax, before the invoice's rounding and discount. The invoice total is under Breakdown.",
