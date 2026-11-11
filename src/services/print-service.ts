@@ -91,7 +91,23 @@ export interface PrintJob {
 export interface GetPrintJobsResponse {
   success: boolean;
   data?: PrintJob[];
+  /** The server's time of this read (migration 183); absent on an older server. */
+  server_now?: string;
   error?: string;
+}
+
+/** The last server time read with the jobs, and the monotonic clock at that moment. */
+let serverClock: { serverMs: number; monoMs: number } | null = null;
+
+const monotonicMs = (): number =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+
+/**
+ * The server's "now": the last server_now plus the time passed since that read, counted on a monotonic clock so a
+ * change of the phone's clock has no effect. Null until a read has carried one (an older server).
+ */
+export function serverNowMs(): number | null {
+  return serverClock ? serverClock.serverMs + (monotonicMs() - serverClock.monoMs) : null;
 }
 
 export interface CancelPrintJobResponse {
@@ -120,7 +136,7 @@ export interface GetPrinterStatusResponse {
 
 /**
  * Decide the failure kind from the backend's code, else (today's backend, no code) from the HTTP status.
- * A 503 whose JSON body is not the "upgrading" answer is "printing not set up"; a 502 or 504, or an answer that is
+ * Only a 503 carrying the PRINTING_OFF code is "printing not set up"; a 502 or 504, or an answer that is
  * not JSON, is "server unavailable"; only the code PRINTER_FAILED (502) names a printer failure; any other error shows the server's message.
  */
 function classifyFailure(status: number, code: string | undefined, unconfirmed: boolean, jsonBody: boolean): PrintFailureKind {
@@ -129,7 +145,6 @@ function classifyFailure(status: number, code: string | undefined, unconfirmed: 
   if (code === 'PRINT_FORBIDDEN') return 'notAllowed';
   if (code === 'PRINTER_FAILED') return 'printerFailed';
   if (!jsonBody) return 'serverUnavailable';
-  if (status === 503) return 'notSetUp';
   if (status === 403) return 'notAllowed';
   if (status === 502 || status === 504) return 'serverUnavailable';
   return 'other';
@@ -412,7 +427,9 @@ export async function getPrintJobs(
 
     // The RPC answers {success, data: [...], message}; a bare array is tolerated.
     const rows = Array.isArray(data) ? data : data && Array.isArray(data.data) ? data.data : [];
-    return { success: true, data: rows };
+    const serverMs = data && !Array.isArray(data) && typeof data.server_now === 'string' ? Date.parse(data.server_now) : NaN;
+    if (Number.isFinite(serverMs)) serverClock = { serverMs, monoMs: monotonicMs() };
+    return { success: true, data: rows, ...(Number.isFinite(serverMs) ? { server_now: data.server_now } : {}) };
   } catch (error) {
     log.error('getPrintJobs failed');
     return {

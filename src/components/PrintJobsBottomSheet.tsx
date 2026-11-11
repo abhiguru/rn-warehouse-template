@@ -52,7 +52,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { getPrintJobs, cancelPrintJob, getPrinterStatus, PrintJob, PrinterStatus } from '@/services/print-service';
+import { getPrintJobs, cancelPrintJob, getPrinterStatus, serverNowMs, PrintJob, PrinterStatus } from '@/services/print-service';
 import { usePrintJobPolling } from '@/hooks/usePrintJobPolling';
 import type { IsCurrent } from '@/hooks/usePolling';
 import { formatRelativeTime } from '@/utils/formatters';
@@ -77,11 +77,16 @@ const UNCONFIRMED_IN_PROGRESS_MS = 5 * 60 * 1000;
 /** How often the sheet re-checks whether an unconfirmed job is old enough to move (no reload needed). */
 const UNCONFIRMED_RECHECK_MS = 15 * 1000;
 
-/** True when an 'unknown' job's newest timestamp (updated_at, else created_at) is older than the In progress window. */
-const isUnconfirmedExpired = (job: Pick<PrintJob, 'status' | 'updated_at' | 'created_at'>, now: number): boolean => {
+/**
+ * True when an 'unknown' job's newest timestamp (updated_at, else created_at) is older than the In progress window,
+ * or cannot be read. `now` is the server's time (serverNowMs); null, from an older server that sends none, falls
+ * back to the phone's clock.
+ */
+const isUnconfirmedExpired = (job: Pick<PrintJob, 'status' | 'updated_at' | 'created_at'>, now: number | null): boolean => {
   if (job.status !== 'unknown') return false;
   const changed = Date.parse(job.updated_at || job.created_at);
-  return Number.isFinite(changed) && now - changed >= UNCONFIRMED_IN_PROGRESS_MS;
+  if (!Number.isFinite(changed)) return true;
+  return (now ?? Date.now()) - changed >= UNCONFIRMED_IN_PROGRESS_MS;
 };
 
 /** Print job status → Fiori status (guide §3.5). */
@@ -127,7 +132,10 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 > = ({ onDismiss }, ref) => {
     const bottomSheetRef = useRef<BottomSheet>(null);
     const [fetchedJobs, setPrintJobs] = useState<PrintJob[]>([]);
-    const [now, setNow] = useState(() => Date.now());
+    // The one "now" of the list and the strip: the server's time, null until a read carried it.
+    const [now, setNow] = useState<number | null>(() => serverNowMs());
+    // The newest job when it is an unconfirmed one: the strip follows its age, as the list does.
+    const [stripJob, setStripJob] = useState<PrintJob | null>(null);
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
@@ -164,6 +172,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         if (!isCurrent()) return;
         // A refusal that carries the server's own status (offline, error) is shown as it is: no fallback to the jobs.
         if (printer.status) {
+          setStripJob(null);
           setPrinterStatus(printer.status);
           setPrinterMessage(
             printer.status === 'online'
@@ -182,6 +191,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         if (!isCurrent()) return;
 
         if (!result.success || !result.data || result.data.length === 0) {
+          setStripJob(null);
           setPrinterStatus(null);
           setPrinterMessage(
             result.success ? tr('components.printJobs.message.noActivity') : tr('components.printJobs.message.unavailable')
@@ -190,6 +200,9 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         }
 
         const recentJob = result.data[0];
+        const readNow = serverNowMs();
+        setNow(readNow);
+        setStripJob(recentJob.status === 'unknown' ? recentJob : null);
 
         // Derive printer status from job status
         if (recentJob.status === 'completed') {
@@ -208,7 +221,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           // ⏳ Job queued
           setPrinterStatus('busy');
           setPrinterMessage(tr('components.printJobs.message.queued'));
-        } else if (recentJob.status === 'unknown' && !isUnconfirmedExpired(recentJob, Date.now())) {
+        } else if (recentJob.status === 'unknown' && !isUnconfirmedExpired(recentJob, readNow)) {
           // The printer did not confirm the job: not "ready", and not to be printed again on a guess.
           setPrinterStatus('error');
           setPrinterMessage(tr('components.printJobs.message.unconfirmed'));
@@ -359,6 +372,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           jobs: allJobs
         });
 
+        setNow(serverNowMs());
         setPrintJobs(allJobs);
       } catch (error) {
         console.error('[PrintJobsBottomSheet] Error fetching jobs:', error);
@@ -374,13 +388,16 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
     // One owner polls the jobs and the printer status (see usePrintJobPolling for the
     // cadence): faster while a job is queued or printing, slower when idle.
     // Which tab an unconfirmed job is on depends on its age, so the list is re-evaluated on a timer while any is shown.
-    const hasUnconfirmed = fetchedJobs.some((j) => j.status === 'unknown');
+    const hasUnconfirmed = fetchedJobs.some((j) => j.status === 'unknown') || stripJob !== null;
     useEffect(() => {
       if (!isOpen || !hasUnconfirmed) return;
-      setNow(Date.now());
-      const id = setInterval(() => setNow(Date.now()), UNCONFIRMED_RECHECK_MS);
+      setNow(serverNowMs());
+      const id = setInterval(() => setNow(serverNowMs()), UNCONFIRMED_RECHECK_MS);
       return () => clearInterval(id);
     }, [isOpen, hasUnconfirmed]);
+
+    // The strip leaves "not confirmed" in the same tick as the job leaves In progress.
+    const stripExpired = stripJob !== null && isUnconfirmedExpired(stripJob, now);
 
     const printJobs = useMemo(
       () =>
@@ -611,7 +628,9 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       [t]
     );
 
-    const printer = printerStatus ? PRINTER_STATUS[printerStatus] : null;
+    const shownStatus = stripExpired ? 'online' : printerStatus;
+    const shownMessage = stripExpired ? tr('components.printJobs.message.ready') : printerMessage;
+    const printer = shownStatus ? PRINTER_STATUS[shownStatus] : null;
 
     const renderTab = (key: 'inProgress' | 'completed', label: string, accessibilityLabel: string) => {
       const selected = activeTab === key;
@@ -672,14 +691,14 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             <View
               style={styles.printerStatusContainer}
               accessible
-              accessibilityLabel={tr('components.printJobs.printerLabel', { status: printer ? tr(printer.labelKey) : tr('components.printJobs.statusChecking'), message: printerMessage })}
+              accessibilityLabel={tr('components.printJobs.printerLabel', { status: printer ? tr(printer.labelKey) : tr('components.printJobs.statusChecking'), message: shownMessage })}
             >
               <Text style={styles.printerStatusLabel}>{tr('components.printJobs.printerTitle')}</Text>
               {printer
                 ? renderStatusTag(printer.kind, printer.icon, tr(printer.labelKey))
                 : renderStatusTag('neutral', 'circle-outline', tr('components.printJobs.checking'))}
-              {!!printerMessage && (
-                <Text style={styles.printerStatusMessage}>{printerMessage}</Text>
+              {!!shownMessage && (
+                <Text style={styles.printerStatusMessage}>{shownMessage}</Text>
               )}
             </View>
 
