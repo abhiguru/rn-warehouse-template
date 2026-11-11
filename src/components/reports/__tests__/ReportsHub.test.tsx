@@ -25,7 +25,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, back: jest.fn() }) }));
-jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => mockServer }));
+jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => mockServer, onOperatorServerChange: () => () => undefined }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
