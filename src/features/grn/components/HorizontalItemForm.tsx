@@ -26,6 +26,8 @@ import { showAlert } from '@/utils/alert';
 import { buildRackValue, parseRackValue, type RackPresets } from '../rackPresets';
 import { useRackPresets } from '../useRackPresets';
 import { formatNumber } from '@/utils/formatters';
+import { usePermissions } from '@/hooks/usePermissions';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { normalizeDigits, t as tr, localizeDigits, identifierInput } from '@/i18n';
 import type { ScrollViewRef, TextInputRef } from '@/types/nativeRefs';
 
@@ -184,6 +186,9 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
         const t = useTokens();
 
         // The "Add item" sheet over this step (WH-42): the typed search text fills its name.
+        // A staff account adds an item only on a backend from migration 145; older servers refuse it, so the row is not offered.
+        const { isStaffRole } = usePermissions();
+        const canAddItem = !isStaffRole || backendHasFeature('staffAddItem');
         const [addItemOpen, setAddItemOpen] = useState(false);
         const [addItemName, setAddItemName] = useState('');
 
@@ -485,13 +490,13 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 </View>
                             )}
                             keyExtractor={(item) => item.id}
-                            footerAction={{
+                            footerAction={canAddItem ? {
                                 label: tr('items.list.addItem'),
                                 onPress: (typed) => {
                                     setAddItemName(typed.trim());
                                     setAddItemOpen(true);
                                 },
-                            }}
+                            } : undefined}
                             zIndex={3000}
                         />
                         )}

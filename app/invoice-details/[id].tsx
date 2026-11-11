@@ -723,7 +723,7 @@ function InvoiceDetailScreen() {
               can_cancel={canDelete && !isCancelled}
               is_cancelling={isCancelling}
               on_delete_invoice={() => void handleDeleteInvoice()}
-              can_delete={canDelete}
+              can_delete={canDelete && backendHasFeature('deleteInvoice')}
               is_deleting={isDeleting}
               cancelled_at={invoice.cancelled_at}
               cancel_reason={invoice.cancel_reason}

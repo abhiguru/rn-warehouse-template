@@ -39,6 +39,10 @@ const INTRODUCED_BY_MIGRATION = {
   grnCreateInvoice: 174,
   /** The optional invoice number prefix: `prefix` in the invoice rule, `invoice_label` and `inv_prefix` in the reads (WH-139). */
   invoicePrefix: 175,
+  /** Staff may call `create_item` (a name and a packaging word, no rate): the Add item row of the GRN Items step for a staff account (WH-42). */
+  staffAddItem: 145,
+  /** `delete_invoice` takes the version token and deletes a live or a cancelled invoice: the Delete invoice button (WH-43). */
+  deleteInvoice: 146,
   /** `get_customer_statement`, `get_customer_dues` and generate-statement-pdf: the customer statement and the dues list (WH-155). */
   customerStatement: 176,
 } as const;
