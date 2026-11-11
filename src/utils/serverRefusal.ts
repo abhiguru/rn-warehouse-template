@@ -76,6 +76,10 @@ export const REFUSAL = {
   // Backend migration 129 (invoices).
   /** An invoice dated after today in India (`date`, `today`). */
   INVOICE_DATE_FUTURE: 'INVOICE_DATE_FUTURE',
+  /** WH-174: a live pair's date can't move to another financial year (`first`, `second`, `invoice_id`, `linked_invoice_id`, `fin_year`, `new_fin_year`). */
+  INVOICE_PAIR_OTHER_YEAR: 'INVOICE_PAIR_OTHER_YEAR',
+  /** WH-178: the new invoice date is after a payment's day (`date` YYYY-MM-DD, `invoice_date`, `invoice_id`, `payment_invoice_id`). */
+  INVOICE_AFTER_PAYMENT: 'INVOICE_AFTER_PAYMENT',
   /** An invoice dated before the dispatch of one of its lines (`invoice_date`, `dispatch_no`, `dispatch_date`); the same day is allowed. */
   INVOICE_BEFORE_DISPATCH: 'INVOICE_BEFORE_DISPATCH',
   /** A discount that takes a charged invoice to exactly 0 (`discount`, `total_before_discount`). */

@@ -211,6 +211,9 @@ const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
   // Migration 129: the date, the discount and the looked-up rates are worded by the form from the fields.
   REFUSAL.INVOICE_DATE_FUTURE,
   REFUSAL.INVOICE_BEFORE_DISPATCH,
+  // WH-174, WH-178: the date refusals of an edit.
+  REFUSAL.INVOICE_PAIR_OTHER_YEAR,
+  REFUSAL.INVOICE_AFTER_PAYMENT,
   REFUSAL.DISCOUNT_TOTAL_ZERO,
   REFUSAL.RATES_CHANGED,
   // Migration 164: the facility's charging rule changed since the form opened.
