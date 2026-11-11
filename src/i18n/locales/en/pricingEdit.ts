@@ -42,6 +42,7 @@ export const pricingEdit = {
     save: 'Save new rate',
     saveCustomer: 'Save customer rate',
     saveCorrection: 'Save correction',
+    saveNeedsChange: 'Change something to save.',
     saving: 'Saving…',
     saved: 'New rate saved. Starts {{date}}.',
     savedCustomer: 'Customer rate saved.',

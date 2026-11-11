@@ -314,7 +314,10 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
   const laterText = later && later.length > 0 && draft.startsOn ? laterDialogText(later, draft.startsOn, ctx.today) : null;
   const helper = offline ? t('pricing.error.offline') : !draft.startsOn ? t('pricing.edit.chooseDate') : null;
   // Nothing to save until the copy of the default rate is changed (owner, 2026-10-17).
-  const saveDisabled = saving || offline || !draft.startsOn || !editor.dirty || refusal !== null || (customerDeactivated !== undefined && customerDeactivated !== false);
+  const blockedOtherwise = saving || offline || !draft.startsOn || refusal !== null || (customerDeactivated !== undefined && customerDeactivated !== false);
+  const saveDisabled = blockedOtherwise || !editor.dirty;
+  // Save is greyed only because nothing has changed: the form says what enables it (style guide section 10, WH-72).
+  const nothingChanged = !blockedOtherwise && !editor.dirty;
   const saveLabel = ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : addingBand ? t('pricing.edit.saveBand') : customerId ? t('pricing.edit.saveCustomer') : t('pricing.edit.save');
 
   /** A number field with + and − under it. */
@@ -595,7 +598,19 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
 
         <View style={[styles.footer, { paddingBottom: space.sm + insets.bottom }]} onLayout={e => setBarHeight(e.nativeEvent.layout.height)} testID="add-rate-footer">
           {helper ? <Text style={styles.note}>{helper}</Text> : null}
-          <Button type="primary" size="fullWidth" onPress={() => { void editor.submit(); }} disabled={saveDisabled} loading={saving} testID="add-rate-save">
+          {nothingChanged ? (
+            // The button carries the same words as its hint, so TalkBack reads them with it and not twice.
+            <Text style={styles.note} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden testID="add-rate-save-hint">{t('pricing.edit.saveNeedsChange')}</Text>
+          ) : null}
+          <Button
+            type="primary"
+            size="fullWidth"
+            onPress={() => { void editor.submit(); }}
+            disabled={saveDisabled}
+            loading={saving}
+            accessibilityHint={nothingChanged ? t('pricing.edit.saveNeedsChange') : undefined}
+            testID="add-rate-save"
+          >
             {saveLabel}
           </Button>
         </View>

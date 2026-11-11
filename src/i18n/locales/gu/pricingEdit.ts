@@ -44,6 +44,7 @@ export const pricingEdit: Translation<typeof source> = {
     save: 'નવો દર સાચવો',
     saveCustomer: 'વેપારીનો દર સાચવો',
     saveCorrection: 'સુધારો સાચવો',
+    saveNeedsChange: 'સાચવવા માટે કંઈક બદલો.',
     saving: 'સાચવી રહ્યા છીએ…',
     saved: 'નવો દર સચવાયો. {{date}} થી લાગુ.',
     savedCustomer: 'વેપારીનો દર સચવાયો.',
