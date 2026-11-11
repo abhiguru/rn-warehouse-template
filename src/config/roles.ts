@@ -136,7 +136,7 @@ export function canOpenScreen(
       // statement from Customer dues or Customer activity (WH-155 spec step 5).
       return isCustomerAccount(role);
     case 'temperatureReport':
-      // The temperature report PDF (WH-157, get_temperature_report, migration 186): all four roles, a customer account
+      // The temperature report PDF (WH-157, get_temperature_report, migration 187): all four roles, a customer account
       // for every sensor of the facility (owner, 2026-11-11), where the facility has sensors on. A customer account
       // gets nothing else of the sensor screens ('sensors' stays warehouse users').
       return (

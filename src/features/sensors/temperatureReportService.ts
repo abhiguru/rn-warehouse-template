@@ -1,5 +1,5 @@
 /**
- * The temperature report's reads (WH-157, backend migration 186): the sensors a report can be made for, and the rules of a
+ * The temperature report's reads (WH-157, backend migration 187): the sensors a report can be made for, and the rules of a
  * period. The figures and the PDF are the server's (generate-temperature-report-pdf); the phone works out nothing.
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';

@@ -171,7 +171,7 @@ export const REPORTS: readonly ReportDefinition[] = [
     hubGate: 'customerStatementCard',
     feature: 'customerStatement',
   }),
-  // A sensor's readings for a period as a PDF (WH-157, backend migration 186): all four roles, where the facility has sensors.
+  // A sensor's readings for a period as a PDF (WH-157, backend migration 187): all four roles, where the facility has sensors.
   define({
     id: 'temperature-report',
     title: 'reports.titles.temperatureReport',
