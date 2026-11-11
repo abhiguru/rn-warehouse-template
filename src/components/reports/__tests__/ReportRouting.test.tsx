@@ -67,6 +67,7 @@ jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+  onOperatorServerChange: () => () => undefined,
 }));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn(() => Promise.resolve([])) } }));
 jest.mock('@/services/pdf-service', () => ({ generateCustomerStockPDF: jest.fn() }));

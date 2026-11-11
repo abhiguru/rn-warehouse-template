@@ -49,7 +49,7 @@ const ROLES = ['admin', 'supervisor', 'staff', 'customer'];
 afterEach(() => setLanguage('en'));
 
 describe('report registry', () => {
-  it('lists the ten reports once each, in the order of the Reports tab', () => {
+  it('lists the eleven reports once each, in the order of the Reports tab', () => {
     expect(REPORTS.map((report) => report.id)).toEqual([
       'customer-activity',
       'stock-summary',
@@ -61,8 +61,9 @@ describe('report registry', () => {
       'operations-dashboard',
       'customer-dues',
       'statement',
+      'temperature-report',
     ]);
-    expect(new Set(REPORTS.map((report) => report.id)).size).toBe(10);
+    expect(new Set(REPORTS.map((report) => report.id)).size).toBe(11);
   });
 
   it('has a screen file for every route, and no report screen is left out', () => {
@@ -94,7 +95,7 @@ describe('report registry', () => {
     expect(byCategory('stock')).toEqual(['stock-summary', 'item-stock-summary', 'stock-aging']);
     expect(byCategory('movement')).toEqual(['dispatch-activity', 'grn-activity']);
     expect(byCategory('financial')).toEqual(['invoice-history', 'customer-dues', 'statement']);
-    expect(byCategory('operations')).toEqual(['customer-activity', 'operations-dashboard']);
+    expect(byCategory('operations')).toEqual(['customer-activity', 'operations-dashboard', 'temperature-report']);
     expect(REPORTS.filter((report) => !report.hasPeriod).map((report) => report.id)).toEqual([
       'stock-summary',
       'item-stock-summary',
@@ -104,11 +105,12 @@ describe('report registry', () => {
     ]);
   });
 
-  it('gates the operations dashboard, the customer dues and the statement, with the gate the route guard uses', () => {
+  it('gates the operations dashboard, the customer dues, the statement and the temperature report, with the gate the route guard uses', () => {
     expect(REPORTS.filter((report) => report.gate).map((report) => [report.id, report.gate])).toEqual([
       ['operations-dashboard', 'operationsDashboard'],
       ['customer-dues', 'customerDues'],
       ['statement', 'customerStatement'],
+      ['temperature-report', 'temperatureReport'],
     ]);
     for (const report of REPORTS) {
       for (const role of ROLES) {
