@@ -47,7 +47,7 @@ describe('central login in Gujarati', () => {
     expect(t('central.signIn.endedTitle', undefined, 'gu')).toBe('લૉગઆઉટ થયું');
     expect(t('central.errors.tooManyAttempts', undefined, 'gu')).toBe('ઘણી વાર ખોટો OTP નખાયો છે. નવો OTP મગાવો.');
     const all = leaves(gujarati).map(([, text]) => text).join(' ');
-    for (const avoided of ['સાઇન ઇન', 'સાઇન આઉટ', 'સેશન', 'ઍક્સેસ', 'વપરાશકર્તા', 'નોંધણી']) expect(all).not.toContain(avoided);
+    for (const avoided of ['સાઇન ઇન', 'સાઇન આઉટ', 'સાઇન-ઇન', 'સાઇન-આઉટ', 'સેશન', 'ઍક્સેસ', 'વપરાશકર્તા', 'નોંધણી']) expect(all).not.toContain(avoided);
   });
 
   it('puts a facility name where the Gujarati sentence needs it and never translates it', () => {
