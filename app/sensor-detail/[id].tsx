@@ -46,6 +46,7 @@ import {
 import type { SensorHistoryPeriod, SensorHistorySummary } from '@/types/sensor-history.types';
 import { formatDateTime, formatSpokenDateTime, toLocalISODate } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { StatusTag } from '@/components/ui';
 import { batteryFact, chartThresholds, connectionStatus, isQuiet, lastKnownText, readingTime, rowStatus } from '@/features/sensors/sensorStatus';
 import { useSensorNow } from '@/features/sensors/useMinuteTick';
@@ -247,6 +248,11 @@ const makeStyles = (t: ThemeTokens) =>
       paddingHorizontal: layout.marginCompact,
       alignItems: 'flex-start',
     },
+    exportButtons: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
     exportButton: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -417,6 +423,8 @@ const SensorDetailScreen: React.FC = () => {
   // A backend without migration 136 has no hourly summary: 6 months and 2 years are left out, and so is the export.
   const hourlyKnown = useSyncExternalStore(subscribeRpcSupport, hourlySupport, hourlySupport);
   const hourlyMissing = hourlyKnown === false;
+  // Temperature report (WH-157): beside Export CSV, and shown when the server has it, also with the CSV hidden.
+  const reportOffered = backendHasFeature('temperatureReport');
   const availablePeriods = useMemo(() => {
     const daysAvailable = daysOfData(firstReadingAt, now);
     const offered = new Set(selectablePeriods(daysAvailable, hourlyMissing));
@@ -689,27 +697,45 @@ const SensorDetailScreen: React.FC = () => {
             {availablePeriods.length === 1 ? tr('sensors.detail.historyFor', { days: availablePeriods[0].days }) : tr('sensors.detail.history')}
           </Text>
           {availablePeriods.length > 1 ? renderPeriodSelector() : null}
-          {!hourlyMissing ? (
+          {!hourlyMissing || reportOffered ? (
             <View style={styles.exportRow}>
-              <Pressable
-                style={({ pressed }) => [styles.exportButton, pressed && styles.exportButtonPressed, exporting && { opacity: t.interaction.disabledOpacity }]}
-                onPress={() => void exportCsv()}
-                disabled={exporting}
-                accessibilityRole="button"
-                accessibilityLabel={tr('sensors.hourly.exportA11y', { period: lastPeriodLabel(selectedPeriod) })}
-                accessibilityState={{ disabled: exporting, busy: exporting }}
-                testID="sensor-export-csv"
-              >
-                {exporting ? (
-                  <ActivityIndicator size="small" color={t.brand.tint} />
-                ) : (
-                  <Icon name="file-delimited-outline" size={iconSize.md} color={t.brand.tint} />
-                )}
-                <Text style={styles.exportText} maxFontSizeMultiplier={1.6}>
-                  {exporting ? tr('sensors.hourly.exporting') : tr('sensors.hourly.export')}
-                </Text>
-              </Pressable>
-              <Text style={styles.hourlyNote}>{tr('sensors.hourly.latestNote')}</Text>
+              <View style={styles.exportButtons}>
+                {!hourlyMissing ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.exportButton, pressed && styles.exportButtonPressed, exporting && { opacity: t.interaction.disabledOpacity }]}
+                    onPress={() => void exportCsv()}
+                    disabled={exporting}
+                    accessibilityRole="button"
+                    accessibilityLabel={tr('sensors.hourly.exportA11y', { period: lastPeriodLabel(selectedPeriod) })}
+                    accessibilityState={{ disabled: exporting, busy: exporting }}
+                    testID="sensor-export-csv"
+                  >
+                    {exporting ? (
+                      <ActivityIndicator size="small" color={t.brand.tint} />
+                    ) : (
+                      <Icon name="file-delimited-outline" size={iconSize.md} color={t.brand.tint} />
+                    )}
+                    <Text style={styles.exportText} maxFontSizeMultiplier={1.6}>
+                      {exporting ? tr('sensors.hourly.exporting') : tr('sensors.hourly.export')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {reportOffered && id ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.exportButton, pressed && styles.exportButtonPressed]}
+                    onPress={() => router.push(`/reports/temperature-report?deviceId=${encodeURIComponent(id)}` as never)}
+                    accessibilityRole="button"
+                    accessibilityLabel={tr('reports.titles.temperatureReport')}
+                    testID="sensor-temperature-report"
+                  >
+                    <Icon name="file-pdf-box" size={iconSize.md} color={t.brand.tint} />
+                    <Text style={styles.exportText} maxFontSizeMultiplier={1.6}>
+                      {tr('reports.titles.temperatureReport')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {!hourlyMissing ? <Text style={styles.hourlyNote}>{tr('sensors.hourly.latestNote')}</Text> : null}
             </View>
           ) : null}
         </View>
