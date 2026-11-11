@@ -19,6 +19,7 @@ import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLimiter } from '@/utils/concurrency';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
 import { logPhotoFailure, photoUploadFailureText } from '@/utils/photoUploadError';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -603,7 +604,9 @@ const dispatchPhotosInFlight = new Map<string, Promise<{ success: boolean; error
 // reset, as that would let new uploads exceed the limit while earlier ones still run.
 // Photos whose upload was confirmed after the save's wait ended (their phone copy is deleted then), by dispatch and
 // file: a retry counts them as uploaded instead of reading the deleted file. Photos the person gave up on stay out of
-// the queue. Both are cleared with the session.
+// the queue. The uploaded list is cleared with the session; the given-up list is not: it is keyed by dispatch and
+// file, so a mark never touches another photo, and it must outlive a sign-out or facility switch so that a photo the
+// person gave up on never starts afterwards. A queued job of an earlier session is dropped by its generation instead.
 const dispatchPhotosUploaded = new Set<string>();
 const dispatchPhotosGivenUp = new Set<string>();
 const photoKey = (dispatchId: string, image: DispatchImageData) => `${dispatchId}|${image.image_url}`;
@@ -622,7 +625,6 @@ export const giveUpDispatchPhotos = (dispatchId: string, images: DispatchImageDa
 registerSessionScoped('dispatch-image-uploads', () => {
   dispatchPhotosInFlight.clear();
   dispatchPhotosUploaded.clear();
-  dispatchPhotosGivenUp.clear();
 }, { onGenerationChange: true });
 
 /**
@@ -658,6 +660,8 @@ export const uploadDeferredDispatchImages = async (
     finishMutation = beginOperatorMutation();
     const supabase = await getAuthenticatedClient();
     started = true;
+    // The client above belongs to this session: a job still queued after it ends must not run with it.
+    const sessionGeneration = getSessionGeneration();
 
     // A few at a time; each file is held from the start, also while it waits.
     const attempts = deferredImages.map(async (image): Promise<{ success: boolean; error?: string }> => {
@@ -674,8 +678,8 @@ export const uploadDeferredDispatchImages = async (
       let result: { success: boolean; error?: string } = { success: false };
       try {
         result = await dispatchPhotoUploadSlots(async () => {
-          // Given up while it waited for a place: not started.
-          if (dispatchPhotosGivenUp.has(key)) return { success: false, error: t('dispatch.photos.deferredFailed') };
+          // Given up while it waited for a place, or the session ended meanwhile: not started.
+          if (dispatchPhotosGivenUp.has(key) || sessionGeneration !== getSessionGeneration()) return { success: false, error: t('dispatch.photos.deferredFailed') };
           return uploadSingleDeferredImage(supabase, realDispatchId, image);
         });
         if (result.success) dispatchPhotosUploaded.add(key);
