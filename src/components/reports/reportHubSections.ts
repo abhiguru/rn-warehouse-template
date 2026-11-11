@@ -12,6 +12,7 @@
  */
 import { backendHasFeature } from '@/config/backendFeatures';
 import { canOpenScreen } from '@/config/roles';
+import type { FacilityCapabilities } from '@/config/facilityCapabilities';
 import { REPORTS, reportById, type ReportCategory, type ReportDefinition } from '@/features/reports/reportRegistry';
 
 export type ReportHubSectionId = 'pinned' | 'recent' | ReportCategory;
@@ -29,20 +30,25 @@ const CATEGORIES: readonly ReportCategory[] = ['stock', 'movement', 'financial',
 
 /**
  * Whether the Reports tab offers this role the report: its hub gate, else the gate the route guard uses
- * (src/navigation/routeAccess.ts), and a server that has the report's backend feature.
+ * (src/navigation/routeAccess.ts), and a server that has the report's backend feature. With the facility's `capabilities`
+ * a report of a capability it does not have (the temperature report without sensors) is left out.
  */
-export function mayOpenReport(role: string | null | undefined, report: ReportDefinition): boolean {
+export function mayOpenReport(
+  role: string | null | undefined,
+  report: ReportDefinition,
+  capabilities?: FacilityCapabilities
+): boolean {
   const gate = report.hubGate ?? report.gate;
-  if (gate && !canOpenScreen(role, gate)) return false;
+  if (gate && !canOpenScreen(role, gate, capabilities)) return false;
   return !report.feature || backendHasFeature(report.feature);
 }
 
 /** The reports these stored ids name that the role may open, each once, in the stored order. */
-function openable(role: string | null | undefined, ids: readonly string[]): ReportDefinition[] {
+function openable(role: string | null | undefined, ids: readonly string[], capabilities?: FacilityCapabilities): ReportDefinition[] {
   const reports: ReportDefinition[] = [];
   for (const id of ids) {
     const report = reportById(id);
-    if (report && mayOpenReport(role, report) && !reports.includes(report)) reports.push(report);
+    if (report && mayOpenReport(role, report, capabilities) && !reports.includes(report)) reports.push(report);
   }
   return reports;
 }
@@ -50,10 +56,11 @@ function openable(role: string | null | undefined, ids: readonly string[]): Repo
 export function reportHubSections(
   role: string | null | undefined,
   pinned: readonly string[],
-  recent: readonly string[]
+  recent: readonly string[],
+  capabilities?: FacilityCapabilities
 ): ReportHubSection[] {
-  const pinnedReports = openable(role, pinned);
-  const recentReports = openable(role, recent)
+  const pinnedReports = openable(role, pinned, capabilities);
+  const recentReports = openable(role, recent, capabilities)
     .filter((report) => !pinnedReports.includes(report))
     .slice(0, HUB_RECENT_LIMIT);
   const sections: ReportHubSection[] = [
@@ -61,7 +68,7 @@ export function reportHubSections(
     { id: 'recent', reports: recentReports },
     ...CATEGORIES.map((category) => ({
       id: category,
-      reports: REPORTS.filter((report) => report.category === category && mayOpenReport(role, report)),
+      reports: REPORTS.filter((report) => report.category === category && mayOpenReport(role, report, capabilities)),
     })),
   ];
   return sections.filter((section) => section.reports.length > 0);

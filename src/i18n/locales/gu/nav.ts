@@ -53,6 +53,7 @@ export const nav: Translation<typeof source> = {
       operationsDashboard: 'રોજના આંકડા અને કામગીરીની ઝલક',
       customerDues: 'દરેક વેપારી પાસે કેટલું લેવાનું છે તે જુઓ',
       statement: 'સ્ટોરમાં તમારો માલ અને તમારી બાકી રકમ',
+      temperatureReport: 'પસંદ કરેલા સમયગાળાની સેન્સર નોંધ, PDF તરીકે',
     },
   },
 };

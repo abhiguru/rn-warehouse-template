@@ -20,7 +20,8 @@ export type ReportId =
   | 'stock-aging'
   | 'operations-dashboard'
   | 'customer-dues'
-  | 'statement';
+  | 'statement'
+  | 'temperature-report';
 
 export type ReportCategory = 'stock' | 'movement' | 'financial' | 'operations';
 
@@ -169,6 +170,17 @@ export const REPORTS: readonly ReportDefinition[] = [
     gate: 'customerStatement',
     hubGate: 'customerStatementCard',
     feature: 'customerStatement',
+  }),
+  // A sensor's readings for a period as a PDF (WH-157, backend migration 186): all four roles, where the facility has sensors.
+  define({
+    id: 'temperature-report',
+    title: 'reports.titles.temperatureReport',
+    description: 'nav.reports.descriptions.temperatureReport',
+    icon: 'thermometer',
+    category: 'operations',
+    hasPeriod: true,
+    gate: 'temperatureReport',
+    feature: 'temperatureReport',
   }),
 ];
 

@@ -51,6 +51,7 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'reports/operations-dashboard': 'operationsDashboard',
   'reports/customer-dues': 'customerDues',
   'reports/statement': 'customerStatement',
+  'reports/temperature-report': 'temperatureReport',
 };
 
 /**

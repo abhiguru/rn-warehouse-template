@@ -47,6 +47,8 @@ const INTRODUCED_BY_MIGRATION = {
   makePairingCode: 170,
   /** `get_customer_statement`, `get_customer_dues` and generate-statement-pdf: the customer statement and the dues list (WH-155). */
   customerStatement: 176,
+  /** `get_temperature_report`, `get_sensor_report_devices` and generate-temperature-report-pdf (WH-157). */
+  temperatureReport: 186,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

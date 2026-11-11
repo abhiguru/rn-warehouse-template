@@ -79,7 +79,8 @@ export type RoleGatedScreen =
   | 'masterData'
   | 'customerDues'
   | 'customerStatement'
-  | 'customerStatementCard';
+  | 'customerStatementCard'
+  | 'temperatureReport';
 
 /**
  * Whether the app offers `screen` to `role`. With `capabilities` (the facility's, from
@@ -134,6 +135,13 @@ export function canOpenScreen(
       // The Statement card of the Reports tab is a customer account's way in; administrators and supervisors reach a
       // statement from Customer dues or Customer activity (WH-155 spec step 5).
       return isCustomerAccount(role);
+    case 'temperatureReport':
+      // The temperature report PDF (WH-157, get_temperature_report, migration 186): all four roles, a customer account
+      // for every sensor of the facility (owner, 2026-11-11), where the facility has sensors on. A customer account
+      // gets nothing else of the sensor screens ('sensors' stays warehouse users').
+      return (
+        (isWarehouseUser(role) || isCustomerAccount(role)) && (capabilities === undefined || capabilities.sensors)
+      );
   }
 }
 
