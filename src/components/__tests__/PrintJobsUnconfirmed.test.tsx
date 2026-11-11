@@ -24,7 +24,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
     React.createElement(View, { testID: 'sheet' }, children));
   return { __esModule: true, default: BottomSheet, BottomSheetBackdrop: () => null, BottomSheetFlatList: FlatList };
 });
-jest.mock('@/services/print-service', () => ({ getPrintJobs: jest.fn(), cancelPrintJob: jest.fn(), getPrinterStatus: jest.fn() }));
+jest.mock('@/services/print-service', () => ({ getPrintJobs: jest.fn(), cancelPrintJob: jest.fn(), getPrinterStatus: jest.fn(), serverNowMs: jest.fn(() => Date.now()) }));
 
 const unknownJob = {
   id: 'ju', cups_job_id: null, job_type: 'Invoice', status: 'unknown', printer_name: 'LQ1310_RAW', document_range_start: '412',
