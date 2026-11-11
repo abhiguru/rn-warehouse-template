@@ -783,5 +783,22 @@ describe('sentryConfig - Telemetry and Redaction', () => {
       const kept = choose([{ name: 'ExpoConstants' }, { name: 'ExpoUpdatesListener' }, { name: 'Breadcrumbs' }]);
       expect(kept.map(integration => integration.name)).toEqual(['ExpoConstants', 'Breadcrumbs']);
     });
+
+    // WH-107: the list above is hand-made. This reads the name the installed SDK really gives the integration, so a
+    // Sentry upgrade that renames it fails here instead of silently filtering nothing.
+    it('filters out the name the installed SDK gives its ExpoUpdatesListener integration', () => {
+      const fs = require('fs') as typeof import('fs');
+      const path = require('path') as typeof import('path');
+      const source = fs.readFileSync(
+        path.join(process.cwd(), 'node_modules/@sentry/react-native/dist/js/integrations/expoupdateslistener.js'),
+        'utf8'
+      );
+      const sdkName = /const INTEGRATION_NAME = '([^']+)'/.exec(source)?.[1];
+      expect(sdkName).toBeDefined();
+      initializeSentry();
+      const options = jest.mocked(Sentry.init).mock.calls[0][0] as { integrations?: unknown };
+      const choose = options.integrations as (defaults: { name: string }[]) => { name: string }[];
+      expect(choose([{ name: sdkName as string }, { name: 'Breadcrumbs' }]).map(integration => integration.name)).toEqual(['Breadcrumbs']);
+    });
   });
 });
