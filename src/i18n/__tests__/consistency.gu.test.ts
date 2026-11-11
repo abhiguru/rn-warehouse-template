@@ -48,13 +48,13 @@ describe('one word per idea', () => {
     // સમીક્ષા and ઝાંખી (review, overview), સંબંધિત લોકો (participants), ભાવ for a storage rate, હજી (spelled હજુ), જોબ (spelled જૉબ).
     // Wording review with the owner (2026-10-10): વપરાશકર્તા, ભૂમિકા, સેશન, ઍક્સેસ, સાઇન ઇન, ડિસ્કાઉન્ટ, લોટ and બોરી as a count gave way to
     // યુઝર, હોદ્દો, લૉગિન, મંજૂરી, છૂટ, જથ્થો and નંગ. બોરી stays only as a kind of packing (items.form.packagingPlaceholder).
-    const replaced = /સમીક્ષા|ઝાંખી|સંબંધિત લોકો|ભાવ|હજી|જોબ|વપરાશકર્તા|ભૂમિકા|સેશન|ઍક્સેસ|સાઇન ઇન|સાઇન આઉટ|ડિસ્કાઉન્ટ|રાઉન્ડ ઑફ|ડેશબોર્ડ|રીડિંગ/;
+    const replaced = /સમીક્ષા|ઝાંખી|સંબંધિત લોકો|ભાવ|હજી|જોબ|વપરાશકર્તા|ભૂમિકા|સેશન|ઍક્સેસ|સાઇન[ -]ઇન|સાઇન[ -]આઉટ|ડિસ્કાઉન્ટ|રાઉન્ડ ઑફ|ડેશબોર્ડ|રીડિંગ/;
     const found = [...GUJARATI].filter(([key, value]) => replaced.test(asString(value)) || (/બોરી/.test(asString(value)) && key !== "items.form.packagingPlaceholder")).map(([key]) => key);
     expect(found).toEqual([]);
   });
 
   it('keeps the replaced words out of the formatter nouns too (commonWords)', () => {
-    const replaced = /વપરાશકર્તા|ભૂમિકા|સેશન|ઍક્સેસ|સાઇન ઇન|સાઇન આઉટ|ડિસ્કાઉન્ટ|રીડિંગ|બોરી/;
+    const replaced = /વપરાશકર્તા|ભૂમિકા|સેશન|ઍક્સેસ|સાઇન[ -]ઇન|સાઇન[ -]આઉટ|ડિસ્કાઉન્ટ|રીડિંગ|બોરી/;
     const words = commonWords('gu');
     const found = Object.entries(words.nouns).filter(([, forms]) => forms.some(form => replaced.test(form))).map(([noun]) => noun);
     expect(found).toEqual([]);
