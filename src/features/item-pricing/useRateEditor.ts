@@ -203,6 +203,12 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
             ...(choice === 'today' ? { startsOnChoice: choice, startsOn: core.draft.startsOn } : {}),
           };
           setCore({ rows, draft: merged, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
+        } else if (core.draft.locked !== undefined) {
+          // The rate this form was adding to has ended on the server (WH-76): nothing is locked now, and Save must not
+          // send the rate's old bands. The form is a plain Add rate; the bands typed in the new part stay.
+          const typed = core.draft.bands.slice(core.draft.locked);
+          const draftNow = { ...opened.draft, bands: typed.length > 0 ? typed : opened.draft.bands };
+          setCore({ rows, draft: draftNow, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
         } else {
           setCore({ ...core, rows, ctx: { ...opened.context, copied: core.ctx.copied } });
         }
