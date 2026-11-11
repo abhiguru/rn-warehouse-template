@@ -82,7 +82,8 @@ export async function pairWithFacility(
   let committed = false;
   try {
     // 1. Who is at the address (public configuration; no secret leaves the phone).
-    setLanContext({ canonical: origin, lan: payload.addr, instanceId: payload.instanceId, localOnly: true });
+    const pairingContext = { canonical: origin, lan: payload.addr, instanceId: payload.instanceId, localOnly: true };
+    setLanContext(pairingContext);
     let discovery: Awaited<ReturnType<typeof discoverOperator>>;
     try {
       discovery = await discoverOperator(origin);
@@ -96,8 +97,12 @@ export async function pairWithFacility(
     const other = getActiveOperatorServer();
     if (confirmSwitch && other && other.instanceId !== payload.instanceId) {
       const stored = await getStoredToken().catch(() => null);
-      if (stored?.authToken && !(await confirmSwitch({ next: discovery.server.displayName, current: other.displayName })))
-        return fail('cancelled');
+      if (stored?.authToken) {
+        // The address is proved; while the question waits the current facility keeps its own LAN context.
+        setLanContext(previousContext);
+        if (!(await confirmSwitch({ next: discovery.server.displayName, current: other.displayName }))) return fail('cancelled');
+        setLanContext(pairingContext);
+      }
     }
 
     // 2 and 3. Redeem, check the proof, open the box.
