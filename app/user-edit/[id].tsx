@@ -56,6 +56,7 @@ import { publishUserListChange } from '@/utils/userListSync';
 import { normalizeRole, userManagementActions, userPageKind } from '@/config/roles';
 import { SignedInDevicesSection } from '@/features/users/components/SignedInDevicesSection';
 import { mayListSessions } from '@/features/users/sessionDevices';
+import { backendHasFeature } from '@/config/backendFeatures';
 import { MakeSignInCodeSection } from '@/features/users/components/MakeSignInCodeSection';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 
@@ -919,7 +920,7 @@ export default function UserEditScreen() {
           ) : null}
 
           {/* Pairing code (WH-146): a facility on its local network only has no SMS sign-in; an administrator signs a person in with a QR code. */}
-          {normalizeRole(userProfile?.role) === 'admin' && getActiveOperatorServer()?.kind === 'local' && user?.id && user.active !== false ? (
+          {normalizeRole(userProfile?.role) === 'admin' && getActiveOperatorServer()?.kind === 'local' && backendHasFeature('makePairingCode') && user?.id && user.active !== false ? (
             <MakeSignInCodeSection userId={user.id} name={user.name || ''} />
           ) : null}
           </>
