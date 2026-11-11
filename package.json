@@ -113,7 +113,7 @@
     "typescript": "~6.0.3"
   },
   "overrides": {
-    "node-forge": "1.4.1",
+    "node-forge": "1.4.3",
     "postcss": "8.5.28",
     "compression": "1.8.2",
     "source-map-js": "1.2.2",
