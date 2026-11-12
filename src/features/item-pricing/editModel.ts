@@ -168,6 +168,29 @@ export function wholeKg(text: string | null | undefined): number | null {
 const inScope = (row: ItemStoragePrice, scope: Scope): boolean =>
   (row.customer_id ?? null) === scope.customerId && row.price_type === scope.priceType;
 
+/** The weight above which an item's own rate gives no rate (WH-66); 9999 kg is the heaviest lot a GRN takes. */
+export const COVER_TOP_KG = 9999;
+
+/** The highest "Up to" typed, or null when none is a whole number of kg. */
+export function topUpTo(draft: Draft): number | null {
+  const kgs = draft.bands.map(b => wholeKg(b.upTo));
+  return kgs.length === 0 || kgs.some(k => k === null) ? null : Math.max(...(kgs as number[]));
+}
+
+/**
+ * Add rate / Change rate / Correct on an item's own rate: set when this save leaves heavier bags with no rate where the rate it
+ * replaces covered them (WH-66). The old rate is the rows in force on the save's start day. Not for a first rate, a customer
+ * rate or a stop (no bands).
+ */
+export function heavierBagsAsk(draft: Draft, ctx: EditorContext): { kg: number; oldKg: number; date: string } | null {
+  if (ctx.customerId || draft.bands.length === 0 || !draft.startsOn) return null;
+  const kg = topUpTo(draft);
+  if (kg === null || kg >= COVER_TOP_KG) return null;
+  const old = rowsInForce(ctx.rows, { customerId: null, priceType: draft.priceType }, draft.startsOn);
+  const oldKg = old.reduce((max, r) => Math.max(max, r.weight_max), 0);
+  return old.length > 0 && kg < oldKg ? { kg, oldKg, date: draft.startsOn } : null;
+}
+
 /** The rows of a scope that are in force on a day (inclusive end day), lightest band first. */
 export function rowsInForce(rows: ItemStoragePrice[], scope: Scope, onDay: string): ItemStoragePrice[] {
   return rows
@@ -911,9 +934,10 @@ export function nowText(draft: Draft, ctx: EditorContext, index: number): string
 }
 
 /** The "What changes" card: the old rate until the day before, then the new one. Empty until the form is valid. */
-export function summaryLines(draft: Draft, ctx: EditorContext): string[] {
+export function summaryLines(draft: Draft, ctx: EditorContext, packaging?: string | null): string[] {
   if (!draft.startsOn) return [];
-  const unit = unitText(draft.priceType);
+  // The item's own word, as on the rate card: "per Borry" (WH-71); unknown keeps "per bag".
+  const unit = unitText(draft.priceType, packaging);
   const rents = draft.bands.map(b => priceNumber(b.rent, 2));
   const spans = draft.bands.map((b, i) => [fromOf(draft, i), wholeKg(b.upTo)] as const);
   if (rents.some(r => r === null) || spans.some(([a, b]) => a === null || b === null)) return [];

@@ -5,7 +5,8 @@
  * Every figure here is the server's. The app never works out tax, a split or a document type.
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
+import { formatDate } from '@/utils/formatters';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { serverReason } from '@/utils/serverText';
@@ -188,6 +189,11 @@ export function documentRefusalText(reason: string | undefined, fields?: Record<
       return t('gst.refusal.unknownLine');
     case REFUSAL.NUMBER_OUT_OF_RANGE:
       return t('gst.refusal.numberOutOfRange', { number: String(fields?.number ?? '') });
+    case REFUSAL.INVOICE_PAIR_OTHER_YEAR:
+      // The labels are identifiers: they keep 0-9 in every language.
+      return t('gst.refusal.pairOtherYear', { first: formatIdentifier(String(fields?.first ?? '')), second: formatIdentifier(String(fields?.second ?? '')) });
+    case REFUSAL.INVOICE_AFTER_PAYMENT:
+      return t('gst.refusal.afterPayment', { date: formatDate(String(fields?.date ?? '')) });
     default:
       return undefined;
   }

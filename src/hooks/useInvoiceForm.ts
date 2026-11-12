@@ -981,6 +981,13 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
         report(t(failedTitleKey), message, { dateRefused: true });
         return { success: false, error: message };
       }
+      if (refusal?.reason === REFUSAL.INVOICE_PAIR_OTHER_YEAR || refusal?.reason === REFUSAL.INVOICE_AFTER_PAYMENT) {
+        // WH-174, WH-178: the edit's new date is refused; nothing was saved and the typed values stay.
+        const message = documentRefusalText(refusal.reason, refusal.fields) ?? t('invoice.form.checkInvoiceTitle');
+        dispatch(setValidationError({ field: 'inv_date', message }));
+        report(t(failedTitleKey), message, { dateRefused: true });
+        return { success: false, error: message };
+      }
       if (refusal?.reason === REFUSAL.INVOICE_BEFORE_DISPATCH) {
         const dispatchNo = refusalString(refusal, 'dispatch_no');
         const dispatchDate = refusalString(refusal, 'dispatch_date');

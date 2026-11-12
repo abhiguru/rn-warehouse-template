@@ -14,6 +14,25 @@ export function advanceSessionGeneration() {
   for (const listener of listeners) listener();
   return generation;
 }
+// Told once a sign-in, a sign-out or a replaced session has finished writing the stored credentials. Called from inside that
+// write's credential job (serializeCredentials), so a read a listener queues runs after the write, never before it. A token
+// refresh of the same session is not told (it changes no subject); a refresh whose store failed and cleared the session is.
+const credentialListeners = new Set<() => void>();
+export const onCredentialsSettled = (listener: () => void) => {
+  credentialListeners.add(listener);
+  return () => {
+    credentialListeners.delete(listener);
+  };
+};
+export function announceCredentialsSettled() {
+  for (const listener of credentialListeners) {
+    try {
+      listener();
+    } catch {
+      /* a listener never fails the credential write that told it */
+    }
+  }
+}
 // How many credential operations have ever been queued. A read queued while
 // this number is unchanged sits directly after the previous one, with nothing
 // in between that could have written the secure store.

@@ -35,7 +35,7 @@ jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn(), re
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => false }));
-jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => null }));
+jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => null, onOperatorServerChange: () => () => undefined }));
 // Document numbers is offered where the backend has migration 127.
 jest.mock('@/config/backendFeatures', () => ({ backendHasFeature: () => true }));
 // A facility whose public config turns sensors on: the Settings row of every role is shown.
@@ -140,7 +140,7 @@ describe('Settings order', () => {
   });
 
   it.each([
-    ['admin', 10],
+    ['admin', 11],
     ['supervisor', 6],
     ['staff', 1],
     ['customer', 0],

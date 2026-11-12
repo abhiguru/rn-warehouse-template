@@ -22,6 +22,7 @@ import type { TierTag } from '../standardRate';
 import { unitText } from '../rateText';
 import type { UseRateEditor } from '../useRateEditor';
 import { priceTypeLabel } from '../utils/priceLabels';
+import { pickedItemName } from '@/utils/packagingWord';
 import { CopyTiersSheet, confirmReplaceBands } from './CopyTiersSheet';
 import { EditorStrip } from './EditorStrip';
 import type { FieldRegistry } from './fieldLink';
@@ -147,7 +148,7 @@ export function RateBox({ editor, fields, caption, startSignal, oneTime, tags, l
             setCopyOpen(false);
             // Typed figures are not replaced without asking.
             if (!editor.dirty) editor.copyFrom(item, rows);
-            else void confirmReplaceBands(item.name).then(yes => { if (yes) editor.copyFrom(item, rows); });
+            else void confirmReplaceBands(pickedItemName(item)).then(yes => { if (yes) editor.copyFrom(item, rows); });
           }}
         />
       ) : null}

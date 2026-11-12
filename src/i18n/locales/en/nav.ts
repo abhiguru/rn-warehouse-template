@@ -55,6 +55,7 @@ export const nav = {
       operationsDashboard: 'Daily KPIs and activity overview',
       customerDues: 'See what each customer owes',
       statement: 'Your goods in store and what you owe',
+      temperatureReport: "A sensor's readings for a period, as a PDF",
     },
   },
 };

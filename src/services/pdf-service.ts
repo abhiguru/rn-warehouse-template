@@ -66,6 +66,8 @@ export interface PDFResponse {
   error?: string;
   /** Set when the server refused with one of its three known answers (see `pdfRefusal`). */
   refusal?: PdfRefusal;
+  /** The server's machine code of a refusal, where it sends one (the temperature report: PERIOD_TOO_LONG, NO_READINGS ...). */
+  code?: string;
 }
 
 /** The server's three refusals to make a PDF: the document is too long, it changed while printing, the renderer is down. */
@@ -431,6 +433,77 @@ export async function generateStatementPDF(
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
         refusal: pdfRefusal(response.status, data.error),
+      };
+    }
+
+    const pdfUrl = acceptSignedUrl(fixInternalUrl(data.pdf_url));
+    if (!pdfUrl) {
+      return { success: false, error: insecureDownloadError() };
+    }
+
+    return {
+      success: true,
+      pdfUrl,
+      expiresIn: data.expires_in,
+      document: data.document,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+    };
+  }
+}
+
+/**
+ * One sensor's temperature report for a period as an English PDF (backend generate-temperature-report-pdf, WH-157): the
+ * server reads get_temperature_report with the caller's token and works everything out. `fromDate` and `toDate` are
+ * India dates (YYYY-MM-DD).
+ */
+export async function generateTemperatureReportPDF(
+  deviceId: string,
+  fromDate: string,
+  toDate: string
+): Promise<PDFResponse> {
+  try {
+    const authenticatedFetch = createAuthenticatedFetch();
+    const authToken = await getAuthToken();
+    if (!authToken) {
+      return {
+        success: false,
+        error: t('errors.auth.loginAgain'),
+      };
+    }
+
+    const config = getCurrentConfig();
+    const url = `${config.url}/functions/v1/generate-temperature-report-pdf`;
+
+    const response = await authenticatedFetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ device_id: deviceId, from_date: fromDate, to_date: toDate }),
+    });
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      discardBody(response);
+      return {
+        success: false,
+        error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
+      };
+    }
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return {
+        success: false,
+        error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
+        refusal: pdfRefusal(response.status, data.error),
+        code: typeof data.code === 'string' ? data.code : undefined,
       };
     }
 

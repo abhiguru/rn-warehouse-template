@@ -11,6 +11,7 @@ export const reports = {
     operationsDashboard: 'Operations dashboard',
     customerDues: 'Customer dues',
     statement: 'Statement',
+    temperatureReport: 'Temperature report',
   },
   shared: {
     // A label under a stock figure; pass `count` to get "unit" for 1.
@@ -417,6 +418,18 @@ export const reports = {
     // Customer activity, Quick access: the card that opens the customer's statement.
     quickHead: 'Statement',
     quickAction: 'View statement',
+  },
+  // The temperature report (WH-157, backend migration 186).
+  temperatureReport: {
+    chooseSensor: 'Choose a sensor',
+    periodTooLong: 'Choose a period of 12 months or less.',
+    periodTooOld: 'Readings are kept for 2 years. Choose a later start date.',
+    noReadingsInPeriod: 'This sensor has no readings in this period.',
+    noSensors: 'No sensor has readings yet.',
+    loadError: "Couldn't load the sensors. Check your connection and try again.",
+    errorTitle: "Couldn't load the sensors",
+    sensorRow: '{{name}}, {{location}}',
+    sensorRowHint: 'Opens the temperature report for this sensor',
   },
   dues: {
     duesEmpty: 'No customer owes anything.',

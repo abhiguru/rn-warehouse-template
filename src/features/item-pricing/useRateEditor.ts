@@ -12,8 +12,9 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { t } from '@/i18n';
 import { replaceItemRates } from '@/services/item-pricing-service';
-import { getRateStartFloor } from '@/services/rateStartFloor';
+import { getRateStartFloor, rememberRateStartFloor } from '@/services/rateStartFloor';
 import type { ItemStoragePrice, PriceType, ReplaceRatesResult } from '@/types/item-pricing.types';
+import { pickedItemName } from '@/utils/packagingWord';
 import { showToast } from '@/utils/toast';
 import { useRateSaveKey } from './useRateSaveKey';
 import { notifyRatesChanged, type EditorMode, type EditorParams } from './contract';
@@ -23,6 +24,7 @@ import {
   correcting,
   fieldOrder,
   hasChanges,
+  heavierBagsAsk,
   initialDraft,
   resyncToday,
   savedStop,
@@ -88,6 +90,8 @@ export interface UseRateEditor {
   saving: boolean;
   /** The later rates the save would delete, for the confirm dialog; null when no question is open. */
   later: LaterRates | null;
+  /** The heavier-bags question (WH-66) while it is open: the new top, the old top and the start day; null otherwise. */
+  heavier: { kg: number; oldKg: number; date: string } | null;
   /** The name of the item whose bands were copied into the draft. */
   copiedFrom: string | null;
   /**
@@ -109,9 +113,11 @@ export interface UseRateEditor {
   /** Monthly / One-time on a new rate (re-seeds the bands from the default where there is one). */
   switchType: (value: PriceType) => void;
   /** Take the bands of another item into the draft. */
-  copyFrom: (item: { id: string; name: string }, rows: ItemStoragePrice[]) => void;
+  copyFrom: (item: { id: string; name: string; packaging?: string | null }, rows: ItemStoragePrice[]) => void;
   /** Save. `replaceLater` true is the answer Yes of the later-rates question. */
-  submit: (replaceLater?: boolean) => Promise<void>;
+  submit: (replaceLater?: boolean, leaveHeavier?: boolean) => Promise<void>;
+  /** Keep editing, on the heavier-bags question. */
+  dismissHeavier: () => void;
   /** The answer No of the later-rates question. */
   dismissLater: () => void;
   /** Clear the strip (the person started typing again). */
@@ -134,6 +140,9 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const [strip, setStrip] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [later, setLater] = useState<LaterRates | null>(null);
+  const [heavier, setHeavier] = useState<{ kg: number; oldKg: number; date: string } | null>(null);
+  // The figures the person already answered "Save anyway" for: a retry of the same figures does not ask again.
+  const heavierOk = useRef<string | null>(null);
   // The item whose tiers were copied into the draft (names the note under the start day).
   const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
   const [rowsChanged, setRowsChanged] = useState(false);
@@ -141,6 +150,8 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
   const ownSave = useRef(false);
   // This phone's own save got no answer (timed out): the rows that come back may be that save, not another phone.
   const maybeSaved = useRef(false);
+  // The rate this form was adding to ended on another phone: the form was reset, so the warning stays though nothing differs.
+  const endedRate = useRef(false);
   const saveKey = useRateSaveKey('replace');
   const checked = useRef(false);
   const onSavedRef = useRef(onSaved);
@@ -148,6 +159,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
 
   // ---- open a draft whenever a set of rows arrives (also the same array again after the rows were null) ----
   const openDraft = (fromRows: ItemStoragePrice[]) => {
+    endedRate.current = false;
     ownSave.current = false;
     maybeSaved.current = false;
     setRowsChanged(false);
@@ -169,6 +181,42 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     setLater(null);
     checked.current = false;
   };
+  /**
+   * The draft for rows held now, with the typing kept: Add rate on a rate in force keeps the new bands typed and takes the
+   * rate's own bands from the rows; a rate that ended meanwhile gives a plain Add rate with nothing typed (WH-76). The
+   * context is worked out again for the earliest day given, so the lost-rows guard sees the day the server named (WH-92).
+   */
+  const rebuildCore = (cur: Core, newRows: ItemStoragePrice[], earliest: string | null): Core => {
+    const type = cur.draft.priceType;
+    const opened = initialDraft({
+      mode,
+      params: { ...params, mode, item_id: item.id, item_name: item.name, customer_id: customer?.id, customer_name: customer?.name, price_type: type } as EditorParams,
+      rows: newRows,
+      role,
+      today: todayNow(),
+      earliest,
+    });
+    if (mode === 'addBand' && cur.draft.locked !== undefined && opened.draft.locked !== undefined) {
+      // Add rate on a rate in force: the rate's own bands are the ones now held; the new bands typed stay.
+      const typed = cur.draft.bands.slice(cur.draft.locked);
+      const choice = cur.draft.startsOnChoice;
+      const merged = {
+        ...opened.draft,
+        bands: [...opened.draft.bands.slice(0, opened.draft.locked), ...typed],
+        ...(choice === 'today' ? { startsOnChoice: choice, startsOn: cur.draft.startsOn } : {}),
+      };
+      return { rows: newRows, draft: merged, initial: opened.draft, ctx: { ...opened.context, copied: cur.ctx.copied } };
+    }
+    if (cur.draft.locked !== undefined) {
+      // The rate this form was adding to has ended on the server (WH-76): nothing is locked now, and Save must not
+      // send the rate's old bands. The form is a plain Add rate with one blank band from 0 kg; nothing typed is
+      // carried over (Product, 2026-11-11). The warning stays until the person types.
+      endedRate.current = true;
+      return { rows: newRows, draft: opened.draft, initial: opened.draft, ctx: { ...opened.context, copied: cur.ctx.copied } };
+    }
+    return { ...cur, rows: newRows, ctx: { ...opened.context, copied: cur.ctx.copied } };
+  };
+
   if (!rows && core) {
     setCore(null);
   } else if (rows && core && core.rows !== rows) {
@@ -184,27 +232,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
         setCore({ ...core, rows, ctx: { ...core.ctx, rows } });
       } else {
         // The rows of this rate changed: Save must send the rows now held (p_seen_rows), with the typing kept.
-        const opened = initialDraft({
-          mode,
-          params: { ...params, mode, item_id: item.id, item_name: item.name, customer_id: customer?.id, customer_name: customer?.name, price_type: type } as EditorParams,
-          rows,
-          role,
-          today: todayNow(),
-          earliest: core.ctx.earliestStart ?? getRateStartFloor(),
-        });
-        if (mode === 'addBand' && core.draft.locked !== undefined && opened.draft.locked !== undefined) {
-          // Add rate on a rate in force: the rate's own bands are the ones now held; the new bands typed stay.
-          const typed = core.draft.bands.slice(core.draft.locked);
-          const choice = core.draft.startsOnChoice;
-          const merged = {
-            ...opened.draft,
-            bands: [...opened.draft.bands.slice(0, opened.draft.locked), ...typed],
-            ...(choice === 'today' ? { startsOnChoice: choice, startsOn: core.draft.startsOn } : {}),
-          };
-          setCore({ rows, draft: merged, initial: opened.draft, ctx: { ...opened.context, copied: core.ctx.copied } });
-        } else {
-          setCore({ ...core, rows, ctx: { ...opened.context, copied: core.ctx.copied } });
-        }
+        setCore(rebuildCore(core, rows, core.ctx.earliestStart ?? getRateStartFloor()));
         setRowsChanged(true);
       }
     } else {
@@ -212,7 +240,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     }
   } else if (rows && !core) {
     openDraft(rows);
-  } else if (rows && core && rowsChanged && !hasChanges(core.draft, core.initial)) {
+  } else if (rows && core && rowsChanged && !endedRate.current && !hasChanges(core.draft, core.initial)) {
     // The typing was undone after the rows changed: rebuild from the rows now held and drop the warning.
     openDraft(core.rows);
   }
@@ -224,6 +252,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
 
   const bandCountNow = draft?.bands.length ?? 0;
   const setDraft = useCallback((next: Draft) => {
+    endedRate.current = false;
     ownSave.current = false;
     maybeSaved.current = false;
     setCore(current => (current ? { ...current, draft: next } : current));
@@ -272,9 +301,10 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     if (checked.current) setErrors(validate(nextDraft, ctx).errors);
   };
 
-  const copyFrom = (from: { id: string; name: string }, fromRows: ItemStoragePrice[]) => {
+  const copyFrom = (from: { id: string; name: string; packaging?: string | null }, fromRows: ItemStoragePrice[]) => {
     if (!draft) return;
-    setCopiedFrom(from.name);
+    // Named as the list names it, "Amachur · Borry" (WH-71); an item without a packaging field keeps its bare name.
+    setCopiedFrom(pickedItemName(from));
     setDraft(copyTiersFrom(draft, fromRows));
   };
 
@@ -304,7 +334,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     return `band.${i}.upTo`;
   };
 
-  const submit = async (replaceLater = false) => {
+  const submit = async (replaceLater = false, leaveHeavier = false) => {
     if (!open || saving) return;
     const { draft: data, ctx: context } = open;
     // Left open past midnight (India): the day chips move to the new day and the person looks again.
@@ -333,6 +363,15 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
       view?.current?.scrollToTop();
       return;
     }
+    // Heavier bags left with no rate where the rate being replaced covered them: ask first, once per set of figures (WH-66).
+    const heavierKey = JSON.stringify(toReplaceInput(data, context).bands);
+    const ask = heavierBagsAsk(data, context);
+    if (leaveHeavier) heavierOk.current = heavierKey;
+    if (ask && heavierOk.current !== heavierKey) {
+      setHeavier(ask);
+      return;
+    }
+    setHeavier(null);
     const keepsLater = context.mode === 'addBand' && data.startsOnChoice === 'ownStart';
     if (!replaceLater && !correcting(data, context) && !keepsLater && data.startsOn) {
       const hidden = plannedOnDay(context.rows, { customerId: context.customerId, priceType: data.priceType }, data.startsOn, context.today, context.editingIds);
@@ -390,7 +429,12 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
         const earliest = result.earliest;
         if (data.startsOnChoice === 'ownStart' && earliest && context.ownStart && context.ownStart < earliest) {
           const moved = { ...data, startsOn: earliest };
-          setCore(cur => (cur ? { ...cur, draft: { ...cur.draft, startsOn: earliest }, initial: { ...cur.initial, startsOn: earliest }, ctx: { ...cur.ctx, earliestStart: earliest } } : cur));
+          // The day the server named is the floor from now on, and the lost-rows guard runs again for it (WH-92): the
+          // context is worked out afresh, so a band that ended on that day makes this a "today" save with the usual
+          // warning, never a change from the moved day by itself. The rows are read again; they take the same path.
+          rememberRateStartFloor(earliest);
+          setCore(cur => (cur ? rebuildCore(cur, cur.rows, earliest) : cur));
+          refreshRows();
           setStrip(bandBlockedByPlanned(moved, { ...context, earliestStart: earliest }) ?? t('pricing.edit.bandMoved', { date: dateText(earliest) }));
         } else {
           setStrip(result.message ?? t('pricing.error.generic'));
@@ -429,6 +473,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     strip,
     saving,
     later,
+    heavier,
     copiedFrom,
     earliest: ctx?.earliestStart,
     dirty,
@@ -441,6 +486,7 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
     copyFrom,
     submit,
     dismissLater: () => setLater(null),
+    dismissHeavier: () => setHeavier(null),
     clearStrip: () => setStrip(null),
   };
 }

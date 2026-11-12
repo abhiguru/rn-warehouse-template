@@ -39,12 +39,11 @@
     package, with the packages' `react-native`, `browser` and `exports` entries) from the app entry and every `app/` route found
     4195 files in 130 packages. Neither `glob` nor `minimatch` is among them, and neither are `@expo/cli`, `@expo/config`,
     `@expo/config-plugins`, `@expo/fingerprint`, `@expo/metro-config` or `@sentry/bundler-plugins`. It over-approximates (a
-    `require` inside a function counts), and it is not a Metro build: no bundle was made on this host in this step. `expo-updates` is in
-    the graph as its runtime JavaScript; it uses `glob` only in `utils/build/vcs.js`, which the runtime does not import. The
-    last full bundle check was 2026-10-24 (see the section on the Expo 57 line below).
+    `require` inside a function counts), and it is not a Metro build: no bundle was made on this host in this step. `expo-updates` is no longer
+    installed (WH-105), so it is not in the graph. The last full bundle check was 2026-10-24 (see the section on the Expo 57 line below).
   - **Who declares them in the production tree** (`npm ls --omit=dev --all`): `@expo/cli`, `@expo/fingerprint` and
     `@expo/metro-config` (through `expo`), `@expo/config-plugins` (through `expo-sharing`), `@expo/config` and
-    `@sentry/bundler-plugins` (through `@sentry/react-native`), and `expo-updates`. All are Expo or Sentry command-line,
+    `@sentry/bundler-plugins` (through `@sentry/react-native`). All are Expo or Sentry command-line,
     prebuild or bundler code. Everything else that carries the advisories (Jest, ESLint, typescript-eslint, Babel's
     istanbul plugin and `test-exclude`) is a dev dependency.
   - **How the gate stays safe.** `scripts/audit-dependencies.mjs` has a second list, `acceptedWithoutRepair` (advisory, package,
@@ -127,7 +126,7 @@ GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The other copies have 
   (off in this template, see below). They run on the developer's machine, not in the app. On 2026-10-24 `npx expo export
   --platform android --source-maps` produced a bundle whose source map lists 3666 modules, none from `node-forge`,
   `@expo/code-signing-certificates`, `@expo/cli` or `zod` (the only name match is Sentry's unrelated `zoderrors.js`);
-  `expo-updates` appears as its runtime JavaScript only.
+  `expo-updates` was not installed from WH-105 on (before that, its runtime JavaScript only).
 - No fixed version exists in the Expo 57 line. **Do not run `npm audit fix --force`**: it proposes `expo@54.0.38`, a downgrade
   by three SDKs, and breaks the project.
 
@@ -207,8 +206,10 @@ the comment together. Every checkout sets `persist-credentials: false`.
 
 **Over-the-air updates are removed (WH-27).** Every change ships through the store, so `expo-updates`, the runtime version, the `updates` block of
 `app.json` and the in-app update prompt are gone. Remote JavaScript cannot run with the user's session; the version gate ("Update the app") is unchanged.
-`scripts/ota-updates.test.mjs` described the old setting and is for Test to retire. `@sentry/react-native` lists `expo-updates` as an optional peer, so
-the lockfile still carries its entries as optional peers; nothing installs or imports them.
+`scripts/ota-updates.test.mjs` is the guard for this: it fails if `app.json` gets an `updates` block or a runtime version back, if `package.json`
+lists `expo-updates`, or if `package-lock.json` has an entry for it or its own packages. Do not delete it. `@sentry/react-native` lists `expo-updates`
+as an optional peer, and `npm ci` installs an optional peer left in the lockfile, so since WH-105 the lockfile carries no such entry; the app also
+leaves Sentry's `ExpoUpdatesListener` integration out (`src/config/sentryConfig.ts`).
 
 ## Expo SDK 57 upgrade — 10 October 2026
 

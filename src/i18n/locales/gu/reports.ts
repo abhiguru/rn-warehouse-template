@@ -14,6 +14,7 @@ export const reports: Translation<typeof source> = {
     operationsDashboard: 'કામગીરીની ઝલક',
     customerDues: 'વેપારીઓની બાકી રકમ',
     statement: 'સ્ટેટમેન્ટ',
+    temperatureReport: 'તાપમાનનો અહેવાલ',
   },
   shared: {
     units: { one: 'નંગ', other: 'નંગ' },
@@ -386,6 +387,17 @@ export const reports: Translation<typeof source> = {
     hideLots: 'જથ્થા છુપાવે છે',
     quickHead: 'સ્ટેટમેન્ટ',
     quickAction: 'સ્ટેટમેન્ટ જુઓ',
+  },
+  temperatureReport: {
+    chooseSensor: 'સેન્સર પસંદ કરો',
+    periodTooLong: '૧૨ મહિના કે તેથી ઓછો સમયગાળો પસંદ કરો.',
+    periodTooOld: 'નોંધ ૨ વર્ષ સુધી રખાય છે. પછીની શરૂઆતની તારીખ પસંદ કરો.',
+    noReadingsInPeriod: 'આ સમયગાળામાં આ સેન્સરની કોઈ નોંધ નથી.',
+    noSensors: 'હજુ કોઈ સેન્સરની નોંધ નથી.',
+    loadError: 'સેન્સર લોડ ન થયાં. કનેક્શન તપાસો અને ફરી પ્રયત્ન કરો.',
+    errorTitle: 'સેન્સર લોડ ન થયાં',
+    sensorRow: '{{name}}, {{location}}',
+    sensorRowHint: 'આ સેન્સરનો તાપમાનનો અહેવાલ ખોલે છે',
   },
   dues: {
     duesEmpty: 'કોઈ વેપારી પાસે કંઈ લેવાનું નથી.',

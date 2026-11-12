@@ -144,6 +144,12 @@ const SettingsScreen: React.FC = () => {
       subtitle: t('gst.settings.subtitle'),
       route: '/gst-details',
     },
+    connectionHistory: {
+      icon: 'wifi-off',
+      label: t('connectionHistory.title'),
+      subtitle: t('connectionHistory.subtitle'),
+      route: '/connection-history',
+    },
     rackPresets: {
       icon: 'view-grid-outline',
       label: t('settings.features.rackPresets'),
@@ -160,6 +166,7 @@ const SettingsScreen: React.FC = () => {
       (feature !== 'documentNumbering' || backendHasFeature('documentNumbering')) &&
       (feature !== 'charging' || backendHasFeature('chargingRule')) &&
       (feature !== 'gstDetails' || backendHasFeature('gstDocuments')) &&
+      (feature !== 'connectionHistory' || backendHasFeature('connectionHistory')) &&
       (feature !== 'rackPresets' || backendHasFeature('rackPresets'))
   );
   const showsRequests = featureRows.includes('enrollmentReview');

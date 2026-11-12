@@ -36,6 +36,7 @@ let mockMode: 'create' | 'edit' = 'edit';
 
 // The store wiring, as in GrnItemsStepLeave.test.tsx.
 // The add-item sheet in the entry form needs the network state.
+jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ isStaffRole: false }) })); // WH-79: staff may add an item
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,

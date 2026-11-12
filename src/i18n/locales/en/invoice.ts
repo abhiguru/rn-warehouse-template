@@ -22,8 +22,8 @@ export const invoice = {
     surchargeIncluded: 'Surcharge (included)',
     rounding: 'Rounding',
     netBeforeTax: 'Net before tax',
-    // The Invoices list card's word for the same figure (WH-59).
-    subtotal: 'Subtotal',
+    // The Invoices list card's word for the same figure (WH-104; the form's "Subtotal (storage)" is a different figure).
+    beforeTax: 'Before tax',
     totalAmount: 'Total amount',
     percent: '{{value}}%',
     gst: 'GST',
@@ -434,6 +434,8 @@ export const invoice = {
     bags: 'Bags',
     amount: 'Amount',
     total: 'Total',
+    /** Read aloud in place of the dash on a cancelled invoice's line whose figures were never kept. */
+    notRecorded: 'not recorded',
     groupCount: { one: '{{count}} item', other: '{{count}} items' },
     lineCount: { one: '{{count}} dispatch line', other: '{{count}} dispatch lines' },
     rate: 'Rate {{amount}}',
@@ -442,6 +444,7 @@ export const invoice = {
     baseAndTax: 'Before tax {{base}} · Tax {{tax}}',
     groupRowLabel: '{{item}}{{details}}, {{bags}}, total {{amount}}',
     lineSpoken: 'Dispatch {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, charge {{charge}}, labour {{labour}}, tax {{tax}}%, amount {{amount}}',
+    lineSpokenUnrecorded: 'Dispatch {{number}}, {{date}}, {{months}}, {{days}}, bags, rates and amount not recorded',
     lineSpokenOneTime: 'Dispatch {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, charge {{charge}}, tax {{tax}}%, amount {{amount}}',
     totalLabel: 'Total: {{groups}}, {{lines}}, {{bags}}, {{amount}}',
     linesNote: "Line totals with tax, before the invoice's rounding and discount. The invoice total is under Breakdown.",

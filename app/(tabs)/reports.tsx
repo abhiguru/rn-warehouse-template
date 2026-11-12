@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { useFacilityCapabilities } from '@/hooks/useCapability';
 import { triggerLightTap } from '@/hooks/useHaptics';
 import {
   iconSize,
@@ -123,12 +124,13 @@ export default function ReportsScreen() {
   const t = useTokens();
   const { prefs, togglePin, noteOpened } = useReportPrefs();
   const facility = useFacilityName();
+  const capabilities = useFacilityCapabilities();
 
   const role = userProfile?.role;
   // Staff see every customer's reports, like the managers.
   const seesAllCustomers = isWarehouseUser(role);
   // Every id, from the registry and from what was stored, passes the role's gate here.
-  const sections = reportHubSections(role, prefs.pinned, prefs.recent);
+  const sections = reportHubSections(role, prefs.pinned, prefs.recent, capabilities);
 
   // A section that appears or changes at the top (Recent after the first report opened, Pinned
   // after the first pin) would be out of sight on a tab scrolled down: go back to the top. Only a

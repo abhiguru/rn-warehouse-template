@@ -25,8 +25,8 @@ export const invoice: Translation<typeof source> = {
     surchargeIncluded: 'વધારાનો ચાર્જ (સામેલ)',
     rounding: 'પૂરા રૂપિયા',
     netBeforeTax: 'ટેક્સ પહેલાંની રકમ',
-    // Draft for the owner's wording review (WH-59).
-    subtotal: 'પેટા સરવાળો',
+    // The same words as baseAndTax (WH-104).
+    beforeTax: 'ટેક્સ પહેલાં',
     totalAmount: 'કુલ રકમ',
     percent: '{{value}}%',
     gst: 'GST',
@@ -444,6 +444,7 @@ export const invoice: Translation<typeof source> = {
     bags: 'નંગ',
     amount: 'રકમ',
     total: 'કુલ',
+    notRecorded: 'નોંધાયેલ નથી',
     groupCount: { one: '{{count}} આઇટમ', other: '{{count}} આઇટમ' },
     lineCount: { one: 'જાવકની {{count}} નોંધ', other: 'જાવકની {{count}} નોંધ' },
     rate: 'દર {{amount}}',
@@ -452,6 +453,7 @@ export const invoice: Translation<typeof source> = {
     baseAndTax: 'ટેક્સ પહેલાં {{base}} · ટેક્સ {{tax}}',
     groupRowLabel: '{{item}}{{details}}, {{bags}}, કુલ {{amount}}',
     lineSpoken: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, ભાડાનો દર {{charge}}, મજૂરી {{labour}}, ટેક્સ {{tax}}%, રકમ {{amount}}',
+    lineSpokenUnrecorded: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, નંગ, દર અને રકમ નોંધાયેલ નથી',
     lineSpokenOneTime: 'જાવક {{number}}, {{date}}, {{months}}, {{days}}, {{bags}}, ભાડાનો દર {{charge}}, ટેક્સ {{tax}}%, રકમ {{amount}}',
     totalLabel: 'કુલ: {{groups}}, {{lines}}, {{bags}}, {{amount}}',
     linesNote: 'દરેક લાઇનની રકમ ટેક્સ સાથે છે, ઇન્વૉઇસના રાઉન્ડિંગ અને છૂટ પહેલાં. ઇન્વૉઇસની કુલ રકમ હિસાબમાં છે.',

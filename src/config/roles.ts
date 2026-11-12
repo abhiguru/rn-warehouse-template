@@ -75,11 +75,13 @@ export type RoleGatedScreen =
   | 'documentNumbering'
   | 'charging'
   | 'gstDetails'
+  | 'connectionHistory'
   | 'rackPresets'
   | 'masterData'
   | 'customerDues'
   | 'customerStatement'
-  | 'customerStatementCard';
+  | 'customerStatementCard'
+  | 'temperatureReport';
 
 /**
  * Whether the app offers `screen` to `role`. With `capabilities` (the facility's, from
@@ -121,6 +123,9 @@ export function canOpenScreen(
     case 'gstDetails':
       // The facility's GST details: administrators only (get_gst_details, set_gst_details, migration 173).
       return normalizeRole(role) === 'admin';
+    case 'connectionHistory':
+      // The phones' connection gaps: administrators only (get_connection_history, migration 188).
+      return normalizeRole(role) === 'admin';
     case 'charging':
       // How storage time is counted and totals are rounded: administrators only (get_charging_rule, set_charging_rule, migration 164).
       return normalizeRole(role) === 'admin';
@@ -134,6 +139,13 @@ export function canOpenScreen(
       // The Statement card of the Reports tab is a customer account's way in; administrators and supervisors reach a
       // statement from Customer dues or Customer activity (WH-155 spec step 5).
       return isCustomerAccount(role);
+    case 'temperatureReport':
+      // The temperature report PDF (WH-157, get_temperature_report, migration 187): all four roles, a customer account
+      // for every sensor of the facility (owner, 2026-11-11), where the facility has sensors on. A customer account
+      // gets nothing else of the sensor screens ('sensors' stays warehouse users').
+      return (
+        (isWarehouseUser(role) || isCustomerAccount(role)) && (capabilities === undefined || capabilities.sensors)
+      );
   }
 }
 
@@ -151,6 +163,7 @@ export type SettingsFeature =
   | 'documentNumbering'
   | 'charging'
   | 'gstDetails'
+  | 'connectionHistory'
   | 'rackPresets'
   | 'sensors';
 
@@ -169,6 +182,7 @@ export function settingsFeatureRows(
   if (canOpenScreen(role, 'gstDetails')) rows.push('gstDetails');
   if (canOpenScreen(role, 'rackPresets')) rows.push('rackPresets');
   if (canOpenScreen(role, 'sensors', capabilities)) rows.push('sensors');
+  if (canOpenScreen(role, 'connectionHistory')) rows.push('connectionHistory');
   return rows;
 }
 

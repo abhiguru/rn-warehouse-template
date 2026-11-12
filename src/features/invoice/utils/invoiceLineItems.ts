@@ -28,9 +28,12 @@ export function buildInvoiceLineItems(
       const grnItem = item.grn_item || {};
       const dispatch = item.dispatch || {};
       const serverLine = serverLines.get(item.item_id);
+      // A cancelled invoice's line emptied before the copy was kept has no figures to show (WH-77).
+      const unrecorded = item.details_available === false;
 
       return {
         id: item.item_id,
+        unrecorded,
         item_name:
           item.details_available === false
             ? tr('invoice.details.detailsNotAvailable')

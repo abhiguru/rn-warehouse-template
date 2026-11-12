@@ -300,7 +300,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
   const labour = invoice.labour || 0;
   const discount = invoice.discount || 0;
   const totalText = formatInvoiceAmount(total);
-  // Four fixed places in a fixed order, so the bars line up down the list: Subtotal (the Breakdown tab's Net before
+  // Four fixed places in a fixed order, so the bars line up down the list: Before tax (the Breakdown tab's Net before
   // tax), Tax, Labour, then Discount, which says Surcharge on a surcharge invoice (discount and surcharge are one
   // signed field, so they never occur together). A place with nothing shows a dash. Whole rupees; the label reads exact.
   const amounts = savedInvoiceAmounts({ total, tax_amount: taxAmount, discount });
@@ -315,7 +315,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
   });
   const adjustment = amounts.adjustmentAmount;
   const places = [
-    place('subtotal', translate('invoice.label.subtotal'), amounts.netBeforeTax, whole(amounts.netBeforeTax), formatInvoiceAmount(amounts.netBeforeTax)),
+    place('beforeTax', translate('invoice.label.beforeTax'), amounts.netBeforeTax, whole(amounts.netBeforeTax), formatInvoiceAmount(amounts.netBeforeTax)),
     place('tax', translate('invoice.label.tax'), taxAmount, whole(taxAmount), formatInvoiceAmount(taxAmount)),
     place('labour', translate('invoice.label.labour'), labour, whole(labour), formatInvoiceAmount(labour)),
     amounts.isSurcharge

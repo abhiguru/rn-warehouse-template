@@ -190,6 +190,20 @@ describe('a saved invoice opened for editing', () => {
     expect(result.data.items[0]).toMatchObject({ one_time: true, duration: 1.5, amount: 500, labour_amount: 0, tax_amount: 25, item_total: 525 });
   });
 
+  // WH-171: a stored 0 days stays 0 (the server counts it as 1 under a by-day rule); only an absent value falls back to 30.
+  it.each([
+    ['a stored 0', 0, 0],
+    ['an absent value', undefined, 30],
+  ])('keeps the days of a line: %s', async (_case, stored, expected) => {
+    const answer = detail(false);
+    (answer.data.items[0] as Record<string, unknown>).no_of_days = stored;
+    mockRpcs({ get_invoice_detail: answer, get_invoice_data: invoiceData('MONTHLY') });
+
+    const result = await loadInvoiceData(INVOICE);
+
+    expect(result.data.items[0].no_of_days).toBe(expected);
+  });
+
   it('treats a monthly GRN as monthly although the stored flag says one-time', async () => {
     mockRpcs({ get_invoice_detail: detail(true), get_invoice_data: invoiceData('MONTHLY') });
 

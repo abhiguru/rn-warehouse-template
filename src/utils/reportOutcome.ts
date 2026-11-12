@@ -70,6 +70,14 @@ export function outcomeMessage(
 }
 
 export function reportOutcome(kind: OutcomeKind, detail: OutcomeDetail = {}): void {
+  // The connection history counts a lost answer whether or not error reporting is on (WH-177). Loaded here for the same reason as below.
+  if (kind === 'lost_answer') {
+    try {
+      (require('@/config/connectionHistory') as typeof import('@/config/connectionHistory')).noteLostAnswer();
+    } catch {
+      // Counting must never change what a save does.
+    }
+  }
   try {
     if (!process.env.EXPO_PUBLIC_SENTRY_DSN) return;
     let path = detail.path;
@@ -119,6 +127,11 @@ export function reportSaveError(error: unknown, context: { requestKey?: string; 
       isServerRefusal?: unknown;
       refusal?: { reason?: unknown };
     };
+    // A save that ended because neither the internet nor the warehouse network answered (WH-177); a lost answer is counted by reportOutcome.
+    if (!context.lost && !isServerRefusal(source)) {
+      const { isOfflineFailure } = require('@/utils/serviceErrorHandler') as typeof import('@/utils/serviceErrorHandler');
+      if (isOfflineFailure(error)) (require('@/config/connectionHistory') as typeof import('@/config/connectionHistory')).noteSaveEndedOffline();
+    }
     const code = [source.code, source.refusalCode, source.refusal?.reason].find(value => typeof value === 'string');
     reportOutcome(context.lost ? 'lost_answer' : isServerRefusal(source) ? 'save_refused' : 'save_failed', {
       requestKey: context.requestKey,

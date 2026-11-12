@@ -30,6 +30,7 @@ import NetInfo, { type NetInfoConfiguration, type NetInfoState } from '@react-na
 import { getActiveOperatorServer, onOperatorServerChange } from './operatorServer';
 import { noteNetworkState, notePublicUnreachable, publicAnswered, type NetworkSnapshot } from './lanTransport';
 import { bumpNetInfoGeneration } from './netInfoGeneration';
+import { noteNetInfoState } from './connectionHistory';
 
 export const REACHABILITY_PATH = '/functions/v1/hello';
 
@@ -66,6 +67,8 @@ function listenToNetInfo(): void {
   stopNetInfoListener = NetInfo.addEventListener(state => {
     // The network first: a change puts the phone back on the public path before the check below asks anything.
     noteNetworkState(networkOf(state));
+    // The connection history reads the same event (WH-177); it adds no listener and no check of its own.
+    noteNetInfoState(state);
     if (state.isConnected && state.isInternetReachable === false) notePublicUnreachable();
   });
 }

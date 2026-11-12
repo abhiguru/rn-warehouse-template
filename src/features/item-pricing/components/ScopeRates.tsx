@@ -197,7 +197,7 @@ function ScopeBox({ id, mode, priceType, startsOn, caption, showUnit = true, loc
       },
       rule: lotsRule(draft, ctx),
       warning: inThePast && ctx.canStartInPast ? t('pricing.edit.pastDate', { date: dateText(draft.startsOn ?? '') }) : null,
-      summaryLines: summaryLines(draft, ctx),
+      summaryLines: summaryLines(draft, ctx, shared.item.packaging),
       helper: shared.offline ? t('pricing.error.offline') : !draft.startsOn ? t('pricing.edit.chooseDate') : null,
       // Without a start day the helper is a link to the choice in the box (offline: just the offline note).
       chooseStart: !shared.offline && !draft.startsOn ? stable.chooseStart : null,

@@ -18,7 +18,7 @@
  * bottom, disabled until something differs from the copy; leaving with changes asks "Discard this rate?" (both for the
  * default rate and for a customer's rate); a save goes back to the Pricing tab.
  */
-import { itemWithPackaging } from '@/utils/packagingWord';
+import { itemWithPackaging, packNoun, pickedItemName } from '@/utils/packagingWord';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
@@ -231,7 +231,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
     returnKeyType: order.indexOf(key) < order.length - 1 ? ('next' as const) : ('done' as const),
   });
 
-  const { draft, ctx, errors, saving, later } = editor;
+  const { draft, ctx, errors, saving, later, heavier } = editor;
   const priceType: PriceType = draft?.priceType ?? 'monthly';
   const oneTime = priceType === 'one_time';
   const defaultBands = useMemo(
@@ -252,6 +252,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
           : t('pricing.rateForm.kickerAdd', { type });
 
   // The item's word beside its name once the item is known (the loading placeholder has no name).
+  const packaging = 'packaging' in item ? item.packaging : undefined;
   const itemTitle = item.name && 'packaging' in item ? itemWithPackaging(item.name, item.packaging) : item.name;
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
@@ -289,7 +290,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
   // The default rate: why it cannot be saved (a rate that was cancelled meanwhile, or a role that may not correct), and the lines of what changes.
   const refusal = ctx.managerOnly ? t('pricing.edit.managerOnly') : ctx.plannedGone ? t('pricing.error.notARateStart') : null;
   const lots = customerId ? null : lotsRule(draft, ctx);
-  const changeLines = customerId ? [] : summaryLines(draft, ctx);
+  const changeLines = customerId ? [] : summaryLines(draft, ctx, packaging);
   const addingBand = ctx.mode === 'addBand';
   const plannedNote = addingBand ? bandPlannedNote(draft, ctx) : null;
   const ownDay = addingBand ? ownStartDay(ctx) : null;
@@ -313,7 +314,10 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
   const laterText = later && later.length > 0 && draft.startsOn ? laterDialogText(later, draft.startsOn, ctx.today) : null;
   const helper = offline ? t('pricing.error.offline') : !draft.startsOn ? t('pricing.edit.chooseDate') : null;
   // Nothing to save until the copy of the default rate is changed (owner, 2026-10-17).
-  const saveDisabled = saving || offline || !draft.startsOn || !editor.dirty || refusal !== null || (customerDeactivated !== undefined && customerDeactivated !== false);
+  const blockedOtherwise = saving || offline || !draft.startsOn || refusal !== null || (customerDeactivated !== undefined && customerDeactivated !== false);
+  const saveDisabled = blockedOtherwise || !editor.dirty;
+  // Save is greyed only because nothing has changed: the form says what enables it (style guide section 10, WH-72).
+  const nothingChanged = !blockedOtherwise && !editor.dirty;
   const saveLabel = ctx.mode === 'correct' ? t('pricing.edit.saveCorrection') : addingBand ? t('pricing.edit.saveBand') : customerId ? t('pricing.edit.saveCustomer') : t('pricing.edit.save');
 
   /** A number field with + and − under it. */
@@ -369,7 +373,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
         bandsErrors.bands ? <Text style={styles.warning} accessibilityRole="alert">{bandsErrors.bands}</Text> : null
       ) : (
         <>
-          <BandsFooter draft={draft} ctx={ctx} errors={bandsErrors} onChange={set} hideAdd={!customerId} />
+          <BandsFooter draft={draft} ctx={ctx} errors={bandsErrors} onChange={set} hideAdd={!customerId} heavierNote={!customerId} packaging={packaging} />
           <Button type="tertiary" leftIcon="content-copy" onPress={() => setCopyOpen(true)} disabled={offline} testID="add-rate-copy">
             {t('pricing.edit.copyTiers')}
           </Button>
@@ -573,7 +577,7 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
             </Pressable>
             {defaultOpen ? (
               <View style={styles.refBody}>
-                <Text style={styles.note} numberOfLines={1}>{t('pricing.addForm.inForceToday', { unit: unitText(priceType) })}</Text>
+                <Text style={styles.note} numberOfLines={1}>{t('pricing.addForm.inForceToday', { unit: unitText(priceType, packaging) })}</Text>
                 {defaultBands.length === 0 ? (
                   <Text style={styles.note} testID="add-rate-no-default">{t('pricing.addForm.noDefault')}</Text>
                 ) : (
@@ -594,7 +598,19 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
 
         <View style={[styles.footer, { paddingBottom: space.sm + insets.bottom }]} onLayout={e => setBarHeight(e.nativeEvent.layout.height)} testID="add-rate-footer">
           {helper ? <Text style={styles.note}>{helper}</Text> : null}
-          <Button type="primary" size="fullWidth" onPress={() => { void editor.submit(); }} disabled={saveDisabled} loading={saving} testID="add-rate-save">
+          {nothingChanged ? (
+            // The button carries the same words as its hint, so TalkBack reads them with it and not twice.
+            <Text style={styles.note} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden testID="add-rate-save-hint">{t('pricing.edit.saveNeedsChange')}</Text>
+          ) : null}
+          <Button
+            type="primary"
+            size="fullWidth"
+            onPress={() => { void editor.submit(); }}
+            disabled={saveDisabled}
+            loading={saving}
+            accessibilityHint={nothingChanged ? t('pricing.edit.saveNeedsChange') : undefined}
+            testID="add-rate-save"
+          >
             {saveLabel}
           </Button>
         </View>
@@ -611,10 +627,21 @@ export function RateForm({ itemId, mode, changeRate, customerId, customerName: n
             setCopyOpen(false);
             // Typed figures are not replaced without asking.
             if (!editor.dirty) editor.copyFrom(picked, pickedRows);
-            else void confirmReplaceBands(picked.name).then(yes => { if (yes) editor.copyFrom(picked, pickedRows); });
+            else void confirmReplaceBands(pickedItemName(picked)).then(yes => { if (yes) editor.copyFrom(picked, pickedRows); });
           }}
         />
       ) : null}
+      <ConfirmDialog
+        visible={!!heavier}
+        variant="warning"
+        title={t('pricing.edit.heavierTitle', { things: packNoun(packaging) })}
+        message={heavier ? t('pricing.edit.heavierMessage', { things: packNoun(packaging), date: dateText(heavier.date), kg: localizeDigits(String(heavier.kg)), oldKg: localizeDigits(String(heavier.oldKg)) }) : ''}
+        confirmText={t('pricing.edit.heavierConfirm')}
+        cancelText={t('common.keepEditing')}
+        busy={saving}
+        onConfirm={() => void editor.submit(false, true)}
+        onCancel={editor.dismissHeavier}
+      />
       <ConfirmDialog
         visible={!!later?.[0]}
         variant="warning"
