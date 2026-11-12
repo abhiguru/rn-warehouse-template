@@ -10,13 +10,16 @@ import type { NetInfoState } from '@react-native-community/netinfo';
 import {
   handOverConnectionNotes,
   installConnectionHistory,
+  readConnectionSession,
   noteLostAnswer,
   noteNetInfoState,
   resetConnectionHistoryForTests,
 } from '../connectionHistory';
-import { getSessionGeneration } from '../sessionLifecycle';
+import * as cacheManager from '@/utils/cacheManager';
+import { advanceSessionGeneration, getSessionGeneration } from '../sessionLifecycle';
+import { verifySelectedOperator } from '../operatorBootstrap';
 import { initializeSupabase, invalidateStoredTokenCache, signOut, storeTokens } from '../supabaseConfig';
-import { clearOperatorServer, saveOperatorServer } from '../operatorServer';
+import { clearOperatorServer, loadOperatorServer, saveOperatorServer } from '../operatorServer';
 
 jest.mock('@/services/recent-customers-service', () => ({ RecentCustomersService: { clearRecentCustomers: jest.fn(async () => {}) } }));
 jest.mock('@/services/session-recent-items-service', () => ({ SessionRecentItemsService: { clearAllSessionRecentItems: jest.fn(async () => {}) } }));
@@ -59,6 +62,7 @@ const from = jest.fn();
 let hold: Promise<void> | undefined;
 let heldReads = 0;
 let now = 0;
+let scopeReads: jest.SpyInstance;
 
 const deferred = () => {
   let resolve!: () => void;
@@ -79,6 +83,7 @@ const online = () => noteNetInfoState({ isConnected: true, isInternetReachable: 
 
 beforeAll(() => {
   jest.spyOn(performance, 'now').mockImplementation(() => now);
+  scopeReads = jest.spyOn(cacheManager, 'getSessionCacheScope'); // calls through; counts the reads
   installConnectionHistory();
 });
 
@@ -167,9 +172,12 @@ it('4. a token refresh in the same session: the gap stays open and is not split 
   await signIn('user-a');
   now = 1000;
   offline();
+  scopeReads.mockClear();
   await storeTokens(jwt('user-a', 'session-2'), REFRESH, Date.now() + 3600 * 1000, getSessionGeneration(), { refresh: true });
   await settle();
   expect(await readSaved()).toEqual([]);
+  // A refresh announces nothing: the scope is not even read again (a spurious announce would read it).
+  expect(scopeReads).not.toHaveBeenCalled();
 
   // The gap was not split by the refresh: it is one gap of seven seconds.
   now = 8000;
@@ -184,10 +192,12 @@ it('4b. a token refresh while online hands nothing over', async () => {
   await signIn('user-a');
   expect(rpc).toHaveBeenCalledTimes(1); // the sign-in's hand-over, which failed
   rpc.mockClear();
+  scopeReads.mockClear();
 
   await storeTokens(jwt('user-a', 'session-2'), REFRESH, Date.now() + 3600 * 1000, getSessionGeneration(), { refresh: true });
   await settle();
   expect(rpc).not.toHaveBeenCalled();
+  expect(scopeReads).not.toHaveBeenCalled(); // no scope read, so no hand-over was even considered
 });
 
 it('5. a refresh whose store fails clears the session: the scope becomes null', async () => {
@@ -229,4 +239,131 @@ it('6. A\'s hand-over is blocked in getAuthenticatedClient while B signs in: A s
 
   expect(sentIds()).toEqual(['b-note']);
   expect((await readSaved()).map(n => n.id)).toEqual(['a-note']);
+});
+
+// A scope read that began before a session change and answers late with the OLD session's scope. The real read already
+// refuses a stale token, so the late answer is simulated here: the check in refreshSignedIn is what must drop it.
+describe('a late scope read of an earlier session is dropped', () => {
+  it('3b. after a session change that has not announced yet (the generation check)', async () => {
+    mockFeature = false;
+    const late = deferred();
+    scopeReads.mockImplementationOnce(async () => { await late.promise; return scopeOf('user-b'); });
+    await storeTokens(jwt('user-a'), REFRESH, Date.now() + 3600 * 1000); // announces; the read is now waiting
+    await settle();
+
+    advanceSessionGeneration(); // a sign-out has begun; its write has not told anyone yet
+    late.resolve();
+    await settle();
+
+    noteLostAnswer();
+    await settle();
+    expect(await readSaved()).toEqual([]); // the stale "user-b" was not applied
+  });
+
+  it('3c. when a newer read has been applied (the newest-read check)', async () => {
+    mockFeature = false;
+    const late = deferred();
+    scopeReads.mockImplementationOnce(async () => { await late.promise; return scopeOf('user-b'); });
+    await storeTokens(jwt('user-a'), REFRESH, Date.now() + 3600 * 1000); // the first read waits
+    await settle();
+    readConnectionSession(); // a newer read, answered at once by the real code: user-a
+    await settle();
+
+    late.resolve(); // the older read now answers user-b
+    await settle();
+
+    noteLostAnswer();
+    await settle();
+    expect((await readSaved()).map(n => n.scope)).toEqual([scopeOf('user-a')]);
+  });
+});
+
+// A cold start: connection history was installed before the saved server was loaded (as in bootstrapApp), then
+// verifySelectedOperator loads it and bootstrapApp's finally calls readConnectionSession().
+describe('cold start with a saved session', () => {
+  const OPERATOR_KEY = 'operator_server_v1';
+
+  /** The phone as it was when the app was closed: tokens in the secure store, the server saved, nothing loaded yet. */
+  async function closedApp({ operator, tokens }: { operator: boolean; tokens: boolean }) {
+    if (tokens) await storeTokens(jwt('user-a'), REFRESH, Date.now() + 3600 * 1000); // with the server saved: writes its identity too
+    await clearOperatorServer(); // the app is closed: nothing is loaded in memory
+    if (operator) await AsyncStorage.setItem(OPERATOR_KEY, JSON.stringify(server));
+    invalidateStoredTokenCache();
+    resetConnectionHistoryForTests(); // install had run with no server: signed out, no scope
+    await settle();
+    rpc.mockClear();
+    scopeReads.mockClear();
+  }
+
+  it('finds the saved session: signed in with its scope, one hand-over, a later gap stamped with it, a second read adds nothing', async () => {
+    mockFeature = false;
+    await putNotes([aNote('waiting', 'user-a')]);
+    await closedApp({ operator: true, tokens: true });
+    mockFeature = true;
+
+    await loadOperatorServer();
+    readConnectionSession();
+    await settle();
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(sentIds()).toEqual(['waiting']);
+
+    readConnectionSession(); // a later bootstrap with the same scope
+    await settle();
+    expect(rpc).toHaveBeenCalledTimes(1);
+
+    mockFeature = false;
+    now = 1000;
+    offline();
+    now = 4000;
+    online();
+    await settle();
+    expect((await readSaved()).map(n => [n.scope, n.lengthS])).toEqual([[scopeOf('user-a'), 3]]);
+  });
+
+  it.each([
+    ['an operator but no tokens', { operator: true, tokens: false }],
+    ['tokens but no operator', { operator: false, tokens: true }],
+  ])('%s: signed out, no note, no RPC', async (_name, saved) => {
+    mockFeature = false;
+    await putNotes([aNote('waiting', 'user-a')]);
+    await closedApp(saved);
+    mockFeature = true;
+
+    await loadOperatorServer();
+    readConnectionSession();
+    await settle();
+    noteLostAnswer();
+    await settle();
+
+    expect(rpc).not.toHaveBeenCalled();
+    expect((await readSaved()).map(n => n.id)).toEqual(['waiting']); // only the one that was waiting
+  });
+
+  it('offline (discovery fails): the saved session is still found', async () => {
+    mockFeature = false;
+    await putNotes([aNote('waiting', 'user-a')]);
+    await closedApp({ operator: true, tokens: true });
+    mockFeature = true;
+    const realFetch = global.fetch;
+    global.fetch = jest.fn(async () => { throw new TypeError('Network request failed'); }) as unknown as typeof fetch;
+    try {
+      // bootstrapApp: verifySelectedOperator loads the server, discovery throws, the finally reads the session.
+      try {
+        await verifySelectedOperator(() => true, async () => {});
+      } catch {
+        /* offline */
+      } finally {
+        readConnectionSession();
+      }
+      await settle();
+    } finally {
+      global.fetch = realFetch;
+    }
+
+    expect(sentIds()).toEqual(['waiting']);
+    mockFeature = false;
+    noteLostAnswer();
+    await settle();
+    expect((await readSaved()).map(n => n.scope).slice(-1)).toEqual([scopeOf('user-a')]);
+  });
 });
