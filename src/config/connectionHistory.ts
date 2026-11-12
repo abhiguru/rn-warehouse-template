@@ -22,8 +22,8 @@
  * open when the facility or user changes is closed under the old stamp: the session end closes it at once (the session-scoped
  * clear), while the scope still names the old session. The scope and "signed in" are read again only once the stored credentials
  * have settled (`onCredentialsSettled`, told from inside the credential job after a sign-in stored its tokens or a sign-out or
- * replaced session cleared them), so the read is queued behind that write. A token refresh of the same session is not told and
- * changes nothing. A note without a stamp (the first stored format) is dropped when read, and so is a note made while no scope
+ * replaced session cleared them), so the read is queued behind that write, and at start once the saved server is loaded
+ * (`readConnectionSession`). A token refresh of the same session is not told and changes nothing. A note without a stamp (the first stored format) is dropped when read, and so is a note made while no scope
  * is known.
  *
  * A save tried is a GRN, dispatch or invoice Save pressed during a gap (`noteSavePressed`), or one that ended as an offline failure
@@ -348,8 +348,9 @@ export const noteLostAnswer = (): void => tracker.noteLostAnswer();
 let scopeRead = 0;
 
 /**
- * Reads the session scope and sets "signed in" from it. Called at start and by `onCredentialsSettled`, from inside the credential
- * job that has just written, so the read is queued behind that write. A read overtaken by a newer one, or by a session change
+ * Reads the session scope and sets "signed in" from it. Called at install, after the start-up loads the saved server
+ * (`readConnectionSession`; the scope names the server, so it is null before) and by `onCredentialsSettled`, from inside the
+ * credential job that has just written, so the read is queued behind that write. A read overtaken by a newer one, or by a session change
  * (which is followed by a write that tells again), is dropped.
  */
 async function refreshSignedIn(): Promise<void> {
@@ -371,6 +372,14 @@ async function refreshSignedIn(): Promise<void> {
   tracker.setFlags({ signedIn: scope !== null });
   // A sign-in hands over; the same signed-in session read again changes nothing (no gap closed, nothing re-stamped).
   if (scope !== null && (changed || !wasSignedIn)) void handOverConnectionNotes();
+}
+
+/**
+ * Reads the session again once the start-up has loaded the saved server (bootstrapApp, after `verifySelectedOperator`, whatever
+ * its outcome): a session saved before the app was closed is found here. The same session read again changes nothing.
+ */
+export function readConnectionSession(): void {
+  if (installed) void refreshSignedIn();
 }
 
 /**

@@ -103,7 +103,7 @@ import { showAlert } from '@/utils/alert';
 import { isNetworkError, isUpgradingAnswer } from '@/utils/serverText';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
-import { installConnectionHistory } from '@/config/connectionHistory';
+import { installConnectionHistory, readConnectionSession } from '@/config/connectionHistory';
 import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
@@ -617,6 +617,8 @@ function BootstrapApp() {
         });
       } finally {
         applyNetReachability();
+        // The saved server is loaded now (or found missing), so the saved session can be read for the connection history.
+        readConnectionSession();
       }
       if (result.kind === 'superseded') return;
       if (result.kind === 'selection') {
