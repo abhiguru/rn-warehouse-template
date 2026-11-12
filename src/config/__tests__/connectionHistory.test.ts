@@ -37,7 +37,7 @@ jest.mock('../supabaseConfig', () => ({ getAuthenticatedClient: async () => ({ r
 
 let mockOnSessionChange: (() => void) | null = null;
 jest.mock('../sessionLifecycle', () => ({
-  onSessionChange: (listener: () => void) => { mockOnSessionChange = listener; return () => undefined; },
+  onCredentialsSettled: (listener: () => void) => { mockOnSessionChange = listener; return () => undefined; },
   getSessionGeneration: () => 0,
 }));
 jest.mock('../sessionScopedRegistry', () => ({ registerSessionScoped: jest.fn() }));
