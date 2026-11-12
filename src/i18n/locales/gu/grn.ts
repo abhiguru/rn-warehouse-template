@@ -361,6 +361,9 @@ export const grn: Translation<typeof source> = {
   // Rates section of the Review step and its rate sheet (backend migration 86)
   rates: {
     title: 'દર',
+    // WH-180 (Gujarati draft)
+    setRates: 'દર નક્કી કરો',
+    opensRatesStep: 'આ આવક પાવતીના દર ખોલે છે, જ્યાં દર નક્કી થાય છે.',
     loading: 'દર લોડ થઈ રહ્યા છે',
     loadErrorTitle: 'દર લોડ થઈ શક્યા નહીં',
     offline: 'તમે ઑફલાઇન છો, એટલે દર લોડ થઈ શક્યા નહીં.',

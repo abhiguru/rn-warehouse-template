@@ -1298,6 +1298,7 @@ export const loadGRNData = async (grnId: string) => {
         items,
         grnRates,
         grnInvoiced,
+        grnImported: grn.imported === true,
         // From get_grn_edit_state; absent on an older server.
         ...(editState
           ? { updatedAt: editState.updatedAt, invoice: editState.invoice, firstDispatchDate: editState.firstDispatchDate }

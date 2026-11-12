@@ -31,6 +31,7 @@ import {
   selectGRNRates,
   selectGRNRateChanges,
   selectGRNInvoiced,
+  selectGRNImported,
   selectGRNLoadedUpdatedAt,
   selectGRNRemovedRates,
   loadGRNData as loadGRNFormData,
@@ -198,6 +199,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const removedRates = useAppSelector(selectGRNRemovedRates);
   // An invoiced GRN being edited: its rates are shown, sent back as they are, and cannot be set here.
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
+  // WH-180: an imported GRN opens here only to set its rates; the details, photos and items steps stay closed.
+  const grnImported = useAppSelector(selectGRNImported) && !isCreateMode;
   // The GRN's version token as the edit form read it (get_grn_edit_state, backend migration 121); null on an older
   // server. Save sends it back, and the server refuses the save when someone else changed the GRN since (STALE_RECORD).
   const loadedUpdatedAt = useAppSelector(selectGRNLoadedUpdatedAt);
@@ -394,6 +397,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   /** Back to the Items step. The callers that may run while a save is being settled check the lock themselves. */
   const goToItemsStep = () => {
+    if (grnImported) {
+      router.back();
+      return;
+    }
     dispatch(setCurrentStep(2));
     if (openedOnRates) {
       router.replace(editStep(1));
@@ -405,6 +412,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   /** Back to the details step. */
   const goToDetailsStep = () => {
+    if (grnImported) {
+      router.back();
+      return;
+    }
     dispatch(setCurrentStep(1));
     if (openedOnRates) {
       router.replace(editStep(1));
@@ -1337,7 +1348,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             id="details"
             testIDPrefix="grn-review"
             title={tr('grn.steps.details')}
-            onEdit={handleNavigateToHeader}
+            onEdit={grnImported ? undefined : handleNavigateToHeader}
             editLabel={tr('grn.review.editDetails')}
             closedLine={[header.gr_no, header.date ? formatReviewDate(header.date) : null, header.customer_name].filter(Boolean).join(' · ')}
             spokenClosedLine={[header.gr_no, header.date ? formatSpokenReviewDate(header.date) : null, header.customer_name].filter(Boolean).join(' · ')}
@@ -1447,7 +1458,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             testIDPrefix="grn-review"
             title={tr('common.items')}
             count={items.length}
-            onEdit={handlePrevious}
+            onEdit={grnImported ? undefined : handlePrevious}
             editLabel={tr('grn.review.editItems')}
             closedLine={tr('grn.review.closedItems', { quantity: formatNumber(totalQty) })}
             open={openSection === 'items'}

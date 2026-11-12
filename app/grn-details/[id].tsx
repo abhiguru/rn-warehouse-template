@@ -956,6 +956,7 @@ function GRNDetailScreen() {
               gr_no={grn.gr_no}
               can_edit={canEdit && grn.imported !== true}
               can_edit_rates={canEdit}
+              imported={grn.imported === true}
               can_delete={canDelete && grn.imported !== true}
               is_deleting={isDeleting}
               is_checking_orders={checkingOrders}
