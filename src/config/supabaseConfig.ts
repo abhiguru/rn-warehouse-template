@@ -16,6 +16,7 @@ import { CACHE_DURATION_LONG_MS } from '@/config/cacheConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import {
   advanceSessionGeneration,
+  announceCredentialsSettled,
   credentialQueueStamp,
   getSessionGeneration,
   onSessionChange,
@@ -972,7 +973,7 @@ export function deviceExpiry(
 async function startNewSession(): Promise<number> {
   const previous = serializeCredentials(readStoredToken);
   const generation = advanceSessionGeneration();
-  await serializeCredentials(clearStoredTokensRaw);
+  await serializeCredentials(clearStoredTokensAndAnnounce);
   const replaced = (await previous).refreshToken;
   if (replaced) void revokeSession(replaced);
   return generation;
@@ -1409,9 +1410,13 @@ export const signOut = async (options?: { localOnly?: boolean }) => {
   const storedPromise = options?.localOnly ? undefined : serializeCredentials(readStoredToken);
   advanceSessionGeneration();
   const cleanup = serializeCredentials(async () => {
-    const cleared = await clearEndedSession();
-    await clearSecureSessionMarker();
-    return cleared;
+    try {
+      const cleared = await clearEndedSession();
+      await clearSecureSessionMarker();
+      return cleared;
+    } finally {
+      announceCredentialsSettled();
+    }
   });
   const stored = await storedPromise;
   const cleared = await cleanup;
@@ -1706,7 +1711,7 @@ const refreshSession = async (
       const expiresAt = deviceExpiry(validation, responseData!);
 
       // Store the new tokens
-      await storeTokens(newAccessToken, newRefreshToken, expiresAt, generation);
+      await storeTokens(newAccessToken, newRefreshToken, expiresAt, generation, { refresh: true });
       lastIssued = { token: newAccessToken, at: Date.now() };
       clearRefreshRetry();
 
@@ -2044,27 +2049,47 @@ const storeTokensRaw = async (
   }
 };
 
+/**
+ * Stores a session's tokens. A new session (a sign-in) tells `onCredentialsSettled` from inside the credential job once the
+ * write is done; a token refresh of the same session (`refresh: true`) tells only when its write failed and cleared the session.
+ */
 export const storeTokens = (
   accessToken: string,
   refreshToken: string,
   expiresAt: number,
-  expectedGeneration?: number
+  expectedGeneration?: number,
+  options?: { refresh?: boolean }
 ) => {
   const generation = expectedGeneration ?? advanceSessionGeneration();
   return serializeCredentials(async () => {
     if (generation !== getSessionGeneration())
       throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
-    await storeTokensRaw(accessToken, refreshToken, expiresAt);
-    if (generation !== getSessionGeneration()) {
-      await clearStoredTokensRaw();
-      throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
+    let stored = false;
+    try {
+      await storeTokensRaw(accessToken, refreshToken, expiresAt);
+      if (generation !== getSessionGeneration()) {
+        await clearStoredTokensRaw();
+        throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
+      }
+      stored = true;
+    } finally {
+      if (!options?.refresh || !stored) announceCredentialsSettled();
     }
   });
 };
 
+/** Clears the stored session (run inside the credential queue) and then tells `onCredentialsSettled`. */
+async function clearStoredTokensAndAnnounce(): Promise<boolean> {
+  try {
+    return await clearStoredTokensRaw();
+  } finally {
+    announceCredentialsSettled();
+  }
+}
+
 export const clearStoredTokens = () => {
   advanceSessionGeneration();
-  return serializeCredentials(clearStoredTokensRaw);
+  return serializeCredentials(clearStoredTokensAndAnnounce);
 };
 
 // Clear all stored tokens

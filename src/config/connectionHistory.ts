@@ -19,8 +19,12 @@
  * Each note is stamped when it is made with the session scope the list caches use (`getSessionCacheScope`: server origin,
  * facility instance id and signed-in subject). A hand-over sends only the notes whose stamp is the current session's; the others
  * stay on the phone until their own facility and user sign in again, and the 500-note and 30-day limits still age them out. A gap
- * open when the facility or user changes is closed under the old stamp (the scope is replaced only after the gap is closed). A
- * note without a stamp (the first stored format) is dropped when read, and so is a note made while no scope is known.
+ * open when the facility or user changes is closed under the old stamp: the session end closes it at once (the session-scoped
+ * clear), while the scope still names the old session. The scope and "signed in" are read again only once the stored credentials
+ * have settled (`onCredentialsSettled`, told from inside the credential job after a sign-in stored its tokens or a sign-out or
+ * replaced session cleared them), so the read is queued behind that write. A token refresh of the same session is not told and
+ * changes nothing. A note without a stamp (the first stored format) is dropped when read, and so is a note made while no scope
+ * is known.
  *
  * A save tried is a GRN, dispatch or invoice Save pressed during a gap (`noteSavePressed`), or one that ended as an offline failure
  * with no gap open (`noteSaveEndedOffline`). A lost answer is counted separately (`noteLostAnswer`). A save or lost answer
@@ -32,7 +36,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import type { NetInfoState } from '@react-native-community/netinfo';
 import { backendHasFeature } from './backendFeatures';
 import { getLanStatus, subscribeLanStatus } from './lanTransport';
-import { onSessionChange } from './sessionLifecycle';
+import { getSessionGeneration, onCredentialsSettled } from './sessionLifecycle';
 import { registerSessionScoped } from './sessionScopedRegistry';
 import { createLogger } from '@/utils/logger';
 
@@ -235,6 +239,8 @@ function removeNotes(ids: ReadonlySet<string>): Promise<void> {
 // -----------------------------------------------------------------------------
 
 let handingOver = false;
+/** A hand-over was asked for while one was running (perhaps for the session before): run once more when it ends. */
+let handOverAgain = false;
 
 /** The notes as `submit_connection_notes` takes them: the age is seconds since the gap began (its length plus the time since it ended). */
 export function toWireNotes(notes: readonly GapNote[], now: number) {
@@ -252,7 +258,11 @@ export function toWireNotes(notes: readonly GapNote[], now: number) {
  * signed in, no gap) and the backend has migration 188. Never rejects; a failure leaves the notes for the next contact.
  */
 export async function handOverConnectionNotes(): Promise<void> {
-  if (handingOver) return;
+  if (handingOver) {
+    handOverAgain = true;
+    return;
+  }
+  handOverAgain = false;
   const flags = tracker.getFlags();
   if (!flags.foreground || !flags.signedIn || flags.offline) return;
   if (!backendHasFeature('connectionHistory')) return;
@@ -262,13 +272,16 @@ export async function handOverConnectionNotes(): Promise<void> {
     const { getAuthenticatedClient } = require('./supabaseConfig') as typeof import('./supabaseConfig');
     const { getSessionGeneration } = require('./sessionLifecycle') as typeof import('./sessionLifecycle');
     const { getSessionCacheScope } = require('@/utils/cacheManager') as typeof import('@/utils/cacheManager');
+    // Taken before the scope is read: a session change after this abandons the run, so one session's notes never go up
+    // through the next session's client.
+    const generation = getSessionGeneration();
     const scope = await getSessionCacheScope();
-    if (scope === null) return;
+    if (scope === null || generation !== getSessionGeneration()) return;
     for (;;) {
       const notes = (await readNotes()).filter(n => n.scope === scope);
       if (notes.length === 0) return;
-      const generation = getSessionGeneration();
       const client = await getAuthenticatedClient();
+      if (generation !== getSessionGeneration()) return;
       const { data, error } = await client.rpc('submit_connection_notes', { p_notes: toWireNotes(notes, Date.now()) });
       if (generation !== getSessionGeneration() || error || data?.success !== true || !Array.isArray(data?.data?.done)) return;
       const done = new Set<string>(data.data.done.filter((id: unknown): id is string => typeof id === 'string'));
@@ -280,6 +293,10 @@ export async function handOverConnectionNotes(): Promise<void> {
     log.warn('Hand-over of connection notes failed; they stay on the phone');
   } finally {
     handingOver = false;
+    if (handOverAgain) {
+      handOverAgain = false;
+      void handOverConnectionNotes();
+    }
   }
 }
 
@@ -327,24 +344,38 @@ export const noteSavePressed = (): void => tracker.noteSavePressed();
 export const noteSaveEndedOffline = (): void => tracker.noteSaveEndedOffline();
 export const noteLostAnswer = (): void => tracker.noteLostAnswer();
 
+/** Counts the reads of the session scope; only the latest one is applied. */
+let scopeRead = 0;
+
+/**
+ * Reads the session scope and sets "signed in" from it. Called at start and by `onCredentialsSettled`, from inside the credential
+ * job that has just written, so the read is queued behind that write. A read overtaken by a newer one, or by a session change
+ * (which is followed by a write that tells again), is dropped.
+ */
 async function refreshSignedIn(): Promise<void> {
+  const run = ++scopeRead;
+  const generation = getSessionGeneration();
+  let scope: string | null;
   try {
     const { getSessionCacheScope } = require('@/utils/cacheManager') as typeof import('@/utils/cacheManager');
-    const scope = await getSessionCacheScope();
-    // A different facility or user: close what is open under the old stamp first.
-    if (scope !== currentScope) tracker.setFlags({ signedIn: false });
-    currentScope = scope;
-    tracker.setFlags({ signedIn: scope !== null });
-    if (scope !== null) void handOverConnectionNotes();
+    scope = await getSessionCacheScope();
   } catch {
-    tracker.setFlags({ signedIn: false });
-    currentScope = null;
+    scope = null;
   }
+  if (run !== scopeRead || generation !== getSessionGeneration()) return;
+  const changed = scope !== currentScope;
+  const wasSignedIn = tracker.getFlags().signedIn;
+  // A different facility or user: close what is open under the old stamp first.
+  if (changed) tracker.setFlags({ signedIn: false });
+  currentScope = scope;
+  tracker.setFlags({ signedIn: scope !== null });
+  // A sign-in hands over; the same signed-in session read again changes nothing (no gap closed, nothing re-stamped).
+  if (scope !== null && (changed || !wasSignedIn)) void handOverConnectionNotes();
 }
 
 /**
  * Starts listening (bootstrapApp, once; safe to call again). The feeds are events the app already has: the LAN status, AppState
- * and the session change. The NetInfo feed is `noteNetInfoState`.
+ * and the stored credentials settling after a sign-in or sign-out. The NetInfo feed is `noteNetInfoState`.
  */
 export function installConnectionHistory(): void {
   if (installed) return;
@@ -361,7 +392,7 @@ export function installConnectionHistory(): void {
     tracker.setFlags({ foreground: state === 'active' });
     if (state === 'active') void handOverConnectionNotes();
   });
-  onSessionChange(() => {
+  onCredentialsSettled(() => {
     void refreshSignedIn();
   });
   void refreshSignedIn();
@@ -376,7 +407,9 @@ registerSessionScoped('connection-history-gap', () => {
 export function resetConnectionHistoryForTests(): void {
   lastNet = null;
   currentScope = null;
+  scopeRead = 0;
   handingOver = false;
+  handOverAgain = false;
   queue = Promise.resolve();
   tracker.setFlags({ signedIn: false, offline: false, foreground: true });
 }
