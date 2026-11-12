@@ -516,6 +516,8 @@ export const errors: Translation<typeof source> = {
     refusalTooLong: 'આ દસ્તાવેજ PDF બનાવવા માટે બહુ લાંબો છે.',
     refusalChangedTitle: 'દસ્તાવેજ બદલાયો',
     refusalChanged: 'PDF બનતી હતી ત્યારે તે બદલાઈ ગયો. ફરી પ્રયાસ કરો.',
+    refusalSeveralTitle: 'ઘણા દસ્તાવેજો',
+    refusalSeveral: 'આ નંબરવાળા ઘણા દસ્તાવેજો છે. એપ અપડેટ કરો.',
     refusalUnavailableTitle: 'PDF ઉપલબ્ધ નથી',
     refusalUnavailable: 'હમણાં PDF બનાવી શકાતી નથી. થોડી વાર પછી ફરી પ્રયાસ કરો.',
     tooLarge: 'આ દસ્તાવેજ ૨૫ MB થી મોટો છે, તેથી ઍપમાંથી શેર કરી શકાતો નથી.',

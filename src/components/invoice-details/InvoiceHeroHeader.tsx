@@ -14,6 +14,7 @@ import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatNumber, formatSpokenDate, toDate } from '@/utils/formatters';
 import { t, formatIdentifier, getLanguage } from '@/i18n';
 import { StatusTag } from '@/components/ui/StatusTag';
+import { ImportedTag } from '@/components/ui/ImportedTag';
 
 // ============================================================================
 // TYPES
@@ -28,6 +29,8 @@ interface InvoiceHeroHeaderProps {
   customer_name?: string;
   /** The invoice is cancelled (migration 134): a Cancelled tag under the number, for staff and customers. */
   cancelled?: boolean;
+  /** Imported from the previous system (migration 191): an Imported tag under the number. */
+  imported?: boolean;
 }
 
 const formatHeaderDate = (value: string) => (toDate(value) ? formatDate(value) : '');
@@ -111,6 +114,7 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
   tax_amount,
   customer_name,
   cancelled = false,
+  imported = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const { fontScale, width: windowWidth } = useWindowDimensions();
@@ -158,6 +162,12 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
         {!compact && <Text style={styles.number} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{invoice_number}</Text>}
         {subtitle ? <Text style={[styles.subtitle, compact && styles.subtitleCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{subtitle}</Text> : null}
       </View>
+      )}
+
+      {imported && (
+        <View style={styles.cancelledTag}>
+          <ImportedTag testID="invoice-imported-tag" />
+        </View>
       )}
 
       {cancelled && (

@@ -374,6 +374,8 @@ export interface ItemFormData extends Partial<DispatchItemData> {
  */
 export interface BackendDispatchData {
   id: string;
+  /** Migration 191 (WH-180): imported from the previous system. */
+  imported?: boolean;
   dispatchId?: string;
   dispNo?: string;
   disp_no?: string;

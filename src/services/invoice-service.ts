@@ -7,6 +7,7 @@ import { t, formatIdentifier } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
 import { isNetworkError, isStatementTimeout, isTimeoutError, isUnsettledFailure, serverReason, serverText } from '@/utils/serverText';
 import { REFUSAL } from '@/utils/serverRefusal';
+import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { formatNumber } from '@/utils/formatters';
 import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/features/invoice/utils/cancelReason';
 import { createLogger } from '@/utils/logger';
@@ -42,6 +43,8 @@ export interface Invoice {
   is_auto_generated: boolean;
   invoice_pricing_mode: string | null;
   /** Migration 134: set when the invoice is cancelled; a cancelled invoice is not counted in any sum. */
+  /** Migration 191 (WH-180): imported from the previous system, so read-only. Absent on an older server. */
+  imported?: boolean;
   cancelled_at?: string | null;
   cancel_reason?: string | null;
   /** Migration 172, administrators, supervisors and the invoice's customer: the server's figures. Absent for staff and on an older server. */
@@ -544,6 +547,8 @@ export interface InvoiceDetail {
   invoice_customer_name: string;
   /** The version token `cancel_invoice` is sent as `p_expected_updated_at` (`get_invoice_data` header). */
   updated_at?: string | null;
+  /** Migration 191 (WH-180): imported from the previous system, so read-only. Absent on an older server. */
+  imported?: boolean;
   /** Migration 134. Null (or absent on an older server) when the invoice is not cancelled. */
   cancelled_at?: string | null;
   cancel_reason?: string | null;
@@ -1017,6 +1022,8 @@ export interface CancelInvoiceResponse {
 /** The app's own words for each refusal of `cancel_invoice`. */
 export const cancelRefusalMessage = (reason: string | undefined, fields?: Record<string, unknown>): string | undefined => {
   switch (reason) {
+    case REFUSAL.IMPORTED_READ_ONLY:
+      return importedReadOnlyText({ success: false, reason, fields });
     case REFUSAL.INVOICE_CANCELLED:
       return t('invoice.cancel.alreadyCancelled');
     case REFUSAL.INVOICE_HAS_PAYMENTS:
@@ -1151,6 +1158,9 @@ export const deleteInvoice = async (
     if (result.lostAnswer || (options.resend && isUnsettledFailure(result, result.errorCode))) {
       return { success: false, error: result.error, lostAnswer: true, sentAt };
     }
+    // WH-180: an imported invoice is never deleted.
+    const importedText = importedReadOnlyText(result);
+    if (importedText) return { success: false, message: importedText, error: result.error, reason: result.reason };
     // The invoice was changed by someone else since this screen read it: the caller reads it again.
     if (result.reason === REFUSAL.STALE_RECORD) {
       return { success: false, message: t('invoice.details.deleteStale'), error: result.error, reason: result.reason };

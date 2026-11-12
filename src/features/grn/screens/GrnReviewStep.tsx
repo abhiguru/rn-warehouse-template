@@ -55,6 +55,7 @@ import {
 } from '@/features/grn/services/grnFormService';
 import { useOrderEffectsPreview } from '@/hooks/useOrderEffectsPreview';
 import { orderEffectLines, orderEffectsNotice, previewUpdateGrn, withOrderEffects } from '@/services/orderEffects';
+import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
 import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
@@ -1008,6 +1009,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       case REFUSAL.GRN_PHOTO_REQUIRED:
         // An edit may not leave a GRN with no photo: the photos section is where one is added.
         showAlert(saveFailedTitle(), tr('grn.refusal.lastPhoto'), ok(() => show('photos')));
+        return;
+      case REFUSAL.IMPORTED_READ_ONLY:
+        showAlert(saveFailedTitle(), importedReadOnlyText({ success: false, refusal }) ?? tr('common.importedReadOnly', { document: tr('common.importedDocument.grn') }), ok(() => router.back()));
         return;
       case REFUSAL.GRN_NUMBER_LOCKED:
         showAlert(saveFailedTitle(), tr('grn.refusal.numberLocked'), ok(goToDetailsStep));

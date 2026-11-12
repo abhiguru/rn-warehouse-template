@@ -506,6 +506,8 @@ export const errors = {
     refusalTooLong: 'This document is too long to make into a PDF.',
     refusalChangedTitle: 'Document changed',
     refusalChanged: 'It changed while the PDF was being made. Try again.',
+    refusalSeveralTitle: 'Several documents',
+    refusalSeveral: 'Several documents have this number. Update the app.',
     refusalUnavailableTitle: 'PDF not available',
     refusalUnavailable: "PDFs can't be made right now. Try again later.",
     tooLarge: 'This document is larger than 25 MB and cannot be shared from the app.',

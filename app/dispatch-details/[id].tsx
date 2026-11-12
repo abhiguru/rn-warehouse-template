@@ -404,7 +404,7 @@ function DispatchDetailScreen() {
       if (__DEV__) console.log('[DispatchDetailScreen] Generating PDF for Dispatch:', data.dispatch.disp_no);
 
       // Generate PDF
-      const pdfResult = await generateDispatchPDF(data.dispatch.disp_no);
+      const pdfResult = await generateDispatchPDF(data.dispatch.disp_no, data.dispatch.id);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
         if (pdfResult.refusal) {
@@ -673,6 +673,7 @@ function DispatchDetailScreen() {
           total_quantity={statistics.total_dispatched_qty}
           packaging={itemTotals(items).packaging}
           customer_name={dispatch.customer_details?.name}
+          imported={dispatch.imported === true}
         />
 
         {isCheckingDelete ? <LostAnswerStrip kind="delete" testID="dispatch-details-checking-delete" /> : null}
@@ -699,8 +700,8 @@ function DispatchDetailScreen() {
               dispatch_id={id}
               disp_no={dispatch.disp_no}
               // Once the dispatch is deleted there is nothing left to edit or delete
-              can_edit={canUpdate && !isDeleted}
-              can_delete={canDelete && !isDeleted}
+              can_edit={canUpdate && !isDeleted && dispatch.imported !== true}
+              can_delete={canDelete && !isDeleted && dispatch.imported !== true}
               onEdit={handleEditDispatch}
               onDelete={handleDeleteDispatch}
               is_deleting={isDeleting}
@@ -729,9 +730,9 @@ function DispatchDetailScreen() {
             <DispatchImagesTab
               images={dispatchImages}
               onImagePress={handleImagePress}
-              onUpload={canUpdate ? handleAddImage : undefined}
+              onUpload={canUpdate && dispatch.imported !== true ? handleAddImage : undefined}
               isUploading={isUploadingImage}
-              onDelete={canUpdate ? handleDeleteImage : undefined}
+              onDelete={canUpdate && dispatch.imported !== true ? handleDeleteImage : undefined}
               isDeleting={isDeletingImage}
             />
           )}

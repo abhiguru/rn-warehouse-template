@@ -17,6 +17,7 @@ import { REFUSAL } from '@/utils/serverRefusal';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import { formatIdentifier } from '@/i18n';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
+import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { createLogger } from '@/utils/logger';
 
 const log = createLogger('PaymentsService');
@@ -210,6 +211,8 @@ export function paymentRefusalOf(reason: string | undefined, fields: Record<stri
       return refuse(t('payments.refusal.invoiceGone'), true);
     case REFUSAL.PAYMENT_NOT_FOUND:
       return refuse(t('payments.refusal.paymentGone'), true);
+    case REFUSAL.IMPORTED_READ_ONLY:
+      return refuse(importedReadOnlyText({ success: false, reason, fields }) ?? t('payments.refusal.notEditable'), true);
     case REFUSAL.PAYMENT_NOT_EDITABLE:
       return refuse(t('payments.refusal.notEditable'), true);
     case REFUSAL.STALE_RECORD:

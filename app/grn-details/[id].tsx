@@ -28,7 +28,7 @@ import {
   removeGRNPhotoFiles,
   RpcGrnDetails,
 } from '@/services/grn-detail-service';
-import { generateGRNPDF } from '@/services/pdf-service';
+import { generateGRNPDF, pdfRefusalText } from '@/services/pdf-service';
 import { printGRNRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -715,9 +715,14 @@ function GRNDetailScreen() {
     setIsShareLoading(true);
     try {
 
-      const pdfResult = await generateGRNPDF(data.grn.gr_no);
+      const pdfResult = await generateGRNPDF(data.grn.gr_no, data.grn.id);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
+        if (pdfResult.refusal) {
+          const { title, message } = pdfRefusalText(pdfResult.refusal);
+          showAlert(title, message);
+          return;
+        }
         showAlert(tr('grn.details.pdfCreateFailedTitle'), serverText(pdfResult.error, tr('grn.details.tryAgainInMoment')));
         return;
       }
@@ -922,6 +927,7 @@ function GRNDetailScreen() {
           total_stock={statistics.total_stock}
           total_dispatched={statistics.total_dispatched}
           customer_name={grn.customer_details?.name}
+          imported={grn.imported === true}
         />
 
         {/* Tab Navigator */}
@@ -948,8 +954,9 @@ function GRNDetailScreen() {
               pricing_mode={grn.pricing_mode}
               grn_id={grn.id}
               gr_no={grn.gr_no}
-              can_edit={canEdit}
-              can_delete={canDelete}
+              can_edit={canEdit && grn.imported !== true}
+              can_edit_rates={canEdit}
+              can_delete={canDelete && grn.imported !== true}
               is_deleting={isDeleting}
               is_checking_orders={checkingOrders}
               onEdit={handleEditGRN}
@@ -983,8 +990,8 @@ function GRNDetailScreen() {
             <GRNImagesTab
               images={allImages}
               onImagePress={(images, index) => handleImagePress(images, index)}
-              onUpload={canEdit ? handleAddHeaderImage : undefined}
-              onDeleteImage={canEdit ? handleDeleteImage : undefined}
+              onUpload={canEdit && grn.imported !== true ? handleAddHeaderImage : undefined}
+              onDeleteImage={canEdit && grn.imported !== true ? handleDeleteImage : undefined}
               isUploading={isUploadingImage}
             />
           )}

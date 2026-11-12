@@ -18,6 +18,7 @@ import type {
   RpcUserDetails,
 } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
+import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
 
 // Re-export canonical types for consumers
@@ -445,6 +446,8 @@ export const deleteGRN = async (grnId: string, options: { resend?: boolean } = {
   );
 
   if (!result.success) {
+    const importedText = importedReadOnlyText(result);
+    if (importedText) return { success: false, message: importedText, error: result.error };
     return {
       success: false,
       message: result.message,
@@ -465,6 +468,8 @@ export const deleteGRN = async (grnId: string, options: { resend?: boolean } = {
 
   // If the RPC returned success: false, treat it as an error (e.g., blocking dependencies)
   if (responseData.success === false) {
+    const importedText = importedReadOnlyText(responseData);
+    if (importedText) return { ...responseData, message: importedText };
     console.log('[GRNDetailService] GRN deletion blocked:', responseData.error);
     return responseData;
   }

@@ -482,7 +482,7 @@ function InvoiceDetailScreen() {
         : finYear;
 
       // Generate PDF
-      const pdfResult = await generateInvoicePDF(invoiceNo, finYearNum);
+      const pdfResult = await generateInvoicePDF(invoiceNo, finYearNum, id);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
         if (pdfResult.refusal) {
@@ -644,6 +644,8 @@ function InvoiceDetailScreen() {
   const grnNumber = invoice.gr_no || invoice.grn?.number;
   const customerName = invoice.customer?.name || invoice.invoice_customer_name;
   const isCancelled = !!invoice.cancelled_at;
+  // WH-180: an imported invoice is read-only: no Edit, Cancel or Delete. Recording a payment stays.
+  const isImported = invoice.imported === true;
 
   return (
     <>
@@ -691,6 +693,7 @@ function InvoiceDetailScreen() {
           tax_amount={tax_amount}
           customer_name={customerName}
           cancelled={isCancelled}
+          imported={isImported}
         />
 
         {/* Tab Navigator */}
@@ -719,11 +722,11 @@ function InvoiceDetailScreen() {
               on_view_grn={handleViewGRN}
               on_edit_invoice={handleEditInvoice}
               on_cancel_invoice={handleCancelInvoice}
-              can_edit={canUpdate && !isCancelled}
-              can_cancel={canDelete && !isCancelled}
+              can_edit={canUpdate && !isCancelled && !isImported}
+              can_cancel={canDelete && !isCancelled && !isImported}
               is_cancelling={isCancelling}
               on_delete_invoice={() => void handleDeleteInvoice()}
-              can_delete={canDelete && backendHasFeature('deleteInvoice')}
+              can_delete={canDelete && backendHasFeature('deleteInvoice') && !isImported}
               is_deleting={isDeleting}
               cancelled_at={invoice.cancelled_at}
               cancel_reason={invoice.cancel_reason}
@@ -761,7 +764,7 @@ function InvoiceDetailScreen() {
           {activeTab === 'breakdown' && (
             <InvoiceBreakdownTab
               breakdown={financialSummary}
-              charging={parseChargingRule(invoice.charging) ?? undefined}
+              charging={isImported ? undefined : parseChargingRule(invoice.charging) ?? undefined}
               related_documents={relatedDocuments}
               on_view_grn={handleViewGRN}
               on_view_dispatch={handleViewDispatch}
