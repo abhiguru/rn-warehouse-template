@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
+import { ImportedTag } from '@/components/ui/ImportedTag';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t } from '@/i18n';
@@ -55,6 +56,7 @@ const makeStyles = (th: ThemeTokens) => ({
   rowDate: { ...typography.subhead, color: th.text.primary, fontWeight: fontWeight.semibold },
   rowAmount: { ...typography.headline, color: th.text.primary, fontVariant: ['tabular-nums' as const] },
   rowMeta: { ...typography.footnote, color: th.text.secondary },
+  importedTag: { alignSelf: 'flex-start' as const, marginTop: space.xs },
   actions: { flexDirection: 'row' as const, gap: space.sm, marginTop: space.xs },
   action: {
     minHeight: touchTarget,
@@ -190,8 +192,9 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
                   {payment.mode ? t(MODE_LABEL[payment.mode]) : t('payments.section.fromAccounting')}
                   {payment.note ? ` · ${payment.note}` : ''}
                 </Text>
+                {payment.imported ? <ImportedTag style={styles.importedTag} testID={`payment-imported-${payment.id}`} /> : null}
                 {payment.enteredByName ? <Text style={styles.rowMeta}>{t('payments.section.enteredBy', { name: payment.enteredByName })}</Text> : null}
-                {canManage && payment.recordedInApp ? (
+                {canManage && payment.recordedInApp && !payment.imported ? (
                   <View style={styles.actions}>
                     <Pressable style={styles.action} onPress={() => openEdit(payment)} accessibilityRole="button" testID={`payment-edit-${payment.id}`}>
                       <Icon name="pencil-outline" size={iconSize.md} color={th.brand.tint} />
