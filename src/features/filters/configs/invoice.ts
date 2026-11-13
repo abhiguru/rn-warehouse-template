@@ -9,6 +9,7 @@
 import { getAssignedCustomerInvoices, getInvoicesList } from '@/services/invoice-service';
 import { t } from '@/i18n';
 import { backendHasFeature } from '@/config/backendFeatures';
+import { isManager } from '@/config/roles';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, financialYearLabel, financialYearOf, readSearch } from '../filterModel';
 import { customerSource } from '../pickerSources';
@@ -95,7 +96,7 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
       key: 'payment',
       get label() { return t('payments.filter.label'); },
       icon: 'cash-check',
-      visibleTo: ctx => ctx.payments === true && (ctx.role === 'admin' || ctx.role === 'supervisor') && backendHasFeature('recordPayments'),
+      visibleTo: ctx => ctx.payments === true && isManager(ctx.role) && backendHasFeature('recordPayments'),
       defaultValue: 'all',
       get options() {
         return [
@@ -149,7 +150,7 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
 
     // Hidden filters send nothing (a stored choice is dropped when payments are off); the server refuses it to staff.
     const payment = values.payment;
-    if ((payment === 'due' || payment === 'part_paid' || payment === 'paid') && ctx.payments === true && (ctx.role === 'admin' || ctx.role === 'supervisor')) {
+    if ((payment === 'due' || payment === 'part_paid' || payment === 'paid') && ctx.payments === true && isManager(ctx.role)) {
       request.p_payment_status = payment;
     }
 

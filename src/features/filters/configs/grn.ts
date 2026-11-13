@@ -74,6 +74,22 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
         { value: 'out_of_stock', get label() { return t('grn.status.fullyDispatched'); } },
       ],
     },
+    {
+      // WH-138: the GRN's invoice state. Warehouse roles only, and only on a backend whose list takes it (migration 202).
+      // "Partly invoiced" is offered with the rest: the app has no read of the facility's goods-leave setting here.
+      kind: 'choice',
+      key: 'invoicing',
+      get label() { return t('reports.filters.invoicing'); },
+      icon: 'receipt-text-outline',
+      defaultValue: 'all',
+      visibleTo: ctx => ctx.isWarehouseRole && ctx.grnInvoiceFilter === true,
+      options: [
+        { value: 'all', get label() { return t('common.all'); } },
+        { value: 'invoiced', get label() { return t('charging.invoiceState.invoiced'); } },
+        { value: 'not_invoiced', get label() { return t('charging.invoiceState.not_invoiced'); } },
+        { value: 'partly_invoiced', get label() { return t('charging.invoiceState.partly_invoiced'); } },
+      ],
+    },
     { kind: 'dateRange', key: 'date', get label() { return t('common.date'); }, icon: 'calendar-range' },
     {
       kind: 'picker',
@@ -91,7 +107,7 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
     { kind: 'numberRange', key: 'weight', get label() { return t('common.weightEach'); }, icon: 'weight-kilogram', get unit() { return t('filters.unit.kg'); }, integer: true },
     { kind: 'text', key: 'package', get label() { return t('filters.field.package'); }, icon: 'tag-outline', get placeholder() { return t('filters.placeholder.packageName'); } },
   ],
-  fastFilters: ['stock', 'date', 'customers'],
+  fastFilters: ['stock', 'invoicing', 'date', 'customers'],
 
   toRequest(values, sort, ctx, today = new Date()) {
     const filters: GRNFilters = {};
@@ -99,6 +115,12 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
 
     if (typeof values.stock === 'string' && values.stock !== 'all') {
       filters.stock_status = values.stock as GRNFilters['stock_status'];
+    }
+    // Hidden filters send nothing: an older backend would ignore the key and show every GRN.
+    if (ctx.isWarehouseRole && ctx.grnInvoiceFilter === true) {
+      if (values.invoicing === 'invoiced') filters.invoiced = true;
+      else if (values.invoicing === 'not_invoiced') filters.invoiced = false;
+      else if (values.invoicing === 'partly_invoiced') filters.invoiced = 'partly_invoiced';
     }
     const customerIds = ids(values.customers);
     if (customerIds.length > 0) filters.customer_ids = customerIds;

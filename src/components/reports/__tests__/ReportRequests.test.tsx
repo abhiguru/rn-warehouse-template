@@ -44,6 +44,7 @@ jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn(), getCusto
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+  onOperatorServerChange: () => () => {},
 }));
 
 const ADMIN = { id: 'p1', role: 'admin', assignedCustomerIds: [] };

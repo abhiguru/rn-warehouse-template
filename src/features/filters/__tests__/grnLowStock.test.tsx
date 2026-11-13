@@ -27,7 +27,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ auth: { userProfile: mockProfile } }),
 }));
 let mockServer: { origin: string; instanceId: string } | null = { origin: 'https://one.example', instanceId: 'one' };
-jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => mockServer }));
+jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => mockServer, onOperatorServerChange: () => () => {} }));
 
 const stock = GRN_FILTERS.fields.find(field => field.key === 'stock') as ChoiceField;
 const staff = (pagesByReceipt?: boolean): FilterContext => ({ role: 'staff', isWarehouseRole: true, assignedCustomers: [], pagesByReceipt });

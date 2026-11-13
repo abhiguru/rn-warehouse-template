@@ -2,7 +2,8 @@ import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseCo
 import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { t } from '@/i18n';
-import { serverText, upgradingBody } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+import { isNetworkError, isTimeoutError, serverText, upgradingBody } from '@/utils/serverText';
 import { backendHasFeature } from '@/config/backendFeatures';
 
 /**
@@ -184,7 +185,7 @@ export async function generateGRNPDF(grNo: string, id?: string): Promise<PDFResp
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
@@ -254,7 +255,7 @@ export async function generateDispatchPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
@@ -326,7 +327,7 @@ export async function generateInvoicePDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
@@ -395,7 +396,7 @@ export async function generateCustomerStockPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
@@ -463,9 +464,20 @@ export async function generateStatementPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
+}
+
+const log = createLogger('pdf');
+
+/**
+ * The text for a PDF request that threw: the app's connection sentence when no answer came, the generic one otherwise.
+ * The exception's own message ("fetch failed: ... Unable to resolve host ...") names a host and never reaches the user (the log gets the code and name only).
+ */
+function pdfCatchText(error: unknown): string {
+  log.warn('PDF request failed', loggableError(error));
+  return isNetworkError(error) || isTimeoutError(error) ? t('common.checkConnection') : t('errors.pdf.generateFailed');
 }
 
 /**
@@ -534,7 +546,7 @@ export async function generateTemperatureReportPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }

@@ -33,6 +33,8 @@ const INTRODUCED_BY_MIGRATION = {
   invoiceAsGoodsLeave: 165,
   /** `set_record_payments`, `record_payment`, `update_payment`, `delete_payment`, paid and due figures on invoices (WH-143). */
   recordPayments: 172,
+  /** `p_filters.invoiced` (true, false or 'partly_invoiced') on `get_all_grn_items`: the GRN list's Invoicing filter (WH-138). */
+  grnInvoiceFilter: 202,
   /** `get_gst_details`, `set_gst_details`, `set_item_gst_treatment`, `preview_invoice_documents`, `delete_invoice_pair`, the document type on invoices and `p_doc_type` on the list (WH-151). */
   gstDocuments: 173,
   /** `can_create_invoice` in get_grn_details' invoice summary, and invoicing goods as they leave on by default (WH-162). */
