@@ -40,11 +40,31 @@ describe('t', () => {
 });
 
 describe('translation tables', () => {
-  it('have text in both languages for every key', () => {
+  // WH-144: a pull request may add an English text without a Gujarati one (the app shows the English text); the
+  // release check (`npm run i18n:release-check`, scripts/i18n-review.test.mjs) is what fails on a missing Gujarati text.
+  // A Gujarati text that IS given must not be blank, because a blank string would hide the English fallback.
+  it('have no blank text in either language; a Gujarati text may be missing (the English shows)', () => {
     expect(ALL.length).toBeGreaterThan(0);
-    const missing = ALL.filter(entry => entry.gu === undefined || texts(entry.gu).some(text => text.trim() === '')).map(entry => entry.key);
+    const blank = ALL.filter(entry => entry.gu !== undefined && texts(entry.gu).some(text => text.trim() === '')).map(entry => entry.key);
     const emptyEnglish = ALL.filter(entry => texts(entry.en).some(text => text.trim() === '')).map(entry => entry.key);
-    expect({ missing, emptyEnglish }).toEqual({ missing: [], emptyEnglish: [] });
+    expect({ blank, emptyEnglish }).toEqual({ blank: [], emptyEnglish: [] });
+  });
+
+  it('have no Gujarati key that English lacks (an extra or stale key), and the same kind of text under each key', () => {
+    // Walks the Gujarati table: every leaf must be in English, as a string for a string and a plural for a plural.
+    const stale: string[] = [];
+    const walk = (guNode: unknown, enNode: unknown, prefix: string) => {
+      for (const [name, value] of Object.entries(guNode as Record<string, unknown>)) {
+        const key = `${prefix}${name}`;
+        const english = (enNode as Record<string, unknown> | undefined)?.[name];
+        if (english === undefined) stale.push(key);
+        else if (typeof value === 'string' || isPlural(value)) {
+          if (typeof value === 'string' ? typeof english !== 'string' : !isPlural(english)) stale.push(`${key} (different kind of text)`);
+        } else walk(value, english, `${key}.`);
+      }
+    };
+    walk(gu, en, '');
+    expect(stale).toEqual([]);
   });
 
   it('use the same placeholders in both languages', () => {
@@ -64,7 +84,7 @@ describe('translation tables', () => {
 
   it('write Gujarati in Gujarati script and never use Latin digits in it', () => {
     // Words kept in English letters by the glossary, and placeholders, are allowed.
-    const KEPT = /\{\{\w+\}\}|GRN|GST|PAN|OTP|AM|PM|kg|ID|SMS|PDF|GCSA|QR|URL|HTTPS?|OK|Wi-Fi|WhatsApp|English/g;
+    const KEPT = /\{\{\w+\}\}|GRN|GST|PAN|OTP|AM|PM|kg|ID|SMS|PDF|QR|URL|HTTPS?|OK|Wi-Fi|WhatsApp|English/g;
     const problems = ALL.filter(entry => {
       if (entry.gu === undefined) return false;
       return texts(entry.gu).some(text => {
