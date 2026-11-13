@@ -262,3 +262,110 @@ test('release.yml runs the Gujarati release check, and not the public check (a t
   assert.equal(manifest.scripts['i18n:review-sheet'], 'node scripts/i18n-review-sheet.mjs');
   assert.equal(manifest.scripts['i18n:review-apply'], 'node scripts/i18n-review-apply.mjs');
 });
+
+// WH-134, Opus review of the batch: pre-release tags, the self-hosted Gradle settings and a re-run of the notice.
+const runBlock = (lines, afterMarker) => {
+  const start = lines.findIndex(line => line.includes(afterMarker));
+  assert.ok(start >= 0, `${afterMarker} was found`);
+  const first = lines.findIndex((line, i) => i >= start && /^\s*run: \|$/.test(line));
+  const indent = lines[first].match(/^\s*/)[0].length + 2;
+  const body = [];
+  for (const line of lines.slice(first + 1)) {
+    if (line.trim() && line.match(/^\s*/)[0].length < indent) break;
+    body.push(line.slice(indent));
+  }
+  return body.join('\n');
+};
+const selfHostedBlock = text => {
+  const match = /^( *)if \[ "\$RUNNER_ENVIRONMENT" = "self-hosted" \]; then\n[\s\S]*?\n\1fi$/m.exec(text);
+  assert.ok(match, 'the self-hosted Gradle block');
+  return match[0].split('\n').map(line => line.replace(new RegExp(`^${match[1]}`), '')).join('\n');
+};
+
+test('release.yml carries ci.yml\'s self-hosted Gradle settings in its assemble step, unchanged', () => {
+  const ci = selfHostedBlock(workflowText('ci.yml'));
+  const release = selfHostedBlock(workflowText('release.yml'));
+  assert.equal(release, ci);
+  assert.match(release, /-Djava\.net\.preferIPv4Stack=true/);
+  assert.match(release, /networkTimeout=60000/);
+  assert.match(release, /gradle\/gradle-distributions\/releases\/download/);
+  const assemble = runBlock(releaseJobs().get('release'), 'Assemble the release APK');
+  assert.ok(assemble.indexOf('self-hosted') < assemble.indexOf('./gradlew assembleRelease'), 'set before Gradle runs');
+});
+
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync as readFile, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+/** Runs a job's script with a fake `gh` that logs its arguments; the release exists (or not) and has the given body. */
+function runWithFakeGh(script, env, { exists, body = '' }) {
+  const dir = mkdtempSync(join(tmpdir(), 'fake-gh-'));
+  try {
+    mkdirSync(join(dir, 'bin'));
+    const log = join(dir, 'calls.log');
+    writeFileSync(join(dir, 'bin/gh'), `#!/usr/bin/env bash
+echo "$*" >> "${log}"
+if [ "$1 $2" = "release view" ]; then
+  case "$*" in *"--json body"*) printf '%s' "$FAKE_BODY" ;; esac
+  [ "$FAKE_EXISTS" = "yes" ]
+  exit $?
+fi
+cat > /dev/null 2>&1 || true
+exit 0
+`);
+    chmodSync(join(dir, 'bin/gh'), 0o755);
+    writeFileSync(join(dir, 'step.sh'), script);
+    mkdirSync(join(dir, 'tmp'));
+    const result = spawnSync('bash', ['-e', join(dir, 'step.sh')], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { PATH: `${join(dir, 'bin')}:${process.env.PATH}`, RUNNER_TEMP: join(dir, 'tmp'), FAKE_EXISTS: exists ? 'yes' : 'no', FAKE_BODY: body, ...env },
+    });
+    let calls = '';
+    try { calls = readFile(log, 'utf8'); } catch { /* no call */ }
+    return { ...result, calls: calls.split('\n').filter(Boolean) };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const NOTE_TEXT = 'No Android APK was published for this release: the signing step was rejected or failed. See the Release workflow run.';
+const createCalls = calls => calls.filter(call => call.startsWith('release create'));
+
+test('no-apk-notice: a pre-release tag is created with --prerelease --latest=false, a plain tag is not', () => {
+  const script = runBlock(releaseJobs().get('no-apk-notice'), 'steps:');
+  for (const [tag, pre] of [['v1.0.0-rc.1', true], ['v0.2.2-demo', true], ['v1.2.3', false], ['v10.0.0', false]]) {
+    const result = runWithFakeGh(script, { RELEASE_TAG: tag, NOTE: NOTE_TEXT }, { exists: false });
+    assert.equal(result.status, 0, result.stderr);
+    const [create] = createCalls(result.calls);
+    assert.ok(create, `${tag} was created`);
+    assert.equal(create.includes('--prerelease --latest=false'), pre, `${tag}: ${create}`);
+    assert.ok(create.includes(`release create ${tag} `), create);
+  }
+});
+
+test('no-apk-notice: a re-run does not add the note a second time, a first run does', () => {
+  const script = runBlock(releaseJobs().get('no-apk-notice'), 'steps:');
+  const env = { RELEASE_TAG: 'v1.2.3', NOTE: NOTE_TEXT };
+  const first = runWithFakeGh(script, env, { exists: true, body: 'Release text.' });
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(first.calls.filter(call => call.startsWith('release edit')).length, 1, 'the note is added once');
+  const again = runWithFakeGh(script, env, { exists: true, body: `Release text.\n\n${NOTE_TEXT}\n` });
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(again.calls.filter(call => call.startsWith('release edit')).length, 0, 'the note is already there');
+  assert.equal(createCalls(again.calls).length, 0);
+});
+
+test('sign: its release create call takes the same pre-release flags, and the tag reaches the script only through an env var', () => {
+  const lines = releaseJobs().get('sign');
+  const script = runBlock(lines, 'Sign, verify and publish');
+  assert.match(script, /case "\$RELEASE_TAG" in \*-\*\) kind=\(--prerelease --latest=false\) ;; esac/);
+  const create = script.split('\n').find(line => line.includes('gh release create'));
+  assert.ok(create.includes('${kind[@]+"${kind[@]}"}'), create);
+  for (const [name, job] of releaseJobs()) {
+    for (const [index, line] of runBlock(job, name === 'sign' ? 'Sign, verify and publish' : name === 'no-apk-notice' ? 'steps:' : 'Assemble the release APK').split('\n').entries()) {
+      assert.doesNotMatch(line, /\$\{\{/, `${name} script line ${index + 1} interpolates an expression`);
+    }
+  }
+});

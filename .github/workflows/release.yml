@@ -152,6 +152,12 @@ jobs:
           fi
           sed -i '/^distributionSha256Sum=/d' "$props"
           echo "distributionSha256Sum=$dist_sha" >> "$props"
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Djava.net.preferIPv4Stack=true"
+            sed -i 's/^networkTimeout=.*/networkTimeout=60000/' "$props"
+            sed -i '/^distributionUrl=/d' "$props"
+            echo 'distributionUrl=https\://github.com/gradle/gradle-distributions/releases/download/v'"${version}/gradle-${version}-bin.zip" >> "$props"
+          fi
           ./gradlew assembleRelease
       - name: Audit APK contents, permissions and notices
         run: npm run audit:artifact -- android/app/build/outputs/apk/release/app-release.apk
@@ -219,10 +225,14 @@ jobs:
           fi
           sha256sum "$out" > SHA256SUMS
           cat SHA256SUMS
+          # A tag with a suffix (v1.0.0-rc.1, v0.2.2-demo) is a pre-release and never "Latest": the download page
+          # (releases/latest) must keep pointing at the newest plain version.
+          kind=()
+          case "$RELEASE_TAG" in *-*) kind=(--prerelease --latest=false) ;; esac
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$out" SHA256SUMS --clobber
           else
-            gh release create "$RELEASE_TAG" "$out" SHA256SUMS --verify-tag --title "$RELEASE_TAG" \
+            gh release create "$RELEASE_TAG" "$out" SHA256SUMS ${kind[@]+"${kind[@]}"} --verify-tag --title "$RELEASE_TAG" \
               --notes "Neutral Android app for facilities outside the association: download ${out}, check it against SHA256SUMS, and see the README, \"Install the app\"."
           fi
 
@@ -245,9 +255,16 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
+          kind=()
+          case "$RELEASE_TAG" in *-*) kind=(--prerelease --latest=false) ;; esac
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             body="$(gh release view "$RELEASE_TAG" --json body --jq .body)"
-            printf '%s\n\n%s\n' "$body" "$NOTE" | gh release edit "$RELEASE_TAG" --notes-file -
+            # A re-run must not add the note twice.
+            if printf '%s' "$body" | grep -qF -- "$NOTE"; then
+              echo "The release already carries the note."
+            else
+              printf '%s\n\n%s\n' "$body" "$NOTE" | gh release edit "$RELEASE_TAG" --notes-file -
+            fi
           else
-            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "$NOTE"
+            gh release create "$RELEASE_TAG" ${kind[@]+"${kind[@]}"} --verify-tag --title "$RELEASE_TAG" --notes "$NOTE"
           fi
