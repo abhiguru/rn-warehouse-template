@@ -134,19 +134,22 @@ export interface GetPrinterStatusResponse {
   error?: string;
 }
 
+/** The `error` text of released backend v0.7.0's 503 when printing is not set up (functions/main/index.ts at tag v0.7.0); it sends no `code`. */
+const V070_PRINTING_OFF_ERROR = 'Printing is not configured for this operator instance';
+
 /**
  * Decide the failure kind from the backend's code, else (today's backend, no code) from the HTTP status.
- * A 503 carrying the PRINTING_OFF code, or a 503 with no code at all (backend v0.7.0), is "printing not set up"; a 502 or 504, or an answer that is
+ * A 503 carrying the PRINTING_OFF code, or v0.7.0's own code-less 503 (exact error text), is "printing not set up"; a 502 or 504, or an answer that is
  * not JSON, is "server unavailable"; only the code PRINTER_FAILED (502) names a printer failure; any other error shows the server's message.
  */
-function classifyFailure(status: number, code: string | undefined, unconfirmed: boolean, jsonBody: boolean): PrintFailureKind {
+function classifyFailure(status: number, code: string | undefined, unconfirmed: boolean, jsonBody: boolean, errorText?: unknown): PrintFailureKind {
   if (unconfirmed || code === 'PRINT_UNCONFIRMED') return 'unconfirmed';
   if (code === 'PRINTING_OFF') return 'notSetUp';
   if (code === 'PRINT_FORBIDDEN') return 'notAllowed';
   if (code === 'PRINTER_FAILED') return 'printerFailed';
   if (!jsonBody) return 'serverUnavailable';
-  // Released backend v0.7.0 answers 503 with no code when printing is not set up.
-  if (status === 503 && !code) return 'notSetUp';
+  // Released backend v0.7.0 answers 503 with no code when printing is not set up; any other code-less 503 stays "other".
+  if (status === 503 && !code && errorText === V070_PRINTING_OFF_ERROR) return 'notSetUp';
   if (status === 403) return 'notAllowed';
   if (status === 502 || status === 504) return 'serverUnavailable';
   return 'other';
@@ -299,7 +302,7 @@ async function sendPrintJob(
         status: response.status,
         ...(code ? { code } : {}),
         // WH-151: ALL_SKIPPED (HTTP 422): every invoice of the range was skipped, and `skipped` says why for each.
-        kind: upgrading ? 'other' : code === 'ALL_SKIPPED' ? 'allSkipped' : classifyFailure(response.status, code, unconfirmed, true),
+        kind: upgrading ? 'other' : code === 'ALL_SKIPPED' ? 'allSkipped' : classifyFailure(response.status, code, unconfirmed, true, data.error),
         ...(code === 'ALL_SKIPPED' && Array.isArray(data.skipped) ? { skipped: data.skipped as PrintSkipped[] } : {}),
         error: serverText(upgradingBody(data) ?? data.error, t('errors.print.submitFailed')),
         ...(unconfirmed ? { unconfirmed: true } : {}),
