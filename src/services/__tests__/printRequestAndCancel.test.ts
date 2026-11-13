@@ -156,7 +156,7 @@ describe('failure kinds and texts, from the answers the backend gives', () => {
   it.each([
     ['printing is off (main/index.ts: 503 PRINTING_OFF)', answer(503, PRINTING_OFF), 'notSetUp', 'Printing is not set up for this facility. Ask an admin to set it up.'],
     ['printing is off on backend v0.7.0 (main/index.ts: 503 with no code)', answer(503, { success: false, error: 'Printing is not configured for this operator instance' }), 'notSetUp', 'Printing is not set up for this facility. Ask an admin to set it up.'],
-    ['a code-less 503 from nginx (functions container down) is not "not set up"', answer(503, { message: 'The upstream server is unavailable' }), 'other', 'The upstream server is unavailable'],
+    ['a code-less 503 from nginx (functions container down) is not "not set up"', answer(503, { message: 'The upstream server is unavailable' }), 'other', 'Failed to submit print job'],
     ['a code-less 503 from the functions ("Server unavailable") is not "not set up"', answer(503, { error: 'Server unavailable' }), 'other', 'Server unavailable'],
     ['a 503 that carries another code is not "not set up" (WH-182)',answer(503, { success: false, code: 'SOMETHING_ELSE', error: 'Server says no' }), 'other', 'Server says no'],
     ['the role may not print (auth-helpers: 403 PRINT_FORBIDDEN)',answer(403, PRINT_FORBIDDEN), 'notAllowed', "You aren't allowed to print. Ask an admin."],
