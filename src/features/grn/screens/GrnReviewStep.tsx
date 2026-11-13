@@ -123,6 +123,7 @@ import { isNumberFormatRefusal, numberFormatText } from '@/utils/numberFormatRef
 import { createLogger, loggableError } from '@/utils/logger';
 import { getGrnItemRates, getItemsWithoutRate } from '@/services/item-pricing-service';
 import type { ScrollViewRef } from '@/types/nativeRefs';
+import { invoiceFileName } from '@/utils/invoiceLabel';
 
 const log = createLogger('grn');
 
@@ -1228,7 +1229,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         return;
       }
 
-      const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `GRN_${documentNumber}.pdf`);
+      const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `GRN_${invoiceFileName(documentNumber)}.pdf`);
       if (!shareResult.success) {
         setSnackbarMessage(tr('grn.review.pdfShareFailed'));
         setSnackbarVisible(true);

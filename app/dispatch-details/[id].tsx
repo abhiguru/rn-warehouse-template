@@ -60,6 +60,7 @@ import { showAlert } from '@/utils/alert';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { photoAddFailure } from '@/utils/photoUploadError';
+import { invoiceFileName } from '@/utils/invoiceLabel';
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -421,7 +422,7 @@ function DispatchDetailScreen() {
       // Download and share
       const shareResult = await downloadAndSharePDF(
         pdfResult.pdfUrl,
-        `Dispatch_${data.dispatch.disp_no}.pdf`
+        `Dispatch_${invoiceFileName(String(data.dispatch.disp_no))}.pdf`
       );
 
       if (!shareResult.success) {
