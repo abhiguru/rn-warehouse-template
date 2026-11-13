@@ -150,7 +150,8 @@ The step "Expo SDK dependency compatibility" runs `npx expo install --check`. Ex
 change what the check expects, whatever a pull request touches, so on a pull request or a push to `main` a mismatch is
 a warning only (an annotation and the run summary list the outdated packages) and the job goes on. `ci.yml` also runs
 weekly (Mondays, 03:47 UTC) and on a manual run (`workflow_dispatch`); there the same mismatch fails the step, and only
-the `Lint & Type Check` job runs on the schedule. A failed weekly run means a card for a version bump
+the `Lint & Type Check` job runs on the schedule. Only the Expo CLI's own "outdated" findings are downgraded to a warning: a check that
+itself breaks (network, registry, crash) fails on every event, with the title "Expo SDK check failed". A failed weekly run with the "outdated" title means a card for a version bump
 (`npx expo install --fix`, see [SDK_UPGRADE.md](SDK_UPGRADE.md)). `release.yml` still fails on a mismatch.
 
 Three CI details to keep in step. (1) `expo-doctor` is a devDependency at an exact version and both workflows run

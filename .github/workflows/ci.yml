@@ -54,6 +54,13 @@ jobs:
           if [ "$status" -eq 0 ]; then
             exit 0
           fi
+          # Only the Expo CLI's own findings text ("should be updated for best compatibility",
+          # "Found outdated dependencies") means outdated packages. Any other failure (network,
+          # registry, a crash, a missing binary) is a broken check and fails on every event.
+          if ! printf '%s\n' "$output" | grep -Eq 'should be updated for best compatibility|Found outdated dependencies'; then
+            echo "::error title=Expo SDK check failed::npx expo install --check failed with exit status $status and did not report outdated packages; the check itself is broken"
+            exit "$status"
+          fi
           case "$EVENT_NAME" in
             pull_request|push)
               escaped="${output//'%'/%25}"
@@ -72,7 +79,7 @@ jobs:
               exit 0
               ;;
             *)
-              echo "::error title=Expo SDK dependencies are outdated::npx expo install --check exited with $status"
+              echo "::error title=Expo SDK dependencies are outdated::npx expo install --check reports outdated packages (exit status $status); bump the versions"
               exit "$status"
               ;;
           esac

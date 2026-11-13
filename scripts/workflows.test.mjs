@@ -428,12 +428,12 @@ const EXPO_FINDINGS = [
   '  expo-font@14.0.12 - expected version: ~14.0.13',
 ].join('\n');
 
-const runExpoCheck = (eventName, npxExit) => {
+const runExpoCheck = (eventName, npxExit, output = EXPO_FINDINGS) => {
   const dir = mkdtempSync(join(tmpdir(), 'wh194-'));
   try {
     mkdirSync(join(dir, 'bin'));
     const fake = join(dir, 'bin', 'npx');
-    writeFileSync(fake, npxExit === 0 ? '#!/bin/sh\necho "Dependencies are up to date"\nexit 0\n' : `#!/bin/sh\ncat <<'TEXT'\n${EXPO_FINDINGS}\nTEXT\nexit ${npxExit}\n`);
+    writeFileSync(fake, npxExit === 0 ? '#!/bin/sh\necho "Dependencies are up to date"\nexit 0\n' : `#!/bin/sh\ncat <<'TEXT'\n${output}\nTEXT\nexit ${npxExit}\n`);
     chmodSync(fake, 0o755);
     const summary = join(dir, 'summary.md');
     writeFileSync(summary, '');
@@ -477,3 +477,20 @@ test('WH-194: when the Expo versions match, the step passes on every event and w
     assert.equal(result.summary, '', eventName);
   }
 });
+
+// A broken check is not "outdated packages": it fails on every event, with its own message.
+for (const eventName of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
+  for (const [label, code, output] of [
+    ['a network-style failure', 1, 'FetchError: request to https://registry.npmjs.org/ failed, reason: getaddrinfo EAI_AGAIN'],
+    ['a missing binary', 127, 'npx: command not found'],
+  ]) {
+    test(`WH-194: on ${eventName}, ${label} (exit ${code}) fails the step as a broken check, not as outdated packages`, () => {
+      const result = runExpoCheck(eventName, code, output);
+      assert.equal(result.status, code, result.stderr);
+      assert.match(result.stdout, /^::error title=Expo SDK check failed::/m);
+      assert.doesNotMatch(result.stdout, /^::warning/m);
+      assert.doesNotMatch(result.stdout, /dependencies are outdated/);
+      assert.equal(result.summary, '');
+    });
+  }
+}
