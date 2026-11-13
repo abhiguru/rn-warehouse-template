@@ -91,3 +91,53 @@ test('with the real app.json: the tag of its own version passes, the next one is
   assert.equal(real(`v${version}`).status, 0);
   assert.notEqual(real(`v${major}.${minor}.${patch + 1}`).status, 0);
 });
+
+// WH-140 (owner, 2026-11-07): only going public is gated by the legal review, never a release tag. The tag gate does
+// not read the flag; check-legal-reviewed.mjs (npm run check:legal, the make-public step) does, and release.yml reads
+// the same constant with grep before it attaches the neutral APK. The three must agree.
+const legalFile = (line, name) => {
+  const path = join(fixtures, name);
+  writeFileSync(path, `${line}\n`);
+  return path;
+};
+const checkLegal = file => spawnSync('node', ['scripts/check-legal-reviewed.mjs', file], { cwd: new URL('..', import.meta.url), encoding: 'utf8' });
+const workflowGrep = file => {
+  const yml = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const pattern = /grep -Eq '(\^export const LEGAL_TEXT_REVIEWED[^']*)' src\/constants\/legal\.ts/.exec(yml)?.[1];
+  assert.ok(pattern, 'release.yml reads the flag with grep -Eq');
+  return spawnSync('grep', ['-Eq', pattern, file]).status === 0;
+};
+
+test('a release tag is not gated by the legal review: check-release.sh never reads the flag', () => {
+  const script = readFileSync(new URL('check-release.sh', import.meta.url), 'utf8');
+  assert.doesNotMatch(script, /check-legal-reviewed|LEGAL_TEXT_REVIEWED|check:legal/);
+  assert.equal(gate('v0.8.0').status, 0, 'a tag passes whatever the flag says');
+});
+
+test('check-legal-reviewed refuses everything but a literal true, and release.yml reads the flag the same way', () => {
+  const cases = [
+    ['export const LEGAL_TEXT_REVIEWED = true;', true],
+    ['export const LEGAL_TEXT_REVIEWED: boolean = true;', true],
+    ['export const LEGAL_TEXT_REVIEWED = false;', false],
+    ['export const LEGAL_TEXT_REVIEWED = !false;', false],
+    ['// export const LEGAL_TEXT_REVIEWED = true;', false],
+    ['  export const LEGAL_TEXT_REVIEWED = true;', false],
+    ['const LEGAL_TEXT_REVIEWED = true;', false],
+    ['export const OTHER = true;', false],
+  ];
+  cases.forEach(([line, reviewed], index) => {
+    const file = legalFile(line, `legal-${index}.ts`);
+    const result = checkLegal(file);
+    assert.equal(result.status === 0, reviewed, `${line}: ${result.stderr}${result.stdout}`);
+    assert.equal(workflowGrep(file), reviewed, `release.yml disagrees on: ${line}`);
+    if (!reviewed) assert.match(result.stderr, /Refusing release: /);
+  });
+  assert.match(checkLegal(legalFile('export const LEGAL_TEXT_REVIEWED = true;', 'legal-ok.ts')).stdout, /recorded/);
+  assert.equal(checkLegal(join(fixtures, 'no-such-file.ts')).status, 1, 'an unreadable file counts as not reviewed');
+  assert.match(checkLegal(legalFile('export const OTHER = 1;', 'legal-none.ts')).stderr, /was not found/);
+});
+
+test('the flag in the repository is one literal true or false, which both readers can see', () => {
+  const source = readFileSync(new URL('../src/constants/legal.ts', import.meta.url), 'utf8');
+  assert.match(source, /^export const LEGAL_TEXT_REVIEWED = (?:true|false);$/m, 'one literal flag');
+});

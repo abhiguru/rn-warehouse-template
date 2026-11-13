@@ -100,14 +100,56 @@ test('sdk-watch.yml takes its runner from CI_RUNNER and is not triggered by pull
 
 // The release validation runs on the same runner variable as the CI jobs. Only a version tag starts it, and a tag
 // is pushed by a maintainer (a fork's tag runs in the fork, with the fork's own variables), so it has no fork clause.
-test('release.yml takes its runner from CI_RUNNER and is started only by a version tag', () => {
+//
+// WH-134, owner 2026-11-13: ONLY the `sign` and `no-apk-notice` jobs run on GitHub's hosted runner (ubuntu-latest), so
+// the signing key never reaches the CI_RUNNER machine; every other job takes its runner from CI_RUNNER.
+const releaseJobs = () => {
   const text = workflowText('release.yml');
-  const runsOn = text.split('\n').filter(line => /^\s*runs-on:/.test(line));
-  assert.equal(runsOn.length, 1, 'one job');
-  assert.match(runsOn[0], /^ {4}runs-on: \$\{\{ fromJSON\(vars\.CI_RUNNER \|\| '"ubuntu-latest"'\) \}\}$/);
-  assert.doesNotMatch(runsOn[0], /self-hosted/);
+  const body = text.slice(text.indexOf('\njobs:\n') + '\njobs:\n'.length);
+  const jobs = new Map();
+  let name = null;
+  for (const line of body.split('\n')) {
+    const header = /^ {2}([a-z][a-z0-9-]*):\s*$/.exec(line);
+    if (header) {
+      name = header[1];
+      jobs.set(name, []);
+    } else if (name) jobs.get(name).push(line);
+  }
+  return jobs;
+};
+const HOSTED_JOBS = ['sign', 'no-apk-notice'];
+
+test('release.yml runs only sign and no-apk-notice on the hosted runner; every other job takes its runner from CI_RUNNER', () => {
+  const text = workflowText('release.yml');
+  const jobs = releaseJobs();
+  assert.deepEqual([...jobs.keys()], ['release', 'sign', 'no-apk-notice'], 'the jobs');
+  for (const [name, lines] of jobs) {
+    const runsOn = lines.filter(line => /^ {4}runs-on:/.test(line));
+    assert.equal(runsOn.length, 1, `${name}: one runs-on`);
+    assert.doesNotMatch(runsOn[0], /self-hosted/, name);
+    if (HOSTED_JOBS.includes(name)) assert.equal(runsOn[0], '    runs-on: ubuntu-latest', `${name} runs on the hosted runner`);
+    else assert.match(runsOn[0], /^ {4}runs-on: \$\{\{ fromJSON\(vars\.CI_RUNNER \|\| '"ubuntu-latest"'\) \}\}$/, `${name} runs on CI_RUNNER`);
+  }
+  assert.equal(text.split('\n').filter(line => /^\s*runs-on:/.test(line)).length, 3, 'no job outside the three');
   assert.match(text, /^on:\n {2}push:\n {4}tags:\n {6}- 'v\*'\n\n/m, 'a version tag is the only trigger');
   assert.doesNotMatch(text, /^\s*(?:pull_request|workflow_dispatch|schedule)/m, 'no other trigger');
+});
+
+test('release.yml: sign has no checkout and holds the keystore secrets only in the neutral-apk-release environment', () => {
+  const jobs = releaseJobs();
+  const sign = jobs.get('sign').join('\n');
+  assert.doesNotMatch(sign, /actions\/checkout/, 'sign runs no repository code');
+  assert.match(sign, /^ {4}environment: neutral-apk-release$/m, 'sign waits in the protected environment');
+  const secrets = ['NEUTRAL_APK_KEYSTORE_BASE64', 'NEUTRAL_APK_KEYSTORE_PASSWORD', 'NEUTRAL_APK_KEY_PASSWORD', 'NEUTRAL_APK_KEY_ALIAS'];
+  for (const secret of secrets) assert.match(sign, new RegExp(`secrets\\.${secret}\\b`), `sign reads ${secret}`);
+  for (const [name, lines] of jobs) {
+    if (name === 'sign') continue;
+    const other = lines.join('\n');
+    assert.doesNotMatch(other, /secrets\.NEUTRAL_APK|NEUTRAL_APK_KEY/, `${name} cannot read the signing key`);
+    assert.doesNotMatch(other, /^ {4}environment:/m, `${name} is not in an environment`);
+  }
+  assert.doesNotMatch(workflowText('release.yml'), /secrets\.(?!NEUTRAL_APK_)/, 'no other secret is read');
+  assert.doesNotMatch(workflowText('ci.yml'), /NEUTRAL_APK/, 'ci.yml never reads the signing key');
 });
 
 // Review 2026-10-17, M03: the test files are excluded from `tsc --noEmit`, so a
@@ -184,4 +226,39 @@ test('the Android build pins Gradle checksums and limits the mirror to self-host
   assert.ok(step.indexOf('gradle-distributions') > guard, 'mirror rewrite is inside the guard');
   assert.ok(step.indexOf('preferIPv4Stack') > guard, 'IPv4 option is inside the guard');
   assert.ok(step.indexOf('distributionSha256Sum=$dist_sha') < guard, 'the pin is outside the guard');
+});
+
+// WH-134, WH-140, WH-144, WH-149: what the release workflow must do for the neutral APK and the text checks.
+test('release.yml marks the build neutral with EXPO_PUBLIC_UPDATE_URL = the latest-release page, in prebuild and in assemble, and sets no central login', () => {
+  const text = workflowText('release.yml');
+  const urls = text.split('\n').filter(line => /EXPO_PUBLIC_UPDATE_URL:/.test(line));
+  assert.equal(urls.length, 2, 'the prebuild step and the assemble step');
+  for (const line of urls) assert.equal(line.trim(), 'EXPO_PUBLIC_UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest');
+  assert.doesNotMatch(text, /EXPO_PUBLIC_CENTRAL_ORIGIN:/, 'central sign-in stays off in the neutral build');
+  assert.doesNotMatch(text, /WAREHOUSE_BRAND_PACK|EXPO_PUBLIC_DEFAULT_BRAND|EXPO_PUBLIC_LEGAL_TEXT/, 'the neutral build uses no brand pack and the template legal pages');
+  assert.equal([...text.matchAll(/WAREHOUSE_APP_NAME: Cold Storage$/gm)].length, 2, 'the neutral name');
+});
+
+test('release.yml: the APK is signed and published only by sign, only when the legal text is reviewed, after the release job passed', () => {
+  const jobs = releaseJobs();
+  const sign = jobs.get('sign').join('\n');
+  assert.match(sign, /^ {4}needs: release$/m);
+  assert.match(sign, /^ {4}if: \$\{\{ needs\.release\.outputs\.legal_reviewed == 'true' \}\}$/m);
+  assert.match(sign, /^ {4}permissions:\n {6}contents: write$/m);
+  const release = jobs.get('release').join('\n');
+  assert.doesNotMatch(release, /gh release|apksigner|contents: write/, 'the CI_RUNNER job neither signs nor publishes');
+  assert.match(release, /legal_reviewed: \$\{\{ steps\.legal\.outputs\.reviewed \}\}/);
+  const notice = jobs.get('no-apk-notice').join('\n');
+  assert.match(notice, /^ {4}needs: \[release, sign\]$/m);
+  assert.match(notice, /needs\.release\.result == 'success' && needs\.sign\.result != 'success'/, 'only when the build passed and signing did not');
+});
+
+test('release.yml runs the Gujarati release check, and not the public check (a tag is not blocked by the review)', () => {
+  const text = workflowText('release.yml');
+  assert.match(text, /^\s*- run: npm run i18n:release-check$/m);
+  assert.doesNotMatch(text, /i18n:public-check|i18n-release-check\.mjs --public/);
+  assert.equal(manifest.scripts['i18n:release-check'], 'node scripts/i18n-release-check.mjs');
+  assert.equal(manifest.scripts['i18n:public-check'], 'node scripts/i18n-release-check.mjs --public');
+  assert.equal(manifest.scripts['i18n:review-sheet'], 'node scripts/i18n-review-sheet.mjs');
+  assert.equal(manifest.scripts['i18n:review-apply'], 'node scripts/i18n-review-apply.mjs');
 });
