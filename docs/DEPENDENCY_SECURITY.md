@@ -319,7 +319,8 @@ those original bytes. The zero-vulnerability result below is historical.
 
 Native follow-up: explicitly depend on SDK 54's `expo-font ~14.0.12` so the
 unrestricted icon-font peer does not autolink SDK 57's font module. Pin NetInfo
-to Expo's expected `11.4.1`. CI also runs `expo install --check`; a dependency
+to Expo's expected `11.4.1`. CI also runs `expo install --check` (a warning on pull requests, a failure on the weekly run; see
+`DEVELOPER_HANDOFF.md`, "CI and releases"); a dependency
 regression test checks the selected font against Expo's bundled SDK range.
 
 Both locked npm dependency trees report **zero vulnerabilities** on 2026-09-14.

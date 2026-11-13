@@ -34,7 +34,7 @@ updates:
       - dependency-name: "metro*"
         update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       # Expo SDK packages move together. Their versions come from the SDK
-      # (`npx expo install --check` fails CI on any other version), so they
+      # (`npx expo install --check` warns on a pull request and fails the weekly run on any other version), so they
       # are updated by hand in one SDK upgrade, not one by one.
       - dependency-name: "expo"
         update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
