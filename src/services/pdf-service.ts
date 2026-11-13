@@ -2,6 +2,7 @@ import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseCo
 import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { t } from '@/i18n';
+import { createLogger, loggableError } from '@/utils/logger';
 import { isNetworkError, isTimeoutError, serverText, upgradingBody } from '@/utils/serverText';
 import { backendHasFeature } from '@/config/backendFeatures';
 
@@ -468,12 +469,14 @@ export async function generateStatementPDF(
   }
 }
 
+const log = createLogger('pdf');
+
 /**
  * The text for a PDF request that threw: the app's connection sentence when no answer came, the generic one otherwise.
- * The exception's own message ("fetch failed: ... Unable to resolve host ...") names a host and is only for the dev log.
+ * The exception's own message ("fetch failed: ... Unable to resolve host ...") names a host and never reaches the user (the log gets the code and name only).
  */
 function pdfCatchText(error: unknown): string {
-  if (__DEV__) console.warn('[PDF] request failed:', error);
+  log.warn('PDF request failed', loggableError(error));
   return isNetworkError(error) || isTimeoutError(error) ? t('common.checkConnection') : t('errors.pdf.generateFailed');
 }
 
