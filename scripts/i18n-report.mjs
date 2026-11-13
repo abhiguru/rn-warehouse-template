@@ -22,7 +22,8 @@ const args = process.argv.slice(2);
 const summary = args.includes('--summary');
 const showAllowed = args.includes('--allowed');
 const targets = args.filter(arg => !arg.startsWith('--'));
-const SKIP = [/__tests__/, /\.test\.tsx?$/, /^src\/tests\//, /^src\/i18n\//, /^app\/style-guide\.tsx$/, /^app\/(terms-of-service|privacy-policy)\.tsx$/, /\.d\.ts$/];
+// src/legal/: the template legal pages are English only (Product decision, WH-140); the folder holds only that text.
+const SKIP = [/__tests__/, /^src\/legal\/(TemplateLegalScreen\.tsx|templateText\.ts)$/, /\.test\.tsx?$/, /^src\/tests\//, /^src\/i18n\//, /^app\/style-guide\.tsx$/, /^app\/(terms-of-service|privacy-policy)\.tsx$/, /\.d\.ts$/];
 const PROPS = new Set([
   'label', 'title', 'subtitle', 'placeholder', 'message', 'description', 'helperText', 'errorText', 'error', 'hint', 'text',
   'accessibilityLabel', 'accessibilityHint', 'emptyTitle', 'emptySubtitle', 'filteredTitle', 'filteredSubtitle',
