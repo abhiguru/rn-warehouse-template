@@ -14,6 +14,7 @@ import { AppTooOldError, clearAppTooOld, getAppTooOld, reportAppTooOld } from '@
 import { restoreCentralSession } from '@/config/centralSession';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
 import { startDailyLanCheck } from '@/config/lanCheck';
+import { installConnectionHistory, readConnectionSession } from '@/config/connectionHistory';
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { useRootRouteGuard } from '@/navigation/RouteGuard';
 import { store } from '@/store';
@@ -104,7 +105,8 @@ jest.mock('@/navigation/RouteGuard', () => ({
   useRootRouteGuard: jest.fn(),
 }));
 jest.mock('@/config/operatorServer', () => ({ onOperatorServerChange: jest.fn(() => () => undefined), getActiveOperatorServer: jest.fn(() => null) }));
-jest.mock('@/config/lanCheck', () => ({ startDailyLanCheck: jest.fn(() => jest.fn()) }));
+jest.mock('@/config/connectionHistory', () => ({ installConnectionHistory: jest.fn(), readConnectionSession: jest.fn() }));
+jest.mock('@/config/lanCheck',() => ({ startDailyLanCheck: jest.fn(() => jest.fn()) }));
 jest.mock('@/config/netReachability', () => ({ installNetReachability: jest.fn(), applyNetReachability: jest.fn() }));
 jest.mock('@/config/operatorBootstrap', () => ({ verifySelectedOperator: jest.fn(), verifyForegroundOperator: jest.fn() }));
 jest.mock('@/config/operatorResume', () => ({
@@ -188,6 +190,32 @@ describe('no facility server chosen yet', () => {
     await act(async () => { restored(); await new Promise(resolve => setTimeout(resolve, 0)); });
     expect(useRootRouteGuard).toHaveBeenLastCalledWith(true);
     expect(shows('AppStack')).toBe(true);
+  });
+});
+
+// WH-182 item 5: the saved session is read for the connection history by bootstrapApp itself, once the saved server is loaded
+// (after verifySelectedOperator, whatever its outcome). Every cold-start test of the history calls readConnectionSession()
+// by hand, so only this test fails when the call is removed from app/_layout.tsx.
+describe('the connection history reads the saved session at start', () => {
+  const order = (): string[] => {
+    const calls: string[] = [];
+    jest.mocked(installConnectionHistory).mockImplementation(() => { calls.push('install'); });
+    jest.mocked(readConnectionSession).mockImplementation(() => { calls.push('read'); });
+    return calls;
+  };
+
+  it('a start with no facility chosen: installed first, the session read once after the saved server was looked at', async () => {
+    const calls = order();
+    jest.mocked(verifySelectedOperator).mockImplementation(async () => { calls.push('verify'); return { kind: 'selection' } as never; });
+    await start();
+    expect(calls).toEqual(['install', 'verify', 'read']);
+  });
+
+  it('a start where the facility cannot be reached (offline): the session is still read', async () => {
+    const calls = order();
+    jest.mocked(verifySelectedOperator).mockImplementation(async () => { calls.push('verify'); throw new Error('Server discovery timed out'); });
+    await start();
+    expect(calls).toEqual(['install', 'verify', 'read']);
   });
 });
 

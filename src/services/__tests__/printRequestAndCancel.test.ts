@@ -155,7 +155,9 @@ describe('a repeated request the server already handled (duplicate: true)', () =
 describe('failure kinds and texts, from the answers the backend gives', () => {
   it.each([
     ['printing is off (main/index.ts: 503 PRINTING_OFF)', answer(503, PRINTING_OFF), 'notSetUp', 'Printing is not set up for this facility. Ask an admin to set it up.'],
-    ['the role may not print (auth-helpers: 403 PRINT_FORBIDDEN)', answer(403, PRINT_FORBIDDEN), 'notAllowed', "You aren't allowed to print. Ask an admin."],
+    ['printing is off on backend v0.7.0 (main/index.ts: 503 with no code)', answer(503, { success: false, error: 'Printing is not configured for this operator instance' }), 'notSetUp', 'Printing is not set up for this facility. Ask an admin to set it up.'],
+    ['a 503 that carries another code is not "not set up" (WH-182)', answer(503, { success: false, code: 'SOMETHING_ELSE', error: 'Server says no' }), 'other', 'Server says no'],
+    ['the role may not print (auth-helpers: 403 PRINT_FORBIDDEN)',answer(403, PRINT_FORBIDDEN), 'notAllowed', "You aren't allowed to print. Ask an admin."],
     ['the printer did not confirm (502 PRINT_UNCONFIRMED)', answer(502, UNCONFIRMED), 'unconfirmed', 'The printer did not confirm the job. Check the printer before printing again.'],
     ['the printer failed (502 PRINTER_FAILED)', answer(502, PRINTER_FAILED), 'printerFailed', "The printer couldn't print the job. Check the printer and try again."],
     ['a 500 for a range with no documents (print-grn-preprinted)', answer(500, { success: false, error: 'No GRNs found in specified range', timestamp: 't' }), 'other', 'No GRNs found in specified range'],
@@ -297,12 +299,12 @@ describe('a print whose 500 has no message of its own', () => {
     expect(printFailureMessage(result)).not.toMatch(/HTTP|500/);
   });
 
-  // SUSPECTED PRODUCT BUG (src/services/print-service.ts classifyFailure, `if (status === 503) return 'notSetUp'`): nginx answers 503
-  // {"message":"The upstream server is unavailable"} when the functions container is down (docker/nginx/api-http.conf); the app then
-  // says printing is not set up, although the real "not set up" answer carries code PRINTING_OFF.
-  it.skip('a 503 "upstream unavailable" (no code) is not "printing is not set up"', async () => {
+  // Product (WH-182) chose that a 503 with no code reads "not set up", because released backend v0.7.0 answers so when printing is
+  // off. The price: nginx's own 503 {"message":"The upstream server is unavailable"} (functions container down) reads the same.
+  // This test was a skipped bug note that said the opposite; it now pins the chosen behaviour.
+  it('a 503 "upstream unavailable" (no code) reads "printing is not set up", as WH-182 decided', async () => {
     const { printGRNRange, printFailureMessage } = load();
     mockFetch.mockResolvedValue(answer(503, { message: 'The upstream server is unavailable' }));
-    expect(printFailureMessage(await printGRNRange('A1', 'A1'))).not.toBe('Printing is not set up for this facility. Ask an admin to set it up.');
+    expect(printFailureMessage(await printGRNRange('A1', 'A1'))).toBe('Printing is not set up for this facility. Ask an admin to set it up.');
   });
 });

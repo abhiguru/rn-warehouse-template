@@ -9,7 +9,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { replaceItemRates } from '@/services/item-pricing-service';
 import { clearRateStartFloor, rememberRateStartFloor } from '@/services/rateStartFloor';
 import { showToast } from '@/utils/toast';
-import { appendEmptyBand, removeBand, setBandField } from '../editModel';
+import { appendEmptyBand, removeBand, setBandField, setUpTo } from '../editModel';
 import { laterDialogText } from '../laterRates';
 import { useRateEditor, type UseRateEditor, type UseRateEditorArgs } from '../useRateEditor';
 import { cuminRows, garlicRows, gingerRows, rate } from '@/tests/helpers/rateEditorFixtures';
@@ -539,5 +539,29 @@ describe('the request key of a save', () => {
     replace.mockResolvedValueOnce({ success: true });
     await act(async () => { await latest.submit(); });
     expect(replace.mock.calls[1][0].request_key).toBe(replace.mock.calls[0][0].request_key);
+  });
+});
+
+describe('Add rate on a rate in force: the strip after the server names the earliest day (WH-182)', () => {
+  const own = () => rate('cumin', null, 0, 30, 11.25, 2.5, 5, '2020-01-01', null);
+  const planned = () => rate('cumin', null, 0, 30, 13, 2.5, 5, '2027-01-01', null);
+  async function refusedFrom(rows: UseRateEditorArgs['rows']) {
+    await act(async () => { tree = create(React.createElement(Harness, { args: { ...baseArgs(rows), mode: 'addBand' } })); });
+    expect(latest.draft!.startsOnChoice).toBe('ownStart');
+    act(() => latest.setDraft(setBandField(setUpTo(latest.draft!, 1, '50'), 1, 'rent', '12')));
+    replace.mockResolvedValueOnce({ success: false, errorCode: 'INVALID_DATE', earliest: '2023-11-06', message: 'Choose a start date on or after 06/11/23.' });
+    await act(async () => { await latest.submit(); });
+  }
+
+  it('says the band moved to the server\'s day when the form goes on with the rate\'s own start moved there', async () => {
+    await refusedFrom([own()]);
+    expect(latest.strip).toContain('06/11/23');
+    expect(latest.strip).toContain('the new band now starts from that day');
+  });
+
+  it('leaves the strip empty when the rebuilt draft is a "today" save (a planned rate would be lost by the moved day)', async () => {
+    await refusedFrom([own(), planned()]);
+    expect(latest.earliest).toBe('2023-11-06');
+    expect(latest.strip).toBeNull();
   });
 });
