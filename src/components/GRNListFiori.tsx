@@ -892,7 +892,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
         expanded={isOpen(open, item.data.grnId)}
         onToggle={handleToggle}
         onPress={handleGRNPress}
-        onEdit={canEdit ? handleEdit : undefined}
+        onEdit={canEdit && !item.data.imported ? handleEdit : undefined}
         onPrint={canPrint ? handlePrint : undefined}
         styles={styles}
         words={words}
