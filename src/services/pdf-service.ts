@@ -2,7 +2,7 @@ import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseCo
 import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { t } from '@/i18n';
-import { serverText, upgradingBody } from '@/utils/serverText';
+import { isNetworkError, isTimeoutError, serverText, upgradingBody } from '@/utils/serverText';
 import { backendHasFeature } from '@/config/backendFeatures';
 
 /**
@@ -184,7 +184,7 @@ export async function generateGRNPDF(grNo: string, id?: string): Promise<PDFResp
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
@@ -254,7 +254,7 @@ export async function generateDispatchPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
@@ -326,7 +326,7 @@ export async function generateInvoicePDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
@@ -395,7 +395,7 @@ export async function generateCustomerStockPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
@@ -463,9 +463,18 @@ export async function generateStatementPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
+}
+
+/**
+ * The text for a PDF request that threw: the app's connection sentence when no answer came, the generic one otherwise.
+ * The exception's own message ("fetch failed: ... Unable to resolve host ...") names a host and is only for the dev log.
+ */
+function pdfCatchText(error: unknown): string {
+  if (__DEV__) console.warn('[PDF] request failed:', error);
+  return isNetworkError(error) || isTimeoutError(error) ? t('common.checkConnection') : t('errors.pdf.generateFailed');
 }
 
 /**
@@ -534,7 +543,7 @@ export async function generateTemperatureReportPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
+      error: pdfCatchText(error),
     };
   }
 }
