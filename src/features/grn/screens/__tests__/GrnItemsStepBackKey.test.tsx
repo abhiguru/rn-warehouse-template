@@ -14,11 +14,17 @@ import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import GRNFormStep2 from '../../../../../app/grn-form/step2';
 import GRNEditStep2 from '../../../../../app/grn-edit/[id]/step2';
 
+// WH-180: the edit route reads whether the GRN being edited was imported; nothing else of the store matters here.
+let mockImported = false;
+const mockRedirects: unknown[] = [];
+jest.mock('@/store/hooks', () => ({ useAppSelector: () => mockImported }));
 jest.mock('expo-router', () => {
   const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismissTo: jest.fn(), canGoBack: jest.fn(() => true) };
   return {
     router: mockRouter,
     useRouter: () => mockRouter,
+    useLocalSearchParams: () => ({ id: 'grn-1' }),
+    Redirect: ({ href }: { href: unknown }) => { mockRedirects.push(href); return null; },
     // The screen is in focus for as long as it is mounted.
     useFocusEffect: (callback: () => void | (() => void)) => require('react').useEffect(callback, [callback]),
   };
@@ -49,6 +55,8 @@ const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   jest.clearAllMocks();
   mockGuard = null;
+  mockImported = false;
+  mockRedirects.length = 0;
   mockStepProps.length = 0;
   back = installHardwareBack();
 });
@@ -126,5 +134,22 @@ describe.each(ROUTES)('the Back key on the items step of a %s', (_name, screen, 
 
     expect(back.count()).toBe(0);
     expect(back.press()).toBe(false);
+  });
+});
+
+describe('the items step of an imported GRN (WH-180)', () => {
+  it('opens its rates instead of the items, which stay closed', async () => {
+    mockImported = true;
+    await mount(<GRNEditStep2 />);
+
+    expect(mockStepProps).toHaveLength(0);
+    expect(mockRedirects).toEqual([{ pathname: '/grn-edit/[id]/step3', params: { id: 'grn-1', focus: 'rates' } }]);
+  });
+
+  it('shows the items of a GRN that was not imported', async () => {
+    await mount(<GRNEditStep2 />);
+
+    expect(mockStepProps.at(-1)?.mode).toBe('edit');
+    expect(mockRedirects).toEqual([]);
   });
 });
