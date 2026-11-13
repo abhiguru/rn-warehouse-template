@@ -77,7 +77,7 @@ export interface FilterContext {
    * answers (`src/config/facilityGrnPaging.ts`). Absent or false until then.
    */
   pagesByReceipt?: boolean;
-  /** The facility records payments (`capabilities.payments`): the Payment choice of the invoice reports is offered only then. */
+  /** The facility records payments (`capabilities.payments`) and its backend has them (migration 172): the Payment choice of the invoice lists and reports is offered only then. */
   payments?: boolean;
 }
 

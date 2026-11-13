@@ -6,6 +6,8 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { facilityPagesGrnsByReceipt, subscribeFacilityGrnPaging } from '@/config/facilityGrnPaging';
 import { hasCapability, subscribeFacilityCapabilities } from '@/config/facilityCapabilities';
+import { backendHasFeature } from '@/config/backendFeatures';
+import { onOperatorServerChange } from '@/config/operatorServer';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { toLocalISODate } from '@/utils/formatters';
 import {
@@ -26,13 +28,27 @@ import {
   type SortState,
 } from './types';
 
-const paymentsOn = (): boolean => hasCapability('payments');
+/**
+ * Payments show only while the setting is on AND the backend has them (the rule of usePaymentsVisible). Read at every
+ * render, not once when the filter context was built: the backend's release can be recorded after the capability, and a
+ * context built in between would keep the Payment filter hidden until the setting changed again.
+ */
+const paymentsOn = (): boolean => hasCapability('payments') && backendHasFeature('recordPayments');
+
+function subscribePayments(listener: () => void): () => void {
+  const stopCapabilities = subscribeFacilityCapabilities(listener);
+  const stopServer = onOperatorServerChange(listener);
+  return () => {
+    stopCapabilities();
+    stopServer();
+  };
+}
 
 export function useFilterContext(): FilterContext {
   const profile = useAppSelector(state => state.auth.userProfile);
   const pagesByReceipt = useSyncExternalStore(subscribeFacilityGrnPaging, facilityPagesGrnsByReceipt, facilityPagesGrnsByReceipt);
-  // The facility's capability, read from the store directly (a server change rebuilds the screens; `useCapability` also listens for it).
-  const payments = useSyncExternalStore(subscribeFacilityCapabilities, paymentsOn, paymentsOn);
+  // The facility's capability and release, read from the stores directly (like `usePaymentsVisible`, which the list's tags use).
+  const payments = useSyncExternalStore(subscribePayments, paymentsOn, paymentsOn);
   return useMemo(() => {
     const role = profile?.role ?? null;
     const isWarehouseRole = role === 'admin' || role === 'supervisor' || role === 'staff';
