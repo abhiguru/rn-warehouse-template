@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Weekly check that the Expo SDK versions still match (see the step "Expo SDK
+  # dependency compatibility"). Only the ci job runs on a schedule; the other jobs
+  # are for pull requests and pushes.
+  schedule:
+    - cron: '47 3 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,10 +39,46 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Expo publishes patch releases that change what `expo install --check` expects,
+      # whatever a pull request touches. On pull_request and push the findings are a
+      # warning (annotation and run summary) and the job goes on; on the weekly
+      # schedule and on a manual run the step fails, and a failed weekly run means a
+      # version bump is due.
       - name: Expo SDK dependency compatibility
-        run: npx expo install --check
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          output="$(npx expo install --check 2>&1)" || status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          case "$EVENT_NAME" in
+            pull_request|push)
+              escaped="${output//'%'/%25}"
+              escaped="${escaped//$'\r'/}"
+              escaped="${escaped//$'\n'/%0A}"
+              echo "::warning title=Expo SDK dependencies are outdated::${escaped}"
+              {
+                echo '### Expo SDK dependencies are outdated (warning only)'
+                echo
+                echo '`npx expo install --check` reports packages that differ from the versions this Expo SDK expects. This does not fail the pull request; the weekly run does fail until the versions are bumped.'
+                echo
+                echo '```'
+                printf '%s\n' "$output"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+            *)
+              echo "::error title=Expo SDK dependencies are outdated::npx expo install --check exited with $status"
+              exit "$status"
+              ;;
+          esac
         env:
           EXPO_NO_TELEMETRY: '1'
+          EVENT_NAME: ${{ github.event_name }}
 
       # expo-doctor is a locked devDependency (exact version); --no-install makes
       # the step fail rather than fetch an unreviewed copy from the registry.
@@ -73,6 +115,7 @@ jobs:
 
   android-artifact:
     name: Android debug artifact audit
+    if: github.event_name != 'schedule'
     # Where this job runs is the repository variable ANDROID_ARTIFACT_RUNNER: a
     # JSON value for runs-on, for example ["self-hosted","linux","x64","my-label"].
     # Without the variable, and always for a pull request from a fork, it runs on
@@ -163,6 +206,7 @@ jobs:
         run: npm run audit:artifact -- android/app/build/outputs/apk/debug/app-debug.apk
 
   dependencies:
+    if: github.event_name != 'schedule'
     # Where this job runs is the repository variable CI_RUNNER (a JSON value for
     # runs-on, for example ["self-hosted","linux","x64","my-label"]). Without it,
     # and always for a pull request from a fork, it runs on a GitHub-hosted runner:
@@ -191,6 +235,7 @@ jobs:
 
   secrets:
     name: Redacted source and history scan
+    if: github.event_name != 'schedule'
     # Where this job runs is the repository variable CI_RUNNER (a JSON value for
     # runs-on, for example ["self-hosted","linux","x64","my-label"]). Without it,
     # and always for a pull request from a fork, it runs on a GitHub-hosted runner:
