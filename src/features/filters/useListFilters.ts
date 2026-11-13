@@ -35,6 +35,9 @@ import {
  */
 const paymentsOn = (): boolean => hasCapability('payments') && backendHasFeature('recordPayments');
 
+/** Whether the backend's list takes the invoice-state filter (migration 202); read at every render like `paymentsOn`. */
+const grnInvoiceFilterOn = (): boolean => backendHasFeature('grnInvoiceFilter');
+
 function subscribePayments(listener: () => void): () => void {
   const stopCapabilities = subscribeFacilityCapabilities(listener);
   const stopServer = onOperatorServerChange(listener);
@@ -49,13 +52,14 @@ export function useFilterContext(): FilterContext {
   const pagesByReceipt = useSyncExternalStore(subscribeFacilityGrnPaging, facilityPagesGrnsByReceipt, facilityPagesGrnsByReceipt);
   // The facility's capability and release, read from the stores directly (like `usePaymentsVisible`, which the list's tags use).
   const payments = useSyncExternalStore(subscribePayments, paymentsOn, paymentsOn);
+  const grnInvoiceFilter = useSyncExternalStore(subscribePayments, grnInvoiceFilterOn, grnInvoiceFilterOn);
   return useMemo(() => {
     const role = profile?.role ?? null;
     const isWarehouseRole = role === 'admin' || role === 'supervisor' || role === 'staff';
     const named = profile?.assignedCustomers?.map(customer => ({ id: customer.id, label: customer.name }));
     const assigned = named ?? (profile?.assignedCustomerIds ?? []).map(id => ({ id, label: '' }));
-    return { role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned, pagesByReceipt, payments };
-  }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds, pagesByReceipt, payments]);
+    return { role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned, pagesByReceipt, payments, grnInvoiceFilter };
+  }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds, pagesByReceipt, payments, grnInvoiceFilter]);
 }
 
 export interface UseListFiltersOptions {

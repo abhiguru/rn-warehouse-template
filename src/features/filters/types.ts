@@ -79,6 +79,8 @@ export interface FilterContext {
   pagesByReceipt?: boolean;
   /** The facility records payments (`capabilities.payments`) and its backend has them (migration 172): the Payment choice of the invoice lists and reports is offered only then. */
   payments?: boolean;
+  /** The backend's GRN list takes the invoice-state filter (migration 202). Absent or false until known. */
+  grnInvoiceFilter?: boolean;
 }
 
 /**

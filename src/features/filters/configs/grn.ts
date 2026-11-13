@@ -7,7 +7,6 @@
  */
 import { getAllGRNItems, getAssignedCustomerGRNItems, withReceiptPages, type GRNFilters, type GRNListParams } from '@/services/grn-service';
 import { t } from '@/i18n';
-import { backendHasFeature } from '@/config/backendFeatures';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, readSearch } from '../filterModel';
 import { customerSource, itemSource } from '../pickerSources';
@@ -83,7 +82,7 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
       get label() { return t('reports.filters.invoicing'); },
       icon: 'receipt-text-outline',
       defaultValue: 'all',
-      visibleTo: ctx => ctx.isWarehouseRole && backendHasFeature('grnInvoiceFilter'),
+      visibleTo: ctx => ctx.isWarehouseRole && ctx.grnInvoiceFilter === true,
       options: [
         { value: 'all', get label() { return t('common.all'); } },
         { value: 'invoiced', get label() { return t('charging.invoiceState.invoiced'); } },
@@ -118,7 +117,7 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
       filters.stock_status = values.stock as GRNFilters['stock_status'];
     }
     // Hidden filters send nothing: an older backend would ignore the key and show every GRN.
-    if (ctx.isWarehouseRole && backendHasFeature('grnInvoiceFilter')) {
+    if (ctx.isWarehouseRole && ctx.grnInvoiceFilter === true) {
       if (values.invoicing === 'invoiced') filters.invoiced = true;
       else if (values.invoicing === 'not_invoiced') filters.invoiced = false;
       else if (values.invoicing === 'partly_invoiced') filters.invoiced = 'partly_invoiced';
