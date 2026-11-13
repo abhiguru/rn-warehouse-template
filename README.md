@@ -5,7 +5,11 @@ Open-source React Native warehouse client built with Expo SDK 58 / React Native
 companion backend, [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template),
 through that installation's canonical HTTPS origin. MIT licensed.
 
+Built for cold storages in India: people sign in with +91 phone numbers and MSG91 SMS codes, amounts are in rupees with GST, and dates and times are India time. Use in another country is not supported yet.
+
 ## What this release is for
+
+Built for cold storages in India: people sign in with +91 phone numbers and MSG91 SMS codes, amounts are in rupees with GST, and dates and times are India time. Use in another country is not supported yet.
 
 For cold storages, used on Android and iPhone phones. Each facility runs its own server.
 
