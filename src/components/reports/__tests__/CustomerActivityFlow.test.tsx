@@ -21,6 +21,7 @@ import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service'
 import { showAlert } from '@/utils/alert';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
+import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatures';
 import CustomerActivityScreen from '../../../../app/reports/customer-activity';
 import type { RecentDispatchPreview, RecentGRNPreview, StockItemPreview } from '@/types/report.types';
 
@@ -58,6 +59,7 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
 jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Riverside', companyName: 'Riverside Cold Storage' }),
+  onOperatorServerChange: () => () => {},
 }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
@@ -171,6 +173,8 @@ beforeEach(() => {
     doNotFake: ['hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
   });
   forgetQueries();
+  // The backend has payments (migration 172): the paid figures need the release as well as the setting.
+  setFacilityRelease({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }, { schemaHead: '00000000000172_record_payments' });
   jest.clearAllMocks();
   resetReportExportAvailability();
   sharePdf.mockResolvedValue({ success: true });
@@ -182,6 +186,7 @@ afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
   resetFacilityCapabilities();
+  resetFacilityRelease();
 });
 
 const textOf = (node: TestRenderer.ReactTestInstance) => [node.props.children].flat().join('');

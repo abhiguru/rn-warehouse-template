@@ -22,6 +22,7 @@ import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service'
 import { invoicePaymentStatus } from '@/components/reports/invoicePaymentStatus';
 import { setLanguage } from '@/i18n';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
+import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatures';
 import { getAllInvoiceHistory, getCustomerInvoiceHistory } from '@/services/reporting/invoice-history-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
@@ -82,6 +83,7 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
 jest.mock('@/config/operatorServer', () => ({
   getActiveOperatorServer: () => ({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }),
+  onOperatorServerChange: () => () => {},
 }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
 jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
@@ -279,6 +281,8 @@ beforeEach(() => {
   mockTableWindow = { width: 1000, scale: 1 };
   // The facility records payments (capability `payments`); the tests of a facility without them turn it off.
   setFacilityCapabilities({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }, { payments: true });
+  // The backend has payments (migration 172): the Payment choice and the paid figures need the release as well as the setting.
+  setFacilityRelease({ origin: 'https://warehouse.example.test', instanceId: 'instance-a' }, { schemaHead: '00000000000172_record_payments' });
   allHistory.mockImplementation(async ({ fromDate }) => answerCustomers(fromDate < '2026-06-15' ? [...CUSTOMERS, OLD_MILL] : CUSTOMERS) as never);
   customerHistory.mockResolvedValue(answerInvoices as never);
   resetReportExportAvailability();
@@ -287,6 +291,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   resetFacilityCapabilities();
+  resetFacilityRelease();
   jest.useRealTimers();
   setLanguage('en');
 });
