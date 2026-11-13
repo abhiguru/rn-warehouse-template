@@ -500,8 +500,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     // Counted by the connection history when a gap is open (WH-177).
     noteSavePressed();
 
-    const isValid = await validateFormData();
-    if (!isValid) return;
+    // WH-180: an imported GRN is saved for its rates only. Its details, photos and items are not checked or sent
+    // as changes (the server accepts the save only when they equal what is stored); every rate check below stays.
+    if (!grnImported) {
+      const isValid = await validateFormData();
+      if (!isValid) return;
+    }
 
     // Every line needs a rate before the GRN is saved (and the rates must be known).
     if (canSetRates && stored.status !== 'ready') {
@@ -516,28 +520,30 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       return;
     }
 
-    // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
-    // photo still being prepared holds the save; one that could not be prepared has to go.
-    const photoState = unpreparedGRNPhotos(header.gr_images || [], items.map((item) => ({ images: item.trl_images })));
-    if (photoState === 'preparing') {
-      showAlert(tr('grn.review.photosPreparingTitle'), tr('grn.review.photosPreparingMessage'));
-      return;
-    }
-    if (photoState === 'failed') {
-      showAlert(tr('grn.review.photoNotPreparedTitle'), tr('grn.review.photoNotPreparedMessage'));
-      return;
-    }
+    if (!grnImported) {
+      // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
+      // photo still being prepared holds the save; one that could not be prepared has to go.
+      const photoState = unpreparedGRNPhotos(header.gr_images || [], items.map((item) => ({ images: item.trl_images })));
+      if (photoState === 'preparing') {
+        showAlert(tr('grn.review.photosPreparingTitle'), tr('grn.review.photosPreparingMessage'));
+        return;
+      }
+      if (photoState === 'failed') {
+        showAlert(tr('grn.review.photoNotPreparedTitle'), tr('grn.review.photoNotPreparedMessage'));
+        return;
+      }
 
-    if (!header.gr_images || header.gr_images.length === 0) {
-      showAlert(
-        tr('grn.review.photoRequiredTitle'),
-        tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
-      );
-      return;
+      if (!header.gr_images || header.gr_images.length === 0) {
+        showAlert(
+          tr('grn.review.photoRequiredTitle'),
+          tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
+        );
+        return;
+      }
     }
 
     // An edit asks the server again which orders it changes, so the question names what is true now.
-    if (!isCreateMode) await refreshOrderEffects();
+    if (!isCreateMode && !grnImported) await refreshOrderEffects();
 
     // Show custom confirm dialog (dark mode compliant)
     setShowConfirmDialog(true);
@@ -1100,7 +1106,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // tapped. An older server has no preview: null, and the question is asked as it always was.
   const effectsGrnId = Array.isArray(id) ? id[0] : id || grnId;
   const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
-    !isCreateMode && !!effectsGrnId && items.length > 0,
+    !isCreateMode && !grnImported && !!effectsGrnId && items.length > 0,
     JSON.stringify([header.customer_id, header.date, items.map((item) => [item.grn_trl_id, item.item_table_id, item.qty, item.stock])]),
     () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest(), removedImages).rpcRequest)
   );
@@ -1383,7 +1389,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             </ReviewKeyValues>
           </ReviewSection>
 
-          {/* GRN photos */}
+          {/* GRN photos (none on an imported GRN: its photos cannot change) */}
+          {!grnImported && (
           <ReviewSection
             id="photos"
             testIDPrefix="grn-review"
@@ -1451,6 +1458,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               )}
             </View>
           </ReviewSection>
+          )}
 
           {/* Items */}
           <ReviewSection
