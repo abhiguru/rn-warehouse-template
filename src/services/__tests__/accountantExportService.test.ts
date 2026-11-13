@@ -1,6 +1,6 @@
 /**
  * WH-158 (contract sections 3 and 7): src/services/accountantExportService.ts: getAccountantLedgers and setAccountantLedgers call
- * get_accountant_ledgers and set_accountant_ledgers (migration 200). The real service runs, with only the server's reply faked.
+ * get_accountant_ledgers and set_accountant_ledgers (migration 203). The real service runs, with only the server's reply faked.
  * Written BEFORE the build: fails today because the module does not exist.
  */
 import { getAccountantLedgers, setAccountantLedgers } from '../accountantExportService';

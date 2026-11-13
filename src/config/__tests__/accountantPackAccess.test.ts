@@ -1,6 +1,6 @@
 /**
  * WH-158 (contract section 7): who is offered the accountant pack and the Accountant export screen, the routes that guard them, the
- * backend gate (migration 201, the one that adds get_accountant_pack), and Settings > Warehouse tools. Written BEFORE the build:
+ * backend gate (migration 204, the one that adds get_accountant_pack), and Settings > Warehouse tools. Written BEFORE the build:
  * fails today because none of it exists.
  */
 import { backendHasFeature, resetFacilityRelease, setFacilityRelease } from '../backendFeatures';
@@ -36,10 +36,12 @@ it('Settings > Warehouse tools lists accountantExport for administrators only, r
   for (const role of ['supervisor', 'staff', 'customer']) expect(settingsFeatureRows(role) as string[]).not.toContain('accountantExport');
 });
 
-it('the gate accountantPack starts at migration 201 (get_accountant_pack), not 200', () => {
-  setFacilityRelease(one, { schemaHead: '00000000000200_accountant_export_settings' });
+it('the gate accountantPack starts at migration 204 (get_accountant_pack), not 203', () => {
+  setFacilityRelease(one, { schemaHead: '00000000000202_grn_items_invoice_filter' });
   expect(backendHasFeature('accountantPack' as never)).toBe(false);
-  setFacilityRelease(one, { schemaHead: '00000000000201_accountant_pack_read' });
+  setFacilityRelease(one, { schemaHead: '00000000000203_accountant_export_settings' });
+  expect(backendHasFeature('accountantPack' as never)).toBe(false);
+  setFacilityRelease(one, { schemaHead: '00000000000204_accountant_pack_read' });
   expect(backendHasFeature('accountantPack' as never)).toBe(true);
   setFacilityRelease(one, { schemaHead: '00000000000199_facility_details' });
   expect(backendHasFeature('accountantPack' as never)).toBe(false);
