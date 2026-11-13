@@ -236,7 +236,7 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
       facilities: [
         entry('north-cold', 'North Cold Store', 'Rajkot', { origin: NORTH, online: true }),
         entry('east-cold', 'East Cold Store', 'Morbi', { online: false }),
-        entry('gcsa-024', 'Fictional Sabar Cold', 'Himmatnagar', { district: 'Sabarkantha', origin: null }),
+        entry('sample-024', 'Fictional Sabar Cold', 'Himmatnagar', { district: 'Sabarkantha', origin: null }),
       ],
     });
     await render(<FacilityCatalogueScreen />, brand, mode);
@@ -251,7 +251,7 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
         .find(style => style?.backgroundColor)?.backgroundColor;
     expect(tagBackground('north-cold')).toBe(t.status.positive.background);
     expect(tagBackground('east-cold')).toBe(t.status.negative.background);
-    expect(tagBackground('gcsa-024')).toBe(t.status.neutral.background);
+    expect(tagBackground('sample-024')).toBe(t.status.neutral.background);
     // Greyed with the secondary tokens, never with opacity.
     const styleOf = (text: string) =>
       Object.assign({}, ...[].concat(tree!.root.find(node => (node.type as unknown) === 'Text' && node.props.children === text).props.style).flat(3).filter(Boolean)) as {
@@ -261,7 +261,7 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
     expect(styleOf('Fictional Sabar Cold').color).toBe(t.text.secondary);
     expect(styleOf('North Cold Store').color).toBe(t.text.primary);
     expect(styleOf('Fictional Sabar Cold').opacity).toBeUndefined();
-    expect(byTestID('catalogue-gcsa-024').findAll(node => node.props.name === 'office-building-outline')[0].props.color).toBe(t.icon.secondary);
+    expect(byTestID('catalogue-sample-024').findAll(node => node.props.name === 'office-building-outline')[0].props.color).toBe(t.icon.secondary);
     expect(hasBackground(t.background.base)).toBe(true);
   });
 
@@ -677,7 +677,7 @@ describe('Add facility', () => {
    */
   const live = () => [
     entry('review-south', 'Review South Cold Storage', 'Dehgam', { district: 'Gandhinagar', online: true }),
-    entry('gcsa-024', 'Fictional Sabar Cold', 'Himmatnagar', { district: 'Sabarkantha', origin: null }),
+    entry('sample-024', 'Fictional Sabar Cold', 'Himmatnagar', { district: 'Sabarkantha', origin: null }),
     entry('riverbank', 'Riverbank Cold', 'Jamnagar', { district: 'Jamnagar', online: false }),
     entry('review-north', 'Review North Cold Storage', 'Deesa', { district: 'Banaskantha', online: false, lastSeenAt: minutesAgo(5) }),
     entry('north-cold', 'North Cold Store', 'Rajkot', { origin: NORTH, online: true }),
@@ -775,7 +775,7 @@ describe('Add facility', () => {
     expect(tagOf('review-south')).toBe('Online');
     expect(tagOf('review-north')).toBe('Offline');
     expect(tagOf('riverbank')).toBe('Offline');
-    expect(tagOf('gcsa-024')).toBe('No app server yet');
+    expect(tagOf('sample-024')).toBe('No app server yet');
     expect(tagOf('gondal-agro')).toBeNull();
     // One StatusTag per row that reports something, and no other tag.
     expect(tree!.root.findAllByType(StatusTag)).toHaveLength(5);
@@ -799,7 +799,7 @@ describe('Add facility', () => {
   it('a member with no app server yet only explains why it cannot be added', async () => {
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
     await render(<FacilityCatalogueScreen />);
-    const row = byTestID('catalogue-gcsa-024');
+    const row = byTestID('catalogue-sample-024');
     expect(row.props.accessibilityLabel).toBe('Fictional Sabar Cold, Himmatnagar, Sabarkantha, No app server yet');
     expect(row.props.accessibilityHint).toBe("Explains why this cold storage can't be added yet");
     // An information icon in place of the chevron.

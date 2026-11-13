@@ -1,9 +1,12 @@
 /**
- * Invoice Review step in the four themes (Orange and GCSA, light and dark), for a new invoice and for an edit: the
+ * Invoice Review step in the four themes (Orange and the sample brand, light and dark), for a new invoice and for an edit: the
  * card sits on surface.card with the table outline, the bottom bar is the shared one, and there is exactly one
  * filled (brand.fill) button on the screen.
  */
 import React from 'react';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { StyleSheet, Text, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens } from '@/theme/tokens';

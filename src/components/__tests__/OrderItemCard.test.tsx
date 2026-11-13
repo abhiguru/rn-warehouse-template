@@ -1,4 +1,7 @@
 import React from 'react';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { Text } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import OrderItemCard from '../OrderItemCard';
@@ -223,8 +226,8 @@ describe('removing the line', () => {
 it.each([
   ['orange', 'light'],
   ['orange', 'dark'],
-  ['gcsa', 'light'],
-  ['gcsa', 'dark'],
+  [SAMPLE_BRAND, 'light'],
+  [SAMPLE_BRAND, 'dark'],
 ] as const)('renders on themed surfaces in %s %s', async (brand, mode) => {
   mockTheme = { preference: mode, brand };
   const tokens = getTokens(brand, mode);

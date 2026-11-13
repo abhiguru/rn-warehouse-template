@@ -1,4 +1,7 @@
 import React from 'react';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
@@ -72,7 +75,7 @@ describe('InvoiceSuccessDialog', () => {
   });
 
   it('uses update wording in edit mode and hides the redundant "another" action', () => {
-    const text = allText(renderIn('gcsa', 'dark', true));
+    const text = allText(renderIn(SAMPLE_BRAND, 'dark', true));
     expect(text).toContain('Invoice updated');
     expect(text).toContain('View invoice');
     expect(text).not.toContain('View invoices');

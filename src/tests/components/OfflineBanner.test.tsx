@@ -23,6 +23,8 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 24, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+// The theme reads the build's brand pack from expo-constants (WH-141); this test replaces react-native wholesale, so give it a plain config.
+jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
 jest.mock('react-native', () => {
   const React = require('react');
   const element = (name: string) => ({ children, ...props }: Record<string, unknown>) =>

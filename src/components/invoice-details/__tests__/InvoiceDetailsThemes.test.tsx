@@ -1,4 +1,7 @@
 import React from 'react';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { Text } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { InvoiceHeroHeader } from '../InvoiceHeroHeader';
@@ -20,8 +23,8 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 const THEMES = [
   ['orange', 'light'],
   ['orange', 'dark'],
-  ['gcsa', 'light'],
-  ['gcsa', 'dark'],
+  [SAMPLE_BRAND, 'light'],
+  [SAMPLE_BRAND, 'dark'],
 ] as const;
 
 const texts = (renderer: ReactTestRenderer) =>

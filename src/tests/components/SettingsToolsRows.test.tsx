@@ -11,6 +11,10 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import SettingsScreen from '../../../app/settings';
 import { setLanguage } from '@/i18n';
 import { router } from 'expo-router';
+import { registerBrandPack, type BrandPack } from '@/theme/brandPack';
+
+// The fictional sample pack stands in for an organisation's own brand (WH-141).
+registerBrandPack(require('../../../brand-packs/sample-teal/brand.json') as BrandPack);
 
 let mockState: Record<string, unknown>;
 jest.mock('@/store/hooks', () => ({
@@ -49,7 +53,7 @@ beforeEach(async () => {
   mockServer = null;
   mockHasNumbering = true;
   mockState = {
-    theme: { preference: 'dark', brand: 'gcsa', language: 'en' },
+    theme: { preference: 'dark', brand: 'sample-teal', language: 'en' },
     auth: { userProfile: { id: 'u1', name: 'Asha Fictional', role: 'admin', mobile: '919000000001' } },
   };
 });
@@ -103,9 +107,9 @@ describe('Document numbers row (WS-8)', () => {
 });
 
 describe('App colours (G-45)', () => {
-  it('the Preferences row reads "App colours, GCSA navy"', async () => {
+  it('the Preferences row reads "App colours, Sample teal"', async () => {
     await render();
-    expect(byTestId('settings-pref-brand').props.accessibilityLabel).toBe('App colours, GCSA navy');
+    expect(byTestId('settings-pref-brand').props.accessibilityLabel).toBe('App colours, Sample teal');
   });
 });
 

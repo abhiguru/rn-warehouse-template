@@ -1,8 +1,11 @@
 /**
  * Render tests for the report and sensor screens in all four themes
- * (Orange and GCSA, light and dark). Services are mocked.
+ * (Orange and the sample brand, light and dark). Services are mocked.
  */
 import React from 'react';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { act, create, ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
 import { StyleSheet } from 'react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';

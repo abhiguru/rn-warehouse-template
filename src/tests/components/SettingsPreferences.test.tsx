@@ -14,9 +14,13 @@ import SettingsScreen from '../../../app/settings';
 import themeReducer from '@/store/slices/themeSlice';
 import { setLanguage } from '@/i18n';
 import { SectionHeader } from '@/components/ui/SectionHeader';
+import { registerBrandPack, type BrandPack } from '@/theme/brandPack';
+
+// The fictional sample pack stands in for an organisation's own brand (WH-141): this build has two brands.
+registerBrandPack(require('../../../brand-packs/sample-teal/brand.json') as BrandPack);
 
 type MockState = {
-  theme: { preference: 'system' | 'light' | 'dark'; brand: 'orange' | 'gcsa'; language: 'system' | 'en' | 'gu' };
+  theme: { preference: 'system' | 'light' | 'dark'; brand: 'orange' | 'sample-teal'; language: 'system' | 'en' | 'gu' };
   auth: { userProfile: { id: string; name: string; role: string; mobile: string } };
 };
 let mockState: MockState;
@@ -84,7 +88,7 @@ const radios = (sheet: string) => {
 const checked = (sheet: string) => radios(sheet).filter(node => node.props.accessibilityState?.checked).map(node => node.props.accessibilityLabel);
 const signedInAs = (role: string) => {
   mockState = {
-    theme: { preference: 'dark', brand: 'gcsa', language: 'en' },
+    theme: { preference: 'dark', brand: 'sample-teal', language: 'en' },
     auth: { userProfile: { id: 'u1', name: 'Asha Fictional', role, mobile: '919000000001' } },
   };
 };
@@ -168,7 +172,7 @@ describe('Preferences rows', () => {
     await render();
     expect(row('settings-pref-appearance').props.accessibilityLabel).toBe('Appearance, Dark');
     expect(row('settings-pref-language').props.accessibilityLabel).toBe('Language on this phone, English');
-    expect(row('settings-pref-brand').props.accessibilityLabel).toBe('App colours, GCSA navy');
+    expect(row('settings-pref-brand').props.accessibilityLabel).toBe('App colours, Sample teal');
     // No sheet is open, and the old cards are gone.
     expect(tree!.root.findAll(node => node.props.accessibilityRole === 'radio')).toHaveLength(0);
   });
@@ -190,7 +194,7 @@ describe('Preferences rows', () => {
   it('Brand: the swatches lead the row, and a choice applies at once', async () => {
     await render();
     await press(row('settings-pref-brand'));
-    expect(checked('settings-sheet-brand')).toEqual(['GCSA navy colours']);
+    expect(checked('settings-sheet-brand')).toEqual(['Sample teal colours']);
     await press(radios('settings-sheet-brand')[0]);
     expect(mockDispatch).toHaveBeenCalledWith({ type: 'theme/setBrand', payload: 'orange' });
     expect(checked('settings-sheet-brand')).toEqual(['Orange colours']);
