@@ -11,7 +11,8 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { ASSOCIATION_NAME, LEGAL_UPDATED, legalParty } from '@/constants/legal';
+import { isAssociationLegalText, legalParty, legalProvider, legalUpdatedLabel } from '@/constants/legal';
+import { TemplateLegalScreen } from '@/legal/TemplateLegalScreen';
 import {
   fontWeight,
   layout,
@@ -73,11 +74,20 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
+/**
+ * The page a build shows (WH-140): the facility template, or the Association's own text for the association's
+ * build (EXPO_PUBLIC_LEGAL_TEXT=association). The template is not lawyer-reviewed: see LEGAL_TEXT_REVIEWED.
+ */
 export default function TermsOfServiceScreen() {
+  return isAssociationLegalText() ? <AssociationTermsScreen /> : <TemplateLegalScreen kind="terms" />;
+}
+
+function AssociationTermsScreen() {
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const party = legalParty();
+  const provider = legalProvider();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -106,22 +116,21 @@ export default function TermsOfServiceScreen() {
       >
         <View style={styles.content}>
           {/* Header */}
-          <Text style={styles.lastUpdated}>Last updated: {LEGAL_UPDATED}</Text>
+          <Text style={styles.lastUpdated}>Last updated: {legalUpdatedLabel()}</Text>
 
           <Paragraph>
             Welcome to the App. These Terms of service are an agreement
-            between you and {party.inline}. The {ASSOCIATION_NAME} (the
-            "Association") provides this App to its member cold storages. Each
-            member cold storage runs its own server and is the party you deal
-            with. By using the App you agree to be bound by these Terms.
+            between you and {party.inline}.{' '}
+            {provider
+              ? `${provider.definition} provides this App to its member cold storages. Each member cold storage runs its own server and is the party you deal with.`
+              : 'The cold storage runs its own server and is the party you deal with.'} By using the App you agree to be bound by these Terms.
           </Paragraph>
 
           {/* Section 1 */}
           <Section title="1. Who provides what">
             <Paragraph>
               {party.leading} keeps your records on its own server and decides
-              who may use them. The Association provides the App and does not
-              hold the cold storage's records.
+              who may use them.{provider ? ` The ${provider.term} provides the App and does not hold the cold storage's records.` : ''}
             </Paragraph>
             {party.email ? <Paragraph>Email: {party.email}</Paragraph> : null}
           </Section>
@@ -249,7 +258,7 @@ export default function TermsOfServiceScreen() {
             <Paragraph>
               All Content on the App, including but not limited to text,
               graphics, logos, images, software, and other material, is the
-              property of the Association, {party.inline} or their licensors and
+              property of {provider ? `the ${provider.term}, ` : ''}{party.inline} or their licensors and
               is protected by Indian and international intellectual property
               laws.
             </Paragraph>
@@ -289,8 +298,8 @@ export default function TermsOfServiceScreen() {
           {/* Section 14 */}
           <Section title="14. Limitation of liability">
             <Paragraph>
-              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The
-              Association, {party.inline}, and their directors, officers,
+              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW:{' '}
+              {provider ? `The ${provider.term}, ${party.inline}, and their` : `${party.inline} and its`} directors, officers,
               employees, agents, and affiliates shall not be liable for any
               indirect, incidental, special, consequential, or punitive damages
               arising out of or related to your use of the App or services.
@@ -300,8 +309,8 @@ export default function TermsOfServiceScreen() {
           {/* Section 15 */}
           <Section title="15. Indemnification">
             <Paragraph>
-              You agree to indemnify, defend, and hold harmless the Association
-              and {party.inline}, their directors, officers, employees, agents,
+              You agree to indemnify, defend, and hold harmless{' '}
+              {provider ? `the ${provider.term} and ` : ''}{party.inline}, their directors, officers, employees, agents,
               affiliates, and licensors from any claims, liabilities, damages,
               losses, costs, or expenses arising out of your use of the App or
               violation of these Terms.
@@ -311,7 +320,7 @@ export default function TermsOfServiceScreen() {
           {/* Section 16 */}
           <Section title="16. Force majeure">
             <Paragraph>
-              Neither the Association nor the cold storage shall be liable for
+              Neither {provider ? `the ${provider.term} nor ` : ''}the cold storage shall be liable for
               any failure or delay in performance due to circumstances beyond
               its reasonable control, including acts of God, natural disasters,
               war, terrorism, pandemics, or government actions.

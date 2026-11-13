@@ -1,4 +1,4 @@
-/** English text: auth. English is the source; src/i18n/locales/gu/auth.ts must have the same keys. */
+/** English text: auth. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const auth = {
   signIn: 'Sign in',
   // The switch on the screens shown before signing in
@@ -7,7 +7,6 @@ export const auth = {
   },
   brand: {
     logoLabel: '{{name}} logo',
-    associationCaption: 'COLD STORAGE ASSOCIATION',
   },
   legal: {
     // {{terms}} and {{privacy}} are replaced by the two links below.

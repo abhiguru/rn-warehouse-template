@@ -1,6 +1,7 @@
 // Optional native identity for an isolated operator test installation.
 // Defaults remain in app.json; no credentials belong in these variables.
 const { withAndroidManifest } = require('expo/config-plugins');
+const { loadBrandPack, checkLegalText } = require('./brand-packs/loadBrandPack.cjs');
 
 // expo-application's Android module brings Google Play's install-referrer library, which
 // asks for this permission. A self-hosted facility app never reads the Play install
@@ -43,8 +44,13 @@ module.exports = ({ config }) => {
   if (code && (!/^\d+$/.test(code) || Number(code) < 1 || Number(code) > 2100000000)) {
     throw new Error('WAREHOUSE_ANDROID_VERSION_CODE must be an integer from 1 to 2100000000.');
   }
+  // Optional brand pack (brand-packs/README.md): checked here, so a bad pack stops the build.
+  const brandPackDir = process.env.WAREHOUSE_BRAND_PACK;
+  const brandPack = brandPackDir ? loadBrandPack(brandPackDir) : null;
+  checkLegalText(process.env.EXPO_PUBLIC_LEGAL_TEXT, brandPack);
   return {
     ...config,
+    extra: { ...config.extra, ...(brandPack ? { brandPack } : {}) },
     ...(name ? { name } : {}),
     ...(scheme ? { scheme } : {}),
     android: {

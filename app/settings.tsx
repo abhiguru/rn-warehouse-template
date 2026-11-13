@@ -16,7 +16,8 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import { useAppSelector } from '@/store/hooks';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
-import { LANGUAGES, getLanguage, resolveLanguage, t, type LanguagePreference, type TranslationKey } from '@/i18n';
+import { LANGUAGES, getLanguage, resolveLanguage, t, type AppLanguage, type LanguagePreference, type TranslationKey } from '@/i18n';
+import { getBrandPack, localized } from '@/theme/brandPack';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
@@ -61,11 +62,9 @@ const THEME_OPTIONS: {
   { value: 'dark', label: 'settings.appearance.dark', icon: 'weather-night' },
 ];
 
-/** Brand names by their stored value. */
-const BRAND_NAME_KEYS: Record<Brand, TranslationKey> = {
-  orange: 'settings.brand.orange',
-  gcsa: 'settings.brand.gcsa',
-};
+/** A brand's name in the app's language: Orange is in the translations, a pack's brand carries its own. */
+const brandName = (brand: Brand, language: AppLanguage): string =>
+  brand === 'orange' ? t('settings.brand.orange') : localized(getBrandPack(brand)?.name, language) || brand;
 
 const SettingsScreen: React.FC = () => {
   const { userProfile } = useAppSelector(state => state.auth);
@@ -102,6 +101,7 @@ const SettingsScreen: React.FC = () => {
     setLanguagePreference(next);
   };
 
+  const hasBrandChoice = BRANDS.length > 1;
   const brandSwatches = (option: Brand) => {
     const swatch = getTokens(option, resolvedMode);
     return (
@@ -260,15 +260,19 @@ const SettingsScreen: React.FC = () => {
             label={t('settings.language.rowLabel')}
             value={languageLabel}
             onPress={() => setSheet('language')}
+            last={!hasBrandChoice}
           />
-          <SettingsRow
-            testID="settings-pref-brand"
-            leading={brandSwatches(brand)}
-            label={t('settings.brand.title')}
-            value={t(BRAND_NAME_KEYS[brand])}
-            onPress={() => setSheet('brand')}
-            last
-          />
+          {/* Only a build with a second brand (a brand pack) offers a choice of colours. */}
+          {hasBrandChoice ? (
+            <SettingsRow
+              testID="settings-pref-brand"
+              leading={brandSwatches(brand)}
+              label={t('settings.brand.title')}
+              value={brandName(brand, language)}
+              onPress={() => setSheet('brand')}
+              last
+            />
+          ) : null}
         </SettingsSection>
 
         {/* Account */}
@@ -381,13 +385,13 @@ const SettingsScreen: React.FC = () => {
         ]}
       />
       <PreferenceSheet
-        visible={sheet === 'brand'}
+        visible={hasBrandChoice && sheet === 'brand'}
         testID="settings-sheet-brand"
         title={t('settings.brand.title')}
         options={BRANDS.map(option => ({
           value: option,
-          label: t(BRAND_NAME_KEYS[option]),
-          accessibilityLabel: t('settings.brand.optionLabel', { brand: t(BRAND_NAME_KEYS[option]) }),
+          label: brandName(option, language),
+          accessibilityLabel: t('settings.brand.optionLabel', { brand: brandName(option, language) }),
           leading: brandSwatches(option),
         }))}
         selected={brand}

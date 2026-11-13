@@ -1,4 +1,4 @@
-/** English text: pricing. English is the source; src/i18n/locales/gu/pricing.ts must have the same keys. */
+/** English text: pricing. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 import { pricingEdit } from './pricingEdit';
 
 export const pricing = {

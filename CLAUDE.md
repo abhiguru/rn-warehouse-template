@@ -9,7 +9,7 @@ To set the app up from scratch (an agent doing it for an operator), follow the R
 One mobile app that a cold-storage **owner**, their **staff** and their **clients** all use
 for orders, tracking, goods receipts (GRN), dispatch, invoices and stock.
 
-- It is meant to be launched by the **Gujarat Cold Storage Association (GCSA)** for its members.
+- It is meant to be launched by a **cold-storage association** for its members.
 - Every member **self-hosts the backend on premise**
   ([supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template));
   some owners run **several facilities**, each with its own backend.
@@ -103,7 +103,7 @@ facility access requests, and forced sign-out (`forceLogoutOnInvalidToken`).
 - UI follows [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md), the app's **only** style guide, as it
   stands on `main`, with its SAP Fiori-style components and theme (`src/components/fiori`, `src/theme`).
   Do not use older copies of it, Material Design 3 or Guru Cold Storage brand guidelines, or design
-  skills built on them. Support both theme axes: the Orange and GCSA brands, each in light and dark
+  skills built on them. Support both theme axes: the default brand and the sample brand (`brand-packs/sample-teal`), each in light and dark
   mode. Tables are TanStack tables drawn by `src/components/table/DataTable.tsx` (guide §13.7).
 - App changes that need a backend change list the matching backend migration in
   `CHANGELOG.md`; merge and deploy the backend first.

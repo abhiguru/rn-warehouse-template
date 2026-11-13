@@ -1,4 +1,4 @@
-/** English text: lists. English is the source; src/i18n/locales/gu/lists.ts must have the same keys. */
+/** English text: lists. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const lists = {
   loadingContent: 'Loading content',
   // A date or status section of a list: "Today, 3 dispatches"

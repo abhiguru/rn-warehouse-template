@@ -11,7 +11,8 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { ASSOCIATION_NAME, LEGAL_UPDATED, legalParty } from '@/constants/legal';
+import { isAssociationLegalText, legalParty, legalProvider, legalUpdatedLabel } from '@/constants/legal';
+import { TemplateLegalScreen } from '@/legal/TemplateLegalScreen';
 import {
   fontWeight,
   layout,
@@ -73,11 +74,20 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
+/**
+ * The page a build shows (WH-140): the facility template, or the Association's own text for the association's
+ * build (EXPO_PUBLIC_LEGAL_TEXT=association). The template is not lawyer-reviewed: see LEGAL_TEXT_REVIEWED.
+ */
 export default function PrivacyPolicyScreen() {
+  return isAssociationLegalText() ? <AssociationPrivacyScreen /> : <TemplateLegalScreen kind="privacy" />;
+}
+
+function AssociationPrivacyScreen() {
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const party = legalParty();
+  const provider = legalProvider();
   const ownServer = party.name
     ? `${party.name}'s own server`
     : 'the server of the cold storage you connected to';
@@ -109,14 +119,14 @@ export default function PrivacyPolicyScreen() {
       >
         <View style={styles.content}>
           {/* Header */}
-          <Text style={styles.lastUpdated}>Last updated: {LEGAL_UPDATED}</Text>
+          <Text style={styles.lastUpdated}>Last updated: {legalUpdatedLabel()}</Text>
 
           <Paragraph>
             {party.leading} ("we", "us", or "our") is responsible for the
-            records you enter in this mobile application (the "App"). The{' '}
-            {ASSOCIATION_NAME} (the "Association") provides the App to its
-            member cold storages; each member keeps its own records on its own
-            server. This Privacy Policy explains what we collect, where it is
+            records you enter in this mobile application (the "App").{' '}
+            {provider
+              ? `${provider.definition} provides the App to its member cold storages; each member keeps its own records on its own server.`
+              : 'The records are kept on its own server.'} This Privacy Policy explains what we collect, where it is
             kept, how we use it and who can see it.
           </Paragraph>
 
@@ -149,6 +159,7 @@ export default function PrivacyPolicyScreen() {
               items={[
                 'Your choices (language, light or dark, colours) and the address of your cold storage, kept on your phone only',
                 'Your signed-in session, kept in the phone\'s secure storage',
+                'Recent customers and items, form drafts, report answers and the last loaded list pages, kept until you sign out',
                 'Crash reports, if the organisation that distributes your copy of the App has switched them on: the App version, the phone model, your role, the text of the error and a short trail of what the App did just before it (such as requests made); phone numbers, codes and tokens are filtered out, but names and other words from your records may remain',
               ]}
             />
@@ -196,8 +207,9 @@ export default function PrivacyPolicyScreen() {
               ]}
             />
             <Paragraph>
-              Where your copy of the App uses the Association's sign-in, the
-              Association's sign-in keeps your mobile number and, if you enter
+              {provider
+                ? `Where your copy of the App uses the ${provider.term}'s sign-in, the ${provider.term}'s sign-in keeps`
+                : 'Where your copy of the App uses central sign-in, the central sign-in service keeps'} your mobile number and, if you enter
               it, your name. A cold storage sees that name when you ask it for
               access.
             </Paragraph>
@@ -226,8 +238,7 @@ export default function PrivacyPolicyScreen() {
           <Section title="4. Data storage and security">
             <Paragraph>
               Your records (customers, GRNs, dispatches, invoices and stock) are
-              stored on {ownServer}. They are not kept on a shared server of the
-              Association.
+              stored on {ownServer}. They are not kept on a shared server{provider ? ` of the ${provider.term}` : ''}.
             </Paragraph>
             <Paragraph>
               We use appropriate technical and organizational measures to
@@ -236,7 +247,7 @@ export default function PrivacyPolicyScreen() {
             </Paragraph>
             <BulletList
               items={[
-                'Encrypted connections (https) between the App and the server',
+                'Connections between the App and the server are encrypted over the internet. While the phone uses the warehouse network during an outage (if the cold storage offers it), they are not, and anyone on that Wi-Fi could read them',
                 'Sign-in with a one-time code sent to your mobile number',
                 'Access limited by role and customers, which the cold storage can remove at any time',
                 'Nothing the App stores on your phone is copied to your Google account by Android backup',

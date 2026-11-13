@@ -1,0 +1,27 @@
+{
+  "_sample": "A fictional sample brand pack for tests and for the style guide. It names no real organisation.",
+  "id": "sample-teal",
+  "name": { "en": "Sample teal", "gu": "નમૂનો ટીલ" },
+  "wordmark": ["SAMPLE"],
+  "caption": { "en": "SAMPLE COLD STORAGE", "gu": "નમૂનો કોલ્ડ સ્ટોરેજ" },
+  "light": {
+    "fill": "#00695C",
+    "onFill": "#FFFFFF",
+    "fillPressed": "#004D40",
+    "tint": "#00695C",
+    "subtle": "#E0F2F1",
+    "subtleStrong": "#B2DFDB",
+    "secondary": "#80CBC4",
+    "secondaryText": "#37474F"
+  },
+  "dark": {
+    "fill": "#4DB6AC",
+    "onFill": "#131E29",
+    "fillPressed": "#80CBC4",
+    "tint": "#4DB6AC",
+    "subtle": "#16312E",
+    "subtleStrong": "#1F4642",
+    "secondary": "#80CBC4",
+    "secondaryText": "#80CBC4"
+  }
+}

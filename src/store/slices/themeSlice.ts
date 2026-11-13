@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { ThemeMode } from '@/theme/tokens';
 import type { Brand } from '@/theme/tokens';
+import { isKnownBrand } from '@/theme/brandPack';
 import type { LanguagePreference } from '@/i18n/language';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -15,8 +16,9 @@ interface ThemeState {
 }
 
 /** Brand used until the user picks one; a build may set EXPO_PUBLIC_DEFAULT_BRAND. */
-export const DEFAULT_BRAND: Brand =
-  process.env.EXPO_PUBLIC_DEFAULT_BRAND === 'gcsa' ? 'gcsa' : 'orange';
+export const DEFAULT_BRAND: Brand = isKnownBrand(process.env.EXPO_PUBLIC_DEFAULT_BRAND)
+  ? process.env.EXPO_PUBLIC_DEFAULT_BRAND
+  : 'orange';
 
 const initialState: ThemeState = {
   preference: 'system', // Default to system preference
@@ -32,7 +34,7 @@ const themeSlice = createSlice({
       state.preference = action.payload;
     },
     setBrand: (state, action: PayloadAction<Brand>) => {
-      state.brand = action.payload === 'gcsa' ? 'gcsa' : 'orange';
+      state.brand = isKnownBrand(action.payload) ? action.payload : DEFAULT_BRAND;
     },
     setLanguagePreference: (state, action: PayloadAction<LanguagePreference>) => {
       state.language = action.payload === 'en' || action.payload === 'gu' ? action.payload : 'system';
@@ -46,9 +48,9 @@ export const { setThemePreference, setBrand, setLanguagePreference } = themeSlic
 export const selectLanguagePreference = (state: { theme: ThemeState }): LanguagePreference =>
   state.theme.language === 'en' || state.theme.language === 'gu' ? state.theme.language : 'system';
 
-/** Selected brand; persisted state from before brands existed falls back to the default. */
+/** Selected brand; a saved brand this build does not have (or none) falls back to the default. */
 export const selectBrand = (state: { theme: ThemeState }): Brand =>
-  state.theme.brand === 'gcsa' || state.theme.brand === 'orange' ? state.theme.brand : DEFAULT_BRAND;
+  isKnownBrand(state.theme.brand) ? state.theme.brand : DEFAULT_BRAND;
 
 /**
  * Selector to get the theme preference

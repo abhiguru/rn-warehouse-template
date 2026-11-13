@@ -100,35 +100,5 @@ export const orange = {
   secondary: '#F6C624', // decorative only
 } as const;
 
-/** GCSA navy, sampled from the association's official logo (#2E3192). */
-export const gcsaNavy = {
-  50: '#EEEFFA',
-  100: '#D6D7F2',
-  200: '#B3B5E8',
-  300: '#9DA0F0', // dark-mode fill and tint
-  400: '#7175D6',
-  500: '#4A4EBF',
-  600: '#2E3192', // light-mode fill, text and icons
-  700: '#262879',
-  800: '#1E1F60',
-  900: '#161747',
-  darkSubtle: '#23254F',
-  darkSubtleStrong: '#2D3066',
-} as const;
-
-/** GCSA grey, sampled from the association's official logo (#A7A9AC). */
-export const gcsaGrey = {
-  50: '#F4F4F5',
-  100: '#E6E7E8',
-  200: '#CFD0D2',
-  300: '#B9BBBD',
-  400: '#A7A9AC', // the logo grey: borders and decoration on light, text on dark
-  500: '#8C8F93',
-  600: '#6E7175',
-  700: '#5C5F63', // text on light (6.42:1 on white)
-  800: '#3F4245',
-  900: '#26282A',
-} as const;
-
 /** Ink used for text on bright fills (Horizon sapTextColor). */
 export const ink = '#131E29';

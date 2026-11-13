@@ -1,5 +1,13 @@
 # Open-source release checklist
 
+## Before making the app public (WH-140)
+
+- [ ] The owner's lawyer has reviewed the terms and privacy text, the review and its date are recorded in the WH-140 spec, the
+  reviewed text has replaced the template in `src/legal/templateText.ts` (new `LEGAL_UPDATED` date, same value as `TERMS_VERSION`
+  in `src/config/envConfig.ts`), and `LEGAL_TEXT_REVIEWED` in `src/constants/legal.ts` is `true`.
+  Release tags are not gated. The release workflow attaches the APK only while it is `true` (the `release.yml` step on the neutral-build branch), and `npm run check:legal` shows the same check.
+- [ ] The backend facility has real legal values (`node scripts/doctor.mjs` in the backend shows no legal warning).
+
 ## Post-release local-readiness follow-up — 2026-09-22
 
 - [x] Build a fresh Android development APK and audit archive paths, embedded

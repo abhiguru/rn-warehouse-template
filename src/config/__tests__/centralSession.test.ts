@@ -860,12 +860,12 @@ describe('catalogue', () => {
 
   it('keeps a member with no app server yet (origin null), and reports nothing about its availability', () => {
     const member = {
-      id: 'gcsa-024', name: 'Fictional Sabar Cold', city: 'Himmatnagar', town: 'Himmatnagar', district: 'Sabarkantha',
+      id: 'sample-024', name: 'Fictional Sabar Cold', city: 'Himmatnagar', town: 'Himmatnagar', district: 'Sabarkantha',
       origin: null, operator: 'Fictional Operator', online: true, last_seen_at: null,
     };
     expect(readOne(member)).toEqual([
       {
-        id: 'gcsa-024', name: 'Fictional Sabar Cold', city: 'Himmatnagar', town: 'Himmatnagar', district: 'Sabarkantha',
+        id: 'sample-024', name: 'Fictional Sabar Cold', city: 'Himmatnagar', town: 'Himmatnagar', district: 'Sabarkantha',
         origin: null, operator: 'Fictional Operator', online: null, lastSeenAt: null,
       },
     ]);
@@ -893,12 +893,12 @@ describe('catalogue', () => {
   });
 
   it('keeps the first of two entries with the same id, also when neither has an address', () => {
-    const member = { id: 'gcsa-001', name: 'First', city: 'Jamnagar', origin: null, operator: '' };
+    const member = { id: 'sample-001', name: 'First', city: 'Jamnagar', origin: null, operator: '' };
     const token = catalogue({
       facilities: [
         member,
         { ...member, name: 'Second' },
-        { ...facilities[0], id: 'gcsa-001', name: 'Third' },
+        { ...facilities[0], id: 'sample-001', name: 'Third' },
         facilities[1],
       ],
     });

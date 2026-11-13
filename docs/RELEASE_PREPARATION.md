@@ -19,6 +19,50 @@ The `versionCode` formula leaves two digits for MINOR and for PATCH: from MINOR 
 Move to a new MAJOR (or change the formula in `app.config.js` and the test together) before that. `WAREHOUSE_ANDROID_VERSION_CODE`
 overrides the formula at build time; leave it unset, or keep it equal to the formula, so the code in the store follows the version.
 
+## Gujarati texts before a release
+
+Contributors may add English-only texts. Before a release, no English text may lack a Gujarati draft: add the drafts from
+[GUJARATI_GLOSSARY.md](GUJARATI_GLOSSARY.md). Run `npm run i18n:release-check`: it lists every English key without Gujarati and fails while any is missing, and it passes once the drafts are added. `release.yml` runs it with the other checks.
+
+### Gujarati review before going public
+
+Gujarati drafts are fine for daily use and for tags. Before the app goes public, a native speaker reviews every Gujarati text once; only going public is gated, not a tag.
+
+1. `npm run i18n:review-sheet` writes `gujarati-review-<date>/Texts.csv` (key, screen, English, Gujarati draft, empty "Reviewer's Gujarati" and "Comment") and `Glossary.csv`. Texts are sorted by screen. Open them in a spreadsheet (UTF-8); the reviewer fills "Reviewer's Gujarati" only where the draft should change, and writes a comment where a question or a note is needed, then saves as CSV UTF-8.
+2. `npm run i18n:review-apply -- <folder>` applies the returned files (`--dry-run` first). It writes changes into `src/i18n/locales/gu`, refuses a row whose `{{placeholders}}` differ from the English or whose draft changed since the list was made, lists comment-only rows for Product (they stay unreviewed), marks the glossary rows "Reviewed (date)" and records the reviewed texts in `docs/GUJARATI_REVIEWED.json`. Run the text tests and commit it as one batch.
+3. `npm run i18n:public-check` fails while any Gujarati text is unreviewed, including a text added or edited after the review; run it before going public. `npm run i18n:release-check` (the tag check) only reports the count.
+
+## Neutral APK
+
+Each `vX.Y.Z` tag publishes a neutral Android APK for facilities outside the association (package
+`in.gurucold.coldstorage`, name "Cold Storage", central sign-in off, version code from the tag). The association's
+Play build is built separately and is unchanged. `release.yml` builds the APK without any key, then the job `sign`
+waits for the owner's approval in the protected environment `neutral-apk-release`, signs the file with `apksigner`,
+checks that the certificate is the pinned one, and uploads `warehouse-vX.Y.Z.apk` and `SHA256SUMS` to the tag's
+release. If the build fails the release is not created; if the approval is rejected or signing fails, the release
+says that no APK was published. The build is marked neutral by `EXPO_PUBLIC_UPDATE_URL` (the latest-release page),
+which also makes **Update app** open that page ("Opens the download page").
+
+One-time setup by the owner (the key and the secrets are never handled by development):
+
+- Create the key and keep it, with its passwords, offline in a second place too. Never replace it: a different key
+  cannot be installed over the old app.
+  `keytool -genkeypair -v -keystore neutral.jks -alias neutral -keyalg RSA -keysize 4096 -validity 10000`
+- Settings, Environments: create `neutral-apk-release`, add the owner as required reviewer, restrict deployment to
+  tags `v*`.
+- In that environment, add the secrets `NEUTRAL_APK_KEYSTORE_BASE64` (`base64 -w0 neutral.jks`),
+  `NEUTRAL_APK_KEYSTORE_PASSWORD`, `NEUTRAL_APK_KEY_ALIAS` and `NEUTRAL_APK_KEY_PASSWORD`, and the (not secret)
+  variable `NEUTRAL_APK_CERT_SHA256`: the certificate's SHA-256 from `keytool -list -v -keystore neutral.jks`.
+- Register the package and its key for Google's Android developer verification before the first public release.
+
+Checklist for every release:
+
+- [ ] The run passed, the owner approved the signing, and the release carries `warehouse-vX.Y.Z.apk` and `SHA256SUMS`.
+- [ ] `sha256sum -c SHA256SUMS` passes on the downloaded files.
+- [ ] `apksigner verify --print-certs` shows the neutral key's certificate, not the debug key or the association's.
+- [ ] On one phone, install this APK over the previous release's APK: the sign-in and the facility are kept.
+- [ ] The Android target SDK follows [SDK_UPGRADE.md](SDK_UPGRADE.md).
+
 ## What is ready to use
 
 - `eas.json` has development, internal preview, and store production build
@@ -176,6 +220,12 @@ data.
   all describe the same build.
 - Attach to the release record the Generate Privacy Report output, the exported Play Data safety
   answers, and the redacted received-event test (see "Evidence to attach").
+
+## Make public (WH-140)
+
+- [ ] Before the app is made public (a public store listing or a public APK): the owner's lawyer has reviewed the terms and privacy text,
+  the reviewed text has replaced the template, and `LEGAL_TEXT_REVIEWED` in `src/constants/legal.ts` is `true` (`npm run check:legal`
+  must pass). Release tags and the association build are not gated by it. The WH-135 and WH-147 checklists are not in this repository.
 
 ## Evidence to attach to the final release decision
 

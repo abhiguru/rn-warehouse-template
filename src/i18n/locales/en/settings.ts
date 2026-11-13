@@ -1,4 +1,4 @@
-/** English text: settings. English is the source; src/i18n/locales/gu/settings.ts must have the same keys. */
+/** English text: settings. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const settings = {
   title: 'Settings',
   profileHint: 'Opens your profile',
@@ -82,7 +82,6 @@ export const settings = {
     footer: 'Colours for the whole app. Works with light and dark mode.',
     optionLabel: '{{brand}} colours',
     orange: 'Orange',
-    gcsa: 'GCSA navy',
   },
   account: {
     title: 'Account',

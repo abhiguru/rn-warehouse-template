@@ -22,7 +22,8 @@ const args = process.argv.slice(2);
 const summary = args.includes('--summary');
 const showAllowed = args.includes('--allowed');
 const targets = args.filter(arg => !arg.startsWith('--'));
-const SKIP = [/__tests__/, /\.test\.tsx?$/, /^src\/tests\//, /^src\/i18n\//, /^app\/style-guide\.tsx$/, /^app\/(terms-of-service|privacy-policy)\.tsx$/, /\.d\.ts$/];
+// src/legal/: the template legal pages are English only (Product decision, WH-140); the folder holds only that text.
+const SKIP = [/__tests__/, /^src\/legal\/(TemplateLegalScreen\.tsx|templateText\.ts)$/, /\.test\.tsx?$/, /^src\/tests\//, /^src\/i18n\//, /^app\/style-guide\.tsx$/, /^app\/(terms-of-service|privacy-policy)\.tsx$/, /\.d\.ts$/];
 const PROPS = new Set([
   'label', 'title', 'subtitle', 'placeholder', 'message', 'description', 'helperText', 'errorText', 'error', 'hint', 'text',
   'accessibilityLabel', 'accessibilityHint', 'emptyTitle', 'emptySubtitle', 'filteredTitle', 'filteredSubtitle',
@@ -32,7 +33,6 @@ const PROPS = new Set([
 // English that stays. An entry matches on every field it gives: file (path), kind (prop or key name), text.
 const ALLOW = [
   { file: /^app\/(.+\/)?_layout\.tsx$/, kind: /^name$/, reason: 'route name of a Stack.Screen or Tabs.Screen, never shown' },
-  { file: /^src\/components\/BrandMark\.tsx$/, text: /^GCSA$/, reason: "the association's wordmark, the same in every language" },
   { kind: /^placeholder$/, text: /^(https:\/\/warehouse\.example\.com|[a-z]+@example\.com)$/, reason: 'sample address: an address is written in Latin letters' },
   { file: /^src\/components\/PrintJobsBottomSheet\.tsx$/, kind: /^error$/, text: /^Failed to fetch \w+ jobs$/, reason: 'only written to the log; the sheet shows components.printJobs.loadFailed' },
   { file: /^src\/utils\/schemaValidator\.ts$/, kind: /^error$/, reason: 'developer diagnostics of stored-data checks; no screen shows them' },

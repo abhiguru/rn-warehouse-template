@@ -1,4 +1,7 @@
 import React from 'react';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { OrderRefreshAction } from '../OrderRefreshAction';
 import { getTokens, type Brand, type Mode } from '@/theme/tokens';
@@ -40,8 +43,8 @@ it('announces progress and ignores repeat presses while refreshing', () => {
 it.each([
   ['orange', 'light'],
   ['orange', 'dark'],
-  ['gcsa', 'light'],
-  ['gcsa', 'dark'],
+  [SAMPLE_BRAND, 'light'],
+  [SAMPLE_BRAND, 'dark'],
 ] as const)('tints the icon with brand.tint in %s %s, ignoring a legacy colour prop', (brand, mode) => {
   mockTheme = { preference: mode, brand };
   const legacyColour = getTokens(brand, mode).brand.fill;

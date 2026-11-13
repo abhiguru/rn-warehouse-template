@@ -3,14 +3,48 @@
  *
  * Both pages are English only (Settings says so in Gujarati). They never print a
  * placeholder: the party they speak for is read at render from the cold storage
- * the phone is connected to.
+ * the phone is connected to (WH-140: its legal name, city and grievance contact
+ * come from the facility's settings, src/config/facilityLegal.ts).
  */
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import type { FacilityLegal } from '@/config/facilityLegal';
+import { activeBrandPack } from '@/theme/brandPack';
 
-/** The date the legal pages were last changed, written 'D Month YYYY'. */
-export const LEGAL_UPDATED = '18 October 2026';
+/**
+ * RELEASE GATE (WH-140). The template legal text (src/legal/templateText.ts) is Product's reading of the
+ * Digital Personal Data Protection Act 2023 and has NOT been reviewed by a lawyer. It stays `false` until the
+ * owner records the lawyer's review (with its date) in product/specs/legal-pages-template.md and the reviewed
+ * text has replaced the template text. `npm run check:legal` fails while this is `false`; the release workflow attaches
+ * the APK only when it is `true`, and docs/RELEASE_CHECKLIST.md lists the same step. Release tags are not gated. Do not set it to
+ * `true` to get a build through.
+ */
+export const LEGAL_TEXT_REVIEWED = false;
 
-export const ASSOCIATION_NAME = 'Gujarat Cold Storage Association';
+export { LEGAL_UPDATED, legalUpdatedLabel } from '@/config/legalVersion';
+
+export interface LegalProvider {
+  /** The defined term the pages use after the first mention: "Association". */
+  term: string;
+  /** The first mention, with its defined term: 'The <name> (the "Association")'. */
+  definition: string;
+}
+
+/**
+ * The association that provides the App, from the build's brand pack (brand-packs/README.md); null when
+ * the build has none, and then the pages name no one but the cold storage. A build that asks for the
+ * association's legal text without a pack naming it does not build (brand-packs/loadBrandPack.cjs).
+ */
+export function legalProvider(): LegalProvider | null {
+  const name = activeBrandPack()?.association?.name.trim();
+  return name ? { term: 'Association', definition: `The ${name} (the "Association")` } : null;
+}
+
+/**
+ * Which text a build shows: the facility template (the default) or an association's own pages, for a build
+ * whose brand pack names the association (EXPO_PUBLIC_LEGAL_TEXT=association).
+ */
+export const isAssociationLegalText = (): boolean =>
+  process.env.EXPO_PUBLIC_LEGAL_TEXT?.trim().toLowerCase() === 'association';
 
 const UNNAMED_PARTY = 'the cold storage that runs your server';
 
@@ -23,6 +57,10 @@ export interface LegalParty {
   inline: string;
   /** The name for the start of a sentence. */
   leading: string;
+  /** True when the phone is connected to a server (false on the pages opened from sign-in before one is chosen). */
+  connected: boolean;
+  /** The facility's legal settings, or null when the server sent none. */
+  legal: FacilityLegal | null;
 }
 
 export function legalParty(): LegalParty {
@@ -39,5 +77,7 @@ export function legalParty(): LegalParty {
     email,
     inline,
     leading: inline.charAt(0).toUpperCase() + inline.slice(1),
+    connected: server != null,
+    legal: server?.legal ?? null,
   };
 }

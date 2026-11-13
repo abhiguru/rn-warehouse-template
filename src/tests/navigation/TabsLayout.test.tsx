@@ -10,11 +10,15 @@ import { useTheme } from '@/hooks/useTheme';
 import { useSessionGenerationGuard } from '@/hooks/useSessionGenerationGuard';
 import { StatusBar } from 'react-native';
 import { getTokens } from '@/theme/tokens';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
 import { advanceSessionGeneration, getSessionGeneration } from '@/config/sessionLifecycle';
 
+registerSampleBrand();
 const lightTokens = getTokens('orange', 'light');
-const darkTokens = getTokens('gcsa', 'dark');
+const darkTokens = getTokens(SAMPLE_BRAND, 'dark');
 
+// The theme reads the build's brand pack from expo-constants (WH-141); this test replaces react-native wholesale, so give it a plain config.
+jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
 jest.mock('react-native', () => {
   const React = require('react');
   const View = (props: Record<string, unknown>) =>

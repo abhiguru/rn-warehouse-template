@@ -7,6 +7,8 @@ import { discoverOperator, getActiveOperatorServer } from '@/config/operatorServ
 // The keyboard on the server address screen: a check closes it so the result card is not
 // covered, and the scrolling container keeps the "Use this server" tap to one tap.
 
+// The theme reads the build's brand pack from expo-constants (WH-141); this test replaces react-native wholesale, so give it a plain config.
+jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
 jest.mock('react-native', () => {
   const React = require('react');
   const element = (name: string) => ({ children, ...props }: Record<string, unknown>) =>

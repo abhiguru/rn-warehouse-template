@@ -1,7 +1,7 @@
 /**
  * English text: central. Central (association) sign-in, My facilities, the
  * catalogue, the linking step and the central account (docs/CENTRAL_LOGIN.md).
- * English is the source; src/i18n/locales/gu/central.ts must have the same keys.
+ * English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages".
  */
 export const central = {
   signIn: {

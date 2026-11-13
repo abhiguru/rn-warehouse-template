@@ -13,11 +13,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
+import { getBrandPack } from '@/theme/brandPack';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   AA,
   BRANDS,
-  BRAND_LABELS,
   contrastRatio,
   iconSize,
   radius,
@@ -191,7 +191,7 @@ export default function StyleGuideScreen() {
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xxxl }]}>
         <Section title="Theme" styles={styles}>
           <Segment styles={styles} value={brand} onChange={setBrand}
-            options={BRANDS.map(b => ({ value: b, label: BRAND_LABELS[b] }))} />
+            options={BRANDS.map(b => ({ value: b, label: getBrandPack(b)?.name.en ?? 'Orange' }))} />
           <Segment styles={styles} value={resolvedMode} onChange={m => setPreference(m)}
             options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} />
           <Text style={styles.secondary}>Mode here sets your app preference; choose System again in Settings.</Text>

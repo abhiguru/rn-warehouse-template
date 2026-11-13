@@ -8,6 +8,8 @@ import { beginOperatorSwitch } from '@/config/supabaseConfig';
 import { AppTooOldError } from '@/config/appTooOld';
 import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, stageOperatorServer } from '@/config/operatorServer';
 
+// The theme reads the build's brand pack from expo-constants (WH-141); this test replaces react-native wholesale, so give it a plain config.
+jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
 jest.mock('react-native', () => {
   const React = require('react');
   const element = (name: string) => ({ children, ...props }: Record<string, unknown>) =>

@@ -1,5 +1,8 @@
-/** The items editor in the four themes (Orange and GCSA, light and dark), in a new invoice and in an edit. */
+/** The items editor in the four themes (Orange and the sample brand, light and dark), in a new invoice and in an edit. */
 import React from 'react';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, type Mode } from '@/theme/tokens';
 import { makeInvoiceStore, fillNewInvoice, openForEdit, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';

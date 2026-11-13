@@ -1,4 +1,4 @@
-/** English text: users. English is the source; src/i18n/locales/gu/users.ts must have the same keys. */
+/** English text: users. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const users = {
   // The stored role value is mapped through these, never capitalised (docs/I18N.md rule 9).
   role: {

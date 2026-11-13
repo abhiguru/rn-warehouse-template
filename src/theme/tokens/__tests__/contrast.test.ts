@@ -1,4 +1,7 @@
 import { AA, BRANDS, contrastRatio, getTokens, type Mode } from '..';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 
 const MODES: Mode[] = ['light', 'dark'];
 const STATUS = ['negative', 'critical', 'positive', 'informative', 'neutral'] as const;
@@ -57,6 +60,6 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
 
 it('keeps status meaning identical across brands', () => {
   for (const mode of MODES) {
-    expect(getTokens('orange', mode).status).toEqual(getTokens('gcsa', mode).status);
+    expect(getTokens('orange', mode).status).toEqual(getTokens(SAMPLE_BRAND, mode).status);
   }
 });

@@ -5,6 +5,18 @@ Open-source React Native warehouse client built with Expo SDK 58 / React Native
 companion backend, [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template),
 through that installation's canonical HTTPS origin. MIT licensed.
 
+Built for cold storages in India: people sign in with +91 phone numbers and MSG91 SMS codes, amounts are in rupees with GST, and dates and times are India time. Use in another country is not supported yet.
+
+## What this release is for
+
+Built for cold storages in India: people sign in with +91 phone numbers and MSG91 SMS codes, amounts are in rupees with GST, and dates and times are India time. Use in another country is not supported yet.
+
+For cold storages, used on Android and iPhone phones. Each facility runs its own server.
+
+Not supported: e-invoicing (IRN), statutory warehouse receipts, one view across several facilities, tablets and office screens, and storage charged other than by package and month.
+
+General warehouses are not the target yet. Tell us in an issue if you need it.
+
 ## Quickstart
 
 Prerequisites:
@@ -100,6 +112,28 @@ and [Native builds](#native-builds). Never ask for a secret value in chat. Stop 
   pending enrollment until an administrator approves it in
   **Settings → Enrollment Review**; rejected or disabled accounts cannot sign in.
 
+## Install the app
+
+A facility outside the association can use the neutral Android app. Each release carries it as
+`warehouse-vX.Y.Z.apk` with a `SHA256SUMS` file, on the project's Releases page. It needs Android 12 or newer
+and 4 GB of memory. There is no store listing.
+
+1. On the phone, open the project's Releases page and download `warehouse-vX.Y.Z.apk`.
+2. When Android asks, allow your browser to install apps ("Install unknown apps").
+3. Open the app, tap **Choose your warehouse server** and enter your facility's address. Sign in with the
+   SMS code the facility sends.
+4. Send the same link to your staff and customers.
+5. To check the file is genuine, download `SHA256SUMS` too and compare its line with the file's SHA-256
+   (on a computer: `sha256sum warehouse-vX.Y.Z.apk`). The app's name on the phone is "Cold Storage". This
+   matters most if the file reached you through another app such as WhatsApp.
+6. Updating: when the app says **Update the app**, tap **Update app**, download the new file from the
+   page it opens and install it over the old one. Your sign-in and saved facilities stay.
+7. iPhone: not available as a download. iPhones install apps only from the App Store.
+
+The neutral app has its own name and package, so it can sit beside another build of this app on one phone;
+they have separate sign-ins. Building and publishing it is described in
+[RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md), "Neutral APK".
+
 ## Native builds
 
 ```bash
@@ -164,8 +198,8 @@ audit of the exported directory, a pinned JDK 17 / compile SDK 37 (target SDK 36
 APK audit, the dependency gate and a secrets scan on pushes and pull requests to
 `main`. There are no git hooks; CI enforces lint and typecheck.
 [release.yml](.github/workflows/release.yml) validates any semantic `v*` tag
-with the same gates; publishing a GitHub release stays a manual step after the
-validation run passes.
+with the same gates. The same run builds the neutral APK and, after the owner approves it in the protected
+environment `neutral-apk-release`, signs it and attaches it to the tag's release.
 
 ## Further reading
 

@@ -1,4 +1,4 @@
-/** English text: customers. English is the source; src/i18n/locales/gu/customers.ts must have the same keys. */
+/** English text: customers. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const customers = {
   list: {
     loading: 'Loading customers…',

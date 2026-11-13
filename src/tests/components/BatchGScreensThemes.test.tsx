@@ -1,9 +1,12 @@
 /**
  * Renders the customer, item, user, settings, profile and legal screens in all
- * four themes (Orange and GCSA, light and dark) and checks that each paints
+ * four themes (Orange and the sample brand, light and dark) and checks that each paints
  * its themed background and never falls back to a legacy colour.
  */
 import React from 'react';
+import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
+
+registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { Text } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';

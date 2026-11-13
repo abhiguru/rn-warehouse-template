@@ -14,21 +14,17 @@ import {
   horizonAvatar,
   horizonChart,
   orange,
-  gcsaNavy,
-  gcsaGrey,
   ink,
 } from './reference';
+import { BRANDS, getBrandPack } from '../brandPack';
 
-export type Brand = 'orange' | 'gcsa';
+/** 'orange' or the id of the brand pack this build carries (src/theme/brandPack.ts). */
+export type Brand = string;
 export type Mode = 'light' | 'dark';
 /** Alias kept for the theme slice and hook. */
 export type ThemeMode = Mode;
 
-export const BRANDS: readonly Brand[] = ['orange', 'gcsa'];
-export const BRAND_LABELS: Record<Brand, string> = {
-  orange: 'Orange',
-  gcsa: 'GCSA navy',
-};
+export { BRANDS };
 
 export interface StatusTokens {
   /** Text and icons on surfaces (4.5:1). */
@@ -116,8 +112,8 @@ export interface ThemeTokens {
     secondaryText: string;
   };
   /**
-   * Brand mark (logo area on sign-in and lock screens). In GCSA dark mode the
-   * mark sits on a white panel so the logo navy stays the official colour.
+   * Brand mark (logo area on sign-in and lock screens). A pack may set its own colours,
+   * for example a white panel in dark mode so a logo colour stays as designed.
    */
   brandMark: {
     panel: string;
@@ -237,27 +233,11 @@ function brandGroup(brand: Brand, mode: Mode): ThemeTokens['brand'] {
           secondaryText: orange.secondary,
         };
   }
-  return mode === 'light'
-    ? {
-        fill: gcsaNavy[600],
-        onFill: '#FFFFFF',
-        fillPressed: gcsaNavy[700],
-        tint: gcsaNavy[600],
-        subtle: gcsaNavy[50],
-        subtleStrong: gcsaNavy[100],
-        secondary: gcsaGrey[400],
-        secondaryText: gcsaGrey[700],
-      }
-    : {
-        fill: gcsaNavy[300],
-        onFill: ink,
-        fillPressed: gcsaNavy[200],
-        tint: gcsaNavy[300],
-        subtle: gcsaNavy.darkSubtle,
-        subtleStrong: gcsaNavy.darkSubtleStrong,
-        secondary: gcsaGrey[400],
-        secondaryText: gcsaGrey[400],
-      };
+  const pack = getBrandPack(brand);
+  // A brand this build does not have reads as Orange.
+  if (!pack) return brandGroup('orange', mode);
+  const { fill, onFill, fillPressed, tint, subtle, subtleStrong, secondary, secondaryText } = pack[mode];
+  return { fill, onFill, fillPressed, tint, subtle, subtleStrong, secondary, secondaryText };
 }
 
 /** Build the complete token set for one brand and mode. */
@@ -298,14 +278,12 @@ export function buildTokens(brand: Brand, mode: Mode): ThemeTokens {
     },
     brand: { ...brandGroup(brand, mode) },
     brandMark:
-      brand === 'gcsa' && !light
-        ? { panel: '#FFFFFF', wordmark: gcsaNavy[600], rule: gcsaGrey[400], caption: gcsaGrey[700] }
-        : {
-            panel: 'transparent',
-            wordmark: brandGroup(brand, mode).tint,
-            rule: brandGroup(brand, mode).secondary,
-            caption: brandGroup(brand, mode).secondaryText,
-          },
+      getBrandPack(brand)?.[mode].mark ?? {
+        panel: 'transparent',
+        wordmark: brandGroup(brand, mode).tint,
+        rule: brandGroup(brand, mode).secondary,
+        caption: brandGroup(brand, mode).secondaryText,
+      },
     // Horizon's element red (#F53232) gives white text only 3.9:1, so the filled
     // button uses the negative text colour in light mode and dark ink on red in dark mode.
     destructive: light

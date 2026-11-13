@@ -1,4 +1,4 @@
-/** English text: GST documents (WH-151). English is the source; src/i18n/locales/gu/gst.ts must have the same keys. */
+/** English text: GST documents (WH-151). English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const gst = {
   doc: {
     tax_invoice: 'Tax invoice',
