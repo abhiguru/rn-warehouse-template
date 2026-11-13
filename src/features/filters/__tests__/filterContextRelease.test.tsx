@@ -162,7 +162,7 @@ describe('WH-143: the Invoices Payment filter follows the setting and the releas
     setFacilityRelease(mockServer, { schemaHead: HEAD_172 });
     setFacilityCapabilities(mockServer, { payments: true });
     const list = mount<Invoice>(INVOICE_FILTERS, 'staff');
-    act(() => list.now.apply({ payment: 'paid' }));
+    act(() => { list.now.apply({ payment: 'paid' }); });
     expect(list.now.request).not.toHaveProperty('p_payment_status');
   });
 });
@@ -197,14 +197,14 @@ describe('WH-138: the GRN Invoicing filter follows the backend release at every 
     setFacilityRelease(mockServer, { schemaHead: HEAD_202 });
     const list = mount<Grn>(GRN_FILTERS, 'customer');
     expect(keysOf(list.now)).not.toContain('invoicing');
-    act(() => list.now.apply({ invoicing: 'invoiced' }));
+    act(() => { list.now.apply({ invoicing: 'invoiced' }); });
     expect(list.now.request.p_filters?.invoiced).toBeUndefined();
   });
 
   it('a stored choice is not sent once the release drops below 202 (an older backend would ignore it and show every GRN)', () => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_202 });
     const list = mount<Grn>(GRN_FILTERS, 'admin');
-    act(() => list.now.apply({ invoicing: 'invoiced' }));
+    act(() => { list.now.apply({ invoicing: 'invoiced' }); });
     expect(list.now.request.p_filters?.invoiced).toBe(true);
     setFacilityRelease(mockServer, { schemaHead: HEAD_201 });
     list.render();
@@ -214,10 +214,10 @@ describe('WH-138: the GRN Invoicing filter follows the backend release at every 
   it('clearing the choice sends nothing and takes the chip off', () => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_202 });
     const list = mount<Grn>(GRN_FILTERS, 'admin');
-    act(() => list.now.setField('invoicing', 'partly_invoiced'));
+    act(() => { list.now.setField('invoicing', 'partly_invoiced'); });
     expect(list.now.request.p_filters?.invoiced).toBe('partly_invoiced');
     expect(list.now.activeCount).toBe(1);
-    act(() => list.now.setField('invoicing', 'all'));
+    act(() => { list.now.setField('invoicing', 'all'); });
     expect(list.now.request.p_filters?.invoiced).toBeUndefined();
     expect(list.now.activeCount).toBe(0);
     expect(list.now.values.invoicing).toBeUndefined();
