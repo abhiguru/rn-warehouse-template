@@ -8,6 +8,7 @@ import { Text } from 'react-native';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN, updateGRN } from '@/features/grn/services/grnFormService';
+import { previewUpdateGrn } from '@/services/orderEffects';
 import { uploadGRNPhotos } from '@/features/grn/services/imageUploadService';
 import { setGrnRates, setRateChanges, setRemovedGrnRates } from '@/store/slices/grnFormSlice';
 import { contextKey } from '@/features/grn/rates/grnRateModel';
@@ -67,8 +68,9 @@ jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
-jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), getNextGRNNumber: jest.fn() }));
+jest.mock('@/features/grn/services/grnFormService', () => ({ buildUpdateGRNRequest: jest.requireActual('@/features/grn/services/grnFormService').buildUpdateGRNRequest, createGRN: jest.fn(), updateGRN: jest.fn(), getNextGRNNumber: jest.fn() }));
 // The server is asked about a lost answer by this (utils/lostAnswer); none of these tests loses one.
+jest.mock('@/services/orderEffects', () => ({ ...jest.requireActual('@/services/orderEffects'), previewUpdateGrn: jest.fn(async () => []) }));
 jest.mock('@/utils/lostAnswer', () => ({ checkSubmission: jest.fn() }));
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNPhotos: jest.fn(), unpreparedGRNPhotos: jest.fn(() => null) }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn(), askAlert: jest.fn() }));
@@ -140,23 +142,53 @@ describe('Save on an imported GRN', () => {
     expect(updateGRN).toHaveBeenCalledTimes(1);
   });
 
-  it('sends no photo, and no changed details: the details go back as they were stored', async () => {
+  it('sends the rates, the details exactly as stored and no photo', async () => {
     const tree = await render();
     await press(tree);
     await confirm(tree);
-    expect(uploadGRNPhotos).not.toHaveBeenCalled();
-    const [id, request] = (updateGRN as jest.Mock).mock.calls[0];
+    // An edit uploads its photos inside updateGRN (from header.gr_images) and removes them by the options' removedImages.
+    const [id, request, options] = (updateGRN as jest.Mock).mock.calls[0];
     expect(id).toBe(GRN_ID);
-    expect(request.header).toMatchObject({ sender_name: '', date: '2026-10-12', customer_id: CUST });
-    expect(request.header.gr_images ?? []).toEqual([]);
-    expect(request.removedImages ?? []).toEqual([]);
+    expect(Array.isArray(request.rates)).toBe(true);
+    expect(request.header).toEqual({
+      registration: '', date: '2026-10-12', sender_id: undefined, sender_name: '', customer_id: CUST, customer_name: 'Fictional Traders',
+      supervisor_id: undefined, supervisor_name: '', note: '', leon: false, pricing_mode: 'MONTHLY', gr_images: [],
+    });
+    expect(options.removedImages).toEqual([]);
+    expect(uploadGRNPhotos).not.toHaveBeenCalled();
   });
 
-  it('shows no Photos section and no photo-required alert', async () => {
+  it('the same save of a GRN made in the app does send its photo (so the check above can fail)', async () => {
+    mockImported = false;
+    mockHeader = { ...APP_HEADER };
     const tree = await render();
-    expect(tree.root.findAll(n => n.props.testID === 'grn-review-photos')).toHaveLength(0);
     await press(tree);
-    expect(showAlert).not.toHaveBeenCalledWith('Photo required', expect.anything());
+    await confirm(tree);
+    const request = (updateGRN as jest.Mock).mock.calls[0][1];
+    expect(request.header.gr_images).toHaveLength(1);
+    expect(request.header.supervisor_id).toBe(APP_HEADER.supervisor_id);
+  });
+
+  it('shows no Photos section, while a GRN made in the app shows it', async () => {
+    let tree = await render();
+    expect(tree.root.findAll(n => n.props.testID === 'grn-review-section-photos')).toHaveLength(0);
+    act(() => tree.unmount());
+    mockImported = false;
+    mockHeader = { ...APP_HEADER };
+    tree = await render();
+    expect(tree.root.findAll(n => n.props.testID === 'grn-review-section-photos').length).toBeGreaterThan(0);
+  });
+
+  it('does not ask the server which orders the save changes; a GRN made in the app does', async () => {
+    let tree = await render();
+    await press(tree);
+    expect(previewUpdateGrn).not.toHaveBeenCalled();
+    act(() => tree.unmount());
+    mockImported = false;
+    mockHeader = { ...APP_HEADER };
+    tree = await render();
+    await press(tree);
+    expect(previewUpdateGrn).toHaveBeenCalled();
   });
 
   it('is still stopped by a line without a rate', async () => {
