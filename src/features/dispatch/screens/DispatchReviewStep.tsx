@@ -64,6 +64,7 @@ import { createAppColumnHelper, useAppTable } from '@/components/table/appTable'
 import { DataTable } from '@/components/table/DataTable';
 import { sourceColumnWidth, sourceText } from '@/components/dispatch-details/DispatchItemsTab';
 import { getLanguage } from '@/i18n/language';
+import { invoiceFileName } from '@/utils/invoiceLabel';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -524,7 +525,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
             const shareResult = await downloadAndSharePDF(
                 pdfResult.pdfUrl,
-                `Dispatch_${createdDispatchNumber}.pdf`
+                `Dispatch_${invoiceFileName(String(createdDispatchNumber))}.pdf`
             );
             if (!shareResult.success) {
                 setShareError(tr('dispatch.review.shareFailed'));

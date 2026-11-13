@@ -78,6 +78,7 @@ import { parseInvoiceState } from '@/features/charging/invoiceState';
 import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
 import { invoiceTableFrom } from '@/components/common/invoiceTable';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { invoiceFileName } from '@/utils/invoiceLabel';
 
 const log = createLogger('grn');
 const makeStyles = (t: ThemeTokens) => ({
@@ -729,7 +730,7 @@ function GRNDetailScreen() {
 
       const shareResult = await downloadAndSharePDF(
         pdfResult.pdfUrl,
-        `GRN_${data.grn.gr_no}.pdf`
+        `GRN_${invoiceFileName(String(data.grn.gr_no))}.pdf`
       );
 
       if (!shareResult.success) {
