@@ -56,6 +56,8 @@ export interface GRNFilters {
    * response's `pagination.unit` says which it did.
    */
   page_by?: 'receipt';
+  /** Invoice state (backend migration 202): true is Invoiced, false is Not invoiced, 'partly_invoiced' is Partly invoiced. */
+  invoiced?: boolean | 'partly_invoiced';
 }
 
 /** The filters of a GRN list request, asking for receipt pages. */
@@ -186,6 +188,7 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
       if (filters.weight_max !== undefined) cleanFilters.weight_max = filters.weight_max;
       if (filters.search?.trim()) cleanFilters.search = filters.search.trim();
       if (filters.page_by === 'receipt') cleanFilters.page_by = 'receipt';
+      if (filters.invoiced !== undefined) cleanFilters.invoiced = filters.invoiced;
 
       if (Object.keys(cleanFilters).length > 0) {
         rpcParams.p_filters = cleanFilters;
