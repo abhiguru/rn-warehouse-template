@@ -13,6 +13,7 @@ import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatur
 import { setLanguage } from '@/i18n';
 import { describeValue, visibleFields } from '../filterModel';
 import { GRN_FILTERS, INVOICE_FILTERS } from '../configs';
+import type { FilterContext } from '../types';
 import { useListFilters } from '../useListFilters';
 
 const mockServer = { origin: 'https://one.example.test', instanceId: 'instance-0001' };
@@ -224,7 +225,7 @@ describe('WH-138: the GRN Invoicing filter follows the backend release at every 
 });
 
 describe('WH-138: values the server takes (migration 202: true, false or the word partly_invoiced)', () => {
-  const adminCtx = { role: 'admin', isWarehouseRole: true, assignedCustomers: [], grnInvoiceFilter: true };
+  const adminCtx: FilterContext = { role: 'admin', isWarehouseRole: true, assignedCustomers: [], grnInvoiceFilter: true };
   const send = (invoicing: string) => GRN_FILTERS.toRequest({ invoicing }, undefined, adminCtx).p_filters?.invoiced;
 
   it('sends true, false and partly_invoiced, and nothing for All', () => {
@@ -251,7 +252,7 @@ describe('WH-138: values the server takes (migration 202: true, false or the wor
   });
 
   it('the visible field list of a customer has no Invoicing even with the flag set', () => {
-    const customerCtx = { ...adminCtx, role: 'customer', isWarehouseRole: false };
+    const customerCtx: FilterContext = { ...adminCtx, role: 'customer', isWarehouseRole: false };
     expect(visibleFields(GRN_FILTERS, customerCtx).map(field => field.key)).not.toContain('invoicing');
   });
 });
