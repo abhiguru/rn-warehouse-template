@@ -90,6 +90,15 @@ export const common = {
   invoice: 'Invoice',
   invoiceNumber: 'Invoice number',
   order: 'Order',
+  // WH-180: documents imported from the previous system.
+  importedTag: 'Imported',
+  importedReadOnly: "This {{document}} was imported from the previous system and can't be changed.",
+  importedDocument: {
+    grn: 'GRN',
+    dispatch: 'dispatch',
+    invoice: 'invoice',
+    payment: 'payment',
+  },
   mobileNumber: 'Mobile number',
   photo: 'Photo',
   photos: 'Photos',

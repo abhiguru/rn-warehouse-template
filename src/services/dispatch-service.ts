@@ -12,6 +12,7 @@ import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 // Import canonical types for migration
 import type { RpcPagination } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
+import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { customerHistory } from './customerHistoryCache';
 import { isUnsettledFailure, serverText } from '@/utils/serverText';
 import { waitForServer } from '@/utils/lostAnswer';
@@ -139,6 +140,8 @@ export interface Dispatch {
   items?: DispatchItemDetail[];
   created_at: string;
   updated_at: string;
+  /** Migration 191 (WH-180): imported from the previous system, so read-only. Absent on an older server. */
+  imported?: boolean;
 }
 
 /**
@@ -286,6 +289,7 @@ export const mapBackendDispatch = (dispatch: BackendDispatchData): Dispatch => {
     })),
     created_at: dispatch.createdAt || dispatch.created_at || '',
     updated_at: dispatch.updatedAt || dispatch.updated_at || '',
+    ...(dispatch.imported === true ? { imported: true } : {}),
   };
 };
 
@@ -1132,6 +1136,8 @@ export const deleteDispatch = async (
     const answer = result.data ?? {};
 
     if (answer.success === false) {
+      const importedText = importedReadOnlyText(answer);
+      if (importedText) return { success: false, message: importedText, error: answer.error };
       console.error('[DispatchService] Dispatch deletion refused', { blocked: Boolean(answer.blocking_reason) });
       return {
         success: false,

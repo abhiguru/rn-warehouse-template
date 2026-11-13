@@ -30,7 +30,7 @@ const timeOrNull = (value: unknown): string | null => (typeof value === 'string'
 
 /**
  * The sensors a report can be made for: name and location only, for every role (a customer account too). The server
- * answers an array, or { success: true, data: [...] }; only sensors with readings are listed.
+ * answers { success: true, data: [...] }; only sensors with readings are listed.
  */
 export async function getReportSensors(): Promise<ReportSensorsResult> {
   const failed = t('reports.temperatureReport.loadError');
@@ -43,12 +43,11 @@ export async function getReportSensors(): Promise<ReportSensorsResult> {
     }
     const refusal = reportRefusal(data);
     if (refusal) return refusedReport(refusal, null, failed);
+    // The server answers { success: true, data: [...] }; reportBody takes a bare array's first row, so no array answer is read.
     const body = reportBody(data) as unknown;
-    const rows = Array.isArray(body)
-      ? body
-      : body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
-        ? (body as { data: unknown[] }).data
-        : null;
+    const rows = body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
+      ? (body as { data: unknown[] }).data
+      : null;
     if (!rows) return { success: false, data: null, message: failed };
     return {
       success: true,

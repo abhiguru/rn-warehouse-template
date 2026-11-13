@@ -391,8 +391,10 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
     const hasUnconfirmed = fetchedJobs.some((j) => j.status === 'unknown') || stripJob !== null;
     useEffect(() => {
       if (!isOpen || !hasUnconfirmed) return;
-      setNow(serverNowMs());
-      const id = setInterval(() => setNow(serverNowMs()), UNCONFIRMED_RECHECK_MS);
+      // A server without migration 183 sends no time (serverNowMs is null): the phone's clock keeps the recheck moving.
+      const readNow = () => serverNowMs() ?? Date.now();
+      setNow(readNow());
+      const id = setInterval(() => setNow(readNow()), UNCONFIRMED_RECHECK_MS);
       return () => clearInterval(id);
     }, [isOpen, hasUnconfirmed]);
 

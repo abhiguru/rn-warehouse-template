@@ -42,6 +42,10 @@ interface GRNOverviewTabProps {
   grn_id?: string;
   gr_no?: string;
   can_edit?: boolean;
+  /** The rates action (WH-180: stays available on an imported GRN, where `can_edit` is false). Defaults to `can_edit`. */
+  can_edit_rates?: boolean;
+  /** WH-180: the GRN was imported; its rates get a Set rates entry. */
+  imported?: boolean;
   can_delete?: boolean;
   /** The GRN is being deleted: the Delete button is disabled. */
   is_deleting?: boolean;
@@ -70,6 +74,8 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   grn_id,
   gr_no,
   can_edit = false,
+  can_edit_rates,
+  imported = false,
   can_delete,
   is_deleting = false,
   is_checking_orders = false,
@@ -153,7 +159,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       )}
 
       {/* SECTION: RATES (the rate each item is invoiced at; the GRN-only rates on a server without migration 88) */}
-      <GrnItemRates grnId={grn_id} grnNumber={gr_no} customerId={customer_details?.id} customerName={customer_details?.name} canEdit={can_edit} fallbackRates={rates} packaging={packaging} packagingByLot={packagingByLot} />
+      <GrnItemRates grnId={grn_id} grnNumber={gr_no} customerId={customer_details?.id} customerName={customer_details?.name} canEdit={can_edit_rates ?? can_edit} imported={imported} fallbackRates={rates} packaging={packaging} packagingByLot={packagingByLot} />
 
       {/* SECTION: NOTES */}
       {note && <NotesSection note={note} />}

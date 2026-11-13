@@ -18,6 +18,7 @@ import type { IconName } from '@/types/icon.types';
 import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { formatDate, formatSpokenDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
+import { ImportedTag } from '@/components/ui/ImportedTag';
 import type { Dispatch } from '@/services/dispatch-service';
 import { PrintSwipe } from './PrintSwipe';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -556,6 +557,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
           {/* Attribute stack (right): main value, status tag */}
           <View style={styles.attributeStack}>
             <Text style={styles.quantityValue}>{bagsLabel}</Text>
+            {dispatch.imported ? <ImportedTag style={{ alignSelf: 'flex-end' }} /> : null}
             <View style={[styles.statusTag, { backgroundColor: status.background }]}>
               <Icon name={statusConfig.icon} size={iconSize.sm} color={status.text} />
               <Text
@@ -627,6 +629,7 @@ const areEqual = (
     prevDispatch.total_items === nextDispatch.total_items &&
     prevDispatch.registration === nextDispatch.registration &&
     prevDispatch.disp_date === nextDispatch.disp_date &&
+    prevDispatch.imported === nextDispatch.imported &&
     // The lines are drawn when the card is expanded. A refetch gives a new
     // array, so an edit that keeps every total above is still drawn again.
     prevDispatch.items === nextDispatch.items &&

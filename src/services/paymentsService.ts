@@ -17,6 +17,7 @@ import { REFUSAL } from '@/utils/serverRefusal';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import { formatIdentifier } from '@/i18n';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
+import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { createLogger } from '@/utils/logger';
 
 const log = createLogger('PaymentsService');
@@ -42,6 +43,8 @@ export interface PaymentRecord {
   updatedAt: string;
   /** False for a row of the old accounting link: read-only. */
   recordedInApp: boolean;
+  /** Migration 195 (WH-180): imported from the previous system, so read-only. False when an older server omits it. */
+  imported: boolean;
 }
 
 /** What the server says is paid and due on an invoice. null figures: the reader is not allowed them (staff). */
@@ -92,6 +95,7 @@ export function readPayment(value: unknown): PaymentRecord | null {
     enteredByName: text(value.entered_by_name),
     updatedAt,
     recordedInApp: value.recorded_in_app === true,
+    imported: value.imported === true,
   };
 }
 
@@ -210,6 +214,8 @@ export function paymentRefusalOf(reason: string | undefined, fields: Record<stri
       return refuse(t('payments.refusal.invoiceGone'), true);
     case REFUSAL.PAYMENT_NOT_FOUND:
       return refuse(t('payments.refusal.paymentGone'), true);
+    case REFUSAL.IMPORTED_READ_ONLY:
+      return refuse(importedReadOnlyText({ success: false, reason, fields }) ?? t('payments.refusal.notEditable'), true);
     case REFUSAL.PAYMENT_NOT_EDITABLE:
       return refuse(t('payments.refusal.notEditable'), true);
     case REFUSAL.STALE_RECORD:

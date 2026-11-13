@@ -353,6 +353,9 @@ export const grn = {
   // Rates section of the Review step and its rate sheet (backend migration 86)
   rates: {
     title: 'Rates',
+    // WH-180: the entry on an imported GRN, where no rate typed on the GRN exists yet.
+    setRates: 'Set rates',
+    opensRatesStep: 'Opens the Rates of this GRN, where its rates are set.',
     loading: 'Loading rates',
     loadErrorTitle: "Couldn't load the rates",
     offline: 'You are offline, so the rates could not be loaded.',

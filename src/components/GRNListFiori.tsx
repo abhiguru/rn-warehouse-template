@@ -39,6 +39,7 @@ import { printGRNRange, printFailureMessage } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 import { StatusTag } from '@/components/ui';
+import { ImportedTag } from '@/components/ui/ImportedTag';
 import { invoiceStateKind, invoiceStateLabel, parseInvoiceState, type InvoiceState } from '@/features/charging/invoiceState';
 import { getStatusColors, getStockBadgeLabel, getStockValueLevel, STOCK_VALUE_ICONS } from '@/utils/stockStatus';
 import { SectionHeader } from '@/components/ui/SectionHeader';
@@ -117,6 +118,8 @@ interface GRNGroupData {
   registration?: string;
   /** Migration 165: shown as a tag only when Partly invoiced. */
   invoiceState?: InvoiceState;
+  /** Migration 191 (WH-180): imported from the previous system. */
+  imported?: boolean;
   customerName: string;
   items: GRNItem[];
 }
@@ -432,9 +435,10 @@ const GRNCardFiori = memo<GRNCardProps>(({
                 <Text style={styles.itemCountText} {...singleLineText()}>{itemCountLabel}</Text>
               </View>
             </View>
-            {group.invoiceState === 'partly_invoiced' ? (
-              <View style={{ alignItems: 'flex-start', marginTop: space.xs }}>
-                <StatusTag status={invoiceStateKind('partly_invoiced')} label={invoiceStateLabel('partly_invoiced')} testID={`grn-card-invoice-state-${group.grnId}`} />
+            {group.invoiceState === 'partly_invoiced' || group.imported ? (
+              <View style={{ alignItems: 'flex-start', marginTop: space.xs, gap: space.xs }}>
+                {group.imported ? <ImportedTag testID={`grn-card-imported-${group.grnId}`} /> : null}
+                {group.invoiceState === 'partly_invoiced' ? <StatusTag status={invoiceStateKind('partly_invoiced')} label={invoiceStateLabel('partly_invoiced')} testID={`grn-card-invoice-state-${group.grnId}`} /> : null}
               </View>
             ) : null}
             {filteredNote ? (
@@ -818,6 +822,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           date: item.date,
           registration: item.registration ?? undefined,
           invoiceState: parseInvoiceState(item.invoice_state),
+          imported: item.imported === true,
           customerName: item.customer_name,
           items: [],
         };
@@ -887,7 +892,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
         expanded={isOpen(open, item.data.grnId)}
         onToggle={handleToggle}
         onPress={handleGRNPress}
-        onEdit={canEdit ? handleEdit : undefined}
+        onEdit={canEdit && !item.data.imported ? handleEdit : undefined}
         onPrint={canPrint ? handlePrint : undefined}
         styles={styles}
         words={words}

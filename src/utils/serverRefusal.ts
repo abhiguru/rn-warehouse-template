@@ -136,6 +136,9 @@ export const REFUSAL = {
   // Backend migration 175 (WH-139).
   /** An invoice prefix change while an invoice exists in the current financial year. Nothing was changed. */
   NUMBERING_PREFIX_MID_YEAR: 'NUMBERING_PREFIX_MID_YEAR',
+  // Backend migration 190 (WH-180).
+  /** An edit or delete of a document imported from the previous system (`document`: grn, dispatch, invoice or payment). */
+  IMPORTED_READ_ONLY: 'IMPORTED_READ_ONLY',
 } as const;
 
 export type RefusalReason = (typeof REFUSAL)[keyof typeof REFUSAL];

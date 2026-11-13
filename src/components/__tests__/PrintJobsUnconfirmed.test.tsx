@@ -6,7 +6,7 @@
 import React, { createRef } from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { AppState, type AppStateStatus } from 'react-native';
-import { getPrintJobs, getPrinterStatus, type PrintJob } from '@/services/print-service';
+import { getPrintJobs, getPrinterStatus, serverNowMs, type PrintJob } from '@/services/print-service';
 import PrintJobsBottomSheet, { type PrintJobsBottomSheetRef } from '../PrintJobsBottomSheet';
 
 jest.mock('@/store/hooks', () => ({
@@ -122,4 +122,23 @@ test('a job moves from In progress to history by the clock alone, with no new re
   await act(async () => { await jest.advanceTimersByTimeAsync(16_000); });
   expect(textsOf(tree)).not.toContain('Not confirmed');
   act(() => tree.unmount());
+});
+
+test('on a server that sends no time (serverNowMs is null) the strip still leaves "not confirmed" within 15 seconds of the 5 minutes', async () => {
+  // A backend without migration 183 gives no server time; the timer must read the phone's clock instead.
+  (serverNowMs as jest.Mock).mockReturnValue(null);
+  try {
+    atMinutes(4);
+    const tree = await openSheet();
+    expect(textsOf(tree)).toContain('Not confirmed');
+    // every later read hangs: only the timer can move the job out of In progress
+    (getPrintJobs as jest.Mock).mockImplementation(() => new Promise(() => undefined));
+    atMinutes(5.5);
+    await act(async () => { await jest.advanceTimersByTimeAsync(16_000); });
+    expect(textsOf(tree)).not.toContain('Not confirmed');
+    expect(textsOf(tree).some(x => x.includes('was not confirmed'))).toBe(false);
+    act(() => tree.unmount());
+  } finally {
+    (serverNowMs as jest.Mock).mockImplementation(() => Date.now());
+  }
 });

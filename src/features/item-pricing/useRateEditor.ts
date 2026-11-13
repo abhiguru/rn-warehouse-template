@@ -435,7 +435,13 @@ export function useRateEditor(args: UseRateEditorArgs): UseRateEditor {
           rememberRateStartFloor(earliest);
           setCore(cur => (cur ? rebuildCore(cur, cur.rows, earliest) : cur));
           refreshRows();
-          setStrip(bandBlockedByPlanned(moved, { ...context, earliestStart: earliest }) ?? t('pricing.edit.bandMoved', { date: dateText(earliest) }));
+          // The strip and the form's start day always name the same day (Product, WH-182): when the rebuilt context has no
+          // own start (the guard found rows a change from that day would lose), the draft is a "today" save and the form
+          // says so itself, so the strip must not say the band moved to the server's day.
+          const rebuilt = core ? rebuildCore(core, core.rows, earliest) : null;
+          setStrip(rebuilt && !rebuilt.ctx.ownStart
+            ? null
+            : bandBlockedByPlanned(moved, { ...context, earliestStart: earliest }) ?? t('pricing.edit.bandMoved', { date: dateText(earliest) }));
         } else {
           setStrip(result.message ?? t('pricing.error.generic'));
         }

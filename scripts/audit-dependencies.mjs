@@ -26,7 +26,7 @@ export const acceptedAdvisories = {
 // docs/DEPENDENCY_SECURITY.md for who the parents are and the evidence that none of it is in the bundle.
 export const acceptedWithoutRepair = {
   'GHSA-3g3m-2fjr-6pw4': { package: 'glob', range: '>=9.0.0<=14.0.1', reviewBy: '2026-12-15', reason: 'build and dev tooling only (Expo CLI, config plugins, fingerprint, Metro config, Sentry bundler plugin, Jest, ESLint); not in the app bundle; fixed release 14.0.2 is not reachable through the Expo and Jest versions in use' },
-  'GHSA-g3hv-75wg-m249': { package: 'minimatch', range: '>=7.0.0<11.0.1', reviewBy: '2026-12-15', reason: 'only the copies under glob 9 and glob 10 (minimatch 8.0.7 and 9.0.9), which package.json overrides keep because minimatch 11 breaks their RegExp check; build and test tooling only, not in the app bundle; glob itself is accepted; every other copy in the advisory\'s range is 11.0.1' },
+  'GHSA-g3hv-75wg-m249': { package: 'minimatch', range: '>=7.0.0<11.0.1', nodesEndWith: '/glob/node_modules/minimatch', reviewBy: '2026-12-15', reason: 'only the copies under glob 9 and glob 10 (minimatch 8.0.7 and 9.0.9), which package.json overrides keep because minimatch 11 breaks their RegExp check; build and test tooling only, not in the app bundle; glob itself is accepted; the gate refuses any copy of the package that is not installed under a glob (nodesEndWith)' },
 };
 // The packages that may declare glob or minimatch in the production tree. Each uses it in build, prebuild or
 // tooling code that the app's bundle never imports.
@@ -86,6 +86,11 @@ export function assessDependencyAudit(report, verified, { today = new Date().toI
       if (!repair && tooling && reason.url === `https://github.com/advisories/${id}` && name === tooling.package && reason.name === tooling.package && reason.range.replaceAll(' ', '') === tooling.range) {
         // Accepted without a repair: only while nothing shipped declares the package, and until the review date.
         if (!Array.isArray(shipped)) throw new Error('The production dependency paths are required to accept an advisory without a repair');
+        // An entry may also limit where the package is installed: every audit node must end in `nodesEndWith`.
+        if (tooling.nodesEndWith && (!entry.nodes.length || entry.nodes.some(path => !path.endsWith(tooling.nodesEndWith)))) {
+          reasons.add(`UNREPAIRED:${reason.url}`);
+          continue;
+        }
         reasons.add(shipped.some(path => path.package === name) ? `SHIPPED:${id}` : today > tooling.reviewBy ? `REVIEW_OVERDUE:${id}` : id);
         continue;
       }

@@ -244,6 +244,8 @@ export interface RpcGrnItemRow {
 
   /** Migration 165: Not invoiced, Partly invoiced or Invoiced (parseInvoiceState); absent on an older server. */
   invoice_state?: string;
+  /** Migration 191 (WH-180): imported from the previous system, so read-only. Absent on an older server. */
+  imported?: boolean;
 
   // Item-specific fields
   item_id?: string;
@@ -366,6 +368,8 @@ export interface RpcGrnDetails {
   note: string | null;
   gr_image_url: string | null;
   invoiced: boolean;
+  /** Migration 191 (WH-180): imported from the previous system, so read-only. Absent on an older server. */
+  imported?: boolean;
   leon: boolean;
   out_of_stock: boolean;
   pricing_mode: 'monthly' | 'one_time' | null;
@@ -568,6 +572,8 @@ export interface RpcDispatchDetails {
   registration: string | null;
   note: string | null;
   disp_image_url: string | null;
+  /** Migration 191 (WH-180): imported from the previous system, so read-only. Absent on an older server. */
+  imported?: boolean;
   source_order_id: string | null;
   source_order_no: string | null;
   created_at: string;

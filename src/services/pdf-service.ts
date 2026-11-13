@@ -3,6 +3,7 @@ import { discardBody } from '../config/discardBody';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { t } from '@/i18n';
 import { serverText, upgradingBody } from '@/utils/serverText';
+import { backendHasFeature } from '@/config/backendFeatures';
 
 /**
  * Fix private development origins returned by backend Edge Functions. Docker
@@ -71,14 +72,16 @@ export interface PDFResponse {
 }
 
 /** The server's three refusals to make a PDF: the document is too long, it changed while printing, the renderer is down. */
-export type PdfRefusal = 'tooLong' | 'changed' | 'unavailable';
+export type PdfRefusal = 'tooLong' | 'changed' | 'unavailable' | 'severalDocuments';
 
 /**
  * Which refusal an answer is, by its status and a stable start of its text
  * (functions/_shared/document-lines.ts, document-pdf.ts, pdf-renderer-client.ts); undefined for any other answer.
  * The line limit and the page limit are both "too long".
  */
-export function pdfRefusal(status: number, text: unknown): PdfRefusal | undefined {
+export function pdfRefusal(status: number, text: unknown, code?: unknown): PdfRefusal | undefined {
+  // Migration 191 (WH-180): a number held by two documents; the app asks by `id`, so this is a safety net.
+  if (status === 409 && code === 'SEVERAL_DOCUMENTS') return 'severalDocuments';
   if (typeof text !== 'string') return undefined;
   const lower = text.trim().toLowerCase();
   if (status === 400 && /^document (exceeds the limit|is too long to print)/.test(lower)) return 'tooLong';
@@ -91,6 +94,7 @@ const REFUSAL_KEYS = {
   tooLong: ['errors.pdf.refusalTooLongTitle', 'errors.pdf.refusalTooLong'],
   changed: ['errors.pdf.refusalChangedTitle', 'errors.pdf.refusalChanged'],
   unavailable: ['errors.pdf.refusalUnavailableTitle', 'errors.pdf.refusalUnavailable'],
+  severalDocuments: ['errors.pdf.refusalSeveralTitle', 'errors.pdf.refusalSeveral'],
 } as const;
 
 /** The app's title and message for a refusal, in the app's language. */
@@ -112,11 +116,18 @@ export function pdfRefusalSentence(refusal: PdfRefusal): string {
 const getAuthToken = getAuthTokenString;
 
 /**
+ * WH-180: a backend that knows imported documents (migration 191) finds the document by its `id`; the number alone can
+ * belong to two documents of different years. An older backend does not get the field.
+ */
+const idField = (id: string | undefined): { id?: string } =>
+  id && backendHasFeature('importedDocuments') ? { id } : {};
+
+/**
  * Generate GRN PDF using Supabase Edge Function
  * @param grNo - GRN number (e.g., "Z0797")
  * @returns PDF response with signed URL for download
  */
-export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
+export async function generateGRNPDF(grNo: string, id?: string): Promise<PDFResponse> {
   try {
     const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
@@ -136,7 +147,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify({ gr_no: grNo }),
+      body: JSON.stringify({ gr_no: grNo, ...idField(id) }),
     });
 
     // Handle non-JSON responses
@@ -155,7 +166,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
-        refusal: pdfRefusal(response.status, data.error),
+        refusal: pdfRefusal(response.status, data.error, data.code),
       };
     }
 
@@ -184,7 +195,8 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
  * @returns PDF response with signed URL for download
  */
 export async function generateDispatchPDF(
-  dispNo: string
+  dispNo: string,
+  id?: string
 ): Promise<PDFResponse> {
   try {
     const authenticatedFetch = createAuthenticatedFetch();
@@ -205,7 +217,7 @@ export async function generateDispatchPDF(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify({ disp_no: dispNo }),
+      body: JSON.stringify({ disp_no: dispNo, ...idField(id) }),
     });
 
     // Handle non-JSON responses
@@ -224,7 +236,7 @@ export async function generateDispatchPDF(
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
-        refusal: pdfRefusal(response.status, data.error),
+        refusal: pdfRefusal(response.status, data.error, data.code),
       };
     }
 
@@ -255,7 +267,8 @@ export async function generateDispatchPDF(
  */
 export async function generateInvoicePDF(
   invNo: number,
-  finYear: number
+  finYear: number,
+  id?: string
 ): Promise<PDFResponse> {
   try {
     const authenticatedFetch = createAuthenticatedFetch();
@@ -276,7 +289,7 @@ export async function generateInvoicePDF(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify({ inv_no: invNo, fin_year: finYear }),
+      body: JSON.stringify({ inv_no: invNo, fin_year: finYear, ...idField(id) }),
     });
 
     // Handle non-JSON responses
@@ -295,7 +308,7 @@ export async function generateInvoicePDF(
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
-        refusal: pdfRefusal(response.status, data.error),
+        refusal: pdfRefusal(response.status, data.error, data.code),
       };
     }
 
@@ -364,7 +377,7 @@ export async function generateCustomerStockPDF(
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
-        refusal: pdfRefusal(response.status, data.error),
+        refusal: pdfRefusal(response.status, data.error, data.code),
       };
     }
 
@@ -432,7 +445,7 @@ export async function generateStatementPDF(
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
-        refusal: pdfRefusal(response.status, data.error),
+        refusal: pdfRefusal(response.status, data.error, data.code),
       };
     }
 
@@ -502,7 +515,7 @@ export async function generateTemperatureReportPDF(
       return {
         success: false,
         error: serverText(upgradingBody(data) ?? data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
-        refusal: pdfRefusal(response.status, data.error),
+        refusal: pdfRefusal(response.status, data.error, data.code),
         code: typeof data.code === 'string' ? data.code : undefined,
       };
     }

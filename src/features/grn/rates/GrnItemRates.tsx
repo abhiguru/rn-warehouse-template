@@ -112,6 +112,8 @@ export interface GrnItemRatesProps {
   customerName?: string | null;
   /** The person may edit this GRN: a manager's tap on a rate typed on this GRN opens its Rates block. */
   canEdit?: boolean;
+  /** WH-180: an imported GRN has no rate typed on it yet, so a manager gets a Set rates entry to its Rates step. */
+  imported?: boolean;
   fallbackRates?: RpcGrnRate[] | null;
   /** What the GRN's items are counted in (sharedPackaging): the note says "per box"; undefined reads "per bag". */
   packaging?: string;
@@ -119,7 +121,7 @@ export interface GrnItemRatesProps {
   packagingByLot?: Record<string, string | null | undefined>;
 }
 
-export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEdit = false, fallbackRates, packaging, packagingByLot }: GrnItemRatesProps) {
+export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEdit = false, imported = false, fallbackRates, packaging, packagingByLot }: GrnItemRatesProps) {
   const table = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const th = useTokens();
@@ -318,6 +320,18 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                 </View>
               );
             })}
+            {imported && manager && canEdit && grnId ? (
+              <View style={own.note}>
+                <Button
+                  type="secondary"
+                  onPress={() => router.push(grnRatesStepPath(grnId))}
+                  accessibilityHint={t('grn.rates.opensRatesStep')}
+                  testID="grn-imported-set-rates"
+                >
+                  {t('grn.rates.setRates')}
+                </Button>
+              </View>
+            ) : null}
             <View style={own.note}>
               <Text style={table.secondary} testID="grn-item-rates-note">
                 {t(oneTime ? 'grn.rates.tableNoteOneTime' : 'grn.rates.tableNoteMonthly', { unit: packageUnit(packaging) })}

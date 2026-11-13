@@ -32,7 +32,8 @@ jest.mock('@/utils/secureSessionMarker', () => ({ clearSecureSessionMarker: jest
 jest.mock('@/utils/otpRateLimiter', () => ({ checkOTPRateLimit: jest.fn(), recordOTPRequest: jest.fn(), clearAllRateLimits: jest.fn(async () => {}) }));
 
 let mockCounter = 0;
-jest.mock('expo-crypto', () => ({ randomUUID: () => `note-${++mockCounter}` }));
+let mockUuidThrows = false;
+jest.mock('expo-crypto', () => ({ randomUUID: () => { if (mockUuidThrows) throw new Error('uuid failed'); return `note-${++mockCounter}`; } }));
 let mockFeature = true;
 jest.mock('../backendFeatures', () => ({ backendHasFeature: () => mockFeature }));
 
@@ -91,6 +92,7 @@ beforeEach(async () => {
   jest.clearAllMocks();
   secure.clear();
   mockCounter = 0;
+  mockUuidThrows = false;
   now = 0;
   mockFeature = true;
   mockClientGate = undefined;
@@ -307,9 +309,15 @@ describe('cold start with a saved session', () => {
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(sentIds()).toEqual(['waiting']);
 
+    // A note that waits when the second read runs: a second read that handed over again would send it (the first note was
+    // already removed, so without this the check below could not fail).
+    await putNotes([aNote('second-wait', 'user-a')]);
     readConnectionSession(); // a later bootstrap with the same scope
     await settle();
     expect(rpc).toHaveBeenCalledTimes(1);
+    expect(sentIds()).toEqual(['waiting']);
+    expect((await readSaved()).map(n => n.id)).toEqual(['second-wait']);
+    await putNotes([]);
 
     mockFeature = false;
     now = 1000;
@@ -346,6 +354,9 @@ describe('cold start with a saved session', () => {
     mockFeature = true;
     const realFetch = global.fetch;
     global.fetch = jest.fn(async () => { throw new TypeError('Network request failed'); }) as unknown as typeof fetch;
+    // The phone really is offline: NetInfo says so before the bootstrap runs.
+    now = 1000;
+    offline();
     try {
       // bootstrapApp: verifySelectedOperator loads the server, discovery throws, the finally reads the session.
       try {
@@ -360,10 +371,40 @@ describe('cold start with a saved session', () => {
       global.fetch = realFetch;
     }
 
-    expect(sentIds()).toEqual(['waiting']);
-    mockFeature = false;
-    noteLostAnswer();
+    // The session is found, but the phone is offline: nothing is handed over while the gap is open.
+    expect(rpc).not.toHaveBeenCalled();
+    expect((await readSaved()).map(n => n.id)).toEqual(['waiting']);
+    // Back online: the gap closes as a note of the saved session's scope, and the hand-over sends it with the waiting one
+    // (it only sends notes of the current scope, so the new note carries the saved session's scope).
+    now = 4000;
+    online();
     await settle();
-    expect((await readSaved()).map(n => n.scope).slice(-1)).toEqual([scopeOf('user-a')]);
+    expect(sentIds()).toHaveLength(2);
+    expect(sentIds()).toContain('waiting');
+    const lengths = rpc.mock.calls.flatMap(([, args]) => (args.p_notes as { length_s?: number; lengthS?: number }[]).map(n => n.length_s ?? n.lengthS));
+    expect(lengths).toContain(3);
+  });
+});
+
+describe('a failure while the signed-in state is applied (WH-182)', () => {
+  it('is logged and never becomes an unhandled rejection: the gap that a session switch closes fails to get its id', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => { rejections.push(reason); };
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    process.on('unhandledRejection', onRejection);
+    try {
+      await signIn('user-a');
+      now = 1000;
+      offline(); // a gap opens under user-a
+      mockUuidThrows = true; // closing it needs a note id, and the id source fails
+      now = 2000;
+      await signIn('user-b'); // a different user: refreshSignedIn closes the open gap first
+      await settle();
+      expect(warn.mock.calls.some(call => String(call[0]).includes('Reading the signed-in state failed'))).toBe(true);
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+      warn.mockRestore();
+    }
   });
 });

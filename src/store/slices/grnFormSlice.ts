@@ -147,6 +147,8 @@ interface GRNFormState {
   removedGrnRates: GrnRate[];
   // The GRN being edited is invoiced: its rates are shown and sent back unchanged, nothing can be set.
   grnInvoiced: boolean;
+  /** WH-180: the GRN being edited was imported from the previous system; only its rates can change. */
+  grnImported: boolean;
 
   // UI state
   currentStep: number;
@@ -200,6 +202,7 @@ const createInitialState = (): GRNFormState => ({
   rateChanges: [],
   removedGrnRates: [],
   grnInvoiced: false,
+  grnImported: false,
   currentStep: 0,
   isLoading: false,
   isSaving: false,
@@ -527,6 +530,7 @@ const grnFormSlice = createSlice({
         grnId: string;
         grnRates?: GrnRate[];
         grnInvoiced?: boolean;
+        grnImported?: boolean;
         // From get_grn_edit_state; absent on an older server.
         updatedAt?: string | null;
         invoice?: GRNInvoiceRef | null;
@@ -544,6 +548,7 @@ const grnFormSlice = createSlice({
       state.rateChanges = [];
       state.removedGrnRates = [];
       state.grnInvoiced = action.payload.grnInvoiced === true;
+      state.grnImported = action.payload.grnImported === true;
       state.removedImages = [];
       state.takenNumberError = null;
       state.loadedSignature = formSignature(state);
@@ -647,6 +652,7 @@ export const selectGRNFormId = (state: { grnForm: GRNFormState }) => state.grnFo
 export const selectGRNRates = (state: { grnForm: GRNFormState }) => state.grnForm.grnRates ?? EMPTY_RATES;
 export const selectGRNRateChanges = (state: { grnForm: GRNFormState }) => state.grnForm.rateChanges ?? EMPTY_CHANGES;
 export const selectGRNRemovedRates = (state: { grnForm: GRNFormState }) => state.grnForm.removedGrnRates ?? EMPTY_RATES;
+export const selectGRNImported = (state: { grnForm: GRNFormState }) => state.grnForm.grnImported === true;
 export const selectGRNInvoiced = (state: { grnForm: GRNFormState }) => state.grnForm.grnInvoiced === true;
 export const selectGRNLoadedUpdatedAt = (state: { grnForm: GRNFormState }) => state.grnForm.loadedUpdatedAt ?? null;
 export const selectGRNInvoice = (state: { grnForm: GRNFormState }) => state.grnForm.invoice ?? null;

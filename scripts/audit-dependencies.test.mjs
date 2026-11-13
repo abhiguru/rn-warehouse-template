@@ -173,7 +173,7 @@ const minimatchAdvisory = { name: 'minimatch', url: 'https://github.com/advisori
 const withTooling = () => {
   const input = report({
     glob: { severity: 'moderate', nodes: ['node_modules/glob', 'node_modules/foo/node_modules/glob'], via: [globAdvisory, 'minimatch'] },
-    minimatch: { severity: 'moderate', nodes: ['node_modules/minimatch'], via: [minimatchAdvisory] },
+    minimatch: { severity: 'moderate', nodes: ['node_modules/glob/node_modules/minimatch', 'node_modules/foo/node_modules/glob/node_modules/minimatch'], via: [minimatchAdvisory] },
     '@expo/cli': { severity: 'moderate', nodes: ['node_modules/@expo/cli'], via: ['glob'] },
   });
   return input;
@@ -204,6 +204,19 @@ test('the gate fails when an accepted-without-repair package is in the shipped d
   assert.ok(globShipped.unresolved.some(entry => entry.package === 'glob' && entry.reasons.includes('SHIPPED:GHSA-3g3m-2fjr-6pw4')));
   // Its consumers carry the refusal with it.
   assert.ok(result.unresolved.some(entry => entry.package === 'glob' && entry.reasons.includes('SHIPPED:GHSA-g3hv-75wg-m249')));
+});
+
+test('a minimatch copy outside glob is refused, alone or mixed with glob-nested copies', () => {
+  const outside = withTooling();
+  outside.vulnerabilities.minimatch.nodes = ['node_modules/minimatch'];
+  const result = assess(outside, verified, { ...beforeReview, ...noShipped });
+  assert.equal(result.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
+  assert.ok(result.unresolved.some(entry => entry.package === 'minimatch' && entry.reasons.includes(`UNREPAIRED:${minimatchAdvisory.url}`)));
+  const mixed = withTooling();
+  mixed.vulnerabilities.minimatch.nodes = ['node_modules/glob/node_modules/minimatch', 'node_modules/other/node_modules/minimatch'];
+  const mixedResult = assess(mixed, verified, { ...beforeReview, ...noShipped });
+  assert.equal(mixedResult.status, 'FAIL_UNREPAIRED_DEPENDENCIES');
+  assert.ok(mixedResult.unresolved.some(entry => entry.package === 'minimatch' && entry.reasons.includes(`UNREPAIRED:${minimatchAdvisory.url}`)));
 });
 
 test('the production dependency paths are required, never assumed empty', () => {

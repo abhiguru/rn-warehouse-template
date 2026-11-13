@@ -27,6 +27,7 @@ import { formatIdentifier, t as translate } from '@/i18n';
 import type { Invoice } from '@/services/invoice-service';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { StatusTag } from '@/components/ui/StatusTag';
+import { ImportedTag } from '@/components/ui/ImportedTag';
 import { asDocType, docTypeKey } from '@/features/gst/docType';
 import { PaymentStatusTag } from '@/features/payments/PaymentStatusTag';
 import { PrintSwipe } from './PrintSwipe';
@@ -394,6 +395,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
       {/* Financial year and origin */}
       <View style={styles.tagRow}>
         <StatusTag status="neutral" icon="calendar-check" label={translate('lists.invoice.financialYear', { year: formatFinancialYear(invoice.financial_year) })} />
+        {invoice.imported ? <ImportedTag /> : null}
         {invoice.cancelled_at ? <StatusTag status="negative" icon="cancel" label={translate('invoice.cancel.tag')} /> : null}
         {asDocType(invoice.doc_type) !== 'invoice' ? <StatusTag status="informative" icon="file-document-outline" label={translate(docTypeKey(invoice.doc_type))} /> : null}
         {showPayment && !invoice.cancelled_at ? <PaymentStatusTag status={invoice.payment_status} /> : null}
@@ -437,6 +439,7 @@ export const invoiceItemPropsAreEqual = (
     prevInvoice.financial_year === nextInvoice.financial_year &&
     prevInvoice.is_auto_generated === nextInvoice.is_auto_generated &&
     prevInvoice.cancelled_at === nextInvoice.cancelled_at &&
+    prevInvoice.imported === nextInvoice.imported &&
     prevInvoice.customer?.name === nextInvoice.customer?.name &&
     prevInvoice.grn?.gr_no === nextInvoice.grn?.gr_no &&
     prevProps.onPress === nextProps.onPress &&

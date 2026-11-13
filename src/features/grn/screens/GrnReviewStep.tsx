@@ -31,6 +31,7 @@ import {
   selectGRNRates,
   selectGRNRateChanges,
   selectGRNInvoiced,
+  selectGRNImported,
   selectGRNLoadedUpdatedAt,
   selectGRNRemovedRates,
   loadGRNData as loadGRNFormData,
@@ -55,6 +56,7 @@ import {
 } from '@/features/grn/services/grnFormService';
 import { useOrderEffectsPreview } from '@/hooks/useOrderEffectsPreview';
 import { orderEffectLines, orderEffectsNotice, previewUpdateGrn, withOrderEffects } from '@/services/orderEffects';
+import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
 import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
@@ -197,6 +199,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const removedRates = useAppSelector(selectGRNRemovedRates);
   // An invoiced GRN being edited: its rates are shown, sent back as they are, and cannot be set here.
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
+  // WH-180: an imported GRN opens here only to set its rates; the details, photos and items steps stay closed.
+  const grnImported = useAppSelector(selectGRNImported) && !isCreateMode;
   // The GRN's version token as the edit form read it (get_grn_edit_state, backend migration 121); null on an older
   // server. Save sends it back, and the server refuses the save when someone else changed the GRN since (STALE_RECORD).
   const loadedUpdatedAt = useAppSelector(selectGRNLoadedUpdatedAt);
@@ -393,6 +397,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   /** Back to the Items step. The callers that may run while a save is being settled check the lock themselves. */
   const goToItemsStep = () => {
+    if (grnImported) {
+      router.back();
+      return;
+    }
     dispatch(setCurrentStep(2));
     if (openedOnRates) {
       router.replace(editStep(1));
@@ -404,6 +412,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   /** Back to the details step. */
   const goToDetailsStep = () => {
+    if (grnImported) {
+      router.back();
+      return;
+    }
     dispatch(setCurrentStep(1));
     if (openedOnRates) {
       router.replace(editStep(1));
@@ -488,8 +500,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     // Counted by the connection history when a gap is open (WH-177).
     noteSavePressed();
 
-    const isValid = await validateFormData();
-    if (!isValid) return;
+    // WH-180: an imported GRN is saved for its rates only. Its details, photos and items are not checked or sent
+    // as changes (the server accepts the save only when they equal what is stored); every rate check below stays.
+    if (!grnImported) {
+      const isValid = await validateFormData();
+      if (!isValid) return;
+    }
 
     // Every line needs a rate before the GRN is saved (and the rates must be known).
     if (canSetRates && stored.status !== 'ready') {
@@ -504,28 +520,30 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       return;
     }
 
-    // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
-    // photo still being prepared holds the save; one that could not be prepared has to go.
-    const photoState = unpreparedGRNPhotos(header.gr_images || [], items.map((item) => ({ images: item.trl_images })));
-    if (photoState === 'preparing') {
-      showAlert(tr('grn.review.photosPreparingTitle'), tr('grn.review.photosPreparingMessage'));
-      return;
-    }
-    if (photoState === 'failed') {
-      showAlert(tr('grn.review.photoNotPreparedTitle'), tr('grn.review.photoNotPreparedMessage'));
-      return;
-    }
+    if (!grnImported) {
+      // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
+      // photo still being prepared holds the save; one that could not be prepared has to go.
+      const photoState = unpreparedGRNPhotos(header.gr_images || [], items.map((item) => ({ images: item.trl_images })));
+      if (photoState === 'preparing') {
+        showAlert(tr('grn.review.photosPreparingTitle'), tr('grn.review.photosPreparingMessage'));
+        return;
+      }
+      if (photoState === 'failed') {
+        showAlert(tr('grn.review.photoNotPreparedTitle'), tr('grn.review.photoNotPreparedMessage'));
+        return;
+      }
 
-    if (!header.gr_images || header.gr_images.length === 0) {
-      showAlert(
-        tr('grn.review.photoRequiredTitle'),
-        tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
-      );
-      return;
+      if (!header.gr_images || header.gr_images.length === 0) {
+        showAlert(
+          tr('grn.review.photoRequiredTitle'),
+          tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
+        );
+        return;
+      }
     }
 
     // An edit asks the server again which orders it changes, so the question names what is true now.
-    if (!isCreateMode) await refreshOrderEffects();
+    if (!isCreateMode && !grnImported) await refreshOrderEffects();
 
     // Show custom confirm dialog (dark mode compliant)
     setShowConfirmDialog(true);
@@ -1009,6 +1027,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         // An edit may not leave a GRN with no photo: the photos section is where one is added.
         showAlert(saveFailedTitle(), tr('grn.refusal.lastPhoto'), ok(() => show('photos')));
         return;
+      case REFUSAL.IMPORTED_READ_ONLY:
+        showAlert(saveFailedTitle(), importedReadOnlyText({ success: false, refusal }) ?? tr('common.importedReadOnly', { document: tr('common.importedDocument.grn') }), ok(() => router.back()));
+        return;
       case REFUSAL.GRN_NUMBER_LOCKED:
         showAlert(saveFailedTitle(), tr('grn.refusal.numberLocked'), ok(goToDetailsStep));
         return;
@@ -1085,7 +1106,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // tapped. An older server has no preview: null, and the question is asked as it always was.
   const effectsGrnId = Array.isArray(id) ? id[0] : id || grnId;
   const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
-    !isCreateMode && !!effectsGrnId && items.length > 0,
+    !isCreateMode && !grnImported && !!effectsGrnId && items.length > 0,
     JSON.stringify([header.customer_id, header.date, items.map((item) => [item.grn_trl_id, item.item_table_id, item.qty, item.stock])]),
     () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest(), removedImages).rpcRequest)
   );
@@ -1333,7 +1354,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             id="details"
             testIDPrefix="grn-review"
             title={tr('grn.steps.details')}
-            onEdit={handleNavigateToHeader}
+            onEdit={grnImported ? undefined : handleNavigateToHeader}
             editLabel={tr('grn.review.editDetails')}
             closedLine={[header.gr_no, header.date ? formatReviewDate(header.date) : null, header.customer_name].filter(Boolean).join(' · ')}
             spokenClosedLine={[header.gr_no, header.date ? formatSpokenReviewDate(header.date) : null, header.customer_name].filter(Boolean).join(' · ')}
@@ -1368,7 +1389,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             </ReviewKeyValues>
           </ReviewSection>
 
-          {/* GRN photos */}
+          {/* GRN photos (none on an imported GRN: its photos cannot change) */}
+          {!grnImported && (
           <ReviewSection
             id="photos"
             testIDPrefix="grn-review"
@@ -1436,6 +1458,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               )}
             </View>
           </ReviewSection>
+          )}
 
           {/* Items */}
           <ReviewSection
@@ -1443,7 +1466,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             testIDPrefix="grn-review"
             title={tr('common.items')}
             count={items.length}
-            onEdit={handlePrevious}
+            onEdit={grnImported ? undefined : handlePrevious}
             editLabel={tr('grn.review.editItems')}
             closedLine={tr('grn.review.closedItems', { quantity: formatNumber(totalQty) })}
             open={openSection === 'items'}

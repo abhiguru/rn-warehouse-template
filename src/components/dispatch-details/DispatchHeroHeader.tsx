@@ -15,6 +15,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatPackages, packLabel } from '@/utils/packagingWord';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { ImportedTag } from '@/components/ui/ImportedTag';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend
@@ -28,6 +29,8 @@ interface DispatchHeroHeaderProps {
   /** What every line is counted in (Bag, Box, Crate); omitted counts bags. */
   packaging?: string;
   customer_name?: string;
+  /** Imported from the previous system (migration 191): an Imported tag under the subtitle. */
+  imported?: boolean;
 }
 
 /** From this system font scale the header tightens its spacing to leave the table room. */
@@ -53,6 +56,7 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
+  importedTag: { marginTop: space.sm },
   subtitle: {
     ...typography.subhead,
     color: t.text.secondary,
@@ -101,6 +105,7 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
   total_quantity,
   packaging,
   customer_name,
+  imported = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -122,6 +127,8 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
         </Text>
       )}
       {!!subtitle && <Text style={[styles.subtitle, compact && styles.subtitleCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{subtitle}</Text>}
+
+      {imported ? <ImportedTag style={styles.importedTag} testID="dispatch-imported-tag" /> : null}
 
       {/* Key facts */}
       <View style={[styles.statsContainer, compact && styles.statsCompact]}>

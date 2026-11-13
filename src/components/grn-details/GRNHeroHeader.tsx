@@ -14,6 +14,7 @@ import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatDate, formatNumber, formatSpokenDate } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
+import { ImportedTag } from '@/components/ui/ImportedTag';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 import { t as tr, formatIdentifier } from '@/i18n';
 
@@ -27,6 +28,8 @@ interface GRNHeroHeaderProps {
   total_stock: number;
   total_dispatched: number;
   customer_name?: string;
+  /** Imported from the previous system (migration 191): an Imported tag under the title. */
+  imported?: boolean;
 }
 
 
@@ -58,6 +61,7 @@ const makeStyles = (t: ThemeTokens) => ({
   number: { ...typography.title2, color: t.text.primary },
   meta: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
   tag: { marginTop: space.xs },
+  importedTag: { marginTop: space.sm },
   facts: {
     flexDirection: 'row' as const,
     marginTop: space.lg,
@@ -108,6 +112,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
   total_stock,
   total_dispatched,
   customer_name,
+  imported = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -163,6 +168,8 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
           />
         )}
       </View>
+
+      {imported ? <ImportedTag style={styles.importedTag} testID="grn-imported-tag" /> : null}
 
       {/* Key facts */}
       <View style={[styles.facts, compact && styles.factsCompact]}>

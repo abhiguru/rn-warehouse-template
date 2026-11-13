@@ -94,6 +94,15 @@ export const common: Translation<typeof source> = {
   invoice: 'ઇન્વૉઇસ',
   invoiceNumber: 'ઇન્વૉઇસ નંબર',
   order: 'ઑર્ડર',
+  // WH-180 (Gujarati draft): documents imported from the previous system.
+  importedTag: 'ઇમ્પોર્ટ કરેલ',
+  importedReadOnly: 'આ {{document}} જૂની સિસ્ટમમાંથી ઇમ્પોર્ટ કરેલ છે અને બદલી શકાતું નથી.',
+  importedDocument: {
+    grn: 'આવક પાવતી',
+    dispatch: 'જાવક',
+    invoice: 'ઇન્વૉઇસ',
+    payment: 'ચુકવણી',
+  },
   mobileNumber: 'મોબાઇલ નંબર',
   photo: 'ફોટો',
   photos: 'ફોટો',

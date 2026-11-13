@@ -76,8 +76,14 @@ describe('reading the server\'s figures', () => {
   it('reads a payment with its version token and mode', () => {
     expect(readPayment(payment)).toEqual({
       id: 'p1', paymentNo: 7, invoiceId: 'i1', paidOn: '2026-11-02', amount: 250, mode: 'upi', note: 'part', enteredByName: 'Asha',
-      updatedAt: '2026-11-02T10:00:00Z', recordedInApp: true,
+      updatedAt: '2026-11-02T10:00:00Z', recordedInApp: true, imported: false,
     });
+  });
+
+  it('reads imported only from true: absent (an older server) or anything else is false', () => {
+    expect(readPayment({ ...payment, imported: true })).toMatchObject({ imported: true });
+    expect(readPayment({ ...payment, imported: 'true' })).toMatchObject({ imported: false });
+    expect(readPayment(payment)).toMatchObject({ imported: false });
   });
 
   it('marks a row of the old accounting link read-only, and an unknown mode as none', () => {
