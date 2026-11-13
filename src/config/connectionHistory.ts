@@ -364,14 +364,19 @@ async function refreshSignedIn(): Promise<void> {
     scope = null;
   }
   if (run !== scopeRead || generation !== getSessionGeneration()) return;
-  const changed = scope !== currentScope;
-  const wasSignedIn = tracker.getFlags().signedIn;
-  // A different facility or user: close what is open under the old stamp first.
-  if (changed) tracker.setFlags({ signedIn: false });
-  currentScope = scope;
-  tracker.setFlags({ signedIn: scope !== null });
-  // A sign-in hands over; the same signed-in session read again changes nothing (no gap closed, nothing re-stamped).
-  if (scope !== null && (changed || !wasSignedIn)) void handOverConnectionNotes();
+  try {
+    const changed = scope !== currentScope;
+    const wasSignedIn = tracker.getFlags().signedIn;
+    // A different facility or user: close what is open under the old stamp first.
+    if (changed) tracker.setFlags({ signedIn: false });
+    currentScope = scope;
+    tracker.setFlags({ signedIn: scope !== null });
+    // A sign-in hands over; the same signed-in session read again changes nothing (no gap closed, nothing re-stamped).
+    if (scope !== null && (changed || !wasSignedIn)) void handOverConnectionNotes();
+  } catch (error) {
+    // The history is an observer: a failure here is logged and never becomes an unhandled rejection.
+    log.warn('Reading the signed-in state failed', { name: error instanceof Error ? error.name : undefined });
+  }
 }
 
 /**
