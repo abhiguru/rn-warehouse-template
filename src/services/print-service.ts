@@ -136,7 +136,7 @@ export interface GetPrinterStatusResponse {
 
 /**
  * Decide the failure kind from the backend's code, else (today's backend, no code) from the HTTP status.
- * Only a 503 carrying the PRINTING_OFF code is "printing not set up"; a 502 or 504, or an answer that is
+ * A 503 carrying the PRINTING_OFF code, or a 503 with no code at all (backend v0.7.0), is "printing not set up"; a 502 or 504, or an answer that is
  * not JSON, is "server unavailable"; only the code PRINTER_FAILED (502) names a printer failure; any other error shows the server's message.
  */
 function classifyFailure(status: number, code: string | undefined, unconfirmed: boolean, jsonBody: boolean): PrintFailureKind {
@@ -145,6 +145,8 @@ function classifyFailure(status: number, code: string | undefined, unconfirmed: 
   if (code === 'PRINT_FORBIDDEN') return 'notAllowed';
   if (code === 'PRINTER_FAILED') return 'printerFailed';
   if (!jsonBody) return 'serverUnavailable';
+  // Released backend v0.7.0 answers 503 with no code when printing is not set up.
+  if (status === 503 && !code) return 'notSetUp';
   if (status === 403) return 'notAllowed';
   if (status === 502 || status === 504) return 'serverUnavailable';
   return 'other';
