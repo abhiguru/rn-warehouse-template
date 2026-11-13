@@ -1,4 +1,4 @@
-/** English text: how storage is charged (WH-137). English is the source; src/i18n/locales/gu/charging.ts must have the same keys. */
+/** English text: how storage is charged (WH-137). English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const charging = {
   screen: {
     title: 'Charging',

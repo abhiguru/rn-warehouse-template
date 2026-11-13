@@ -1,4 +1,4 @@
-/** English text: pricing, rate editor (edit), stop screen (stop) and changes. English is the source; gu/pricingEdit.ts has the same keys. */
+/** English text: pricing, rate editor (edit), stop screen (stop) and changes. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const pricingEdit = {
   edit: {
     title: {

@@ -1,4 +1,4 @@
-/** English text: validation. Messages of the shared validation helpers, default field names and the wizard step labels. English is the source; src/i18n/locales/gu/validation.ts must have the same keys. */
+/** English text: validation. Messages of the shared validation helpers, default field names and the wizard step labels. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const validation = {
   field: {
     required: '{{field}} is required',

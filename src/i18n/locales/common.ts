@@ -2,7 +2,7 @@
  * Words the formatters need in each language: calendar names, day words, units
  * and the nouns that follow a count. Gujarati follows docs/GUJARATI_GLOSSARY.md.
  *
- * English is the source: Gujarati must have the same keys (checked by a test).
+ * English is the source: Gujarati may lack a key (the app then shows the English text) but may not add extra keys (checked by a test); CONTRIBUTING.md, "Texts and languages".
  */
 import type { AppLanguage } from '../language';
 

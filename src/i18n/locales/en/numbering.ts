@@ -1,4 +1,4 @@
-/** English text: document numbering (GRN, dispatch and invoice numbers). English is the source; src/i18n/locales/gu/numbering.ts must have the same keys. */
+/** English text: document numbering (GRN, dispatch and invoice numbers). English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const numbering = {
   // Review step of a GRN, when the facility's rule offers no number to fill in (free text, a full series).
   typeGrnNumber: 'No GRN number is offered. Type the GRN number.',

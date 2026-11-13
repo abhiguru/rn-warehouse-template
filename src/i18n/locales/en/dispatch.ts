@@ -1,4 +1,4 @@
-/** English text: dispatch. English is the source; src/i18n/locales/gu/dispatch.ts must have the same keys. */
+/** English text: dispatch. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const dispatch = {
   // Wizard step names, by step id (the order of src/constants/dispatchSteps.ts)
   steps: {
