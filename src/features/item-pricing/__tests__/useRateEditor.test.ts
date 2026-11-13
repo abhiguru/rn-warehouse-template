@@ -557,11 +557,16 @@ describe('Add rate on a rate in force: the strip after the server names the earl
     await refusedFrom([own()]);
     expect(latest.strip).toContain('06/11/23');
     expect(latest.strip).toContain('the new band now starts from that day');
+    // The counterpart: here the draft keeps the rate's own start, so the strip and the form name the same day.
+    expect(latest.draft!.startsOnChoice).toBe('ownStart');
   });
 
   it('leaves the strip empty when the rebuilt draft is a "today" save (a planned rate would be lost by the moved day)', async () => {
     await refusedFrom([own(), planned()]);
     expect(latest.earliest).toBe('2023-11-06');
     expect(latest.strip).toBeNull();
+    // The draft is a "today" save, so the form's own warning is the message (the strip says nothing about the server's day).
+    expect(latest.draft!.startsOnChoice).toBe('today');
+    expect(latest.draft!.startsOn).toBe(TODAY);
   });
 });
