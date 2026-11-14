@@ -234,6 +234,7 @@ export const settings: Translation<typeof source> = {
       receipt_cheque: 'ચેક',
       receipt_other: 'અન્ય આવક',
     },
+    saveLabel: 'ખાતાના નામ સાચવો',
     saved: 'ખાતાના નામ સાચવ્યાં.',
     unchanged: 'કોઈ ફેરફાર નથી.',
     loadFailed: 'ખાતાના નામ લોડ થઈ શક્યાં નથી. ફરી પ્રયત્ન કરો.',

@@ -250,6 +250,7 @@ export const settings = {
       receipt_cheque: 'Cheque',
       receipt_other: 'Other receipts',
     },
+    saveLabel: 'Save ledger names',
     saved: 'Ledger names saved.',
     unchanged: 'No change.',
     loadFailed: "Couldn't load the ledger names. Try again.",
