@@ -83,7 +83,7 @@ export const pricing = {
     emptyDefault: 'Every item is charged at the default rate.',
     deactivated: 'This customer is deactivated. Activate them to change their rates.',
     checkFailed: "Couldn't check this customer. Try again.",
-    since: 'since {{date}}',
+    since: 'Since {{date}}',
   },
   // The rate box: the band table that is edited in place.
   box: {
