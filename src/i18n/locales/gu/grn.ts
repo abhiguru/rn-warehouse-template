@@ -334,23 +334,15 @@ export const grn: Translation<typeof source> = {
     a11yDispatchedLockedAll: 'જાવક થઈ ગઈ છે, નંગ, આઇટમ અને પેકિંગ લૉક છે',
     // Draft for the owner's wording review (2026-10-20).
     a11yInvoicedLocked: 'ઇન્વૉઇસમાં છે, નંગ, આઇટમ, પેકિંગ અને વજન લૉક છે',
-    confirmCreateTitle: 'આ આવક પાવતી બનાવવી છે?',
-    confirmSaveTitle: 'આ આવક પાવતીના ફેરફાર સાચવવા છે?',
-    confirmCreateNumbered: {
-      one: '{{count}} આઇટમ સાથે આવક પાવતી {{number}} બનાવવી છે?',
-      other: '{{count}} આઇટમ સાથે આવક પાવતી {{number}} બનાવવી છે?',
+    confirmCreateTitle: 'આવક પાવતી {{number}} બનાવવી છે?',
+    confirmSaveTitle: 'આવક પાવતી {{number}}ના ફેરફાર સાચવવા છે?',
+    confirmCreateMessage: {
+      one: '{{count}} આઇટમની આવક થશે અને સ્ટોક બદલાશે.',
+      other: '{{count}} આઇટમની આવક થશે અને સ્ટોક બદલાશે.',
     },
-    confirmCreate: {
-      one: '{{count}} આઇટમ સાથે આ આવક પાવતી બનાવવી છે?',
-      other: '{{count}} આઇટમ સાથે આ આવક પાવતી બનાવવી છે?',
-    },
-    confirmSaveNumbered: {
-      one: '{{count}} આઇટમ સાથે આવક પાવતી {{number}} સાચવવી છે?',
-      other: '{{count}} આઇટમ સાથે આવક પાવતી {{number}} સાચવવી છે?',
-    },
-    confirmSave: {
-      one: '{{count}} આઇટમ સાથે આ આવક પાવતી સાચવવી છે?',
-      other: '{{count}} આઇટમ સાથે આ આવક પાવતી સાચવવી છે?',
+    confirmSaveMessage: {
+      one: '{{count}} આઇટમ સચવાશે અને સ્ટોક બદલાશે.',
+      other: '{{count}} આઇટમ સચવાશે અને સ્ટોક બદલાશે.',
     },
     printSent: 'પ્રિન્ટ જૉબ પ્રિન્ટર પર મોકલી.',
     printFailed: 'પ્રિન્ટ જૉબ મોકલી શકાઈ નથી. પ્રિન્ટર તપાસો અને ફરી પ્રયાસ કરો.',

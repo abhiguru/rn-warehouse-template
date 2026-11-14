@@ -669,7 +669,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         onConfirm={performSubmit}
         onCancel={() => setShowConfirmSubmitDialog(false)}
         variant="default"
-        icon="check-circle"
+        icon={isEdit ? 'pencil-outline' : 'check-circle'}
         busy={isSaving}
         onDismissed={confirmClosed.onDismissed}
       />

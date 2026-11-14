@@ -265,8 +265,8 @@ export const invoice = {
     saveInvoice: 'Save invoice',
     creating: 'Creating invoice…',
     saving: 'Saving invoice…',
-    saveTitle: 'Save invoice {{number}}?',
-    updateTitle: 'Update invoice {{number}}?',
+    saveTitle: 'Create invoice {{number}}?',
+    updateTitle: 'Save changes to invoice {{number}}?',
     confirmMessage: '{{customer}}\nTotal {{total}}\nIf the server works out a different total, nothing is saved and the new total is shown.',
     // Added to the question before saving, for every role, when lines have a charge of 0.
     zeroChargeCount: { one: '{{count}} item has a charge of 0.', other: '{{count}} items have a charge of 0.' },

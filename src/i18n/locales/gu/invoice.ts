@@ -274,8 +274,8 @@ export const invoice: Translation<typeof source> = {
     saveInvoice: 'ઇન્વૉઇસ સાચવો',
     creating: 'ઇન્વૉઇસ બની રહ્યું છે…',
     saving: 'ઇન્વૉઇસ સચવાઈ રહ્યું છે…',
-    saveTitle: 'ઇન્વૉઇસ {{number}} સાચવવું છે?',
-    updateTitle: 'ઇન્વૉઇસ {{number}} અપડેટ કરવું છે?',
+    saveTitle: 'ઇન્વૉઇસ {{number}} બનાવવું છે?',
+    updateTitle: 'ઇન્વૉઇસ {{number}}ના ફેરફાર સાચવવા છે?',
     // Draft for the owner's wording review (2026-10-20): the server checks the total shown here.
     confirmMessage: '{{customer}}\nકુલ {{total}}\nસર્વર જુદી કુલ રકમ ગણે તો કંઈ સચવાશે નહીં અને નવી રકમ બતાવાશે.',
     // Added to the question before saving, for every role, when lines have a charge of 0.
