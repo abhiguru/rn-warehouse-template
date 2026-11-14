@@ -975,7 +975,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
             style={styles.backdrop}
             onPress={handleClose}
             accessibilityRole="button"
-            accessibilityLabel={tr('dispatch.grnSheet.close')}
+            accessibilityLabel={tr('common.close')}
           />
 
           {/* Bottom Sheet Content */}
@@ -987,7 +987,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
                 onPress={handleClose}
                 style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={tr('dispatch.grnSheet.close')}
+                accessibilityLabel={tr('common.close')}
               >
                 <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>

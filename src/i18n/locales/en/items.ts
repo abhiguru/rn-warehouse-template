@@ -123,7 +123,6 @@ export const items = {
   summary: {
     title: 'Saved items',
     titleCount: '{{title}} ({{count}})',
-    closeTitle: 'Close {{title}}',
     emptyTitle: 'No items yet',
     emptySubtitle: 'Items you save with the form above appear here.',
     protectedTitle: "Can't delete this {{entity}}",
@@ -137,7 +136,6 @@ export const items = {
     tapToEdit: 'Tap to edit',
     swipeToDelete: 'Swipe left to delete',
     editHint: 'Opens this {{entity}} for editing',
-    closeDefault: 'Close saved items',
     // Whole sentences for the usual case, a list of items.
     item: {
       protectedTitle: "Can't delete this item",

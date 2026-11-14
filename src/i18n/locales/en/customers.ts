@@ -41,7 +41,6 @@ export const customers = {
     title: 'Select customer',
     placeholder: 'Search customers',
     failed: "Couldn't search customers. Check your connection and try again.",
-    close: 'Close customer search',
     searching: 'Searching…',
     searchingLabel: 'Searching',
     recentHeader: 'RECENT CUSTOMERS',

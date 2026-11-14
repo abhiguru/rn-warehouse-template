@@ -166,7 +166,6 @@ export const dispatch: Translation<typeof source> = {
     loadFailed: 'આવક પાવતીઓ લોડ થઈ શકી નથી. ઇન્ટરનેટ તપાસો અને ફરી પ્રયાસ કરો.',
     noStockTitle: 'સ્ટોકવાળી કોઈ આવક પાવતી નથી',
     noStockMessage: 'આ વેપારીની કોઈ આવક પાવતીમાં જાવક માટે સ્ટોક બાકી નથી.',
-    close: 'આવક પાવતીની યાદી બંધ કરો',
     found: '{{grns}} મળી',
     withStock: 'સ્ટોકવાળી {{grns}}',
     hint: 'પસંદ કરવા આવક પાવતી પર ટૅપ કરો. જોવા માટે ડાબી બાજુ સ્વાઇપ કરો.',
@@ -177,7 +176,6 @@ export const dispatch: Translation<typeof source> = {
     rowLabel: '{{item}}, {{lots}}, {{available}}',
     emptyTitle: 'સ્ટોકમાં કોઈ આઇટમ નથી',
     emptyMessage: 'આ આવક પાવતીમાં જાવક માટે સ્ટોકવાળી કોઈ આઇટમ નથી. બીજી આવક પાવતી પસંદ કરો.',
-    close: 'આઇટમની યાદી બંધ કરો',
     countInStock: 'સ્ટોકમાં {{items}}',
   },
   // The lot picker of one item
@@ -192,7 +190,6 @@ export const dispatch: Translation<typeof source> = {
     alreadyAdded: 'પહેલેથી ઉમેરેલો',
     emptyTitle: 'કોઈ જથ્થો મળ્યો નથી',
     emptyMessage: 'આ આવક પાવતીમાં આ આઇટમનો કોઈ જથ્થો નથી. બીજી આઇટમ પસંદ કરો.',
-    close: 'જથ્થાની યાદી બંધ કરો',
     countInStock: 'સ્ટોકમાં {{lots}}',
     countInStockWithOut: 'સ્ટોકમાં {{lots}} ({{out}}માં સ્ટોક નથી)',
     noneInStock: 'કોઈ જથ્થો સ્ટોકમાં નથી',

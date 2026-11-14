@@ -1163,7 +1163,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             style={StyleSheet.absoluteFill}
             onPress={closeCustomerSearch}
             accessibilityRole="button"
-            accessibilityLabel={tr('customers.search.close')}
+            accessibilityLabel={tr('common.close')}
           />
           <View style={[styles.modalContent, { marginTop: insets.top + space.xxl }]}>
             <View style={styles.modalHeader}>
@@ -1172,7 +1172,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
                 onPress={closeCustomerSearch}
                 style={({ pressed }) => [styles.modalCloseButton, pressed && styles.modalCloseButtonPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={tr('customers.search.close')}
+                accessibilityLabel={tr('common.close')}
               >
                 <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>

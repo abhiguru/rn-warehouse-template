@@ -362,7 +362,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
             onPress={() => sheet.dismiss()}
             style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
             accessibilityRole="button"
-            accessibilityLabel={tr('dispatch.itemSheet.close')}
+            accessibilityLabel={tr('common.close')}
           >
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>

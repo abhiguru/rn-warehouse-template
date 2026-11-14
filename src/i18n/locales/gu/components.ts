@@ -150,7 +150,6 @@ export const components: Translation<typeof source> = {
   preparingPdf: 'PDF તૈયાર થઈ રહી છે…',
   changeLog: {
     title: 'ફેરફારનો ઇતિહાસ',
-    close: 'ફેરફારનો ઇતિહાસ બંધ કરો',
     loading: 'ફેરફારનો ઇતિહાસ લોડ થઈ રહ્યો છે…',
     loadFailed: 'ફેરફારનો ઇતિહાસ લોડ કરી શકાયો નથી',
     emptyTitle: 'હજુ કોઈ ફેરફાર નથી',
@@ -217,7 +216,6 @@ export const components: Translation<typeof source> = {
   },
   printJobs: {
     title: 'પ્રિન્ટ જૉબ',
-    close: 'પ્રિન્ટ જૉબ બંધ કરો',
     loadingLabel: 'પ્રિન્ટ જૉબ લોડ થઈ રહી છે',
     loading: 'પ્રિન્ટ જૉબ લોડ થઈ રહી છે…',
     loadFailed: 'પ્રિન્ટ જૉબ લોડ કરી શકાઈ નથી. ફરી પ્રયાસ કરવા નીચે ખેંચો.',

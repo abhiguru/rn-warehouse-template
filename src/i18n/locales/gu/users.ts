@@ -18,7 +18,6 @@ export const users: Translation<typeof source> = {
   },
   rolePicker: {
     title: 'હોદ્દો પસંદ કરો',
-    close: 'હોદ્દાની યાદી બંધ કરો',
     optionLabel: '{{role}}. {{description}}',
     adminOnly: 'એડમિનનો હોદ્દો ફક્ત એડમિન જ આપી શકે છે.',
   },

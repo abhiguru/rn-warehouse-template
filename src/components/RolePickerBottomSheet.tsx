@@ -181,7 +181,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
             style={styles.closeButton}
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel={tr('users.rolePicker.close')}
+            accessibilityLabel={tr('common.close')}
           >
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>

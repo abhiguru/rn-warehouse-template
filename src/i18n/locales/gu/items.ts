@@ -132,7 +132,6 @@ export const items: Translation<typeof source> = {
   summary: {
     title: 'સાચવેલી આઇટમ',
     titleCount: '{{title}} ({{count}})',
-    closeTitle: '{{title}} બંધ કરો',
     emptyTitle: 'હજુ કોઈ આઇટમ નથી',
     emptySubtitle: 'ઉપરના ફોર્મથી સાચવેલી આઇટમ અહીં દેખાશે.',
     protectedTitle: 'આ {{entity}} ડિલીટ કરી શકાતી નથી',
@@ -146,7 +145,6 @@ export const items: Translation<typeof source> = {
     tapToEdit: 'ફેરફાર કરવા ટૅપ કરો',
     swipeToDelete: 'ડિલીટ કરવા ડાબી બાજુ સ્વાઇપ કરો',
     editHint: 'ફેરફાર માટે આ {{entity}} ખોલે છે',
-    closeDefault: 'સાચવેલી આઇટમ બંધ કરો',
     item: {
       protectedTitle: 'આ આઇટમ ડિલીટ કરી શકાતી નથી',
       deleteTitle: 'આઇટમ ડિલીટ કરવી છે?',

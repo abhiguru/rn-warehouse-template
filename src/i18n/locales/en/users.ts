@@ -17,7 +17,6 @@ export const users = {
   },
   rolePicker: {
     title: 'Select role',
-    close: 'Close role picker',
     optionLabel: '{{role}}. {{description}}',
     adminOnly: 'Only admins can assign the Admin role.',
   },

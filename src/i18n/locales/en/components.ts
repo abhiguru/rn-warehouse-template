@@ -146,7 +146,6 @@ export const components = {
   preparingPdf: 'Preparing PDF…',
   changeLog: {
     title: 'Change history',
-    close: 'Close change history',
     loading: 'Loading change history…',
     loadFailed: "Couldn't load the change history",
     emptyTitle: 'No changes yet',
@@ -214,7 +213,6 @@ export const components = {
   },
   printJobs: {
     title: 'Print jobs',
-    close: 'Close print jobs',
     loadingLabel: 'Loading print jobs',
     loading: 'Loading print jobs…',
     loadFailed: "Couldn't load print jobs. Pull down to try again.",

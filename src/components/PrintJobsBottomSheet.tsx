@@ -683,7 +683,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
                 onPress={() => bottomSheetRef.current?.close()}
                 style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={tr('components.printJobs.close')}
+                accessibilityLabel={tr('common.close')}
               >
                 <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>

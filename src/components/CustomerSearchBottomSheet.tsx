@@ -261,7 +261,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                 pressed && styles.closeButtonPressed,
                             ]}
                             accessibilityRole="button"
-                            accessibilityLabel={tr('customers.search.close')}
+                            accessibilityLabel={tr('common.close')}
                         >
                             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
                         </Pressable>

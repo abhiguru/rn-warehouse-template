@@ -166,7 +166,6 @@ export const dispatch = {
     loadFailed: "Couldn't load the GRNs. Check your connection and try again.",
     noStockTitle: 'No GRNs with stock',
     noStockMessage: 'This customer has no GRNs with stock left to dispatch.',
-    close: 'Close GRN list',
     found: '{{grns}} found',
     withStock: '{{grns}} with stock',
     hint: 'Tap a GRN to choose it. Swipe left to view it.',
@@ -177,7 +176,6 @@ export const dispatch = {
     rowLabel: '{{item}}, {{lots}}, {{available}}',
     emptyTitle: 'No items in stock',
     emptyMessage: 'This GRN has no items with stock left to dispatch. Choose another GRN.',
-    close: 'Close item list',
     countInStock: '{{items}} in stock',
   },
   // The lot picker of one item
@@ -192,7 +190,6 @@ export const dispatch = {
     alreadyAdded: 'Already added',
     emptyTitle: 'No lots found',
     emptyMessage: 'This item has no lots in this GRN. Choose another item.',
-    close: 'Close lot list',
     countInStock: '{{lots}} in stock',
     countInStockWithOut: '{{lots}} in stock ({{out}} out of stock)',
     noneInStock: 'No lots in stock',
