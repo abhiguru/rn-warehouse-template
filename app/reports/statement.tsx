@@ -27,6 +27,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Button } from '@/components/ui/Button';
 import { PaymentStatusTag } from '@/features/payments/PaymentStatusTag';
 import { DuesFigures, rupees } from '@/features/reports/DuesFigures';
+import { exportHeaderActions } from '@/features/reports/reportActions';
 import { useLiveReport } from '@/features/reports/useLiveReport';
 import { useReportScope } from '@/features/reports/useReportScope';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
@@ -188,7 +189,7 @@ function CustomerStatementView({ customerId, customerName, canOpenLeft, onChange
     () => [
       ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
       // Only once the figures are on screen: the PDF is of the same read.
-      ...(data ? [{ icon: 'share-variant' as const, label: tr('components.sharePdf'), onPress: () => { void sharePdf(); }, busy: sharing }] : []),
+      ...exportHeaderActions({ exportPdf: sharePdf, busy: sharing, available: !!data }),
     ],
     [onChangeCustomer, data, sharePdf, sharing]
   );
