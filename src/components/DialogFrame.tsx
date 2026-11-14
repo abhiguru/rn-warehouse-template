@@ -121,16 +121,22 @@ export interface DialogOverlayProps {
   children: React.ReactNode;
   /** A tap on the scrim. Absent: the scrim does nothing. */
   onScrimPress?: () => void;
+  /** Spoken name of the scrim as a button; without it the scrim is hidden from the screen reader. */
+  scrimLabel?: string;
   /** Keep clear of the system bars (a dialog that scrolls or sits above the keyboard). */
   safeArea?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
-function OverlayView({ children, onScrimPress, style, top = 0, bottom = 0 }: DialogOverlayProps & { top?: number; bottom?: number }) {
+function OverlayView({ children, onScrimPress, scrimLabel, style, top = 0, bottom = 0 }: DialogOverlayProps & { top?: number; bottom?: number }) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.overlay, { paddingTop: top || space.xxl, paddingBottom: bottom || space.xxl }, style]}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onScrimPress} accessible={false} importantForAccessibility="no" />
+      {scrimLabel ? (
+        <Pressable style={StyleSheet.absoluteFill} onPress={onScrimPress} accessibilityRole="button" accessibilityLabel={scrimLabel} />
+      ) : (
+        <Pressable style={StyleSheet.absoluteFill} onPress={onScrimPress} accessible={false} importantForAccessibility="no" />
+      )}
       {children}
     </View>
   );

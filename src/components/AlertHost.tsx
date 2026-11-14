@@ -1,15 +1,14 @@
 /**
  * AlertHost: renders showAlert() requests as themed dialogs (style guide
- * §13.9): sheet surface, card radius, shadow 4, scrim, max width 420.
+ * §13.9): the shared dialog frame (DialogFrame), as ConfirmDialog.
  * Buttons follow the Alert.alert roles: "cancel" is a secondary button,
  * "destructive" uses the destructive fill, and the last default button is the
  * primary action. Two buttons sit side by side; three or more stack.
  * Android back and tapping the scrim cancel, when the alert is cancelable.
  */
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, View, type AlertButton } from 'react-native';
-import { useThemedStyles } from '@/hooks/useTheme';
-import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { Modal, Platform, type AlertButton } from 'react-native';
+import { DialogActions, DialogBody, DialogButton, DialogCard, DialogHeading, DialogOverlay } from '@/components/DialogFrame';
 import { closeAlert, getAlertQueue, markAlertHostClosing, registerAlertHost, subscribeAlertQueue, type AlertRequest } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 
@@ -32,72 +31,7 @@ function roleOf(button: AlertButton, index: number, buttons: AlertButton[]): Rol
   return index === lastDefault ? 'primary' : 'secondary';
 }
 
-const makeStyles = (t: ThemeTokens) => ({
-  overlay: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: layout.marginCompact,
-  },
-  scrim: {
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: t.overlay.scrim,
-  },
-  dialog: {
-    width: '100%' as const,
-    maxWidth: layout.maxFormWidth,
-    maxHeight: '80%' as const,
-    backgroundColor: t.surface.sheet,
-    borderRadius: radius.card,
-    padding: space.xxl,
-    ...t.shadow[4],
-  },
-  title: {
-    ...typography.title3,
-    color: t.text.primary,
-  },
-  message: {
-    ...typography.body,
-    color: t.text.secondary,
-    marginTop: space.sm,
-  },
-  buttonsRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'flex-end' as const,
-    flexWrap: 'wrap' as const,
-    gap: space.sm,
-    marginTop: space.xxl,
-  },
-  buttonsStack: {
-    gap: space.sm,
-    marginTop: space.xxl,
-  },
-  button: {
-    minHeight: touchTarget,
-    minWidth: 96,
-    paddingHorizontal: space.lg,
-    borderRadius: radius.button,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  primary: { backgroundColor: t.brand.fill },
-  primaryPressed: { backgroundColor: t.brand.fillPressed },
-  destructive: { backgroundColor: t.destructive.fill },
-  destructivePressed: { backgroundColor: t.destructive.fillPressed },
-  secondary: { borderWidth: 1, borderColor: t.border.button },
-  secondaryPressed: { backgroundColor: t.brand.subtle },
-  label: { ...typography.callout, fontWeight: fontWeight.semibold, textAlign: 'center' as const },
-  labelPrimary: { color: t.brand.onFill },
-  labelDestructive: { color: t.destructive.onFill },
-  labelSecondary: { color: t.text.primary },
-});
-
 export function AlertHost() {
-  const styles = useThemedStyles(makeStyles);
   // The queue is kept in src/utils/alert.ts: this host may be mounted again while dialogs wait.
   const queue = useSyncExternalStore(subscribeAlertQueue, getAlertQueue);
 
@@ -176,9 +110,9 @@ export function AlertHost() {
   if (!shown) return null;
 
   const stacked = shown.buttons.length > 2;
-  // Side by side: cancel first, action last (action on the right).
+  // Side by side: cancel first, action last (action on the right). Stacked: the actions first, cancel last.
   const ordered = stacked
-    ? shown.buttons
+    ? [...shown.buttons].sort((a, b) => Number(a.style === 'cancel') - Number(b.style === 'cancel'))
     : [...shown.buttons].sort((a, b) => (a.style === 'cancel' ? -1 : b.style === 'cancel' ? 1 : 0));
 
   return (
@@ -190,53 +124,28 @@ export function AlertHost() {
       onDismiss={finishClosing}
       statusBarTranslucent
     >
-      <View style={styles.overlay}>
-        <Pressable
-          style={styles.scrim}
-          onPress={cancel}
-          accessibilityRole="button"
-          accessibilityLabel={tr('components.alert.closeDialog')}
-        />
-        <View style={styles.dialog} accessibilityViewIsModal accessibilityRole="alert">
-          <ScrollView bounces={false}>
-            <Text style={styles.title} accessibilityRole="header">
-              {shown.title}
-            </Text>
-            {shown.message ? <Text style={styles.message}>{shown.message}</Text> : null}
-          </ScrollView>
-          <View style={stacked ? styles.buttonsStack : styles.buttonsRow}>
+      <DialogOverlay onScrimPress={cancel} scrimLabel={tr('components.alert.closeDialog')}>
+        <DialogCard accessibilityRole="alert">
+          <DialogBody>
+            <DialogHeading title={shown.title} message={shown.message || undefined} />
+          </DialogBody>
+          <DialogActions stacked={stacked}>
             {ordered.map((button, index) => {
               const role = roleOf(button, shown.buttons.indexOf(button), shown.buttons);
               const label = button.text ?? tr('common.ok');
               return (
-                <Pressable
+                <DialogButton
                   key={`${label}-${index}`}
+                  stacked={stacked}
+                  label={label}
+                  role={role === 'destructive' ? 'negative' : role}
                   onPress={() => close(shown.id, button)}
-                  accessibilityRole="button"
-                  accessibilityLabel={label}
-                  style={({ pressed }) => [
-                    styles.button,
-                    role === 'primary' && (pressed ? styles.primaryPressed : styles.primary),
-                    role === 'destructive' && (pressed ? styles.destructivePressed : styles.destructive),
-                    role === 'secondary' && [styles.secondary, pressed && styles.secondaryPressed],
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.label,
-                      role === 'primary' && styles.labelPrimary,
-                      role === 'destructive' && styles.labelDestructive,
-                      role === 'secondary' && styles.labelSecondary,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
+                />
               );
             })}
-          </View>
-        </View>
-      </View>
+          </DialogActions>
+        </DialogCard>
+      </DialogOverlay>
     </Modal>
   );
 }
