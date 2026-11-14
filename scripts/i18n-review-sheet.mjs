@@ -9,7 +9,9 @@
  * byte-order mark, so a spreadsheet program opens them directly; the reviewer saves them back as CSV UTF-8 (or
  * pastes the columns into an .xlsx sheet and exports). The default folder is gujarati-review-<date> in the current
  * folder. Only texts not yet reviewed are listed (docs/GUJARATI_REVIEWED.json); --all lists every text. A plural text
- * has one row per form (key.one, key.other). Apply the returned files with scripts/i18n-review-apply.mjs.
+ * has one row per form (key.one, key.other). It also writes <folder>/Reviewer.csv with the headers "Reviewer name" and
+ * "Reviewed on" (YYYY-MM-DD) and one empty row: the reviewer fills both, and the import records texts as reviewed only
+ * when both are filled. Apply the returned files with scripts/i18n-review-apply.mjs.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -73,4 +75,5 @@ writeFileSync(
     ...glossary.map(({ section, cells }) => csvLine([section, cells[0], cells[1], cells.length > 3 ? cells[2] : '', cells[cells.length - 1], '', ''])),
   ].join('\r\n')}\r\n`,
 );
+writeFileSync(join(out, 'Reviewer.csv'), `${BOM}${[csvLine(['Reviewer name', 'Reviewed on (YYYY-MM-DD)']), csvLine(['', ''])].join('\r\n')}\r\n`);
 console.log(`${rows.length} text(s) -> ${join(out, 'Texts.csv')}; ${glossary.length} glossary row(s) -> ${join(out, 'Glossary.csv')}`);
