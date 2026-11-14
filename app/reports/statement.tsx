@@ -45,6 +45,7 @@ import { showAlert } from '@/utils/alert';
 import { formatIndiaDate, formatIndiaSpokenDate, formatNumber } from '@/utils/formatters';
 import { itemWithPackaging } from '@/utils/packagingWord';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
+import { nameFileNamePart } from '@/utils/invoiceLabel';
 
 const REPORT_ID = 'statement';
 
@@ -175,7 +176,7 @@ function CustomerStatementView({ customerId, customerName, canOpenLeft, onChange
         showAlert(tr('reports.export.failedTitle'), made.error || tr('errors.pdf.generateFailed'));
         return;
       }
-      const shared = await downloadAndSharePDF(made.pdfUrl, `Statement ${name || ''}`.trim() + '.pdf');
+      const shared = await downloadAndSharePDF(made.pdfUrl, `Statement ${nameFileNamePart(name)}`.trim() + '.pdf');
       if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), shared.error || tr('errors.pdf.shareFailed'));
     } finally {
       sharingRef.current = false;

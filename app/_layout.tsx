@@ -1,4 +1,5 @@
 import 'react-native-gesture-handler';
+import '@/theme/builtBrandPack';
 import { LogBox, Platform, type AppStateStatus } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import * as NavigationBar from 'expo-navigation-bar';

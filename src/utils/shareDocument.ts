@@ -7,6 +7,7 @@ import { withNativeHandoff } from '@/config/nativeHandoff';
 import { AppError } from '@/utils/appError';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
+import { failureTextForPeople } from '@/utils/failureTextForPeople';
 
 const log = createLogger('share');
 
@@ -331,7 +332,7 @@ export async function downloadAndSharePDF(
     deleteQuietly(downloadedFile);
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.shareFailed'),
+      error: failureTextForPeople(error, t('errors.pdf.shareFailed')),
     };
   }
 }
@@ -376,7 +377,7 @@ export async function shareCsvFile(csv: string, filename: string): Promise<Share
   } catch (error) {
     log.error('CSV share failed');
     deleteQuietly(written);
-    return { success: false, error: error instanceof Error ? error.message : t('errors.pdf.shareFailed') };
+    return { success: false, error: failureTextForPeople(error, t('errors.pdf.shareFailed')) };
   }
 }
 
@@ -458,7 +459,7 @@ export async function downloadPDF(
     log.error('Document download failed');
     return {
       success: false,
-      error: error instanceof Error ? error.message : t('errors.pdf.downloadFailed'),
+      error: failureTextForPeople(error, t('errors.pdf.downloadFailed')),
     };
   }
 }

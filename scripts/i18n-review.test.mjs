@@ -61,7 +61,13 @@ function makeApp({ withMissing = true } = {}) {
 }
 const run = (script, ...args) => spawnSync('node', [join(app, 'scripts', script), ...args], { cwd: app, encoding: 'utf8' });
 const sheet = (...args) => run('i18n-review-sheet.mjs', '--out', join(app, 'review'), '--date', '2026-12-01', ...args);
-const apply = (...args) => run('i18n-review-apply.mjs', join(app, 'review'), '--date', '2026-12-02', ...args);
+/** The reviewer's name and date, as the reviewer types them into the exported Reviewer.csv (WH-197). */
+const fillReviewer = (name = 'Test Reviewer', date = '2026-12-02') =>
+  writeFileSync(join(app, 'review/Reviewer.csv'), `Reviewer name,Reviewed on (YYYY-MM-DD)\r\n${name},${date}\r\n`);
+const apply = (...args) => {
+  if (!args.includes('--no-reviewer')) fillReviewer();
+  return run('i18n-review-apply.mjs', join(app, 'review'), ...args.filter(arg => arg !== '--no-reviewer'));
+};
 const guCommon = () => readFileSync(join(app, 'src/i18n/locales/gu/common.ts'), 'utf8');
 const reviewedRecord = () => JSON.parse(readFileSync(join(app, 'docs/GUJARATI_REVIEWED.json'), 'utf8'));
 const textsPath = () => join(app, 'review/Texts.csv');
@@ -228,4 +234,64 @@ test('i18n:public-check passes once every text is reviewed, and fails again when
   assert.equal(edited.status, 1);
   assert.match(edited.stderr, /1 Gujarati text\(s\) are not reviewed/);
   assert.match(edited.stderr, /\n {2}grn\.title\n/);
+});
+
+// WH-197: who reviewed and when, an English text that changed, and line breaks in a reviewer's cell.
+test('without a reviewer name and a date nothing is recorded as reviewed, a correction is still written, and the script says so', () => {
+  for (const [name, date] of [['', '2026-12-02'], ['Test Reviewer', ''], ['Test Reviewer', 'yesterday'], ['Test Reviewer', '2026-13-45']]) {
+    makeApp();
+    sheet();
+    editRow('common.save', { proposed: 'સેવ કરો' });
+    fillReviewer(name, date);
+    const result = run('i18n-review-apply.mjs', join(app, 'review'));
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /Nothing was recorded as reviewed: Reviewer\.csv needs a reviewer name and a date/, `${name}/${date}`);
+    assert.ok(!existsSync(join(app, 'docs/GUJARATI_REVIEWED.json')), `no record for name "${name}" date "${date}"`);
+    assert.match(readFileSync(join(app, 'docs/GUJARATI_GLOSSARY.md'), 'utf8'), /\| Save \| .* \| Draft \|/, 'glossary status stays Draft');
+  }
+  assert.match(guCommon(), /save: 'સેવ કરો',/, 'the correction is written');
+});
+
+test('a sheet with no Reviewer.csv at all records nothing', () => {
+  sheet();
+  rmSync(join(app, 'review/Reviewer.csv'));
+  const result = run('i18n-review-apply.mjs', join(app, 'review'));
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Nothing was recorded as reviewed/);
+  assert.ok(!existsSync(join(app, 'docs/GUJARATI_REVIEWED.json')));
+});
+
+test('with a reviewer name and a date every text is recorded, and the record carries the reviewer\'s date', () => {
+  sheet();
+  fillReviewer('Test Reviewer', '2026-12-05');
+  const result = run('i18n-review-apply.mjs', join(app, 'review'));
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.doesNotMatch(result.stdout, /Nothing was recorded/);
+  assert.equal(reviewedRecord().reviewedOn, '2026-12-05');
+  assert.equal(Object.keys(reviewedRecord().texts).length, 6);
+});
+
+test('a row whose English changed in the app since the sheet was made is listed, not applied and not recorded', () => {
+  sheet();
+  const english = join(app, 'src/i18n/locales/en/common.ts');
+  writeFileSync(english, readFileSync(english, 'utf8').replace("save: 'Save'", "save: 'Save now'"));
+  editRow('common.save', { proposed: 'સેવ કરો' });
+  const result = apply();
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /English changed in the app since the list was made[^\n]*\(1\):\n {2}common\.save: the English changed since the list was made/);
+  assert.match(guCommon(), /save: 'સાચવો',/, 'the correction is not applied');
+  assert.ok(!('common.save' in reviewedRecord().texts), 'not recorded as reviewed');
+  assert.ok('common.welcome' in reviewedRecord().texts, 'the other rows are recorded');
+});
+test('a reviewer\'s cell with a carriage return or a line separator is written as an escaped string, never a raw line break', () => {
+  sheet();
+  const [cr, ls, ps] = ['\r', 0x2028, 0x2029].map(c => (typeof c === 'number' ? String.fromCharCode(c) : c));
+  editRow('common.save', { proposed: `one${cr}two${ls}three${ps}four` });
+  const result = apply();
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const text = guCommon();
+  for (const raw of [cr, ls, ps]) assert.ok(!text.includes(raw), `no raw line break U+${raw.charCodeAt(0).toString(16)} in the file`);
+  assert.ok(text.includes("save: 'one\\rtwo\\u2028three\\u2029four',"));
+  assert.equal(run('i18n-release-check.mjs').status, 1, 'the file still parses (grn.extra is the only gap)');
+  assert.match(run('i18n-release-check.mjs').stderr, /1 English text\(s\) have no Gujarati text/);
 });

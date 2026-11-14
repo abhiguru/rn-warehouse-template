@@ -102,7 +102,15 @@ export function locateTexts() {
   return found;
 }
 
-const quote = text => `'${text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;
+/** A single-quoted TypeScript string: escapes the backslash, the quote and every line break (\n, \r, U+2028, U+2029). */
+const quote = text =>
+  `'${text
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')}'`;
 
 /**
  * Replace texts in the gu source files. `changes` is Map flatKey -> new string. Plural forms (`key.one`) are found as

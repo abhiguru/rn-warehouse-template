@@ -57,6 +57,8 @@ const INTRODUCED_BY_MIGRATION = {
   importedDocuments: 191,
   /** `get_accountant_pack`, with generate-accountant-pack: the accountant pack of a period (WH-158; 203 added the ledger names). */
   accountantPack: 204,
+  /** `can_make_bills`, the GST_DETAILS_REQUIRED refusal of a new bill and `bills_allowed` in get_gst_details (WH-205; 206 is the number the migration takes at assembly). */
+  billsNeedGst: 206,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

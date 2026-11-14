@@ -20,5 +20,17 @@ export function invoicePrefixOf(label: unknown, digits: string | number | null |
   return tail !== '' && full.endsWith(tail) ? full.slice(0, full.length - tail.length) : '';
 }
 
-/** An invoice number as part of a file name: "SRT/12" becomes "SRT-12" (a slash is no file name character). */
-export const invoiceFileName = (label: string): string => label.replace(/[^A-Za-z0-9._-]+/g, '-');
+/**
+ * A document number as part of a file name. A "/" becomes "_" and any other character that is no file name character
+ * becomes "-", so "GRN/26-27/0042" gives "GRN_26-27_0042" and "GRN-26-27/0042" gives "GRN-26-27_0042": two numbers made of
+ * letters, digits, "/", "-" and "." never share a name. A missing number (nothing, or the text "null" / "undefined" of a
+ * number that was not there) gives `fallback` (the document's id, where the caller has it) and never "null".
+ */
+export const invoiceFileName = (label: string | number | null | undefined, fallback = 'document'): string => {
+  const text = label === null || label === undefined ? '' : String(label).trim();
+  const own = text === '' || text === 'null' || text === 'undefined' ? fallback : text;
+  return own.replace(/\/+/g, '_').replace(/[^A-Za-z0-9._-]+/g, '-');
+};
+
+/** A customer's or sensor's name as part of a file name: the whole name, with each "/" or "\\" replaced by "_" (it is not cut at the slash). */
+export const nameFileNamePart = (name: string | null | undefined): string => (name ?? '').replace(/[\\/]+/g, '_');

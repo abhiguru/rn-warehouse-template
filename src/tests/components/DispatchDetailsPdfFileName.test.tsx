@@ -1,6 +1,6 @@
 /**
  * WH-185: the file name the dispatch details page gives the PDF it shares carries the whole number ("DSP/23-24/0042"
- * gives "Dispatch_DSP-23-24-0042.pdf"). The real page and handler run; only the PDF service and the share call are faked.
+ * gives "Dispatch_DSP_23-24_0042.pdf"). The real page and handler run; only the PDF service and the share call are faked.
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';

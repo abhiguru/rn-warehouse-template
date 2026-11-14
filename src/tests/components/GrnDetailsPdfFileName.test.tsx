@@ -1,6 +1,6 @@
 /**
  * WH-185: the file name the GRN details page gives the PDF it shares carries the whole number ("GRN/23-24/0042" gives
- * "GRN_GRN-23-24-0042.pdf"). The real page and handler run; only the PDF service and the share call are faked.
+ * "GRN_GRN_23-24_0042.pdf"). The real page and handler run; only the PDF service and the share call are faked.
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';

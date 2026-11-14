@@ -1,7 +1,6 @@
 /**
- * GST details (Settings > Warehouse tools, administrators; WH-151, backend migration 173): whether the warehouse is
- * registered for GST, its GSTIN (the state is its first two digits), the address and legal name printed on bills, and the SAC
- * codes for storage and labour. Until an administrator saves once, bills are made exactly as before (the Home strip asks for
+ * GST details (Settings > Warehouse tools, administrators; WH-151, backend migration 173): the warehouse's GSTIN (the state is its
+ * first two digits), the address and legal name printed on bills, and the SAC codes for storage and labour. Until an administrator saves, no new bill can be made (WH-205; the Home strip asks for
  * the details). Saving asks first; saved bills keep the details they were made with. The screen shows what the server
  * confirmed. docs/STYLE_GUIDE.md §14.12 and §13.9.
  */
@@ -13,7 +12,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Switch } from '@/components/ui/Switch';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -38,7 +36,6 @@ const GSTIN_EXAMPLE = '24AAAAA0000A1Z5';
 type Errors = Partial<Record<'gstin' | 'address' | 'sacStorage' | 'sacLabour', string>>;
 
 const toDraft = (details: GstDetails): GstDetailsInput => ({
-  registered: details.registered,
   gstin: details.gstin,
   address: details.address,
   legalName: details.legalName,
@@ -47,7 +44,6 @@ const toDraft = (details: GstDetails): GstDetailsInput => ({
 });
 
 const sameDraft = (a: GstDetailsInput, b: GstDetailsInput): boolean =>
-  a.registered === b.registered &&
   a.gstin.trim() === b.gstin.trim() &&
   a.address.trim() === b.address.trim() &&
   a.legalName.trim() === b.legalName.trim() &&
@@ -58,10 +54,8 @@ const sameDraft = (a: GstDetailsInput, b: GstDetailsInput): boolean =>
 function check(draft: GstDetailsInput): Errors {
   const errors: Errors = {};
   const gstin = draft.gstin.trim().toUpperCase();
-  if (draft.registered) {
-    if (!gstin) errors.gstin = tr('gst.settings.gstinRequired');
-    else if (!GSTIN_SHAPE.test(gstin)) errors.gstin = tr('gst.settings.invalidGstin', { example: GSTIN_EXAMPLE });
-  }
+  if (!gstin) errors.gstin = tr('gst.settings.gstinRequired');
+  else if (!GSTIN_SHAPE.test(gstin)) errors.gstin = tr('gst.settings.invalidGstin', { example: GSTIN_EXAMPLE });
   const address = draft.address.trim();
   if (!address) errors.address = tr('gst.settings.addressRequired');
   else if (address.length > ADDRESS_MAX) errors.address = tr('gst.settings.addressTooLong', { max: ADDRESS_MAX });
@@ -171,7 +165,7 @@ export default function GstDetailsScreen() {
     );
   }
 
-  const gstinState = draft?.registered && GSTIN_SHAPE.test(draft.gstin.trim().toUpperCase()) ? stateNameOf(draft.gstin.trim().slice(0, 2)) : '';
+  const gstinState = draft && GSTIN_SHAPE.test(draft.gstin.trim().toUpperCase()) ? stateNameOf(draft.gstin.trim().slice(0, 2)) : '';
 
   return (
     <View style={styles.screen}>
@@ -204,18 +198,8 @@ export default function GstDetailsScreen() {
         ) : null}
         {stored && draft ? (
           <>
-            {!stored.saved ? <Text style={styles.note} testID="gst-details-not-saved">{tr('gst.settings.notSavedNote')}</Text> : null}
-            <View style={styles.switchBox}>
-              <Switch
-                label={tr('gst.settings.registered')}
-                helperText={tr('gst.settings.registeredHelp')}
-                value={draft.registered}
-                disabled={saving}
-                onValueChange={on => change({ registered: on })}
-              />
-            </View>
+            {!stored.saved || !stored.registered ? <Text style={styles.note} testID="gst-details-not-saved">{tr('gst.settings.notSavedNote')}</Text> : null}
             <View style={styles.fields}>
-              {draft.registered ? (
                 <>
                   <Input
                     label={tr('gst.settings.gstin')}
@@ -242,7 +226,6 @@ export default function GstDetailsScreen() {
                     />
                   ) : null}
                 </>
-              ) : null}
               <Input
                 label={tr('gst.settings.address')}
                 required
@@ -264,7 +247,6 @@ export default function GstDetailsScreen() {
                 editable={!saving}
                 testID="gst-details-legal-name"
               />
-              {draft.registered ? (
                 <>
                   <Input
                     label={tr('gst.settings.sacStorage')}
@@ -290,7 +272,6 @@ export default function GstDetailsScreen() {
                     testID="gst-details-sac-labour"
                   />
                 </>
-              ) : null}
             </View>
             {stored.savedByName ? <Text style={styles.intro}>{tr('gst.settings.savedBy', { name: stored.savedByName })}</Text> : null}
             <View style={styles.actions}>
@@ -324,7 +305,6 @@ const makeStyles = (t: ThemeTokens) =>
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
     actions: { marginHorizontal: layout.marginCompact, marginTop: space.md },
-    switchBox: { marginHorizontal: layout.marginCompact, borderRadius: radius.card, overflow: 'hidden', backgroundColor: t.surface.card },
     fields: { marginHorizontal: layout.marginCompact, marginTop: space.lg, gap: space.md },
     stateScreen: {
       flex: 1,

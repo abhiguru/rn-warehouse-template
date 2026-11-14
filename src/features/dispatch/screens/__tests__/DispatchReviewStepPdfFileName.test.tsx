@@ -1,6 +1,6 @@
 /**
  * WH-185: after a dispatch is created, Share PDF names the file with the whole number ("DSP/23-24/0042" gives
- * "Dispatch_DSP-23-24-0042.pdf"). The real step runs its real save and share handlers; only the form's save call,
+ * "Dispatch_DSP_23-24_0042.pdf"). The real step runs its real save and share handlers; only the form's save call,
  * the PDF service and the share call are faked.
  */
 import React from 'react';

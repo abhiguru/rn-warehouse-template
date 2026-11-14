@@ -53,8 +53,11 @@ const formatParam = (value: string | number | null | undefined, language: AppLan
 
 /** The text for a key in the app's language (or the one given). An unknown key returns the key itself. */
 export function t(key: TranslationKey, params?: TranslationParams, language: AppLanguage = getLanguage()): string {
-  const entry = lookup(TABLES[language], key) ?? lookup(en, key);
+  const own = lookup(TABLES[language], key);
+  const entry = own ?? lookup(en, key);
   if (entry === undefined) return key;
+  // A text that fell back to English is English throughout: English plural rule and 0-9 digits (WH-197).
+  if (own === undefined) language = 'en';
   const count = typeof params?.count === 'number' ? params.count : undefined;
   const text = typeof entry === 'string' ? entry : count !== undefined && isOne(count, language) ? entry.one : entry.other;
   if (!params) return text;

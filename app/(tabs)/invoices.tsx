@@ -17,8 +17,8 @@ import { Fab } from '@/components/ui/Fab';
 import { t } from '@/i18n';
 import { useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
-import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
-import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
+import { beginNewBill, releaseNewBill } from '@/features/invoice/utils/startNewBill';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import type { ThemeTokens } from '@/theme/tokens';
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -36,27 +36,27 @@ export default function InvoicesTab() {
   // Set by the first tap on "Create invoice" until this tab is in front again:
   // a second tap opened a second step 1 and reset the form the first one had
   // started (its suggested number was lost).
-  const isOpening = useRef(false);
+  const focused = useRef(true);
   useFocusEffect(
     useCallback(() => {
-      isOpening.current = false;
+      focused.current = true;
+      releaseNewBill();
+      return () => {
+        focused.current = false;
+      };
     }, [])
   );
 
-  const handleCreateInvoice = useCallback(() => {
-    if (isOpening.current) return;
-    // Another invoice form is open (maybe hidden under other screens): say so before anything is reset. Emptying the
-    // form first would leave the open one without its data, and the refusal could never be got past (J1).
-    const blocker = openFormBlocking({ kind: 'create' });
-    if (blocker) {
-      showOpenFormRefusal(blocker);
-      return;
-    }
-    isOpening.current = true;
+  const { role } = useRoleBasedAccess();
+
+  const handleCreateInvoice = useCallback(async () => {
+    // Another open form is named before anything is reset (J1); WH-205: no new bill until the GST details are saved. Both are
+    // checked again after the server answers; one shared busy flag with the empty list's button.
+    if ((await beginNewBill(role, () => focused.current)) !== 'go') return;
     // Reset form state before creating a new invoice
     dispatch(resetInvoiceForm());
     router.push('/invoice-form/step1');
-  }, [dispatch]);
+  }, [dispatch, role]);
 
   return (
     <View style={styles.container}>

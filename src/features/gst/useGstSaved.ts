@@ -1,7 +1,7 @@
 /**
- * Whether an administrator has saved the facility's GST details (WH-151): the Home strip "Add your GST details so bills print
- * correctly." shows until then. Read from the server (`get_gst_details`) each time the screen comes into focus, for
- * administrators on a backend with migration 173 only; nothing else asks. A failed read shows no strip.
+ * Whether an administrator has saved the facility's GST details (WH-151): the Home strip "Add your GST details. Bills can't be
+ * made until then." shows until then (WH-205: until the server says bills are allowed: details saved,
+ * with a GSTIN). Read from the server (`get_gst_details`) each time the screen comes into focus, for administrators on a backend with migration 173 only; nothing else asks. A failed read shows no strip.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
@@ -43,7 +43,7 @@ export function useGstNotSaved(): boolean {
     let current = true;
     getGstDetails()
       .then((details) => {
-        if (current) setNotSaved(!details.saved);
+        if (current) setNotSaved(backendHasFeature('billsNeedGst') && details.billsAllowed !== null ? !details.billsAllowed : !details.saved);
       })
       .catch(() => {
         if (current) setNotSaved(false);

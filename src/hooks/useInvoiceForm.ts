@@ -82,6 +82,7 @@ import { InvoiceRouteIdContext } from '@/features/invoice/utils/invoiceRouteId';
 
 import { describeValidationErrors } from '@/features/invoice/utils/validationMessages';
 import { askAlert, showAlert } from '@/utils/alert';
+import { billsBlockedMessage } from '@/features/gst/billsAllowed';
 import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
@@ -963,6 +964,12 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       if (refusal?.reason === REFUSAL.EDIT_NEEDS_TWO_DOCUMENTS) {
         const message = documentRefusalText(refusal.reason) ?? '';
         report(t(failedTitleKey), message);
+        return { success: false, error: message };
+      }
+      if (refusal?.reason === REFUSAL.GST_DETAILS_REQUIRED) {
+        // WH-205: the details were cleared while the form was open. Nothing was saved; the form keeps what was typed.
+        const message = billsBlockedMessage(store.getState().auth.userProfile?.role);
+        report(t('gst.billsBlocked.title'), message);
         return { success: false, error: message };
       }
       if (refusal?.reason === REFUSAL.NUMBER_OUT_OF_RANGE) {

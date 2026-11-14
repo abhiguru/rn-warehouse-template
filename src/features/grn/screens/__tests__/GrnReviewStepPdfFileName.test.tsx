@@ -1,6 +1,6 @@
 /**
  * WH-185: after a GRN is created, Share PDF names the file with the whole number ("GRN/23-24/0042" gives
- * "GRN_GRN-23-24-0042.pdf"). The real step runs its real save and share handlers; only the server calls (create, PDF)
+ * "GRN_GRN_23-24_0042.pdf"). The real step runs its real save and share handlers; only the server calls (create, PDF)
  * and the share call are faked.
  */
 import React from 'react';

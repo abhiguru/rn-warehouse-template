@@ -136,8 +136,8 @@ describe('the full invoice number (invoiceLabel)', () => {
   });
 
   it('makes a file name of a label: a slash is no file name character', () => {
-    expect(invoiceFileName('SRT/12')).toBe('SRT-12');
-    expect(invoiceFileName('A B/C:1')).toBe('A-B-C-1');
+    expect(invoiceFileName('SRT/12')).toBe('SRT_12');
+    expect(invoiceFileName('A B/C:1')).toBe('A-B_C-1');
     expect(invoiceFileName('I0000554')).toBe('I0000554');
   });
 });
