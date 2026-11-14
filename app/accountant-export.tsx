@@ -8,8 +8,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Stack, useIsFocused } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { Input } from '@/components/ui/Input';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -42,7 +42,6 @@ export default function AccountantExportScreen() {
   const isFocused = useIsFocused();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const insets = useSafeAreaInsets();
   const [stored, setStored] = useState<LedgerNames | null>(null);
   const [draft, setDraft] = useState<LedgerNames | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -176,11 +175,13 @@ export default function AccountantExportScreen() {
         ) : null}
       </KeyboardAwareScrollView>
       {stored && draft ? (
-        <View style={[styles.saveBar, { paddingBottom: insets.bottom + space.md }]}>
-          <Button size="fullWidth" testID="accountant-export-save" disabled={!dirty || saving} loading={saving} onPress={() => void save()}>
-            {tr('settings.accountantExport.saveLabel')}
-          </Button>
-        </View>
+        <FormSaveBar
+          label={tr('settings.accountantExport.saveLabel')}
+          onPress={() => void save()}
+          loading={saving}
+          disabled={!dirty || saving}
+          buttonTestID="accountant-export-save"
+        />
       ) : null}
     </View>
   );
@@ -194,6 +195,5 @@ const makeStyles = (t: ThemeTokens) =>
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     fields: { marginHorizontal: layout.marginCompact, gap: space.md },
     saveError: { ...typography.subhead, color: t.status.negative.text, marginHorizontal: layout.marginCompact, marginTop: space.md },
-    saveBar: { paddingTop: space.md, paddingHorizontal: layout.marginCompact, backgroundColor: t.surface.card, ...t.shadow[3] },
     stateMessage: { ...typography.body, color: t.text.secondary, textAlign: 'center' },
   });
