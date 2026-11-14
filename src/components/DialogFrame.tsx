@@ -243,8 +243,9 @@ export interface DialogButtonProps {
   role?: DialogButtonRole;
   /** Side by side (the default) or full width in a stack. */
   stacked?: boolean;
-  /** A spinner takes the place of the label and the button is disabled. */
+  /** A spinner takes the place of the label (or sits before `busyLabel`) and the button is disabled. */
   busy?: boolean;
+  busyLabel?: string;
   disabled?: boolean;
   icon?: IconName;
   accessibilityLabel?: string;
@@ -252,7 +253,7 @@ export interface DialogButtonProps {
 }
 
 /** `secondary` is outlined (cancel), `primary` the action, `negative` a destructive action. */
-export function DialogButton({ label, onPress, role = 'secondary', stacked = false, busy = false, disabled = false, icon, accessibilityLabel, testID }: DialogButtonProps) {
+export function DialogButton({ label, onPress, role = 'secondary', stacked = false, busy = false, busyLabel, disabled = false, icon, accessibilityLabel, testID }: DialogButtonProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const off = busy || disabled;
@@ -279,7 +280,10 @@ export function DialogButton({ label, onPress, role = 'secondary', stacked = fal
       testID={testID}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={spinnerColor} />
+        <>
+          <ActivityIndicator size="small" color={spinnerColor} />
+          {busyLabel ? <Text style={[styles.label, labelColor]}>{busyLabel}</Text> : null}
+        </>
       ) : (
         <>
           {icon ? <Icon name={icon} size={iconSize.md} color={iconColor} /> : null}
