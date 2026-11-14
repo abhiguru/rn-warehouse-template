@@ -24,7 +24,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { Input } from '@/components/ui/Input';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { ItemRateChoice, type RateChoice } from '@/features/item-pricing/components/ItemRateChoice';
@@ -304,11 +304,13 @@ const ItemFormScreen: React.FC = () => {
         </ScrollView>
 
         {/* Under the form, not floating over it (style guide §14.4) */}
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]} testID="item-bottom-bar">
-          <Button size="fullWidth" onPress={handleSave} loading={saving} disabled={saving}>
-            {tr('items.form.addItem')}
-          </Button>
-        </View>
+        <FormSaveBar
+          label={tr('items.form.addItem')}
+          onPress={handleSave}
+          loading={saving}
+          disabled={saving}
+          testID="item-bottom-bar"
+        />
       </KeyboardAvoidingView>
     </View>
   );
@@ -351,12 +353,6 @@ const makeStyles = (t: ThemeTokens) => ({
   headerSide: {
     flex: 1,
     alignItems: 'flex-start' as const,
-  },
-  bottomBar: {
-    paddingHorizontal: layout.marginCompact,
-    paddingTop: space.md,
-    backgroundColor: t.surface.card,
-    ...t.shadow[3],
   },
   keyboardView: {
     flex: 1,
