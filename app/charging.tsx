@@ -10,6 +10,7 @@ import { router, Stack, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -306,11 +307,13 @@ export default function ChargingScreen() {
         {stored && error ? <Text style={styles.staleNote}>{error}</Text> : null}
       </ScrollView>
       {draft ? (
-        <View style={[styles.saveBar, { paddingBottom: insets.bottom + space.md }]}>
-          <Button size="fullWidth" testID="charging-save" disabled={!dirty || saving} loading={saving} onPress={() => setAsking(true)}>
-            {tr('charging.screen.save')}
-          </Button>
-        </View>
+        <FormSaveBar
+          label={tr('charging.screen.save')}
+          onPress={() => setAsking(true)}
+          loading={saving}
+          disabled={!dirty || saving}
+          buttonTestID="charging-save"
+        />
       ) : null}
       {sheet ? (
         <PreferenceSheet
@@ -361,7 +364,6 @@ const makeStyles = (t: ThemeTokens) =>
     loading: { marginTop: space.xxl },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
-    saveBar: { paddingTop: space.md, paddingHorizontal: layout.marginCompact, backgroundColor: t.surface.card, ...t.shadow[3] },
     switchBox: { marginHorizontal: layout.marginCompact, marginTop: space.lg, borderRadius: radius.card, overflow: 'hidden', backgroundColor: t.surface.card },
     stateScreen: {
       flex: 1,
