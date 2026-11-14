@@ -238,6 +238,5 @@ export const settings: Translation<typeof source> = {
     unchanged: 'કોઈ ફેરફાર નથી.',
     loadFailed: 'ખાતાના નામ લોડ થઈ શક્યાં નથી. ફરી પ્રયત્ન કરો.',
     saveFailed: 'ખાતાના નામ સાચવી શકાયાં નથી. ફરી પ્રયત્ન કરો.',
-    unconfirmed: 'ખાતાના નામ સાચવાયાં કે નહીં તે ખાતરી થઈ શકી નથી. તમારા ફેરફાર અહીં જ છે.',
   },
 };

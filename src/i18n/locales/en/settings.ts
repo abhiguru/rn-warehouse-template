@@ -254,6 +254,5 @@ export const settings = {
     unchanged: 'No change.',
     loadFailed: "Couldn't load the ledger names. Try again.",
     saveFailed: "Couldn't save the ledger names. Try again.",
-    unconfirmed: "Couldn't confirm that the ledger names were saved. Your changes are still here.",
   },
 };
