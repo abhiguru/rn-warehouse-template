@@ -45,6 +45,9 @@ import {
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { MasterListHeader } from '@/components/common/MasterListHeader';
+import { ListSkeleton } from '@/components/skeletons';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import {
   fontWeight,
   iconSize,
@@ -61,7 +64,7 @@ import { StatusTag } from '@/components/ui';
 import { formatCount, formatTime } from '@/utils/formatters';
 import { deleteItemFlow } from '@/features/items/deleteItemFlow';
 import { showActivatedToast, showDeactivatedToast } from '@/features/items/activationToast';
-import { LoadMoreErrorFooter } from '@/components/lists/ListLoadErrors';
+import { LastUpdatedLine, LoadMoreErrorFooter } from '@/components/lists/ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { itemPagePath } from '@/features/item-pricing/contract';
 import { itemIdsWithoutRate } from '@/features/item-pricing/noRate';
@@ -456,125 +459,87 @@ export default function ItemsScreen() {
 
   const renderEmpty = useCallback(() => {
     if (listLoading || (noRateFilter && ratesStatus === 'loading')) {
-      return (
-        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel={tr('items.list.loadingLabel')}>
-          <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.emptyText}>{tr('items.list.loading')}</Text>
-        </View>
-      );
+      return <ListSkeleton count={5} metricsCount={3} />;
     }
 
     // A failed load is not an empty catalogue: never offer "Add item" for it.
     if (!noRateFilter && state.error) {
       return (
-        <View style={styles.emptyContainer} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.emptyTitle} accessibilityRole="header">
-            {tr('items.list.loadErrorTitle')}
-          </Text>
-          <Text style={styles.emptyText}>{tr('common.checkConnection')}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => fetchItems(state.filters, 0)}
-            accessibilityRole="button"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          presentation="inline"
+          title={tr('items.list.loadErrorTitle')}
+          message={tr('common.checkConnection')}
+          onRetry={() => fetchItems(state.filters, 0)}
+        />
       );
     }
 
     // The rates the filter needs did not load: not "every item has a rate".
     if (noRateFilter && ratesStatus === 'error') {
       return (
-        <View style={styles.emptyContainer} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.emptyTitle} accessibilityRole="header">
-            {tr('pricing.list.loadErrorTitle')}
-          </Text>
-          <Text style={styles.emptyText}>{tr('common.checkConnection')}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => void refreshRates()}
-            accessibilityRole="button"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          presentation="inline"
+          title={tr('pricing.list.loadErrorTitle')}
+          message={tr('common.checkConnection')}
+          onRetry={() => void refreshRates()}
+        />
       );
     }
 
     // Nothing is without a rate (any more): say so and go back to all the items.
     if (noRateFilter && !state.filters.search) {
       return (
-        <View style={styles.emptyContainer}>
-          <Icon name="tag-outline" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyText}>{tr('items.list.noRateNone')}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => setNoRateFilter(false)}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>{tr('items.list.noRateShowAll')}</Text>
-          </Pressable>
-        </View>
+        <ListEmptyState
+          activeFilterCount={1}
+          filteredIcon="tag-outline"
+          filteredTitle={tr('items.list.noRateNone')}
+          filteredSubtitle=""
+          clearFiltersLabel={tr('items.list.noRateShowAll')}
+          onClearFilters={() => setNoRateFilter(false)}
+        />
       );
     }
 
     // A search that matches no item without a rate (the filter on): say so and offer to clear the search.
     if (noRateFilter && state.filters.search) {
       return (
-        <View style={styles.emptyContainer}>
-          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyText}>{tr('items.list.noRateNoMatch', { search: state.filters.search })}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => handleSearch('')}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>{tr('common.clearSearch')}</Text>
-          </Pressable>
-        </View>
+        <ListEmptyState
+          activeFilterCount={1}
+          filteredIcon="magnify"
+          filteredTitle={tr('items.list.noRateNoMatch', { search: state.filters.search })}
+          filteredSubtitle=""
+          clearFiltersLabel={tr('common.clearSearch')}
+          onClearFilters={() => handleSearch('')}
+        />
       );
     }
 
     // A search with no match is not an empty catalogue: say so and offer to clear it.
     if (state.filters.search) {
       return (
-        <View style={styles.emptyContainer}>
-          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyText}>{tr('items.list.noMatch', { search: state.filters.search })}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => handleSearch('')}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>{tr('common.clearSearch')}</Text>
-          </Pressable>
-        </View>
+        <ListEmptyState
+          activeFilterCount={1}
+          filteredIcon="magnify"
+          filteredTitle={tr('items.list.noMatch', { search: state.filters.search })}
+          filteredSubtitle=""
+          clearFiltersLabel={tr('common.clearSearch')}
+          onClearFilters={() => handleSearch('')}
+        />
       );
     }
 
     return (
-      <View style={styles.emptyContainer}>
-        <Icon name="cube-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle} accessibilityRole="header">
-          {tr('items.list.emptyTitle')}
-        </Text>
-        <Text style={styles.emptyText}>{tr('items.list.emptyMessage')}</Text>
-        <Pressable
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
-          onPress={handleAddItem}
-          accessibilityRole="button"
-        >
-          <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
-          <Text style={styles.primaryButtonText}>{tr('items.list.addItem')}</Text>
-        </Pressable>
-      </View>
+      <ListEmptyState
+        activeFilterCount={0}
+        emptyIcon="cube-outline"
+        emptyTitle={tr('items.list.emptyTitle')}
+        emptySubtitle={tr('items.list.emptyMessage')}
+        showCreateButton
+        createButtonLabel={tr('items.list.addItem')}
+        onCreatePress={handleAddItem}
+      />
     );
-  }, [listLoading, state.error, state.filters, noRateFilter, ratesStatus, refreshRates, setNoRateFilter, fetchItems, handleAddItem, handleSearch, styles, t]);
+  }, [listLoading, state.error, state.filters, noRateFilter, ratesStatus, refreshRates, setNoRateFilter, fetchItems, handleAddItem, handleSearch]);
 
   const renderFooter = useCallback(() => {
     if (state.loadMoreFailed && !state.loadingMore) {
@@ -659,6 +624,9 @@ export default function ItemsScreen() {
               testID="no-rate-strip"
             />
           </View>
+        ) : null}
+        {offline && !noRateFilter && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
+          <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="items-last-updated" />
         ) : null}
         <FlatList
           style={styles.flatList}
@@ -920,65 +888,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.subhead,
     color: t.text.secondary,
     flex: 1,
-  },
-
-  // Empty / error / loading states
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: space.sm,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.giant,
-  },
-  emptyTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.sm,
-  },
-  emptyText: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.md,
-  },
-  primaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    paddingHorizontal: space.xl,
-    gap: space.sm,
-    backgroundColor: t.brand.fill,
-  },
-  primaryButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  primaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
-  },
-  secondaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    paddingHorizontal: space.xl,
-    gap: space.sm,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
   },
 
   // Footer
