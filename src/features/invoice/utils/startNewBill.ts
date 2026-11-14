@@ -3,32 +3,34 @@ import { showOpenFormRefusal } from './refuseOpenForm';
 import { billsMayStart } from '@/features/gst/billsAllowed';
 
 /**
- * The start of a new bill from the Invoices tab (its button and the empty list's button): one shared busy flag, so two taps
- * during the wait push step 1 once; the open-form check before and after asking `can_make_bills` (J1: a form opened meanwhile
- * is never reset); and no form, reset or alert when the person has left the screen meanwhile.
- * The flag stays set after 'go' until the screen is in front again (`releaseNewBill`, from the screens' focus effects).
+ * The start of a new bill, shared by all three entries (the Invoices button, the empty list's button, GRN details' Create
+ * invoice). One rule: ask `can_make_bills`, and when the answer comes only the latest tap may go on, and only while its
+ * screen is still in front and no other invoice form is open (J1: such a form is never reset). Anything else does nothing:
+ * no reset, no navigation, no alert.
+ *
+ * Each tap takes a new token, so an older request that is still waiting can never go after a newer tap. After 'go' the
+ * entry is busy until `releaseNewBill` (the screens' focus effects, or the entry itself when it gives up).
  */
-let busy = false;
+let latest = 0;
+let opening = false;
 
 export function releaseNewBill(): void {
-  busy = false;
+  opening = false;
 }
 
-/** 'go': the caller resets the form and opens step 1. 'stop': nothing to do (refused, busy, another form open or the screen left). */
+/** 'go': the caller resets the form and opens it. 'stop': nothing to do (refused, busy, superseded, another form open, screen left). */
 export async function beginNewBill(role: string | null | undefined, isFocused: () => boolean): Promise<'go' | 'stop'> {
-  if (busy) return 'stop';
+  if (opening) return 'stop';
   const blocker = openFormBlocking({ kind: 'create' });
   if (blocker) {
     showOpenFormRefusal(blocker);
     return 'stop';
   }
-  busy = true;
-  let go = false;
-  try {
-    const stillWanted = () => isFocused() && !openFormBlocking({ kind: 'create' });
-    go = (await billsMayStart(role, stillWanted)) && stillWanted();
-  } finally {
-    if (!go) busy = false;
-  }
-  return go ? 'go' : 'stop';
+  latest += 1;
+  const token = latest;
+  const stillWanted = () => token === latest && isFocused() && !openFormBlocking({ kind: 'create' });
+  const go = (await billsMayStart(role, stillWanted)) && stillWanted();
+  if (!go) return 'stop';
+  opening = true;
+  return 'go';
 }

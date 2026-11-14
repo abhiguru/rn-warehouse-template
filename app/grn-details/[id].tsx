@@ -36,7 +36,6 @@ import { Portal, Snackbar } from 'react-native-paper';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
-import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
 import { startInvoiceFromGrn } from '@/features/invoice/utils/invoiceFormOrigin';
 import { prepareInvoiceFromGrn } from '@/features/invoice/utils/prepareInvoiceFromGrn';
 import { backendHasFeature } from '@/config/backendFeatures';
@@ -78,7 +77,7 @@ import { parseInvoiceState } from '@/features/charging/invoiceState';
 import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
 import { invoiceTableFrom } from '@/components/common/invoiceTable';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { billsMayStart } from '@/features/gst/billsAllowed';
+import { beginNewBill, releaseNewBill } from '@/features/invoice/utils/startNewBill';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 
 const log = createLogger('grn');
@@ -459,6 +458,7 @@ function GRNDetailScreen() {
     useCallback(() => {
       focusedRef.current = true;
       openingInvoiceRef.current = false;
+      releaseNewBill();
       focusCountRef.current += 1;
       if (focusCountRef.current > 1) void fetchGRNDetailsRef.current();
       return () => {
@@ -536,24 +536,20 @@ function GRNDetailScreen() {
   const handleCreateInvoice = async () => {
     const current = data?.grn;
     if (openingInvoiceRef.current || !current) return;
-    const blocker = openFormBlocking({ kind: 'create' });
-    if (blocker) {
-      showOpenFormRefusal(blocker);
-      return;
-    }
-    // WH-205: no new bill until the GST details are saved: asked before anything is read or reset; the button is busy meanwhile.
+    // Another open form is named first (J1); WH-205: no new bill until the GST details are saved. Both are asked before anything
+    // is read or reset, and checked again after the answer (the shared rule of startNewBill.ts); the button is busy meanwhile.
     openingInvoiceRef.current = true;
     setPreparingInvoice(true);
-    let mayStart = false;
+    let go: 'go' | 'stop' = 'stop';
     try {
-      mayStart = await billsMayStart(userProfile?.role, () => focusedRef.current && !openFormBlocking({ kind: 'create' }));
+      go = await beginNewBill(userProfile?.role, () => focusedRef.current);
     } finally {
-      if (!mayStart) {
+      if (go !== 'go') {
         setPreparingInvoice(false);
         openingInvoiceRef.current = false;
       }
     }
-    if (!mayStart) return;
+    if (go !== 'go') return;
     reduxDispatch(resetInvoiceForm());
     let prepared: Awaited<ReturnType<typeof prepareInvoiceFromGrn>>;
     try {
@@ -565,11 +561,13 @@ function GRNDetailScreen() {
     if (!focusedRef.current || openFormBlocking({ kind: 'create' })) {
       if (!openFormBlocking({ kind: 'create' })) reduxDispatch(resetInvoiceForm());
       openingInvoiceRef.current = false;
+      releaseNewBill();
       return;
     }
     if (!prepared.ok) {
       reduxDispatch(resetInvoiceForm());
       openingInvoiceRef.current = false;
+      releaseNewBill();
       showAlert(tr('invoice.form.grnLoadFailedTitle'), prepared.message);
       return;
     }
