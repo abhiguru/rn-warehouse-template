@@ -3,6 +3,8 @@ import type { validation as source } from '../en/validation';
 import type { Translation } from '../../types';
 
 export const validation: Translation<typeof source> = {
+  // A form's own required-field sentence (WH-158: the ledger names); the shared helpers use field.required.
+  required: '{{field}} જરૂરી છે',
   field: {
     required: '{{field}} જરૂરી છે',
     invalidSelection: '{{field}} ની પસંદગી બરાબર નથી',

@@ -147,7 +147,7 @@ describe('connection history screen (WH-177)', () => {
 
 describe('settings feature rows', () => {
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'rackPresets', 'sensors', 'connectionHistory']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'accountantExport', 'rackPresets', 'sensors', 'connectionHistory']],
     ['supervisor', ['customers', 'items', 'users', 'standardRate', 'rackPresets', 'sensors']],
     ['staff', ['sensors']],
     ['customer', []],
@@ -157,7 +157,7 @@ describe('settings feature rows', () => {
   });
 
   it.each([
-    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'rackPresets', 'connectionHistory']],
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'standardRate', 'documentNumbering', 'charging', 'gstDetails', 'accountantExport', 'rackPresets', 'connectionHistory']],
     ['supervisor', ['customers', 'items', 'users', 'standardRate', 'rackPresets']],
     ['staff', []],
     ['customer', []],

@@ -12,6 +12,7 @@ export const reports = {
     customerDues: 'Customer dues',
     statement: 'Statement',
     temperatureReport: 'Temperature report',
+    accountantPack: 'Accountant pack',
   },
   shared: {
     // A label under a stock figure; pass `count` to get "unit" for 1.
@@ -430,6 +431,14 @@ export const reports = {
     errorTitle: "Couldn't load the sensors",
     sensorRow: '{{name}}, {{location}}',
     sensorRowHint: 'Opens the temperature report for this sensor',
+  },
+  // The accountant pack (WH-158, backend migration 204): a zip of the period's invoices, receipts and stock.
+  accountantPack: {
+    makePack: 'Make pack',
+    packNote: 'The pack holds customer names, GSTINs and amounts. Send it only to your accountant.',
+    packEmpty: 'No invoices or receipts in this period.',
+    packOneYear: 'Choose dates inside one financial year.',
+    packTooLarge: 'This pack is too large. Choose a shorter period.',
   },
   dues: {
     duesEmpty: 'No customer owes anything.',

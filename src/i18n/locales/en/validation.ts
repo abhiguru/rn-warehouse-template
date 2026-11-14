@@ -1,5 +1,7 @@
 /** English text: validation. Messages of the shared validation helpers, default field names and the wizard step labels. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const validation = {
+  // A form's own required-field sentence (WH-158: the ledger names); the shared helpers use field.required.
+  required: '{{field}} is required',
   field: {
     required: '{{field}} is required',
     invalidSelection: 'Invalid {{field}} selection',

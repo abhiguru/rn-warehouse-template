@@ -214,4 +214,29 @@ export const settings: Translation<typeof source> = {
     dailyNote:
       'ફોન વખારના Wi-Fi પર હોય અને ઇન્ટરનેટ ચાલતું હોય ત્યારે આ સરનામું દિવસમાં એક વાર તપાસે છે, અને પહોંચી શકાય ત્યાં સુધી દર કલાકે ફરી તપાસે છે.',
   },
+  // Settings > Warehouse tools > Accountant export (WH-158, backend migration 203): the ledger names the pack uses in Tally.
+  accountantExport: {
+    title: 'હિસાબની નિકાસ',
+    help: 'તમારા હિસાબનીશ ટેલીમાં જે ખાતાના નામ વાપરે છે તે.',
+    // In the order of the contract; the keys are the ledger keys the server uses. Drafts from docs/GUJARATI_GLOSSARY.md.
+    fields: {
+      storage_taxable: 'સંગ્રહ ભાડું (કરપાત્ર)',
+      storage_exempt: 'સંગ્રહ ભાડું (કરમુક્ત)',
+      labour: 'મજૂરી',
+      cgst: 'CGST',
+      sgst: 'SGST',
+      igst: 'IGST',
+      discount: 'છૂટ',
+      round_off: 'પૂરા રૂપિયા',
+      receipt_cash: 'રોકડ',
+      receipt_upi: 'યુપીઆઈ',
+      receipt_bank_transfer: 'બેંક ટ્રાન્સફર',
+      receipt_cheque: 'ચેક',
+      receipt_other: 'અન્ય આવક',
+    },
+    saved: 'ખાતાના નામ સાચવ્યાં.',
+    unchanged: 'કોઈ ફેરફાર નથી.',
+    loadFailed: 'ખાતાના નામ લોડ થઈ શક્યાં નથી. ફરી પ્રયત્ન કરો.',
+    saveFailed: 'ખાતાના નામ સાચવી શકાયાં નથી. ફરી પ્રયત્ન કરો.',
+  },
 };

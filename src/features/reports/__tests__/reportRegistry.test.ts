@@ -49,7 +49,7 @@ const ROLES = ['admin', 'supervisor', 'staff', 'customer'];
 afterEach(() => setLanguage('en'));
 
 describe('report registry', () => {
-  it('lists the eleven reports once each, in the order of the Reports tab', () => {
+  it('lists the twelve reports once each, in the order of the Reports tab', () => {
     expect(REPORTS.map((report) => report.id)).toEqual([
       'customer-activity',
       'stock-summary',
@@ -62,8 +62,9 @@ describe('report registry', () => {
       'customer-dues',
       'statement',
       'temperature-report',
+      'accountant-pack',
     ]);
-    expect(new Set(REPORTS.map((report) => report.id)).size).toBe(11);
+    expect(new Set(REPORTS.map((report) => report.id)).size).toBe(12);
   });
 
   it('has a screen file for every route, and no report screen is left out', () => {
@@ -94,7 +95,7 @@ describe('report registry', () => {
     const byCategory = (category: string) => REPORTS.filter((report) => report.category === category).map((report) => report.id);
     expect(byCategory('stock')).toEqual(['stock-summary', 'item-stock-summary', 'stock-aging']);
     expect(byCategory('movement')).toEqual(['dispatch-activity', 'grn-activity']);
-    expect(byCategory('financial')).toEqual(['invoice-history', 'customer-dues', 'statement']);
+    expect(byCategory('financial')).toEqual(['invoice-history', 'customer-dues', 'statement', 'accountant-pack']);
     expect(byCategory('operations')).toEqual(['customer-activity', 'operations-dashboard', 'temperature-report']);
     expect(REPORTS.filter((report) => !report.hasPeriod).map((report) => report.id)).toEqual([
       'stock-summary',
@@ -105,12 +106,13 @@ describe('report registry', () => {
     ]);
   });
 
-  it('gates the operations dashboard, the customer dues, the statement and the temperature report, with the gate the route guard uses', () => {
+  it('gates the operations dashboard, the customer dues, the statement, the temperature report and the accountant pack, with the gate the route guard uses', () => {
     expect(REPORTS.filter((report) => report.gate).map((report) => [report.id, report.gate])).toEqual([
       ['operations-dashboard', 'operationsDashboard'],
       ['customer-dues', 'customerDues'],
       ['statement', 'customerStatement'],
       ['temperature-report', 'temperatureReport'],
+      ['accountant-pack', 'accountantPack'],
     ]);
     for (const report of REPORTS) {
       for (const role of ROLES) {

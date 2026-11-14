@@ -380,6 +380,58 @@ export async function shareCsvFile(csv: string, filename: string): Promise<Share
   }
 }
 
+/** What a file made on the server is shared as: the MIME type, and the iOS type identifier. */
+export interface SharedFileType {
+  mimeType: string;
+  UTI: string;
+}
+
+/**
+ * Writes a file the server made (the accountant pack's zip) to the shared-documents cache and opens the native share
+ * sheet for it, as `shareCsvFile` does: the same directory (swept at app start and on sign-out), the same file name
+ * rules (the name always ends in '.zip') and the same cleanup after the share. A file over 25 MB is refused with the
+ * `packTooLarge` text before anything is written.
+ */
+export async function shareFileBytes(bytes: ArrayBuffer, filename: string, type: SharedFileType): Promise<ShareResult> {
+  if (bytes.byteLength > MAX_SHARED_DOCUMENT_BYTES) {
+    log.warn('File exceeds the share size cap');
+    return { success: false, error: t('reports.accountantPack.packTooLarge') };
+  }
+  let written: File | undefined;
+  try {
+    if (!(await Sharing.isAvailableAsync())) {
+      log.warn('Sharing not available on this device');
+      return { success: false, error: t('errors.pdf.sharingUnavailable') };
+    }
+    const name = sanitizeDocumentFilename(filename.replace(/\.zip$/i, ''), 'pack.pdf').replace(/\.pdf$/, '.zip');
+    const file = new File(ensureSharedDocumentsDirectory(), name);
+    // A file shared a moment ago under the same name is being replaced: its cleanup must not delete this one.
+    const pendingCleanup = pendingCleanups.get(file.uri);
+    if (pendingCleanup) {
+      clearTimeout(pendingCleanup);
+      pendingCleanups.delete(file.uri);
+    }
+    if (file.exists) file.delete();
+    file.create();
+    written = file;
+    file.write(new Uint8Array(bytes));
+
+    await withNativeHandoff(() =>
+      Sharing.shareAsync(file.uri, {
+        mimeType: type.mimeType,
+        dialogTitle: t('errors.pdf.shareDialogTitle', { name }),
+        UTI: type.UTI, // iOS specific
+      })
+    );
+    scheduleCleanup(file);
+    return { success: true };
+  } catch (error) {
+    log.error('File share failed');
+    deleteQuietly(written);
+    return { success: false, error: t('errors.pdf.shareFailed') };
+  }
+}
+
 /**
  * Downloads a PDF without sharing (save to device)
  * Note: This saves to the app's shared-documents cache directory, which the

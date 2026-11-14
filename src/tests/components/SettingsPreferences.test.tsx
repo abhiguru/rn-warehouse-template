@@ -144,7 +144,7 @@ describe('Settings order', () => {
   });
 
   it.each([
-    ['admin', 11],
+    ['admin', 12],
     ['supervisor', 6],
     ['staff', 1],
     ['customer', 0],

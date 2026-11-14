@@ -70,6 +70,8 @@ export interface DatePickerInputProps {
   readOnly?: boolean;
   /** Placeholder text when no date selected */
   placeholder?: string;
+  /** Test identifier of the field's container */
+  testID?: string;
 }
 
 // ============================================================================
@@ -108,6 +110,7 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
   maximumDate,
   readOnly = false,
   placeholder,
+  testID,
 }) => {
   const [showPicker, setShowPicker] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -171,6 +174,7 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
 
   return (
     <View
+      testID={testID}
       style={[
         styles.container,
         isDisabled && styles.containerDisabled,

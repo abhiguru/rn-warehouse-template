@@ -21,7 +21,8 @@ export type ReportId =
   | 'operations-dashboard'
   | 'customer-dues'
   | 'statement'
-  | 'temperature-report';
+  | 'temperature-report'
+  | 'accountant-pack';
 
 export type ReportCategory = 'stock' | 'movement' | 'financial' | 'operations';
 
@@ -181,6 +182,17 @@ export const REPORTS: readonly ReportDefinition[] = [
     hasPeriod: true,
     gate: 'temperatureReport',
     feature: 'temperatureReport',
+  }),
+  // A month's invoices, receipts and stock as a zip for the accountant (WH-158, backend migration 204): administrators and supervisors.
+  define({
+    id: 'accountant-pack',
+    title: 'reports.titles.accountantPack',
+    description: 'nav.reports.descriptions.accountantPack',
+    icon: 'folder-zip-outline',
+    category: 'financial',
+    hasPeriod: true,
+    gate: 'accountantPack',
+    feature: 'accountantPack',
   }),
 ];
 
