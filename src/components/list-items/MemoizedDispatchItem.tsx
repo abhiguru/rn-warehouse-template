@@ -14,6 +14,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { StatusTag } from '@/components/ui/StatusTag';
 import type { IconName } from '@/types/icon.types';
 import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { formatDate, formatSpokenDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
@@ -179,17 +180,8 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
   statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
+    alignSelf: 'flex-end' as const,
     marginTop: space.xs,
-  },
-  statusTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
   },
   // The nested table's panel: the padding `nestedRowWidth` allows for (as on the GRN list).
   expandedSection: {
@@ -477,7 +469,6 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const isExpanded = expanded;
   const dispatchId = dispatch.dispatch_id || dispatch.id;
   const statusConfig = getDispatchStatus(dispatch);
-  const status = t.status[statusConfig.kind];
 
   // Calculate totals (using snake_case properties). No total weight: a lot stores
   // the weight of one bag, and total weights are not shown (style guide 12.3).
@@ -558,15 +549,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
           <View style={styles.attributeStack}>
             <Text style={styles.quantityValue}>{bagsLabel}</Text>
             {dispatch.imported ? <ImportedTag style={{ alignSelf: 'flex-end' }} /> : null}
-            <View style={[styles.statusTag, { backgroundColor: status.background }]}>
-              <Icon name={statusConfig.icon} size={iconSize.sm} color={status.text} />
-              <Text
-                style={[styles.statusTagText, { color: status.text }]}
-                maxFontSizeMultiplier={1.6}
-              >
-                {statusConfig.label}
-              </Text>
-            </View>
+            <StatusTag status={statusConfig.kind} icon={statusConfig.icon} label={statusConfig.label} style={styles.statusTag} />
           </View>
         </View>
       </Pressable>
