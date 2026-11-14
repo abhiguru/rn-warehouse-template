@@ -144,6 +144,12 @@ const SettingsScreen: React.FC = () => {
       subtitle: t('gst.settings.subtitle'),
       route: '/gst-details',
     },
+    accountantExport: {
+      icon: 'book-open-page-variant-outline',
+      label: t('settings.accountantExport.title'),
+      subtitle: t('settings.accountantExport.help'),
+      route: '/accountant-export',
+    },
     connectionHistory: {
       icon: 'wifi-off',
       label: t('connectionHistory.title'),
@@ -166,6 +172,7 @@ const SettingsScreen: React.FC = () => {
       (feature !== 'documentNumbering' || backendHasFeature('documentNumbering')) &&
       (feature !== 'charging' || backendHasFeature('chargingRule')) &&
       (feature !== 'gstDetails' || backendHasFeature('gstDocuments')) &&
+      (feature !== 'accountantExport' || backendHasFeature('accountantPack')) &&
       (feature !== 'connectionHistory' || backendHasFeature('connectionHistory')) &&
       (feature !== 'rackPresets' || backendHasFeature('rackPresets'))
   );

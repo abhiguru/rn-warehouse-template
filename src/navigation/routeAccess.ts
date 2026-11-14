@@ -44,6 +44,7 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'document-numbering': 'documentNumbering',
   charging: 'charging',
   'gst-details': 'gstDetails',
+  'accountant-export': 'accountantExport',
   'connection-history': 'connectionHistory',
   'rack-presets': 'rackPresets',
   sensors: 'sensors',
@@ -53,6 +54,7 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'reports/customer-dues': 'customerDues',
   'reports/statement': 'customerStatement',
   'reports/temperature-report': 'temperatureReport',
+  'reports/accountant-pack': 'accountantPack',
 };
 
 /**

@@ -230,4 +230,30 @@ export const settings = {
     dailyNote:
       'The phone checks this address once a day while it is on the warehouse Wi-Fi and the internet works, and again every hour until it is reachable.',
   },
+  // Settings > Warehouse tools > Accountant export (WH-158, backend migration 203): the ledger names the pack uses in Tally.
+  accountantExport: {
+    title: 'Accountant export',
+    help: 'The ledger names your accountant uses in Tally.',
+    // In the order of the contract; the keys are the ledger keys the server uses.
+    fields: {
+      storage_taxable: 'Storage rent (taxable)',
+      storage_exempt: 'Storage rent (exempt)',
+      labour: 'Labour',
+      cgst: 'CGST',
+      sgst: 'SGST',
+      igst: 'IGST',
+      discount: 'Discount',
+      round_off: 'Round-off',
+      receipt_cash: 'Cash',
+      receipt_upi: 'UPI',
+      receipt_bank_transfer: 'Bank transfer',
+      receipt_cheque: 'Cheque',
+      receipt_other: 'Other receipts',
+    },
+    saved: 'Ledger names saved.',
+    unchanged: 'No change.',
+    loadFailed: "Couldn't load the ledger names. Try again.",
+    saveFailed: "Couldn't save the ledger names. Try again.",
+    unconfirmed: "Couldn't confirm that the ledger names were saved. Your changes are still here.",
+  },
 };

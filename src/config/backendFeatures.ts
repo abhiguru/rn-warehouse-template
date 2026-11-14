@@ -55,6 +55,8 @@ const INTRODUCED_BY_MIGRATION = {
   connectionHistory: 188,
   /** `imported` on the GRN, dispatch and invoice reads, the IMPORTED_READ_ONLY refusal, and PDFs asked for by `id` (WH-180). */
   importedDocuments: 191,
+  /** `get_accountant_pack`, with generate-accountant-pack: the accountant pack of a period (WH-158; 203 added the ledger names). */
+  accountantPack: 204,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

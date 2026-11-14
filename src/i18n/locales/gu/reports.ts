@@ -15,6 +15,7 @@ export const reports: Translation<typeof source> = {
     customerDues: 'વેપારીઓની બાકી રકમ',
     statement: 'સ્ટેટમેન્ટ',
     temperatureReport: 'તાપમાનનો અહેવાલ',
+    accountantPack: 'હિસાબનીશ માટેની ફાઇલો',
   },
   shared: {
     units: { one: 'નંગ', other: 'નંગ' },
@@ -398,6 +399,14 @@ export const reports: Translation<typeof source> = {
     errorTitle: 'સેન્સર લોડ ન થયાં',
     sensorRow: '{{name}}, {{location}}',
     sensorRowHint: 'આ સેન્સરનો તાપમાનનો અહેવાલ ખોલે છે',
+  },
+  // The accountant pack (WH-158, backend migration 204): a zip of the period's invoices, receipts and stock.
+  accountantPack: {
+    makePack: 'ફાઇલો બનાવો',
+    packNote: 'આ ફાઇલોમાં વેપારીઓના નામ, જીએસટીઆઈએન અને રકમ છે. ફક્ત તમારા હિસાબનીશને જ મોકલો.',
+    packEmpty: 'આ સમયગાળામાં કોઈ ઇન્વૉઇસ કે આવક નથી.',
+    packOneYear: 'એક જ નાણાકીય વર્ષની તારીખો પસંદ કરો.',
+    packTooLarge: 'આ ફાઇલો બહુ મોટી છે. ટૂંકો સમયગાળો પસંદ કરો.',
   },
   dues: {
     duesEmpty: 'કોઈ વેપારી પાસે કંઈ લેવાનું નથી.',
