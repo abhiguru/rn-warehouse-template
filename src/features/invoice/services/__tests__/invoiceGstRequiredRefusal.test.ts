@@ -62,7 +62,7 @@ describe.each(['en', 'gu'] as const)('a save refused for missing GST details (%s
 
     expect(result.success).toBe(false);
     expect(result.refusal?.reason).toBe('GST_DETAILS_REQUIRED');
-    expect(result.invoice_id).toBeUndefined();
+    expect(result.data?.invoice_id).toBeFalsy();
     expect(result.lostAnswer).toBeUndefined();
     expect(result.numberTaken).toBeUndefined();
     // The server's English is never shown to a person.

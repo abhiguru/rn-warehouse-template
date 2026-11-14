@@ -12,7 +12,11 @@ import { showAlert } from '@/utils/alert';
 import DispatchTab from '../../../app/(tabs)/dispatch';
 import InvoicesTab from '../../../app/(tabs)/invoices';
 
-let mockState: { theme: { preference: string; brand: string } } = { theme: { preference: 'light', brand: 'orange' } };
+// The Invoices tab reads the person's role since WH-205 (it asks before a new bill opens), so the store has an auth slice.
+let mockState: { theme: { preference: string; brand: string }; auth: { userProfile: { role: string } } } = {
+  theme: { preference: 'light', brand: 'orange' },
+  auth: { userProfile: { role: 'admin' } },
+};
 const mockDispatch = jest.fn();
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
@@ -41,7 +45,7 @@ const CASES = [
 ] as const;
 
 function render(Screen: React.ComponentType, brand: string, mode: Mode) {
-  mockState = { theme: { preference: mode, brand } };
+  mockState = { ...mockState, theme: { preference: mode, brand } };
   let tree!: ReactTestRenderer;
   act(() => {
     tree = create(<Screen />);
@@ -61,7 +65,7 @@ describe.each(CASES)('$name tab create action', ({ Screen, label, route }) => {
 
   it.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))(
     'is a 56 px brand.fill floating button in %s %s',
-    (brand, mode) => {
+    async (brand, mode) => {
       const t = getTokens(brand, mode);
       const tree = render(Screen, brand, mode);
       const [fab] = findFab(tree, label);
@@ -70,7 +74,8 @@ describe.each(CASES)('$name tab create action', ({ Screen, label, route }) => {
         typeof fab.props.style === 'function' ? fab.props.style({ pressed: false }) : fab.props.style
       );
       expect(style).toMatchObject({ position: 'absolute', width: 56, height: 56, backgroundColor: t.brand.fill });
-      act(() => fab.props.onPress());
+      // The Invoices tab asks the server whether a bill may start (WH-205) before it opens the form, so the press is awaited.
+      await act(async () => { await fab.props.onPress(); });
       expect(mockPush).toHaveBeenCalledWith(route);
       act(() => tree.unmount());
     }

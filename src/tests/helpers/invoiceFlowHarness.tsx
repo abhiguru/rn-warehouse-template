@@ -153,6 +153,8 @@ export async function startFlowApp({ location, advance, pendingTimers }: StartOp
     '(tabs)/index': () => null,
     '(tabs)/invoices': InvoicesTab,
     'invoice-details/[id]': DetailsPage,
+    // WH-205: where "Open GST details" in the no-bills alert goes (the screen itself is tested on its own).
+    'gst-details': () => null,
     'invoice-form/_layout': InvoiceFormLayout,
     'invoice-form/step1': InvoiceFormStep1,
     'invoice-form/step2': InvoiceFormStep2,

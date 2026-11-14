@@ -30,7 +30,7 @@ jest.mock('@/config/supabaseConfig', () => ({
 }));
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => ({ origin: 'https://one.example.test', instanceId: 'instance-0001' }) }));
 
-const texts = (root: ReactTestInstance) => root.findAll((n) => n.type === 'Text').map((n) => [n.props.children].flat().join(''));
+const texts = (root: ReactTestInstance) => root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join(''));
 
 async function open(details: Record<string, unknown>) {
   mockStore = makeInvoiceStore({ role: 'admin' });

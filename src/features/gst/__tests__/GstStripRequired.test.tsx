@@ -27,7 +27,7 @@ jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => ({ 
 void storeHooks;
 
 const textsOf = (root: ReactTestInstance) =>
-  root.findAll((n) => (n.type as unknown) === 'Text' || (typeof n.type === 'string' && n.type === 'Text')).map((n) => [n.props.children].flat().join(''));
+  root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join(''));
 
 async function show(role: string, saved: boolean, extra: Record<string, unknown> = {}) {
   mockStore = makeInvoiceStore({ role });
