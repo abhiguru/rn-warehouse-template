@@ -93,7 +93,8 @@ function loadBrandPack(dir) {
 
 /** Stops the build when the association's legal text is asked for without a pack that names the association. */
 function checkLegalText(legalText, pack) {
-  if (legalText === 'association' && !(pack && pack.association && pack.association.name.trim())) {
+  // Same rule as isAssociationLegalText() in src/constants/legal.ts: trimmed, case-insensitive.
+  if (String(legalText ?? '').trim().toLowerCase() === 'association' && !(pack && pack.association && pack.association.name.trim())) {
     fail('EXPO_PUBLIC_LEGAL_TEXT=association needs a brand pack whose brand.json names the association (association.name); set WAREHOUSE_BRAND_PACK to it.');
   }
 }
