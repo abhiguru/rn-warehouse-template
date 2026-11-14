@@ -10,12 +10,13 @@
  */
 
 import React, { memo } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
+import { Button } from '@/components/ui/Button';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { iconSize, layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 export interface ListEmptyStateProps {
@@ -74,39 +75,6 @@ const makeStyles = (t: ThemeTokens) => ({
     marginBottom: space.xxl,
     maxWidth: layout.maxFormWidth,
   },
-  button: {
-    minHeight: touchTarget,
-    minWidth: 160,
-    borderRadius: radius.button,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: space.sm,
-    paddingHorizontal: space.xxl,
-  },
-  primaryButton: {
-    backgroundColor: t.brand.fill,
-  },
-  primaryButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  primaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: t.border.button,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-  },
 });
 
 export const ListEmptyState = memo<ListEmptyStateProps>(({
@@ -144,29 +112,18 @@ export const ListEmptyState = memo<ListEmptyStateProps>(({
 
       <Text style={styles.description}>{subtitle}</Text>
 
-      {/* No data yet: optional primary create action */}
+      {/* No data yet: optional create action */}
       {showCreateButton && !hasFilters && onCreatePress && (
-        <Pressable
-          style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
-          onPress={onCreatePress}
-          accessibilityRole="button"
-          accessibilityLabel={createButtonLabel}
-        >
-          <Glyph name={createButtonIcon} size={iconSize.md} color={t.brand.onFill} />
-          <Text style={styles.primaryButtonText}>{createButtonLabel}</Text>
-        </Pressable>
+        <Button type="tertiary" leftIcon={createButtonIcon} onPress={onCreatePress} accessibilityLabel={createButtonLabel}>
+          {createButtonLabel}
+        </Button>
       )}
 
       {/* Filtered to nothing: clear the filters */}
       {hasFilters && onClearFilters && (
-        <Pressable
-          style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-          onPress={onClearFilters}
-          accessibilityRole="button"
-          accessibilityLabel={clearFiltersLabel}
-        >
-          <Text style={styles.secondaryButtonText}>{clearFiltersLabel}</Text>
-        </Pressable>
+        <Button type="tertiary" onPress={onClearFilters} accessibilityLabel={clearFiltersLabel}>
+          {clearFiltersLabel}
+        </Button>
       )}
     </View>
   );
