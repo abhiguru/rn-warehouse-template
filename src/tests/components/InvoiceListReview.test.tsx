@@ -221,3 +221,20 @@ describe('load errors (style guide 14.9)', () => {
     expect(host(tree, 'invoice-last-updated')).toBeUndefined();
   });
 });
+
+describe('WH-220: the offline line shows the date of an earlier load', () => {
+  it('offline, a list not sorted by date shows "Last updated 09/10/26, 4:05 pm" when the invoices were loaded that day', async () => {
+    jest.mocked(getInvoicesList).mockResolvedValue(answer([invoiceOf(1)]) as never);
+    const real = Date.now();
+    jest.useFakeTimers({ now: new Date(2026, 9, 9, 16, 5), doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+    try {
+      const tree = await renderList();
+      jest.setSystemTime(real);
+      mockOffline = true;
+      await act(async () => { tree.update(<InvoiceFlashList />); });
+      expect(texts(tree)).toContain('Last updated 09/10/26, 4:05 pm');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

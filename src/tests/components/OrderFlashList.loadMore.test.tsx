@@ -79,9 +79,7 @@ it('refreshes the whole loaded window so live updates do not drop scrolled rows'
   });
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(0, 40), metadata: { has_more: true } });
   await act(async () => {
-    renderer.root.find(node =>
-      node.type === ('IconButton' as unknown) && node.props.accessibilityLabel === 'Refresh orders'
-    ).props.onPress();
+    renderer.root.findByType('FlashList' as unknown as React.ElementType).props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } });
   });
   expect(getOrdersList).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0, limit: 40 }));
   expect(listedIds(renderer)).toHaveLength(40);

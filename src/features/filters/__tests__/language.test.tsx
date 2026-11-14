@@ -40,10 +40,10 @@ const thisYearGu = String(thisYear).slice(-2).replace(/\d/g, digit => '૦૧૨
 
 describe('a language switch at run time', () => {
   it('changes a field label, and changes it back', () => {
-    expect(field(GRN_FILTERS, 'date').label).toBe('Date');
+    expect(field(GRN_FILTERS, 'date').label).toBe('Period');
     expect(field(GRN_FILTERS, 'numberRange').label).toBe('GRN number');
     setLanguage('gu');
-    expect(field(GRN_FILTERS, 'date').label).toBe('તારીખ');
+    expect(field(GRN_FILTERS, 'date').label).toBe('સમયગાળો');
     expect(field(GRN_FILTERS, 'customers').label).toBe('વેપારી');
     expect(field(GRN_FILTERS, 'numberRange').label).toBe('આવક પાવતી નંબર');
     expect(field(GRN_FILTERS, 'package').label).toBe('માર્કો');
@@ -51,7 +51,7 @@ describe('a language switch at run time', () => {
     expect(field(INVOICE_FILTERS, 'year').label).toBe('નાણાકીય વર્ષ');
     expect(field(ORDER_FILTERS, 'withItems').label).toBe('આઇટમ સાથે');
     setLanguage('en');
-    expect(field(GRN_FILTERS, 'date').label).toBe('Date');
+    expect(field(GRN_FILTERS, 'date').label).toBe('Period');
   });
 
   it('changes choice options, units, placeholders, titles and search placeholders', () => {
@@ -79,13 +79,13 @@ describe('a language switch at run time', () => {
     expect(config.title).toBe('Filter GRNs');
     // The weight filter is on the weight of one package, and says so.
     expect(visibleFields(config, staff).map(candidate => candidate.label)).toEqual([
-      'Stock', 'Date', 'Customer', 'Item', 'GRN number', 'Weight each', 'Package',
+      'Stock', 'Period', 'Customer', 'Item', 'GRN number', 'Weight each', 'Package',
     ]);
     setLanguage('gu');
     expect(config.title).toBe('આવક પાવતી ફિલ્ટર કરો');
     expect(config.search?.placeholder).toBe('આવક નં., વેપારી, આઇટમ કે તારીખ');
     expect(visibleFields(config, staff).map(candidate => candidate.label)).toEqual([
-      'સ્ટોક', 'તારીખ', 'વેપારી', 'આઇટમ', 'આવક પાવતી નંબર', 'દરેકનું વજન', 'માર્કો',
+      'સ્ટોક', 'સમયગાળો', 'વેપારી', 'આઇટમ', 'આવક પાવતી નંબર', 'દરેકનું વજન', 'માર્કો',
     ]);
     expect(typeof config.countResults).toBe('function');
   });
@@ -243,7 +243,7 @@ describe('the filter bar in Gujarati', () => {
       'દરેકનું વજન: ૧૦થી ૫૦ કિલો સુધી ફિલ્ટર કાઢી નાખો',
       'નંબર A0010થી A0012 સુધી, તમારી શોધમાંથી વાંચ્યા છે. તેના બદલે આ શબ્દોને લખાણ તરીકે શોધો',
       'તમારી શોધમાંથી વાંચેલા નંબર A0010થી A0012 સુધીનું ફિલ્ટર કાઢી નાખો',
-      'તારીખ મુજબ ફિલ્ટર કરો',
+      'સમયગાળો મુજબ ફિલ્ટર કરો',
       'વેપારી મુજબ ફિલ્ટર કરો',
       'બધા ફિલ્ટર અને શોધ સાફ કરો',
     ]);
@@ -262,7 +262,7 @@ describe('the filter bar in Gujarati', () => {
       'Remove filter Stock In stock',
       'Numbers A0010 to A0012, read from your search. Search for these words as text instead',
       'Remove filter number range A0010 to A0012 from your search',
-      'Filter by date',
+      'Filter by period',
       'Filter by customer',
       'Clear all filters and the search',
     ]);

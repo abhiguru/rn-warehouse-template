@@ -9,6 +9,7 @@ import { act, create } from 'react-test-renderer';
 import InvoiceDetailScreen from '../../../app/invoice-details/[id]';
 import { getInvoiceDetails, getInvoiceItemsDetailed, getInvoiceReasons } from '@/services/invoice-service';
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import type { InvoiceDetailsResponse, InvoiceItemsDetailedResponse } from '@/services/invoice-service';
 
 const mockAuth = { userProfile: { role: 'admin' } };
@@ -36,7 +37,7 @@ jest.mock('@/hooks/usePermissions', () => ({
 jest.mock('@/hooks/useCapability', () => ({ useCapability: () => mockPrinting }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('react-native-paper', () => ({ Portal: 'Portal', Snackbar: 'Snackbar' }));
+jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/components/skeletons', () => ({ DetailSkeleton: () => null }));
 // The dialog is a host element that keeps its props: its onConfirm is the screen's own.
 jest.mock('@/components/PrintRangeDialog', () => ({
@@ -82,7 +83,7 @@ async function open(extra: Record<string, unknown> = {}) {
 const printButtons = () => renderer.root.findAll(n => typeof n.props.onPress === 'function' && /^print/i.test(String(n.props.accessibilityLabel ?? '')));
 const openDialog = async () => { await act(async () => { printButtons()[0].props.onPress(); }); };
 const dialog = () => renderer.root.findByType('PrintRangeDialog' as never);
-const snackbar = () => renderer.root.findByType('Snackbar' as never);
+const toastShown = () => jest.mocked(showToast).mock.calls;
 const confirm = (start = '10002', end = '10002') => dialog().props.onConfirm(start, end) as Promise<void>;
 const sentBody = () => JSON.parse(mockFetch.mock.calls[0][1].body);
 
@@ -120,15 +121,14 @@ describe('who sees Print', () => {
 });
 
 describe('printing from the screen', () => {
-  it('sends the invoice number, its year (2025-26 -> 2025) and a request_id; the snackbar says it was sent', async () => {
+  it('sends the invoice number, its year (2025-26 -> 2025) and a request_id; the toast says it was sent', async () => {
     mockFetch.mockResolvedValue(reply(200, { success: true, message: 'ok', print_job: { print_job_id: 'j1', cups_job_id: 7, job_uri: 'x', printer: 'P', content_size: 1 } }));
     await open();
     await openDialog();
     await act(async () => { await confirm(); });
     expect(mockFetch.mock.calls[0][0]).toBe('https://example.invalid/functions/v1/print-invoice-preprinted');
     expect(sentBody()).toEqual({ start_inv_no_str: '10002', end_inv_no_str: '10002', inv_fin_year: 2025, request_id: expect.any(String) });
-    expect(snackbar().props.visible).toBe(true);
-    expect(snackbar().props.children).toBe('Sent to the printer (job 7).');
+    expect(toastShown()).toEqual([['Sent to the printer (job 7).']]);
     expect(dialog().props.visible).toBe(false);
   });
 
@@ -149,7 +149,7 @@ describe('printing from the screen', () => {
     await openDialog();
     await act(async () => { await expect(confirm()).rejects.toThrow(text); });
     expect(dialog().props.visible).toBe(true);
-    expect(snackbar().props.visible).toBeFalsy();
+    expect(toastShown()).toHaveLength(0);
   });
 
   it('a lost connection is thrown to the dialog with the connection text', async () => {
@@ -168,6 +168,6 @@ describe('printing from the screen', () => {
     await act(async () => { await confirm(); });
     expect(dialog().props.visible).toBe(false);
     expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.');
-    expect(snackbar().props.visible).toBeFalsy();
+    expect(toastShown()).toHaveLength(0);
   });
 });

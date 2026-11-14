@@ -172,3 +172,15 @@ describe('the GRN list on return', () => {
     expect(getAllGRNItems).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('screen-reader Refresh (WH-220)', () => {
+  it('the list offers a Refresh action that reads from the first row again', async () => {
+    await mount(3);
+    // FlashList is a stub here: the props the screen gives it are read from the element it is drawn as.
+    const list = tree.root.findAll(node => Array.isArray(node.props.accessibilityActions))[0];
+    expect(list.props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+    await act(async () => { list.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(getAllGRNItems).toHaveBeenCalledTimes(2);
+    expect(reads()[1]).toMatchObject({ p_offset: 0 });
+  });
+});

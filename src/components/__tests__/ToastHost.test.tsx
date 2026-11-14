@@ -157,3 +157,30 @@ describe('showToast with ToastHost', () => {
     });
   });
 });
+
+describe('a toast with an action (WH-220)', () => {
+  const actionButton = () => tree!.root.findAll(n => n.props.testID === 'toast-action' && typeof n.props.onPress === 'function');
+
+  it('shows one button with the label; tapping it runs the action once and closes the toast', () => {
+    mount();
+    const onPress = jest.fn();
+    act(() => showToast("Couldn't load.", { action: { label: 'Retry', onPress } }));
+    expect(texts()).toEqual(["Couldn't load.", 'Retry']);
+    expect(actionButton()).toHaveLength(1);
+    expect(actionButton()[0].props.accessibilityRole).toBe('button');
+    expect(actionButton()[0].props.accessibilityLabel).toBe('Retry');
+
+    act(() => actionButton()[0].props.onPress());
+    expect(onPress).toHaveBeenCalledTimes(1);
+    advance(motion.standard + 1);
+    expect(texts()).toEqual([]);
+    advance(5000);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('a toast without an action has no button', () => {
+    mount();
+    act(() => showToast('Garlic saved.'));
+    expect(actionButton()).toHaveLength(0);
+  });
+});

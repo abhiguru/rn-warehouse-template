@@ -54,10 +54,9 @@ const TIME = /\d{1,2}:\d{2} (am|pm)/;
 const strip = (tree: Tree) => tree.root.findAll(node => node.props.testID === 'orders-stale-strip');
 const pressable = (tree: Tree, testID: string) =>
   tree.root.findAll(node => node.props.testID === testID && typeof node.props.onPress === 'function')[0];
-const refresh = (tree: Tree) => tree.root.find(node =>
-  node.type === ('IconButton' as unknown) && node.props.accessibilityLabel === 'Refresh orders'
-).props.onPress();
 const list = (tree: Tree) => tree.root.findByType('FlashList' as unknown as React.ElementType);
+// The list's screen-reader "Refresh" action (WH-220): the same refresh as the pull.
+const refresh = (tree: Tree) => list(tree).props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } });
 const rows = (tree: Tree) => list(tree).props.data.filter((row: { type: string }) => row.type !== 'header');
 // A list row drawn on its own (FlashList is a stub here, so it draws no rows itself).
 const draw = (element: React.ReactElement) => {
@@ -163,5 +162,37 @@ it('counts "20+" in the first heading while more pages remain, and the plain cou
   expect(texts(heading())).toContain('23');
   expect(texts(heading())).not.toContain('23+');
   expect(spoken(heading())).toMatch(/, 23 orders$/);
+  await act(async () => { tree.unmount(); });
+});
+
+it('offline, the line under the first heading shows the date as well as the time when the orders were loaded on an earlier day (WH-220)', async () => {
+  getOrdersList.mockResolvedValue({ success: true, data: orders } as OrderServiceResponse<Order[]>);
+  const real = Date.now();
+  jest.useFakeTimers({ now: new Date(2026, 9, 9, 16, 5), doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+  let tree!: Tree;
+  try {
+    await act(async () => { tree = create(<OrderFlashList />); });
+    jest.setSystemTime(real);
+    mockOffline = true;
+    await act(async () => { tree.update(<OrderFlashList />); });
+    const { renderItem, data } = list(tree).props;
+    expect(texts(draw(renderItem({ item: data[0], index: 0 }))).find(text => text.startsWith('Last updated'))).toBe('Last updated 09/10/26, 4:05 pm');
+  } finally {
+    jest.useRealTimers();
+  }
+  await act(async () => { tree.unmount(); });
+});
+
+it('the list offers a screen-reader Refresh action that reloads the orders like a pull (WH-220)', async () => {
+  getOrdersList.mockResolvedValue({ success: true, data: orders } as OrderServiceResponse<Order[]>);
+  let tree!: Tree;
+  await act(async () => { tree = create(<OrderFlashList />); });
+  expect(list(tree).props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+  const before = getOrdersList.mock.calls.length;
+  await act(async () => { list(tree).props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  expect(getOrdersList.mock.calls.length).toBe(before + 1);
+  await act(async () => { list(tree).props.onAccessibilityAction({ nativeEvent: { actionName: 'activate' } }); });
+  expect(getOrdersList.mock.calls.length).toBe(before + 1);
+  expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Refresh orders')).toHaveLength(0);
   await act(async () => { tree.unmount(); });
 });

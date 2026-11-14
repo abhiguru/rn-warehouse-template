@@ -144,7 +144,8 @@ describe('who sees Print', () => {
     mockRole = 'customer';
     const tree = await renderList();
     expect(printAction(tree, 1)).toHaveLength(0);
-    expect(tree.root.findAll((node) => node.props.accessibilityActions !== undefined)).toHaveLength(0);
+    // The list itself still offers its screen-reader Refresh (WH-220); a customer gets no Print action anywhere.
+    expect(tree.root.findAll((node) => node.props.accessibilityActions?.some((action: { name: string }) => action.name === 'print'))).toHaveLength(0);
     expect(texts(tree)).not.toContain('Print');
   });
 
@@ -208,5 +209,16 @@ describe('pressing Print', () => {
     expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.');
     expect(dialog(tree)).toHaveLength(0);
     expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('screen-reader Refresh (WH-220)', () => {
+  it('the list offers a Refresh action that reads the dispatches again, with no Refresh icon in the header', async () => {
+    const tree = await renderList();
+    const list = tree.root.find((node) => Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    expect(list.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+    const before = jest.mocked(getDispatchListWithItems).mock.calls.length;
+    await act(async () => { list.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(jest.mocked(getDispatchListWithItems).mock.calls.length).toBe(before + 1);
   });
 });

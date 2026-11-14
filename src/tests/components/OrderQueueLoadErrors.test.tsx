@@ -166,3 +166,32 @@ it('keeps the recently dispatched section mounted when the offline line comes an
   expect(mockRecentMounts).toBe(1);
   await act(async () => { tree.unmount(); });
 });
+
+it('offline, the line at the top shows the date as well as the time when the queue was loaded on an earlier day (WH-220)', async () => {
+  getOrdersList.mockResolvedValue(answer(page(0, 2)));
+  const real = Date.now();
+  jest.useFakeTimers({ now: new Date(2026, 9, 9, 16, 5), doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+  let tree!: Tree;
+  try {
+    await act(async () => { tree = create(<SupervisorOrderQueueList />); });
+    jest.setSystemTime(real);
+    mockOffline = true;
+    await act(async () => { tree.update(<SupervisorOrderQueueList />); });
+    expect(texts(part(tree, 'ListHeaderComponent')!).find(text => text.startsWith('Last updated'))).toBe('Last updated 09/10/26, 4:05 pm');
+  } finally {
+    jest.useRealTimers();
+  }
+  await act(async () => { tree.unmount(); });
+});
+
+it('the list offers a screen-reader Refresh action that reloads the queue like a pull, and its header has no Refresh icon (WH-220)', async () => {
+  getOrdersList.mockResolvedValue(answer(page(0, 2)));
+  let tree!: Tree;
+  await act(async () => { tree = create(<SupervisorOrderQueueList />); });
+  expect(list(tree).props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+  expect(getOrdersList).toHaveBeenCalledTimes(1);
+  await act(async () => { list(tree).props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  expect(getOrdersList).toHaveBeenCalledTimes(2);
+  expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Refresh order queue')).toHaveLength(0);
+  await act(async () => { tree.unmount(); });
+});

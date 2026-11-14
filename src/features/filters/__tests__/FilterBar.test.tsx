@@ -98,7 +98,7 @@ describe('FilterBar chips', () => {
       'Filters. Open sort and filter',
       'Sorted by GRN number, highest number first. Change sort',
       'Filter by stock',
-      'Filter by date',
+      'Filter by period',
       'Filter by customer',
     ]);
   });
@@ -114,7 +114,7 @@ describe('FilterBar chips', () => {
       'Remove filter Stock In stock',
       'Weight each: 50 kg or more. Change',
       'Remove filter Weight each 50 kg or more',
-      'Filter by date',
+      'Filter by period',
       'Filter by customer',
       'Clear all filters and the search',
     ]);
@@ -182,7 +182,7 @@ describe('FilterBar by account', () => {
       'Filters. Open sort and filter',
       'Sorted by GRN number, highest number first. Change sort',
       'Filter by stock',
-      'Filter by date',
+      'Filter by period',
     ]);
   });
 });
