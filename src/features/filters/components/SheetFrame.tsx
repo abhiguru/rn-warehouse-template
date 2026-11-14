@@ -18,6 +18,10 @@ export interface SheetFrameProps {
   visible: boolean;
   title: string;
   onClose: () => void;
+  /** Spoken hint of the close X (a sheet that drops a draft says so). */
+  closeHint?: string;
+  /** Optional leading control before the title (a back control for a later step). With it the sheet draws no close X; the scrim and Back still call `onClose`. */
+  leading?: React.ReactNode;
   /** Optional text action at the end, before the close X, e.g. Reset. */
   action?: { label: string; onPress: () => void; disabled?: boolean };
   /** Take most of the screen (long lists) instead of the height of the content. */
@@ -70,7 +74,7 @@ const makeStyles = (t: ThemeTokens) => ({
   bold: { fontWeight: fontWeight.semibold },
 });
 
-export function SheetFrame({ visible, title, onClose, action, tall = false, footer, children }: SheetFrameProps) {
+export function SheetFrame({ visible, title, onClose, closeHint, leading, action, tall = false, footer, children }: SheetFrameProps) {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   const insets = useSafeAreaInsets();
@@ -83,6 +87,7 @@ export function SheetFrame({ visible, title, onClose, action, tall = false, foot
         <View style={[styles.sheet, tall && styles.sheetTall]} accessibilityViewIsModal>
           <View style={styles.handle} />
           <View style={styles.header}>
+            {leading}
             <Text style={styles.title} accessibilityRole="header" numberOfLines={2} maxFontSizeMultiplier={1.6}>{title}</Text>
             {/* The whole side is the target: at least touchTarget square (§11.2). */}
             {action ? (
@@ -97,14 +102,17 @@ export function SheetFrame({ visible, title, onClose, action, tall = false, foot
                 <Text style={[styles.sideText, action.disabled && styles.sideTextDisabled]} maxFontSizeMultiplier={1.6}>{action.label}</Text>
               </Pressable>
             ) : null}
-            <Pressable
-              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel={t('common.close')}
-            >
-              <Icon name="close" size={iconSize.lg} color={tokens.icon.primary} />
-            </Pressable>
+            {leading ? null : (
+              <Pressable
+                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
+                accessibilityHint={closeHint}
+              >
+                <Icon name="close" size={iconSize.lg} color={tokens.icon.primary} />
+              </Pressable>
+            )}
           </View>
           <View style={[styles.content, tall && styles.contentTall, !footer && { paddingBottom: space.lg + insets.bottom }]}>{children}</View>
           {footer ? <View style={[styles.footer, { paddingBottom: space.md + insets.bottom }]}>{footer}</View> : null}

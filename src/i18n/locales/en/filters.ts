@@ -131,6 +131,7 @@ export const filters = {
     order: 'Order',
     sortOrder: 'Sort order',
     closeScrim: '{{action}} {{title}}',
+    closeHint: 'Closes without applying.',
   },
   // The full "Sort and filter" page
   page: {

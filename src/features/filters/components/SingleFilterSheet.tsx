@@ -106,6 +106,7 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
       visible
       title={field.label}
       onClose={onClose}
+      closeHint={t('filters.sheet.closeHint')}
       tall={field.kind === 'picker'}
       // A required range has nothing to reset to.
       action={required ? undefined : { label: t('common.reset'), onPress: () => { setDraft(undefined); setInvalid(false); setResets(count => count + 1); }, disabled: !isFieldActive(field, draft) }}
