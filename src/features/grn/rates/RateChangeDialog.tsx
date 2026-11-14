@@ -17,15 +17,14 @@
  * readers (each row says its own figures), and the figure columns grow with the text instead of having a fixed width.
  */
 import React, { useMemo } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal, StyleSheet, Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
-import { Button } from '@/components/ui/Button';
+import { DialogActions, DialogBody, DialogButton, DialogCard, DialogHeading, DialogOverlay } from '@/components/DialogFrame';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { localizeDigits, t } from '@/i18n';
 import { bandText, dateText, money } from '@/features/item-pricing/rateText';
-import { fontWeight, iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { ChangeFacts, RateRow } from './grnRateModel';
 
 export interface RateFigureLine {
@@ -110,42 +109,12 @@ export interface RateChangeDialogProps {
 
 const figureColumn = createAppColumnHelper<RateFigureLine>();
 
-const ICON_CIRCLE = layout.avatar.lg - space.xs;
 const TABULAR = ['tabular-nums' as const];
 /** The figure columns: wide enough for "₹1,234.50" at the default text size; they grow with larger text. */
 const VALUE_MIN_WIDTH = 72;
 
 const makeStyles = (th: ThemeTokens) => ({
-  overlay: {
-    flex: 1,
-    backgroundColor: th.overlay.scrim,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: space.xxl,
-  },
-  dialog: {
-    backgroundColor: th.surface.sheet,
-    borderRadius: radius.card,
-    width: '100%' as const,
-    maxWidth: layout.maxFormWidth,
-    maxHeight: '100%' as const,
-    flexShrink: 1,
-    ...th.shadow[4],
-  },
-  body: { flexGrow: 0, flexShrink: 1 },
-  bodyContent: { paddingHorizontal: space.xl, paddingTop: space.xxl, paddingBottom: space.lg, gap: space.lg },
-  head: { alignItems: 'center' as const },
-  iconCircle: {
-    width: ICON_CIRCLE,
-    height: ICON_CIRCLE,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    marginBottom: space.lg,
-    backgroundColor: th.status.critical.background,
-  },
-  title: { ...typography.title3, color: th.text.primary, textAlign: 'center' as const },
-  subject: { ...typography.subhead, color: th.text.secondary, textAlign: 'center' as const, marginTop: space.xs },
+  facts: { alignSelf: 'stretch' as const, gap: space.lg, marginTop: space.lg },
   part: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.sm },
   partText: { flex: 1, gap: space.xs },
   lead: { ...typography.subhead, fontWeight: fontWeight.semibold, color: th.text.primary },
@@ -160,13 +129,11 @@ const makeStyles = (th: ThemeTokens) => ({
   arrow: { width: iconSize.sm, alignItems: 'center' as const },
   reach: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.sm, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: th.border.divider },
   reachText: { ...typography.footnote, flex: 1, color: th.text.secondary },
-  actions: { gap: space.sm, paddingHorizontal: space.xl, paddingTop: space.sm, paddingBottom: space.xl },
 });
 
 export function RateChangeDialog({ summary, scope, onChangeRate, onOnlyGrn, onBack, testID }: RateChangeDialogProps) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
-  const insets = useSafeAreaInsets();
 
   const columns = useMemo(
     () =>
@@ -206,19 +173,12 @@ export function RateChangeDialog({ summary, scope, onChangeRate, onOnlyGrn, onBa
 
   return (
     <Modal visible={summary !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onBack}>
-      <View style={[styles.overlay, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onBack} accessible={false} importantForAccessibility="no" />
+      <DialogOverlay safeArea onScrimPress={onBack}>
         {summary ? (
-          <View style={styles.dialog} accessibilityViewIsModal testID={testID}>
-            <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} bounces={false}>
-              <View style={styles.head}>
-                <View style={styles.iconCircle} accessible={false} importantForAccessibility="no-hide-descendants">
-                  <Icon name="alert-outline" size={iconSize.xl} color={th.status.critical.text} />
-                </View>
-                <Text style={styles.title} accessibilityRole="header">{t('grn.rates.confirm.title')}</Text>
-                <Text style={styles.subject}>{summary.subject}</Text>
-              </View>
-
+          <DialogCard testID={testID}>
+            <DialogBody>
+              <DialogHeading tone="warning" title={t('grn.rates.confirm.title')} message={summary.subject} />
+              <View style={styles.facts}>
               <View style={styles.part} testID="rate-confirm-audience">
                 <Icon name={scope === 'customer' ? 'account-outline' : 'account-multiple-outline'} size={iconSize.md} color={th.icon.secondary} />
                 <View style={styles.partText}>
@@ -266,16 +226,17 @@ export function RateChangeDialog({ summary, scope, onChangeRate, onOnlyGrn, onBa
                 <Icon name="information-outline" size={iconSize.sm} color={th.icon.secondary} />
                 <Text style={styles.reachText}>{summary.reach}</Text>
               </View>
-            </ScrollView>
+              </View>
+            </DialogBody>
 
-            <View style={styles.actions}>
-              <Button type="primary" size="fullWidth" onPress={onChangeRate} testID="rate-confirm-change">{t('grn.rates.confirm.change')}</Button>
-              <Button type="secondary" size="fullWidth" onPress={onOnlyGrn} testID="rate-confirm-only-grn">{t('grn.rates.confirm.onlyGrn')}</Button>
-              <Button type="secondary" variant="normal" size="fullWidth" onPress={onBack} testID="rate-confirm-back">{t('grn.rates.confirm.back')}</Button>
-            </View>
-          </View>
+            <DialogActions stacked>
+              <DialogButton stacked role="primary" label={t('grn.rates.confirm.change')} onPress={onChangeRate} testID="rate-confirm-change" />
+              <DialogButton stacked label={t('grn.rates.confirm.onlyGrn')} onPress={onOnlyGrn} testID="rate-confirm-only-grn" />
+              <DialogButton stacked label={t('grn.rates.confirm.back')} onPress={onBack} testID="rate-confirm-back" />
+            </DialogActions>
+          </DialogCard>
         ) : null}
-      </View>
+      </DialogOverlay>
     </Modal>
   );
 }
