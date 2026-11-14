@@ -68,6 +68,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const confirmText = confirmTextProp ?? tr('common.confirm');
   const cancelText = cancelTextProp ?? tr('common.cancel');
   const destructive = variant === 'danger';
+  const stacked = !!(cancelText && middleText && onMiddle);
+  const confirmButton = <DialogButton stacked={stacked} label={confirmText} onPress={onConfirm} role={destructive ? 'negative' : 'primary'} busy={busy} />;
 
   return (
     <Modal
@@ -84,11 +86,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <DialogBody>
             <DialogHeading title={title} message={message} tone={variant === 'danger' ? 'danger' : variant === 'warning' ? 'warning' : 'default'} icon={icon} />
           </DialogBody>
-          <DialogActions>
+          {/* Three buttons are stacked, the action first and Cancel last; two sit side by side. */}
+          <DialogActions stacked={stacked}>
+            {stacked ? confirmButton : null}
+            {stacked && middleText && onMiddle ? <DialogButton stacked label={middleText} onPress={onMiddle} disabled={busy} testID="confirm-middle" /> : null}
             {/* cancelText="" asks for a one-button dialog; an unlabelled button is not drawn. */}
-            {cancelText ? <DialogButton label={cancelText} onPress={onCancel} disabled={busy} /> : null}
-            {middleText && onMiddle ? <DialogButton label={middleText} onPress={onMiddle} disabled={busy} testID="confirm-middle" /> : null}
-            <DialogButton label={confirmText} onPress={onConfirm} role={destructive ? 'negative' : 'primary'} busy={busy} />
+            {cancelText ? <DialogButton stacked={stacked} label={cancelText} onPress={onCancel} disabled={busy} /> : null}
+            {stacked ? null : confirmButton}
           </DialogActions>
         </DialogCard>
       </DialogOverlay>

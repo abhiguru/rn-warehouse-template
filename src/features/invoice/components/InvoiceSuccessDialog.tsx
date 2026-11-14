@@ -157,6 +157,16 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
     !documents &&
     typeof storedTotal === 'number' && typeof estimatedTotal === 'number' && Math.abs(estimatedTotal - storedTotal) > 1;
 
+  const stacked = 1 + (onSharePDF ? 1 : 0) + (onPrint ? 1 : 0) + (isEditMode ? 0 : 1) >= 3;
+  const viewButton = (
+    <DialogButton
+      stacked={stacked}
+      role="primary"
+      label={tr(isEditMode ? 'invoice.success.viewInvoice' : 'invoice.success.viewInvoices')}
+      onPress={onViewList}
+    />
+  );
+
   return (
     <Modal
       visible={isVisible}
@@ -237,17 +247,12 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
             </View>
           </DialogBody>
 
-          {/* Actions: stacked, the action first */}
-          <DialogActions stacked>
-            <DialogButton
-              stacked
-              role="primary"
-              label={tr(isEditMode ? 'invoice.success.viewInvoice' : 'invoice.success.viewInvoices')}
-              onPress={onViewList}
-            />
+          {/* Actions: three or more are stacked, the action first; two sit side by side, the action last */}
+          <DialogActions stacked={stacked}>
+            {stacked ? viewButton : null}
             {onSharePDF && (
               <DialogButton
-                stacked
+                stacked={stacked}
                 icon="share-variant-outline"
                 label={tr('invoice.success.sharePdf')}
                 busyLabel={tr('invoice.success.preparingPdf')}
@@ -256,10 +261,11 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                 onPress={onSharePDF}
               />
             )}
-            {onPrint && <DialogButton stacked icon="printer-outline" label={tr('invoice.print.title')} onPress={onPrint} />}
+            {onPrint && <DialogButton stacked={stacked} icon="printer-outline" label={tr('invoice.print.title')} onPress={onPrint} />}
             {/* In edit mode "another" would only return to the list, the
                 same as "View invoices", so it is not offered. */}
-            {!isEditMode && <DialogButton stacked label={tr('invoice.success.createAnother')} onPress={onCreateAnother} />}
+            {!isEditMode && <DialogButton stacked={stacked} label={tr('invoice.success.createAnother')} onPress={onCreateAnother} />}
+            {stacked ? null : viewButton}
           </DialogActions>
         </DialogCard>
       </DialogOverlay>
