@@ -1,6 +1,6 @@
 /**
  * WH-158: the texts of the two new screens, English and the Gujarati drafts, verbatim from the spec's table (specs/accountant-pack-and-tally-file.md);
- * the 13 field labels in the order of the contract; CGST, SGST, IGST and UPI stay in Latin letters; no Latin digit in a Gujarati sentence.
+ * the 13 field labels in the order of the contract; CGST, SGST and IGST stay in Latin letters (they end in GST, English in the glossary); UPI is written યુપીઆઈ (glossary, Trade words); no Latin digit in a Gujarati sentence.
  * Written BEFORE the build.
  */
 import { en } from '../locales/en';
@@ -43,12 +43,13 @@ it('[crit 12] the 13 field labels, in the contract\'s order (keys as the ledger 
   for (const [key, label] of LABELS) expect(at(en, `settings.accountantExport.fields.${key}`)).toBe(label);
 });
 
-it.each(LABELS)('[crit 12] %s has a Gujarati draft; CGST, SGST, IGST and UPI stay in Latin letters', (key, label) => {
+it.each(LABELS)('[crit 12] %s has a Gujarati draft; CGST, SGST and IGST stay in Latin letters, UPI is યુપીઆઈ', (key, label) => {
   const gujarati = at(gu, `settings.accountantExport.fields.${key}`);
   expect(typeof gujarati).toBe('string');
   expect(gujarati.length).toBeGreaterThan(0);
   expect(gujarati).not.toMatch(/[0-9]/);
-  if (['cgst', 'sgst', 'igst', 'receipt_upi'].includes(key)) expect(gujarati).toContain(label);
+  if (['cgst', 'sgst', 'igst'].includes(key)) expect(gujarati).toContain(label);
+  else if (key === 'receipt_upi') expect(gujarati).toBe('યુપીઆઈ');
   else {
     expect(gujarati).toMatch(/[઀-૿]/);
     expect(gujarati).not.toBe(label);
