@@ -10,9 +10,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReportEmptyState } from '@/components/reports';
-import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Input } from '@/components/ui/Input';
 import { invalidateSensorQueries } from '@/features/sensors/sensorQueries';
@@ -58,12 +57,6 @@ const makeStyles = (t: ThemeTokens) =>
     deviceName: { ...typography.subhead, color: t.text.secondary },
     cardTitle: { ...typography.headline, color: t.text.primary },
     cardHint: { ...typography.footnote, color: t.text.secondary },
-    bottomBar: {
-      paddingHorizontal: layout.marginCompact,
-      paddingTop: space.md,
-      backgroundColor: t.surface.card,
-      ...t.shadow[3],
-    },
   });
 
 /** The order of the fields on the screen: the first wrong one gets the focus. */
@@ -89,7 +82,6 @@ const SensorEditScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const insets = useSafeAreaInsets();
   const deviceQuery = useSensorDevice(id);
   const device = deviceQuery.data?.device ?? null;
 
@@ -300,11 +292,12 @@ const SensorEditScreen: React.FC = () => {
         </ScrollView>
 
         {/* Under the form, not floating over it (style guide §14.4) */}
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
-          <Button size="fullWidth" onPress={() => void save()} loading={saving} disabled={saving || !changed}>
-            {tr('sensors.edit.saveLabel')}
-          </Button>
-        </View>
+        <FormSaveBar
+          label={tr('sensors.edit.saveLabel')}
+          onPress={() => void save()}
+          loading={saving}
+          disabled={saving || !changed}
+        />
       </KeyboardAvoidingView>
     </View>
   );
