@@ -44,7 +44,6 @@ export const items: Translation<typeof source> = {
     noRateShowing: 'ફક્ત દર વગરની આઇટમ બતાવી છે.',
     noRateShowAll: 'બધી આઇટમ બતાવો',
     noRateNone: 'દરેક આઇટમનો દર છે.',
-    noRateNoMatch: '"{{search}}" સાથે મળતી દર વગરની કોઈ આઇટમ નથી.',
   },
   // Add, Save, Delete and Activate need a connection (nothing is sent while the phone is offline).
   offline: {

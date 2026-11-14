@@ -39,7 +39,6 @@ export const items = {
     noRateShowing: 'Showing only items with no rate.',
     noRateShowAll: 'Show all items',
     noRateNone: 'Every item has a rate.',
-    noRateNoMatch: 'No item without a rate matches "{{search}}".',
   },
   // Add, Save, Delete and Activate need a connection (nothing is sent while the phone is offline).
   offline: {
