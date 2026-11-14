@@ -62,7 +62,7 @@ async function render() { await act(async () => { tree = create(<AccountantExpor
 const field = (key: string) => tree!.root.find(n => n.props.testID === `accountant-export-${key}` && typeof n.props.onChangeText === 'function');
 const type = async (key: string, value: string) => { await act(async () => { field(key).props.onChangeText(value); }); };
 const save = async () => { await act(async () => { tree!.root.find(n => n.props.testID === 'accountant-export-save' && typeof n.props.onPress === 'function').props.onPress(); }); await act(async () => {}); };
-const texts = () => tree!.root.findAll(n => typeof n.type === 'string' && n.type === 'Text').map(n => [n.props.children].flat(Infinity).join(''));
+const texts = () => tree!.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat(Infinity).join(''));
 
 it('[crit 11] loads the names with get_accountant_ledgers and shows the help line and 13 fields in the contract\'s order, each at most 60 characters', async () => {
   await render();
