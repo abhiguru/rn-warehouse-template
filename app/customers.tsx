@@ -33,7 +33,11 @@ import {
 } from '@/types/customer.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
+import { ListSkeleton } from '@/components/skeletons';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { ErrorStateView } from '@/components/ErrorBoundary';
+import { LastUpdatedLine } from '@/components/lists/ListLoadErrors';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { MasterListHeader } from '@/components/common/MasterListHeader';
 import { useHaptics } from '@/hooks/useHaptics';
@@ -63,7 +67,6 @@ const log = createLogger('Customers');
 
 /** The list loads this many customers at once (so every row can be reached from the A–Z rail). */
 const LIST_LIMIT = 10000;
-const SKELETON_ROWS = [0, 1, 2, 3];
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -110,6 +113,7 @@ export default function CustomersScreen() {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const isOffline = useIsOffline();
   const flatListRef = useRef<FlatList<CustomerListItem>>(null);
   const [activeLetter, setActiveLetter] = useState<string | null>(null);
   const [state, setState] = useState<ListState>({
@@ -438,96 +442,64 @@ export default function CustomersScreen() {
 
   const renderEmpty = useCallback(() => {
     if (state.loading) {
-      return (
-        <View accessibilityRole="progressbar" accessibilityLabel={tr('customers.list.loadingLabel')} style={styles.skeletonList}>
-          {SKELETON_ROWS.map((row) => (
-            <ListSkeletonCard key={row} metricsCount={2} showFooter={false} />
-          ))}
-        </View>
-      );
+      return <ListSkeleton count={5} metricsCount={3} />;
     }
 
     // A failed load is not an empty warehouse: never offer "Create one" for it.
     if (state.error) {
       return (
-        <View style={styles.emptyContainer} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.emptyTitle} accessibilityRole="header">
-            {tr('customers.list.loadErrorTitle')}
-          </Text>
-          <Text style={styles.emptyText}>{tr('common.checkConnection')}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => fetchCustomers(state.filters)}
-            accessibilityRole="button"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          presentation="inline"
+          title={tr('customers.list.loadErrorTitle')}
+          message={tr('common.checkConnection')}
+          onRetry={() => fetchCustomers(state.filters)}
+        />
       );
     }
 
     // No deactivated customer is not an empty warehouse either (the search, if any, is handled below).
     if (showOnlyDeactivated && !searching) {
       return (
-        <View style={styles.emptyContainer}>
-          <Icon name="account-check-outline" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyTitle} accessibilityRole="header">
-            {tr('customers.list.noDeactivatedTitle')}
-          </Text>
-          <Text style={styles.emptyText}>{tr('customers.list.noDeactivatedMessage')}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => applyDeactivatedFilter(false)}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>{tr('customers.list.showAll')}</Text>
-          </Pressable>
-        </View>
+        <ListEmptyState
+          activeFilterCount={1}
+          filteredIcon="account-check-outline"
+          filteredTitle={tr('customers.list.noDeactivatedTitle')}
+          filteredSubtitle={tr('customers.list.noDeactivatedMessage')}
+          clearFiltersLabel={tr('customers.list.showAll')}
+          onClearFilters={() => applyDeactivatedFilter(false)}
+        />
       );
     }
 
     // A search that finds nothing is not an empty warehouse either.
     if (state.data.length > 0) {
       return (
-        <View style={styles.emptyContainer}>
-          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyText}>{tr('customers.search.noMatchTryFewer', { search: search.trim() })}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => {
-              setSearch('');
-              if (showOnlyDeactivated) applyDeactivatedFilter(false);
-            }}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>
-              {tr(showOnlyDeactivated ? 'filters.empty.clearSearchAndFilters' : 'common.clearSearch')}
-            </Text>
-          </Pressable>
-        </View>
+        <ListEmptyState
+          activeFilterCount={1}
+          filteredIcon="magnify"
+          filteredTitle={tr('customers.search.noMatchTitle', { search: search.trim() })}
+          filteredSubtitle={tr('customers.search.noMatchMessage')}
+          clearFiltersLabel={tr(showOnlyDeactivated ? 'filters.empty.clearSearchAndFilters' : 'common.clearSearch')}
+          onClearFilters={() => {
+            setSearch('');
+            if (showOnlyDeactivated) applyDeactivatedFilter(false);
+          }}
+        />
       );
     }
 
     return (
-      <View style={styles.emptyContainer}>
-        <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle} accessibilityRole="header">
-          {tr('customers.list.emptyTitle')}
-        </Text>
-        <Text style={styles.emptyText}>{tr('customers.list.emptyMessage')}</Text>
-        <Pressable
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
-          onPress={handleAddCustomer}
-          accessibilityRole="button"
-        >
-          <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
-          <Text style={styles.primaryButtonText}>{tr('customers.list.addCustomer')}</Text>
-        </Pressable>
-      </View>
+      <ListEmptyState
+        activeFilterCount={0}
+        emptyIcon="account-group-outline"
+        emptyTitle={tr('customers.list.emptyTitle')}
+        emptySubtitle={tr('customers.list.emptyMessage')}
+        showCreateButton
+        createButtonLabel={tr('customers.list.addCustomer')}
+        onCreatePress={handleAddCustomer}
+      />
     );
-  }, [state.loading, state.error, state.data.length, state.filters, search, searching, showOnlyDeactivated, applyDeactivatedFilter, fetchCustomers, handleAddCustomer, styles, t]);
+  }, [state.loading, state.error, state.data.length, state.filters, search, searching, showOnlyDeactivated, applyDeactivatedFilter, fetchCustomers, handleAddCustomer]);
 
   return (
     <>
@@ -588,6 +560,9 @@ export default function CustomersScreen() {
               onChange={(value) => applyDeactivatedFilter(value === 'deactivated')}
             />
           </View>
+        ) : null}
+        {isOffline && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
+          <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="customers-last-updated" />
         ) : null}
         <View style={styles.listWithRail}>
           <FlatList
@@ -784,10 +759,6 @@ const makeStyles = (t: ThemeTokens) => ({
   flatList: {
     flex: 1,
   },
-  skeletonList: {
-    gap: space.md,
-    paddingRight: 0,
-  },
   // MasterListHeader above draws the hairline; the chips bring their own touch targets.
   filterRow: {
     paddingHorizontal: layout.marginCompact,
@@ -912,64 +883,4 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
   },
 
-  // Empty / error / loading states
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: space.sm,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.giant,
-  },
-  emptyTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.sm,
-  },
-  emptyText: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.md,
-  },
-
-  // Buttons
-  primaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    paddingHorizontal: space.xl,
-    gap: space.sm,
-    backgroundColor: t.brand.fill,
-  },
-  primaryButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  primaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
-  },
-  secondaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    paddingHorizontal: space.xl,
-    gap: space.sm,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-  },
 });
