@@ -32,7 +32,7 @@ export const gst = {
     confirmTitle: 'Save GST details?',
     confirmBody: 'Bills made from now on use these details. Saved bills keep what they were made with.',
     confirm: 'Save',
-    saved: 'GST details saved',
+    saved: 'GST details saved.',
     savedBy: 'Saved by {{name}}',
     loadFailed: 'The GST details could not be loaded. Check your connection and try again.',
     saveFailed: 'The GST details could not be saved. Check your connection and try again.',

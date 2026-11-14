@@ -16,6 +16,7 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useAppSelector } from '@/store/hooks';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
@@ -109,6 +110,10 @@ export default function GstDetailsScreen() {
   const errors = draft && showErrors ? check(draft) : {};
   const dirty = stored !== null && draft !== null && (!stored.saved || !sameDraft(toDraft(stored), draft));
 
+  // Asks only for typed changes, not for "nothing saved yet" (which keeps Save enabled without making Back ask).
+  const typed = stored !== null && draft !== null && !sameDraft(toDraft(stored), draft);
+  useLeaveGuard({ hasChanges: typed, blocked: saving });
+
   const change = (patch: Partial<GstDetailsInput>) => setDraft(current => (current ? { ...current, ...patch } : current));
 
   const ask = () => {
@@ -172,7 +177,7 @@ export default function GstDetailsScreen() {
       {header}
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <KeyboardAwareScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}
+        contentContainerStyle={{ paddingBottom: space.xl }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         enableOnAndroid
@@ -274,15 +279,17 @@ export default function GstDetailsScreen() {
                 </>
             </View>
             {stored.savedByName ? <Text style={styles.intro}>{tr('gst.settings.savedBy', { name: stored.savedByName })}</Text> : null}
-            <View style={styles.actions}>
-              <Button testID="gst-details-save" disabled={!dirty || saving} loading={saving} onPress={ask}>
-                {tr('gst.settings.save')}
-              </Button>
-            </View>
           </>
         ) : null}
         {stored && error ? <Text style={styles.staleNote}>{error}</Text> : null}
       </KeyboardAwareScrollView>
+      {stored && draft ? (
+        <View style={[styles.saveBar, { paddingBottom: insets.bottom + space.md }]}>
+          <Button size="fullWidth" testID="gst-details-save" disabled={!dirty || saving} loading={saving} onPress={ask}>
+            {tr('gst.settings.save')}
+          </Button>
+        </View>
+      ) : null}
       <ConfirmDialog
         visible={asking}
         title={tr('gst.settings.confirmTitle')}
@@ -304,7 +311,7 @@ const makeStyles = (t: ThemeTokens) =>
     loading: { marginTop: space.xxl },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
-    actions: { marginHorizontal: layout.marginCompact, marginTop: space.md },
+    saveBar: { paddingTop: space.md, paddingHorizontal: layout.marginCompact, backgroundColor: t.surface.card, ...t.shadow[3] },
     fields: { marginHorizontal: layout.marginCompact, marginTop: space.lg, gap: space.md },
     stateScreen: {
       flex: 1,

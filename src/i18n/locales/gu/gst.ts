@@ -36,7 +36,7 @@ export const gst: Translation<typeof source> = {
     confirmTitle: 'GST વિગતો સાચવવી છે?',
     confirmBody: 'હવે પછીનાં બિલ આ વિગતોથી બનશે. સાચવેલાં બિલ જે વિગતોથી બન્યાં હતાં તે જ રહે છે.',
     confirm: 'સાચવો',
-    saved: 'GST વિગતો સચવાઈ',
+    saved: 'GST વિગતો સચવાઈ.',
     savedBy: '{{name}} એ સાચવ્યું',
     loadFailed: 'GST વિગતો લોડ થઈ શકી નહીં. કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
     saveFailed: 'GST વિગતો સાચવી શકાઈ નહીં. કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
