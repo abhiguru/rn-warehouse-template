@@ -7,7 +7,6 @@ import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-import { StatusTag } from '@/components/ui/StatusTag';
 import { ContactCard } from '@/components/common/overview-tab/ContactCard';
 import { KeyValueCell } from '@/components/fiori/KeyValueCell';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -64,11 +63,6 @@ export function CustomerOverviewTab({ customer: shown, busy, onToggleActive }: C
       contentContainerStyle={{ paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.xxl }}
       showsVerticalScrollIndicator={false}
     >
-      {!shown.active && (
-        <View style={styles.status}>
-          <StatusTag status="neutral" label={tr('customers.list.statusDeactivated')} />
-        </View>
-      )}
       <View style={styles.contact}>
         <ContactCard
           type={tr('common.customer')}
@@ -114,7 +108,6 @@ export function CustomerOverviewTab({ customer: shown, busy, onToggleActive }: C
 
 const makeStyles = (t: ThemeTokens) => ({
   scroll: { flex: 1 },
-  status: { paddingHorizontal: layout.marginCompact, paddingTop: space.md, alignItems: 'flex-start' as const },
   contact: { paddingHorizontal: layout.marginCompact, paddingTop: space.md },
   cells: { backgroundColor: t.surface.card },
   footer: { paddingHorizontal: layout.marginCompact, paddingTop: space.xl, alignItems: 'flex-start' as const },

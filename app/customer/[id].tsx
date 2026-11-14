@@ -219,6 +219,12 @@ export default function CustomerPage() {
         </View>
       )}
 
+      {shown && !shown.active && (
+        <View style={styles.refreshStrip} testID="customer-deactivated">
+          <InlineValidation variant="warning" message={tr('pricing.customerTab.deactivated')} />
+        </View>
+      )}
+
       {shown && canSeePricing && (
         <CustomerTabNavigator activeTab={activeTab} onTabChange={setActiveTab} />
       )}

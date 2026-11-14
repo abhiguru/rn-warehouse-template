@@ -29,7 +29,7 @@ import { RatesState } from './RatesState';
 export interface CustomerPricingTabProps {
   customerId: string;
   customerName: string;
-  /** The customer is deactivated: the tab is read only (no "+ Add item"), with a strip that says why. */
+  /** The customer is deactivated: the tab is read only (no "+ Add item"); the customer page shows the strip that says why. */
   deactivated?: boolean;
   /** An item whose box opens at once (the `item` param of a link into the tab), so Back lands on this tab. */
   openItemId?: string;
@@ -149,11 +149,6 @@ export function CustomerPricingTab({ customerId, customerName, deactivated = fal
           <View style={styles.strip} testID="customer-pricing-refresh-failed">
             <InlineValidation variant="error" message={t('pricing.list.refreshFailed', { time: lastUpdated ? formatTime(new Date(lastUpdated)) : '' })} />
             <Button type="tertiary" onPress={() => { void refresh(); }} style={styles.retry}>{t('pricing.list.tryAgain')}</Button>
-          </View>
-        ) : null}
-        {deactivated ? (
-          <View style={styles.strip} testID="customer-pricing-deactivated">
-            <InlineValidation variant="warning" message={t('pricing.customerTab.deactivated')} />
           </View>
         ) : null}
         {body}
