@@ -18,7 +18,10 @@ export interface FormSaveBarProps {
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  /** On the bar itself. */
   testID?: string;
+  /** On the button (where a screen's own tests press Save). */
+  buttonTestID?: string;
 }
 
 const makeStyles = (t: ThemeTokens) =>
@@ -33,12 +36,12 @@ const makeStyles = (t: ThemeTokens) =>
     },
   });
 
-export function FormSaveBar({ label, onPress, loading = false, disabled = false, testID }: FormSaveBarProps) {
+export function FormSaveBar({ label, onPress, loading = false, disabled = false, testID, buttonTestID }: FormSaveBarProps) {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={[styles.container, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
-      <Button type="primary" size="fullWidth" onPress={onPress} loading={loading} disabled={disabled} testID={testID}>
+    <View testID={testID} style={[styles.container, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
+      <Button type="primary" size="fullWidth" onPress={onPress} loading={loading} disabled={disabled} testID={buttonTestID}>
         {label}
       </Button>
     </View>
