@@ -74,7 +74,7 @@ describe.each([['create', InvoiceFormStep3], ['edit', InvoiceEditStep3]] as cons
 
       const filled = tree.root.findAll((node) => typeof node.props.onPress === 'function' && flat(node.props.style).backgroundColor === t.brand.fill);
       expect(filled).toHaveLength(1);
-      expect(filled[0].props.accessibilityLabel).toBe(mode === 'edit' ? 'Update invoice' : 'Save invoice');
+      expect(filled[0].props.accessibilityLabel).toBe(mode === 'edit' ? 'Save invoice' : 'Create invoice');
 
       const total = tree.root.findAllByType(Text).find((node) => node.props.children === 'Estimated total');
       expect(flat(total!.props.style).color).toBe(t.text.primary);

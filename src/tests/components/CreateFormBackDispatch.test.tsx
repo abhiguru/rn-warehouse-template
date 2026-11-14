@@ -106,7 +106,7 @@ const ownDialogs = (tree: ReactTestRenderer) =>
 const DISCARD_QUESTION = {
   title: 'Discard this dispatch?',
   message: 'The details you entered will be lost.',
-  buttons: [{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard', style: 'destructive' }],
+  buttons: [{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard dispatch', style: 'destructive' }],
   options: { cancelable: true },
 };
 const ENTERED: [string, () => void][] = [
@@ -149,7 +149,7 @@ describe('Back on step 1 of a new dispatch', () => {
     const tree = await render();
     await pressBack();
 
-    await answer('Discard');
+    await answer('Discard dispatch');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(ownDialogs(tree)).toHaveLength(0);
@@ -197,7 +197,7 @@ describe('The X on step 1 of a new dispatch', () => {
     const tree = await render();
     await pressX(tree);
 
-    await answer('Discard');
+    await answer('Discard dispatch');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(ownDialogs(tree)).toHaveLength(0);
@@ -285,17 +285,17 @@ describe('Step 1 of a dispatch that is being edited', () => {
     await act(async () => { tree.unmount(); });
   });
 
-  it('the X asks once, about the changes, and "Discard" goes back', async () => {
+  it('the X asks once, about the changes, and "Discard changes" goes back', async () => {
     const tree = await render(<DispatchEditStep1 />);
 
     await pressX(tree, 'Cancel editing');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question()).toMatchObject({
-      title: 'Cancel dispatch',
-      message: 'Discard your changes to this dispatch? Unsaved changes will be lost.',
+      title: 'Discard changes to this dispatch?',
+      message: 'Your changes to this dispatch will be lost.',
     });
-    await answer('Discard');
+    await answer('Discard changes');
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(ownDialogs(tree)).toHaveLength(0);
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);

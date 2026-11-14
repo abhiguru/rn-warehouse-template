@@ -215,7 +215,7 @@ describe('Back on step 2 of a new invoice', () => {
     ['the Back button', async () => { await tap('Back to details'); }],
   ])('reaches step 1 with %s, and Next there checks step 1 again', async (_how, goBack) => {
     await openNewInvoice();
-    await tap('Next: items');
+    await tap('Next');
     expect(pathname()).toBe('/invoice-form/step2');
     expect(form().currentStep).toBe(2);
 
@@ -227,7 +227,7 @@ describe('Back on step 2 of a new invoice', () => {
 
     // Step 1 is wrong now (a date in the future): Next must say so instead of going on.
     await act(async () => { mockStore.dispatch(updateHeader({ inv_date: '2099-01-01' })); });
-    await tap('Next: items');
+    await tap('Next');
 
     expect(pathname()).toBe('/invoice-form/step1');
     expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining("An invoice can't be dated in the future"));
@@ -235,7 +235,7 @@ describe('Back on step 2 of a new invoice', () => {
 
     // Corrected, it goes on again.
     await act(async () => { mockStore.dispatch(updateHeader({ inv_date: '2026-10-05' })); });
-    await tap('Next: items');
+    await tap('Next');
     expect(pathname()).toBe('/invoice-form/step2');
   });
 });
@@ -259,12 +259,12 @@ describe('the swipe back', () => {
 describe('"Create another invoice"', () => {
   it('leaves the stack as the Invoices tab and one step 1, with a number of its own', async () => {
     await openNewInvoice();
-    await tap('Next: items');
-    await tap('Next: review');
+    await tap('Next');
+    await tap('Review');
     expect(pathname()).toBe('/invoice-form/step3');
     expect(stack()).toEqual(['(tabs)', ['step1', 'step2', 'step3']]);
-    await tap('Save invoice');
-    expect(openDialog().props.title).toBe('Save invoice 55?');
+    await tap('Create invoice');
+    expect(openDialog().props.title).toBe('Create invoice 55?');
     await act(async () => { await openDialog().props.onConfirm(); });
     // The invoice dialog opens once the question has finished closing.
     await act(async () => { tree.root.findAllByType(as('ConfirmDialog')).forEach((dialog) => dialog.props.onDismissed?.()); });
@@ -291,7 +291,7 @@ describe('leaving a new invoice asks the server for no number (R2-03)', () => {
   ])('Cancel on %s makes no further request, also when the next one would fail', async (_step, forward) => {
     await openNewInvoice();
     for (let step = 0; step < forward; step += 1) {
-      await tap(step === 0 ? 'Next: items' : 'Next: review');
+      await tap(step === 0 ? 'Next' : 'Review');
     }
     expect(getNextInvoiceNumber).toHaveBeenCalledTimes(1);
     // Offline from here on: a request now would end in "Couldn't get an invoice number" on the Invoices tab.
@@ -306,9 +306,9 @@ describe('leaving a new invoice asks the server for no number (R2-03)', () => {
 
   it('"View invoices" after a save makes no further request either', async () => {
     await openNewInvoice();
-    await tap('Next: items');
-    await tap('Next: review');
-    await tap('Save invoice');
+    await tap('Next');
+    await tap('Review');
+    await tap('Create invoice');
     await act(async () => { await openDialog().props.onConfirm(); });
     await act(async () => { tree.root.findAllByType(as('ConfirmDialog')).forEach((dialog) => dialog.props.onDismissed?.()); });
     jest.mocked(getNextInvoiceNumber).mockRejectedValue(new Error('offline'));
@@ -368,9 +368,9 @@ describe('Back on step 1 of an edit', () => {
     const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
     expect(title).toBe('Discard changes to this invoice?');
     expect(message).toBe('Your changes to this invoice will be lost.');
-    expect(buttons!.map((button) => button.text)).toEqual(['Keep editing', 'Discard']);
+    expect(buttons!.map((button) => button.text)).toEqual(['Keep editing', 'Discard changes']);
 
-    await act(async () => { buttons!.find((button) => button.text === 'Discard')!.onPress!(); });
+    await act(async () => { buttons!.find((button) => button.text === 'Discard changes')!.onPress!(); });
     await settle();
     expect(pathname()).toBe('/invoice-details/inv-42');
     expect(stack()).toEqual(['(tabs)', 'invoice-details/[id]']);
@@ -385,7 +385,7 @@ describe('leaving an edit', () => {
   ])('Cancel on %s lands on the invoice\'s page, with nothing of the form left in the stack', async (_step, forward) => {
     await openEdit();
     for (let step = 0; step < forward; step += 1) {
-      await tap(step === 0 ? 'Next: items' : 'Next: review');
+      await tap(step === 0 ? 'Next' : 'Review');
     }
 
     await tap('discard');
@@ -397,11 +397,11 @@ describe('leaving an edit', () => {
 
   it('"View invoice" after an update lands on the invoice\'s page', async () => {
     await openEdit();
-    await tap('Next: items');
-    await tap('Next: review');
+    await tap('Next');
+    await tap('Review');
     expect(pathname()).toBe('/invoice-edit/inv-42/step3');
-    await tap('Update invoice');
-    expect(openDialog().props.title).toBe('Update invoice 42?');
+    await tap('Save invoice');
+    expect(openDialog().props.title).toBe('Save changes to invoice 42?');
     await act(async () => { await openDialog().props.onConfirm(); });
     // The invoice dialog opens once the question has finished closing.
     await act(async () => { tree.root.findAllByType(as('ConfirmDialog')).forEach((dialog) => dialog.props.onDismissed?.()); });

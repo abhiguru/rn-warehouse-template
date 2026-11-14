@@ -71,11 +71,11 @@ const shown = (tree: ReactTestRenderer) =>
   tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
 const pressUpdate = async (tree: ReactTestRenderer) => {
   const button = tree.root.find(
-    (node) => node.props.accessibilityLabel === t('invoice.review.updateInvoice') && typeof node.props.onPress === 'function'
+    (node) => node.props.accessibilityLabel === t('invoice.review.saveInvoice') && typeof node.props.onPress === 'function'
   );
   await act(async () => { await button.props.onPress(); });
 };
-/** Press Update and answer its question with "Update invoice"; the header that went to the server. */
+/** Press Update and answer its question with "Save invoice"; the header that went to the server. */
 const update = async (tree: ReactTestRenderer) => {
   await pressUpdate(tree);
   const dialog = shown(tree)[0];
@@ -216,8 +216,8 @@ describe.each(['staff', 'admin', 'supervisor'])('the question before the update,
     await pressUpdate(tree);
     expect(shown(tree)).toHaveLength(1);
     const dialog = shown(tree)[0];
-    expect(dialog.props.title).toBe('Update invoice 42?');
-    expect([dialog.props.cancelText, dialog.props.confirmText]).toEqual(['Cancel', 'Update invoice']);
+    expect(dialog.props.title).toBe('Save changes to invoice 42?');
+    expect([dialog.props.cancelText, dialog.props.confirmText]).toEqual(['Cancel', 'Save invoice']);
     return dialog.props.message as string;
   };
 
