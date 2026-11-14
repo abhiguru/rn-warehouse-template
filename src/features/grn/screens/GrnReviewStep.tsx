@@ -1584,7 +1584,6 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
         icon={isCreateMode ? 'check-circle' : 'pencil-outline'}
-        busy={isSubmittingState}
       />
 
       {/* Photos of the saved GRN that did not upload */}

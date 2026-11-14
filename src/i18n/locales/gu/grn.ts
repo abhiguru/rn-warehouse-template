@@ -6,7 +6,7 @@ export const grn: Translation<typeof source> = {
   steps: {
     details: 'આવક પાવતીની વિગતો',
     detailsShort: 'વિગતો',
-    editTitle: 'આવક પાવતીમાં ફેરફાર',
+    editTitle: 'આવક પાવતીમાં ફેરફાર કરો',
     items: 'આઇટમ',
     review: 'ચકાસણી',
   },

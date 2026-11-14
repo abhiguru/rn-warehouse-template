@@ -40,7 +40,7 @@ export const invoice: Translation<typeof source> = {
     detailsShort: 'વિગતો',
     items: 'આઇટમ',
     review: 'ચકાસણી',
-    editInvoice: 'ઇન્વૉઇસમાં ફેરફાર',
+    editInvoice: 'ઇન્વૉઇસમાં ફેરફાર કરો',
     discardEditTitle: 'આ ઇન્વૉઇસના ફેરફાર છોડી દેવા છે?',
     discardNewTitle: 'આ ઇન્વૉઇસ છોડી દેવું છે?',
     discardEditMessage: 'આ ઇન્વૉઇસમાં કરેલા ફેરફાર જતા રહેશે.',
