@@ -29,6 +29,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { Input } from '@/components/ui/Input';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
@@ -363,11 +364,13 @@ const ItemEditScreen: React.FC = () => {
         </ScrollView>
 
         {/* Under the form, not floating over it (style guide §14.4) */}
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]} testID="item-bottom-bar">
-          <Button size="fullWidth" onPress={handleSave} loading={saving} disabled={saving || !hasChanges()}>
-            {tr('items.form.saveItem')}
-          </Button>
-        </View>
+        <FormSaveBar
+          label={tr('items.form.saveItem')}
+          onPress={handleSave}
+          loading={saving}
+          disabled={saving || !hasChanges()}
+          testID="item-bottom-bar"
+        />
       </KeyboardAvoidingView>
     </View>
   );
@@ -415,12 +418,6 @@ const makeStyles = (t: ThemeTokens) => ({
   headerSide: {
     flex: 1,
     alignItems: 'flex-start' as const,
-  },
-  bottomBar: {
-    paddingHorizontal: layout.marginCompact,
-    paddingTop: space.md,
-    backgroundColor: t.surface.card,
-    ...t.shadow[3],
   },
   keyboardView: {
     flex: 1,
