@@ -77,19 +77,11 @@ export const grn: Translation<typeof source> = {
 
   pickers: {
     customerTitle: 'વેપારી પસંદ કરો',
-    customerPlaceholder: 'નામ અથવા સ્થળથી શોધો',
-    customerEmptyInitial: 'વેપારી શોધો',
-    typeToFindCustomers: 'વેપારી શોધવા ઓછામાં ઓછા ૨ અક્ષર લખો',
     senderTitle: 'મોકલનાર પસંદ કરો',
-    senderPlaceholder: 'વેપારી શોધો…',
-    senderEmptyInitial: 'મોકલનાર શોધો',
     supervisorTitle: 'સુપરવાઇઝર પસંદ કરો',
     supervisorPlaceholder: 'નામથી સુપરવાઇઝર શોધો',
     supervisorEmptyInitial: 'સુપરવાઇઝર શોધો',
     supervisorEmptySub: 'સુપરવાઇઝર કે એડમિન શોધવા ઓછામાં ઓછા ૨ અક્ષર લખો',
-    searchCustomers: 'વેપારી શોધો',
-    searchSupervisors: 'સુપરવાઇઝર શોધો',
-    noMatches: 'કોઈ પરિણામ મળ્યું નથી',
   },
 
   item: {

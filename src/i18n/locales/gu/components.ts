@@ -270,11 +270,8 @@ export const components: Translation<typeof source> = {
   printRange: {
     enterBoth: 'શરૂઆતનો અને છેલ્લો, બંને નંબર લખો.',
     printFailed: 'પ્રિન્ટ કરી શકાયું નથી. પ્રિન્ટર તપાસો અને ફરી પ્રયાસ કરો.',
-    closeNotice: 'પ્રિન્ટની સૂચના બંધ કરો',
     unavailableTitle: 'પ્રિન્ટ ઉપલબ્ધ નથી',
     unavailableMessage: 'લોકલ ડેમોમાં પ્રિન્ટ ઉપલબ્ધ નથી. તેના બદલે PDF ડાઉનલોડ કરો અથવા શેર કરો.',
-    cancelPrinting: 'પ્રિન્ટ રદ કરો',
-    closeDialog: 'પ્રિન્ટની વિન્ડો બંધ કરો',
     chooseRange: 'પ્રિન્ટ કરવા માટે {{label}}ની રેન્જ પસંદ કરો.',
     sameNumberHint: 'એક જ {{label}} પ્રિન્ટ કરવા બંને ખાનામાં એક જ નંબર લખો.',
     from: 'શરૂઆતનો નંબર',

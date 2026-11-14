@@ -267,11 +267,8 @@ export const components = {
   printRange: {
     enterBoth: 'Enter both a start and an end number.',
     printFailed: "Couldn't print. Check the printer and try again.",
-    closeNotice: 'Close printing notice',
     unavailableTitle: 'Printing unavailable',
     unavailableMessage: 'Printing is unavailable in the local demo. Download the PDF or share it instead.',
-    cancelPrinting: 'Cancel printing',
-    closeDialog: 'Close print dialog',
     chooseRange: 'Choose the range of {{label}}s to print.',
     sameNumberHint: 'Use the same number in both fields to print one {{label}}.',
     from: 'From',
