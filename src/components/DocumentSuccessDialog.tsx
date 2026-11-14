@@ -9,30 +9,15 @@
  */
 
 import React from 'react';
-import {
-  View,
-  Text,
-  Modal,
-  Pressable,
-  ActivityIndicator,
-  ScrollView,
-} from 'react-native';
-import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { View, Text, Modal } from 'react-native';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
-import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  touchTarget,
-  typography,
-} from '@/theme/tokens';
+import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { useThemedStyles } from '@/hooks/useTheme';
 import { formatCurrency, formatFinancialYear, formatNumber } from '@/utils/formatters';
 import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import type { DocumentEntity } from '@/i18n/entities';
+import { DialogActions, DialogBody, DialogButton, DialogCard, DialogHeading, DialogOverlay } from './DialogFrame';
 
 export type DocumentType = 'GRN' | 'Dispatch' | 'Invoice';
 
@@ -88,46 +73,7 @@ const getDocumentConfig = (entity: DocumentEntity, isEditMode: boolean) => ({
 });
 
 const makeStyles = (t: ThemeTokens) => ({
-  overlay: {
-    flex: 1,
-    backgroundColor: t.overlay.scrim,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    padding: space.lg,
-  },
-  dialog: {
-    backgroundColor: t.surface.sheet,
-    borderRadius: radius.card,
-    width: '100%' as const,
-    maxWidth: layout.maxFormWidth,
-    maxHeight: '90%' as const,
-    ...t.shadow[4],
-  },
-  scrollContent: {
-    padding: space.xxl,
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    alignSelf: 'center' as const,
-    marginBottom: space.lg,
-    backgroundColor: t.status.positive.background,
-  },
-  title: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginBottom: space.xs,
-  },
-  message: {
-    ...typography.body,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.xl,
-  },
+  rest: { alignSelf: 'stretch' as const, marginTop: space.lg },
   orderNotes: {
     marginBottom: space.xl,
   },
@@ -177,43 +123,6 @@ const makeStyles = (t: ThemeTokens) => ({
   errorStrip: {
     marginBottom: space.md,
   },
-  buttonContainer: {
-    gap: space.sm,
-  },
-  button: {
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    flexDirection: 'row' as const,
-    gap: space.sm,
-    paddingHorizontal: space.lg,
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: t.border.button,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
-  },
-  primaryButton: {
-    backgroundColor: t.brand.fill,
-  },
-  primaryButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  primaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
-  },
-  buttonDisabled: {
-    opacity: t.interaction.disabledOpacity,
-  },
 });
 
 export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
@@ -231,7 +140,6 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
 }) => {
   // Hooks must be called before any early returns
   const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
 
   const config = getDocumentConfig(entity ?? DOCUMENT_ENTITIES[documentType ?? 'GRN'], isEditMode);
 
@@ -245,23 +153,13 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
       animationType="fade"
       onRequestClose={onViewList}
     >
-      <View style={styles.overlay}>
-        <View
-          style={styles.dialog}
-          accessibilityViewIsModal
+      <DialogOverlay>
+        <DialogCard
           accessibilityLabel={tr('components.documentSuccess.dialogLabel', { title: config.title, noun: config.noun, number: formatIdentifier(documentData.documentNo) })}
         >
-          <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
-            {/* Success icon */}
-            <View style={styles.iconContainer} accessible={false} importantForAccessibility="no">
-              <Icon name="check-circle" size={iconSize.xl} color={t.status.positive.text} />
-            </View>
-
-            {/* Title and message */}
-            <Text style={styles.title} accessibilityRole="header">
-              {config.title}
-            </Text>
-            <Text style={styles.message}>{config.message}</Text>
+          <DialogBody>
+            <DialogHeading tone="success" title={config.title} message={config.message} />
+            <View style={styles.rest}>
             {documentData.orderNotes && documentData.orderNotes.length > 0 ? (
               <View style={styles.orderNotes} testID="document-success-order-notes">
                 <InlineValidation
@@ -339,80 +237,29 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
               </View>
             ) : null}
 
-            {/* Actions: one primary, the rest secondary */}
-            <View style={styles.buttonContainer}>
-              {onPrint && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.button,
-                    styles.secondaryButton,
-                    pressed && styles.secondaryButtonPressed,
-                  ]}
-                  onPress={onPrint}
-                  accessibilityRole="button"
-                  accessibilityLabel={config.printLabel}
-                >
-                  <Icon name="printer-outline" size={iconSize.md} color={t.brand.tint} />
-                  <Text style={styles.secondaryButtonText}>{tr('common.print')}</Text>
-                </Pressable>
-              )}
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.button,
-                  styles.secondaryButton,
-                  pressed && styles.secondaryButtonPressed,
-                  isShareLoading && styles.buttonDisabled,
-                ]}
-                onPress={onSharePDF}
-                disabled={isShareLoading}
-                accessibilityRole="button"
-                accessibilityLabel={tr('components.sharePdf')}
-                accessibilityState={{ busy: isShareLoading, disabled: isShareLoading }}
-              >
-                {isShareLoading ? (
-                  <ActivityIndicator size="small" color={t.brand.tint} />
-                ) : (
-                  <Icon name="share-variant-outline" size={iconSize.md} color={t.brand.tint} />
-                )}
-                <Text style={styles.secondaryButtonText}>
-                  {isShareLoading ? tr('components.preparingPdf') : tr('components.sharePdf')}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.button,
-                  styles.secondaryButton,
-                  pressed && styles.secondaryButtonPressed,
-                ]}
-                onPress={onCreateAnother}
-                accessibilityRole="button"
-                accessibilityLabel={config.createText}
-              >
-                <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
-                <Text style={styles.secondaryButtonText}>{config.createText}</Text>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.button,
-                  styles.primaryButton,
-                  pressed && styles.primaryButtonPressed,
-                ]}
-                onPress={onViewList}
-                accessibilityRole="button"
-                accessibilityLabel={config.listLabel}
-              >
-                <Text style={styles.primaryButtonText}>{config.listLabel}</Text>
-              </Pressable>
             </View>
-          </ScrollView>
-        </View>
-      </View>
+          </DialogBody>
+
+          {/* Actions: stacked, the action first */}
+          <DialogActions stacked>
+            <DialogButton stacked role="primary" label={config.listLabel} onPress={onViewList} />
+            {onPrint && (
+              <DialogButton stacked icon="printer-outline" label={tr('common.print')} accessibilityLabel={config.printLabel} onPress={onPrint} />
+            )}
+            <DialogButton
+              stacked
+              icon="share-variant-outline"
+              label={tr('components.sharePdf')}
+              busy={isShareLoading}
+              busyLabel={tr('components.preparingPdf')}
+              onPress={onSharePDF}
+            />
+            <DialogButton stacked icon="plus" label={config.createText} onPress={onCreateAnother} />
+          </DialogActions>
+        </DialogCard>
+      </DialogOverlay>
     </Modal>
   );
 };
-
 
 export default DocumentSuccessDialog;
