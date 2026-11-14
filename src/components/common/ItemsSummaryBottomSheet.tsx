@@ -134,7 +134,7 @@ function ItemsSummaryBottomSheetInner<T>(
         editHint: tr('items.summary.editHint', { entity: entityName }),
       };
   const { protectedTitle, deleteTitle, deleteLabel, editHint } = labels;
-  const closeLabel = tr('common.close');
+  const closeLabel = titleProp === undefined ? tr('items.summary.closeDefault') : tr('items.summary.closeTitle', { title: titleProp.toLowerCase() });
   const insets = useSafeAreaInsets();
 
   const t = useTokens();
