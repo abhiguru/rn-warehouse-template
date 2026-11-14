@@ -86,30 +86,29 @@ const lastAlert = () => jest.mocked(showAlert).mock.calls.at(-1)!;
 const buttonTexts = () => (lastAlert()[2] ?? []).map((button) => button.text);
 
 describe('saving a new bill when the server answers GST_DETAILS_REQUIRED', () => {
-  it('shows an administrator the alert with Cancel and Open GST details; nothing is saved and the form is kept', async () => {
+  // Product, 2026-11-14 (WH-205 card): on this rare path the alert waits for the save dialog (report) and shows the title
+  // and the role's message only, with no Open GST details button; accepted provided the form keeps what was typed.
+  it('shows an administrator the save-your-GST-details alert; nothing is saved and the form keeps what was typed', async () => {
     await open('admin');
 
     expect(server.callsOf('save_invoice')).toHaveLength(1);
     expect(lastAlert()[0]).toBe('No bills yet');
     expect(lastAlert()[1]).toBe(ADMIN_ALERT);
-    expect(buttonTexts()).toEqual(['Cancel', 'Open GST details']);
+    expect(buttonTexts()).not.toContain('Open GST details');
     expect(app.successDialog()).toBeUndefined();
     expect(app.pathname()).toMatch(/invoice-form/);
     expect(app.store.getState().invoiceForm.is_saving).toBe(false);
     expect(app.store.getState().invoiceForm.header.gr_id).toBe(IDS.grn);
-
-    const openButton = (lastAlert()[2] ?? []).find((button) => button.text === 'Open GST details')!;
-    await act(async () => { openButton.onPress?.(); });
-    await app.settle();
-    expect(app.pathname()).toBe('/gst-details');
   });
 
-  it('shows staff the ask-an-administrator alert with only OK, not the server sentence', async () => {
+  it('shows staff the ask-an-administrator alert, not the server sentence; nothing is saved and the form is kept', async () => {
     await open('staff');
 
+    expect(lastAlert()[0]).toBe('No bills yet');
     expect(lastAlert()[1]).toBe(STAFF_ALERT);
-    expect(buttonTexts()).toEqual(['OK']);
+    expect(buttonTexts()).not.toContain('Open GST details');
     expect(app.successDialog()).toBeUndefined();
     expect(app.pathname()).toMatch(/invoice-form/);
+    expect(app.store.getState().invoiceForm.header.gr_id).toBe(IDS.grn);
   });
 });
