@@ -9,10 +9,11 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ReportEmptyState, ReportHeader } from '@/components/reports';
+import { ReportEmptyState } from '@/components/reports';
 import { Button } from '@/components/ui/Button';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Input } from '@/components/ui/Input';
 import { invalidateSensorQueries } from '@/features/sensors/sensorQueries';
 import {
@@ -54,6 +55,7 @@ const makeStyles = (t: ThemeTokens) =>
       gap: space.lg,
       ...t.shadow[2],
     },
+    deviceName: { ...typography.subhead, color: t.text.secondary },
     cardTitle: { ...typography.headline, color: t.text.primary },
     cardHint: { ...typography.footnote, color: t.text.secondary },
     bottomBar: {
@@ -137,11 +139,6 @@ const SensorEditScreen: React.FC = () => {
       return;
     }
     setRefused({});
-    // Nothing changed: there is nothing to save, so just go back.
-    if (!changed) {
-      router.back();
-      return;
-    }
     savingRef.current = true;
     setSaving(true);
     try {
@@ -176,7 +173,11 @@ const SensorEditScreen: React.FC = () => {
     }
   };
 
-  const header = <ReportHeader title={tr('sensors.edit.title')} subtitle={device?.device_name} />;
+  const header = (
+    <Stack.Screen
+      options={{ title: tr('sensors.edit.title'), headerShown: true, headerTitleAlign: 'center', headerLeft: () => <HeaderBackButton /> }}
+    />
+  );
 
   if (deviceQuery.phase === 'loading') {
     return (
@@ -212,6 +213,7 @@ const SensorEditScreen: React.FC = () => {
       {header}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Text style={styles.deviceName} testID="sensor-edit-device-name">{device.device_name}</Text>
           <View style={styles.card}>
             <Input
               label={tr('sensors.edit.name')}
@@ -299,8 +301,8 @@ const SensorEditScreen: React.FC = () => {
 
         {/* Under the form, not floating over it (style guide §14.4) */}
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
-          <Button size="fullWidth" onPress={() => void save()} loading={saving} disabled={saving}>
-            {tr('common.save')}
+          <Button size="fullWidth" onPress={() => void save()} loading={saving} disabled={saving || !changed}>
+            {tr('sensors.edit.saveLabel')}
           </Button>
         </View>
       </KeyboardAvoidingView>
