@@ -19,12 +19,13 @@
  *     </DialogOverlay>
  *   </Modal>
  */
-import React from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useRef } from 'react';
+import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
+import type { TextRef } from '@/types/nativeRefs';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -208,10 +209,25 @@ const TONE_ICON: Record<DialogTone, IconName | undefined> = {
   success: 'check-circle',
 };
 
-/** Status icon in its circle, the title and the message. */
+/**
+ * Status icon in its circle, the title and the message. When the dialog opens, screen-reader focus moves to the
+ * title (once, after its first layout); where that is not available nothing happens.
+ */
 export function DialogHeading({ title, message, tone = 'default', icon, messageAlign = 'center' }: DialogHeadingProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const titleRef = useRef<TextRef>(null);
+  const focused = useRef(false);
+  const focusTitle = useCallback(() => {
+    if (focused.current) return;
+    focused.current = true;
+    try {
+      const node = titleRef.current ? findNodeHandle(titleRef.current) : null;
+      if (node) AccessibilityInfo.setAccessibilityFocus(node);
+    } catch {
+      // Not available on this platform: the dialog still works.
+    }
+  }, []);
   const name = icon ?? TONE_ICON[tone];
   const color =
     tone === 'danger' ? t.status.negative.text : tone === 'warning' ? t.status.critical.text : tone === 'success' ? t.status.positive.text : t.brand.tint;
@@ -223,7 +239,7 @@ export function DialogHeading({ title, message, tone = 'default', icon, messageA
           <Icon name={name} size={iconSize.xl} color={color} />
         </View>
       ) : null}
-      <Text style={styles.title} accessibilityRole="header">
+      <Text ref={titleRef} onLayout={focusTitle} style={styles.title} accessibilityRole="header">
         {title}
       </Text>
       {message ? <Text style={[styles.message, messageAlign === 'left' && styles.messageLeft]}>{message}</Text> : null}
