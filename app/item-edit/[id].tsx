@@ -21,9 +21,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  TextInput,
   AccessibilityInfo,
-  type TextInputProps,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +29,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { matchingPackaging, normalizePackaging, usePackagingWords } from '@/features/items/packagingSuggestions';
@@ -40,7 +39,6 @@ import {
   layout,
   radius,
   space,
-  touchTarget,
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
@@ -197,12 +195,6 @@ const ItemEditScreen: React.FC = () => {
       return;
     }
 
-    // Nothing changed: there is nothing to save, so just go back.
-    if (!hasChanges()) {
-      router.back();
-      return;
-    }
-
     // Nothing is sent from a phone that is offline.
     if (offline) {
       showAlert(tr('items.form.couldNotSaveTitle'), tr('items.offline.connectToSave'));
@@ -320,7 +312,7 @@ const ItemEditScreen: React.FC = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.card}>
-            <ItemTextField
+            <Input
               label={tr('items.form.itemName')}
               required
               value={formData.name}
@@ -329,9 +321,12 @@ const ItemEditScreen: React.FC = () => {
               maxLength={80}
               error={errors.name}
               autoCapitalize="words"
-              inputRef={(node) => (inputs.current.name = node)}
+              showCharacterCount
+              ref={(node) => {
+                inputs.current.name = node;
+              }}
             />
-            <ItemTextField
+            <Input
               label={tr('common.packaging')}
               required
               value={formData.packaging}
@@ -339,7 +334,10 @@ const ItemEditScreen: React.FC = () => {
               placeholder={tr('items.form.packagingPlaceholder')}
               maxLength={40}
               error={errors.packaging}
-              inputRef={(node) => (inputs.current.packaging = node)}
+              showCharacterCount
+              ref={(node) => {
+                inputs.current.packaging = node;
+              }}
             />
             {suggestions.length > 0 && (
               <ChoiceChips
@@ -349,21 +347,24 @@ const ItemEditScreen: React.FC = () => {
                 accessibilityLabel={tr('items.form.packagingSuggestions')}
               />
             )}
-            <ItemTextField
+            <Input
               label={tr('items.form.description')}
               value={formData.description}
               onChangeText={(text) => handleFieldChange('description', text)}
               placeholder={tr('items.form.descriptionPlaceholder')}
               maxLength={40}
               error={errors.description}
-              inputRef={(node) => (inputs.current.description = node)}
+              showCharacterCount
+              ref={(node) => {
+                inputs.current.description = node;
+              }}
             />
           </View>
         </ScrollView>
 
         {/* Under the form, not floating over it (style guide §14.4) */}
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]} testID="item-bottom-bar">
-          <Button size="fullWidth" onPress={handleSave} loading={saving} disabled={saving}>
+          <Button size="fullWidth" onPress={handleSave} loading={saving} disabled={saving || !hasChanges()}>
             {tr('items.form.saveItem')}
           </Button>
         </View>
@@ -371,63 +372,6 @@ const ItemEditScreen: React.FC = () => {
     </View>
   );
 };
-
-type ItemTextFieldProps = Omit<TextInputProps, 'style'> & {
-  label: string;
-  required?: boolean;
-  error?: string;
-  maxLength: number;
-  value: string;
-  inputRef?: (node: TextInputRef | null) => void;
-};
-
-/** Labelled text field with focus, error and character count (style guide §13.2). */
-function ItemTextField({ label, required, error, maxLength, value, inputRef, onFocus, onBlur, ...inputProps }: ItemTextFieldProps) {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  const [focused, setFocused] = useState(false);
-  return (
-    <View style={styles.formSection}>
-      <Text style={[styles.label, !!error && styles.labelError]}>
-        {label}
-        {required && <Text style={styles.required}> *</Text>}
-      </Text>
-      <TextInput
-        {...inputProps}
-        ref={inputRef}
-        value={value}
-        maxLength={maxLength}
-        placeholderTextColor={t.text.placeholder}
-        accessibilityLabel={required ? tr('items.form.requiredLabel', { label }) : label}
-        onFocus={(e) => {
-          setFocused(true);
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          onBlur?.(e);
-        }}
-        style={[styles.textInput, focused && styles.textInputFocused, !!error && styles.textInputError]}
-      />
-      <View style={styles.helperRow}>
-        {error ? (
-          <View style={styles.errorRow} accessibilityLiveRegion="polite">
-            <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : (
-          <View style={styles.flex} />
-        )}
-        <Text
-          style={styles.charCount}
-          accessibilityLabel={tr('items.form.charCountLabel', { count: value.length, max: maxLength })}
-        >
-          {tr('items.form.charCount', { count: value.length, max: maxLength })}
-        </Text>
-      </View>
-    </View>
-  );
-}
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {
@@ -495,59 +439,6 @@ const makeStyles = (t: ThemeTokens) => ({
     padding: space.lg,
     gap: space.lg,
     ...t.shadow[2],
-  },
-  formSection: {},
-  label: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    marginBottom: space.xs,
-  },
-  labelError: {
-    color: t.status.negative.text,
-  },
-  required: {
-    color: t.text.required,
-  },
-  textInput: {
-    ...typography.body,
-    borderWidth: 1,
-    borderRadius: radius.field,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    minHeight: touchTarget,
-    backgroundColor: t.surface.field,
-    borderColor: t.border.field,
-    color: t.text.primary,
-  },
-  textInputFocused: {
-    borderWidth: 2,
-    borderColor: t.border.fieldFocus,
-  },
-  textInputError: {
-    borderWidth: 2,
-    borderColor: t.status.negative.border,
-  },
-  helperRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    gap: space.sm,
-    marginTop: space.xs,
-  },
-  errorRow: {
-    flex: 1,
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    gap: space.xs,
-  },
-  errorText: {
-    ...typography.footnote,
-    flex: 1,
-    color: t.status.negative.text,
-  },
-  charCount: {
-    ...typography.caption1,
-    color: t.text.secondary,
-    fontVariant: ['tabular-nums' as const],
   },
 });
 
