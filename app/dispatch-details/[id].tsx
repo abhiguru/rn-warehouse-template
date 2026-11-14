@@ -31,7 +31,6 @@ import { generateDispatchPDF, pdfRefusalText } from '@/services/pdf-service';
 import { printDispatchRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
-import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -57,6 +56,7 @@ import { withNativeHandoff } from '@/config/nativeHandoff';
 import { deleteDispatchImage, uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { photoAddFailure } from '@/utils/photoUploadError';
@@ -134,14 +134,6 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     textAlign: 'center' as const,
   },
-  snackbar: {
-    backgroundColor: t.surface.inverse,
-    borderRadius: radius.button,
-  },
-  snackbarText: {
-    ...typography.subhead,
-    color: t.text.inverse,
-  },
 });
 
 function DispatchDetailScreen() {
@@ -161,8 +153,6 @@ function DispatchDetailScreen() {
   const [data, setData] = useState<DispatchDetailsResponse['data'] | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageUploadRef = useRef(false);
   const [isDeletingImage, setIsDeletingImage] = useState(false);
@@ -555,8 +545,7 @@ function DispatchDetailScreen() {
       if (Platform.OS !== 'android') {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          setSnackbarMessage(tr('dispatch.photos.allowAccess'));
-          setSnackbarVisible(true);
+          showToast(tr('dispatch.photos.allowAccess'));
           return;
         }
       }
@@ -581,8 +570,7 @@ function DispatchDetailScreen() {
         return;
       }
       await fetchDispatchDetails();
-      setSnackbarMessage(tr('dispatch.photos.added'));
-      setSnackbarVisible(true);
+      showToast(tr('dispatch.photos.added'));
     } catch (error) {
       const failure = photoAddFailure(error, tr('dispatch.photos.uploadFailedRetry'));
       showAlert(tr('dispatch.photos.uploadFailedTitle'), failure.message);
@@ -609,20 +597,19 @@ function DispatchDetailScreen() {
             const result = await deleteDispatchImage(image.id, image.image_url);
             if (result.success) {
               await fetchDispatchDetails();
-              setSnackbarMessage(result.partial ? serverText(result.error, tr('dispatch.photos.removedFileUnconfirmed'), { write: true, photo: true }) : tr('dispatch.photos.deleted'));
+              showToast(result.partial ? serverText(result.error, tr('dispatch.photos.removedFileUnconfirmed'), { write: true, photo: true }) : tr('dispatch.photos.deleted'));
             } else {
               const failure = photoAddFailure(result.error, tr('dispatch.photos.deleteFailed'));
-              setSnackbarMessage(failure.message);
+              showToast(failure.message);
               if (failure.reread) await fetchDispatchDetails();
             }
           } catch (error) {
             const failure = photoAddFailure(error, tr('dispatch.photos.deleteFailed'));
-            setSnackbarMessage(failure.message);
+            showToast(failure.message);
             if (failure.reread) await fetchDispatchDetails();
           } finally {
             setIsDeletingImage(false);
             imageUploadRef.current = false;
-            setSnackbarVisible(true);
           }
         },
       },
@@ -759,7 +746,7 @@ function DispatchDetailScreen() {
         onConfirm={async (start, end) => {
           const result = await printDispatchRange(start, end);
           if (result.success) {
-            setSnackbarMessage(
+            showToast(
               result.print_job?.cups_job_id
                 ? tr('dispatch.details.printSentWithJob', { job: String(result.print_job.cups_job_id) })
                 : tr('dispatch.details.printSent')
@@ -773,7 +760,6 @@ function DispatchDetailScreen() {
             // Thrown, so the dialog stays open and shows the reason above its buttons.
             throw new Error(printFailureMessage(result));
           }
-          setSnackbarVisible(true);
           setShowPrintDialog(false);
         }}
         title={tr('dispatch.details.printTitle')}
@@ -782,17 +768,6 @@ function DispatchDetailScreen() {
         placeholder={tr('dispatch.review.printPlaceholder', { example: 'I4613' })}
       />
 
-      {/* Snackbar for print and photo feedback (guide §13.9) */}
-      <Portal>
-        <Snackbar
-          visible={snackbarVisible}
-          onDismiss={() => setSnackbarVisible(false)}
-          duration={4000}
-          style={styles.snackbar}
-        >
-          <Text style={styles.snackbarText}>{snackbarMessage}</Text>
-        </Snackbar>
-      </Portal>
     </>
   );
 }

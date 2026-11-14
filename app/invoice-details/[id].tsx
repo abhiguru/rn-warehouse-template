@@ -34,7 +34,6 @@ import { printInvoiceRange, printFailureMessage } from '@/services/print-service
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { invoiceFileName, invoiceLabelOf } from '@/utils/invoiceLabel';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
-import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -53,6 +52,7 @@ import { iconSize, layout, radius, space, touchTarget, typography } from '@/them
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { formatDate } from '@/utils/formatters';
 import { parseChargingRule } from '@/features/charging/chargingRule';
 import { buildInvoiceLineItems, relatedDispatchDocuments } from '@/features/invoice/utils/invoiceLineItems';
@@ -110,7 +110,6 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'center' as const,
     maxWidth: 220,
   },
-  snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button },
 });
 
 function InvoiceDetailScreen() {
@@ -180,8 +179,6 @@ function InvoiceDetailScreen() {
   const [reasons, setReasons] = useState<InvoiceReasons | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   // Auth check
   useEffect(() => {
@@ -797,7 +794,7 @@ function InvoiceDetailScreen() {
 
           const result = await printInvoiceRange(start, end, finYearNum);
           if (result.success) {
-            setSnackbarMessage(
+            showToast(
               result.print_job?.cups_job_id
                 ? tr('invoice.print.sentWithJob', { job: String(result.print_job.cups_job_id) })
                 : tr('invoice.print.sent')
@@ -811,7 +808,6 @@ function InvoiceDetailScreen() {
             // Thrown, so the dialog stays open and shows the reason above its buttons.
             throw new Error(printFailureMessage(result));
           }
-          setSnackbarVisible(true);
           // WH-151: invoices the form did not print are named in the dialog, which stays open until it is closed.
           const skippedNote = printSkippedNote(result);
           if (skippedNote) return skippedNote;
@@ -823,18 +819,6 @@ function InvoiceDetailScreen() {
         placeholder={tr('invoice.print.exampleShort', { example: '2555' })}
       />
 
-      {/* Snackbar for print feedback */}
-      <Portal>
-        <Snackbar
-          visible={snackbarVisible}
-          onDismiss={() => setSnackbarVisible(false)}
-          duration={4000}
-          style={styles.snackbar}
-          theme={{ colors: { inverseOnSurface: t.text.inverse } }}
-        >
-          {snackbarMessage}
-        </Snackbar>
-      </Portal>
     </>
   );
 }

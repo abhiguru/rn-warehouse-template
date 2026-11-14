@@ -3,7 +3,7 @@
  *
  * Hero header on surface.card (GRNHeroHeader), detail tabs (Overview, Items,
  * Dispatches, Images, Invoices), the image viewer, the print dialog and a
- * snackbar for feedback. Loading uses the detail skeleton; load failures and
+ * toast for feedback. Loading uses the detail skeleton; load failures and
  * a missing GRN get their own full-screen states.
  */
 
@@ -32,7 +32,6 @@ import { generateGRNPDF, pdfRefusalText } from '@/services/pdf-service';
 import { printGRNRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
-import { Portal, Snackbar } from 'react-native-paper';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
@@ -67,6 +66,7 @@ import { Button } from '@/components/ui/Button';
 import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
 
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { formatCount } from '@/utils/formatters';
 import { sharedPackaging } from '@/utils/packagingWord';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -127,15 +127,6 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: typography.headline.fontWeight,
     color: t.text.primary,
   },
-  snackbar: {
-    backgroundColor: t.surface.inverse,
-    borderRadius: radius.button,
-    ...t.shadow[3],
-  },
-  snackbarText: {
-    ...typography.subhead,
-    color: t.text.inverse,
-  },
 });
 
 function GRNDetailScreen() {
@@ -166,8 +157,6 @@ function GRNDetailScreen() {
   const [canEdit, setCanEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isDeletingImage, setIsDeletingImage] = useState(false);
   const imageMutationRef = useRef(false);
@@ -240,8 +229,7 @@ function GRNDetailScreen() {
       if (Platform.OS !== 'android') {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          setSnackbarMessage(tr('grn.details.photoAccessNeeded'));
-          setSnackbarVisible(true);
+          showToast(tr('grn.details.photoAccessNeeded'));
           return;
         }
       }
@@ -259,18 +247,15 @@ function GRNDetailScreen() {
       const result = await uploadGRNImage(picked.assets[0], id, 'header');
       if (!result.success) {
         const failure = serverText(result.error, tr('grn.details.imageUploadFailed'), { write: true, photo: true });
-        setSnackbarMessage(failure);
-        setSnackbarVisible(true);
+        showToast(failure);
         // "No answer ... may have gone through": the photos are read again, so the tab shows what the server holds.
         if (failure === tr('errors.parsed.timeoutWritePhoto')) await fetchGRNDetails();
         return;
       }
       await fetchGRNDetails();
-      setSnackbarMessage(tr('grn.details.imageAdded'));
-      setSnackbarVisible(true);
+      showToast(tr('grn.details.imageAdded'));
     } catch {
-      setSnackbarMessage(tr('grn.details.imageUploadFailed'));
-      setSnackbarVisible(true);
+      showToast(tr('grn.details.imageUploadFailed'));
     } finally {
       setIsUploadingImage(false);
       imageMutationRef.current = false;
@@ -283,8 +268,7 @@ function GRNDetailScreen() {
     // The server refuses it as well; this saves the question and the trip.
     const grnPhotoCount = ((data?.grn as any)?.processed_header_images || []).length;
     if (image.category === 'header' && grnPhotoCount <= 1) {
-      setSnackbarMessage(tr('grn.refusal.lastPhoto'));
-      setSnackbarVisible(true);
+      showToast(tr('grn.refusal.lastPhoto'));
       return;
     }
     imageMutationRef.current = true;
@@ -299,18 +283,17 @@ function GRNDetailScreen() {
             const result = await deleteGRNImage(image.id, image.image_url);
             if (result.success) {
               await fetchGRNDetails();
-              setSnackbarMessage(result.partial ? serverText(result.error, tr('grn.details.imageRemoved'), { write: true, photo: true }) : tr('grn.details.imageDeleted'));
+              showToast(result.partial ? serverText(result.error, tr('grn.details.imageRemoved'), { write: true, photo: true }) : tr('grn.details.imageDeleted'));
             } else {
               const failure = serverText(result.error, tr('grn.details.imageDeleteFailed'), { write: true, photo: true });
-              setSnackbarMessage(failure);
+              showToast(failure);
               if (failure === tr('errors.parsed.timeoutWritePhoto')) await fetchGRNDetails();
             }
           } catch {
-            setSnackbarMessage(tr('grn.details.imageDeleteFailed'));
+            showToast(tr('grn.details.imageDeleteFailed'));
           } finally {
             setIsDeletingImage(false);
             imageMutationRef.current = false;
-            setSnackbarVisible(true);
           }
         },
       },
@@ -1048,7 +1031,7 @@ function GRNDetailScreen() {
         onConfirm={async (start, end) => {
           const result = await printGRNRange(start, end);
           if (result.success) {
-            setSnackbarMessage(
+            showToast(
               result.print_job?.cups_job_id
                 ? tr('grn.details.printJobSentWithId', { jobId: String(result.print_job.cups_job_id) })
                 : tr('grn.details.printJobSent')
@@ -1062,7 +1045,6 @@ function GRNDetailScreen() {
             // Thrown, so the dialog stays open and shows the reason above its buttons.
             throw new Error(printFailureMessage(result));
           }
-          setSnackbarVisible(true);
           setShowPrintDialog(false);
         }}
         title={tr('grn.details.printTitle')}
@@ -1071,17 +1053,6 @@ function GRNDetailScreen() {
         placeholder={tr('grn.details.printPlaceholder', { example: 'Z0797' })}
       />
 
-      {/* Snackbar for print feedback */}
-      <Portal>
-        <Snackbar
-          visible={snackbarVisible}
-          onDismiss={() => setSnackbarVisible(false)}
-          duration={4000}
-          style={styles.snackbar}
-        >
-          <Text style={styles.snackbarText}>{snackbarMessage}</Text>
-        </Snackbar>
-      </Portal>
     </>
   );
 }

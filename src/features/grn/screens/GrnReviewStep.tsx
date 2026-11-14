@@ -11,7 +11,6 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Snackbar } from 'react-native-paper';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   GRNImageData,
@@ -60,6 +59,7 @@ import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
 import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
+import { showToast } from '@/utils/toast';
 import { currentGrnFormSession, newSubmissionNonce } from '@/features/grn/utils/grnFormSession';
 import { checkSubmission } from '@/utils/lostAnswer';
 import { forgetUnfinishedSave, releaseUnfinishedSave } from '@/services/unfinishedSaves';
@@ -226,8 +226,6 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [documentNumber, setDocumentNumber] = useState('');
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successDialogData, setSuccessDialogData] = useState<DocumentData | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
@@ -309,8 +307,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     if (!next.removed) return;
     dispatch(setGrnRates(next.grnRates));
     dispatch(setRateChanges(next.changes));
-    setSnackbarMessage(tr('grn.review.ratesOtherTypeRemoved'));
-    setSnackbarVisible(true);
+    showToast(tr('grn.review.ratesOtherTypeRemoved'));
   }, [rateCtx.priceType, grnRates, rateChanges, grnInvoiced, canSetRates, dispatch]);
   const scrollRatesIntoView = () => scrollRef.current?.scrollTo({ y: Math.max(0, cardY.current + ratesY.current - space.lg), animated: true });
   /** Opens RATES and scrolls to it: at once when it is open, else once it has moved into place. */
@@ -592,8 +589,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const finishSave = (savedGrnId: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
     void noteItemsWithoutRate(savedGrnId);
     if (photos && photos.removalFailures > 0) {
-      setSnackbarMessage(photos.removalRefusal ?? tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
-      setSnackbarVisible(true);
+      showToast(photos.removalRefusal ?? tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
     }
     if (savedGrnId && photos && photos.failed.length > 0) {
       triggerWarning();
@@ -638,8 +634,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         return;
       }
       triggerSuccess();
-      setSnackbarMessage(tr('grn.review.photosUploaded'));
-      setSnackbarVisible(true);
+      showToast(tr('grn.review.photosUploaded'));
       setShowSuccessDialog(true);
     } finally {
       setIsRetryingPhotos(false);
@@ -1166,8 +1161,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           skippedMessage = tr('grn.review.savedWithSkipped', { items: skippedText });
         } else {
           triggerSuccess();
-          setSnackbarMessage(header.gr_no ? tr('grn.review.savedWithNumber', { number: formatIdentifier(header.gr_no) }) : tr('grn.review.saved'));
-          setSnackbarVisible(true);
+          showToast(header.gr_no ? tr('grn.review.savedWithNumber', { number: formatIdentifier(header.gr_no) }) : tr('grn.review.saved'));
         }
 
         const grNo = header.gr_no || '';
@@ -1224,20 +1218,17 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     try {
       const pdfResult = await generateGRNPDF(documentNumber);
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setSnackbarMessage(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('grn.review.pdfCreateFailed'));
-        setSnackbarVisible(true);
+        showToast(pdfResult.refusal ? pdfRefusalSentence(pdfResult.refusal) : tr('grn.review.pdfCreateFailed'));
         return;
       }
 
       const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `GRN_${invoiceFileName(documentNumber)}.pdf`);
       if (!shareResult.success) {
-        setSnackbarMessage(tr('grn.review.pdfShareFailed'));
-        setSnackbarVisible(true);
+        showToast(tr('grn.review.pdfShareFailed'));
       }
     } catch (error) {
       log.error('Share PDF error', loggableError(error));
-      setSnackbarMessage(tr('grn.review.pdfShareFailed'));
-      setSnackbarVisible(true);
+      showToast(tr('grn.review.pdfShareFailed'));
     } finally {
       setIsShareLoading(false);
     }
@@ -1627,10 +1618,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onConfirm={async (start, end) => {
           const result = await printGRNRange(start, end);
           if (result.success) {
-            setSnackbarMessage(tr('grn.review.printSent'));
-            setSnackbarVisible(true);
+            showToast(tr('grn.review.printSent'));
           } else {
-            // A dialog, not the snackbar: the screen is left (edit) or covered by the success
+            // A dialog, not the toast: the screen is left (edit) or covered by the success
             // dialog (create) at once, and a failure is something the person must act on.
             // The unconfirmed one must not invite a reprint.
             showAlert(
@@ -1646,15 +1636,6 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         entity="grn"
         placeholder={tr('grn.form.forExample', { example: 'Z0797' })}
       />
-
-      <Snackbar
-        visible={snackbarVisible}
-        onDismiss={() => setSnackbarVisible(false)}
-        duration={4000}
-        style={styles.snackbar}
-      >
-        <Text style={styles.snackbarText}>{snackbarMessage}</Text>
-      </Snackbar>
 
       {/* Full-screen image preview */}
       {header.gr_images && header.gr_images.length > 0 && (
@@ -1799,9 +1780,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   emptyStateTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
   emptyStateSubtitle: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
-
-  snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button, ...t.shadow[3] },
-  snackbarText: { ...typography.subhead, color: t.text.inverse },
 });
 
 export default GrnReviewStep;
