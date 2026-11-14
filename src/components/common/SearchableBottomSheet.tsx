@@ -43,6 +43,7 @@ import {
   BackHandler,
   ListRenderItem,
 } from 'react-native';
+import type { TextInputProps } from 'react-native';
 import {
   BottomSheetModal,
   BottomSheetFlatList,
@@ -60,6 +61,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 import { normalizeDigits, t as tr } from '@/i18n';
+import { SheetSearchField } from './SheetSearchField';
 import { useModalSheet } from '@/hooks/useModalSheet';
 import type { TextInputRef } from '@/types/nativeRefs';
 
@@ -568,49 +570,22 @@ export function SearchableBottomSheet<T extends { id: string }>({
         </View>
 
         {/* Search Input */}
-        <View style={dynamicStyles.searchContainer}>
-          <Icon
-            name="magnify"
-            size={iconSize.md}
-            color={t.icon.secondary}
-            style={styles.searchIcon}
-          />
-          <BottomSheetTextInput
-            ref={inputRef}
-            style={dynamicStyles.input}
-            placeholder={placeholder}
-            placeholderTextColor={t.text.placeholder}
-            accessibilityLabel={placeholder}
-            value={searchQuery}
-            onChangeText={handleTextChange}
-            returnKeyType="search"
-            autoCapitalize="words"
-            autoCorrect={false}
-            autoFocus
-          />
-          {isLoading && (
-            <ActivityIndicator
-              size="small"
-              color={t.brand.tint}
-              style={styles.loader}
-            />
-          )}
-          {searchQuery.length > 0 && (
-            <Pressable
-              style={styles.clearButton}
-              onPress={() => {
-                clearSearch();
-                // A sheet that lists everything with nothing typed lists it again.
-                if (minQueryLength === 0) void performSearchNow('');
-                focusInput(inputRef.current);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={tr('common.clearSearch')}
-            >
-              <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
-            </Pressable>
-          )}
-        </View>
+        <SheetSearchField
+          ref={inputRef}
+          InputComponent={BottomSheetTextInput as React.ComponentType<TextInputProps>}
+          style={dynamicStyles.searchField}
+          value={searchQuery}
+          placeholder={placeholder}
+          onChangeText={handleTextChange}
+          loading={isLoading}
+          onClear={() => {
+            clearSearch();
+            // A sheet that lists everything with nothing typed lists it again.
+            if (minQueryLength === 0) void performSearchNow('');
+            focusInput(inputRef.current);
+          }}
+          inputProps={{ autoCapitalize: 'words', autoCorrect: false, autoFocus: true }}
+        />
 
         {/* Results List */}
         <BottomSheetFlatList
@@ -683,23 +658,10 @@ const makeStyles = (t: ThemeTokens) => ({
   closeButtonPressed: {
     backgroundColor: t.surface.cardPressed,
   },
-  searchContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.surface.field,
-    borderRadius: radius.field,
-    paddingHorizontal: space.md,
-    minHeight: touchTarget,
+  searchField: {
     marginHorizontal: space.lg,
     marginTop: space.lg,
     marginBottom: space.sm,
-    borderWidth: 1,
-    borderColor: t.border.field,
-  },
-  input: {
-    ...typography.body,
-    flex: 1,
-    color: t.text.primary,
   },
   separator: {
     height: StyleSheet.hairlineWidth,
@@ -769,21 +731,8 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 const styles = StyleSheet.create({
-  loader: {
-    marginLeft: space.sm,
-  },
-  searchIcon: {
-    marginRight: space.sm,
-  },
   emptyIcon: {
     marginBottom: space.lg,
-  },
-  clearButton: {
-    minWidth: touchTarget,
-    minHeight: touchTarget,
-    marginRight: -space.md,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   listContent: {
     paddingBottom: space.xl,
