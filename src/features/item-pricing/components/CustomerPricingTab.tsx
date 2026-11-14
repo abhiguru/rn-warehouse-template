@@ -7,14 +7,16 @@
  * Mounted only while the tab is shown, so the facility's rates are not read for a customer page that never opens it.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { Platform, RefreshControl, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
+import { Button } from '@/components/ui/Button';
 import { SectionFooter, SectionHeader } from '@/components/ui/SectionHeader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
+import { formatTime } from '@/utils/formatters';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import { customerRateAddPath, customerRatePath, itemRatesPath } from '../contract';
 import { customerItemRows } from '../customerRates';
@@ -27,7 +29,7 @@ import { RatesState } from './RatesState';
 export interface CustomerPricingTabProps {
   customerId: string;
   customerName: string;
-  /** The customer is deactivated: the tab is read only (no "+ Add item"), with a strip that says why. */
+  /** The customer is deactivated: the tab is read only (no "+ Add item"); the customer page shows the strip that says why. */
   deactivated?: boolean;
   /** An item whose box opens at once (the `item` param of a link into the tab), so Back lands on this tab. */
   openItemId?: string;
@@ -40,6 +42,7 @@ const SKELETON_ROWS = [0, 1, 2];
 const makeStyles = (th: ThemeTokens) => ({
   list: { backgroundColor: th.surface.card },
   skeleton: { gap: space.md },
+  retry: { alignSelf: 'flex-start' as const },
   strip: { paddingHorizontal: layout.marginCompact, paddingTop: space.sm },
 });
 
@@ -47,7 +50,7 @@ export function CustomerPricingTab({ customerId, customerName, deactivated = fal
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
   const insets = useSafeAreaInsets();
-  const { items, rates, status, refreshing, refresh } = useItemRates();
+  const { items, rates, status, refreshing, lastUpdated, refresh, refreshError } = useItemRates();
   const [picking, setPicking] = useState(false);
   const [pulling, setPulling] = useState(false);
   const day = todayDay();
@@ -125,7 +128,9 @@ export function CustomerPricingTab({ customerId, customerName, deactivated = fal
       <>
         <SectionHeader title={t('pricing.customerTab.sectionTitle')} count={entries.length} action={addAction} testID="customer-pricing-header" />
         <View style={styles.list}>
-          {entries.map(entry => <CustomerItemRateRow key={entry.itemId} entry={entry} onPress={entry.deactivated ? openItemPage : openItem} />)}
+          {entries.map((entry, index) => (
+            <CustomerItemRateRow key={entry.itemId} entry={entry} onPress={entry.deactivated ? openItemPage : openItem} showDivider={index < entries.length - 1} />
+          ))}
         </View>
         <SectionFooter text={t('pricing.customerTab.footer')} testID="customer-pricing-footer" />
       </>
@@ -135,14 +140,15 @@ export function CustomerPricingTab({ customerId, customerName, deactivated = fal
   return (
     <View style={{ flex: 1 }} testID="customer-pricing-tab">
       <ScrollView
-        contentContainerStyle={{ paddingBottom: space.huge + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: space.huge + (Platform.OS === 'ios' ? insets.bottom : 0) }}
         refreshControl={
           <RefreshControl refreshing={pulling && refreshing} onRefresh={onPull} colors={[th.brand.tint]} tintColor={th.brand.tint} progressBackgroundColor={th.surface.card} />
         }
       >
-        {deactivated ? (
-          <View style={styles.strip} testID="customer-pricing-deactivated">
-            <InlineValidation variant="warning" message={t('pricing.customerTab.deactivated')} />
+        {refreshError ? (
+          <View style={styles.strip} testID="customer-pricing-refresh-failed">
+            <InlineValidation variant="error" message={t('pricing.list.refreshFailed', { time: lastUpdated ? formatTime(new Date(lastUpdated)) : '' })} />
+            <Button type="tertiary" onPress={() => { void refresh(); }} style={styles.retry}>{t('pricing.list.tryAgain')}</Button>
           </View>
         ) : null}
         {body}

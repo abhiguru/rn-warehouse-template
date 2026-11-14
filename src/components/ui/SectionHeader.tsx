@@ -265,6 +265,7 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
   },
   title: {
+    flexShrink: 1,
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     letterSpacing: trackedText(0.5),
@@ -275,6 +276,7 @@ const makeStyles = (t: ThemeTokens) => ({
   // Plain count badge: brand.fill with brand.onFill. "Needs action" counts use
   // destructive.fill with destructive.onFill instead (§13.5).
   countBadge: {
+    flexShrink: 0,
     marginLeft: space.sm,
     backgroundColor: t.brand.fill,
     paddingHorizontal: space.sm,
@@ -292,6 +294,8 @@ const makeStyles = (t: ThemeTokens) => ({
 
   // Icon button
   iconButton: {
+    flexShrink: 0,
+    marginLeft: space.sm,
     width: touchTarget,
     height: touchTarget,
     borderRadius: radius.pill,
@@ -302,6 +306,8 @@ const makeStyles = (t: ThemeTokens) => ({
 
   // Text button (tertiary)
   textButton: {
+    flexShrink: 0,
+    marginLeft: space.sm,
     minHeight: TEXT_BUTTON_HEIGHT,
     paddingHorizontal: space.md,
     borderRadius: radius.button,

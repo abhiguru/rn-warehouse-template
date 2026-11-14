@@ -6,7 +6,7 @@
  * the item's own page, where the deactivated state is shown.
  */
 import React, { memo } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -20,6 +20,8 @@ export interface CustomerItemRateRowProps {
   entry: CustomerItemEntry;
   onPress: (itemId: string) => void;
   testID?: string;
+  /** The divider under the row; false for the last row of a list. */
+  showDivider?: boolean;
 }
 
 const ROW_MIN_HEIGHT = 72;
@@ -40,7 +42,7 @@ const makeStyles = (th: ThemeTokens) => ({
   name: { ...typography.headline, color: th.text.primary },
   line: { ...typography.subhead, color: th.text.secondary },
   tags: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.xs },
-  divider: { height: 1, marginLeft: layout.marginCompact, backgroundColor: th.border.divider },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: layout.marginCompact, backgroundColor: th.border.divider },
 });
 
 /** "0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%" (a one-time rate has no labour). */
@@ -66,7 +68,7 @@ function tagTexts(entry: CustomerItemEntry): { label: string; informative: boole
   return tags;
 }
 
-function CustomerItemRateRowBase({ entry, onPress, testID }: CustomerItemRateRowProps) {
+function CustomerItemRateRowBase({ entry, onPress, testID, showDivider = true }: CustomerItemRateRowProps) {
   const th = useTokens();
   const styles = useThemedStyles(makeStyles);
   const since = entry.since ? t('pricing.customerTab.since', { date: dateText(entry.since) }) : null;
@@ -104,7 +106,7 @@ function CustomerItemRateRowBase({ entry, onPress, testID }: CustomerItemRateRow
       >
         {content}
       </Pressable>
-      <View style={styles.divider} />
+      {showDivider ? <View style={styles.divider} /> : null}
     </View>
   );
 }

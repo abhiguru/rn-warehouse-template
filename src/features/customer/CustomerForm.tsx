@@ -17,7 +17,7 @@
  * (add), so the Customers list is never on the stack twice (G-16).
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Keyboard, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { AccessibilityInfo, Keyboard, Platform, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -56,10 +56,10 @@ const FIELD_ORDER: (keyof CustomerFormFields)[] = [
   'name',
   'mobile',
   'email',
+  'address',
   'city',
   'state',
   'pincode',
-  'address',
   'gst',
   'pan',
   'contact_name',
@@ -82,7 +82,8 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
   const [working, setWorking] = useState(false);
   const [keyboardShown, setKeyboardShown] = useState(false);
   const busy = useRef(false);
-  const inputs = useRef<Partial<Record<keyof CustomerFormFields, TextInputRef | null>>>({});
+  const inputs = useRef<Partial<Record<keyof CustomerFormFields, { focus: () => void } | null>>>({});
+  const scrollRef = useRef<KeyboardAwareScrollView>(null);
 
   const { leaveWithoutAsking } = useLeaveGuard({
     hasChanges: editor.hasChanges,
@@ -422,6 +423,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
       {editor.status === 'ready' && (
         <>
           <KeyboardAwareScrollView
+            ref={scrollRef}
             style={styles.scroll}
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
@@ -480,12 +482,26 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="next"
-                onSubmitEditing={() => inputs.current.city?.focus()}
+                onSubmitEditing={() => inputs.current.address?.focus()}
               />
             </View>
 
             <SectionHeader title={tr('customers.form.address')} />
             <View style={styles.group}>
+              <Field
+                label={tr('customers.form.fullAddress')}
+                error={errors.address}
+                inputRef={node => (inputs.current.address = node)}
+                value={fields.address}
+                onChangeText={text => change('address', text)}
+                placeholder={tr('customers.form.fullAddressPlaceholder')}
+                autoComplete="street-address"
+                textContentType="fullStreetAddress"
+                maxLength={300}
+                multiline
+                numberOfLines={3}
+                multilineField
+              />
               <Field
                 label={tr('customers.form.city')}
                 error={errors.city}
@@ -501,7 +517,13 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
               />
               {backendHasFeature('gstDocuments') ? (
                 // WH-151: the State is picked from the states and union territories (the server derives the code from the name).
-                <CustomerStatePicker value={fields.state} onChange={name => change('state', name)} error={errors.state} />
+                <CustomerStatePicker
+                  value={fields.state}
+                  onChange={name => change('state', name)}
+                  error={errors.state}
+                  inputRef={node => (inputs.current.state = node)}
+                  scrollIntoView={handle => scrollRef.current?.scrollToFocusedInput(handle)}
+                />
               ) : (
                 <Field
                   label={tr('customers.form.state')}
@@ -529,21 +551,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 textContentType="postalCode"
                 maxLength={6}
                 returnKeyType="next"
-                onSubmitEditing={() => inputs.current.address?.focus()}
-              />
-              <Field
-                label={tr('customers.form.fullAddress')}
-                error={errors.address}
-                inputRef={node => (inputs.current.address = node)}
-                value={fields.address}
-                onChangeText={text => change('address', text)}
-                placeholder={tr('customers.form.fullAddressPlaceholder')}
-                autoComplete="street-address"
-                textContentType="fullStreetAddress"
-                maxLength={300}
-                multiline
-                numberOfLines={3}
-                multilineField
+                onSubmitEditing={() => inputs.current.gst?.focus()}
               />
             </View>
 
@@ -630,7 +638,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
 
           <View
             testID="customer-save-bar"
-            style={[styles.saveBar, { paddingBottom: keyboardShown ? space.md : insets.bottom + space.md }]}
+            style={[styles.saveBar, { paddingBottom: keyboardShown ? space.md : (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}
           >
             <Button size="fullWidth" onPress={() => void onSave()} loading={working || saving} disabled={working || saving}>
               {tr(isCreate ? 'customers.list.addCustomer' : 'customers.form.saveCustomer')}

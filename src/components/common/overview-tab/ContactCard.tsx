@@ -10,6 +10,7 @@ import { View, Text, Pressable, Linking } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import { iconSize } from '@/theme/tokens';
+import { Avatar } from '@/components/ui/Avatar';
 import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 import { t } from '@/i18n';
 
@@ -27,6 +28,8 @@ interface ContactCardProps {
   iconName: IconName;
   iconColor: string;
   iconBgColor: string;
+  /** When set, the card shows the record's initials avatar (§12.3) in place of the icon; the colour follows this id. */
+  avatarId?: string;
 }
 
 /** Show an Indian mobile number as "+91 98765 43210" (§12.3); other values unchanged. */
@@ -47,6 +50,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
   iconName,
   iconColor,
   iconBgColor,
+  avatarId,
 }) => {
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
@@ -70,9 +74,13 @@ export const ContactCard: React.FC<ContactCardProps> = ({
       <View style={overviewStyles.cardClip}>
         {/* Object cell header */}
         <View style={overviewStyles.objectCellHeader} accessible accessibilityLabel={`${type}, ${name}`}>
-          <View style={[overviewStyles.avatar, { backgroundColor: iconBgColor }]}>
-            <Icon name={iconName} size={iconSize.lg} color={iconColor} />
-          </View>
+          {avatarId ? (
+            <Avatar id={avatarId} name={name} size="md" style={overviewStyles.avatarGap} />
+          ) : (
+            <View style={[overviewStyles.avatar, { backgroundColor: iconBgColor }]}>
+              <Icon name={iconName} size={iconSize.lg} color={iconColor} />
+            </View>
+          )}
 
           <View style={overviewStyles.objectCellContent}>
             <Text style={[overviewStyles.objectCellLabel, colorStyles.objectCellLabel]}>{type}</Text>

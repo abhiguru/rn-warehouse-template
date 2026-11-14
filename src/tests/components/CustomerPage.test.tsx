@@ -95,7 +95,7 @@ it('asks before deactivating, in words that say what it does, and then deactivat
   expect(customerService.inactivateCustomer).not.toHaveBeenCalled();
   await act(async () => { (buttons as { text: string; onPress?: () => void }[]).find(b => b.text === 'Deactivate customer')?.onPress?.(); });
   expect(customerService.inactivateCustomer).toHaveBeenCalledWith('c1');
-  expect(shownText(screen)).toContain('Deactivated');
+  expect(shownText(screen)).toContain('This customer is deactivated. Activate them to change their rates.');
   expect(shownText(screen)).toContain('Activate customer');
 });
 
@@ -123,7 +123,7 @@ it('shows the sections that have a value: tax details and the contact person', a
 it('shows a retry when the customer cannot be opened', async () => {
   jest.mocked(customerService.getCustomerById).mockResolvedValueOnce({ success: false, message: '' } as never);
   const screen = await mount();
-  expect(shownText(screen)).toContain("Couldn't open this customer. Check your connection and try again.");
+  expect(shownText(screen)).toContain("Couldn't open this customer | Check your connection and try again.");
   await act(async () => { button(screen, 'Try again').props.onPress(); });
   expect(shownText(screen)).toContain('Rajkot');
 });

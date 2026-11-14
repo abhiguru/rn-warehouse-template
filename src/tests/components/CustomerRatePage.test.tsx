@@ -169,7 +169,7 @@ describe("Review Orchard B's own rate for Review Onion Red", () => {
     press('customer-changes');
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-price-history',
-      params: { item_id: 'onion', customer_id: 'orchard-b', item_name: 'Review Onion Red', customer_name: 'Review Orchard B' },
+      params: { item_id: 'onion', customer_id: 'orchard-b', item_name: 'Review Onion Red · Bag', customer_name: 'Review Orchard B' },
     });
   });
 

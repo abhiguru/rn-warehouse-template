@@ -103,6 +103,7 @@ export const customers = {
   },
   // The customer page (app/customer/[id].tsx)
   page: {
+    loadFailedTitle: "Couldn't open this customer",
     loadFailed: "Couldn't open this customer. Check your connection and try again.",
     activate: 'Activate customer',
     tabOverview: 'Overview',
