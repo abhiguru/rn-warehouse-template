@@ -193,7 +193,7 @@ export default function CustomerPage() {
           <RatesState
             icon="alert-circle-outline"
             title={tr('customers.page.loadFailedTitle')}
-            text={tr('customers.page.loadFailed')}
+            text={tr('common.checkConnection')}
             actionLabel={tr('common.retry')}
             onAction={() => {
               setFailed(false);
