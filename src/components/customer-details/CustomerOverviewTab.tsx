@@ -1,6 +1,6 @@
 /**
- * Overview tab of the customer page: who the customer is and how to reach them (contact card, Address, Tax details,
- * Contact person) and the way to deactivate or activate them. A section appears only when it has a value.
+ * Overview tab of the customer page: who the customer is and how to reach them (contact card, contact person card, Address,
+ * Tax details) and the way to deactivate or activate them. A section appears only when it has a value.
  */
 import React from 'react';
 import { Platform, ScrollView, View } from 'react-native';
@@ -13,7 +13,6 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import type { Customer } from '@/types/customer.types';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
-import { formatMobile } from '@/utils/formatters';
 
 type Row = { label: string; value: string | undefined | null; layout?: 'inline' | 'stacked' };
 
@@ -45,17 +44,11 @@ export function CustomerOverviewTab({ customer: shown, busy, onToggleActive }: C
         { label: tr('customers.fields.pan'), value: shown.pan },
       ],
     },
-    {
-      title: tr('customers.form.contactPerson'),
-      rows: [
-        { label: tr('customers.fields.name'), value: shown.contact_name },
-        { label: tr('customers.fields.contactMobile'), value: shown.contact_mobile ? formatMobile(shown.contact_mobile) : undefined },
-        { label: tr('customers.fields.contactEmail'), value: shown.contact_email },
-      ],
-    },
   ]
     .map(section => ({ ...section, rows: section.rows.filter(row => !!row.value?.trim()) }))
     .filter(section => section.rows.length > 0);
+
+  const hasContactPerson = [shown.contact_name, shown.contact_mobile, shown.contact_email].some(value => !!value?.trim());
 
   return (
     <ScrollView
@@ -75,6 +68,19 @@ export function CustomerOverviewTab({ customer: shown, busy, onToggleActive }: C
           avatarId={shown.id}
         />
       </View>
+      {hasContactPerson ? (
+        <View style={styles.contactPerson}>
+          <ContactCard
+            type={tr('customers.form.contactPerson')}
+            name={shown.contact_name?.trim() || undefined}
+            phone={shown.contact_mobile || undefined}
+            email={shown.contact_email || undefined}
+            iconName="account-outline"
+            iconColor={t.brand.tint}
+            iconBgColor={t.brand.subtle}
+          />
+        </View>
+      ) : null}
       {sections.map(section => (
         <View key={section.title}>
           <SectionHeader title={section.title} />
@@ -108,6 +114,7 @@ export function CustomerOverviewTab({ customer: shown, busy, onToggleActive }: C
 
 const makeStyles = (t: ThemeTokens) => ({
   scroll: { flex: 1 },
+  contactPerson: { paddingHorizontal: layout.marginCompact, paddingTop: space.sm },
   contact: { paddingHorizontal: layout.marginCompact, paddingTop: space.md },
   cells: { backgroundColor: t.surface.card },
   footer: { paddingHorizontal: layout.marginCompact, paddingTop: space.xl, alignItems: 'flex-start' as const },
