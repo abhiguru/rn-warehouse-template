@@ -108,6 +108,7 @@ export const customers: Translation<typeof source> = {
   },
   // The customer page (app/customer/[id].tsx)
   page: {
+    loadFailedTitle: 'આ વેપારી ખોલી શકાયા નથી',
     loadFailed: 'આ વેપારી ખોલી શકાયા નથી. તમારું કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
     activate: 'વેપારી સક્રિય કરો',
     tabOverview: 'સારાંશ',

@@ -12,12 +12,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { CustomerOverviewTab } from '@/components/customer-details/CustomerOverviewTab';
 import { CustomerTabNavigator, type CustomerTabKey } from '@/components/customer-details/CustomerTabNavigator';
+import { RatesState } from '@/features/item-pricing/components/RatesState';
 import { CustomerPricingTab } from '@/features/item-pricing/components/CustomerPricingTab';
 import { SkeletonBox } from '@/components/skeletons/SkeletonBox';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -26,7 +26,7 @@ import { canOpenScreen } from '@/config/roles';
 import { customerService } from '@/services/customer-service';
 import { useAppSelector } from '@/store/hooks';
 import type { Customer } from '@/types/customer.types';
-import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { showAlert } from '@/utils/alert';
 import { formatTime } from '@/utils/formatters';
@@ -160,7 +160,12 @@ export default function CustomerPage() {
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <View style={styles.navigationBar}>
         <HeaderBackButton style={styles.navSide} />
-        <Text style={styles.navTitle} accessibilityRole={shown ? 'header' : undefined}>
+        <Text
+          style={styles.navTitle}
+          numberOfLines={2}
+          accessibilityRole={shown ? 'header' : undefined}
+          accessibilityLabel={shown?.name}
+        >
           {shown?.name ?? ''}
         </Text>
         <View style={[styles.navSide, styles.navEnd]}>
@@ -185,18 +190,16 @@ export default function CustomerPage() {
 
       {!shown && failed && (
         <View style={styles.state} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.stateText}>{tr('customers.page.loadFailed')}</Text>
-          <Button
-            type="secondary"
-            leftIcon="refresh"
-            onPress={() => {
+          <RatesState
+            icon="alert-circle-outline"
+            title={tr('customers.page.loadFailedTitle')}
+            text={tr('customers.page.loadFailed')}
+            actionLabel={tr('common.retry')}
+            onAction={() => {
               setFailed(false);
               setAttempt(count => count + 1);
             }}
-          >
-            {tr('common.retry')}
-          </Button>
+          />
         </View>
       )}
 
@@ -255,5 +258,4 @@ const makeStyles = (t: ThemeTokens) => ({
   state: { flex: 1, padding: layout.marginCompact, gap: space.md, justifyContent: 'center' as const },
   refreshStrip: { paddingHorizontal: layout.marginCompact, paddingTop: space.sm },
   refreshRetry: { alignSelf: 'flex-start' as const, paddingHorizontal: space.sm },
-  stateText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
 });
