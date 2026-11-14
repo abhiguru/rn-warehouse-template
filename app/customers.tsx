@@ -707,6 +707,7 @@ function FioriCustomerCard({ customer, busy, onPress, onToggleActive }: FioriCus
       overshootRight={false}
       friction={2}
       rightThreshold={40}
+      containerStyle={styles.swipeRow}
     >
       <Pressable
         style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
@@ -826,7 +827,6 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     borderRadius: radius.card,
     padding: space.lg,
-    marginHorizontal: layout.marginCompact,
     marginBottom: space.sm,
     minHeight: layout.objectCellMinHeight,
     backgroundColor: t.surface.card,
@@ -868,6 +868,13 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.subhead,
     color: t.text.secondary,
     flex: 1,
+  },
+
+  // The row's own margin sits on the swipe container, so the swipe actions are clipped to the card's width and
+  // nothing shows at the row's edge until it is swiped (guide §13.6)
+  swipeRow: {
+    marginHorizontal: layout.marginCompact,
+    overflow: 'hidden' as const,
   },
 
   // Swipe action: labelled, same shape as the item list's swipe actions
