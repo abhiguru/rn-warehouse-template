@@ -127,6 +127,8 @@ export const REFUSAL = {
   NUMBER_TAKEN: 'NUMBER_TAKEN',
   /** A two-document save would need a number above the last one (`number`: the second, `documents`). */
   NUMBER_OUT_OF_RANGE: 'NUMBER_OUT_OF_RANGE',
+  /** WH-205: no new bill until an administrator has saved the GST details (with a GSTIN). */
+  GST_DETAILS_REQUIRED: 'GST_DETAILS_REQUIRED',
   /** A dispatch line is not on this GRN's invoice form (the review step's preview). */
   UNKNOWN_LINE: 'UNKNOWN_LINE',
   /** delete_invoice on one document of a pair (`linked_invoice`: id, inv_no, inv_fin_year, doc_type). */

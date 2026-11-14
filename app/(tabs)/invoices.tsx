@@ -19,6 +19,8 @@ import { useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
 import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
+import { billsMayStart } from '@/features/gst/billsAllowed';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import type { ThemeTokens } from '@/theme/tokens';
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -43,7 +45,9 @@ export default function InvoicesTab() {
     }, [])
   );
 
-  const handleCreateInvoice = useCallback(() => {
+  const { role } = useRoleBasedAccess();
+
+  const handleCreateInvoice = useCallback(async () => {
     if (isOpening.current) return;
     // Another invoice form is open (maybe hidden under other screens): say so before anything is reset. Emptying the
     // form first would leave the open one without its data, and the refusal could never be got past (J1).
@@ -52,11 +56,16 @@ export default function InvoicesTab() {
       showOpenFormRefusal(blocker);
       return;
     }
+    // WH-205: no new bill until the GST details are saved. One request per tap; further taps wait for it.
     isOpening.current = true;
+    if (!(await billsMayStart(role))) {
+      isOpening.current = false;
+      return;
+    }
     // Reset form state before creating a new invoice
     dispatch(resetInvoiceForm());
     router.push('/invoice-form/step1');
-  }, [dispatch]);
+  }, [dispatch, role]);
 
   return (
     <View style={styles.container}>

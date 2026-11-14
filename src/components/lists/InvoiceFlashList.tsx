@@ -55,6 +55,7 @@ import { printSkippedNote } from '@/features/gst/printSkipped';
 import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { billsMayStart } from '@/features/gst/billsAllowed';
 import { usePaymentsVisible } from '@/features/payments/usePaymentsVisible';
 
 // Filters, search and sort
@@ -331,7 +332,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     }
   }, [onItemPress]);
 
-  const handleCreateInvoice = useCallback(() => {
+  const handleCreateInvoice = useCallback(async () => {
     if (openingFormRef.current) return;
     // Another invoice form is open (maybe hidden under other screens): say so before anything is reset (J1).
     const blocker = openFormBlocking({ kind: 'create' });
@@ -339,10 +340,15 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       showOpenFormRefusal(blocker);
       return;
     }
+    // WH-205: no new bill until the GST details are saved. One request per tap; further taps wait for it.
     openingFormRef.current = true;
+    if (!(await billsMayStart(userProfile?.role))) {
+      openingFormRef.current = false;
+      return;
+    }
     dispatch(resetInvoiceForm());
     router.push('/invoice-form/step1');
-  }, [dispatch]);
+  }, [dispatch, userProfile?.role]);
 
   // Print: the same dialog as the GRN list. A job sent is a short confirmation; a failure is thrown, so the dialog stays open
   // and shows it; an unconfirmed job closes the dialog with a dialog of its own (never sent again on a guess).

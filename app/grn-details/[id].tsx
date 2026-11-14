@@ -78,6 +78,7 @@ import { parseInvoiceState } from '@/features/charging/invoiceState';
 import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
 import { invoiceTableFrom } from '@/components/common/invoiceTable';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { billsMayStart } from '@/features/gst/billsAllowed';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 
 const log = createLogger('grn');
@@ -540,8 +541,19 @@ function GRNDetailScreen() {
       showOpenFormRefusal(blocker);
       return;
     }
+    // WH-205: no new bill until the GST details are saved: asked before anything is read or reset; the button is busy meanwhile.
     openingInvoiceRef.current = true;
     setPreparingInvoice(true);
+    let mayStart = false;
+    try {
+      mayStart = await billsMayStart(userProfile?.role);
+    } finally {
+      if (!mayStart) {
+        setPreparingInvoice(false);
+        openingInvoiceRef.current = false;
+      }
+    }
+    if (!mayStart) return;
     reduxDispatch(resetInvoiceForm());
     let prepared: Awaited<ReturnType<typeof prepareInvoiceFromGrn>>;
     try {

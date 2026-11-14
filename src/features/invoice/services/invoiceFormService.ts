@@ -225,6 +225,8 @@ const ACTED_ON_REASONS: ReadonlySet<string> = new Set([
   // Migration 173 (WH-151): the lines need two documents on an edit; the second number of a two-document save is past the last.
   REFUSAL.EDIT_NEEDS_TWO_DOCUMENTS,
   REFUSAL.NUMBER_OUT_OF_RANGE,
+  // WH-205: no GST details saved yet; the form words it by the person's role.
+  REFUSAL.GST_DETAILS_REQUIRED,
 ]);
 function actedOnRefusal(answer: unknown): ServerRefusal | undefined {
   const refusal = refusalOf(answer);
@@ -933,6 +935,8 @@ const sendCreateInvoice = async (
       const taken = numberTakenFrom(data, payload.header.inv_no);
       if (taken) throw new NumberTakenError(taken.number, taken.second === true);
       const refusal = actedOnRefusal(data);
+      // WH-205: the server's English for this refusal is never shown; the form words it by the person's role.
+      if (refusal?.reason === REFUSAL.GST_DETAILS_REQUIRED) return refusedResponse({ ...refusal, text: undefined }, t('gst.billsBlocked.other'), requestKey);
       if (refusal) return refusedResponse(refusal, t('invoice.service.createFailed'), requestKey);
       const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'), data?.error_code);
       // The server answered success: false by one of its rules; with no answer at all it is a failure.
