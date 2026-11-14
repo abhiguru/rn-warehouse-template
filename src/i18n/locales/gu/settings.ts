@@ -229,7 +229,7 @@ export const settings: Translation<typeof source> = {
       discount: 'છૂટ',
       round_off: 'પૂરા રૂપિયા',
       receipt_cash: 'રોકડ',
-      receipt_upi: 'UPI',
+      receipt_upi: 'યુપીઆઈ',
       receipt_bank_transfer: 'બેંક ટ્રાન્સફર',
       receipt_cheque: 'ચેક',
       receipt_other: 'અન્ય આવક',
