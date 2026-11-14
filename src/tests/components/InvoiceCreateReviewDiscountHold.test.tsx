@@ -51,7 +51,7 @@ const summary = (tree: ReactTestRenderer) => tree.root.findByType('InvoiceCalcul
 const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType);
 const shown = (tree: ReactTestRenderer) => dialogs(tree).filter((dialog) => dialog.props.visible);
 const pressSave = async (tree: ReactTestRenderer) => {
-  const save = tree.root.findAll((node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Save invoice' && typeof node.props.onPress === 'function')[0];
+  const save = tree.root.findAll((node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Create invoice' && typeof node.props.onPress === 'function')[0];
   await act(async () => { await save.props.onPress(); });
 };
 
@@ -75,7 +75,7 @@ it('holds Save while the discount field shows text that was not accepted, and na
   await act(async () => { summary(tree).props.onDiscountErrorChange(null); });
   await pressSave(tree);
   expect(shown(tree)).toHaveLength(1);
-  expect(shown(tree)[0].props.confirmText).toBe('Save invoice');
+  expect(shown(tree)[0].props.confirmText).toBe('Create invoice');
   mockSubmitForm.mockResolvedValue({ success: false });
   await act(async () => { await shown(tree)[0].props.onConfirm(); });
   expect(mockSubmitForm).toHaveBeenCalledTimes(1);

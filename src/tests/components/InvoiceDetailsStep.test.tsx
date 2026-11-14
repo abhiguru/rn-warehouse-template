@@ -67,7 +67,7 @@ const datePicker = () => tree.root.findByType(as('DatePickerModal'));
 const shown = () => tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible);
 const screenText = () => JSON.stringify(tree.toJSON());
 const pressNext = async () => {
-  const next = tree.root.find((node) => node.props.accessibilityLabel === 'Next: items' && typeof node.props.onPress === 'function');
+  const next = tree.root.find((node) => node.props.accessibilityLabel === 'Next' && typeof node.props.onPress === 'function');
   await act(async () => { await next.props.onPress(); });
 };
 // The words on the screen only (the stand-ins keep the props they were given in the tree).

@@ -75,10 +75,10 @@ const answerAlert = async (text: string) => {
 async function typedNewInvoice() {
   await openNewInvoice(app);
   await pickGrn(app, 'A0010');
-  await app.tap('Next: items');
+  await app.tap('Next');
   await app.typeKeys(cell(form().items[0].temp_id), '8');
   await app.typeKeys(groupField('i1:::M1', 'labour_rate'), '3');
-  await app.tap('Next: review');
+  await app.tap('Review');
   await app.typeKeys(DISCOUNT, '100.60');
   await app.typeKeys(DISCOUNT_REASON, 'Damaged bags');
 }
@@ -105,9 +105,9 @@ describe('the Back key in a new invoice', () => {
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(jest.mocked(showAlert).mock.calls[0].slice(0, 2)).toEqual([
       'Discard this invoice?',
-      'The details you entered for this invoice will be lost.',
+      'The details you entered will be lost.',
     ]);
-    expect(alertButtons().map((button) => button.text)).toEqual(['Keep editing', 'Discard']);
+    expect(alertButtons().map((button) => button.text)).toEqual(['Keep editing', 'Discard invoice']);
     await answerAlert('Keep editing');
     expect(app.pathname()).toBe('/invoice-form/step1');
     expect(form().header.gr_id).toBe(IDS.grn);
@@ -121,7 +121,7 @@ describe('the Back key in a new invoice', () => {
     await app.pressBackKey();
     await app.pressBackKey();
 
-    await answerAlert('Discard');
+    await answerAlert('Discard invoice');
 
     expect(app.pathname()).toBe('/invoices');
     expect(app.stack()).toEqual(['(tabs)']);
@@ -156,14 +156,14 @@ describe('Next on step 1 after Back', () => {
   it('checks step 1 again in a new invoice: a date in the future shows its error, and a valid date goes on', async () => {
     await openNewInvoice(app);
     await pickGrn(app, 'A0010');
-    await app.tap('Next: items');
+    await app.tap('Next');
     await app.pressBackKey();
     expect(app.pathname()).toBe('/invoice-form/step1');
 
     // 15 March 2027 is in the same financial year (2026-27) and after today.
     await app.chooseDate(new Date(2027, 2, 15));
     expect(form().header.inv_date).toBe('2027-03-15');
-    await app.tap('Next: items');
+    await app.tap('Next');
 
     expect(app.pathname()).toBe('/invoice-form/step1');
     const future = expect.stringMatching(/^An invoice can't be dated in the future\. Today is /);
@@ -174,7 +174,7 @@ describe('Next on step 1 after Back', () => {
 
     await app.chooseDate(new Date(2026, 9, 5));
     expect(app.texts().some((text) => /^An invoice can't be dated in the future/.test(text))).toBe(false);
-    await app.tap('Next: items');
+    await app.tap('Next');
 
     expect(app.pathname()).toBe('/invoice-form/step2');
     expect(form().header.inv_date).toBe('2026-10-05');
@@ -183,12 +183,12 @@ describe('Next on step 1 after Back', () => {
   it('asks for the number again in a new invoice when the field was emptied, and does not go on until it is there', async () => {
     await openNewInvoice(app);
     await pickGrn(app, 'A0010');
-    await app.tap('Next: items');
+    await app.tap('Next');
     await app.pressBackKey();
     await app.changeText(NUMBER_FIELD, '');
     expect(app.valueOf(NUMBER_FIELD)).toBe('');
 
-    await app.tap('Next: items');
+    await app.tap('Next');
 
     // The suggestion came back (the next one after 55 was used for the first ask) and the form stays on step 1.
     expect(app.valueOf(NUMBER_FIELD)).toBe('56');
@@ -196,18 +196,18 @@ describe('Next on step 1 after Back', () => {
     expect(server.callsOf('get_next_invoice_number')).toHaveLength(2);
     expect(showAlert).not.toHaveBeenCalled();
 
-    await app.tap('Next: items');
+    await app.tap('Next');
     expect(app.pathname()).toBe('/invoice-form/step2');
   });
 
   it('checks the number again in an edit: an emptied number is refused with its message', async () => {
     await openEditFromDetails(app);
-    await app.tap('Next: items');
+    await app.tap('Next');
     await app.pressBackKey();
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step1');
     await app.changeText(NUMBER_FIELD, '');
 
-    await app.tap('Next: items');
+    await app.tap('Next');
 
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step1');
     expect(showAlert).toHaveBeenCalledTimes(1);
@@ -216,7 +216,7 @@ describe('Next on step 1 after Back', () => {
     expect(app.texts()).toContain(form().validationErrors.inv_no);
 
     await app.changeText(NUMBER_FIELD, '43');
-    await app.tap('Next: items');
+    await app.tap('Next');
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step2');
     expect(form().header.inv_no).toBe(43);
   });
@@ -225,8 +225,8 @@ describe('Next on step 1 after Back', () => {
 describe('the Back key in an edit', () => {
   it('goes from step 3 to 2 to 1 and leaves for the invoice\'s page at once when nothing was changed', async () => {
     await openEditFromDetails(app);
-    await app.tap('Next: items');
-    await app.tap('Next: review');
+    await app.tap('Next');
+    await app.tap('Review');
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step3');
 
     expect(await app.pressBackKey()).toBe(true);
@@ -244,7 +244,7 @@ describe('the Back key in an edit', () => {
 
   it('asks "Discard changes to this invoice?" when a charge was changed: Keep editing stays with the change, Discard leaves', async () => {
     await openEditFromDetails(app);
-    await app.tap('Next: items');
+    await app.tap('Next');
     await app.typeKeys(cell(form().items[1].temp_id), '6');
     await app.pressBackKey();
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step1');
@@ -256,13 +256,13 @@ describe('the Back key in an edit', () => {
       'Discard changes to this invoice?',
       'Your changes to this invoice will be lost.',
     ]);
-    expect(alertButtons().map((button) => button.text)).toEqual(['Keep editing', 'Discard']);
+    expect(alertButtons().map((button) => button.text)).toEqual(['Keep editing', 'Discard changes']);
     await answerAlert('Keep editing');
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step1');
     expect(form().items[1].charge).toBe(6);
 
     await app.pressBackKey();
-    await answerAlert('Discard');
+    await answerAlert('Discard changes');
     expect(app.pathname()).toBe('/invoice-details/inv-42');
     expect(app.stack()).toEqual(['(tabs)', 'invoice-details/[id]']);
     expect(form().invoice_id).toBeNull();
@@ -305,9 +305,9 @@ describe('the step circles and the Review pencils', () => {
 
   it('go to the right step in an edit and keep the changes', async () => {
     await openEditFromDetails(app);
-    await app.tap('Next: items');
+    await app.tap('Next');
     await app.typeKeys(cell(form().items[1].temp_id), '6');
-    await app.tap('Next: review');
+    await app.tap('Review');
 
     await app.tap('Edit items');
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step2');

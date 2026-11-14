@@ -84,7 +84,7 @@ function EditBackKey({ getIsChanged, onLeave }: { getIsChanged: () => boolean; o
       if (getIsChanged()) {
         showAlert(tr('invoice.steps.discardEditTitle'), tr('invoice.steps.discardEditMessage'), [
           { text: tr('common.keepEditing'), style: 'cancel' },
-          { text: tr('common.discard'), style: 'destructive', onPress: onLeave },
+          { text: tr('invoice.steps.discardChanges'), style: 'destructive', onPress: onLeave },
         ]);
       } else {
         onLeave();
@@ -520,7 +520,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
         currentStep={STEP_NUMBERS.HEADER}
         totalSteps={3}
         onNext={handleNext}
-        nextLabel={tr('invoice.form.nextItems')}
+        nextLabel={tr('common.next')}
         isLoading={isGettingNextNumber}
         loadingLabel={tr('invoice.form.generating')}
       />

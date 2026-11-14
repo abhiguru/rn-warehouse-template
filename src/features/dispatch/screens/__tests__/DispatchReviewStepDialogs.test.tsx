@@ -135,8 +135,20 @@ describe('on iOS', () => {
     expect(success().props.isVisible).toBe(true);
   });
 
-  it('holds "Dispatch saved" (edit) back until the confirm has finished closing', async () => {
+  it('an edit with no order notes opens no dialog: once the confirm has closed it says "Dispatch … saved." as a toast', async () => {
     mockSubmitForm.mockResolvedValue({ success: true });
+    await render('edit');
+    await saveAndAnswer();
+    expect(showToast).not.toHaveBeenCalled();
+
+    await dismissed();
+    expect(savedDialog().props.visible).toBe(false);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(showToast).mock.calls[0][0]).toMatch(/^Dispatch .+ saved\.$/);
+  });
+
+  it('holds "Dispatch saved" (edit, an order synced) back until the confirm has finished closing', async () => {
+    mockSubmitForm.mockResolvedValue({ success: true, orderSynced: true });
     await render('edit');
     await saveAndAnswer();
     expect(savedDialog().props.visible).toBe(false);

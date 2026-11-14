@@ -79,8 +79,8 @@ const finishClosing = async (name: 'InvoiceSuccessDialog' | 'PrintRangeDialog') 
 };
 
 const MODES = [
-  ['create', 'Save invoice', '/(tabs)/invoices', InvoiceFormStep3],
-  ['edit', 'Update invoice', '/invoice-details/inv-42', InvoiceEditStep3],
+  ['create', 'Create invoice', '/(tabs)/invoices', InvoiceFormStep3],
+  ['edit', 'Save invoice', '/invoice-details/inv-42', InvoiceEditStep3],
 ] as const;
 
 describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leaveTo, Step) => {

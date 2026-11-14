@@ -173,6 +173,50 @@ From the Unicode locale data that Android uses.
 | Weekdays (Sunday first) | રવિ, સોમ, મંગળ, બુધ, ગુરુ, શુક્ર, શનિ | રવિવાર, સોમવાર, મંગળવાર, બુધવાર, ગુરુવાર, શુક્રવાર, શનિવાર |
 | Time of day | AM, PM | સવારે, બપોરે, સાંજે, રાત્રે where a sentence needs a word |
 
+## State names
+
+The customer's State is shown in Gujarati in Gujarati mode. The saved value is always the English name, which is the backend's list (migration 173), because the server derives the GST state code from it. All rows are **Draft**, to be reviewed with the other drafts before release (WH-149).
+
+| Code | English (saved) | Gujarati (shown) |
+|---|---|---|
+| 01 | Jammu and Kashmir | જમ્મુ અને કાશ્મીર |
+| 02 | Himachal Pradesh | હિમાચલ પ્રદેશ |
+| 03 | Punjab | પંજાબ |
+| 04 | Chandigarh | ચંડીગઢ |
+| 05 | Uttarakhand | ઉત્તરાખંડ |
+| 06 | Haryana | હરિયાણા |
+| 07 | Delhi | દિલ્હી |
+| 08 | Rajasthan | રાજસ્થાન |
+| 09 | Uttar Pradesh | ઉત્તર પ્રદેશ |
+| 10 | Bihar | બિહાર |
+| 11 | Sikkim | સિક્કિમ |
+| 12 | Arunachal Pradesh | અરુણાચલ પ્રદેશ |
+| 13 | Nagaland | નાગાલેન્ડ |
+| 14 | Manipur | મણિપુર |
+| 15 | Mizoram | મિઝોરમ |
+| 16 | Tripura | ત્રિપુરા |
+| 17 | Meghalaya | મેઘાલય |
+| 18 | Assam | આસામ |
+| 19 | West Bengal | પશ્ચિમ બંગાળ |
+| 20 | Jharkhand | ઝારખંડ |
+| 21 | Odisha | ઓડિશા |
+| 22 | Chhattisgarh | છત્તીસગઢ |
+| 23 | Madhya Pradesh | મધ્ય પ્રદેશ |
+| 24 | Gujarat | ગુજરાત |
+| 26 | Dadra and Nagar Haveli and Daman and Diu | દાદરા અને નગર હવેલી અને દમણ અને દીવ |
+| 27 | Maharashtra | મહારાષ્ટ્ર |
+| 29 | Karnataka | કર્ણાટક |
+| 30 | Goa | ગોવા |
+| 31 | Lakshadweep | લક્ષદ્વીપ |
+| 32 | Kerala | કેરળ |
+| 33 | Tamil Nadu | તમિલનાડુ |
+| 34 | Puducherry | પુડુચેરી |
+| 35 | Andaman and Nicobar Islands | આંદામાન અને નિકોબાર ટાપુઓ |
+| 36 | Telangana | તેલંગાણા |
+| 37 | Andhra Pradesh | આંધ્ર પ્રદેશ |
+| 38 | Ladakh | લદ્દાખ |
+| 97 | Other Territory | અન્ય પ્રદેશ |
+
 ## Open points
 
 - સુપરવાઇઝર, સ્ટાફ and પેકિંગ are drafts with no source found.

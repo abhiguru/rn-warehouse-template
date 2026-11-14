@@ -62,7 +62,7 @@ async function render() {
   return tree;
 }
 const pressSave = async (tree: ReactTestRenderer) => {
-  const save = tree.root.findAll((node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Save invoice' && typeof node.props.onPress === 'function')[0];
+  const save = tree.root.findAll((node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Create invoice' && typeof node.props.onPress === 'function')[0];
   await act(async () => { await save.props.onPress(); });
 };
 
@@ -110,7 +110,7 @@ describe('staff saving a new invoice with a zero-charge line', () => {
     await pressSave(tree);
 
     expect(shown(tree)).toHaveLength(1);
-    expect(shown(tree)[0].props.confirmText).toBe('Save invoice');
+    expect(shown(tree)[0].props.confirmText).toBe('Create invoice');
     await act(async () => { await shown(tree)[0].props.onConfirm(); });
     expect(mockSubmitForm).toHaveBeenCalledTimes(1);
     await act(async () => { tree.unmount(); });
@@ -148,7 +148,7 @@ describe.each(['admin', 'supervisor'])('%s saving a new invoice with a zero-char
     await pressSave(tree);
 
     expect(shown(tree)).toHaveLength(1);
-    expect(shown(tree)[0].props.confirmText).toBe('Save invoice');
+    expect(shown(tree)[0].props.confirmText).toBe('Create invoice');
     await act(async () => { await shown(tree)[0].props.onConfirm(); });
     expect(mockSubmitForm).toHaveBeenCalledTimes(1);
     await act(async () => { tree.unmount(); });
@@ -166,7 +166,7 @@ describe.each(['staff', 'admin', 'supervisor'])('the question before a new invoi
     const tree = await render();
     await pressSave(tree);
     expect(shown(tree)).toHaveLength(1);
-    expect(shown(tree)[0].props.confirmText).toBe('Save invoice');
+    expect(shown(tree)[0].props.confirmText).toBe('Create invoice');
     return { tree, message: shown(tree)[0].props.message as string };
   };
 
@@ -211,7 +211,7 @@ describe('an invoice without a zero-charge line', () => {
 
     await pressSave(tree);
 
-    expect(shown(tree)[0].props.confirmText).toBe('Save invoice');
+    expect(shown(tree)[0].props.confirmText).toBe('Create invoice');
     await act(async () => { tree.unmount(); });
   });
 });

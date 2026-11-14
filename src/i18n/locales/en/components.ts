@@ -138,7 +138,6 @@ export const components = {
     position: '{{current}} of {{total}}',
   },
   wizard: {
-    createGrn: 'Create GRN',
     review: 'Review',
     addItem: 'Add item',
     saveChanges: 'Save changes',

@@ -15,15 +15,11 @@ describe('grn texts in Gujarati', () => {
   });
 
   it('puts the count in ૦-૯ and keeps the noun unchanged in a plural', () => {
-    expect(t('grn.review.confirmCreateNumbered', { number: 'DV0198', count: 1 }, 'gu')).toBe(
-      '૧ આઇટમ સાથે આવક પાવતી DV0198 બનાવવી છે?'
-    );
-    expect(t('grn.review.confirmCreateNumbered', { number: 'DV0198', count: 12 }, 'gu')).toBe(
-      '૧૨ આઇટમ સાથે આવક પાવતી DV0198 બનાવવી છે?'
-    );
-    expect(t('grn.review.confirmCreateNumbered', { number: 'DV0198', count: 12 })).toBe(
-      'Create GRN DV0198 with 12 items?'
-    );
+    expect(t('grn.review.confirmCreateMessage', { count: 1 }, 'gu')).toBe('૧ આઇટમની આવક થશે અને સ્ટોક બદલાશે.');
+    expect(t('grn.review.confirmCreateMessage', { count: 12 }, 'gu')).toBe('૧૨ આઇટમની આવક થશે અને સ્ટોક બદલાશે.');
+    expect(t('grn.review.confirmSaveMessage', { count: 12 }, 'gu')).toBe('૧૨ આઇટમ સચવાશે અને સ્ટોક બદલાશે.');
+    expect(t('grn.review.confirmCreateMessage', { count: 12 })).toBe('12 items will be received and stock levels updated.');
+    expect(t('grn.review.confirmCreateMessage', { count: 1 })).toBe('1 item will be received and stock levels updated.');
   });
 
   it('orders "dispatched of total" the Gujarati way, with Indian grouping', () => {

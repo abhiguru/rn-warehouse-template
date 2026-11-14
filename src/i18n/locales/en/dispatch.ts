@@ -19,14 +19,14 @@ export const dispatch = {
   // Shared by the three wizard steps: header, cancel and discard
   wizard: {
     createTitle: 'Dispatch',
-    editTitle: 'Edit',
+    editTitle: 'Edit dispatch',
     cancelDispatch: 'Cancel dispatch',
     discardTitle: 'Discard this dispatch?',
+    discardChangesTitle: 'Discard changes to this dispatch?',
     discardDispatch: 'Discard dispatch',
+    discardChanges: 'Discard changes',
     discardDetailsMessage: 'The details you entered will be lost.',
-    discardCreateMessage: 'Discard this dispatch? The details you entered will be lost.',
-    discardEditMessage: 'Discard your changes to this dispatch? Unsaved changes will be lost.',
-    cancelEditMessage: 'Cancel editing? Your unsaved changes will be lost.',
+    discardChangesMessage: 'Your changes to this dispatch will be lost.',
     discardItemsMessage: {
       one: 'The {{count}} item you added will be lost.',
       other: 'The {{count}} items you added will be lost.',
@@ -236,8 +236,8 @@ export const dispatch = {
     photosHint: 'You can add photos of the goods or the vehicle.',
     createDispatch: 'Create dispatch',
     creating: 'Creating dispatch…',
-    saveChanges: 'Save changes',
-    savingChanges: 'Saving changes…',
+    saveChanges: 'Save dispatch',
+    savingChanges: 'Saving dispatch…',
     editHint: 'Check the details before you save. Saving updates stock levels.',
     backToItems: 'Back to items',
     confirmCreateTitle: 'Create dispatch {{number}}?',
@@ -273,6 +273,7 @@ export const dispatch = {
     printPlaceholder: 'For example, {{example}}',
     savedTitle: 'Dispatch {{number}} saved',
     savedMessage: 'Your changes are saved and stock levels are updated.',
+    savedToast: 'Dispatch {{number}} saved.',
     viewDispatch: 'View dispatch',
   },
   // Leaving a step with unsaved items (swipe navigation)

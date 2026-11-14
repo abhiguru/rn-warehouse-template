@@ -1573,11 +1573,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
-        title={isCreateMode ? tr('grn.review.confirmCreateTitle') : tr('grn.review.confirmSaveTitle')}
+        title={tr(isCreateMode ? 'grn.review.confirmCreateTitle' : 'grn.review.confirmSaveTitle', { number: formatIdentifier(header.gr_no) })}
         message={withOrderEffects(
-          header.gr_no
-            ? tr(isCreateMode ? 'grn.review.confirmCreateNumbered' : 'grn.review.confirmSaveNumbered', { number: formatIdentifier(header.gr_no), count: totalItems })
-            : tr(isCreateMode ? 'grn.review.confirmCreate' : 'grn.review.confirmSave', { count: totalItems }),
+          tr(isCreateMode ? 'grn.review.confirmCreateMessage' : 'grn.review.confirmSaveMessage', { count: totalItems }),
           isCreateMode ? null : orderEffects
         )}
         confirmText={ctaLabel}
@@ -1585,7 +1583,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
-        icon={isCreateMode ? 'plus-circle' : 'pencil-outline'}
+        icon={isCreateMode ? 'check-circle' : 'pencil-outline'}
       />
 
       {/* Photos of the saved GRN that did not upload */}

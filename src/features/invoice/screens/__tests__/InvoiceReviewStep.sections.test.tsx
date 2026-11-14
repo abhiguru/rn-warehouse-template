@@ -128,7 +128,7 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
     await press(toggle('items'));
     expect(hidden('charges')).toBe(true);
 
-    const save = tree.root.find((node) => node.props.accessibilityLabel === (mode === 'edit' ? 'Update invoice' : 'Save invoice') && typeof node.props.onPress === 'function');
+    const save = tree.root.find((node) => node.props.accessibilityLabel === (mode === 'edit' ? 'Save invoice' : 'Create invoice') && typeof node.props.onPress === 'function');
     await act(async () => { save.props.onPress(); });
 
     expect(hidden('charges')).toBe(false);

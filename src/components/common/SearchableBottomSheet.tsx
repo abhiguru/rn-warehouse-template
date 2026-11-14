@@ -132,6 +132,12 @@ export interface SearchableBottomSheetProps<T> {
   resultLimit?: number;
   /** Optional: the line shown under the results when there are more than `resultLimit`. */
   limitText?: string;
+  /**
+   * Optional: the key (see `keyExtractor`) of the item that is chosen now. When the sheet opens with nothing typed it scrolls
+   * to that item so it is in view. No key, or a key not in the list, leaves the list at the top. Callers that pass nothing
+   * behave as before.
+   */
+  scrollToKey?: string;
 }
 
 // ============================================================================
@@ -217,6 +223,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   keepOpenOnSelect = false,
   resultLimit,
   limitText,
+  scrollToKey,
 }: SearchableBottomSheetProps<T>): ReactElement {
   const placeholder = placeholderProp ?? tr('common.search');
   const emptyInitialText = emptyInitialTextProp ?? tr('components.searchSheet.emptyInitial');
@@ -450,6 +457,34 @@ export function SearchableBottomSheet<T extends { id: string }>({
     t,
   ]);
 
+  // Scroll the chosen item into view once per opening, when the first (unfiltered) list has arrived.
+  const listRef = useRef<React.ComponentRef<typeof BottomSheetFlatList>>(null);
+  const scrolledRef = useRef(false);
+  useEffect(() => {
+    if (!isVisible) scrolledRef.current = false;
+  }, [isVisible]);
+  const shownResults = resultLimit ? results.slice(0, resultLimit) : results;
+  useEffect(() => {
+    if (!isVisible || scrollToKey === undefined || scrolledRef.current || searchQuery.length > 0 || shownResults.length === 0) return;
+    scrolledRef.current = true;
+    const index = shownResults.findIndex((item) => keyExtractor(item) === scrollToKey);
+    if (index <= 0) return;
+    const handle = setTimeout(() => {
+      (listRef.current as unknown as { scrollToIndex: (p: { index: number; animated: boolean; viewPosition: number }) => void } | null)
+        ?.scrollToIndex({ index, animated: false, viewPosition: 0 });
+    }, 0);
+    return () => clearTimeout(handle);
+  }, [isVisible, scrollToKey, searchQuery, shownResults, keyExtractor]);
+  // Rows differ in height with the font scale: when the row is not measured yet, jump near it and try again.
+  const handleScrollToIndexFailed = useCallback((info: { index: number; averageItemLength: number }) => {
+    const list = listRef.current as unknown as {
+      scrollToOffset: (p: { offset: number; animated: boolean }) => void;
+      scrollToIndex: (p: { index: number; animated: boolean; viewPosition: number }) => void;
+    } | null;
+    list?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+    setTimeout(() => listRef.current && (listRef.current as unknown as typeof list)?.scrollToIndex({ index: info.index, animated: false, viewPosition: 0 }), 100);
+  }, []);
+
   // Wrapped renderItem - passes item and onSelect to parent's renderItem
   const wrappedRenderItem: ListRenderItem<T> = useCallback(
     ({ item }) => renderItem(item, handleItemSelect),
@@ -579,7 +614,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
 
         {/* Results List */}
         <BottomSheetFlatList
-          data={resultLimit ? results.slice(0, resultLimit) : results}
+          ref={listRef}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
+          data={shownResults}
           renderItem={wrappedRenderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={[styles.listContent, { paddingBottom: space.xl + insets.bottom }]}

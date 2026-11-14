@@ -100,7 +100,7 @@ const type = async (text: string) => {
 };
 const pressNext = async () => {
   const next = tree.root.find((node) =>
-    typeof node.type !== 'string' && node.props.accessibilityLabel === t('invoice.form.nextItems') && 'onPress' in node.props);
+    typeof node.type !== 'string' && node.props.accessibilityLabel === t('common.next') && 'onPress' in node.props);
   await act(async () => { await next.props.onPress(); });
 };
 const screenText = () => JSON.stringify(tree.toJSON());

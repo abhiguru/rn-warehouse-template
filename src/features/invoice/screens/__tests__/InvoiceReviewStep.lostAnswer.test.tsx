@@ -1,7 +1,7 @@
 /**
  * Invoice Review step while the answer of a save is lost (owner rule D22), with the real header, the real hook and the
  * real alert host. The save question has closed, the strip says the server is asked, and the bottom button reads
- * "Saving…". The close button (X) and the Android Back key must both ask "Leave without an answer?"
+ * its busy label. The close button (X) and the Android Back key must both ask "Leave without an answer?"
  * [Keep waiting | Leave anyway]; "Leave anyway" ends the check (create: the form is reset and the Invoices tab opens;
  * edit: the invoice's page opens); and nothing in this state can send a second save.
  */
@@ -64,8 +64,8 @@ const TITLE = 'Leave without an answer?';
 const MESSAGE = 'It may have been saved. Check the list before entering it again.';
 
 const MODES = [
-  ['create', 'Save invoice', 'Cancel Invoice', '/(tabs)/invoices', InvoiceFormStep3],
-  ['edit', 'Update invoice', 'Cancel invoice edit', '/invoice-details/inv-42', InvoiceEditStep3],
+  ['create', 'Create invoice', 'Cancel Invoice', '/(tabs)/invoices', InvoiceFormStep3],
+  ['edit', 'Save invoice', 'Cancel invoice edit', '/invoice-details/inv-42', InvoiceEditStep3],
 ] as const;
 
 const pressable = (label: string) =>
@@ -120,10 +120,10 @@ describe.each(MODES)('the %s Review step while the answer is lost', (mode, saveL
     jest.restoreAllMocks();
   });
 
-  it('is locked: the strip shows, the question is closed and the bottom button says Saving…', () => {
+  it('is locked: the strip shows, the question is closed and the bottom button says its busy label', () => {
     expect(strip().length).toBeGreaterThan(0);
     expect(tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)).toHaveLength(0);
-    expect(pressable('Saving…').props.disabled).toBe(true);
+    expect(pressable(mode === 'edit' ? 'Saving invoice…' : 'Creating invoice…').props.disabled).toBe(true);
     expect(send).toHaveBeenCalledTimes(1);
     expect(checkSubmission).toHaveBeenCalledTimes(1);
   });
@@ -186,7 +186,7 @@ describe.each(MODES)('the %s Review step while the answer is lost', (mode, saveL
   });
 
   it('the Save button and the question cannot start a second save', async () => {
-    await act(async () => { pressable('Saving…').props.onPress?.(); });
+    await act(async () => { pressable(mode === 'edit' ? 'Saving invoice…' : 'Creating invoice…').props.onPress?.(); });
 
     expect(tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)).toHaveLength(0);
     expect(send).toHaveBeenCalledTimes(1);

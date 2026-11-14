@@ -895,7 +895,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                         ? savedItems.length > 0
                             ? tr('dispatch.wizard.discardItemsMessage', { count: savedItems.length })
                             : tr('dispatch.wizard.discardDetailsMessage')
-                        : tr('dispatch.wizard.cancelEditMessage')
+                        : tr('dispatch.wizard.discardChangesMessage')
                 }
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}

@@ -430,7 +430,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         } else {
             setEditOrderSynced(result.orderSynced === true);
             setEditOrderEffects(result.orderEffects ?? null);
-            afterDialog.current = () => setShowEditSuccessDialog(true);
+            // A saved edit with nothing more to tell goes back to the dispatch's page with a toast (WH-217). One that
+            // changed orders keeps its dialog: the lines about the orders must be read, and a toast is gone in 4 s.
+            const hasOrderNotes = result.orderSynced === true || orderEffectLines(result.orderEffects ?? null).length > 0;
+            afterDialog.current = hasOrderNotes ? () => setShowEditSuccessDialog(true) : () => finishEdit(true);
         }
     };
 
@@ -501,9 +504,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         setPhotosNotUploaded(null);
     };
 
-    const handleEditSuccessConfirm = () => {
+    const handleEditSuccessConfirm = () => finishEdit(false);
+
+    const finishEdit = (withToast: boolean) => {
         setShowEditSuccessDialog(false);
         resetFormState();
+        if (withToast) showToast(tr('dispatch.review.savedToast', { number: formatIdentifier(header.disp_no) }));
         // The edit was opened over the dispatch's page, which asks again when it comes back: go back to that page,
         // not on to a second copy of it. The dispatch is the one of the route, not whatever the form holds.
         if (id) router.dismissTo(`/dispatch-details/${id}` as Href);
@@ -682,7 +688,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         ? items.length > 0
                             ? tr('dispatch.wizard.discardItemsMessage', { count: items.length })
                             : tr('dispatch.wizard.discardDetailsMessage')
-                        : tr('dispatch.wizard.discardEditMessage')
+                        : tr('dispatch.wizard.discardChangesMessage')
                 }
                 dispNo={header.disp_no}
                 // No step pills while locked

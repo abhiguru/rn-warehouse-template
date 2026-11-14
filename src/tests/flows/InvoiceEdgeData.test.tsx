@@ -72,11 +72,11 @@ async function openOnItems(lines: InvoiceItemData[]) {
   app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
   await openNewInvoice(app);
   await pickGrn(app, 'A0010');
-  await app.tap('Next: items');
+  await app.tap('Next');
   expect(app.pathname()).toBe('/invoice-form/step2');
 }
 const toReview = async () => {
-  await app.tap('Next: review');
+  await app.tap('Review');
   expect(app.pathname()).toBe('/invoice-form/step3');
 };
 
@@ -114,8 +114,8 @@ describe('WMIV0101: a group of 125 lines and a group of 3', () => {
     await toReview();
     expect(footer()).toBe('Total: 2 items, 128 dispatch lines, 1,530 bags');
 
-    await app.tap('Save invoice');
-    await app.tapDialog('Save invoice');
+    await app.tap('Create invoice');
+    await app.tapDialog('Create invoice');
     expect(server.callsOf('save_invoice')).toHaveLength(1);
     const { p_invoice_data, p_invoice_items } = server.callsOf('save_invoice')[0].args;
     expect(p_invoice_items).toHaveLength(128);
@@ -147,8 +147,8 @@ describe('WMIV0102: 12 groups, two lots of one mark', () => {
     expect(footer()).toBe('Total: 12 items, 38 dispatch lines, 3,800 bags');
     expect(estimatedTotal()).toBe('Estimated total, ₹27,930.00');
 
-    await app.tap('Save invoice');
-    await app.tapDialog('Save invoice');
+    await app.tap('Create invoice');
+    await app.tapDialog('Create invoice');
     const sent = server.callsOf('save_invoice')[0].args.p_invoice_items as Array<{ grn_item_id: string }>;
     expect(sent).toHaveLength(38);
     expect(sent.filter((line) => line.grn_item_id === 'second-lot')).toHaveLength(2);
@@ -178,8 +178,8 @@ describe('WMIV0103: a one-time GRN', () => {
     expect(app.texts()).toEqual(expect.arrayContaining(['₹1,990.00', '₹0.00', '₹100.00']));
     expect(estimatedTotal()).toBe('Estimated total, ₹2,090.00');
 
-    await app.tap('Save invoice');
-    await app.tapDialog('Save invoice');
+    await app.tap('Create invoice');
+    await app.tapDialog('Create invoice');
     expect(server.callsOf('save_invoice')[0].args.p_invoice_data).toMatchObject({ one_time_charge: true, labour: 0, total: 2090 });
   });
 });
@@ -264,7 +264,7 @@ describe('a line with a duration of 0', () => {
     await openOnItems(edgeLines.manyGroups().slice(0, 6));
     await setDuration(0, 0);
 
-    await app.tap('Next: review');
+    await app.tap('Review');
 
     expect(app.pathname()).toBe('/invoice-form/step2');
     expect(app.dialog().props.title).toBe(t('invoice.items.checkPricesTitle'));
@@ -272,7 +272,7 @@ describe('a line with a duration of 0', () => {
     await app.tapDialog('Close');
 
     await setDuration(1, 0);
-    await app.tap('Next: review');
+    await app.tap('Review');
     expect(app.dialog().props.message).toBe('2 items have a duration of 0. The duration must be greater than 0.');
     await app.tapDialog('Close');
 
@@ -284,7 +284,7 @@ describe('a line with a duration of 0', () => {
 
     await setDuration(0, 1);
     await setDuration(1, 1);
-    await app.tap('Next: review');
+    await app.tap('Review');
     expect(app.pathname()).toBe('/invoice-form/step3');
   });
 });

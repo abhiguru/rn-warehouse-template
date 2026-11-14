@@ -4,16 +4,26 @@
  * decide CGST and SGST or IGST. A state typed before as free text that is not on the list is shown as it was saved, with a note
  * to choose one; nothing is changed until a state is chosen.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, findNodeHandle, Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { PreferenceSheet, type PreferenceOption } from '@/features/settings/components/PreferenceSheet';
+import { SearchableBottomSheet } from '@/components/common/SearchableBottomSheet';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import type { ViewRef } from '@/types/nativeRefs';
-import { INDIAN_STATES } from './indianStates';
+import { INDIAN_STATES, stateDisplayName, stateMatchesSearch } from './indianStates';
+
+/** One row of the sheet. `id` is the English name that is saved, or empty for "No state"; the list needs a non-empty key. */
+interface StateRow {
+  id: string;
+  name: string;
+  label: string;
+}
+
+const NO_STATE_KEY = '__none__';
+const STATE_SHEET_SNAP_POINTS = ['90%', '95%'];
 
 const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
@@ -36,6 +46,16 @@ const makeStyles = (t: ThemeTokens) =>
     value: { ...typography.body, color: t.text.primary, flex: 1 },
     placeholder: { ...typography.body, color: t.text.placeholder, flex: 1 },
     note: { ...typography.footnote, color: t.text.secondary },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+      minHeight: layout.rowMinHeight,
+      paddingVertical: space.sm,
+      paddingHorizontal: layout.marginCompact,
+    },
+    rowSelected: { backgroundColor: t.surface.selected },
+    rowLabel: { ...typography.body, flex: 1, color: t.text.primary },
     messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.xs },
     errorText: { ...typography.footnote, flex: 1, color: t.status.negative.text },
   });
@@ -77,10 +97,43 @@ export function CustomerStatePicker({ value, onChange, error, inputRef, scrollIn
   const text = value.trim();
   const onList = INDIAN_STATES.some((state) => state.name === text);
 
-  const options: PreferenceOption<string>[] = [
-    { value: '', label: tr('gst.customer.noState') },
-    ...INDIAN_STATES.map((state) => ({ value: state.name, label: state.name })),
-  ];
+  // A saved text that is not on the list marks nothing; an empty State marks "No state".
+  const selected = onList || !text ? text : null;
+  const [lastQuery, setLastQuery] = useState('');
+
+  // All states are held in the app: searching is a filter, in the English and the Gujarati name whatever the language.
+  const searchFn = useCallback(async (query: string): Promise<StateRow[]> => {
+    setLastQuery(query.trim());
+    const noState: StateRow[] = query.trim() ? [] : [{ id: '', name: '', label: tr('gst.customer.noState') }];
+    return [
+      ...noState,
+      ...INDIAN_STATES.filter((state) => stateMatchesSearch(state, query)).map((state) => ({
+        id: state.name,
+        name: state.name,
+        label: stateDisplayName(state.name),
+      })),
+    ];
+  }, []);
+
+  const renderRow = useCallback(
+    (row: StateRow, select: (row: StateRow) => void) => {
+      const isSelected = row.id === selected;
+      return (
+        <Pressable
+          onPress={() => select(row)}
+          style={({ pressed }) => [styles.row, (isSelected || pressed) && styles.rowSelected]}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isSelected }}
+          accessibilityLabel={row.label}
+          testID={`customer-state-sheet-${row.id}`}
+        >
+          <Text style={styles.rowLabel} numberOfLines={2}>{row.label}</Text>
+          {isSelected ? <Icon name="check" size={iconSize.md} color={t.brand.tint} /> : null}
+        </Pressable>
+      );
+    },
+    [selected, styles, t],
+  );
 
   return (
     <View style={styles.field}>
@@ -90,11 +143,11 @@ export function CustomerStatePicker({ value, onChange, error, inputRef, scrollIn
         style={({ pressed }) => [styles.box, pressed && styles.boxPressed, !!error && styles.boxError]}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
-        accessibilityLabel={`${tr('gst.customer.state')}, ${text || tr('gst.customer.notChosen')}`}
+        accessibilityLabel={`${tr('gst.customer.state')}, ${text ? stateDisplayName(text) : tr('gst.customer.notChosen')}`}
         accessibilityHint={tr('gst.customer.chooseState')}
         testID="customer-state-picker"
       >
-        <Text style={text ? styles.value : styles.placeholder} numberOfLines={2}>{text || tr('gst.customer.chooseState')}</Text>
+        <Text style={text ? styles.value : styles.placeholder} numberOfLines={2}>{text ? stateDisplayName(text) : tr('gst.customer.chooseState')}</Text>
         <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
       </Pressable>
       {error ? (
@@ -108,17 +161,19 @@ export function CustomerStatePicker({ value, onChange, error, inputRef, scrollIn
         <Text style={styles.note}>{tr('gst.customer.stateHelp')}</Text>
       )}
       {open ? (
-        <PreferenceSheet
-          visible
-          title={tr('gst.customer.state')}
-          options={options}
-          selected={onList ? text : ''}
-          onSelect={(name) => {
-            onChange(name);
-            setOpen(false);
-          }}
+        <SearchableBottomSheet<StateRow>
+          isVisible
           onClose={() => setOpen(false)}
-          testID="customer-state-sheet"
+          onSelect={(row) => onChange(row.id)}
+          title={tr('gst.customer.chooseState')}
+          placeholder={tr('gst.customer.searchStates')}
+          searchFn={searchFn}
+          renderItem={renderRow}
+          keyExtractor={(row) => row.id || NO_STATE_KEY}
+          snapPoints={STATE_SHEET_SNAP_POINTS}
+          minQueryLength={0}
+          scrollToKey={selected === null ? undefined : selected || NO_STATE_KEY}
+          emptySearchText={tr('gst.customer.noStateMatch', { search: lastQuery })}
         />
       ) : null}
     </View>

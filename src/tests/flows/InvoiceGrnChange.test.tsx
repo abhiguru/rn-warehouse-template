@@ -77,9 +77,9 @@ const CHANGE_GRN = /^GRN A00\d\d\. Change GRN$/;
 async function typedNewInvoice() {
   await openNewInvoice(app);
   await pickGrn(app, 'A0010');
-  await app.tap('Next: items');
+  await app.tap('Next');
   await app.typeKeys(cell(form().items[0].temp_id), '8');
-  await app.tap('Next: review');
+  await app.tap('Review');
   await app.typeKeys(DISCOUNT, '100');
   await app.typeKeys(DISCOUNT_REASON, 'Damaged bags');
   await app.tap(/^Step 1 of 3/);
@@ -137,8 +137,8 @@ describe('a new invoice', () => {
     expect(showAlert).not.toHaveBeenCalled();
 
     // Review shows GRN B's invoice with no discount and no reason.
-    await app.tap('Next: items');
-    await app.tap('Next: review');
+    await app.tap('Next');
+    await app.tap('Review');
     expect(app.valueOf(DISCOUNT)).toBe('');
     // The reason field is drawn only for a discount.
     expect(app.hasInput(DISCOUNT_REASON)).toBe(false);

@@ -78,8 +78,6 @@ describe('one word per idea', () => {
     // English texts that mean different things in different places. Each has a reason; a new one needs one too.
     const DIFFERENT_ON_PURPOSE: Record<string, string> = {
       'leave': 'leaving a screen (છોડી દો, like the other leave buttons) and leaving a facility (નીકળો: going out of a place, glossary)',
-      'edit': 'a button (ફેરફાર કરો) and the title of the dispatch form in edit mode (ફેરફાર)',
-      'edit invoice': 'the title of the form (a noun phrase) and a button (a command)',
       'in stock': 'the status (સ્ટોકમાં છે) and the label beside a number (સ્ટોકમાં)',
       'grn': 'the bottom tab (આવક) and a narrow column (also આવક since the wording review); the full name is આવક પાવતી',
       'order': 'a customer order and the sort order (ક્રમ)',
@@ -146,11 +144,11 @@ describe('wizard step names have one source each', () => {
   it('follows the language at the time of the call', () => {
     expect(grnSteps().map(step => step.label)).toEqual(['GRN details', 'Items', 'Review']);
     expect(dispatchSteps().map(step => step.label)).toEqual(['Dispatch details', 'Items', 'Review']);
-    expect(invoiceSteps().map(step => step.label)).toEqual(['Details', 'Items', 'Review']);
+    expect(invoiceSteps().map(step => step.label)).toEqual(['Invoice details', 'Items', 'Review']);
     setLanguage('gu');
     expect(grnSteps().map(step => step.label)).toEqual(['આવક પાવતીની વિગતો', 'આઇટમ', 'ચકાસણી']);
     expect(dispatchSteps().map(step => step.label)).toEqual(['જાવકની વિગતો', 'આઇટમ', 'ચકાસણી']);
-    expect(invoiceSteps().map(step => step.label)).toEqual(['વિગતો', 'આઇટમ', 'ચકાસણી']);
+    expect(invoiceSteps().map(step => step.label)).toEqual(['ઇન્વૉઇસની વિગતો', 'આઇટમ', 'ચકાસણી']);
   });
 
   it('matches the step counts kept with the step numbers', () => {

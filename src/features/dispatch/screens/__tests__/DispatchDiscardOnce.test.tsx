@@ -1,7 +1,7 @@
 /**
  * Leaving a dispatch form with the X on the items and review steps: one
  * question, not two. The step header asks before it calls the step, and the
- * step used to open a dialog of its own after that ("Cancel dispatch", then
+ * step used to open a dialog of its own after that (the old "Cancel dispatch", then
  * "Discard this dispatch?"). The header is the real one here.
  */
 import React from 'react';
@@ -122,11 +122,11 @@ describe.each(STEPS)('The X on the %s step of a new dispatch', (_step, screen) =
     expect(question()).toEqual({
       title: 'Discard this dispatch?',
       message: 'The 2 items you added will be lost.',
-      buttons: ['Keep editing', 'Discard'],
+      buttons: ['Keep editing', 'Discard dispatch'],
     });
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
 
-    await answer('Discard');
+    await answer('Discard dispatch');
 
     // No dialog of the step's own follows the header's question.
     expect(showAlert).toHaveBeenCalledTimes(1);
@@ -163,7 +163,7 @@ describe.each(STEPS)('The X on the %s step of a new dispatch', (_step, screen) =
 });
 
 describe.each(STEPS)('The X on the %s step of a dispatch that is being edited', (_step, screen) => {
-  it('asks once, about the changes, and "Discard" leaves the form', async () => {
+  it('asks once, about the changes, and "Discard changes" leaves the form', async () => {
     mockForm.isCreateMode = false;
     mockForm.items = [line('a')];
     const tree = await render(screen('edit'));
@@ -171,8 +171,8 @@ describe.each(STEPS)('The X on the %s step of a dispatch that is being edited', 
     await pressX(tree, 'Cancel editing');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(question().title).toBe('Cancel dispatch');
-    await answer('Discard');
+    expect(question().title).toBe('Discard changes to this dispatch?');
+    await answer('Discard changes');
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(ownDiscardDialogs(tree)).toHaveLength(0);
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);

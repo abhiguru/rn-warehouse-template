@@ -119,7 +119,7 @@ describe('while the next invoice number is being asked for', () => {
   const numberField = (tree: ReactTestRenderer) =>
     tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Invoice number')!;
   const next = (tree: ReactTestRenderer) =>
-    tree.root.find((node) => typeof node.type !== 'string' && ['Next: items', 'Generating…'].includes(node.props.accessibilityLabel) && 'onPress' in node.props);
+    tree.root.find((node) => typeof node.type !== 'string' && ['Next', 'Generating…'].includes(node.props.accessibilityLabel) && 'onPress' in node.props);
 
   it('the hint says so, the field is empty with a spinner, and can still be typed in', async () => {
     mockInvNo = 0;

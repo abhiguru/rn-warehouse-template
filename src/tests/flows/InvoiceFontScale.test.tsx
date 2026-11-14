@@ -77,7 +77,7 @@ const lineCards = () => app.testIDs(/^card-/).length;
 describe('step 2, Items', () => {
   it('draws a table at font scale 1.0', async () => {
     await start(1);
-    await app.tap('Next: items');
+    await app.tap('Next');
 
     expect(lineRows()).toBe(3);
     expect(lineCards()).toBe(0);
@@ -86,7 +86,7 @@ describe('step 2, Items', () => {
 
   it('keeps the table at font scale 1.3, and typing in a cell changes the amounts', async () => {
     await start(1.3);
-    await app.tap('Next: items');
+    await app.tap('Next');
 
     expect(lineRows()).toBe(3);
     expect(lineCards()).toBe(0);
@@ -106,7 +106,7 @@ describe('step 2, Items', () => {
   it('draws one card per line while a screen reader is on, and typing in a card changes the amounts', async () => {
     jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
     await start(1);
-    await app.tap('Next: items');
+    await app.tap('Next');
 
     expect(lineRows()).toBe(0);
     expect(lineCards()).toBe(3);
@@ -121,8 +121,8 @@ describe('step 2, Items', () => {
 describe('step 3, Review', () => {
   it('keeps the Item | Qty | Amount columns at font scale 1.3', async () => {
     await start(1.3);
-    await app.tap('Next: items');
-    await app.tap('Next: review');
+    await app.tap('Next');
+    await app.tap('Review');
 
     const body = app.byTestID('invoice-review-items-table');
     const headings = body.findAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
@@ -134,8 +134,8 @@ describe('step 3, Review', () => {
 
   it('at font scale 1.0 has the same columns', async () => {
     await start(1);
-    await app.tap('Next: items');
-    await app.tap('Next: review');
+    await app.tap('Next');
+    await app.tap('Review');
 
     const headings = app.byTestID('invoice-review-items-table').findAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
     expect(headings).toEqual(expect.arrayContaining(['Item', 'Qty', 'Amount']));
@@ -143,8 +143,8 @@ describe('step 3, Review', () => {
 
   it('puts the Qty under the item from font scale 1.5', async () => {
     await start(1.5);
-    await app.tap('Next: items');
-    await app.tap('Next: review');
+    await app.tap('Next');
+    await app.tap('Review');
 
     const headings = app.byTestID('invoice-review-items-table').findAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
     expect(headings).not.toContain('Qty');

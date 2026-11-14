@@ -91,7 +91,7 @@ async function keyByKey(id: string, text: string, read: () => number): Promise<n
 
 describe('step 2', () => {
   it('"1000000" in a Charge and "101" in a Tax never leave a refused value in a total; Next is blocked until both are corrected', async () => {
-    await app.tap('Next: items');
+    await app.tap('Next');
     const charge = cell(form().items[0].temp_id);
     const tax = groupField('i2:::M2', 'tax');
     const startTotal = form().header.total;
@@ -119,7 +119,7 @@ describe('step 2', () => {
     expect(form().header.total).toBe(startTotal);
 
     // Next is blocked: still step 2, no alert, nothing saved.
-    await app.tap('Next: review');
+    await app.tap('Review');
     expect(app.pathname()).toBe('/invoice-form/step2');
     expect(showAlert).not.toHaveBeenCalled();
 
@@ -127,20 +127,20 @@ describe('step 2', () => {
     await app.typeKeys(charge, '12');
     expect(app.texts()).not.toContain(CHARGE_ERROR);
     expect(form().items[0].charge).toBe(12);
-    await app.tap('Next: review');
+    await app.tap('Review');
     expect(app.pathname()).toBe('/invoice-form/step2');
     expect(app.texts()).toContain(TAX_ERROR);
 
     // The tax corrected: Next goes on with both values.
     await app.typeKeys(tax, '12');
     expect(app.texts()).not.toContain(TAX_ERROR);
-    await app.tap('Next: review');
+    await app.tap('Review');
     expect(app.pathname()).toBe('/invoice-form/step3');
     expect(form().items.map((line) => [line.charge, line.tax])).toEqual([[12, 5], [5, 5], [5, 12]]);
   });
 
   it('a minus sign and a third decimal are refused too, and put the value back', async () => {
-    await app.tap('Next: items');
+    await app.tap('Next');
     const charge = cell(form().items[0].temp_id);
 
     await app.focus(charge);
@@ -153,15 +153,15 @@ describe('step 2', () => {
     await app.blur(charge);
 
     expect(app.texts()).toContain(t('invoice.validation.rateNotNumber'));
-    await app.tap('Next: review');
+    await app.tap('Review');
     expect(app.pathname()).toBe('/invoice-form/step2');
   });
 });
 
 describe('step 3', () => {
   it('"99999999" in the Discount never leaves a refused value in the total, and Save is blocked while it stands', async () => {
-    await app.tap('Next: items');
-    await app.tap('Next: review');
+    await app.tap('Next');
+    await app.tap('Review');
     const startTotal = form().header.total;
     expect(startTotal).toBe(22);
 
@@ -178,7 +178,7 @@ describe('step 3', () => {
     expect(app.valueOf(DISCOUNT)).toBe('99999999');
 
     // Save, with the refused text still in the field, says so and sends nothing.
-    await app.tap('Save invoice');
+    await app.tap('Create invoice');
     expect(app.dialogs().map((dialog) => dialog.props.title)).toEqual([t('invoice.review.discountCheckTitle')]);
     expect(app.dialog().props.message).toContain("The discount can't be more than ₹");
     expect(server.callsOf('save_invoice')).toHaveLength(0);
@@ -194,9 +194,9 @@ describe('step 3', () => {
     await app.typeKeys(DISCOUNT, '5');
     expect(form().header.discount).toBe(5);
     await app.typeKeys(DISCOUNT_REASON, 'Damaged bags');
-    await app.tap('Save invoice');
-    expect(app.dialog().props.title).toBe('Save invoice 55?');
-    await app.tapDialog('Save invoice');
+    await app.tap('Create invoice');
+    expect(app.dialog().props.title).toBe('Create invoice 55?');
+    await app.tapDialog('Create invoice');
 
     expect(server.callsOf('save_invoice')).toHaveLength(1);
     expect(server.callsOf('save_invoice')[0].args.p_invoice_data).toMatchObject({ discount: 5, discount_reason: 'Damaged bags' });
