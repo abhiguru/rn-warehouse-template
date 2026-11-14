@@ -6,6 +6,7 @@ import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
 import { serverText, upgradingBody } from '@/utils/serverText';
+import { failureTextForPeople } from '@/utils/failureTextForPeople';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 // Logging rule: the print endpoints carry the session credential, document
@@ -316,7 +317,7 @@ async function sendPrintJob(
     return {
       success: false,
       kind: 'connection',
-      error: error instanceof Error ? error.message : t('errors.print.submitFailed'),
+      error: failureTextForPeople(error, t('errors.print.submitFailed')),
     };
   }
 }
@@ -439,8 +440,7 @@ export async function getPrintJobs(
     log.error('getPrintJobs failed');
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : t('errors.print.fetchJobsFailed'),
+      error: failureTextForPeople(error, t('errors.print.fetchJobsFailed')),
     };
   }
 }
@@ -502,8 +502,7 @@ export async function cancelPrintJob(
     log.error('cancelPrintJob failed');
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : t('errors.print.cancelFailed'),
+      error: failureTextForPeople(error, t('errors.print.cancelFailed')),
     };
   }
 }
@@ -575,10 +574,7 @@ export async function getPrinterStatus(
     log.error('getPrinterStatus failed');
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : t('errors.print.statusFailed'),
+      error: failureTextForPeople(error, t('errors.print.statusFailed')),
     };
   }
 }
