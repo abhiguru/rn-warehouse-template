@@ -6,10 +6,11 @@
  * changes behind the sheet, and the sheet stays open; Done closes it. An
  * optional note under the choices says what the choice does.
  */
-import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import React, { useRef } from 'react';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
+import type { ScrollViewRef } from '@/types/nativeRefs';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
@@ -39,6 +40,11 @@ export interface PreferenceSheetProps<T extends string> {
   notes?: string[];
   testID?: string;
 }
+
+/** More choices than this and the sheet is tall and the choices scroll (the list of states). */
+const SHORT_SHEET_MAX_OPTIONS = 8;
+/** The share of the window a short sheet's choices may take before they scroll. */
+const SHORT_SHEET_WINDOW_SHARE = 0.6;
 
 const makeStyles = (t: ThemeTokens) => ({
   group: {
@@ -79,9 +85,19 @@ export function PreferenceSheet<T extends string>({
 }: PreferenceSheetProps<T>) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollViewRef>(null);
   if (!visible) return null;
+  // The sheet's content does not scroll by itself: a long list (the states) ran off the sheet and could not be reached.
+  const tall = options.length > SHORT_SHEET_MAX_OPTIONS;
   return (
-    <SheetFrame visible title={title} onClose={onClose} closeLabel={tr('common.done')}>
+    <SheetFrame visible title={title} onClose={onClose} closeLabel={tr('common.done')} tall={tall}>
+      <ScrollView
+        ref={scrollRef}
+        testID={testID ? `${testID}-scroll` : undefined}
+        style={tall ? { flex: 1 } : { maxHeight: windowHeight * SHORT_SHEET_WINDOW_SHARE }}
+        showsVerticalScrollIndicator
+      >
       <View style={styles.group} accessibilityRole="radiogroup" accessibilityLabel={title} testID={testID}>
         {options.map((option, index) => {
           const isSelected = option.value === selected;
@@ -96,6 +112,8 @@ export function PreferenceSheet<T extends string>({
                 option.disabled && styles.optionDisabled,
               ]}
               disabled={option.disabled}
+              // Rows differ in height with the font scale, so the selected row is measured, not computed.
+              onLayout={isSelected && tall ? event => scrollRef.current?.scrollTo({ y: event.nativeEvent.layout.y, animated: false }) : undefined}
               onPress={() => onSelect(option.value)}
               accessibilityRole="radio"
               accessibilityState={{ selected: isSelected, checked: isSelected, disabled: option.disabled === true }}
@@ -122,6 +140,7 @@ export function PreferenceSheet<T extends string>({
           {note}
         </Text>
       ))}
+      </ScrollView>
     </SheetFrame>
   );
 }
