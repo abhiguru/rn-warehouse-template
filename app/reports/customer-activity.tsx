@@ -214,7 +214,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   return (
     <ReportScaffold
       title={tr('reports.titles.customerActivity')}
-      subtitle={tr('reports.customerActivity.allCustomers')}
+      subtitle={tr('reports.shared.allCustomers')}
       actions={actions}
       filters={{ config: CUSTOMER_ACTIVITY_CUSTOMERS, state: filters }}
       query={query}
