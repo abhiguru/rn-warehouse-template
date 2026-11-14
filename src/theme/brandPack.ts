@@ -3,9 +3,10 @@
  *
  * A build without a pack has one brand, Orange, named "Cold Storage". A pack adds a second brand
  * (its colours, wordmark and caption) and may name the organisation that provides the app. The pack
- * is read from the build's `extra.brandPack`; app.config.js has already checked it.
+ * is read from the build's `extra.brandPack` by src/theme/builtBrandPack.ts, which app/_layout.tsx imports first (this
+ * file does not import expo-constants, so tests that mock react-native need no expo-constants mock); app.config.js has
+ * already checked it.
  */
-import Constants from 'expo-constants';
 
 export interface BrandColours {
   fill: string;
@@ -45,7 +46,7 @@ export const BRANDS: string[] = ['orange'];
 
 const packs = new Map<string, BrandPack>();
 
-function looksLikePack(value: unknown): value is BrandPack {
+export function looksLikePack(value: unknown): value is BrandPack {
   const pack = value as BrandPack | null;
   return (
     !!pack &&
@@ -71,9 +72,6 @@ export function getBrandPack(brand: string): BrandPack | undefined {
 export function activeBrandPack(): BrandPack | undefined {
   return packs.values().next().value;
 }
-
-const built: unknown = Constants.expoConfig?.extra?.brandPack;
-if (looksLikePack(built)) registerBrandPack(built);
 
 /** True when `brand` is one of this build's brands. */
 export const isKnownBrand = (brand: unknown): brand is string => typeof brand === 'string' && BRANDS.includes(brand);
