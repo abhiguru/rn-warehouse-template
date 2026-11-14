@@ -506,8 +506,8 @@ export default function ItemsScreen() {
         <ListEmptyState
           activeFilterCount={1}
           filteredIcon="magnify"
-          filteredTitle={tr('items.list.noRateNoMatch', { search: state.filters.search })}
-          filteredSubtitle=""
+          filteredTitle={tr('items.list.noMatchTitle', { search: state.filters.search })}
+          filteredSubtitle={tr('customers.search.noMatchMessage')}
           clearFiltersLabel={tr('common.clearSearch')}
           onClearFilters={() => handleSearch('')}
         />
