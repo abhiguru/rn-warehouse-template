@@ -70,6 +70,7 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
           ? t('invoice.steps.discardEditMessage')
           : t('invoice.steps.discardNewMessage'))
       }
+      discardText={isEditMode ? t('invoice.steps.discardChanges') : t('invoice.steps.discardInvoice')}
       onStepPress={onStepPress}
       backOnFirstStep={backOnFirstStep}
       disabled={disabled}

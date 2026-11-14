@@ -682,7 +682,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         ? items.length > 0
                             ? tr('dispatch.wizard.discardItemsMessage', { count: items.length })
                             : tr('dispatch.wizard.discardDetailsMessage')
-                        : tr('dispatch.wizard.discardEditMessage')
+                        : tr('dispatch.wizard.discardChangesMessage')
                 }
                 dispNo={header.disp_no}
                 // No step pills while locked

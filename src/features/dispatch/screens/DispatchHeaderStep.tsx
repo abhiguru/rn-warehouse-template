@@ -364,7 +364,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 cancelMessage={
                     isCreateMode
                         ? tr('dispatch.wizard.discardDetailsMessage')
-                        : tr('dispatch.wizard.discardEditMessage')
+                        : tr('dispatch.wizard.discardChangesMessage')
                 }
                 // New dispatch: the Android Back key asks the same question as the X once something was entered.
                 backOnFirstStep={isCreateMode ? { hasData: hasEnteredData, exitRoute: '/(tabs)/dispatch' } : undefined}

@@ -58,6 +58,7 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
           ? tr('grn.form.discardChangesMessage')
           : tr('grn.form.discardMessage'))
       }
+      discardText={isEditMode ? tr('grn.form.discardChanges') : tr('grn.form.discardGrn')}
       onStepPress={onStepPress}
       backOnFirstStep={backOnFirstStep}
       disabled={disabled}
