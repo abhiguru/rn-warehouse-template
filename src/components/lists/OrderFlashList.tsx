@@ -110,7 +110,7 @@ const OrderSectionHeader = React.memo<SectionHeaderProps>(({ title, count, more 
       countText={more ? translate('lists.section.countMore', { count: formatNumber(count) }) : formatNumber(count)}
       countLabel={more ? translate('lists.section.moreThan', { count: formatNumber(count) }) : formatCount(count, 'order')}
     />
-    {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} testID="orders-last-updated" /> : null}
+    {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} withDate testID="orders-last-updated" /> : null}
   </>
 ));
 

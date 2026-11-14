@@ -379,7 +379,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // it, and offline that load fails).
   const ListHeaderComponent = useMemo(() => (
     <>
-      {offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top testID="queue-last-updated" /> : null}
+      {offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="queue-last-updated" /> : null}
       <RecentDispatchedOrdersSection refreshTrigger={refreshTrigger} quietRefreshTrigger={returnTrigger} limit={10} />
     </>
   ), [refreshTrigger, returnTrigger, offlineUpdatedAt]);

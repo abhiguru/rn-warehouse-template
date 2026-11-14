@@ -113,7 +113,7 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt 
           <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
         </View>
       </View>
-      {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} testID="invoice-last-updated" /> : null}
+      {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} withDate testID="invoice-last-updated" /> : null}
     </>
   );
 });
@@ -446,7 +446,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   // Sorted by anything but date there are no headings: the offline line is then the top of the list.
   const listHeader = useMemo(
-    () => (!sortedByDate && offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top testID="invoice-last-updated" /> : null),
+    () => (!sortedByDate && offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="invoice-last-updated" /> : null),
     [sortedByDate, offlineUpdatedAt]
   );
 
