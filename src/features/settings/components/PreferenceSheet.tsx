@@ -91,7 +91,7 @@ export function PreferenceSheet<T extends string>({
   // The sheet's content does not scroll by itself: a long list (the states) ran off the sheet and could not be reached.
   const tall = options.length > SHORT_SHEET_MAX_OPTIONS;
   return (
-    <SheetFrame visible title={title} onClose={onClose} closeLabel={tr('common.done')} tall={tall}>
+    <SheetFrame visible title={title} onClose={onClose} tall={tall}>
       <ScrollView
         ref={scrollRef}
         testID={testID ? `${testID}-scroll` : undefined}

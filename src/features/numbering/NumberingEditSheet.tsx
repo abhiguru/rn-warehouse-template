@@ -229,7 +229,6 @@ function Editor({ rule, onClose, onSaved, onRefreshed, onUnconfirmed, styles }: 
         visible
         title={title}
         onClose={saving ? () => undefined : () => setStep('edit')}
-        closeLabel={tr('common.back')}
         footer={
           <View style={styles.footer}>
             {strip}

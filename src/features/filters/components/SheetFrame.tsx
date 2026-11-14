@@ -1,24 +1,24 @@
 /**
  * A sheet rising from the bottom for one short task (docs/STYLE_GUIDE.md §13.9):
- * scrim, rounded top, grab handle, a title row with Cancel and an optional
- * second action, content, and an optional pinned footer above the safe area.
+ * scrim, rounded top, grab handle, a title row (title at the start, an optional
+ * text action such as Reset, then a close X at the end, as in SearchableBottomSheet),
+ * content, and an optional pinned footer above the safe area.
  * Only one is ever open: it is a modal, and nothing opens another from inside it.
  */
 import React from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, Text, View } from 'react-native';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useThemedStyles } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
-import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface SheetFrameProps {
   visible: boolean;
   title: string;
   onClose: () => void;
-  /** Label of the leading action. Defaults to "Cancel". */
-  closeLabel?: string;
-  /** Optional trailing text action, e.g. Reset. */
+  /** Optional text action at the end, before the close X, e.g. Reset. */
   action?: { label: string; onPress: () => void; disabled?: boolean };
   /** Take most of the screen (long lists) instead of the height of the content. */
   tall?: boolean;
@@ -49,13 +49,14 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     minHeight: touchTarget + space.sm,
-    paddingHorizontal: space.sm,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.sm,
   },
-  side: { minWidth: 80, minHeight: touchTarget, justifyContent: 'center' as const, paddingHorizontal: space.sm },
-  sideEnd: { alignItems: 'flex-end' as const },
+  side: { minHeight: touchTarget, justifyContent: 'center' as const, paddingHorizontal: space.sm },
+  closeButton: { borderRadius: radius.pill, minHeight: touchTarget, minWidth: touchTarget, alignItems: 'center' as const, justifyContent: 'center' as const },
   sideText: { ...typography.callout, color: t.brand.tint },
   sideTextDisabled: { color: t.text.disabled },
-  title: { ...typography.headline, flex: 1, textAlign: 'center' as const, color: t.text.primary },
+  title: { ...typography.headline, flex: 1, color: t.text.primary },
   content: { paddingHorizontal: layout.marginCompact, paddingTop: space.sm, paddingBottom: space.lg },
   contentTall: { flex: 1 },
   footer: {
@@ -69,26 +70,24 @@ const makeStyles = (t: ThemeTokens) => ({
   bold: { fontWeight: fontWeight.semibold },
 });
 
-export function SheetFrame({ visible, title, onClose, closeLabel = t('common.cancel'), action, tall = false, footer, children }: SheetFrameProps) {
+export function SheetFrame({ visible, title, onClose, action, tall = false, footer, children }: SheetFrameProps) {
   const styles = useThemedStyles(makeStyles);
+  const tokens = useTokens();
   const insets = useSafeAreaInsets();
   // Reduce Motion: the sheet fades in instead of sliding up (§9).
   const reduceMotion = useReducedMotion();
   return (
     <Modal visible={visible} transparent animationType={reduceMotion ? 'fade' : 'slide'} onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <KeyboardAvoidingView style={styles.root} behavior="padding">
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('filters.sheet.closeScrim', { action: closeLabel, title })} />
+        <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('filters.sheet.closeScrim', { action: t('common.close'), title })} />
         <View style={[styles.sheet, tall && styles.sheetTall]} accessibilityViewIsModal>
           <View style={styles.handle} />
           <View style={styles.header}>
-            <Pressable style={({ pressed }) => [styles.side, pressed && styles.pressed]} onPress={onClose} accessibilityRole="button" accessibilityLabel={closeLabel}>
-              <Text style={styles.sideText} maxFontSizeMultiplier={1.6}>{closeLabel}</Text>
-            </Pressable>
-            <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.6}>{title}</Text>
-            {/* The whole side is the target, as for Cancel: at least touchTarget square (§11.2). */}
+            <Text style={styles.title} accessibilityRole="header" numberOfLines={2} maxFontSizeMultiplier={1.6}>{title}</Text>
+            {/* The whole side is the target: at least touchTarget square (§11.2). */}
             {action ? (
               <Pressable
-                style={({ pressed }) => [styles.side, styles.sideEnd, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.side, pressed && styles.pressed]}
                 onPress={action.onPress}
                 disabled={action.disabled}
                 accessibilityRole="button"
@@ -97,9 +96,15 @@ export function SheetFrame({ visible, title, onClose, closeLabel = t('common.can
               >
                 <Text style={[styles.sideText, action.disabled && styles.sideTextDisabled]} maxFontSizeMultiplier={1.6}>{action.label}</Text>
               </Pressable>
-            ) : (
-              <View style={[styles.side, styles.sideEnd]} />
-            )}
+            ) : null}
+            <Pressable
+              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+            >
+              <Icon name="close" size={iconSize.lg} color={tokens.icon.primary} />
+            </Pressable>
           </View>
           <View style={[styles.content, tall && styles.contentTall, !footer && { paddingBottom: space.lg + insets.bottom }]}>{children}</View>
           {footer ? <View style={[styles.footer, { paddingBottom: space.md + insets.bottom }]}>{footer}</View> : null}

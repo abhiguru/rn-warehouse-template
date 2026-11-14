@@ -61,7 +61,7 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
 
   if (open?.type === 'sort' && config.sort && filters.sort) {
     return (
-      <SheetFrame visible title={t('filters.sheet.sortBy')} onClose={onClose} closeLabel={t('common.done')}>
+      <SheetFrame visible title={t('filters.sheet.sortBy')} onClose={onClose}>
         <SortEditor options={config.sort.options} value={filters.sort} onChange={(sort: SortState) => filters.setSort(sort)} />
       </SheetFrame>
     );
