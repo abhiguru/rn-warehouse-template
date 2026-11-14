@@ -78,6 +78,9 @@ const makeOverviewStyles = (_t: ThemeTokens) => ({
     justifyContent: 'center' as const,
     marginRight: space.md,
   },
+  avatarGap: {
+    marginRight: space.md,
+  },
   objectCellContent: {
     flex: 1,
   },
