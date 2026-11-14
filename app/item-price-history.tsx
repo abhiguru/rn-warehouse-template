@@ -7,11 +7,12 @@
  * first, 50 at a time. Rows written by one save are one card.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { getItemPriceHistory, PRICE_HISTORY_PAGE_SIZE } from '@/services/item-pricing-service';
@@ -22,7 +23,7 @@ import ChangeGroupCard from '@/features/item-pricing/components/ChangeGroupCard'
 import { groupBySave, groupChanges, type GroupView } from '@/features/item-pricing/utils/priceHistory';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
-import { EditorStrip } from '@/features/item-pricing/components/EditorStrip';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
 
@@ -199,27 +200,18 @@ const ItemPriceHistoryScreen: React.FC = () => {
         <View style={styles.footerError} accessibilityRole="alert">
           <Text style={styles.footerText}>{tr('pricing.history.loadMoreFailed')}</Text>
           <Text style={styles.footerText}>{moreError}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={loadMore}
-            accessibilityRole="button"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
-          </Pressable>
+          <Button type="secondary" leftIcon="refresh" onPress={loadMore} style={styles.retry}>
+            {tr('common.retry')}
+          </Button>
         </View>
       );
     }
     if (stalled && hasMore) {
       return (
         <View style={styles.footerError}>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={loadMore}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>{tr('components.changeLog.loadMore')}</Text>
-          </Pressable>
+          <Button type="secondary" onPress={loadMore} style={styles.retry}>
+            {tr('components.changeLog.loadMore')}
+          </Button>
         </View>
       );
     }
@@ -230,7 +222,7 @@ const ItemPriceHistoryScreen: React.FC = () => {
     <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
       <View style={styles.titleRow}>
         <HeaderBackButton />
-        <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+        <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
           {title}
         </Text>
       </View>
@@ -265,14 +257,9 @@ const ItemPriceHistoryScreen: React.FC = () => {
             {tr('pricing.history.loadErrorTitle')}
           </Text>
           <Text style={styles.stateText}>{error}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => void load('first', 0)}
-            accessibilityRole="button"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
-          </Pressable>
+          <Button type="secondary" leftIcon="refresh" onPress={() => void load('first', 0)} style={styles.retry}>
+            {tr('common.retry')}
+          </Button>
         </View>
       </View>
     );
@@ -296,7 +283,7 @@ const ItemPriceHistoryScreen: React.FC = () => {
         ListHeaderComponent={
           refreshError ? (
             <View style={styles.refreshStrip}>
-              <EditorStrip variant="critical" message={`${tr('pricing.history.refreshFailed')} ${refreshError}`} testID="history-refresh-error" />
+              <InlineValidation variant="error" message={`${tr('pricing.history.refreshFailed')} ${refreshError}`} />
             </View>
           ) : undefined
         }
@@ -336,7 +323,7 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.xs,
   },
   title: {
-    ...typography.title2,
+    ...typography.headline,
     color: t.text.primary,
     flexShrink: 1,
   },
@@ -384,25 +371,8 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'center' as const,
     maxWidth: layout.maxFormWidth,
   },
-  secondaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: space.sm,
-    minHeight: touchTarget,
+  retry: {
     marginTop: space.md,
-    paddingHorizontal: space.xl,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.surface.cardPressed,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
   },
 });
 
