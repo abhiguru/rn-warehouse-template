@@ -67,6 +67,7 @@ import { t as translate } from '@/i18n';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
+import { listRefreshAccessibility } from './listRefreshAccessibility';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -475,6 +476,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
           />
         ) : null}
       <FlashList
+        {...listRefreshAccessibility(handleRefresh)}
         ref={listRef}
         data={flattenedData}
         // Re-sorted lists must not stay anchored on the row that was on top before.

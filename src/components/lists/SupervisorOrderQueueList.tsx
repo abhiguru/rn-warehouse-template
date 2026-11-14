@@ -2,7 +2,6 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { mergeRefreshedOrders, refreshLimit } from '@/features/orders/refreshWindow';
 import { createLogger } from '@/utils/logger';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
-import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 /**
  * SupervisorOrderQueueList - Order Queue for Supervisors/Staff
  *
@@ -21,6 +20,7 @@ import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { ActivityIndicator } from 'react-native-paper';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
+import { listRefreshAccessibility } from './listRefreshAccessibility';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useFocusEffect } from 'expo-router';
 import { ListSkeleton } from '@/components/skeletons';
@@ -415,7 +415,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       loading={isLoading}
       actions={
         <>
-          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label={translate('lists.queue.refresh')} />
           {/* Order count badge: plain count (§13.5) */}
           <View
             style={styles.countBadge}
@@ -452,6 +451,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         )}
         <View style={styles.listWrapper}>
           <FlashList
+            {...listRefreshAccessibility(handleRefresh)}
             data={filteredOrders}
             keyExtractor={keyExtractor}
             renderItem={renderItem}

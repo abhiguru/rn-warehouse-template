@@ -2,7 +2,6 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { mergeRefreshedOrders, refreshLimit } from '@/features/orders/refreshWindow';
 import { createLogger } from '@/utils/logger';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
-import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 /**
  * OrderFlashList - FlashList Implementation (2025 Best Practices)
  *
@@ -71,6 +70,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
+import { listRefreshAccessibility } from './listRefreshAccessibility';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 
 const logger = createLogger('OrderList');
@@ -526,7 +526,6 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       config={ORDER_FILTERS}
       filters={filters}
       loading={isLoading}
-      actions={<OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label={translate('lists.order.refresh')} />}
     >
       {subHeader}
     </FilteredListHeader>
@@ -555,6 +554,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         {/* FlashList - The key to performance */}
         <View style={styles.listWrapper}>
           <FlashList
+            {...listRefreshAccessibility(handleRefresh)}
             data={flattenedData}
             renderItem={renderItem}
             keyExtractor={keyExtractor}
