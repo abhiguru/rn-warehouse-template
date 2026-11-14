@@ -99,6 +99,6 @@ export async function makeAccountantPack(fromDate: string, toDate: string): Prom
   } catch (error) {
     // A timeout or a network failure is worded by the app; the error itself (it may name the host) is never shown or logged.
     log.warn('Accountant pack request failed');
-    return { success: false, message: transportText(error, { write: true }) ?? t('errors.pdf.generateFailed') };
+    return { success: false, message: transportText(error) ?? t('errors.pdf.generateFailed') };
   }
 }

@@ -97,7 +97,7 @@ export const ReportHubRow: React.FC<ReportHubRowProps> = ({ report, pinned, onOp
   const description = report.description;
 
   return (
-    <View style={styles.card}>
+    <View style={styles.card} testID={`reports-hub-row-${report.id}`}>
       <Pressable
         style={({ pressed }) => [styles.open, pressed && styles.openPressed]}
         onPress={onOpen}
