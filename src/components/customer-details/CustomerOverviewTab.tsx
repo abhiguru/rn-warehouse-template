@@ -12,6 +12,7 @@ import { KeyValueCell } from '@/components/fiori/KeyValueCell';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import type { Customer } from '@/types/customer.types';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
+import { stateDisplayName } from '@/features/gst/indianStates';
 import { t as tr } from '@/i18n';
 
 type Row = { label: string; value: string | undefined | null; layout?: 'inline' | 'stacked' };
@@ -33,7 +34,7 @@ export function CustomerOverviewTab({ customer: shown, busy, onToggleActive }: C
       rows: [
         { label: tr('customers.fields.address'), value: shown.address, layout: 'stacked' as const },
         { label: tr('customers.fields.city'), value: shown.city },
-        { label: tr('customers.fields.state'), value: shown.state },
+        { label: tr('customers.fields.state'), value: shown.state ? stateDisplayName(shown.state) : shown.state },
         { label: tr('customers.fields.pincode'), value: shown.pincode },
       ],
     },

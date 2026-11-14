@@ -3,6 +3,8 @@
  * (migration 173, `gst_state_list`), because the server derives the state code from the name that is saved.
  * The code (the first two digits of a GSTIN) is shown only by name; the server does the matching.
  */
+import { getLanguage, t, type AppLanguage, type TranslationKey } from '@/i18n';
+
 export const INDIAN_STATES: ReadonlyArray<{ code: string; name: string }> = [
   { code: '01', name: 'Jammu and Kashmir' },
   { code: '02', name: 'Himachal Pradesh' },
@@ -47,4 +49,20 @@ export const INDIAN_STATES: ReadonlyArray<{ code: string; name: string }> = [
 export const stateNameOf = (code: string | null | undefined): string => {
   if (!code) return '';
   return INDIAN_STATES.find((state) => state.code === code)?.name ?? code;
+};
+
+/**
+ * The state's name as shown in the app's language (Gujarati in Gujarati mode). Display only: what is saved is always the English
+ * name, because the server derives the state code from it. A name not on the list (old free text) is returned as it is.
+ */
+export const stateDisplayName = (name: string, language: AppLanguage = getLanguage()): string => {
+  const state = INDIAN_STATES.find((item) => item.name === name);
+  return state ? t(`gst.states.${state.code}` as TranslationKey, undefined, language) : name;
+};
+
+/** True when the typed text is in the state's English or Gujarati name, whatever the case (WH-211). */
+export const stateMatchesSearch = (state: { code: string; name: string }, query: string): boolean => {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [state.name, t(`gst.states.${state.code}` as TranslationKey, undefined, 'gu')].some((text) => text.toLowerCase().includes(needle));
 };
