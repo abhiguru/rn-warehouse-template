@@ -157,7 +157,7 @@ export const gst: Translation<typeof source> = {
     noState: 'રાજ્ય નથી',
     currentText: '"{{text}}" તરીકે સચવાયું છે. યાદીમાંથી રાજ્ય પસંદ કરો.',
     searchStates: 'રાજ્ય શોધો',
-    noStateMatch: '"{{search}}" સાથે મળતું કોઈ રાજ્ય નથી. ઓછા અક્ષર લખી જુઓ.',
+    noStateMatch: '"{{search}}" સાથે મળતું કોઈ રાજ્ય નથી.',
   },
   detail: {
     type: 'દસ્તાવેજનો પ્રકાર',

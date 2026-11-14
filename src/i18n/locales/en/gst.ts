@@ -153,7 +153,7 @@ export const gst = {
     noState: 'No state',
     currentText: 'Saved as "{{text}}". Choose a state from the list.',
     searchStates: 'Search states',
-    noStateMatch: 'No state matches "{{search}}". Try fewer letters.',
+    noStateMatch: 'No state matches "{{search}}".',
   },
   detail: {
     type: 'Document type',

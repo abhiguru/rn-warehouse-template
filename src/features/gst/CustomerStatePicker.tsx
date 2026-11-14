@@ -172,6 +172,7 @@ export function CustomerStatePicker({ value, onChange, error, inputRef, scrollIn
           keyExtractor={(row) => row.id || NO_STATE_KEY}
           snapPoints={STATE_SHEET_SNAP_POINTS}
           minQueryLength={0}
+          scrollToKey={selected === null ? undefined : selected || NO_STATE_KEY}
           emptySearchText={tr('gst.customer.noStateMatch', { search: lastQuery })}
         />
       ) : null}
