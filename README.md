@@ -28,9 +28,13 @@ Prerequisites:
   `cmake;3.22.1`. Set `ANDROID_HOME` to the SDK root;
   `node scripts/check-android-sdk.mjs` verifies the set.
 - iOS builds need macOS and Xcode 16.1+; see [IOS_USB_DEVELOPMENT.md](docs/IOS_USB_DEVELOPMENT.md).
-- An installed backend. Follow the backend's
-  [operator install guide](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/OPERATOR_INSTALL.md)
-  and note its HTTPS origin; the app needs it at first launch.
+- An installed backend. First read the backend's
+  [Before you start](https://github.com/abhiguru/supabase-warehouse-template#before-you-start) list (what to arrange, and the lead
+  times), then follow its
+  [standard install guide](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/STANDARD_INSTALL.md)
+  (the
+  [operator install guide](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/OPERATOR_INSTALL.md) is the reference)
+  and note its HTTPS origin; the app needs it at first launch. Phones then [install the app](#install-the-app).
 
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
@@ -187,7 +191,8 @@ before distributing a branded build. Never put private server keys in
 
 Central login (one sign-in at the association, then a list of facilities) is off
 unless the build sets `EXPO_PUBLIC_CENTRAL_ORIGIN`; see
-[docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md).
+[docs/CENTRAL_LOGIN.md](docs/CENTRAL_LOGIN.md). The central sign-in service is optional and open source
+([central-identity-template](https://github.com/abhiguru/central-identity-template)); an association or group of facilities runs one, and a single facility does not need it.
 
 ## Checks and releases
 
