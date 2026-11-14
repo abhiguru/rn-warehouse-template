@@ -38,4 +38,4 @@ if [[ "$app_version" != "$tag_version" ]]; then
 fi
 
 echo "Release gate passed for tag ${GITHUB_REF_NAME}."
-echo 'Validation only: a maintainer publishes the release manually after this run.'
+echo 'Release gate only: the release is created later in this run by the sign job, after the build succeeds and the release environment is approved.'
