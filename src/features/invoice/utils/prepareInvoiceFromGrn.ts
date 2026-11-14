@@ -33,7 +33,8 @@ const log = createLogger('prepareInvoiceFromGrn');
 /** The step the form opens at. */
 export type InvoiceOpenStep = 'details' | 'items' | 'review';
 
-export type PrepareResult = { ok: true; step: InvoiceOpenStep } | { ok: false; message: string };
+/** `stale`: the caller no longer wanted the form (see `stillWanted`); nothing was written to the form. */
+export type PrepareResult = { ok: true; step: InvoiceOpenStep } | { ok: false; message: string; stale?: true };
 
 const withTimeout = <T,>(work: Promise<T>, ms: number): Promise<T> =>
   new Promise<T>((resolve, reject) => {
@@ -59,11 +60,15 @@ async function suggestedNumber(finYear: string): Promise<{ number: number; prefi
 /**
  * Fills the (just reset) form with the GRN's preview and the suggested number. `ok: false`: nothing usable was read
  * and the message says why (the form's own words for a GRN that could not be loaded).
+ * `stillWanted` is asked after each wait and before each write to the form: when it says no (another form was opened, a
+ * newer tap took over, the page was left) nothing more is written and the result is `stale`, so a form someone else
+ * is filling is never touched.
  */
 export async function prepareInvoiceFromGrn(
   dispatch: AppDispatch,
   getState: () => RootState,
-  grnId: string
+  grnId: string,
+  stillWanted: () => boolean = () => true
 ): Promise<PrepareResult> {
   const finYear = getState().invoiceForm.header.inv_fin_year;
   const numberWork = suggestedNumber(finYear);
@@ -79,8 +84,10 @@ export async function prepareInvoiceFromGrn(
     return { ok: false, message: serverText(preview.message, t('common.checkConnection')) };
   }
 
+  if (!stillWanted()) return { ok: false, message: '', stale: true };
   dispatch(loadInvoiceFormData({ header: preview.data.header, items: preview.data.items, grId: grnId }));
   const suggestion = await numberWork;
+  if (!stillWanted()) return { ok: false, message: '', stale: true };
   if (!suggestion) return { ok: true, step: 'details' };
   dispatch(updateHeader({ inv_no: suggestion.number, inv_no_typed: false, inv_prefix: suggestion.prefix }));
 

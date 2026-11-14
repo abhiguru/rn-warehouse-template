@@ -13,10 +13,17 @@ import { billsMayStart } from '@/features/gst/billsAllowed';
  */
 let latest = 0;
 let opening = false;
+let goneToken = 0;
 
 export function releaseNewBill(): void {
   opening = false;
 }
+
+/** The token of the request that last got 'go'. A longer job after 'go' keeps it and asks `newBillIsCurrent` before it writes. */
+export const newBillToken = (): number => goneToken;
+
+/** True while no newer tap has taken over from that request. */
+export const newBillIsCurrent = (token: number): boolean => token === latest;
 
 /** 'go': the caller resets the form and opens it. 'stop': nothing to do (refused, busy, superseded, another form open, screen left). */
 export async function beginNewBill(role: string | null | undefined, isFocused: () => boolean): Promise<'go' | 'stop'> {
@@ -32,5 +39,6 @@ export async function beginNewBill(role: string | null | undefined, isFocused: (
   const go = (await billsMayStart(role, stillWanted)) && stillWanted();
   if (!go) return 'stop';
   opening = true;
+  goneToken = token;
   return 'go';
 }

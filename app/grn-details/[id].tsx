@@ -77,7 +77,7 @@ import { parseInvoiceState } from '@/features/charging/invoiceState';
 import { getGrnInvoiceRows, type Invoice } from '@/services/invoice-service';
 import { invoiceTableFrom } from '@/components/common/invoiceTable';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { beginNewBill, releaseNewBill } from '@/features/invoice/utils/startNewBill';
+import { beginNewBill, newBillIsCurrent, newBillToken, releaseNewBill } from '@/features/invoice/utils/startNewBill';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 
 const log = createLogger('grn');
@@ -550,12 +550,20 @@ function GRNDetailScreen() {
       }
     }
     if (go !== 'go') return;
+    const goneToken = newBillToken();
+    const mine = () => newBillIsCurrent(goneToken);
     reduxDispatch(resetInvoiceForm());
     let prepared: Awaited<ReturnType<typeof prepareInvoiceFromGrn>>;
     try {
-      prepared = await prepareInvoiceFromGrn(reduxDispatch, reduxStore.getState, current.id);
+      prepared = await prepareInvoiceFromGrn(reduxDispatch, reduxStore.getState, current.id, () => mine() && focusedRef.current && !openFormBlocking({ kind: 'create' }));
     } finally {
       setPreparingInvoice(false);
+    }
+    // Stopped before anything was written (a newer tap, the page left or another form opened): the form is not ours to reset.
+    if ((!prepared.ok && prepared.stale) || !mine()) {
+      openingInvoiceRef.current = false;
+      if (mine()) releaseNewBill();
+      return;
     }
     // The page was left meanwhile, or another form was opened: nothing opens, and the slice is not left half filled.
     if (!focusedRef.current || openFormBlocking({ kind: 'create' })) {
