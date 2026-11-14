@@ -74,3 +74,19 @@ it('keeps the home-indicator space while the keyboard is hidden and gives it up 
   await act(async () => { listeners.keyboardDidHide(); });
   expect(StyleSheet.flatten(bar(screen).props.style).paddingBottom).toBe(24 + space.md);
 });
+
+it('adds the bottom inset to the save bar on iOS only; on Android the system handles it (WH-209)', async () => {
+  const { Platform } = require('react-native');
+  const original = Platform.OS;
+  try {
+    Platform.OS = 'android';
+    const android = await mount();
+    expect(StyleSheet.flatten(bar(android).props.style).paddingBottom).toBe(space.md);
+    await act(async () => { tree?.unmount(); });
+    Platform.OS = 'ios';
+    const ios = await mount();
+    expect(StyleSheet.flatten(bar(ios).props.style).paddingBottom).toBe(24 + space.md);
+  } finally {
+    Platform.OS = original;
+  }
+});

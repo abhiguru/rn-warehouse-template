@@ -56,6 +56,7 @@ jest.mock('@/services/item-pricing-service', () => ({
 
 import ItemPriceHistoryScreen from '../../../app/item-price-history';
 import { getItemPriceHistory } from '@/services/item-pricing-service';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { showAlert } from '@/utils/alert';
 
 const history = jest.mocked(getItemPriceHistory);
@@ -488,7 +489,8 @@ describe('price history states', () => {
     expect(cardIds(tree)).toEqual(['14', '13']);
     // A failed refresh is a strip above the entries that stay, not a dialog.
     expect(showAlert).not.toHaveBeenCalled();
-    const strip = tree.root.findAll((node) => node.props.testID === 'history-refresh-error' && node.props.message)[0];
+    const strip = tree.root.findAllByType(InlineValidation)[0];
+    expect(strip.props.variant).toBe('error');
     expect(strip.props.message).toBe("Couldn't refresh. These are the changes loaded earlier. Try again in a moment.");
     await unmount(tree);
   });

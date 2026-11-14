@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import { CustomerPricingTab } from '@/features/item-pricing/components/CustomerPricingTab';
 import { useItemRates, type UseItemRatesResult } from '@/features/item-pricing/useItemRates';
 import { F1, ITEMS, ORCHARD_B, row } from '@/tests/helpers/ratesFixtures';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -76,7 +77,7 @@ describe('a customer with one own rate', () => {
     await mount();
     const s = texts(tree);
     expect(s).toContain('Review Onion Red');
-    expect(s).toContain('since 01/01/26');
+    expect(s).toContain('Since 01/01/26');
     expect(s).toContain('0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%');
     expect(s).toContain('Default rate: ₹3.50 per bag, per month');
     expect(s).toContain('ITEMS WITH THEIR OWN RATE');
@@ -90,7 +91,7 @@ describe('a customer with one own rate', () => {
   it('reads the row as one sentence', async () => {
     await mount();
     expect(pressable(tree, n => n.props.testID === 'customer-item-row-onion').props.accessibilityLabel)
-      .toBe('Review Onion Red, since 1 Jan 2026, 0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%, Default rate: ₹3.50 per bag, per month');
+      .toBe('Review Onion Red, Since 1 Jan 2026, 0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%, Default rate: ₹3.50 per bag, per month');
   });
 
   it('a tap on the row opens the customer\'s box of that item, with the customer\'s name', async () => {
@@ -120,7 +121,7 @@ describe('a customer with several own rates', () => {
     expect(s).toContain('Rate ends 31/12/26');
     expect(s).toContain('New rate from 01/01/27');
     // The potato rate is not in force yet: its line is the later rate, its default is today's.
-    expect(s).toContain('since 01/01/27');
+    expect(s).toContain('Since 01/01/27');
     expect(s).toContain('0–100 kg · ₹3.75 · Labour ₹2.00 · Tax 0%');
     expect(s).toContain('Default rate: ₹4.00 per bag, per month');
   });
@@ -235,10 +236,11 @@ describe('an item that is deactivated', () => {
 });
 
 describe('a deactivated customer', () => {
-  it('shows the rows and the strip, but no + Add item, and the row link says deactivated', async () => {
+  it('shows the rows but no strip of its own, no + Add item, and the row link says deactivated', async () => {
     await mount('orchard-b', 'Review Orchard B', { deactivated: true });
-    expect(host(tree, 'customer-pricing-deactivated').length).toBeGreaterThan(0);
-    expect(texts(tree)).toContain('This customer is deactivated. Activate them to change their rates.');
+    // The one strip is under the page header on every tab (WH-209); the tab no longer draws its own.
+    expect(host(tree, 'customer-pricing-deactivated')).toHaveLength(0);
+    expect(texts(tree)).not.toContain('This customer is deactivated. Activate them to change their rates.');
     expect(texts(tree)).toContain('Review Onion Red');
     expect(byLabel(tree, 'Add item')).toBeUndefined();
     await act(async () => { pressable(tree, n => n.props.testID === 'customer-item-row-onion').props.onPress(); });
@@ -252,5 +254,22 @@ describe('a deactivated customer', () => {
     await mount('orchard-z', 'Review Orchard Z', { deactivated: true });
     expect(host(tree, 'customer-pricing-empty').length).toBeGreaterThan(0);
     expect(byLabel(tree, 'Add item')).toBeUndefined();
+  });
+});
+
+describe('a refresh that failed (WH-209)', () => {
+  it('keeps the rows and shows one error strip above them, with the time of the last good load', async () => {
+    jest.mocked(useItemRates).mockReturnValue(result({ refreshError: true }));
+    await mount();
+    expect(host(tree, 'customer-pricing-refresh-failed')).toHaveLength(1);
+    expect(texts(tree)).toContain('Review Onion Red');
+    const strip = tree.root.findAllByType(InlineValidation)[0];
+    expect(strip.props.variant).toBe('error');
+    expect(strip.props.message).toMatch(/refresh/i);
+  });
+
+  it('shows no strip when the refresh worked', async () => {
+    await mount();
+    expect(host(tree, 'customer-pricing-refresh-failed')).toHaveLength(0);
   });
 });
