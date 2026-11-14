@@ -30,6 +30,8 @@ const numberOrNull = (value: unknown): number | null => {
 export interface GstDetails {
   /** False until an administrator saves once: documents are then made exactly as before. */
   saved: boolean;
+  /** The server's own answer (WH-205): a new bill may be made. Absent on a backend before that: then `saved` is what counts. */
+  billsAllowed: boolean | null;
   registered: boolean;
   gstin: string;
   stateName: string;
@@ -41,7 +43,6 @@ export interface GstDetails {
 }
 
 export interface GstDetailsInput {
-  registered: boolean;
   gstin: string;
   address: string;
   legalName: string;
@@ -60,6 +61,7 @@ function readDetails(value: unknown): GstDetails | null {
   if (!isRecord(value)) return null;
   return {
     saved: value.saved === true,
+    billsAllowed: typeof value.bills_allowed === 'boolean' ? value.bills_allowed : null,
     registered: value.registered === true,
     gstin: text(value.gstin),
     stateName: text(value.state_name),
@@ -90,8 +92,9 @@ export async function setGstDetails(input: GstDetailsInput): Promise<GstDetails>
     'set_gst_details',
     {
       p_details: {
-        registered: input.registered,
-        gstin: input.registered ? input.gstin.trim().toUpperCase() : null,
+        // Bills always need a GSTIN (WH-205): there is no unregistered choice any more.
+        registered: true,
+        gstin: input.gstin.trim().toUpperCase(),
         address: input.address.trim(),
         legal_name: input.legalName.trim() || undefined,
         sac_storage: input.sacStorage.trim(),
