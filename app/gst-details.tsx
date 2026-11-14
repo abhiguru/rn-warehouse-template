@@ -11,6 +11,7 @@ import { router, Stack, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { Input } from '@/components/ui/Input';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -284,11 +285,13 @@ export default function GstDetailsScreen() {
         {stored && error ? <Text style={styles.staleNote}>{error}</Text> : null}
       </KeyboardAwareScrollView>
       {stored && draft ? (
-        <View style={[styles.saveBar, { paddingBottom: insets.bottom + space.md }]}>
-          <Button size="fullWidth" testID="gst-details-save" disabled={!dirty || saving} loading={saving} onPress={ask}>
-            {tr('gst.settings.save')}
-          </Button>
-        </View>
+        <FormSaveBar
+          label={tr('gst.settings.save')}
+          onPress={ask}
+          loading={saving}
+          disabled={!dirty || saving}
+          buttonTestID="gst-details-save"
+        />
       ) : null}
       <ConfirmDialog
         visible={asking}
@@ -311,7 +314,6 @@ const makeStyles = (t: ThemeTokens) =>
     loading: { marginTop: space.xxl },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
-    saveBar: { paddingTop: space.md, paddingHorizontal: layout.marginCompact, backgroundColor: t.surface.card, ...t.shadow[3] },
     fields: { marginHorizontal: layout.marginCompact, marginTop: space.lg, gap: space.md },
     stateScreen: {
       flex: 1,
