@@ -7,6 +7,7 @@
 import AppTooOldScreen from '@/components/AppTooOldScreen';
 import type { AppTooOldInfo } from '@/config/appTooOld';
 import React, { useCallback, useEffect, useState } from 'react';
+import { ListSkeleton } from '@/components/skeletons';
 import { ActivityIndicator, BackHandler, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { router, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -299,9 +300,7 @@ export default function FacilitiesScreen() {
         }
         ListEmptyComponent={
           list === null ? (
-            <View style={styles.empty}>
-              <ActivityIndicator color={t.brand.tint} accessibilityLabel={tr('central.facilities.loading')} />
-            </View>
+            <ListSkeleton count={4} metricsCount={2} />
           ) : (
             <View style={styles.empty}>
               <Icon name="office-building-plus-outline" size={iconSize.hero} color={t.icon.secondary} />
