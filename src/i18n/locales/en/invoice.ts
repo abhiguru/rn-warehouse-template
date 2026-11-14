@@ -315,7 +315,7 @@ export const invoice = {
     savedTitle: 'Invoice saved',
     updatedTitle: 'Invoice updated',
     savedMessage: 'Invoice {{number}} has been saved.',
-    updatedMessage: 'Invoice {{number}} has been updated.',
+    updatedMessage: 'Invoice {{number}} saved.',
     detailsA11y: 'Invoice {{number}}, financial year {{year}}, {{customer}}',
     detailsWithTotalA11y: 'Invoice {{number}}, financial year {{year}}, {{customer}}, total {{total}}',
     totalNotRead: 'The saved total could not be read. Open the invoice to see it.',

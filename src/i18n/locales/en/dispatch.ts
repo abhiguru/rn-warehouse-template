@@ -273,6 +273,7 @@ export const dispatch = {
     printPlaceholder: 'For example, {{example}}',
     savedTitle: 'Dispatch {{number}} saved',
     savedMessage: 'Your changes are saved and stock levels are updated.',
+    savedToast: 'Dispatch {{number}} saved.',
     viewDispatch: 'View dispatch',
   },
   // Leaving a step with unsaved items (swipe navigation)

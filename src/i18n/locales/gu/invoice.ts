@@ -324,7 +324,7 @@ export const invoice: Translation<typeof source> = {
     savedTitle: 'ઇન્વૉઇસ સચવાઈ ગયું',
     updatedTitle: 'ઇન્વૉઇસ અપડેટ થયું',
     savedMessage: 'ઇન્વૉઇસ {{number}} સચવાઈ ગયું છે.',
-    updatedMessage: 'ઇન્વૉઇસ {{number}} અપડેટ થઈ ગયું છે.',
+    updatedMessage: 'ઇન્વૉઇસ {{number}} સચવાયું.',
     detailsA11y: 'ઇન્વૉઇસ {{number}}, નાણાકીય વર્ષ {{year}}, {{customer}}',
     detailsWithTotalA11y: 'ઇન્વૉઇસ {{number}}, નાણાકીય વર્ષ {{year}}, {{customer}}, કુલ {{total}}',
     totalNotRead: 'સચવાયેલી કુલ રકમ વાંચી શકાઈ નથી. તે જોવા માટે ઇન્વૉઇસ ખોલો.',

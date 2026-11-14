@@ -272,6 +272,7 @@ export const dispatch: Translation<typeof source> = {
     printTitle: 'જાવક પ્રિન્ટ કરો',
     printPlaceholder: 'દાખલા તરીકે, {{example}}',
     savedTitle: 'જાવક {{number}} સચવાઈ ગઈ',
+    savedToast: 'જાવક {{number}} સચવાઈ.',
     savedMessage: 'તમારા ફેરફાર સચવાઈ ગયા છે અને સ્ટોક બદલાઈ ગયો છે.',
     viewDispatch: 'જાવક જુઓ',
   },
