@@ -4,12 +4,13 @@
  * today". Every date here reads as a goods-received date.
  */
 import React, { useState } from 'react';
-import { Modal, Platform, Pressable, Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Button } from '@/components/ui/Button';
+import { SheetFrame } from '@/features/filters/components/SheetFrame';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
 import { getLanguage, t } from '@/i18n';
-import { layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { addDays } from '../rateText';
 
@@ -30,9 +31,6 @@ const makeStyles = (th: ThemeTokens) => ({
   },
   text: { ...typography.footnote, color: th.text.secondary },
   actions: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, gap: space.sm },
-  overlay: { flex: 1, justifyContent: 'flex-end' as const, backgroundColor: th.overlay.scrim },
-  sheet: { backgroundColor: th.surface.sheet, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, padding: space.lg },
-  sheetActions: { flexDirection: 'row' as const, justifyContent: 'space-between' as const },
 });
 
 /** Three years back, two years ahead (the server refuses a start outside this; the list shares it). */
@@ -82,36 +80,25 @@ export function RatesOnBar({ text, day, today, onChangeDay }: RatesOnBarProps) {
         />
       ) : null}
       {open && Platform.OS !== 'android' ? (
-        <Modal transparent animationType="slide" visible onRequestClose={() => setOpen(false)}>
-          <View style={styles.overlay}>
-            <View style={styles.sheet}>
-              <View style={styles.sheetActions}>
-                <Pressable onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
-                  <Text style={styles.text}>{t('common.cancel')}</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => { setOpen(false); onChangeDay(toLocalISODate(draft)); }}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('common.done')}
-                >
-                  <Text style={styles.text}>{t('common.done')}</Text>
-                </Pressable>
-              </View>
-              <DateTimePicker
-                value={draft}
-                mode="date"
-                display="spinner"
-                locale={getLanguage() === 'gu' ? 'gu-IN' : 'en-IN'}
-                onChange={(_e, picked) => { if (picked) setDraft(picked); }}
-                minimumDate={limits.min}
-                maximumDate={limits.max}
-                accentColor={th.brand.tint}
-                textColor={th.text.primary}
-                themeVariant={resolvedMode}
-              />
-            </View>
-          </View>
-        </Modal>
+        <SheetFrame
+          visible
+          title={t('pricing.list.changeDate')}
+          onClose={() => setOpen(false)}
+          action={{ label: t('common.done'), onPress: () => { setOpen(false); onChangeDay(toLocalISODate(draft)); } }}
+        >
+          <DateTimePicker
+            value={draft}
+            mode="date"
+            display="spinner"
+            locale={getLanguage() === 'gu' ? 'gu-IN' : 'en-IN'}
+            onChange={(_e, picked) => { if (picked) setDraft(picked); }}
+            minimumDate={limits.min}
+            maximumDate={limits.max}
+            accentColor={th.brand.tint}
+            textColor={th.text.primary}
+            themeVariant={resolvedMode}
+          />
+        </SheetFrame>
       ) : null}
     </View>
   );

@@ -33,7 +33,7 @@ import { ScopeRates, type RateSaveBarState } from '@/features/item-pricing/compo
 import { ScopeSaveBar } from '@/features/item-pricing/components/ScopeSaveBar';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
-import { useThemedStyles } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
@@ -65,6 +65,7 @@ const makeStyles = (th: ThemeTokens) => ({
 
 export default function CustomerRatePage() {
   const styles = useThemedStyles(makeStyles);
+  const th = useTokens();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ itemId: string; customerId: string; on?: string; customer_name?: string; deactivated?: string }>();
   const itemId = String(params.itemId ?? '');
@@ -132,7 +133,7 @@ export default function CustomerRatePage() {
             <Button
               type="tertiary"
               leftIcon="history"
-              onPress={() => router.push(historyPath({ item_id: itemId, customer_id: customerId, item_name: item.name, ...(customerName ? { customer_name: customerName } : {}) }))}
+              onPress={() => router.push(historyPath({ item_id: itemId, customer_id: customerId, item_name: itemTitle, ...(customerName ? { customer_name: customerName } : {}) }))}
               testID="customer-changes"
             >
               {t('pricing.action.changes')}
@@ -183,8 +184,10 @@ export default function CustomerRatePage() {
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
-            contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.huge + insets.bottom + (bar ? barHeight + space.lg : 0) }}
-            refreshControl={<RefreshControl refreshing={pulling && refreshing} onRefresh={onPull} />}
+            contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.huge + (Platform.OS === 'ios' ? insets.bottom : 0) + (bar ? barHeight + space.lg : 0) }}
+            refreshControl={
+              <RefreshControl refreshing={pulling && refreshing} onRefresh={onPull} colors={[th.brand.tint]} tintColor={th.brand.tint} progressBackgroundColor={th.surface.card} />
+            }
             keyboardShouldPersistTaps="handled"
             onScroll={onScroll}
             scrollEventThrottle={16}
