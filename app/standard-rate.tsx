@@ -403,7 +403,7 @@ export default function StandardRateScreen() {
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
       <HeaderBackButton />
-      <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+      <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={2}>
         {t('pricing.standard.title')}
       </Text>
     </View>
@@ -508,7 +508,7 @@ const makeStyles = (th: ThemeTokens) => ({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: th.border.divider,
   },
-  headerTitle: { ...typography.title2, color: th.text.primary, flexShrink: 1 },
+  headerTitle: { ...typography.headline, color: th.text.primary, flexShrink: 1 },
   center: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const },
   body: {
     padding: layout.marginCompact,
