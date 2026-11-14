@@ -36,7 +36,8 @@ export const invoice: Translation<typeof source> = {
   },
   // The step header of the create and edit wizard
   steps: {
-    details: 'વિગતો',
+    details: 'ઇન્વૉઇસની વિગતો',
+    detailsShort: 'વિગતો',
     items: 'આઇટમ',
     review: 'ચકાસણી',
     editInvoice: 'ઇન્વૉઇસમાં ફેરફાર',

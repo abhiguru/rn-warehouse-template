@@ -19,7 +19,7 @@ export const dispatch = {
   // Shared by the three wizard steps: header, cancel and discard
   wizard: {
     createTitle: 'Dispatch',
-    editTitle: 'Edit',
+    editTitle: 'Edit dispatch',
     cancelDispatch: 'Cancel dispatch',
     discardTitle: 'Discard this dispatch?',
     discardDispatch: 'Discard dispatch',

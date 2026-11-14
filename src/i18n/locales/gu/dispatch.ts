@@ -22,7 +22,7 @@ export const dispatch: Translation<typeof source> = {
   // Shared by the three wizard steps: header, cancel and discard
   wizard: {
     createTitle: 'જાવક',
-    editTitle: 'ફેરફાર',
+    editTitle: 'જાવકમાં ફેરફાર',
     cancelDispatch: 'જાવક રદ કરો',
     discardTitle: 'આ જાવક છોડી દેવી છે?',
     discardDispatch: 'જાવક છોડી દો',

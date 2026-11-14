@@ -13,7 +13,7 @@ import { t } from '@/i18n';
  * (style guide §14.3). Call it while rendering, so the names follow the language.
  */
 export const invoiceSteps = (): StepConfig[] => [
-  { number: 1, label: t('invoice.steps.details'), shortLabel: t('invoice.steps.details') },
+  { number: 1, label: t('invoice.steps.details'), shortLabel: t('invoice.steps.detailsShort') },
   { number: 2, label: t('invoice.steps.items'), shortLabel: t('invoice.steps.items') },
   { number: 3, label: t('invoice.steps.review'), shortLabel: t('invoice.steps.review') },
 ];

@@ -33,7 +33,8 @@ export const invoice = {
   },
   // The step header of the create and edit wizard
   steps: {
-    details: 'Details',
+    details: 'Invoice details',
+    detailsShort: 'Details',
     items: 'Items',
     review: 'Review',
     editInvoice: 'Edit invoice',

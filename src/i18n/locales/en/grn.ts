@@ -4,6 +4,7 @@ export const grn = {
   steps: {
     details: 'GRN details',
     detailsShort: 'Details',
+    editTitle: 'Edit GRN',
     items: 'Items',
     review: 'Review',
   },
