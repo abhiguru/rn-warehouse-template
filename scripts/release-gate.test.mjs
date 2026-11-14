@@ -32,7 +32,7 @@ test('accepts any semantic version tag, with or without a prerelease suffix', ()
     const result = gate(name);
     assert.equal(result.status, 0, `${name}: ${result.stderr}`);
     assert.match(result.stdout, new RegExp(`Release gate passed for tag ${name.replace(/\./g, '\\.')}`));
-    assert.match(result.stdout, /publishes the release manually/);
+    assert.match(result.stdout, /the release is created later in this run by the sign job/);
   }
 });
 

@@ -41,3 +41,22 @@ describe('an English-only text in Gujarati mode', () => {
     expect(t('settings.language.title')).toBe('Language');
   });
 });
+
+describe('WH-197: an English fallback is English throughout in Gujarati mode', () => {
+  it('keeps 0-9 digits, not Gujarati digits', () => {
+    setLanguage('gu');
+    expect(t('users.list.customersAssigned', { count: 1 })).toBe('1 customer assigned');
+    expect(t('users.list.customersAssigned', { count: 12 })).toBe('12 customers assigned');
+  });
+
+  it('uses the English plural rule: zero is plural', () => {
+    setLanguage('gu');
+    expect(t('users.list.customersAssigned', { count: 0 })).toBe('0 customers assigned');
+  });
+
+  it('a text that has a Gujarati text still gets Gujarati digits', () => {
+    setLanguage('gu');
+    expect(t('users.list.customersAssigned', { count: 1 }, 'en')).toBe('1 customer assigned');
+    expect(t('auth.review.screenTitle')).toBe('મંજૂરીની અરજીઓ');
+  });
+});

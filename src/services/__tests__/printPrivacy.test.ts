@@ -92,7 +92,7 @@ describe('print job submission privacy', () => {
 
   it('returns a transport exception to the caller without logging its message', async () => {
     jest.mocked(fetch).mockRejectedValue(new Error(marker));
-    expect(await printInvoiceRange('a', 'b')).toEqual({ success: false, kind: 'connection', error: marker });
+    expect(await printInvoiceRange('a', 'b')).toEqual({ success: false, kind: 'connection', error: 'Failed to submit print job' });
     expectPrivateLogs();
   });
 
@@ -141,9 +141,9 @@ describe('print job queries privacy', () => {
 
   it('returns query exceptions to the caller without logging their messages', async () => {
     jest.mocked(fetch).mockRejectedValue(new Error(marker));
-    expect(await getPrintJobs()).toEqual({ success: false, error: marker });
-    expect(await cancelPrintJob('job-1')).toEqual({ success: false, error: marker });
-    expect(await getPrinterStatus()).toEqual({ success: false, error: marker });
+    expect(await getPrintJobs()).toEqual({ success: false, error: 'Failed to fetch print jobs' });
+    expect(await cancelPrintJob('job-1')).toEqual({ success: false, error: 'Failed to cancel print job' });
+    expect(await getPrinterStatus()).toEqual({ success: false, error: 'Failed to check printer status' });
     expectPrivateLogs();
   });
 });

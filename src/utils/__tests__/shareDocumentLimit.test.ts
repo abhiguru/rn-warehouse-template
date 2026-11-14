@@ -234,7 +234,7 @@ describe('the 25 MB cap bounds the download', () => {
   it('refuses the file when the session changes during the download, and deletes the part written', async () => {
     server.reset({ contentLength: 20 * MiB, bodyBytes: 20 * MiB, onChunk: count => count === 3 && advanceSessionGeneration() });
     const result = await downloadAndSharePDF(signedUrl, 'Stock summary.pdf');
-    expect(result).toEqual({ success: false, error: 'Session changed' });
+    expect(result).toEqual({ success: false, error: 'Failed to share PDF' });
     // Stopped at once, not read to the end.
     expect(server.completed).toBe(false);
     expect(server.sent).toBeLessThanOrEqual(4 * CHUNK);
@@ -251,7 +251,7 @@ describe('the 25 MB cap bounds the download', () => {
     });
     server.reset({ contentLength: 20 * MiB, bodyBytes: 20 * MiB, onChunk: count => count === 3 && tracked?.abort() });
     const result = await downloadAndSharePDF(signedUrl, 'Stock summary.pdf');
-    expect(result).toEqual({ success: false, error: 'Session changed' });
+    expect(result).toEqual({ success: false, error: 'Failed to share PDF' });
     expect(server.completed).toBe(false);
     expect(sharedPdfs()).toEqual([]);
     expect(Sharing.shareAsync).not.toHaveBeenCalled();
@@ -261,7 +261,7 @@ describe('the 25 MB cap bounds the download', () => {
     const { trackReadRequest } = jest.requireMock('@/config/supabaseConfig') as { trackReadRequest: jest.Mock };
     trackReadRequest.mockReturnValueOnce({ started: false, release: () => {} });
     server.reset({ contentLength: MiB, bodyBytes: MiB });
-    expect(await downloadPDF(signedUrl, 'Stock summary.pdf')).toEqual({ success: false, error: 'Session changed' });
+    expect(await downloadPDF(signedUrl, 'Stock summary.pdf')).toEqual({ success: false, error: 'Failed to download PDF' });
     expect(server.sent).toBe(0);
     expect(sharedPdfs()).toEqual([]);
   });
@@ -270,7 +270,7 @@ describe('the 25 MB cap bounds the download', () => {
     server.reset({ contentLength: MiB, bodyBytes: MiB });
     const { awaitIdentityGate } = jest.requireMock('@/config/supabaseConfig') as { awaitIdentityGate: jest.Mock };
     awaitIdentityGate.mockRejectedValueOnce(new Error('Session changed'));
-    expect(await downloadPDF(signedUrl, 'Stock summary.pdf')).toEqual({ success: false, error: 'Session changed' });
+    expect(await downloadPDF(signedUrl, 'Stock summary.pdf')).toEqual({ success: false, error: 'Failed to download PDF' });
     expect(server.sent).toBe(0);
     expect(sharedPdfs()).toEqual([]);
   });

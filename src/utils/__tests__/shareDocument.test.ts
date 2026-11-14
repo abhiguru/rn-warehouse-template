@@ -269,7 +269,7 @@ describe('downloadAndSharePDF', () => {
 
   it('deletes the downloaded file when the share sheet throws', async () => {
     jest.mocked(Sharing.shareAsync).mockRejectedValueOnce(new Error('Share cancelled by system'));
-    expect(await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf')).toEqual({ success: false, error: 'Share cancelled by system' });
+    expect(await downloadAndSharePDF(signedUrl, 'GRN_Z0797.pdf')).toEqual({ success: false, error: 'Failed to share PDF' });
     expect(fs.entries.has(`${sharedDir}/GRN_Z0797.pdf`)).toBe(false);
   });
 });
