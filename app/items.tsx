@@ -64,7 +64,7 @@ import { StatusTag } from '@/components/ui';
 import { formatCount, formatTime } from '@/utils/formatters';
 import { deleteItemFlow } from '@/features/items/deleteItemFlow';
 import { showActivatedToast, showDeactivatedToast } from '@/features/items/activationToast';
-import { LastUpdatedLine, LoadMoreErrorFooter } from '@/components/lists/ListLoadErrors';
+import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from '@/components/lists/ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { itemPagePath } from '@/features/item-pricing/contract';
 import { itemIdsWithoutRate } from '@/features/item-pricing/noRate';
@@ -520,8 +520,8 @@ export default function ItemsScreen() {
         <ListEmptyState
           activeFilterCount={1}
           filteredIcon="magnify"
-          filteredTitle={tr('items.list.noMatch', { search: state.filters.search })}
-          filteredSubtitle=""
+          filteredTitle={tr('items.list.noMatchTitle', { search: state.filters.search })}
+          filteredSubtitle={tr('customers.search.noMatchMessage')}
           clearFiltersLabel={tr('common.clearSearch')}
           onClearFilters={() => handleSearch('')}
         />
@@ -602,15 +602,17 @@ export default function ItemsScreen() {
           placeholder={tr('items.list.searchPlaceholder')}
           loading={listLoading}
           countText={(noRateFilter ? listData.length : state.totalCount) > 0 ? formatCount(noRateFilter ? listData.length : state.totalCount, 'item') : undefined}
-          refreshError={
-            state.refreshFailed
-              ? {
-                  message: tr('items.list.refreshFailed', { time: formatTime(state.loadedAt) }),
-                  onRetry: () => fetchItems(state.filters, 0),
-                }
-              : undefined
-          }
         />
+        {state.refreshFailed && state.loadedAt ? (
+          <StaleListStrip
+            title={tr('items.list.staleTitle')}
+            text={tr('items.list.staleText', { time: formatTime(state.loadedAt) })}
+            retryLabel={tr('items.list.retryRefresh')}
+            onRetry={() => fetchItems(state.filters, 0)}
+            retrying={state.refreshing}
+            testID="items-stale-strip"
+          />
+        ) : null}
         {canSeeRates && ratesStatus === 'ready' && noRateIds.size > 0 ? (
           <View style={styles.noRateStrip}>
             <RateStrip

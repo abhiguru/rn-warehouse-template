@@ -24,7 +24,9 @@ export const customers: Translation<typeof source> = {
     couldNotDeactivateTitle: 'વેપારીને નિષ્ક્રિય કરી શકાયા નથી',
     couldNotUpdateTitle: 'વેપારીની વિગતો બદલી શકાઈ નથી',
     tryAgainInAMoment: 'થોડી વાર પછી ફરી પ્રયાસ કરો.',
-    refreshFailed: 'વેપારીઓ તાજા કરી શકાયા નથી. {{time}} ની યાદી બતાવી છે.',
+    staleTitle: 'વેપારીઓ રિફ્રેશ કરી શકાયા નથી.',
+    staleText: '{{time}} વાગ્યે લોડ થયેલા વેપારીઓ દેખાય છે.',
+    retryRefresh: 'વેપારીઓ ફરી લોડ કરવાનો પ્રયાસ કરો',
     // Draft for the owner's wording review (Customers review, 2026-10-20).
     deactivatedToast: '{{name}} નિષ્ક્રિય કર્યા.',
     activatedToast: '{{name}} સક્રિય કર્યા.',

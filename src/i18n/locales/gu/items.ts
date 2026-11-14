@@ -23,8 +23,10 @@ export const items: Translation<typeof source> = {
     deactivateConfirmMessage: 'નવી આવક પાવતી કે ઑર્ડર માટે આઇટમ પસંદ કરતી વખતે તે દેખાશે નહીં. તેના રેકોર્ડ અને દર રહેશે, અને તમે તેને ફરી સક્રિય કરી શકશો.',
     // Draft for the owner's wording review (Items screens 2026-10-20).
     searchPlaceholder: 'નામ, પેકિંગ કે વર્ણનથી શોધો',
-    noMatch: '"{{search}}" સાથે મળતી કોઈ આઇટમ નથી. ઓછા અક્ષરો લખી જુઓ.',
-    refreshFailed: 'આઇટમ રિફ્રેશ કરી શકાઈ નથી. {{time}} ની યાદી બતાવી છે.',
+    noMatchTitle: '"{{search}}" સાથે મળતી કોઈ આઇટમ નથી',
+    staleTitle: 'આઇટમ રિફ્રેશ કરી શકાઈ નથી.',
+    staleText: '{{time}} વાગ્યે લોડ થયેલી આઇટમ દેખાય છે.',
+    retryRefresh: 'આઇટમ ફરી લોડ કરવાનો પ્રયાસ કરો',
     couldNotActivateTitle: 'આઇટમ સક્રિય કરી શકાઈ નથી',
     couldNotDeactivateTitle: 'આઇટમ નિષ્ક્રિય કરી શકાઈ નથી',
     couldNotUpdateTitle: 'આઇટમમાં ફેરફાર કરી શકાયો નથી',

@@ -46,8 +46,10 @@ export const users: Translation<typeof source> = {
     openHint: 'યુઝરમાં ફેરફાર કરવા માટે ખોલે છે',
     // Draft for the owner's wording review (Users review 2026-10-20).
     searchPlaceholder: 'નામ કે મોબાઇલથી શોધો',
-    noMatch: '"{{search}}" સાથે મળતો કોઈ યુઝર નથી. ઓછા અક્ષરો લખી જુઓ.',
-    refreshFailed: 'યુઝર રિફ્રેશ કરી શકાયા નથી. {{time}} ની યાદી બતાવી છે.',
+    noMatchTitle: '"{{search}}" સાથે મળતો કોઈ યુઝર નથી',
+    staleTitle: 'યુઝર રિફ્રેશ કરી શકાયા નથી.',
+    staleText: '{{time}} વાગ્યે લોડ થયેલા યુઝર દેખાય છે.',
+    retryRefresh: 'યુઝર ફરી લોડ કરવાનો પ્રયાસ કરો',
     connections: 'કનેક્શન',
     connectionTag: 'કનેક્શન',
     // Draft for the owner's wording review (Users review 2026-10-20).

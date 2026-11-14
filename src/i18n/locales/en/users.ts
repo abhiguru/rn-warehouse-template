@@ -45,8 +45,10 @@ export const users = {
     },
     openHint: 'Opens the user for editing',
     searchPlaceholder: 'Search by name or mobile',
-    noMatch: 'No users match "{{search}}". Try fewer letters.',
-    refreshFailed: "Couldn't refresh users. Showing the list from {{time}}.",
+    noMatchTitle: 'No users match "{{search}}"',
+    staleTitle: "Couldn't refresh users.",
+    staleText: 'Showing the users loaded at {{time}}.',
+    retryRefresh: 'Try loading the users again',
     // Service accounts (the FAS sync) are listed apart from people.
     connections: 'Connections',
     connectionTag: 'Connection',

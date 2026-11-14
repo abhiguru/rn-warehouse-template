@@ -26,7 +26,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { adminUserService } from '@/services/admin-user-service';
 import { UserListItem, UserFilters, UserRole } from '@/types/user.types';
 import { subscribeUserListChanges } from '@/utils/userListSync';
-import { LastUpdatedLine, LoadMoreErrorFooter } from '@/components/lists/ListLoadErrors';
+import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from '@/components/lists/ListLoadErrors';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
@@ -337,8 +337,8 @@ export default function UsersScreen() {
         <ListEmptyState
           activeFilterCount={1}
           filteredIcon="magnify"
-          filteredTitle={tr('users.list.noMatch', { search: state.filters.search_query })}
-          filteredSubtitle=""
+          filteredTitle={tr('users.list.noMatchTitle', { search: state.filters.search_query })}
+          filteredSubtitle={tr('customers.search.noMatchMessage')}
           clearFiltersLabel={tr('common.clearSearch')}
           onClearFilters={() => handleSearch('')}
         />
@@ -436,15 +436,17 @@ export default function UsersScreen() {
           placeholder={tr('users.list.searchPlaceholder')}
           loading={state.loading}
           countText={peopleCount > 0 ? formatCount(peopleCount, 'user') : undefined}
-          refreshError={
-            state.refreshFailed
-              ? {
-                  message: tr('users.list.refreshFailed', { time: formatTime(state.loadedAt) }),
-                  onRetry: () => fetchUsers(state.filters, 0),
-                }
-              : undefined
-          }
         />
+        {state.refreshFailed && state.loadedAt ? (
+          <StaleListStrip
+            title={tr('users.list.staleTitle')}
+            text={tr('users.list.staleText', { time: formatTime(state.loadedAt) })}
+            retryLabel={tr('users.list.retryRefresh')}
+            onRetry={() => fetchUsers(state.filters, 0)}
+            retrying={state.refreshing}
+            testID="users-stale-strip"
+          />
+        ) : null}
         {isOffline && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="users-last-updated" />
         ) : null}

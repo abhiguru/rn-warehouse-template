@@ -36,7 +36,7 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { LastUpdatedLine } from '@/components/lists/ListLoadErrors';
+import { LastUpdatedLine, StaleListStrip } from '@/components/lists/ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { MasterListHeader } from '@/components/common/MasterListHeader';
@@ -542,12 +542,17 @@ export default function CustomersScreen() {
           onSearch={setSearch}
           placeholder={tr('customers.search.placeholder')}
           countText={countText}
-          refreshError={
-            state.refreshFailed
-              ? { message: tr('customers.list.refreshFailed', { time: formatTime(state.loadedAt) }), onRetry: handleRefresh }
-              : undefined
-          }
         />
+        {state.refreshFailed && state.loadedAt ? (
+          <StaleListStrip
+            title={tr('customers.list.staleTitle')}
+            text={tr('customers.list.staleText', { time: formatTime(state.loadedAt) })}
+            retryLabel={tr('customers.list.retryRefresh')}
+            onRetry={handleRefresh}
+            retrying={state.refreshing}
+            testID="customers-stale-strip"
+          />
+        ) : null}
         {showFilter ? (
           <View style={styles.filterRow}>
             <ChoiceChips
