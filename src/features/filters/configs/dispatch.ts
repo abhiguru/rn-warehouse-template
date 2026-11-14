@@ -38,7 +38,7 @@ export const DISPATCH_FILTERS: FilterListConfig<DispatchListRequest> = {
     default: { field: 'dispatch_date', order: 'desc' },
   },
   fields: [
-    { kind: 'dateRange', key: 'date', get label() { return t('common.date'); }, icon: 'calendar-range' },
+    { kind: 'dateRange', key: 'date', get label() { return t('reports.period.label'); }, icon: 'calendar-range' },
     {
       kind: 'picker',
       key: 'customers',
