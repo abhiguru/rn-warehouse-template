@@ -33,6 +33,7 @@ import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@
 import { showAlert } from '@/utils/alert';
 import { indiaDay, parseLocalISODate, todayInIST, toLocalISODate } from '@/utils/formatters';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
+import { nameFileNamePart } from '@/utils/invoiceLabel';
 
 const DEFAULT_DAYS = 30;
 
@@ -160,7 +161,7 @@ function ReportForm({ deviceId, sensor }: { deviceId: string; sensor: ReportSens
         }
         return;
       }
-      const filename = `Temperature report ${sensor?.name ?? ''} ${fromDay} to ${toDay}`.replace(/\s+/g, ' ').trim() + '.pdf';
+      const filename = `Temperature report ${nameFileNamePart(sensor?.name)} ${fromDay} to ${toDay}`.replace(/\s+/g, ' ').trim() + '.pdf';
       const shared = await downloadAndSharePDF(made.pdfUrl, filename);
       if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), shared.error || tr('errors.pdf.shareFailed'));
     } finally {
