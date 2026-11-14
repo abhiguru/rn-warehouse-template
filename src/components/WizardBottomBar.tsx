@@ -14,7 +14,7 @@ export interface WizardBottomBarProps {
   /** Back to the previous step; the Back button shows from step 2 on. */
   onPrevious?: () => void | Promise<void>;
   onNext: () => void | Promise<void>;
-  /** Primary label: "Next" by default, "Create GRN" on the last step. */
+  /** Primary label: "Next" by default ("Review" with Add item). The last step has no default: each wizard passes its own save label. */
   nextLabel?: string;
   /** Spoken label of the primary button when it differs from what it shows; the label by default. */
   nextAccessibilityLabel?: string;
@@ -144,7 +144,7 @@ export default function WizardBottomBar({
 
   const isLastStep = currentStep >= totalSteps;
   const hasAdd = !!onAdd;
-  const label = nextLabel ?? (hasAdd ? tr('components.wizard.review') : isLastStep ? tr('components.wizard.createGrn') : tr('common.next'));
+  const label = nextLabel ?? (hasAdd ? tr('components.wizard.review') : tr('common.next'));
   const loadingLabel = loadingLabelProp ?? tr('common.saving');
 
   const handlePrevious = () => {

@@ -520,7 +520,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
         currentStep={STEP_NUMBERS.HEADER}
         totalSteps={3}
         onNext={handleNext}
-        nextLabel={tr('invoice.form.nextItems')}
+        nextLabel={tr('common.next')}
         isLoading={isGettingNextNumber}
         loadingLabel={tr('invoice.form.generating')}
       />

@@ -103,7 +103,6 @@ export const invoice: Translation<typeof source> = {
     customerPlaceholder: 'આવક પાવતી પસંદ કરશો એટલે ભરાઈ જશે',
     oneTimeChargeHelp:
       "આવક પાવતીની ભાડાની રીત પરથી લેવાય છે; તે આવક પાવતીમાં બદલો. એક વખત: દરેક નંગનું ભાડું એક જ વાર, મજૂરી વગર. માસિક: જેટલા મહિના રાખ્યું તેટલા મહિનાનું ભાડું, અને મજૂરી.",
-    nextItems: 'આગળ: આઇટમ',
     checkDetailsTitle: 'ઇન્વૉઇસની વિગતો તપાસો',
     fixFields: {
       one: 'લાલ નિશાનીવાળી વિગત સુધારો, પછી આગળ વધો.',
@@ -152,7 +151,6 @@ export const invoice: Translation<typeof source> = {
       other: 'નિશાનવાળા {{count}} આંકડા સુધારો, પછી આગળ વધો.',
     },
     backToDetails: 'વિગતો પર પાછા જાઓ',
-    nextReview: 'આગળ: ચકાસણી',
     emptyText: 'પસંદ કરેલી જાવકની આઇટમ અહીં દેખાશે.',
     hint: 'બદલવા માટે આંકડા પર ટૅપ કરો.',
     howPricingWorks: 'દર કેવી રીતે લાગુ પડે છે',

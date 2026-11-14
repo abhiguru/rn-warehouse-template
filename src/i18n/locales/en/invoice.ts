@@ -101,7 +101,6 @@ export const invoice = {
     customerPlaceholder: 'Filled in when you select a GRN',
     oneTimeChargeHelp:
       "Taken from the GRN's pricing mode; change it on the GRN. One time: storage is charged once per unit, without labour. Monthly: storage for the months stored, plus labour.",
-    nextItems: 'Next: items',
     checkDetailsTitle: 'Check the invoice details',
     fixFields: {
       one: 'Fix the highlighted field, then continue.',
@@ -148,7 +147,6 @@ export const invoice = {
       other: 'Fix the {{count}} highlighted figures, then continue.',
     },
     backToDetails: 'Back to details',
-    nextReview: 'Next: review',
     emptyText: 'Items from the selected dispatches appear here.',
     hint: 'Tap a figure to change it.',
     howPricingWorks: 'How pricing works',
