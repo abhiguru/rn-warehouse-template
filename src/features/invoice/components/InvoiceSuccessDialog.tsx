@@ -9,26 +9,17 @@
  */
 
 import React from 'react';
-import { View, Text, Modal, Pressable, ActivityIndicator, ScrollView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, Modal } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import {
-  fontWeight,
-  iconSize,
-  layout,
-  radius,
-  space,
-  touchTarget,
-  typography,
-  type ThemeTokens,
-} from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { SavedInvoiceData } from '@/types/invoice.types';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { formatFinancialYear } from '@/utils/formatters';
 import { asDocType, docTypeKey } from '@/features/gst/docType';
+import { DialogActions, DialogBody, DialogButton, DialogCard, DialogHeading, DialogOverlay } from '@/components/DialogFrame';
 
 interface InvoiceSuccessDialogProps {
   isVisible: boolean;
@@ -46,46 +37,7 @@ interface InvoiceSuccessDialogProps {
 }
 
 const makeStyles = (t: ThemeTokens) => ({
-  overlay: {
-    flex: 1,
-    backgroundColor: t.overlay.scrim,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: layout.marginCompact,
-  },
-  dialog: {
-    backgroundColor: t.surface.sheet,
-    borderRadius: radius.card,
-    width: '100%' as const,
-    maxWidth: layout.maxFormWidth,
-    maxHeight: '100%' as const,
-    ...t.shadow[4],
-  },
-  content: {
-    padding: space.xxl,
-  },
-  iconContainer: {
-    alignSelf: 'center' as const,
-    width: touchTarget + space.lg,
-    height: touchTarget + space.lg,
-    borderRadius: radius.pill,
-    backgroundColor: t.status.positive.background,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: space.lg,
-  },
-  title: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginBottom: space.sm,
-  },
-  message: {
-    ...typography.body,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-  },
+  rest: { alignSelf: 'stretch' as const, marginTop: space.lg },
   detailsCard: {
     backgroundColor: t.background.base,
     borderRadius: radius.button,
@@ -161,45 +113,6 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'right' as const,
     fontVariant: ['tabular-nums' as const],
   },
-  buttonContainer: {
-    gap: space.sm,
-    marginTop: space.sm,
-  },
-  button: {
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    flexDirection: 'row' as const,
-    gap: space.sm,
-    paddingHorizontal: space.lg,
-  },
-  primaryButton: {
-    backgroundColor: t.brand.fill,
-  },
-  primaryButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  primaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: t.border.button,
-    backgroundColor: 'transparent',
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
-  },
-  buttonBusy: {
-    opacity: t.interaction.disabledOpacity,
-  },
 });
 
 export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
@@ -214,7 +127,6 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
   isEditMode = false,
   onDismissed,
 }) => {
-  const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
@@ -254,23 +166,11 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
       onDismiss={onDismissed}
       statusBarTranslucent
     >
-      <View
-        style={[
-          styles.overlay,
-          { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg },
-        ]}
-      >
-        <View style={styles.dialog} accessibilityViewIsModal>
-          <ScrollView contentContainerStyle={styles.content} bounces={false}>
-            <View style={styles.iconContainer} accessible={false} importantForAccessibility="no">
-              <MaterialCommunityIcons name="check-circle" size={iconSize.xl} color={t.status.positive.text} />
-            </View>
-
-            <Text style={styles.title} accessibilityRole="header">
-              {title}
-            </Text>
-            <Text style={styles.message}>{message}</Text>
-
+      <DialogOverlay safeArea>
+        <DialogCard>
+          <DialogBody>
+            <DialogHeading tone="success" title={title} message={message} />
+            <View style={styles.rest}>
             <View
               style={styles.detailsCard}
               accessible
@@ -334,64 +234,35 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
               </View>
             )}
 
-            <View style={styles.buttonContainer}>
-              <Pressable
-                style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
-                onPress={onViewList}
-                accessibilityRole="button"
-              >
-                <Text style={styles.primaryButtonText}>{tr(isEditMode ? 'invoice.success.viewInvoice' : 'invoice.success.viewInvoices')}</Text>
-              </Pressable>
-
-              {onSharePDF && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.button,
-                    styles.secondaryButton,
-                    pressed && styles.secondaryButtonPressed,
-                    isShareLoading && styles.buttonBusy,
-                  ]}
-                  onPress={onSharePDF}
-                  disabled={isShareLoading}
-                  accessibilityRole="button"
-                  accessibilityLabel={isShareLoading ? tr('invoice.success.preparingPdfA11y') : tr('invoice.success.sharePdfA11y')}
-                  accessibilityState={{ busy: isShareLoading, disabled: isShareLoading }}
-                >
-                  {isShareLoading ? (
-                    <ActivityIndicator size="small" color={t.brand.tint} />
-                  ) : (
-                    <MaterialCommunityIcons name="share-variant-outline" size={iconSize.md} color={t.brand.tint} />
-                  )}
-                  <Text style={styles.secondaryButtonText}>{isShareLoading ? tr('invoice.success.preparingPdf') : tr('invoice.success.sharePdf')}</Text>
-                </Pressable>
-              )}
-
-              {onPrint && (
-                <Pressable
-                  style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                  onPress={onPrint}
-                  accessibilityRole="button"
-                >
-                  <MaterialCommunityIcons name="printer-outline" size={iconSize.md} color={t.brand.tint} />
-                  <Text style={styles.secondaryButtonText}>{tr('invoice.print.title')}</Text>
-                </Pressable>
-              )}
-
-              {/* In edit mode "another" would only return to the list, the
-                  same as "View invoices", so it is not offered. */}
-              {!isEditMode && (
-                <Pressable
-                  style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                  onPress={onCreateAnother}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.secondaryButtonText}>{tr('invoice.success.createAnother')}</Text>
-                </Pressable>
-              )}
             </View>
-          </ScrollView>
-        </View>
-      </View>
+          </DialogBody>
+
+          {/* Actions: stacked, the action first */}
+          <DialogActions stacked>
+            <DialogButton
+              stacked
+              role="primary"
+              label={tr(isEditMode ? 'invoice.success.viewInvoice' : 'invoice.success.viewInvoices')}
+              onPress={onViewList}
+            />
+            {onSharePDF && (
+              <DialogButton
+                stacked
+                icon="share-variant-outline"
+                label={tr('invoice.success.sharePdf')}
+                busyLabel={tr('invoice.success.preparingPdf')}
+                accessibilityLabel={isShareLoading ? tr('invoice.success.preparingPdfA11y') : tr('invoice.success.sharePdfA11y')}
+                busy={isShareLoading}
+                onPress={onSharePDF}
+              />
+            )}
+            {onPrint && <DialogButton stacked icon="printer-outline" label={tr('invoice.print.title')} onPress={onPrint} />}
+            {/* In edit mode "another" would only return to the list, the
+                same as "View invoices", so it is not offered. */}
+            {!isEditMode && <DialogButton stacked label={tr('invoice.success.createAnother')} onPress={onCreateAnother} />}
+          </DialogActions>
+        </DialogCard>
+      </DialogOverlay>
     </Modal>
   );
 };
