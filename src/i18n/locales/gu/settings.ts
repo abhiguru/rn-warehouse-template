@@ -37,7 +37,7 @@ export const settings: Translation<typeof source> = {
     moveUpLabel: '{{label}} ઉપર લઈ જાઓ',
     moveDownLabel: '{{label}} નીચે લઈ જાઓ',
     inputLabel: '{{list}} બટન {{position}}',
-    save: 'બટન સાચવો',
+    save: 'રેકના બટન સાચવો',
     saved: 'રેકના બટન સચવાઈ ગયા.',
     unchanged: 'કોઈ ફેરફાર નથી.',
     loadFailed: 'રેકના બટન લોડ કરી શકાયા નથી. ફરી પ્રયાસ કરો.',

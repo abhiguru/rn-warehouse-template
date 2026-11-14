@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useAppSelector } from '@/store/hooks';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
@@ -66,6 +67,12 @@ export default function RackPresetsScreen() {
     };
   }, [allowed, isFocused, load]);
 
+  // A button added, renamed, moved or removed asks before leaving; a save in progress holds the ways out.
+  const dirty =
+    !!loaded && !!draft && (draft.floor.join('\n') !== loaded.floor.join('\n') || draft.chamber.join('\n') !== loaded.chamber.join('\n'));
+
+  useLeaveGuard({ hasChanges: dirty, blocked: saving });
+
   const header = (
     <Stack.Screen
       options={{ title: tr('settings.rackPresets.title'), headerShown: true, headerTitleAlign: 'center', headerLeft: () => <HeaderBackButton /> }}
@@ -95,9 +102,6 @@ export default function RackPresetsScreen() {
       [next[index], next[to]] = [next[to], next[index]];
       return next;
     });
-
-  const dirty =
-    !!loaded && !!draft && (draft.floor.join('\n') !== loaded.floor.join('\n') || draft.chamber.join('\n') !== loaded.chamber.join('\n'));
 
   const save = async () => {
     if (!loaded || !draft || saving) return;
