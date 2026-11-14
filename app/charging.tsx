@@ -31,6 +31,7 @@ import {
   type ChargingRule,
 } from '@/features/charging/chargingRule';
 import { useAppSelector } from '@/store/hooks';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
@@ -97,6 +98,9 @@ export default function ChargingScreen() {
   }, [allowed, isFocused, load]);
 
   const dirty = stored !== null && draft !== null && !sameChargingRule(stored.rule, draft);
+
+  // Asks only when the staged rule differs from the stored one; the two switches apply at once and are not part of it.
+  useLeaveGuard({ hasChanges: dirty, blocked: saving });
 
   const choose = useCallback((change: Partial<ChargingRule>) => {
     setDraft(current => {
@@ -242,7 +246,7 @@ export default function ChargingScreen() {
       {header}
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}
+        contentContainerStyle={{ paddingBottom: space.xl }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -297,15 +301,17 @@ export default function ChargingScreen() {
             {stored?.updatedByName ? (
               <Text style={styles.intro}>{tr('charging.screen.changedBy', { name: stored.updatedByName })}</Text>
             ) : null}
-            <View style={styles.actions}>
-              <Button testID="charging-save" disabled={!dirty || saving} loading={saving} onPress={() => setAsking(true)}>
-                {tr('charging.screen.save')}
-              </Button>
-            </View>
           </>
         ) : null}
         {stored && error ? <Text style={styles.staleNote}>{error}</Text> : null}
       </ScrollView>
+      {draft ? (
+        <View style={[styles.saveBar, { paddingBottom: insets.bottom + space.md }]}>
+          <Button size="fullWidth" testID="charging-save" disabled={!dirty || saving} loading={saving} onPress={() => setAsking(true)}>
+            {tr('charging.screen.save')}
+          </Button>
+        </View>
+      ) : null}
       {sheet ? (
         <PreferenceSheet
           visible
@@ -355,7 +361,7 @@ const makeStyles = (t: ThemeTokens) =>
     loading: { marginTop: space.xxl },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
-    actions: { marginHorizontal: layout.marginCompact, marginTop: space.md },
+    saveBar: { paddingTop: space.md, paddingHorizontal: layout.marginCompact, backgroundColor: t.surface.card, ...t.shadow[3] },
     switchBox: { marginHorizontal: layout.marginCompact, marginTop: space.lg, borderRadius: radius.card, overflow: 'hidden', backgroundColor: t.surface.card },
     stateScreen: {
       flex: 1,
