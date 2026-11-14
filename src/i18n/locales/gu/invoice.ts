@@ -270,8 +270,10 @@ export const invoice: Translation<typeof source> = {
     editItemsA11y: 'આઇટમમાં ફેરફાર કરો',
     amounts: 'રકમ',
     backToItems: 'આઇટમ પર પાછા જાઓ',
+    createInvoice: 'ઇન્વૉઇસ બનાવો',
     saveInvoice: 'ઇન્વૉઇસ સાચવો',
-    updateInvoice: 'ઇન્વૉઇસ અપડેટ કરો',
+    creating: 'ઇન્વૉઇસ બની રહ્યું છે…',
+    saving: 'ઇન્વૉઇસ સચવાઈ રહ્યું છે…',
     saveTitle: 'ઇન્વૉઇસ {{number}} સાચવવું છે?',
     updateTitle: 'ઇન્વૉઇસ {{number}} અપડેટ કરવું છે?',
     // Draft for the owner's wording review (2026-10-20): the server checks the total shown here.

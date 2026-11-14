@@ -493,7 +493,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     ? tr('invoice.review.updateTitle', { number: formatIdentifier(formLabel) })
     : tr('invoice.review.saveTitle', { number: formatIdentifier(formLabel) });
   const toggleSection = (section: string) => toggle(section as ReviewSectionId);
-  const saveLabel = isEdit ? tr('invoice.review.updateInvoice') : tr('invoice.review.saveInvoice');
+  const saveLabel = isEdit ? tr('invoice.review.saveInvoice') : tr('invoice.review.createInvoice');
 
   return (
     <View style={styles.container}>
@@ -611,7 +611,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         nextLabel={saveLabel}
         nextDisabled={lostAnswer || reloading}
         isLoading={isSaving}
-        loadingLabel={tr('common.saving')}
+        loadingLabel={tr(isEdit ? 'invoice.review.saving' : 'invoice.review.creating')}
       />
 
       {/* Success Dialog */}
