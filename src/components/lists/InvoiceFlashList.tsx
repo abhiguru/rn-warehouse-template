@@ -43,8 +43,6 @@ import { MemoizedInvoiceItem } from '@/components/list-items';
 // State
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
-import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
-import { showOpenFormRefusal } from '@/features/invoice/utils/refuseOpenForm';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -55,7 +53,7 @@ import { printSkippedNote } from '@/features/gst/printSkipped';
 import { showToast } from '@/utils/toast';
 import { showAlert } from '@/utils/alert';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { billsMayStart } from '@/features/gst/billsAllowed';
+import { beginNewBill, releaseNewBill } from '@/features/invoice/utils/startNewBill';
 import { usePaymentsVisible } from '@/features/payments/usePaymentsVisible';
 
 // Filters, search and sort
@@ -279,13 +277,12 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // Set by the first tap on "Create invoice" until the list is in front again:
   // a second tap opened a second step 1 and reset the form the first one had
   // started (its suggested number was lost).
-  const openingFormRef = useRef(false);
 
   // A real return to the screen (after a blur, e.g. back from an invoice) loads once.
   useFocusEffect(
     useCallback(() => {
       screenFocusedRef.current = true;
-      openingFormRef.current = false;
+      releaseNewBill();
       if (blurredRef.current) {
         // Filters applied while away are served like an inline change (fresh=false);
         // a revisit with the same request reads the server again.
@@ -333,19 +330,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   }, [onItemPress]);
 
   const handleCreateInvoice = useCallback(async () => {
-    if (openingFormRef.current) return;
-    // Another invoice form is open (maybe hidden under other screens): say so before anything is reset (J1).
-    const blocker = openFormBlocking({ kind: 'create' });
-    if (blocker) {
-      showOpenFormRefusal(blocker);
-      return;
-    }
-    // WH-205: no new bill until the GST details are saved. One request per tap; further taps wait for it.
-    openingFormRef.current = true;
-    if (!(await billsMayStart(userProfile?.role))) {
-      openingFormRef.current = false;
-      return;
-    }
+    // The open-form check (J1) and the GST check (WH-205), before and after the server answers; one busy flag with the tab's button.
+    if ((await beginNewBill(userProfile?.role, () => screenFocusedRef.current)) !== 'go') return;
     dispatch(resetInvoiceForm());
     router.push('/invoice-form/step1');
   }, [dispatch, userProfile?.role]);

@@ -546,7 +546,7 @@ function GRNDetailScreen() {
     setPreparingInvoice(true);
     let mayStart = false;
     try {
-      mayStart = await billsMayStart(userProfile?.role);
+      mayStart = await billsMayStart(userProfile?.role, () => focusedRef.current && !openFormBlocking({ kind: 'create' }));
     } finally {
       if (!mayStart) {
         setPreparingInvoice(false);

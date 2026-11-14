@@ -39,6 +39,10 @@ export async function canMakeBills(): Promise<BillsAllowed> {
   }
 }
 
+/** The role-worded sentence of the refusal (for a screen that shows it its own way). */
+export const billsBlockedMessage = (role: string | null | undefined): string =>
+  t(normalizeRole(role) === 'admin' ? 'gst.billsBlocked.admin' : 'gst.billsBlocked.other');
+
 /** The alert for a refused new bill: an administrator may open the GST details, anyone else is told whom to ask. Returns the message. */
 export function refuseBillAlert(role: string | null | undefined): string {
   if (normalizeRole(role) === 'admin') {
@@ -55,8 +59,9 @@ export function refuseBillAlert(role: string | null | undefined): string {
 }
 
 /** For an entry to the new-bill form: false when the person was told no bill can be made (and the form must not open). */
-export async function billsMayStart(role: string | null | undefined): Promise<boolean> {
+export async function billsMayStart(role: string | null | undefined, stillWanted: () => boolean = () => true): Promise<boolean> {
   if ((await canMakeBills()) !== 'refused') return true;
-  refuseBillAlert(role);
+  // The screen was left or another form opened while the server was asked: say nothing.
+  if (stillWanted()) refuseBillAlert(role);
   return false;
 }

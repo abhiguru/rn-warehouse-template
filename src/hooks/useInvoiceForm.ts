@@ -82,7 +82,7 @@ import { InvoiceRouteIdContext } from '@/features/invoice/utils/invoiceRouteId';
 
 import { describeValidationErrors } from '@/features/invoice/utils/validationMessages';
 import { askAlert, showAlert } from '@/utils/alert';
-import { refuseBillAlert } from '@/features/gst/billsAllowed';
+import { billsBlockedMessage } from '@/features/gst/billsAllowed';
 import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
@@ -968,7 +968,9 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       }
       if (refusal?.reason === REFUSAL.GST_DETAILS_REQUIRED) {
         // WH-205: the details were cleared while the form was open. Nothing was saved; the form keeps what was typed.
-        return { success: false, error: refuseBillAlert(store.getState().auth.userProfile?.role) };
+        const message = billsBlockedMessage(store.getState().auth.userProfile?.role);
+        report(t('gst.billsBlocked.title'), message);
+        return { success: false, error: message };
       }
       if (refusal?.reason === REFUSAL.NUMBER_OUT_OF_RANGE) {
         // WH-139: the second number is named in full, with the prefix of the invoice's year in front.
