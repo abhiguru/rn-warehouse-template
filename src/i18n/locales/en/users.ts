@@ -33,7 +33,7 @@ export const users = {
     title: 'Users',
     loading: 'Loading users',
     loadingText: 'Loading users…',
-    errorTitle: "Couldn't load users",
+    loadErrorTitle: "Couldn't load users",
     emptyTitle: 'No users yet',
     emptyMessage: 'People who join this facility appear here.',
     loadingMore: 'Loading more users',

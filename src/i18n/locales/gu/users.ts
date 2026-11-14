@@ -33,7 +33,7 @@ export const users: Translation<typeof source> = {
     title: 'યુઝર',
     loading: 'યુઝર લોડ થઈ રહ્યા છે',
     loadingText: 'યુઝર લોડ થઈ રહ્યા છે…',
-    errorTitle: 'યુઝર લોડ કરી શકાયા નથી',
+    loadErrorTitle: 'યુઝર લોડ કરી શકાયા નથી',
     emptyTitle: 'હજુ કોઈ યુઝર નથી',
     emptyMessage: 'આ કોલ્ડ સ્ટોરેજમાં જોડાનારા લોકો અહીં દેખાશે.',
     loadingMore: 'વધુ યુઝર લોડ થઈ રહ્યા છે',
