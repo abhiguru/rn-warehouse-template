@@ -50,7 +50,9 @@ const mount = async () => {
   await act(async () => { tree = create(<CustomerFormRoute />); });
   return tree as ReactTestRenderer;
 };
-const bar = (screen: ReactTestRenderer) => screen.root.findByProps({ testID: 'customer-save-bar' });
+// WH-227: the bar is the shared FormSaveBar, so its testID is on the component and on its host View; take the View.
+const bar = (screen: ReactTestRenderer) =>
+  screen.root.find(node => node.props.testID === 'customer-save-bar' && (node.type as unknown) === 'View');
 
 it('draws the save bar in the flow, as the last child of the root column', async () => {
   const screen = await mount();
@@ -63,14 +65,14 @@ it('draws the save bar in the flow, as the last child of the root column', async
 
 it('keeps the home-indicator space while the keyboard is hidden and gives it up while it is shown', async () => {
   // The test renderer has no keyboard: record the listeners the form registers and call them.
-  const listeners: Record<string, () => void> = {};
-  jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, handler: () => void) => {
+  const listeners: Record<string, (event?: unknown) => void> = {};
+  jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, handler: (event?: unknown) => void) => {
     listeners[name] = handler;
     return { remove: jest.fn() };
   }) as never);
   const screen = await mount();
   expect(StyleSheet.flatten(bar(screen).props.style).paddingBottom).toBe(24 + space.md);
-  await act(async () => { listeners.keyboardDidShow(); });
+  await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 1350, height: 800 } }); });
   expect(StyleSheet.flatten(bar(screen).props.style).paddingBottom).toBe(space.md);
   await act(async () => { listeners.keyboardDidHide(); });
   expect(StyleSheet.flatten(bar(screen).props.style).paddingBottom).toBe(24 + space.md);

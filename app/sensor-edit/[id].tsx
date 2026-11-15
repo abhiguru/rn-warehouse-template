@@ -52,12 +52,11 @@ const makeStyles = (t: ThemeTokens) =>
       backgroundColor: t.surface.card,
       borderRadius: radius.card,
       padding: space.lg,
-      gap: space.lg,
       ...t.shadow[2],
     },
     deviceName: { ...typography.subhead, color: t.text.secondary },
-    cardTitle: { ...typography.headline, color: t.text.primary },
-    cardHint: { ...typography.footnote, color: t.text.secondary },
+    cardTitle: { ...typography.headline, color: t.text.primary, marginBottom: space.sm },
+    cardHint: { ...typography.footnote, color: t.text.secondary, marginBottom: space.lg },
   });
 
 /** The order of the fields on the screen: the first wrong one gets the focus. */
@@ -245,6 +244,7 @@ const SensorEditScreen: React.FC = () => {
               onSubmitEditing={() => inputs.current.minutes?.focus()}
             />
             <Input
+              last
               label={tr('sensors.edit.minutes')}
               required
               numeric
@@ -282,6 +282,7 @@ const SensorEditScreen: React.FC = () => {
               }}
             />
             <Input
+              last
               label={tr('sensors.edit.highest')}
               numeric
               value={values.highest}

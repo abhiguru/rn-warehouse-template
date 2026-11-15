@@ -268,6 +268,7 @@ export default function GstDetailsScreen() {
                   />
                   <Input
                     label={tr('gst.settings.sacLabour')}
+                    last
                     identifier
                     value={draft.sacLabour}
                     onChangeText={text => change({ sacLabour: text.replace(/\D/g, '') })}
@@ -314,7 +315,7 @@ const makeStyles = (t: ThemeTokens) =>
     loading: { marginTop: space.xxl },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
-    fields: { marginHorizontal: layout.marginCompact, marginTop: space.lg, gap: space.md },
+    fields: { marginHorizontal: layout.marginCompact, marginTop: space.lg },
     stateScreen: {
       flex: 1,
       alignItems: 'center',

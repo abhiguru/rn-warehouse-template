@@ -47,6 +47,7 @@ import { getActiveOperatorServer } from '@/config/operatorServer';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { showToast } from '@/utils/toast';
@@ -72,6 +73,7 @@ const UserEditScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
+  const { ref: barRef, lift, onLayout: measureLift } = useKeyboardCoverLift();
   const dispatch = useAppDispatch();
   const { userProfile: currentUserProfile } = useAppSelector((state) => state.auth);
 
@@ -457,7 +459,7 @@ const UserEditScreen: React.FC = () => {
       </ScrollView>
 
       {/* The save button sits under the form, not on it (style guide §14.4) */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+      <View ref={barRef} onLayout={measureLift} style={[styles.bottomBar, { marginBottom: lift, paddingBottom: insets.bottom + space.md }]}>
         <Button size="fullWidth" onPress={handleSave} loading={saving} disabled={saving} testID="self-edit-save">
           {tr('users.selfEdit.saveLabel')}
         </Button>

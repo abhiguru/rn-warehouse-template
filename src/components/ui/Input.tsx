@@ -60,6 +60,12 @@ export interface InputProps extends TextInputProps {
   required?: boolean;
   /** Maximum character count (enables character counter) */
   maxLength?: number;
+  /** The last field of a card or group: drops the bottom margin, so the container's own padding is the only space after it. */
+  last?: boolean;
+  /** Typing stops at `maxLength` (the TextInput gets it) instead of the soft "too long" error. Off by default. */
+  hardLimit?: boolean;
+  /** Fixed text in the field before the typed text, such as "+91": `body`, `text.secondary`, hidden from the screen reader (the label or `accessibilityLabel` names it). */
+  prefix?: string;
   /** Show character counter */
   showCharacterCount?: boolean;
   /** Read-only mode (can copy but not edit) */
@@ -104,6 +110,9 @@ export function Input({
   rightIcon,
   required = false,
   maxLength,
+  hardLimit = false,
+  last = false,
+  prefix,
   showCharacterCount = false,
   readOnly = false,
   showClearButton = true,
@@ -186,6 +195,7 @@ export function Input({
     <View
       style={[
         styles.container,
+        last && styles.containerLast,
         isDisabled && styles.containerDisabled,
         containerStyle,
       ]}
@@ -205,18 +215,25 @@ export function Input({
       )}
 
       {/* Field */}
-      <View style={[styles.inputContainer, fieldStateStyle, fieldStyle]} onLayout={onFieldLayout}>
+      <View style={[styles.inputContainer, textInputProps.multiline && styles.inputContainerMultiline, fieldStateStyle, fieldStyle]} onLayout={onFieldLayout}>
         {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
+        {prefix ? (
+          <Text style={styles.prefix} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            {prefix}
+          </Text>
+        ) : null}
 
         <TextInput
           {...textInputProps}
           ref={setRefs}
           value={numeric ? localizeDigits(currentValue) : currentValue}
           onChangeText={handleChangeText}
+          maxLength={hardLimit ? maxLength : undefined}
           editable={!isReadOnly && editable}
           selectTextOnFocus={isReadOnly || selectTextOnFocus}
           style={[
             styles.input,
+            textInputProps.multiline && styles.inputMultiline,
             isDisabled && styles.textDisabled,
             inputStyle,
           ]}
@@ -358,6 +375,9 @@ const makeStyles = (t: ThemeTokens) => ({
   container: {
     marginBottom: space.lg,
   },
+  containerLast: {
+    marginBottom: 0,
+  },
   containerDisabled: {
     opacity: t.interaction.disabledOpacity,
   },
@@ -418,6 +438,19 @@ const makeStyles = (t: ThemeTokens) => ({
     }),
   },
 
+  inputContainerMultiline: {
+    alignItems: 'flex-start' as const,
+  },
+  inputMultiline: {
+    minHeight: touchTarget * 2 - space.md * 2,
+    paddingVertical: space.md,
+    textAlignVertical: 'top' as const,
+  },
+  prefix: {
+    ...typography.body,
+    color: t.text.secondary,
+    marginRight: space.sm,
+  },
   leftIcon: {
     marginRight: space.sm,
   },

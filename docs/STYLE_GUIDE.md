@@ -884,7 +884,7 @@ React Native Paper buttons and checked controls use Paper's `primary`, which is 
 
 ### 13.2 Text fields — `ui/Input.tsx`, `GhostTextInput.tsx`, `RemoteAutocompleteInput.tsx`, `form/*`, `FormFieldWrapper.tsx`
 
-Anatomy: label (`FormLabel`), required asterisk, field, optional left and right icons, clear button, helper or error text, optional character count.
+Anatomy: label (`FormLabel`), required asterisk, field, optional left and right icons, optional prefix (such as "+91", in `body` `text.secondary` before the value), clear button, helper or error text, optional character count. A field can stop typing at its length limit (hard cap) or allow it and show "too long" (soft limit). A multiline field (an address) is at least two lines high, with its text at the top.
 
 | Part | Token |
 |---|---|
@@ -1255,7 +1255,6 @@ Customer, item, pricing, user and profile forms.
 - Fields in one column, grouped by section headers, in the order people fill them.
 - Required fields marked with the asterisk; optional fields not marked.
 - The save action is one full-width primary button in `ui/FormSaveBar`, below the scrolling content and above the keyboard and the bottom inset. The bar looks like the wizards' bar: `surface.card`, a hairline `border.separator` on top, `shadow[3]`. An optional helper line sits above the button, in `footnote` `text.secondary`. When editing, Save is disabled until something changed; it is never disabled for a wrong value (§10). Forms that still draw their own Save:
-  - the Customer form (its own bar, with the same look);
   - the name form (`app/user/edit/[userId].tsx`) and the association account (`app/central-account.tsx`);
   - the rate form (`item-pricing/components/RateForm.tsx`) and the GRN rate sheet, a full-screen form over a step (§13.9).
 - Show all errors on save; scroll to the first.

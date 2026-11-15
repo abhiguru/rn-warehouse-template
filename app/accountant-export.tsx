@@ -154,6 +154,7 @@ export default function AccountantExportScreen() {
                   testID={`accountant-export-${key}`}
                   label={labelOf(key)}
                   required
+                  last={key === LEDGER_KEYS[LEDGER_KEYS.length - 1]}
                   value={draft[key]}
                   onChangeText={text => change(key, text)}
                   error={fieldErrors[key]}
@@ -193,7 +194,7 @@ const makeStyles = (t: ThemeTokens) =>
     intro: { ...typography.footnote, color: t.text.secondary, marginHorizontal: layout.marginCompact, marginVertical: space.lg },
     loading: { marginTop: space.xxl },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
-    fields: { marginHorizontal: layout.marginCompact, gap: space.md },
+    fields: { marginHorizontal: layout.marginCompact },
     saveError: { ...typography.subhead, color: t.status.negative.text, marginHorizontal: layout.marginCompact, marginTop: space.md },
     stateMessage: { ...typography.body, color: t.text.secondary, textAlign: 'center' },
   });
