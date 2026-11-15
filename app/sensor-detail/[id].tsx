@@ -27,9 +27,12 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { ReportHeader, ReportEmptyState } from '@/components/reports';
+import { Button } from '@/components/ui/Button';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { SensorHistoryChart, formatHumidity, formatTemperature } from '@/components/sensors/SensorHistoryChart';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -122,12 +125,18 @@ const makeStyles = (t: ThemeTokens) =>
       flex: 1,
       backgroundColor: t.background.base,
     },
-    loadingContainer: {
-      flex: 1,
+    headerTitleBox: { alignItems: 'center' },
+    headerTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' },
+    headerSubtitle: { ...typography.footnote, color: t.text.secondary, textAlign: 'center' },
+    headerActions: { flexDirection: 'row', alignItems: 'center' },
+    headerRefresh: {
+      width: touchTarget,
+      height: touchTarget,
       justifyContent: 'center',
       alignItems: 'center',
-      gap: space.lg,
+      borderRadius: radius.pill,
     },
+    headerRefreshPressed: { backgroundColor: t.brand.subtle },
     loadingText: {
       ...typography.subhead,
       color: t.text.secondary,
@@ -558,14 +567,48 @@ const SensorDetailScreen: React.FC = () => {
     </View>
   );
 
+  // The stack header, as the document pages have it: name, then the location; Refresh and Edit at the end.
   const header = (
-    <ReportHeader
-      title={device?.device_name || tr('sensors.sensor')}
-      subtitle={device?.location}
-      actionIcon={device ? 'refresh' : undefined}
-      actionLabel={tr('sensors.refresh')}
-      onAction={device ? () => void onRefresh() : undefined}
-      actions={device && canEdit ? [{ icon: 'pencil-outline', label: tr('sensors.edit.title'), onPress: () => router.push(`/sensor-edit/${device.id}`) }] : undefined}
+    <Stack.Screen
+      options={{
+        headerShown: true,
+        headerStyle: { backgroundColor: t.surface.header },
+        headerTintColor: t.brand.tint,
+        headerShadowVisible: false,
+        headerTitleAlign: 'center',
+        title: device?.device_name || tr('sensors.sensor'),
+        headerTitle: () => (
+          <View style={styles.headerTitleBox}>
+            <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+              {device?.device_name || tr('sensors.sensor')}
+            </Text>
+            {device?.location ? (
+              <Text style={styles.headerSubtitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>
+                {device.location}
+              </Text>
+            ) : null}
+          </View>
+        ),
+        headerLeft: () => <HeaderBackButton />,
+        headerRight: () =>
+          device ? (
+            <View style={styles.headerActions}>
+              <Pressable
+                style={({ pressed }) => [styles.headerRefresh, pressed && styles.headerRefreshPressed]}
+                onPress={() => void onRefresh()}
+                accessibilityRole="button"
+                accessibilityLabel={tr('sensors.refresh')}
+              >
+                <Icon name="refresh" size={iconSize.lg} color={t.brand.tint} />
+              </Pressable>
+              {canEdit ? (
+                <Button type="tertiary" onPress={() => router.push(`/sensor-edit/${device.id}`)}>
+                  {tr('common.edit')}
+                </Button>
+              ) : null}
+            </View>
+          ) : null,
+      }}
     />
   );
 
@@ -574,10 +617,7 @@ const SensorDetailScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         {header}
-        <View style={styles.loadingContainer} accessibilityLiveRegion="polite">
-          <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.loadingText}>{tr('sensors.detail.loading')}</Text>
-        </View>
+        <DetailSkeleton tabCount={1} cardCount={3} />
       </View>
     );
   }
@@ -587,13 +627,11 @@ const SensorDetailScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         {header}
-        <ReportEmptyState
+        <ErrorStateView
           icon={notFound ? 'thermometer-off' : 'alert-circle-outline'}
-          tone={notFound ? 'default' : 'error'}
-          message={notFound ? tr('sensors.detail.notFoundTitle') : tr('sensors.somethingWentWrong')}
-          description={notFound ? tr('sensors.detail.notFound') : deviceQuery.error ?? tr('sensors.detail.deviceError')}
-          actionLabel={tr('common.retry')}
-          onAction={retryAll}
+          title={notFound ? tr('sensors.detail.notFoundTitle') : tr('sensors.somethingWentWrong')}
+          message={notFound ? tr('sensors.detail.notFound') : deviceQuery.error ?? tr('sensors.detail.deviceError')}
+          onRetry={retryAll}
         />
       </View>
     );
