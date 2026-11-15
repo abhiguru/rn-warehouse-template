@@ -18,7 +18,7 @@ import {
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typography, singleLineText } from '@/theme/tokens';
+import { fontWeight, iconSize as iconSizes, layout, radius, space, touchTarget, typography, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatNumber } from '@/utils/formatters';
 import { localizeDigits } from '@/i18n';
@@ -253,10 +253,11 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 const styles = StyleSheet.create({
-  // Tabs share the width when they fit (up to four on phones) and scroll when they do not.
+  // Tabs share the width when they fit and otherwise size to their label and scroll; the row has
+  // marginCompact at both ends, so at large text part of the next tab shows past the edge.
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: space.xs,
+    paddingHorizontal: layout.marginCompact,
     flexDirection: 'row',
     alignItems: 'stretch',
   },
@@ -267,7 +268,7 @@ const styles = StyleSheet.create({
     minHeight: touchTarget + space.lg,
     flexGrow: 1,
     minWidth: 64,
-    paddingHorizontal: space.xs,
+    paddingHorizontal: space.md,
     paddingVertical: space.sm,
     position: 'relative',
   },
