@@ -1253,7 +1253,10 @@ Customer, item, pricing, user and profile forms.
 
 - Fields in one column, grouped by section headers, in the order people fill them.
 - Required fields marked with the asterisk; optional fields not marked.
-- The save action is the primary button at the bottom, or Save in the header on iOS.
+- The save action is one full-width primary button in `ui/FormSaveBar`, below the scrolling content and above the keyboard and the bottom inset. The bar looks like the wizards' bar: `surface.card`, a hairline `border.separator` on top, `shadow[3]`. An optional helper line sits above the button, in `footnote` `text.secondary`. When editing, Save is disabled until something changed; it is never disabled for a wrong value (§10). Forms that still draw their own Save:
+  - the Customer form (its own bar, with the same look);
+  - the name form (`app/user/edit/[userId].tsx`) and the association account (`app/central-account.tsx`);
+  - the rate form (`item-pricing/components/RateForm.tsx`) and the GRN rate sheet, a full-screen form over a step (§13.9).
 - Show all errors on save; scroll to the first.
 - Leaving a form asks only when something changed, once, on every way out (header Back, the phone's Back key, swipe), with `useLeaveGuard`; it never asks when nothing changed. Create forms ask "Discard this <thing>?", edit forms the default "Discard changes?". After saving, go back and show a success snackbar with `showToast`.
 
