@@ -320,15 +320,15 @@ export const components = {
     cancelEntity: 'Cancel {{entity}}',
     // Spoken name of the close button, by what the wizard is about and whether it creates or edits.
     cancelFor: {
-      grn: { create: 'Cancel GRN', edit: 'Cancel editing' },
-      dispatch: { create: 'Cancel Dispatch', edit: 'Cancel editing' },
-      invoice: { create: 'Cancel Invoice', edit: 'Cancel invoice edit' },
+      grn: { create: 'Close new GRN', edit: 'Close GRN edit' },
+      dispatch: { create: 'Close new dispatch', edit: 'Close dispatch edit' },
+      invoice: { create: 'Close new invoice', edit: 'Close invoice edit' },
     },
     // The discard question when a screen gives no title of its own.
     discardFor: {
       grn: 'Discard this GRN?',
-      dispatch: 'Discard this Dispatch?',
-      invoice: 'Discard this Invoice?',
+      dispatch: 'Discard this dispatch?',
+      invoice: 'Discard this invoice?',
     },
     cancelHint: 'Asks before discarding your changes',
   },

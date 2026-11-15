@@ -321,9 +321,9 @@ export const components: Translation<typeof source> = {
     cancelEditing: 'ફેરફાર રદ કરો',
     cancelEntity: '{{entity}} રદ કરો',
     cancelFor: {
-      grn: { create: 'આવક પાવતી રદ કરો', edit: 'ફેરફાર રદ કરો' },
-      dispatch: { create: 'જાવક રદ કરો', edit: 'ફેરફાર રદ કરો' },
-      invoice: { create: 'ઇન્વૉઇસ રદ કરો', edit: 'ઇન્વૉઇસના ફેરફાર રદ કરો' },
+      grn: { create: 'નવી આવક પાવતી બંધ કરો', edit: 'આવક પાવતીનો ફેરફાર બંધ કરો' },
+      dispatch: { create: 'નવી જાવક બંધ કરો', edit: 'જાવકનો ફેરફાર બંધ કરો' },
+      invoice: { create: 'નવું ઇન્વૉઇસ બંધ કરો', edit: 'ઇન્વૉઇસનો ફેરફાર બંધ કરો' },
     },
     discardFor: {
       grn: 'આ આવક પાવતી છોડી દેવી છે?',
