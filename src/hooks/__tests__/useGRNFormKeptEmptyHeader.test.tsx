@@ -159,9 +159,8 @@ describe('editing an old GRN with no sender and no supervisor', () => {
     await unmount();
   });
 
-  // WH-230 card: typing a sender and clearing it again is refused. The kept-empty check sees only the header as it is now, so a
-  // cleared sender looks like one that was never there (found by this test; reported to Development).
-  it.failing('a sender typed and then cleared is required again, and so is a supervisor chosen and cleared', async () => {
+  // WH-230 card: typing a sender and clearing it again is refused (a field is exempt only if empty at load and never changed).
+  it('a sender typed and then cleared is required again, and so is a supervisor chosen and cleared', async () => {
     const { form, unmount } = await openForEdit(oldRow());
     await act(async () => { form().updateHeaderField('sender_name', 'Typed Sender'); });
     expect((await form().validateCurrentStep(1)).isValid).toBe(true);
