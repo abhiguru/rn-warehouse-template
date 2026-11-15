@@ -7,6 +7,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
+import { toLocalISODate } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { resetSheetBack, sheetBackPresses } from '@/tests/helpers/backClosingSheet';
@@ -15,7 +16,7 @@ import DispatchEditStep1 from '../../../app/dispatch-edit/[id]/step1';
 
 const emptyHeader = () => ({
   // Filled in by the form itself when a new dispatch opens.
-  disp_no: 'I0002', disp_date: '2026-10-11', supervisor_id: 'u1', supervisor_name: 'Fictional Supervisor',
+  disp_no: 'I0002', disp_date: toLocalISODate(new Date()), supervisor_id: 'u1', supervisor_name: 'Fictional Supervisor',
   registration: '', customer_id: '', customer_name: '', customer_address: '', customer_city: '', customer_mobile: '', note: '',
 });
 const mockForm = {
@@ -35,7 +36,7 @@ const mockForm = {
 jest.mock('@/hooks/useDispatchForm', () => ({ useDispatchForm: () => mockForm }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
-  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1' } } }),
 }));
 jest.mock('expo-router', () => {
   const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), canGoBack: jest.fn(() => true) };
@@ -113,6 +114,8 @@ const ENTERED: [string, () => void][] = [
   ['a customer', () => { mockForm.header.customer_id = 'c1'; mockForm.header.customer_name = 'Example Traders'; }],
   ['a vehicle number', () => { mockForm.header.registration = 'GJ01XX0000'; }],
   ['a note', () => { mockForm.header.note = 'Call before loading'; }],
+  ['only a changed date', () => { mockForm.header.disp_date = '2020-01-01'; }],
+  ['only a changed supervisor', () => { mockForm.header.supervisor_id = 'u2'; mockForm.header.supervisor_name = 'Another Supervisor'; }],
 ];
 
 describe('Back on step 1 of a new dispatch', () => {

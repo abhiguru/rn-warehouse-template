@@ -6,6 +6,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
+import { toLocalISODate } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { resetSheetBack, sheetBackPresses } from '@/tests/helpers/backClosingSheet';
@@ -14,7 +15,7 @@ import GRNEditStep1 from '../../../app/grn-edit/[id]/step1';
 
 const emptyHeader = () => ({
   // Filled in by the form itself when a new GRN opens.
-  gr_no: 'A0002', date: '2026-10-11', supervisor_id: 'u1', supervisor_name: 'Fictional Supervisor', pricing_mode: 'MONTHLY', leon: false,
+  gr_no: 'A0002', date: toLocalISODate(new Date()), supervisor_id: 'u1', supervisor_name: 'Fictional Supervisor', pricing_mode: 'MONTHLY', leon: false,
   registration: '', sender_id: '', sender_name: '', customer_id: '', customer_name: '', note: '', gr_images: [] as unknown[],
 });
 const mockForm = {
@@ -39,6 +40,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({
       theme: { preference: 'light', brand: 'orange' },
+      auth: { userProfile: { id: 'u1' } },
       grnForm: {
         items: mockItems,
         header: mockForm.header,
@@ -116,6 +118,8 @@ const ENTERED: [string, () => void][] = [
   ['a sender typed by hand', () => { mockForm.header.sender_name = 'Fictional Sender'; }],
   ['a vehicle number', () => { mockForm.header.registration = 'GJ01XX0000'; }],
   ['a note', () => { mockForm.header.note = 'Bags are wet'; }],
+  ['only a changed date', () => { mockForm.header.date = '2020-01-01'; }],
+  ['only a changed supervisor', () => { mockForm.header.supervisor_id = 'u2'; mockForm.header.supervisor_name = 'Another Supervisor'; }],
   ['a photo', () => { mockForm.header.gr_images = [{ id: 'temp_1' }]; }],
   ['a line added on the items step', () => { mockItems = [{ grn_trl_id: 'item-1', qty: 10, stock: 10 }]; }],
 ];
