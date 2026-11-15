@@ -160,6 +160,10 @@ function DispatchDetailScreen() {
       if (result.success && result.data) {
         setData(result.data);
         setError(null);
+      } else if (result.notFound) {
+        // The server answered that there is no such dispatch: the page says so, not "couldn't load".
+        setData(null);
+        setError(null);
       } else {
         setError(serverText(result.error || result.message, tr('common.checkConnection')));
       }

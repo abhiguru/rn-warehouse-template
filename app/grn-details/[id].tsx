@@ -303,6 +303,10 @@ function GRNDetailScreen() {
       if (result.success && result.data) {
         setData(result.data);
         setError(null);
+      } else if (result.notFound) {
+        // The server answered that there is no such GRN: the page says so, not "couldn't load".
+        setData(null);
+        setError(null);
       } else {
         setData(null);
         setError(
@@ -736,8 +740,8 @@ function GRNDetailScreen() {
   // ============================================================================
   // Check both data and data.grn to prevent crash when grn is undefined
   if (!data || !data.grn) {
-    // Determine display state - show meaningful error when grn is undefined
-    const displayError = error || (!loading && !data?.grn ? tr('grn.details.unavailable') : null);
+    // A failed load has `error`; a missing GRN is the server's own answer (`notFound`) and leaves `error` empty.
+    const displayError = error;
 
     return (
       <>

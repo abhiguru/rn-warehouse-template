@@ -91,6 +91,8 @@ export interface GRNDetailsResponse {
   };
   message: string;
   error?: string;
+  /** The server answered but there is no such GRN (deleted, or not visible to the caller): not a failed load. */
+  notFound?: boolean;
 }
 
 // Helper function to generate signed URL from storage path
@@ -273,7 +275,8 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
       return {
         success: false,
         message: t('errors.grn.noneFound'),
-        error: t('errors.grn.notFoundOrDenied')
+        error: t('errors.grn.notFoundOrDenied'),
+        notFound: true
       };
     }
 

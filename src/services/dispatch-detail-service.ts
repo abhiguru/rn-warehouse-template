@@ -60,6 +60,8 @@ export interface DispatchDetailsResponse {
   };
   message: string;
   error?: string;
+  /** The server answered but there is no such dispatch (deleted, or not visible to the caller): not a failed load. */
+  notFound?: boolean;
 }
 
 // Helper function to generate signed URL for dispatch images
@@ -169,7 +171,8 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
       return {
         success: false,
         message: t('errors.dispatch.noneFound'),
-        error: t('errors.dispatch.notFoundOrDenied')
+        error: t('errors.dispatch.notFoundOrDenied'),
+        notFound: true
       };
     }
 
