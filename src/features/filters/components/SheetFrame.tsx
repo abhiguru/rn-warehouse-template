@@ -56,7 +56,7 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingLeft: layout.marginCompact,
     paddingRight: space.sm,
   },
-  side: { minHeight: touchTarget, justifyContent: 'center' as const, paddingHorizontal: space.sm },
+  side: { minWidth: touchTarget, minHeight: touchTarget, justifyContent: 'center' as const, paddingHorizontal: space.sm },
   closeButton: { borderRadius: radius.pill, minHeight: touchTarget, minWidth: touchTarget, alignItems: 'center' as const, justifyContent: 'center' as const },
   sideText: { ...typography.callout, color: t.brand.tint },
   sideTextDisabled: { color: t.text.disabled },
