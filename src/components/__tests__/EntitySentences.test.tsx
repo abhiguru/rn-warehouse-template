@@ -104,12 +104,12 @@ describe('GenericStepIndicatorHeader', () => {
 
 describe('ActionsSection', () => {
   const actions = (props: Partial<React.ComponentProps<typeof ActionsSection>>) =>
-    render(<ActionsSection entityNumber="311" entityId="g1" canEdit onEdit={jest.fn()} onDelete={jest.fn()} onPrint={jest.fn()} {...props} />);
+    render(<ActionsSection entityNumber="311" entityId="g1" canEdit onDelete={jest.fn()} onPrint={jest.fn()} {...props} />);
 
   it.each([
-    ['grn', ['Print GRN', 'Edit GRN', 'Delete GRN'], ['આવક પાવતી પ્રિન્ટ કરો', 'આવક પાવતીમાં ફેરફાર કરો', 'આવક પાવતી ડિલીટ કરો']],
-    ['dispatch', ['Print Dispatch', 'Edit Dispatch', 'Delete Dispatch'], ['જાવક પ્રિન્ટ કરો', 'જાવકમાં ફેરફાર કરો', 'જાવક ડિલીટ કરો']],
-    ['invoice', ['Print Invoice', 'Edit Invoice', 'Delete Invoice'], ['ઇન્વૉઇસ પ્રિન્ટ કરો', 'ઇન્વૉઇસમાં ફેરફાર કરો', 'ઇન્વૉઇસ ડિલીટ કરો']],
+    ['grn', ['Print GRN', 'Delete GRN'], ['આવક પાવતી પ્રિન્ટ કરો', 'આવક પાવતી ડિલીટ કરો']],
+    ['dispatch', ['Print Dispatch', 'Delete Dispatch'], ['જાવક પ્રિન્ટ કરો', 'જાવક ડિલીટ કરો']],
+    ['invoice', ['Print Invoice', 'Delete Invoice'], ['ઇન્વૉઇસ પ્રિન્ટ કરો', 'ઇન્વૉઇસ ડિલીટ કરો']],
   ] as const)('labels the buttons for %s in both languages', (entity, english, gujarati) => {
     expect(texts(actions({ entity }))).toEqual(expect.arrayContaining([...english]));
     setLanguage('gu');
@@ -129,20 +129,22 @@ describe('ActionsSection', () => {
   });
 
   it('shows neither Edit nor Delete unless the caller says the role may', () => {
-    const shown = texts(render(<ActionsSection entity="grn" entityNumber="311" entityId="g1" onEdit={jest.fn()} onDelete={jest.fn()} onPrint={jest.fn()} />));
+    const shown = texts(render(<ActionsSection entity="grn" entityNumber="311" entityId="g1" onDelete={jest.fn()} onPrint={jest.fn()} />));
     expect(shown).toContain('Print GRN');
     expect(shown).not.toContain('Edit GRN');
     expect(shown).not.toContain('Delete GRN');
   });
 
-  it('shows Edit without Delete to a role that may edit but not delete', () => {
+  // WH-216: Edit is in the page header, so this section never draws it.
+  it('shows no Delete, and no Edit (it is in the header), to a role that may edit but not delete', () => {
     const shown = texts(actions({ entity: 'grn', canEdit: true, canDelete: false }));
-    expect(shown).toContain('Edit GRN');
+    expect(shown).toContain('Print GRN');
+    expect(shown).not.toContain('Edit GRN');
     expect(shown).not.toContain('Delete GRN');
   });
 
   it('still accepts a caller word alone, for English', () => {
-    expect(texts(actions({ entityType: 'GRN' }))).toEqual(expect.arrayContaining(['Print GRN', 'Edit GRN', 'Delete GRN']));
+    expect(texts(actions({ entityType: 'GRN' }))).toEqual(expect.arrayContaining(['Print GRN', 'Delete GRN']));
   });
 });
 

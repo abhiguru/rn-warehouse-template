@@ -18,7 +18,7 @@ let mockIsCustomer = false;
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'fictional-invoice' }),
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
-  Stack: { Screen: () => null },
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
   useFocusEffect: (callback: () => void) => {
     const React = require('react');
     React.useEffect(() => { callback(); }, [callback]);
@@ -33,7 +33,10 @@ jest.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({ isCustomer: mockIsCustomer, role: mockIsCustomer ? 'customer' : 'staff', canUpdate: !mockIsCustomer, canDelete: mockCanDelete }),
 }));
 jest.mock('@/hooks/useCapability', () => ({ useCapability: () => true }));
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }) }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
+}));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Portal: 'Portal', Snackbar: 'Snackbar' }));
 jest.mock('@/components/skeletons', () => ({ DetailSkeleton: () => null }));
@@ -99,7 +102,7 @@ describe('a live invoice', () => {
     await open();
     expect(byLabel('Cancel invoice')).toHaveLength(1);
     expect(byLabel('Delete Invoice')).toHaveLength(0);
-    expect(byLabel('Edit Invoice').length).toBeGreaterThan(0);
+    expect(byLabel('Edit').length).toBeGreaterThan(0);
   });
 
   it('offers no Cancel invoice to a role that could not delete', async () => {
@@ -175,7 +178,7 @@ describe('a cancelled invoice', () => {
     await open();
     expect(texts()).toEqual(expect.arrayContaining(['Cancelled on 05/10/26 by Ravi Shah', 'Reason: Wrong customer']));
     expect(byLabel('Cancel invoice')).toHaveLength(0);
-    expect(byLabel('Edit Invoice')).toHaveLength(0);
+    expect(byLabel('Edit')).toHaveLength(0);
     expect(JSON.stringify(renderer.toJSON())).toContain('HeroCancelled');
   });
 

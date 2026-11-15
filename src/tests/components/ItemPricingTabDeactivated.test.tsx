@@ -34,7 +34,8 @@ const byId = (id: string) => tree!.root.findAll(n => n.props.testID === id && ty
 it('a deactivated item (not among the active items) shows its periods without buttons, under the strip', async () => {
   jest.mocked(useItemRatesFor).mockReturnValue({ ...base, itemRates: undefined, ownRows: DEFAULT_ONLY, status: 'ready', notFound: true });
   await act(async () => { tree = create(<ItemPricingTab itemId="onion" itemName="Review Onion Red" active={false} />); });
-  expect(text()).toContain('This item is deactivated. Activate it to change its rates.');
+  // WH-216: the strip is under the item page header, on every tab, not in this tab.
+  expect(text()).not.toContain('This item is deactivated. Activate it to change its rates.');
   expect(text()).not.toContain('This item is no longer active.');
   expect(tree!.root.findAll(n => n.props.testID === 'item-pricing-not-found')).toHaveLength(0);
   expect(byId('period-add')).toHaveLength(0);

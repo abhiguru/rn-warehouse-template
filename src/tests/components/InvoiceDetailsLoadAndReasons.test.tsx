@@ -13,11 +13,12 @@ import { showAlert } from '@/utils/alert';
 
 const mockAuth = { userProfile: { role: 'admin' } };
 let mockIsCustomer = false;
+let mockCanUpdate = true;
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'fictional-invoice' }),
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
-  Stack: { Screen: () => null },
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
   useFocusEffect: (callback: () => void) => {
     const React = require('react');
     React.useEffect(() => { callback(); }, [callback]);
@@ -28,8 +29,11 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({ auth: mockAuth, theme: { preference: 'light', brand: 'orange' } }),
 }));
-jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ isCustomer: mockIsCustomer, canUpdate: true, canDelete: true }) }));
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
+jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ isCustomer: mockIsCustomer, canUpdate: mockCanUpdate, canDelete: true }) }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ bottom: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
+}));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Portal: 'Portal', Snackbar: 'Snackbar' }));
 jest.mock('@/components/skeletons', () => ({ DetailSkeleton: () => null }));
@@ -76,6 +80,7 @@ const showOverview = async () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockIsCustomer = false;
+  mockCanUpdate = true;
   jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false } as InvoiceItemsDetailedResponse);
   jest.mocked(getInvoiceReasons).mockResolvedValue(null);
 });
@@ -165,5 +170,47 @@ describe('the reasons of a discount and a zero charge', () => {
     await showOverview();
     expect(showAlert).not.toHaveBeenCalled();
     expect(texts()).not.toContain('Discount reason');
+  });
+});
+
+describe('WH-216: in Gujarati, and Edit in the stack header', () => {
+  const { setLanguage } = require('@/i18n');
+  afterEach(() => setLanguage('en'));
+  const editButtons = () => renderer.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Edit');
+
+  it('says an invoice that cannot be read in Gujarati, with Go back', async () => {
+    setLanguage('gu');
+    jest.mocked(getInvoiceDetails).mockResolvedValue({ success: false, message: 'x', error: 'Bad gateway' });
+    await open();
+    expect(texts()).toEqual(expect.arrayContaining(['ઇન્વૉઇસ લોડ કરી શકાયું નથી', 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.', 'પાછા જાઓ']));
+  });
+
+  it('says an invoice that is gone in Gujarati', async () => {
+    setLanguage('gu');
+    jest.mocked(getInvoiceDetails).mockResolvedValue({ success: false, message: 'x', error: 'Invoice not found', notFound: true });
+    await open();
+    expect(texts()).toEqual(expect.arrayContaining(['ઇન્વૉઇસ મળ્યું નથી', 'આ ઇન્વૉઇસ ડિલીટ થયું હશે, અથવા તમને તે જોવાની પરવાનગી નહીં હોય.']));
+  });
+
+  it('says an invoice that is gone in English, with the exact message', async () => {
+    jest.mocked(getInvoiceDetails).mockResolvedValue({ success: false, message: 'x', error: 'Invoice not found', notFound: true });
+    await open();
+    expect(texts()).toEqual(expect.arrayContaining(['Invoice not found', 'This invoice may have been deleted, or you may not have access to it.']));
+  });
+
+  it('has Edit in the header for a role that may update, and none for a role that may not', async () => {
+    jest.mocked(getInvoiceDetails).mockResolvedValue(loaded);
+    await open();
+    expect(editButtons().length).toBeGreaterThan(0);
+    await act(async () => { renderer.unmount(); });
+    mockCanUpdate = false;
+    await open();
+    expect(editButtons()).toHaveLength(0);
+  });
+
+  it('has no Edit while the invoice cannot be read', async () => {
+    jest.mocked(getInvoiceDetails).mockResolvedValue({ success: false, message: 'x', error: 'Bad gateway' });
+    await open();
+    expect(editButtons()).toHaveLength(0);
   });
 });

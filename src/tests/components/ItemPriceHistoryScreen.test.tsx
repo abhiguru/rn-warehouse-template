@@ -19,7 +19,7 @@ jest.mock('@/store/hooks', () => ({
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args), back: jest.fn(), replace: jest.fn() },
-  Stack: { Screen: () => null },
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
   useIsFocused: () => true,
   useLocalSearchParams: () => mockParams,
   useFocusEffect: jest.fn(),
@@ -27,6 +27,7 @@ jest.mock('expo-router', () => ({
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
 }));
 jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({
   __esModule: true,

@@ -40,11 +40,13 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunity
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
 }));
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn(), push: jest.fn() }),
   router: { back: jest.fn(), push: jest.fn() },
   useLocalSearchParams: () => ({ id: 'dev-1' }),
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
 }));
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
 // GRN activity is drawn by ReportScaffold (a FlashList) and keeps its choices per facility.

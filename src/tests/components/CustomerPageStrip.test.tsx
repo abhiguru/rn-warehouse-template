@@ -15,12 +15,15 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
-  Stack: { Screen: () => null },
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
   useIsFocused: () => true,
   useLocalSearchParams: jest.fn(),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
+}));
 jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
