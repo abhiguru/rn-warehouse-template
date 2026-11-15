@@ -337,7 +337,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
 
       <KeyboardAwareScrollView
         ref={scrollRef}
-        onScrollBeginDrag={scrollRef.onScrollBeginDrag}
+        {...scrollRef.revealHandlers}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"

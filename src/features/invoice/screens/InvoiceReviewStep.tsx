@@ -525,7 +525,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         // WizardBottomBar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no keyboard room.
         enableAutomaticScroll={false}
         ref={scrollRef}
-        onScrollBeginDrag={scrollRef.onScrollBeginDrag}
+        {...scrollRef.revealHandlers}
       >
         <DocumentsPreviewNote state={documentsPreview} hasDiscount={header.discount > 0} />
         <ReviewCard testID="invoice-review">

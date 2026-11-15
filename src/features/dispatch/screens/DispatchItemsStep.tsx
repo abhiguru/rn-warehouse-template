@@ -981,7 +981,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             >
                 <KeyboardAwareScrollView
                     ref={scrollViewRef}
-                    onScrollBeginDrag={scrollViewRef.onScrollBeginDrag}
+                    {...scrollViewRef.revealHandlers}
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"

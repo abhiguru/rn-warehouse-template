@@ -29,7 +29,9 @@
  * focus, or a keyboard that opens again on a field that kept the focus, where the reveals run while the scroll view
  * is still being resized and scrolled). Once in place it does nothing more, so a scroll by the step itself (to a
  * field with an error) is not undone. After a drag by the person only a focus change or a block that changed height
- * scrolls again. A re-layout that moves nothing does not scroll. A scroll asked for is judged only from two later
+ * scrolls again. A tap of the person's on the page away from the focused field (opening a group) holds the same way,
+ * until the person types in that field or taps it, another field takes the focus or the keyboard shows again: what
+ * the person changed on the page is not undone (WH-243). A re-layout that moves nothing does not scroll. A scroll asked for is judged only from two later
  * measurings that find the content at rest; found at rest still at the place it was asked from, the check asks again,
  * at most MAX_REASKS_IN_PLACE times, then takes it that the content cannot go further. A field outside the scroll view
  * (a sheet over the step) is left alone.
@@ -47,21 +49,69 @@ export interface KeyboardRevealTarget {
 }
 
 /**
- * The scroll ref a step gives both its scroll view and WizardBottomBar (useRevealScrollRef). Put
- * `onScrollBeginDrag` on the scroll view: a drag stops the bar from scrolling back when only the bar moved.
+ * What the person does on the step's scroll view, as the reveal needs it: a drag (`onScrollBeginDrag`), a touch
+ * (`onTouchStartCapture`) and typing (`onChangeCapture`: a TextInput's change event bubbles up to the scroll view, so
+ * no field needs a handler of its own). Spread them on the scroll view: `{...scrollRef.revealHandlers}`.
+ */
+export interface RevealScrollHandlers {
+  onScrollBeginDrag: () => void;
+  onTouchStartCapture: (event: { nativeEvent: { pageX: number; pageY: number } }) => void;
+  onChangeCapture: (event: { nativeEvent?: { text?: unknown } }) => void;
+}
+
+/**
+ * The scroll ref a step gives both its scroll view and WizardBottomBar (useRevealScrollRef). The person's own changes
+ * to the page are not undone by the reveal: after a drag (`userScrolled`) or a tap on the page away from the focused
+ * field (`userTapped`), a moved bar, a field the page moved and the at-rest check scroll nothing. Typing in the focused
+ * field or a tap on it asks for a reveal again (`revealAsked`) and ends a tap's hold, never a drag's; a focus change or
+ * the keyboard showing again ends both.
  */
 export interface RevealScrollRef<T extends KeyboardRevealTarget = KeyboardRevealTarget> extends RefObject<T | null> {
   userScrolled?: boolean;
+  userTapped?: boolean;
+  revealAsked?: boolean;
   onScrollBeginDrag?: () => void;
+  revealHandlers?: RevealScrollHandlers;
 }
 
-/** A ref for the step's scroll view that also notes a drag by the person (see RevealScrollRef). */
-export function useRevealScrollRef<T extends KeyboardRevealTarget>(): RevealScrollRef<T> & { onScrollBeginDrag: () => void } {
+/** A ref for the step's scroll view that also notes what the person does on it (see RevealScrollRef). */
+export function useRevealScrollRef<T extends KeyboardRevealTarget>(): RevealScrollRef<T> & {
+  onScrollBeginDrag: () => void;
+  revealHandlers: RevealScrollHandlers;
+} {
   const [ref] = useState(() => {
-    const created: RevealScrollRef<T> & { onScrollBeginDrag: () => void } = {
+    const onScrollBeginDrag = () => { created.userScrolled = true; };
+    const created: RevealScrollRef<T> & { onScrollBeginDrag: () => void; revealHandlers: RevealScrollHandlers } = {
       current: null,
       userScrolled: false,
-      onScrollBeginDrag: () => { created.userScrolled = true; },
+      userTapped: false,
+      revealAsked: false,
+      onScrollBeginDrag,
+      revealHandlers: {
+        onScrollBeginDrag,
+        // A touch with a field focused: on that field's block it asks for the field again; anywhere else on the page
+        // (a group head, a picker) it is the person's change, which the reveal leaves as it is. A touch on another
+        // field focuses it, and the focus change ends the hold.
+        onTouchStartCapture: (event) => {
+          const input = currentlyFocused() as TreeNode | null;
+          if (!input) return;
+          const rect = fieldBlock(input).getBoundingClientRect?.();
+          const { pageX, pageY } = event.nativeEvent;
+          const onField = !rect || (pageY >= rect.top && pageY <= rect.bottom && pageX >= rect.left && pageX <= rect.right);
+          if (onField) {
+            created.userTapped = false;
+            created.revealAsked = true;
+          } else {
+            created.userTapped = true;
+          }
+        },
+        // Typing: only a text field's change event carries `text` (a switch's carries `value`).
+        onChangeCapture: (event) => {
+          if (typeof event?.nativeEvent?.text !== 'string') return;
+          created.userTapped = false;
+          created.revealAsked = true;
+        },
+      },
     };
     return created;
   });
@@ -80,7 +130,7 @@ interface MeasurableInput {
 interface TreeNode {
   id?: string;
   parentElement?: TreeNode | null;
-  getBoundingClientRect?: () => { top: number; bottom: number; height: number };
+  getBoundingClientRect?: () => { top: number; bottom: number; height: number; left: number; right: number };
 }
 
 /** The `nativeID` of the View that holds a field's box and the messages under it (see the top of this file). */
@@ -197,10 +247,11 @@ export function useRevealFocusedField(
   /**
    * `force`: the keyboard showed, the focus moved or the block changed height: always measured. `bar`: the bar was
    * measured again: only a moved bar top counts. `move`: the page moved the field within the content (text above it
-   * appeared or wrapped). These leave the block settling, with a fresh count of asks. `check`: the 150 ms check while
-   * it settles: content at rest (the field where the last two measurings saw it) that ends too low is scrolled again;
-   * found in place, or still at the same place after MAX_REASKS_IN_PLACE asks more, it stops. `bar`, `move` and
-   * `check` wait while a drag holds.
+   * appeared or wrapped), or the person typed in the field or tapped it. These leave the block settling, with a fresh
+   * count of asks. `check`: the 150 ms check while it settles: content at rest (the field where the last two
+   * measurings saw it) that ends too low is scrolled again; found in place, or still at the same place after
+   * MAX_REASKS_IN_PLACE asks more, it stops. `bar`, `move` and `check` wait while the person's drag or tap on the page
+   * holds.
    */
   const reveal = useCallback((kind: 'force' | 'bar' | 'move' | 'check') => {
     // Settled: a scroll by the step itself (to a field with an error) is not undone.
@@ -221,7 +272,8 @@ export function useRevealFocusedField(
           last.current.tried = null;
           last.current.asks = 0;
         }
-        if (kind !== 'force' && scrollRef.userScrolled) return;
+        // The person's own drag or tap on the page holds everything but a forced reveal (WH-243).
+        if (kind !== 'force' && (scrollRef.userScrolled || scrollRef.userTapped)) return;
         if (kind === 'bar' && !barMoved) return;
         input.measureInWindow?.((_x, inputTop, _width, inputHeight) => {
           if (!current()) return;
@@ -238,6 +290,7 @@ export function useRevealFocusedField(
           const room = below === null ? roomUnderFocusedField() : below + space.sm;
           last.current.height = blockHeight(input);
           scrollRef.userScrolled = false;
+          scrollRef.userTapped = false;
           const missing = Math.ceil(inputTop + inputHeight + room - barTop);
           if (missing <= 0) {
             last.current.tried = null;
@@ -281,13 +334,18 @@ export function useRevealFocusedField(
     }
     if (justShown) {
       last.current = emptyLastSeen(currentlyFocused());
-      if (scrollRef) scrollRef.userScrolled = false;
+      if (scrollRef) {
+        scrollRef.userScrolled = false;
+        scrollRef.userTapped = false;
+        scrollRef.revealAsked = false;
+      }
     }
     reveal(justShown ? 'force' : 'bar');
   }, [keyboardShown, revision, reveal, scrollRef]);
 
-  // Every 150 ms while the keyboard is up: a focus change, a block that grew or shrank and a block that the page moved
-  // send no keyboard event (a move waits while a drag holds, as a moved bar does), and
+  // Every 150 ms while the keyboard is up: a focus change, a block that grew or shrank, a block that the page moved and
+  // the person typing in the field send no keyboard event (a move waits while the person's drag or tap holds, as a
+  // moved bar does), and
   // the reveals above can run before the content has settled (a keyboard that opens again on a field that kept the
   // focus: the bar's lift shrinks the scroll view, which scrolls the focused field to its own new bottom edge, while
   // the reveal's own scroll may not have shown yet). So after a reveal the check measures the field again once it is
@@ -302,8 +360,10 @@ export function useRevealFocusedField(
         // The new field's baselines are taken here, not left to its reveal, which may return early or never answer.
         last.current.height = blockHeight(now);
         measureTopInContent(now, scrollRef.current, (top) => { last.current.contentTop = top; });
-        // A drag before the focus moved holds no longer.
+        // A drag or a tap before the focus moved holds no longer; the focus change itself is the reveal asked for.
         scrollRef.userScrolled = false;
+        scrollRef.userTapped = false;
+        scrollRef.revealAsked = false;
         if (now) reveal('force');
         return;
       }
@@ -314,24 +374,29 @@ export function useRevealFocusedField(
         // A block that grew can have moved too: its place is taken again at the next check, not counted as a move.
         last.current.contentTop = null;
         scrollRef.userScrolled = false;
+        scrollRef.userTapped = false;
         reveal('force');
         return;
       }
       // No baseline yet (the keyboard just showed and its reveal returned early or has not answered): this is it.
       if (height !== null && last.current.height === null) last.current.height = height;
-      // The block moved within the content without growing (WH-240): its bottom moved as far as the field did.
+      // The person typed in the focused field or tapped it (WH-243): reveal it again, unless a drag holds.
+      const asked = scrollRef.revealAsked === true;
+      scrollRef.revealAsked = false;
+      // The block moved within the content without growing (WH-240): its bottom moved as far as the field did. After
+      // the person's tap on the page the move is theirs: the baseline follows it, and the reveal waits (above).
       measureTopInContent(now, scrollRef.current, (contentTop) => {
         if (last.current.input !== now) return;
+        let moved = false;
         if (contentTop !== null) {
           if (last.current.contentTop === null) {
             last.current.contentTop = contentTop;
           } else if (Math.abs(contentTop - last.current.contentTop) >= 1) {
             last.current.contentTop = contentTop;
-            reveal('move');
-            return;
+            moved = true;
           }
         }
-        reveal('check');
+        reveal(moved || asked ? 'move' : 'check');
       });
     }, FOCUS_CHECK_MS);
     return () => clearInterval(timer);
