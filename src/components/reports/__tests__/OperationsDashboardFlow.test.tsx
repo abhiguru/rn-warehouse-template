@@ -152,7 +152,7 @@ describe('the period', () => {
   it('shows the five figures, the daily averages and the recent activity of the answer', async () => {
     const screen = await open();
     expect(screen.texts()).toEqual(
-      expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Period averages', 'Latest activity (any date)'])
+      expect.arrayContaining(['GRNs', 'Dispatches', 'Pending orders', 'Active customers', 'Total stock', 'Period averages', 'LATEST ACTIVITY (ANY DATE)'])
     );
     // Over the 120 days of 15/06/26 to 12/10/26, not over the 2 days (GRNs) and 1 day (dispatches) that had events:
     // 5 GRNs / 120 = 0.04 and 1 dispatch / 120 = 0.008: not zero, and too small for one decimal, so "<0.1" and
@@ -351,7 +351,7 @@ describe('a refused dashboard', () => {
     await screen.run(() => undefined);
     expect(dashboard).toHaveBeenCalledTimes(1);
     expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load the operations dashboard", 'This report is for staff only']));
-    expect(screen.texts()).not.toContain('Latest activity (any date)');
+    expect(screen.texts()).not.toContain('LATEST ACTIVITY (ANY DATE)');
     expect(screen.texts()).not.toContain('RIGHT NOW');
 
     await screen.press('Try again');

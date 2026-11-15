@@ -267,6 +267,11 @@ describe('customer activity, every customer', () => {
     expect(screen.customers()).toEqual([...DEFAULT_ORDER, 'Old Mill Stores']);
   });
 
+  it('names the whole list with the shared "All customers" subtitle (WH-221)', async () => {
+    const screen = await open(makeStore());
+    expect(screen.texts()).toContain('All customers');
+  });
+
   it('orders the rows by the field chosen in the sort sheet, and the other direction reverses them', async () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Last active, newest first. Change sort');
