@@ -56,6 +56,7 @@ export const items: Translation<typeof source> = {
     details: 'વિગતો',
     activate: 'આઇટમ સક્રિય કરો',
     loadFailed: 'આ આઇટમ ખોલી શકાઈ નથી. તમારું કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
+    loadFailedTitle: 'આ આઇટમ ખોલી શકાઈ નથી',
   },
   delete: {
     confirmTitle: '{{name}} ડિલીટ કરવી છે?',

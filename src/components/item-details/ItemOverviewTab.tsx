@@ -1,13 +1,12 @@
 /**
  * Overview tab of the item page: what the item is (name, packaging, description) and the ways to deactivate or
- * activate it and to delete it. A section appears only when it has a value; a deactivated item says so.
+ * activate it and to delete it. A section appears only when it has a value.
  */
 import React from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-import { StatusTag } from '@/components/ui/StatusTag';
 import { KeyValueCell } from '@/components/fiori/KeyValueCell';
 import { useThemedStyles } from '@/hooks/useTheme';
 import type { Item } from '@/types/item.types';
@@ -40,11 +39,6 @@ export function ItemOverviewTab({ item, busy, onToggleActive, onDelete }: ItemOv
       contentContainerStyle={{ paddingBottom: insets.bottom + space.xxl }}
       showsVerticalScrollIndicator={false}
     >
-      {!item.active && (
-        <View style={styles.status}>
-          <StatusTag status="neutral" label={tr('common.deactivated')} />
-        </View>
-      )}
       {rows.length > 0 && (
         <View>
           <SectionHeader title={tr('items.page.details')} />
@@ -73,7 +67,6 @@ export function ItemOverviewTab({ item, busy, onToggleActive, onDelete }: ItemOv
 
 const makeStyles = (t: ThemeTokens) => ({
   scroll: { flex: 1 },
-  status: { paddingHorizontal: layout.marginCompact, paddingTop: space.md, alignItems: 'flex-start' as const },
   cells: { backgroundColor: t.surface.card },
   gst: { paddingTop: space.xl },
   footer: { paddingHorizontal: layout.marginCompact, paddingTop: space.xl, alignItems: 'flex-start' as const, gap: space.sm },

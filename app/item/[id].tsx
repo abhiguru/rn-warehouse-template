@@ -7,10 +7,9 @@
  * roles that may open Item pricing; `tab=pricing` opens it.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { Text, View } from 'react-native';
+import { router, Stack, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { ItemOverviewTab } from '@/components/item-details/ItemOverviewTab';
@@ -20,14 +19,15 @@ import { reloadItemRatesCache } from '@/features/item-pricing/useItemRates';
 import { deleteItemFlow } from '@/features/items/deleteItemFlow';
 import { showActivatedToast, showDeactivatedToast } from '@/features/items/activationToast';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
-import { SkeletonBox } from '@/components/skeletons/SkeletonBox';
+import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { canOpenScreen } from '@/config/roles';
 import { itemService } from '@/services/item-service';
 import { useAppSelector } from '@/store/hooks';
 import type { Item } from '@/types/item.types';
-import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { showAlert } from '@/utils/alert';
 import { serverText } from '@/utils/serverText';
@@ -37,7 +37,6 @@ export default function ItemPage() {
   const isFocused = useIsFocused();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const insets = useSafeAreaInsets();
   const role = useAppSelector(state => state.auth.userProfile?.role);
   // The Pricing tab is for the roles that may open Item pricing; anyone else sees the Overview alone, with no tab bar.
   const canSeePricing = canOpenScreen(role, 'itemPricing');
@@ -162,54 +161,56 @@ export default function ItemPage() {
   }, [shown, setActive, offline]);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={styles.root}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-      <View style={styles.navigationBar}>
-        <HeaderBackButton style={styles.navSide} />
-        <Text style={styles.navTitle} accessibilityRole={shown ? 'header' : undefined} numberOfLines={2}>
-          {shown?.name ?? ''}
-        </Text>
-        <View style={[styles.navSide, styles.navEnd]}>
-          {shown && (
-            <Button type="tertiary" onPress={() => router.push({ pathname: '/item-edit/[id]', params: { id: shown.id } })}>
-              {tr('common.edit')}
-            </Button>
-          )}
-        </View>
-      </View>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: t.surface.header },
+          headerTintColor: t.brand.tint,
+          headerShadowVisible: false,
+          headerTitleAlign: 'center',
+          title: shown?.name ?? '',
+          headerTitle: () => (
+            <Text style={styles.navTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+              {shown?.name ?? ''}
+            </Text>
+          ),
+          headerLeft: () => <HeaderBackButton />,
+          headerRight: () =>
+            shown ? (
+              <Button type="tertiary" onPress={() => router.push({ pathname: '/item-edit/[id]', params: { id: shown.id } })}>
+                {tr('common.edit')}
+              </Button>
+            ) : null,
+        }}
+      />
 
-      {!shown && !failed && !notFound && (
-        <View style={styles.state} accessibilityRole="progressbar" accessibilityLabel={tr('items.form.loadingLabel')}>
-          <SkeletonBox width="100%" height={touchTarget * 2} />
-          <SkeletonBox width="100%" height={touchTarget} />
-          <SkeletonBox width="100%" height={touchTarget} />
-        </View>
-      )}
+      {!shown && !failed && !notFound && <DetailSkeleton tabCount={canSeePricing ? 2 : 1} cardCount={3} />}
 
       {!shown && notFound && (
-        <View style={styles.state} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.stateText}>{tr('items.form.notFoundSentence')}</Text>
-          <Button type="secondary" onPress={() => router.back()}>
-            {tr('common.goBack')}
-          </Button>
-        </View>
+        <ErrorStateView
+          title={tr('items.page.loadFailedTitle')}
+          message={tr('items.form.notFoundSentence')}
+          secondaryActionLabel={tr('common.goBack')}
+          onSecondaryAction={() => router.back()}
+        />
       )}
 
       {!shown && failed && (
-        <View style={styles.state} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.stateText}>{tr('items.page.loadFailed')}</Text>
-          <Button
-            type="secondary"
-            leftIcon="refresh"
-            onPress={() => {
-              setFailed(false);
-              setAttempt(count => count + 1);
-            }}
-          >
-            {tr('common.retry')}
-          </Button>
+        <ErrorStateView
+          title={tr('items.page.loadFailedTitle')}
+          message={tr('common.checkConnection')}
+          onRetry={() => {
+            setFailed(false);
+            setAttempt(count => count + 1);
+          }}
+        />
+      )}
+
+      {shown && !shown.active && (
+        <View style={styles.strip} testID="item-deactivated">
+          <InlineValidation variant="warning" message={tr('pricing.itemTab.deactivated')} />
         </View>
       )}
 
@@ -226,19 +227,6 @@ export default function ItemPage() {
 
 const makeStyles = (t: ThemeTokens) => ({
   root: { flex: 1, backgroundColor: t.background.base },
-  navigationBar: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    minHeight: touchTarget,
-    paddingHorizontal: space.sm,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  navSide: { minWidth: 80 },
-  navEnd: { alignItems: 'flex-end' as const },
-  navTitle: { ...typography.headline, color: t.text.primary, flexShrink: 1, textAlign: 'center' as const },
-  state: { flex: 1, padding: layout.marginCompact, gap: space.md, justifyContent: 'center' as const },
-  stateText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
+  navTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' as const },
+  strip: { paddingHorizontal: layout.marginCompact, paddingTop: space.sm },
 });

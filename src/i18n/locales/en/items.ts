@@ -50,6 +50,7 @@ export const items = {
     details: 'Details',
     activate: 'Activate item',
     loadFailed: "Couldn't open this item. Check your connection and try again.",
+    loadFailedTitle: "Couldn't open this item",
   },
   delete: {
     confirmTitle: 'Delete {{name}}?',
