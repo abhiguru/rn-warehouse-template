@@ -20,10 +20,11 @@
  * View that holds the field's box and every message that can show under it and ends at the last of them (no bottom
  * padding inside it, no other field, not the next row); a field with nothing under it marks its box.
  *
- * When it runs: when the keyboard shows, when another field takes the focus, and when the focused block changes
- * height (a multiline field grows, a message appears, wraps or goes); while the keyboard is up these are checked
- * every FOCUS_CHECK_MS, since none of them sends a keyboard event. When the bar's top moves (the lift changed) it runs
- * again. After each of these the same check measures the block again once the content is at rest and scrolls by what
+ * When it runs: when the keyboard shows, when another field takes the focus, when the focused block changes height
+ * (a multiline field grows, a message appears, wraps or goes) and when it moves within the scroll content without
+ * growing (text above the field appears or wraps; measured within the content, so scrolling never counts as a move);
+ * while the keyboard is up these are checked every FOCUS_CHECK_MS, since none of them sends a keyboard event. When the
+ * bar's top moves (the lift changed) it runs again. After each of these the same check measures the block again once the content is at rest and scrolls by what
  * is still missing, until it finds the block in place, so the result is the same however the keyboard came up (a new
  * focus, or a keyboard that opens again on a field that kept the focus, where the reveals run while the scroll view
  * is still being resized and scrolled). Once in place it does nothing more, so a scroll by the step itself (to a
@@ -129,6 +130,22 @@ function currentlyFocused(): unknown {
 }
 
 /**
+ * The focused field's top within the scroll view's content, not the window: scrolling, the person's or a reveal's,
+ * leaves it as it is, so a change means the page moved the field (text above it that appeared or wrapped). Null where
+ * it cannot be measured (no content view, a field outside the scroll view).
+ */
+function measureTopInContent(input: unknown, target: KeyboardRevealTarget | null | undefined, done: (top: number | null) => void) {
+  const measurable = input as MeasurableInput | null;
+  const responder = target?.getScrollResponder?.() as { getInnerViewRef?: () => unknown } | null | undefined;
+  const content = responder?.getInnerViewRef?.();
+  if (!content || typeof measurable?.measureLayout !== 'function') {
+    done(null);
+    return;
+  }
+  measurable.measureLayout(content, (_x, y) => done(y), () => done(null));
+}
+
+/**
  * How many times the 150 ms check asks again for a scroll from the same place, with the content at rest there, before
  * it takes it that the content cannot go further and stops. Asking again is safe: the library scrolls to an absolute
  * offset (the offset its onScroll last reported + what is missing, and Fabric's measured layout follows every scroll
@@ -141,12 +158,22 @@ interface LastSeen {
   input: unknown;
   barTop: number | null;
   height: number | null;
+  contentTop: number | null;
   top: number | null;
   tried: number | null;
   asks: number;
   settling: boolean;
 }
-const emptyLastSeen = (input: unknown): LastSeen => ({ input, barTop: null, height: null, top: null, tried: null, asks: 0, settling: false });
+const emptyLastSeen = (input: unknown): LastSeen => ({
+  input,
+  barTop: null,
+  height: null,
+  contentTop: null,
+  top: null,
+  tried: null,
+  asks: 0,
+  settling: false,
+});
 
 export function useRevealFocusedField(
   barRef: RefObject<ViewRef | null>,
@@ -168,12 +195,12 @@ export function useRevealFocusedField(
 
   /**
    * `force`: the keyboard showed, the focus moved or the block changed height: always measured. `bar`: the bar was
-   * measured again: only a moved bar top counts. Both leave the block settling. `check`: the 150 ms check while it
-   * settles: content at rest (the field where the last two measurings saw it) that ends too low is scrolled again;
-   * found in place, or still at the same place after MAX_REASKS_IN_PLACE asks more, it stops. `bar` and `check` wait
-   * while a drag holds.
+   * measured again: only a moved bar top counts. `move`: the page moved the field within the content (text above it
+   * appeared or wrapped). These leave the block settling. `check`: the 150 ms check while it settles: content at rest
+   * (the field where the last two measurings saw it) that ends too low is scrolled again; found in place, or still at
+   * the same place after MAX_REASKS_IN_PLACE asks more, it stops. `bar`, `move` and `check` wait while a drag holds.
    */
-  const reveal = useCallback((kind: 'force' | 'bar' | 'check') => {
+  const reveal = useCallback((kind: 'force' | 'bar' | 'move' | 'check') => {
     // Settled: a scroll by the step itself (to a field with an error) is not undone.
     if (kind === 'check' && !last.current.settling) return;
     const target = scrollRef?.current;
@@ -252,7 +279,8 @@ export function useRevealFocusedField(
     reveal(justShown ? 'force' : 'bar');
   }, [keyboardShown, revision, reveal, scrollRef]);
 
-  // Every 150 ms while the keyboard is up: a focus change or a block that grew or shrank sends no keyboard event, and
+  // Every 150 ms while the keyboard is up: a focus change, a block that grew or shrank and a block that the page moved
+  // send no keyboard event (a move waits while a drag holds, as a moved bar does), and
   // the reveals above can run before the content has settled (a keyboard that opens again on a field that kept the
   // focus: the bar's lift shrinks the scroll view, which scrolls the focused field to its own new bottom edge, while
   // the reveal's own scroll may not have shown yet). So after a reveal the check measures the field again once it is
@@ -264,8 +292,9 @@ export function useRevealFocusedField(
       const now = currentlyFocused();
       if (now !== last.current.input) {
         last.current = { ...emptyLastSeen(now), barTop: last.current.barTop };
-        // The new field's baseline is taken here, not left to its reveal, which may return early or never answer.
+        // The new field's baselines are taken here, not left to its reveal, which may return early or never answer.
         last.current.height = blockHeight(now);
+        measureTopInContent(now, scrollRef.current, (top) => { last.current.contentTop = top; });
         // A drag before the focus moved holds no longer.
         scrollRef.userScrolled = false;
         if (now) reveal('force');
@@ -275,13 +304,28 @@ export function useRevealFocusedField(
       const height = blockHeight(now);
       if (height !== null && last.current.height !== null && Math.abs(height - last.current.height) >= 1) {
         last.current.height = height;
+        // A block that grew can have moved too: its place is taken again at the next check, not counted as a move.
+        last.current.contentTop = null;
         scrollRef.userScrolled = false;
         reveal('force');
         return;
       }
       // No baseline yet (the keyboard just showed and its reveal returned early or has not answered): this is it.
       if (height !== null && last.current.height === null) last.current.height = height;
-      reveal('check');
+      // The block moved within the content without growing (WH-240): its bottom moved as far as the field did.
+      measureTopInContent(now, scrollRef.current, (contentTop) => {
+        if (last.current.input !== now) return;
+        if (contentTop !== null) {
+          if (last.current.contentTop === null) {
+            last.current.contentTop = contentTop;
+          } else if (Math.abs(contentTop - last.current.contentTop) >= 1) {
+            last.current.contentTop = contentTop;
+            reveal('move');
+            return;
+          }
+        }
+        reveal('check');
+      });
     }, FOCUS_CHECK_MS);
     return () => clearInterval(timer);
   }, [keyboardShown, scrollRef, reveal]);
