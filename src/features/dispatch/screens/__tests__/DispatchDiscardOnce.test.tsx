@@ -116,7 +116,7 @@ describe.each(STEPS)('The X on the %s step of a new dispatch', (_step, screen) =
     mockForm.items = [line('a'), line('b')];
     const tree = await render(screen('create'));
 
-    await pressX(tree, 'Cancel Dispatch');
+    await pressX(tree, 'Close new dispatch');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question()).toEqual({
@@ -141,7 +141,7 @@ describe.each(STEPS)('The X on the %s step of a new dispatch', (_step, screen) =
     mockForm.items = [line('a')];
     const tree = await render(screen('create'));
 
-    await pressX(tree, 'Cancel Dispatch');
+    await pressX(tree, 'Close new dispatch');
     expect(question().message).toBe('The 1 item you added will be lost.');
     await answer('Keep editing');
 
@@ -154,7 +154,7 @@ describe.each(STEPS)('The X on the %s step of a new dispatch', (_step, screen) =
   it('without a line it speaks of the details entered on the first step', async () => {
     const tree = await render(screen('create'));
 
-    await pressX(tree, 'Cancel Dispatch');
+    await pressX(tree, 'Close new dispatch');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question()).toMatchObject({ title: 'Discard this dispatch?', message: 'The details you entered will be lost.' });
@@ -168,7 +168,7 @@ describe.each(STEPS)('The X on the %s step of a dispatch that is being edited', 
     mockForm.items = [line('a')];
     const tree = await render(screen('edit'));
 
-    await pressX(tree, 'Cancel editing');
+    await pressX(tree, 'Close dispatch edit');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question().title).toBe('Discard changes to this dispatch?');
