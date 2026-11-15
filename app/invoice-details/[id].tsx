@@ -30,6 +30,7 @@ import { REFUSAL } from '@/utils/serverRefusal';
 import { deleteInvoicePair } from '@/services/gstService';
 import { docTypeKey } from '@/features/gst/docType';
 import { getUserFriendlyError, parseErrorToFriendly } from '@/utils/errorHandler';
+import { loadFailureText } from '@/utils/loadFailureText';
 import { generateInvoicePDF, pdfRefusalText } from '@/services/pdf-service';
 import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
@@ -157,6 +158,8 @@ function InvoiceDetailScreen() {
   const hadData = useRef(false);
   // The first load failed for a reason other than "not there" (a lost connection, a 502): an error page with Try again.
   const [loadFailed, setLoadFailed] = useState(false);
+  // What the error page says: the connection text for a network failure or a timeout, a refusal's own text otherwise.
+  const [loadFailedText, setLoadFailedText] = useState('');
   // Why the discount or zero charge was given, and by whom (staff and up).
   const [reasons, setReasons] = useState<InvoiceReasons | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
@@ -196,6 +199,7 @@ function InvoiceDetailScreen() {
         return;
       } else if (!hadData.current && !(result.notFound || result.accessDenied)) {
         // A first load that failed: the page says so and offers Try again. "Invoice not found" is for the server saying so.
+        setLoadFailedText(loadFailureText(result.error, tr('common.checkConnection')));
         setLoadFailed(true);
         return;
       } else if (hadData.current) {
@@ -228,7 +232,10 @@ function InvoiceDetailScreen() {
     } catch (error) {
       console.error('[InvoiceDetailScreen] Exception:', error);
       if (hadData.current) showAlert(tr('invoice.details.loadFailedTitle'), getUserFriendlyError('invoice', 'load'));
-      else setLoadFailed(true);
+      else {
+        setLoadFailedText(tr('common.checkConnection'));
+        setLoadFailed(true);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -527,7 +534,7 @@ function InvoiceDetailScreen() {
           ) : loadFailed ? (
             <ErrorStateView
               title={tr('invoice.details.loadFailedTitle')}
-              message={tr('common.checkConnection')}
+              message={loadFailedText || tr('common.checkConnection')}
               onRetry={() => {
                 setLoadFailed(false);
                 setLoading(true);

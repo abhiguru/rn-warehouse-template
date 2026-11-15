@@ -125,6 +125,9 @@ const processDispatchImages = async (images: RpcImageInfo[]): Promise<ProcessedD
   return processedImages.filter((img): img is ProcessedDispatchImage => img !== null);
 };
 
+/** The server's own words for a dispatch that is not there or not the caller's (get_dispatch_details), whatever the app's language. */
+const DISPATCH_NOT_FOUND = /dispatch not found or access denied/i;
+
 export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDetailsResponse> => {
   try {
     if (__DEV__) console.log('[DispatchDetailService] Fetching details for Dispatch ID:', dispatchId);
@@ -167,12 +170,21 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
     }
 
     if (!responseData || !responseData.dispatch) {
-      console.log('[DispatchDetailService] No dispatch found in response');
+      // Only the server's "Dispatch not found or access denied" answer is a missing document. Its "Error retrieving
+      // dispatch details: ..." answer (a SQL error, also {success:false, data:null}) and an empty answer are load errors.
+      const serverMessage = String(data?.message ?? '');
+      if (DISPATCH_NOT_FOUND.test(serverMessage)) {
+        return {
+          success: false,
+          message: t('errors.dispatch.noneFound'),
+          error: t('errors.dispatch.notFoundOrDenied'),
+          notFound: true
+        };
+      }
       return {
         success: false,
-        message: t('errors.dispatch.noneFound'),
-        error: t('errors.dispatch.notFoundOrDenied'),
-        notFound: true
+        message: t('errors.dispatch.fetchDetailsFailed'),
+        error: serverMessage || t('errors.dispatch.fetchDetailsFailed')
       };
     }
 

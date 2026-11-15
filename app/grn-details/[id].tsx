@@ -72,6 +72,7 @@ import { formatCount } from '@/utils/formatters';
 import { sharedPackaging } from '@/utils/packagingWord';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText, failureText } from '@/utils/serverText';
+import { loadFailureText } from '@/utils/loadFailureText';
 import { deleteBlockedText } from '@/features/grn/utils/deleteRefusal';
 import { createLogger, loggableError } from '@/utils/logger';
 import { parseInvoiceState } from '@/features/charging/invoiceState';
@@ -309,9 +310,7 @@ function GRNDetailScreen() {
         setError(null);
       } else {
         setData(null);
-        setError(
-          serverText(result.error || result.message, tr('grn.details.loadFailed'))
-        );
+        setError(loadFailureText(result.error, tr('common.checkConnection')));
       }
     } catch (err) {
       if (isAbortError(err)) {
@@ -762,7 +761,7 @@ function GRNDetailScreen() {
           ) : displayError ? (
             <ErrorStateView
               title={tr('grn.details.loadFailedTitle')}
-              message={tr('common.checkConnection')}
+              message={displayError}
               onRetry={() => {
                 setLoading(true);
                 fetchGRNDetails();

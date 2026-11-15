@@ -61,6 +61,7 @@ import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { loadFailureText } from '@/utils/loadFailureText';
 import { photoAddFailure } from '@/utils/photoUploadError';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 // ============================================================================
@@ -165,7 +166,7 @@ function DispatchDetailScreen() {
         setData(null);
         setError(null);
       } else {
-        setError(serverText(result.error || result.message, tr('common.checkConnection')));
+        setError(loadFailureText(result.error, tr('common.checkConnection')));
       }
     } catch (err) {
       // Ignore abort errors - they're expected when navigating away
@@ -426,7 +427,7 @@ function DispatchDetailScreen() {
           ) : error ? (
             <ErrorStateView
               title={tr('dispatch.details.loadFailedTitle')}
-              message={tr('common.checkConnection')}
+              message={error}
               onRetry={() => {
                 setLoading(true);
                 fetchDispatchDetails();
