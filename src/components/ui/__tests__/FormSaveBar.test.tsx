@@ -34,6 +34,15 @@ const render = async (props: Partial<FormSaveBarProps> = {}) => {
 const button = (): ReactTestInstance => tree!.root.find(n => n.props.testID === 'save' && n.props.accessibilityState !== undefined);
 const bar = () => tree!.root.find(n => n.props.testID === 'bar' && (n.type as unknown) === 'View');
 const texts = () => tree!.root.findAllByType(Text).map(n => [n.props.children].flat().join(''));
+const shown = (screenY = 1350) => ({ endCoordinates: { screenY, height: 800 } });
+const marginBottom = () => (StyleSheet.flatten(bar().props.style) as { marginBottom?: number }).marginBottom ?? 0;
+// Mounts with a bar that reports its place in the window (the test renderer has no native views): bottom edge `bottom()`.
+const renderMeasured = async (bottom: () => number) => {
+  await render();
+  // The jest stand-in of a View keeps its methods on a shared prototype: give the bar its own.
+  (tree!.root.find(n => n.props.testID === 'bar' && n.instance != null) as unknown as { instance: { measureInWindow: unknown } }).instance.measureInWindow =
+    (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, bottom() - 126, 1080, 126);
+};
 const paddingBottom = () => (StyleSheet.flatten(bar().props.style) as { paddingBottom: number }).paddingBottom;
 
 describe('FormSaveBar', () => {
@@ -78,12 +87,12 @@ describe('FormSaveBar', () => {
 
   describe('keyboard (WH-227)', () => {
     // The test renderer has no keyboard: record the listeners the bar registers and call them.
-    let listeners: Record<string, () => void>;
+    let listeners: Record<string, (event?: unknown) => void>;
     let removes: jest.Mock[];
     beforeEach(() => {
       listeners = {};
       removes = [];
-      jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, handler: () => void) => {
+      jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, handler: (event?: unknown) => void) => {
         listeners[name] = handler;
         const remove = jest.fn();
         removes.push(remove);
@@ -96,7 +105,7 @@ describe('FormSaveBar', () => {
       Platform.OS = 'ios';
       await render();
       expect(paddingBottom()).toBe(34 + space.md);
-      await act(async () => { listeners.keyboardDidShow(); });
+      await act(async () => { listeners.keyboardDidShow(shown()); });
       expect(paddingBottom()).toBe(space.md);
       await act(async () => { listeners.keyboardDidHide(); });
       expect(paddingBottom()).toBe(34 + space.md);
@@ -106,10 +115,48 @@ describe('FormSaveBar', () => {
       Platform.OS = 'android';
       await render();
       expect(paddingBottom()).toBe(space.md);
-      await act(async () => { listeners.keyboardDidShow(); });
+      await act(async () => { listeners.keyboardDidShow(shown()); });
       expect(paddingBottom()).toBe(space.md);
       await act(async () => { listeners.keyboardDidHide(); });
       expect(paddingBottom()).toBe(space.md);
+    });
+
+    it('on Android lifts the bar by the part the keyboard covers, and puts it back when the keyboard hides (WH-228)', async () => {
+      Platform.OS = 'android';
+      await renderMeasured(() => 1500); // bar bottom 1500, keyboard top 1350: 150 covered
+      expect(marginBottom()).toBe(0);
+      await act(async () => { listeners.keyboardDidShow(shown(1350)); });
+      expect(marginBottom()).toBe(150);
+      await act(async () => { listeners.keyboardDidHide(); });
+      expect(marginBottom()).toBe(0);
+    });
+
+    it('does not lift when the window already shrinks for the keyboard (nothing is covered)', async () => {
+      Platform.OS = 'android';
+      await renderMeasured(() => 1350);
+      await act(async () => { listeners.keyboardDidShow(shown(1350)); });
+      expect(marginBottom()).toBe(0);
+    });
+
+    it('keeps the lift when the keyboard event repeats and the bar is already clear of it', async () => {
+      Platform.OS = 'android';
+      let bottom = 1500;
+      await renderMeasured(() => bottom);
+      await act(async () => { listeners.keyboardDidShow(shown(1350)); });
+      bottom = 1350; // measured again after the lift
+      await act(async () => { listeners.keyboardDidShow(shown(1350)); });
+      expect(marginBottom()).toBe(150);
+    });
+
+    it('on iOS also lifts by the covered part and still drops the inset', async () => {
+      Platform.OS = 'ios';
+      await renderMeasured(() => 1500);
+      await act(async () => { listeners.keyboardDidShow(shown(1350)); });
+      expect(marginBottom()).toBe(150);
+      expect(paddingBottom()).toBe(space.md);
+      await act(async () => { listeners.keyboardDidHide(); });
+      expect(marginBottom()).toBe(0);
+      expect(paddingBottom()).toBe(34 + space.md);
     });
 
     it('removes its keyboard listeners when it unmounts', async () => {

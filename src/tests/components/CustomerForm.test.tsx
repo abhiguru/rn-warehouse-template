@@ -98,6 +98,16 @@ describe('Edit customer', () => {
     expect(router.back).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps Save switched off until a value changes, and on after one (WH-227)', async () => {
+    const screen = await mountEdit();
+    const disabled = () => button(screen, 'Save customer').props.accessibilityState?.disabled;
+    expect(disabled()).toBe(true);
+    await type(screen, 'City', 'Rajkot X');
+    expect(disabled()).toBe(false);
+    await type(screen, 'City', 'Rajkot');
+    expect(disabled()).toBe(true);
+  });
+
   it('sends the changed city for the route id and keeps the saved photos', async () => {
     jest.mocked(customerService.updateCustomer).mockResolvedValue({ success: true, message: '' } as never);
     const screen = await mountEdit();

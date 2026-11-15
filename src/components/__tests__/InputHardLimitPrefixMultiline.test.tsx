@@ -96,3 +96,22 @@ describe('callers without the new props', () => {
     expect(onChangeText).toHaveBeenCalledWith('abcdefg');
   });
 });
+
+describe('last (WH-227)', () => {
+  const outer = () => flat((tree!.toJSON() as unknown as { props: { style: unknown } }).props.style);
+  it('removes only the bottom margin of the field', async () => {
+    await render();
+    const normal = outer();
+    await act(async () => { tree!.unmount(); });
+    await render({ last: true });
+    const last = outer();
+    expect(normal.marginBottom).toBeGreaterThan(0);
+    expect(last.marginBottom).toBe(0);
+    expect({ ...last, marginBottom: normal.marginBottom }).toEqual(normal);
+  });
+
+  it('is off by default, so other callers keep their bottom margin', async () => {
+    await render({ last: false });
+    expect(outer().marginBottom).toBeGreaterThan(0);
+  });
+});
