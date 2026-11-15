@@ -8,6 +8,7 @@ import { Dimensions, Platform } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { space } from '@/theme/tokens';
 import WizardBottomBar from '../WizardBottomBar';
+import { keyboardEvent, recordKeyboard } from '@/tests/helpers/wizardKeyboardLift';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -142,5 +143,29 @@ describe('WizardBottomBar with an Add item button (Items steps)', () => {
     const tree = render('android', 1);
     expect(order(tree)).toEqual(['Back', 'Next']);
     expect(texts(tree)).toEqual(['Back', 'Next']);
+  });
+});
+
+describe('WizardBottomBar bottom inset while the keyboard is up (WH-228)', () => {
+  // The keyboard is a recorded stand-in (the test renderer has none).
+  let recorder: ReturnType<typeof recordKeyboard>;
+  beforeEach(() => { recorder = recordKeyboard(); });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it('iOS: drops the home-indicator inset while the keyboard is up and has it back after', () => {
+    const tree = render('ios', 1);
+    expect(bar(tree).paddingBottom).toBe(34 + space.md);
+    act(() => { recorder.fire('keyboardDidShow', keyboardEvent(1350)); });
+    expect(bar(tree).paddingBottom).toBe(space.md);
+    act(() => { recorder.fire('keyboardDidHide'); });
+    expect(bar(tree).paddingBottom).toBe(34 + space.md);
+  });
+
+  it('Android: padding is space.md before, during and after', () => {
+    const tree = render('android', 1);
+    act(() => { recorder.fire('keyboardDidShow', keyboardEvent(1350)); });
+    expect(bar(tree).paddingBottom).toBe(space.md);
+    act(() => { recorder.fire('keyboardDidHide'); });
+    expect(bar(tree).paddingBottom).toBe(space.md);
   });
 });
