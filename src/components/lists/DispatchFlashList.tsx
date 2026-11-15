@@ -101,6 +101,8 @@ interface SectionHeaderProps {
   count: number;
   /** Offline: when the rows were loaded, shown under the heading (§14.9). */
   updatedAt?: number;
+  /** The list's refresh, offered to screen readers on the heading. */
+  onRefresh?: () => void;
 }
 
 /** Which cards show their items: all of them, except those flipped (so a page loaded later follows "Expand all"). */
@@ -111,7 +113,7 @@ interface OpenState {
 const isOpen = (open: OpenState, dispatchId: string) => open.all !== open.flipped.has(dispatchId);
 
 // Section header: footnote, capitals, text.secondary (style guide §13.6)
-const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt }) => {
+const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt, onRefresh }) => {
   const styles = useThemedStyles(makeStyles);
   return (
     <>
@@ -119,6 +121,7 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt 
         style={styles.sectionHeader}
         accessible
         accessibilityRole="header"
+        {...(onRefresh ? listRefreshAccessibility(onRefresh) : null)}
         accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'dispatch', 'dispatches') })}
       >
         <Text style={styles.sectionTitle}>{title}</Text>
@@ -443,7 +446,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Dispatch>; index: number }) => {
     if (item.type === 'header') {
-      return <SectionHeader title={item.title} count={item.count} updatedAt={index === 0 ? offlineUpdatedAt : undefined} />;
+      return <SectionHeader title={item.title} count={item.count} updatedAt={index === 0 ? offlineUpdatedAt : undefined} onRefresh={handleRefresh} />;
     }
 
     return (
@@ -458,7 +461,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         onViewGRN={handleViewGRN}
       />
     );
-  }, [handleDispatchPress, handleViewGRN, canPrint, handlePrint, open, handleCardToggle, words, offlineUpdatedAt]);
+  }, [handleDispatchPress, handleViewGRN, canPrint, handlePrint, open, handleCardToggle, words, offlineUpdatedAt, handleRefresh]);
 
   const ListFooter = useMemo(() => {
     if (loadMoreFailed && !isLoadingMore) {
@@ -538,7 +541,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
           />
         ) : null}
       <FlashList
-        {...listRefreshAccessibility(handleRefresh)}
         ref={listRef}
         data={flattenedData}
         // Re-sorted lists must not stay anchored on the row that was on top before.

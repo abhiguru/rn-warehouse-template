@@ -436,6 +436,7 @@ export default function UsersScreen() {
           placeholder={tr('users.list.searchPlaceholder')}
           loading={state.loading}
           countText={peopleCount > 0 ? formatCount(peopleCount, 'user') : undefined}
+          onRefresh={handleRefresh}
         />
         {state.refreshFailed && state.loadedAt ? (
           <StaleListStrip

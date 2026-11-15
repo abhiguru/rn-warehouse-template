@@ -420,6 +420,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
             style={styles.countBadge}
             accessible
             accessibilityLabel={translate('lists.queue.countLabel', { orders: formatCount(queueCount, 'order') })}
+            {...listRefreshAccessibility(handleRefresh)}
           >
             <Text style={styles.countText} maxFontSizeMultiplier={1.6}>{formatNumber(queueCount)}</Text>
           </View>
@@ -451,7 +452,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         )}
         <View style={styles.listWrapper}>
           <FlashList
-            {...listRefreshAccessibility(handleRefresh)}
             data={filteredOrders}
             keyExtractor={keyExtractor}
             renderItem={renderItem}

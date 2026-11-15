@@ -602,6 +602,7 @@ export default function ItemsScreen() {
           placeholder={tr('items.list.searchPlaceholder')}
           loading={listLoading}
           countText={(noRateFilter ? listData.length : state.totalCount) > 0 ? formatCount(noRateFilter ? listData.length : state.totalCount, 'item') : undefined}
+          onRefresh={handleRefresh}
         />
         {state.refreshFailed && state.loadedAt ? (
           <StaleListStrip

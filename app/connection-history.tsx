@@ -16,6 +16,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { SettingsSection } from '@/features/settings/components/SettingsList';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
 import { getConnectionHistory, type ConnectionDay } from '@/services/connectionHistoryService';
@@ -112,7 +113,7 @@ export default function ConnectionHistoryScreen() {
           />
         }
       >
-        <Text style={styles.intro}>{tr('connectionHistory.intro')}</Text>
+        <Text style={styles.intro} {...listRefreshAccessibility(() => void load())}>{tr('connectionHistory.intro')}</Text>
         {days === null && busy ? (
           <View accessibilityRole="progressbar" accessibilityLabel={tr('common.loading')} style={styles.loading}>
             {[0, 1, 2].map((row) => (

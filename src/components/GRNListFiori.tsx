@@ -47,7 +47,6 @@ import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { ListSkeleton } from '@/components/skeletons';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from '@/components/lists/ListLoadErrors';
-import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
 import {
@@ -883,6 +882,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           countText={hasMore ? translate('lists.section.countMore', { count: formatNumber(item.count) }) : formatNumber(item.count)}
           countLabel={hasMore ? translate('lists.section.moreThanGrns', { count: formatNumber(item.count) }) : formatCount(item.count, 'GRN')}
           style={styles.sectionHeader}
+          onRefresh={onRefresh}
         />
       );
     }
@@ -965,7 +965,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           />
         ) : null}
         <FlashList
-          {...listRefreshAccessibility(onRefresh)}
           ref={listRef}
           data={flattenedData}
           // Re-sorted lists must not stay anchored on the row that was on top before.

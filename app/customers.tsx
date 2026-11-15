@@ -542,6 +542,7 @@ export default function CustomersScreen() {
           onSearch={setSearch}
           placeholder={tr('customers.search.placeholder')}
           countText={countText}
+          onRefresh={handleRefresh}
         />
         {state.refreshFailed && state.loadedAt ? (
           <StaleListStrip

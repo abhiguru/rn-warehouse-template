@@ -15,6 +15,7 @@ import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { RecentDispatchedOrderCard } from '@/components/list-items/RecentDispatchedOrderCard';
 import { isWarehouseUser } from '@/config/roles';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
 import { t as tr } from '@/i18n';
 import { getRecentDispatchedOrders } from '@/services/dispatch-service';
 import { useAppSelector } from '@/store/hooks';
@@ -148,7 +149,7 @@ export default function RecentDispatchedScreen() {
       <View style={styles.titleRow}>
         <HeaderBackButton />
         <View style={styles.titles}>
-          <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+          <Text style={styles.title} accessibilityRole="header" numberOfLines={1} {...listRefreshAccessibility(onRefresh)}>
             {tr('lists.recent.title')}
           </Text>
           {dispatches.length > 0 ? (
