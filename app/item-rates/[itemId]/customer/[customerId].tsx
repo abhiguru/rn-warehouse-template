@@ -10,8 +10,8 @@
  */
 import { itemWithPackaging } from '@/utils/packagingWord';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
@@ -44,17 +44,9 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const makeStyles = (th: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: th.background.base },
   flex: { flex: 1 },
-  header: {
-    paddingBottom: space.sm,
-    paddingHorizontal: space.sm,
-    backgroundColor: th.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: th.border.divider,
-  },
-  headerRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.xs },
-  titles: { flex: 1 },
-  title: { ...typography.headline, color: th.text.primary },
-  subtitle: { ...typography.subhead, color: th.text.secondary },
+  titles: { alignItems: 'center' as const },
+  title: { ...typography.headline, color: th.text.primary, textAlign: 'center' as const },
+  subtitle: { ...typography.footnote, color: th.text.secondary, textAlign: 'center' as const },
   note: { ...typography.footnote, color: th.text.secondary, paddingHorizontal: layout.marginCompact, paddingBottom: space.sm },
   strip: { marginHorizontal: layout.marginCompact, gap: space.sm },
   block: { gap: space.md, marginBottom: space.lg },
@@ -120,27 +112,36 @@ export default function CustomerRatePage() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-        <View style={styles.headerRow}>
-          <HeaderBackButton />
-          <View style={styles.titles}>
-            <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
-              {customerName ? t('pricing.customerRate.title', { customer: customerName }) : itemTitle}
-            </Text>
-            <Text style={styles.subtitle} numberOfLines={2}>{itemTitle}</Text>
-          </View>
-          {rights.canSeeChanges && itemRates ? (
-            <Button
-              type="tertiary"
-              leftIcon="history"
-              onPress={() => router.push(historyPath({ item_id: itemId, customer_id: customerId, item_name: itemTitle, ...(customerName ? { customer_name: customerName } : {}) }))}
-              testID="customer-changes"
-            >
-              {t('pricing.action.changes')}
-            </Button>
-          ) : null}
-        </View>
-      </View>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: th.surface.header },
+          headerTintColor: th.brand.tint,
+          headerShadowVisible: false,
+          headerTitleAlign: 'center',
+          title: customerName ? t('pricing.customerRate.title', { customer: customerName }) : itemTitle,
+          headerTitle: () => (
+            <View style={styles.titles}>
+              <Text style={styles.title} accessibilityRole="header" numberOfLines={2} maxFontSizeMultiplier={1.5}>
+                {customerName ? t('pricing.customerRate.title', { customer: customerName }) : itemTitle}
+              </Text>
+              <Text style={styles.subtitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>{itemTitle}</Text>
+            </View>
+          ),
+          headerLeft: () => <HeaderBackButton />,
+          headerRight: () =>
+            rights.canSeeChanges && itemRates ? (
+              <Button
+                type="tertiary"
+                leftIcon="history"
+                onPress={() => router.push(historyPath({ item_id: itemId, customer_id: customerId, item_name: itemTitle, ...(customerName ? { customer_name: customerName } : {}) }))}
+                testID="customer-changes"
+              >
+                {t('pricing.action.changes')}
+              </Button>
+            ) : null,
+        }}
+      />
 
       {status === 'loading' ? (
         <View style={styles.skeleton} testID="customer-skeleton" accessibilityLabel={t('pricing.list.loadingLabel')}>
