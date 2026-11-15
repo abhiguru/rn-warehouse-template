@@ -8,6 +8,11 @@ import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
+// The stale-list strip reads the network state from NetInfo (a native module, absent under Jest): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),

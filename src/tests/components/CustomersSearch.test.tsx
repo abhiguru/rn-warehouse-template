@@ -6,6 +6,11 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
 
+// The stale-list strip reads the network state from NetInfo (a native module, absent under Jest): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
@@ -96,7 +101,8 @@ it('finds by city', async () => {
 it('says nothing matches, offers Clear search, and brings everything and the rail back', async () => {
   const screen = await mount();
   await search(screen, 'acmezzz');
-  expect(text(screen)).toContain('No customers match "acmezzz". Try fewer letters.');
+  expect(text(screen)).toContain('No customers match "acmezzz"');
+  expect(text(screen)).toContain('Try fewer letters or another spelling.');
   expect(rowNames(screen)).toEqual([]);
   const clear = screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.findAllByType(Text).some(t => t.props.children === 'Clear search'))[0];
   await act(async () => { clear.props.onPress(); });
@@ -110,7 +116,8 @@ it('keeps the rows and says they are old when a refresh fails after a first succ
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: false, message: 'offline', data: [] } as never);
   const list = screen.root.findAll(node => typeof node.props.onRefresh === 'function' || typeof node.props.refreshControl?.props?.onRefresh === 'function')[0];
   await act(async () => { (list.props.onRefresh ?? list.props.refreshControl.props.onRefresh)(); });
-  expect(text(screen)).toContain("Couldn't refresh customers. Showing the list from");
+  expect(text(screen)).toContain("Couldn't refresh customers.");
+  expect(text(screen)).toContain('Showing the customers loaded at');
   expect(rowNames(screen)).toHaveLength(5);
   expect(text(screen)).not.toContain("Couldn't load customers");
 

@@ -29,6 +29,11 @@ const makeStore = () =>
     middleware: (getDefault) => getDefault({ serializableCheck: false }),
   });
 const mockStore = makeStore();
+// The stale-list strip reads the network state from NetInfo (a native module, absent under Jest): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('@/store/hooks', () => {
   const { useSyncExternalStore } = require('react');
   return {

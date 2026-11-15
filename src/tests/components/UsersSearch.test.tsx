@@ -8,6 +8,11 @@ import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
+// The stale-list strip reads the network state from NetInfo (a native module, absent under Jest): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -114,7 +119,8 @@ describe('Users search', () => {
       filters.search_query === 'zzzz' ? answer([]) : answer(ALL)) as never);
     await act(async () => { tree = create(<UsersScreen />); });
     await type('zzzz');
-    expect(shownText()).toContain('No users match "zzzz". Try fewer letters.');
+    expect(shownText()).toContain('No users match "zzzz"');
+    expect(shownText()).toContain('Try fewer letters or another spelling.');
     expect(shownText()).not.toContain('No users yet');
     const list = tree!.root.find(node => typeof node.props.ListEmptyComponent === 'function' && node.props.contentContainerStyle);
     expect(StyleSheet.flatten(list.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
@@ -127,7 +133,8 @@ describe('Users search', () => {
     jest.mocked(adminUserService.getUsersList).mockResolvedValueOnce({ success: false, error: 'offline' } as never);
     const list = tree!.root.find(node => typeof node.props.refreshControl === 'object' && node.props.refreshControl !== null && 'props' in node.props.refreshControl);
     await act(async () => { list.props.refreshControl.props.onRefresh(); });
-    expect(shownText()).toContain("Couldn't refresh users. Showing the list from");
+    expect(shownText()).toContain("Couldn't refresh users.");
+    expect(shownText()).toContain('Showing the users loaded at');
     expect(shownText()).toContain('Dev Staff');
     expect(shownText()).not.toContain("Couldn't load users");
   });

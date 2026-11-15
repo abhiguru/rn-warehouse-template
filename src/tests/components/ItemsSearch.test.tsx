@@ -114,7 +114,8 @@ describe('Items search', () => {
       filters.search === 'zzzz' ? answer([], 0) : answer(ROWS(['Garlic']), 91)) as never);
     await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     await type('zzzz');
-    expect(shownText()).toContain('No items match "zzzz". Try fewer letters.');
+    expect(shownText()).toContain('No items match "zzzz"');
+    expect(shownText()).toContain('Try fewer letters or another spelling.');
     expect(shownText()).not.toContain('No items yet');
     const clear = tree!.root.findAll(node => node.props.accessibilityRole === 'button' && node.findAllByType(Text).some(t => flat(t.props.children) === 'Clear search'))[0];
     await act(async () => { clear.props.onPress(); });
@@ -128,7 +129,8 @@ describe('Items search', () => {
     jest.mocked(itemService.getItemList).mockResolvedValueOnce({ success: false, message: 'offline', data: [] } as never);
     const list = tree!.root.find(node => typeof node.props.refreshControl === 'object' && node.props.refreshControl !== null && 'props' in node.props.refreshControl);
     await act(async () => { list.props.refreshControl.props.onRefresh(); });
-    expect(shownText()).toContain("Couldn't refresh items. Showing the list from");
+    expect(shownText()).toContain("Couldn't refresh items.");
+    expect(shownText()).toContain('Showing the items loaded at');
     expect(shownText()).toContain('Garlic');
     expect(shownText()).not.toContain("Couldn't load items");
   });
