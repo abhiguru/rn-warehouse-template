@@ -17,7 +17,9 @@ export function useKeyboardCoverLift() {
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', event => {
       setKeyboardShown(true);
-      const keyboardTop = event.endCoordinates.screenY;
+      // An event without its coordinates gives no lift, and never throws inside a keyboard listener.
+      const keyboardTop = event?.endCoordinates?.screenY;
+      if (typeof keyboardTop !== 'number') return;
       ref.current?.measureInWindow((_x, y, _width, height) => {
         setLift(previous => Math.max(0, previous + (y + height - keyboardTop)));
       });
