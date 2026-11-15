@@ -1,5 +1,11 @@
 import React from 'react';
 import { Alert, Modal, Platform } from 'react-native';
+import * as RN from 'react-native';
+const mockFindNodeHandle = jest.fn();
+jest.mock('react-native', () => {
+  const actual = jest.requireActual('react-native');
+  return new Proxy(actual, { get: (target, key) => (key === 'findNodeHandle' ? mockFindNodeHandle : target[key as keyof typeof target]) });
+});
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { AlertHost } from '../AlertHost';
 import { resetAlertQueueForTests, showAlert, whenAlertsClosed } from '@/utils/alert';
@@ -213,6 +219,37 @@ describe('whenAlertsClosed', () => {
     press(tree, 'OK');
 
     expect(await settled(waiting)).toBe(true);
+    act(() => tree.unmount());
+  });
+});
+
+describe('AlertHost screen-reader focus (WH-219)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('moves focus to the title of each queued alert, not only the first', () => {
+    mockFindNodeHandle.mockReturnValue(7);
+    const setFocus = jest.spyOn(RN.AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
+    let tree!: ReactTestRenderer;
+    act(() => { tree = create(<AlertHost />, { createNodeMock: () => ({}) }); });
+    act(() => { showAlert('First', 'One', [{ text: 'OK' }]); showAlert('Second', 'Two', [{ text: 'Done' }]); });
+    const layoutTitle = (title: string) => {
+      const node = tree.root.find(n => (n.type as unknown) === 'Text' && n.props.accessibilityRole === 'header' && [].concat(n.props.children).join('') === title);
+      act(() => node.props.onLayout());
+    };
+
+    layoutTitle('First');
+    expect(setFocus).toHaveBeenCalledTimes(1);
+    // A layout of the same title again moves nothing.
+    layoutTitle('First');
+    expect(setFocus).toHaveBeenCalledTimes(1);
+
+    press(tree, 'OK');
+    layoutTitle('Second');
+    expect(setFocus).toHaveBeenCalledTimes(2);
     act(() => tree.unmount());
   });
 });
