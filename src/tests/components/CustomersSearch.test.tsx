@@ -150,3 +150,13 @@ it('shows "5 customers · 1 deactivated" from the head counts, and the Deactivat
   expect(text(screen)).toContain('1 customer');
   expect(text(screen)).not.toContain('deactivated');
 });
+
+it('lets the empty list content grow instead of collapsing, so the no-match state is visible (WH-215)', async () => {
+  const screen = await mount();
+  await search(screen, 'acmezzz');
+  const { StyleSheet } = jest.requireActual('react-native');
+  const holder = screen.root.findAll(node => node.props.contentContainerStyle !== undefined)[0];
+  const style = StyleSheet.flatten(holder.props.contentContainerStyle);
+  expect(style.flexGrow).toBe(1);
+  expect(style.flex).toBeUndefined();
+});
