@@ -49,9 +49,9 @@ export function FormSaveBar({ label, onPress, loading = false, disabled = false,
   const styles = useThemedStyles(makeStyles);
   // With the keyboard up the bar sits on it: no home-indicator space under it, and it is lifted by the part the
   // keyboard covers (useKeyboardCoverLift).
-  const { ref: barRef, lift, keyboardShown } = useKeyboardCoverLift();
+  const { ref: barRef, lift, keyboardShown, onLayout: measureLift } = useKeyboardCoverLift();
   return (
-    <View ref={barRef} testID={testID} onLayout={onLayout} style={[styles.container, { marginBottom: lift, paddingBottom: (Platform.OS === 'ios' && !keyboardShown ? insets.bottom : 0) + space.md }]}>
+    <View ref={barRef} testID={testID} onLayout={event => { measureLift(event); onLayout?.(event); }} style={[styles.container, { marginBottom: lift, paddingBottom: (Platform.OS === 'ios' && !keyboardShown ? insets.bottom : 0) + space.md }]}>
       {helper ? (typeof helper === 'string' ? <Text style={styles.helper}>{helper}</Text> : helper) : null}
       <Button type="primary" size="fullWidth" onPress={onPress} loading={loading} loadingText={loadingText} disabled={disabled} testID={buttonTestID}>
         {label}
