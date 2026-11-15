@@ -7,7 +7,7 @@
  * pressed, and go when the field changes.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, type Href } from 'expo-router';
@@ -125,6 +125,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
     resetFormState,
   } = useInvoiceForm({ mode, step: STEP_NUMBERS.HEADER });
 
+  const scrollRef = useRef<KeyboardAwareScrollView>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showGRNBottomSheet, setShowGRNBottomSheet] = useState(false);
   const [showNoItemsDialog, setShowNoItemsDialog] = useState(false);
@@ -332,11 +333,14 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
       />
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         enableOnAndroid
+        // WizardBottomBar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no keyboard room.
+        enableAutomaticScroll={false}
       >
         {/* Invoice date */}
         <View style={styles.formGroup}>
@@ -520,6 +524,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
       <WizardBottomBar
         currentStep={STEP_NUMBERS.HEADER}
         totalSteps={3}
+        scrollRef={scrollRef}
         onNext={handleNext}
         nextLabel={tr('common.next')}
         isLoading={isGettingNextNumber}

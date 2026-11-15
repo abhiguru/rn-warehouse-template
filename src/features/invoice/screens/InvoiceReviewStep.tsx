@@ -111,6 +111,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   const [shareError, setShareError] = useState<string | null>(null);
   // The print question calls onDismiss after onConfirm has answered it; that call is not a Cancel.
   const printAnswered = useRef(false);
+  const scrollRef = useRef<KeyboardAwareScrollView>(null);
 
   // Dialog states for dark mode compliance
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; title: string; message: string }>({
@@ -520,7 +521,9 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         showsVerticalScrollIndicator={true}
         keyboardShouldPersistTaps="handled"
         enableOnAndroid={true}
-        extraScrollHeight={100}
+        // WizardBottomBar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no keyboard room.
+        enableAutomaticScroll={false}
+        ref={scrollRef}
       >
         <DocumentsPreviewNote state={documentsPreview} hasDiscount={header.discount > 0} />
         <ReviewCard testID="invoice-review">
@@ -602,6 +605,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
       <WizardBottomBar
         currentStep={STEP_NUMBERS.REVIEW}
         totalSteps={3}
+        scrollRef={scrollRef}
         onPrevious={handleBack}
         // No way to another step while the answer of the save is lost (D22) or the invoice is read again (D1), and no
         // second Save or Update.

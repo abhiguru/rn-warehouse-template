@@ -91,6 +91,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // Bottom sheet refs
   const senderBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
   const customerBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
+  const scrollRef = useRef<KeyboardAwareScrollView>(null);
 
   // Input refs
   const registrationInputRef = useRef<GhostTextInputRef>(null);
@@ -263,12 +264,13 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
       />
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
         enableOnAndroid
-        enableAutomaticScroll
-        extraScrollHeight={120}
+        // WizardBottomBar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no keyboard room.
+        enableAutomaticScroll={false}
         keyboardShouldPersistTaps="handled"
       >
         {hasDispatchedItems && (
@@ -513,6 +515,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         currentStep={STEP_NUMBERS.HEADER}
         totalSteps={GRN_STEP_COUNT}
         onNext={handleNext}
+        scrollRef={scrollRef}
       />
 
       <DatePickerModal

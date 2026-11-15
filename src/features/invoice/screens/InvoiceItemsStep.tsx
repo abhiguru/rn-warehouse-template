@@ -169,6 +169,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       <WizardBottomBar
         currentStep={STEP_NUMBERS.ITEMS}
         totalSteps={3}
+        scrollRef={editorRef}
         onPrevious={handleBack}
         previousAccessibilityLabel={tr('invoice.items.backToDetails')}
         onNext={handleNext}

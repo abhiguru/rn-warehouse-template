@@ -262,6 +262,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const [showOptionalFields, setShowOptionalFields] = useState(!isCreateMode);
 
     const customerBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
+    const scrollRef = useRef<KeyboardAwareScrollView>(null);
 
     // Toggle optional fields with animation (create mode only)
     const toggleOptionalFields = () => {
@@ -386,13 +387,14 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 canSwipeRight={false}
             >
                 <KeyboardAwareScrollView
+                    ref={scrollRef}
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                     enableOnAndroid={true}
-                    enableAutomaticScroll={true}
-                    extraScrollHeight={200}
+                    // WizardBottomBar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no keyboard room.
+                    enableAutomaticScroll={false}
                 >
                     {/* Form Section Card */}
                     <View style={styles.formSection}>
@@ -609,6 +611,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
             <WizardBottomBar
                 currentStep={1}
                 totalSteps={DISPATCH_STEP_COUNT}
+                scrollRef={scrollRef}
                 onNext={() => { void navigateToStep(2); }}
             />
 

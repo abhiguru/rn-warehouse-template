@@ -985,12 +985,9 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                     enableOnAndroid={true}
-                    enableAutomaticScroll={true}
-                    // The library scrolls the focused field to this far above the keyboard: about 88 pt, room for the
-                    // "Enter N bags or fewer" line under it. (250/350 pt put the field behind the header.)
-                    extraScrollHeight={space.lg}
-                    keyboardOpeningTime={0}
-                    extraHeight={72}
+                    // WizardBottomBar keeps the focused field and the "Enter N bags or fewer" line under it above
+                    // itself (useRevealFocusedField): no automatic scroll, no keyboard room.
+                    enableAutomaticScroll={false}
                 >
                     {/* A saved item is being corrected, in a new dispatch or an edited one: the
                         strip names it and holds the one control that gives the correction up */}
@@ -1297,6 +1294,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             <WizardBottomBar
                 currentStep={DISPATCH_STEP_NUMBERS.ITEMS}
                 totalSteps={DISPATCH_STEP_COUNT}
+                scrollRef={scrollViewRef}
                 onPrevious={handleBack}
                 previousAccessibilityLabel={tr('dispatch.items.backToDetails')}
                 onNext={handleNext}
