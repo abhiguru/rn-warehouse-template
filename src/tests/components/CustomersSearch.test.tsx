@@ -161,14 +161,44 @@ it('lets the empty list content grow instead of collapsing, so the no-match stat
   expect(style.flex).toBeUndefined();
 });
 
-it('offers the screen-reader Refresh action on the count line, and it reads the list again (WH-220)', async () => {
+it('offers the screen-reader Refresh action on the search field, and it reads the list again (WH-220)', async () => {
   const screen = await mount();
   const target = screen.root.find(node => typeof node.type === 'string'
     && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
-  // The action sits on the text the person hears the count in, an element a screen reader focuses.
-  expect(target.type).toBe('Text');
+  // The action sits on the search field, an element a screen reader focuses in every state.
+  expect(target.type).toBe('TextInput');
   expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
   const before = jest.mocked(customerService.getCustomerList).mock.calls.length;
   await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
   expect(jest.mocked(customerService.getCustomerList).mock.calls.length).toBe(before + 1);
+});
+
+describe('the screen-reader Refresh stays reachable when the list has nothing to count (WH-220)', () => {
+  const refreshTargets = (screen: ReactTestRenderer) => screen.root.findAll(node => typeof node.type === 'string'
+    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+  const expectRefreshWorks = async (screen: ReactTestRenderer) => {
+    const targets = refreshTargets(screen);
+    expect(targets).toHaveLength(1);
+    expect(targets[0].type).toBe('TextInput');
+    const before = jest.mocked(customerService.getCustomerList).mock.calls.length;
+    await act(async () => { targets[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(jest.mocked(customerService.getCustomerList).mock.calls.length).toBe(before + 1);
+  };
+
+  it('with no customers at all', async () => {
+    jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: [], pagination: { total_count: 0 } } as never);
+    await expectRefreshWorks(await mount());
+  });
+
+  it('during the first load', async () => {
+    jest.mocked(customerService.getCustomerList).mockReturnValue(new Promise(() => undefined) as never);
+    await expectRefreshWorks(await mount());
+  });
+
+  it('on a search with no match', async () => {
+    const screen = await mount();
+    await search(screen, 'acmezzz');
+    expect(text(screen)).toContain('No customers match "acmezzz"');
+    await expectRefreshWorks(screen);
+  });
 });
