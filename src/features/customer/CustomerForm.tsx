@@ -667,7 +667,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
             label={tr(isCreate ? 'customers.list.addCustomer' : 'customers.form.saveCustomer')}
             onPress={() => void onSave()}
             loading={working || saving}
-            disabled={working || saving}
+            disabled={working || saving || (!isCreate && !editor.hasChanges)}
           />
         </>
       )}
