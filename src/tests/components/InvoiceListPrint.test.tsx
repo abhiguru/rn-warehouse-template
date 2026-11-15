@@ -237,6 +237,8 @@ describe('invoices that need care', () => {
 
 describe('screen-reader Refresh (WH-220)', () => {
   it('the list offers a Refresh action that reads the invoices again', async () => {
+    // The Refresh action sits on a date heading, which only a list sorted by date has.
+    mockFilters.sort = { field: 'inv_date', order: 'desc' };
     const tree = await renderList();
     const list = tree.root.find((node) => Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
     expect(list.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });

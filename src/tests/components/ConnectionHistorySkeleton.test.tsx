@@ -36,3 +36,16 @@ it('takes the skeleton away once the days have come', async () => {
   await act(async () => { tree = create(<ConnectionHistoryScreen />); });
   expect(loading()).toEqual([]);
 });
+
+it('offers the screen-reader Refresh action on the intro text, and it reads the days again (WH-220)', async () => {
+  jest.mocked(getConnectionHistory).mockReset();
+  jest.mocked(getConnectionHistory).mockResolvedValue([] as never);
+  await act(async () => { tree = create(<ConnectionHistoryScreen />); });
+  const target = tree!.root.find(node => typeof node.type === 'string'
+    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+  expect(target.type).toBe('Text');
+  expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+  const before = jest.mocked(getConnectionHistory).mock.calls.length;
+  await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  expect(jest.mocked(getConnectionHistory).mock.calls.length).toBe(before + 1);
+});

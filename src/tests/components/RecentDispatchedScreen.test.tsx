@@ -234,3 +234,18 @@ describe('pull to refresh', () => {
     expect(numbers()[0]).toBe('D0040');
   });
 });
+
+describe('screen-reader Refresh (WH-220)', () => {
+  it('the title offers a Refresh action that reads the first page again', async () => {
+    serve(3);
+    await open();
+    const target = tree.root.find((node) => typeof node.type === 'string'
+      && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    expect(target.type).toBe('Text');
+    expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+    const before = read.mock.calls.length;
+    await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(read.mock.calls.length).toBe(before + 1);
+    expect(read).toHaveBeenLastCalledWith(20, 0);
+  });
+});

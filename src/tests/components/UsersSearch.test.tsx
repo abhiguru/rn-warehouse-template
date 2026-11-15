@@ -139,3 +139,17 @@ describe('Users search', () => {
     expect(shownText()).not.toContain("Couldn't load users");
   });
 });
+
+describe('Users screen-reader Refresh (WH-220)', () => {
+  it('offers Refresh on the count line, and it reads the list again', async () => {
+    jest.mocked(adminUserService.getUsersList).mockResolvedValue(answer(ALL) as never);
+    await act(async () => { tree = create(<UsersScreen />); });
+    const target = tree!.root.find(node => typeof node.type === 'string'
+      && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    expect(target.type).toBe('Text');
+    expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+    const before = jest.mocked(adminUserService.getUsersList).mock.calls.length;
+    await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(jest.mocked(adminUserService.getUsersList).mock.calls.length).toBe(before + 1);
+  });
+});

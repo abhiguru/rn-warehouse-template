@@ -117,7 +117,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockFocusEffect = null;
   cleanup = undefined;
-  mockFilters = { ...mockFilters, request: { p_sort_by: 'gr_no', p_sort_order: 'desc' } };
+  mockFilters = { ...mockFilters, request: { p_sort_by: 'gr_no', p_sort_order: 'desc' }, sort: { field: 'gr_no', order: 'desc' } };
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(async () => {
@@ -175,9 +175,11 @@ describe('the GRN list on return', () => {
 
 describe('screen-reader Refresh (WH-220)', () => {
   it('the list offers a Refresh action that reads from the first row again', async () => {
+    // The Refresh action sits on a date heading, which only a list sorted by date has.
+    mockFilters = { ...mockFilters, sort: { field: 'receipt_date', order: 'desc' } };
     await mount(3);
     // FlashList is a stub here: the props the screen gives it are read from the element it is drawn as.
-    const list = tree.root.findAll(node => Array.isArray(node.props.accessibilityActions))[0];
+    const list = tree.root.findAll(node => Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'))[0];
     expect(list.props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
     await act(async () => { list.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
     expect(getAllGRNItems).toHaveBeenCalledTimes(2);

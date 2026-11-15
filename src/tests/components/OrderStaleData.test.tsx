@@ -55,14 +55,24 @@ const strip = (tree: Tree) => tree.root.findAll(node => node.props.testID === 'o
 const pressable = (tree: Tree, testID: string) =>
   tree.root.findAll(node => node.props.testID === testID && typeof node.props.onPress === 'function')[0];
 const list = (tree: Tree) => tree.root.findByType('FlashList' as unknown as React.ElementType);
-// The list's screen-reader "Refresh" action (WH-220): the same refresh as the pull.
-const refresh = (tree: Tree) => list(tree).props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } });
 const rows = (tree: Tree) => list(tree).props.data.filter((row: { type: string }) => row.type !== 'header');
 // A list row drawn on its own (FlashList is a stub here, so it draws no rows itself).
 const draw = (element: React.ReactElement) => {
   let drawn!: Tree;
   act(() => { drawn = create(element); });
   return drawn;
+};
+// The screen-reader "Refresh" action (WH-220) sits on the section heading, an element a screen reader focuses: the
+// same refresh as the pull. The heading row is drawn the way the list would draw it.
+const refreshTarget = (tree: Tree) => {
+  const heading = list(tree).props.data.find((row: { type: string }) => row.type === 'header');
+  const drawn = draw(list(tree).props.renderItem({ item: heading, index: 0 }));
+  return drawn.root.find(node => typeof node.type === 'string'
+    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+};
+const refresh = (tree: Tree) => {
+  const target = refreshTarget(tree);
+  return () => target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } });
 };
 const footer = (tree: Tree) => {
   const Footer = list(tree).props.ListFooterComponent;
@@ -81,7 +91,8 @@ it('keeps the orders after a failed refresh in a strip with the load time and Tr
   expect(strip(tree)).toHaveLength(0);
 
   getOrdersList.mockResolvedValueOnce({ success: false, message: 'Warehouse connection unavailable' });
-  await act(async () => { refresh(tree); });
+  const runRefresh = refresh(tree);
+  await act(async () => { runRefresh(); });
   expect(strip(tree).length).toBeGreaterThan(0);
   expect(texts(tree)).toContain("Couldn't refresh orders.");
   const stale = texts(tree).find(text => text.startsWith('Showing the orders loaded at '));
@@ -187,11 +198,13 @@ it('the list offers a screen-reader Refresh action that reloads the orders like 
   getOrdersList.mockResolvedValue({ success: true, data: orders } as OrderServiceResponse<Order[]>);
   let tree!: Tree;
   await act(async () => { tree = create(<OrderFlashList />); });
-  expect(list(tree).props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+  expect(refreshTarget(tree).props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
   const before = getOrdersList.mock.calls.length;
-  await act(async () => { list(tree).props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  const runRefresh = refresh(tree);
+  await act(async () => { runRefresh(); });
   expect(getOrdersList.mock.calls.length).toBe(before + 1);
-  await act(async () => { list(tree).props.onAccessibilityAction({ nativeEvent: { actionName: 'activate' } }); });
+  const target = refreshTarget(tree);
+  await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'activate' } }); });
   expect(getOrdersList.mock.calls.length).toBe(before + 1);
   expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Refresh orders')).toHaveLength(0);
   await act(async () => { tree.unmount(); });

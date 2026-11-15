@@ -160,3 +160,15 @@ it('lets the empty list content grow instead of collapsing, so the no-match stat
   expect(style.flexGrow).toBe(1);
   expect(style.flex).toBeUndefined();
 });
+
+it('offers the screen-reader Refresh action on the count line, and it reads the list again (WH-220)', async () => {
+  const screen = await mount();
+  const target = screen.root.find(node => typeof node.type === 'string'
+    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+  // The action sits on the text the person hears the count in, an element a screen reader focuses.
+  expect(target.type).toBe('Text');
+  expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+  const before = jest.mocked(customerService.getCustomerList).mock.calls.length;
+  await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  expect(jest.mocked(customerService.getCustomerList).mock.calls.length).toBe(before + 1);
+});

@@ -101,3 +101,16 @@ it('shows the stored sign-out reason at the top of the list', async () => {
   await flush();
   expect(tree!.root.findAll(node => node.props.testID === 'sign-out-reason').length).toBeGreaterThan(0);
 });
+
+it('offers the screen-reader Refresh action on the account row, and it reads the catalogue again (WH-220)', async () => {
+  catalogueOf(DEV.origin);
+  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await flush();
+  const target = tree!.root.find(node => node.props.testID === 'central-account-row' && Array.isArray(node.props.accessibilityActions));
+  expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+  expect(target.props.accessibilityRole).toBe('button');
+  const before = jest.mocked(fetchFacilityCatalogue).mock.calls.length;
+  await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  await flush();
+  expect(jest.mocked(fetchFacilityCatalogue).mock.calls.length).toBeGreaterThan(before);
+});

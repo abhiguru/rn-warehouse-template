@@ -214,6 +214,8 @@ describe('pressing Print', () => {
 
 describe('screen-reader Refresh (WH-220)', () => {
   it('the list offers a Refresh action that reads the dispatches again, with no Refresh icon in the header', async () => {
+    // The Refresh action sits on a date heading, which only a list sorted by date has.
+    mockFilters.sort = { field: 'dispatch_date', order: 'desc' };
     const tree = await renderList();
     const list = tree.root.find((node) => Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
     expect(list.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
