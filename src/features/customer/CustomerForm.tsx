@@ -17,12 +17,13 @@
  * (add), so the Customers list is never on the stack twice (G-16).
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Keyboard, Platform, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { AccessibilityInfo, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { SkeletonBox } from '@/components/skeletons/SkeletonBox';
@@ -31,7 +32,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { customerService } from '@/services/customer-service';
 import type { CreateCustomerParams, CustomerServiceResponse, CustomerValidationErrors, UpdateCustomerParams } from '@/types/customer.types';
-import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { normalizeDigits, t as tr } from '@/i18n';
 import { formatMobile as formatMobileDisplay, nationalMobileDigits } from '@/utils/formatters';
 import { groupMobileDigits } from '@/utils/mobileGrouping';
@@ -69,6 +70,18 @@ const FIELD_ORDER: (keyof CustomerFormFields)[] = [
 
 /** Lower case with spaces collapsed, to tell "Acme  Foods" from "acme foods" no more. */
 const fold = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** The fixed +91 before a mobile field: read out by the field's own label ("... after +91"), so hidden from the screen reader. */
+function PhonePrefix() {
+  const styles = useThemedStyles(makePrefixStyles);
+  return (
+    <Text style={styles.prefix} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      +91
+    </Text>
+  );
+}
+
+const makePrefixStyles = (t: ThemeTokens) => ({ prefix: { ...typography.body, color: t.text.secondary } });
 
 export function CustomerForm({ customerId }: { customerId?: string }) {
   const styles = useThemedStyles(makeStyles);
@@ -433,12 +446,14 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
           >
             <SectionHeader title={tr('customers.form.basicInformation')} />
             <View style={styles.group}>
-              <Field
+              <Input
                 label={tr('customers.form.customerName')}
                 required
                 accessibilityLabel={tr('customers.form.customerNameLabel')}
                 error={errors.name}
-                inputRef={node => (inputs.current.name = node)}
+                ref={node => {
+                  inputs.current.name = node;
+                }}
                 value={fields.name}
                 onChangeText={text => change('name', text)}
                 placeholder={tr('customers.form.customerNamePlaceholder')}
@@ -449,13 +464,15 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="name"
                 textContentType="name"
               />
-              <Field
+              <Input
                 label={tr('common.mobileNumber')}
                 required
-                prefix="+91"
+                leftIcon={<PhonePrefix />}
                 accessibilityLabel={tr('customers.form.mobileLabel')}
                 error={errors.mobile}
-                inputRef={node => (inputs.current.mobile = node)}
+                ref={node => {
+                  inputs.current.mobile = node;
+                }}
                 value={groupMobileDigits(fields.mobile)}
                 onChangeText={text => change('mobile', nationalMobileDigits(text).slice(0, 10))}
                 placeholder={tr('customers.form.mobilePlaceholder')}
@@ -466,13 +483,15 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.email?.focus()}
               />
-              <Field
+              <Input
                 label={tr('customers.form.email')}
                 accessibilityLabel={tr('customers.form.emailLabel')}
                 accessibilityHint={tr('customers.form.emailHint')}
-                helper={tr('customers.form.emailHelper')}
+                helperText={tr('customers.form.emailHelper')}
                 error={errors.email}
-                inputRef={node => (inputs.current.email = node)}
+                ref={node => {
+                  inputs.current.email = node;
+                }}
                 value={fields.email}
                 onChangeText={text => change('email', text)}
                 keyboardType="email-address"
@@ -488,10 +507,12 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
 
             <SectionHeader title={tr('customers.form.address')} />
             <View style={styles.group}>
-              <Field
+              <Input
                 label={tr('customers.form.fullAddress')}
                 error={errors.address}
-                inputRef={node => (inputs.current.address = node)}
+                ref={node => {
+                  inputs.current.address = node;
+                }}
                 value={fields.address}
                 onChangeText={text => change('address', text)}
                 placeholder={tr('customers.form.fullAddressPlaceholder')}
@@ -500,12 +521,13 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 maxLength={300}
                 multiline
                 numberOfLines={3}
-                multilineField
               />
-              <Field
+              <Input
                 label={tr('customers.form.city')}
                 error={errors.city}
-                inputRef={node => (inputs.current.city = node)}
+                ref={node => {
+                  inputs.current.city = node;
+                }}
                 value={fields.city}
                 onChangeText={text => change('city', text)}
                 maxLength={25}
@@ -525,10 +547,12 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                   scrollIntoView={handle => scrollRef.current?.scrollToFocusedInput(handle)}
                 />
               ) : (
-                <Field
+                <Input
                   label={tr('customers.form.state')}
                   error={errors.state}
-                  inputRef={node => (inputs.current.state = node)}
+                  ref={node => {
+                    inputs.current.state = node;
+                  }}
                   value={fields.state}
                   onChangeText={text => change('state', text)}
                   maxLength={50}
@@ -539,10 +563,12 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                   textContentType="addressState"
                 />
               )}
-              <Field
+              <Input
                 label={tr('customers.form.pincode')}
                 error={errors.pincode}
-                inputRef={node => (inputs.current.pincode = node)}
+                ref={node => {
+                  inputs.current.pincode = node;
+                }}
                 value={fields.pincode}
                 onChangeText={text => change('pincode', normalizeDigits(text).replace(/\D/g, '').slice(0, 6))}
                 placeholder={tr('customers.form.pincodePlaceholder')}
@@ -557,11 +583,13 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
 
             <SectionHeader title={tr('customers.form.taxDetails')} />
             <View style={styles.group}>
-              <Field
+              <Input
                 label={tr('customers.form.gstNumber')}
-                helper={tr('customers.form.formatHelper', { example: '22AAAAA0000A1Z5' })}
+                helperText={tr('customers.form.formatHelper', { example: '22AAAAA0000A1Z5' })}
                 error={errors.gst}
-                inputRef={node => (inputs.current.gst = node)}
+                ref={node => {
+                  inputs.current.gst = node;
+                }}
                 value={fields.gst}
                 onChangeText={text => change('gst', formatGST(text))}
                 placeholder={tr('customers.form.gstPlaceholder')}
@@ -571,11 +599,13 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.pan?.focus()}
               />
-              <Field
+              <Input
                 label={tr('customers.form.pan')}
-                helper={tr('customers.form.formatHelper', { example: 'AAAAA0000A' })}
+                helperText={tr('customers.form.formatHelper', { example: 'AAAAA0000A' })}
                 error={errors.pan}
-                inputRef={node => (inputs.current.pan = node)}
+                ref={node => {
+                  inputs.current.pan = node;
+                }}
                 value={fields.pan}
                 onChangeText={text => change('pan', formatPAN(text))}
                 placeholder={tr('customers.form.panPlaceholder')}
@@ -589,10 +619,12 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
 
             <SectionHeader title={tr('customers.form.contactPerson')} />
             <View style={styles.group}>
-              <Field
+              <Input
                 label={tr('customers.form.contactName')}
                 error={errors.contact_name}
-                inputRef={node => (inputs.current.contact_name = node)}
+                ref={node => {
+                  inputs.current.contact_name = node;
+                }}
                 value={fields.contact_name}
                 onChangeText={text => change('contact_name', text)}
                 placeholder={tr('customers.form.contactNamePlaceholder')}
@@ -603,12 +635,14 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="name"
                 textContentType="name"
               />
-              <Field
+              <Input
                 label={tr('customers.form.contactMobile')}
-                prefix="+91"
+                leftIcon={<PhonePrefix />}
                 accessibilityLabel={tr('customers.form.labelAfterPrefix', { label: tr('customers.form.contactMobile'), prefix: '+91' })}
                 error={errors.contact_mobile}
-                inputRef={node => (inputs.current.contact_mobile = node)}
+                ref={node => {
+                  inputs.current.contact_mobile = node;
+                }}
                 value={groupMobileDigits(fields.contact_mobile)}
                 onChangeText={text => change('contact_mobile', nationalMobileDigits(text).slice(0, 10))}
                 placeholder={tr('customers.form.mobilePlaceholder')}
@@ -619,10 +653,12 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.contact_email?.focus()}
               />
-              <Field
+              <Input
                 label={tr('customers.form.contactEmail')}
                 error={errors.contact_email}
-                inputRef={node => (inputs.current.contact_email = node)}
+                ref={node => {
+                  inputs.current.contact_email = node;
+                }}
                 value={fields.contact_email}
                 onChangeText={text => change('contact_email', text)}
                 keyboardType="email-address"
@@ -646,71 +682,6 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
           </View>
         </>
       )}
-    </View>
-  );
-}
-
-// =============================================================================
-// FIELD
-// =============================================================================
-
-type FieldProps = TextInputProps & {
-  label: string;
-  required?: boolean;
-  helper?: string;
-  error?: string;
-  /** Fixed text before the field, such as the +91 country code. */
-  prefix?: string;
-  multilineField?: boolean;
-  inputRef?: (node: TextInputRef | null) => void;
-};
-
-/** A labelled text field with focus, error and helper states (style guide §13.2). */
-function Field({ label, required, helper, error, prefix, multilineField, inputRef, onFocus, onBlur, ...inputProps }: FieldProps) {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  const [focused, setFocused] = useState(false);
-  return (
-    <View style={styles.field}>
-      <Text style={[styles.label, !!error && styles.labelError]}>
-        {label}
-        {required ? <Text style={styles.required}> *</Text> : null}
-      </Text>
-      <View style={styles.inputRow}>
-        {prefix ? (
-          <View style={styles.prefix} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <Text style={styles.prefixText}>{prefix}</Text>
-          </View>
-        ) : null}
-        <TextInput
-          ref={inputRef}
-          {...inputProps}
-          style={[
-            styles.input,
-            multilineField && styles.multiline,
-            focused && styles.inputFocused,
-            !!error && styles.inputError,
-          ]}
-          placeholderTextColor={t.text.placeholder}
-          accessibilityLabel={inputProps.accessibilityLabel ?? label}
-          onFocus={event => {
-            setFocused(true);
-            onFocus?.(event);
-          }}
-          onBlur={event => {
-            setFocused(false);
-            onBlur?.(event);
-          }}
-        />
-      </View>
-      {error ? (
-        <View style={styles.messageRow} accessibilityLiveRegion="polite">
-          <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : helper ? (
-        <Text style={styles.helperText}>{helper}</Text>
-      ) : null}
     </View>
   );
 }
@@ -744,37 +715,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.card,
     ...t.shadow[3],
   },
-  field: { gap: space.xs },
-  label: { ...typography.footnote, color: t.text.secondary },
-  labelError: { color: t.status.negative.text },
-  required: { color: t.text.required },
-  inputRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
-  prefix: {
-    borderRadius: radius.field,
-    paddingHorizontal: space.md,
-    minHeight: touchTarget,
-    justifyContent: 'center' as const,
-    backgroundColor: t.surface.fieldReadOnly,
-  },
-  prefixText: { ...typography.body, color: t.text.primary },
-  input: {
-    ...typography.body,
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: radius.field,
-    paddingHorizontal: space.md,
-    paddingVertical: space.md,
-    minHeight: touchTarget,
-    backgroundColor: t.surface.field,
-    borderColor: t.border.field,
-    color: t.text.primary,
-  },
-  multiline: { minHeight: touchTarget * 2, textAlignVertical: 'top' as const },
-  inputFocused: { borderColor: t.border.fieldFocus, borderWidth: 2 },
-  inputError: { borderColor: t.status.negative.border, borderWidth: 2 },
-  messageRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.xs },
-  errorText: { ...typography.footnote, flex: 1, color: t.status.negative.text },
-  helperText: { ...typography.footnote, color: t.text.secondary },
 });
 
 export default CustomerForm;
