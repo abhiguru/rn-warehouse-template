@@ -19,6 +19,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -262,7 +263,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const [showOptionalFields, setShowOptionalFields] = useState(!isCreateMode);
 
     const customerBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
-    const scrollRef = useRef<KeyboardAwareScrollView>(null);
+    const scrollRef = useRevealScrollRef<KeyboardAwareScrollView>();
 
     // Toggle optional fields with animation (create mode only)
     const toggleOptionalFields = () => {
@@ -388,6 +389,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
             >
                 <KeyboardAwareScrollView
                     ref={scrollRef}
+                    onScrollBeginDrag={scrollRef.onScrollBeginDrag}
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"

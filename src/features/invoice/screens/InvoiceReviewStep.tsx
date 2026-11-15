@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import { router, type Href } from 'expo-router';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
@@ -111,7 +112,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   const [shareError, setShareError] = useState<string | null>(null);
   // The print question calls onDismiss after onConfirm has answered it; that call is not a Cancel.
   const printAnswered = useRef(false);
-  const scrollRef = useRef<KeyboardAwareScrollView>(null);
+  const scrollRef = useRevealScrollRef<KeyboardAwareScrollView>();
 
   // Dialog states for dark mode compliance
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; title: string; message: string }>({
@@ -524,6 +525,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         // WizardBottomBar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no keyboard room.
         enableAutomaticScroll={false}
         ref={scrollRef}
+        onScrollBeginDrag={scrollRef.onScrollBeginDrag}
       >
         <DocumentsPreviewNote state={documentsPreview} hasDiscount={header.discount > 0} />
         <ReviewCard testID="invoice-review">

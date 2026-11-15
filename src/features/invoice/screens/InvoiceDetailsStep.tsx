@@ -13,6 +13,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, type Href } from 'expo-router';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -125,7 +126,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
     resetFormState,
   } = useInvoiceForm({ mode, step: STEP_NUMBERS.HEADER });
 
-  const scrollRef = useRef<KeyboardAwareScrollView>(null);
+  const scrollRef = useRevealScrollRef<KeyboardAwareScrollView>();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showGRNBottomSheet, setShowGRNBottomSheet] = useState(false);
   const [showNoItemsDialog, setShowNoItemsDialog] = useState(false);
@@ -334,6 +335,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
 
       <KeyboardAwareScrollView
         ref={scrollRef}
+        onScrollBeginDrag={scrollRef.onScrollBeginDrag}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"

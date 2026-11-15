@@ -3,7 +3,7 @@ import { View, Text, Pressable, ActivityIndicator, Platform, StyleSheet } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
-import { useRevealFocusedField, type KeyboardRevealTarget } from '@/hooks/useRevealFocusedField';
+import { useRevealFocusedField, type RevealScrollRef } from '@/hooks/useRevealFocusedField';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -44,9 +44,10 @@ export interface WizardBottomBarProps {
   addTestID?: string;
   /**
    * The step's KeyboardAwareScrollView (automatic scroll off) or KeyboardAwareFlashList: while the keyboard is up the
-   * bar scrolls it so the focused field and the line under it sit above the bar (useRevealFocusedField).
+   * bar scrolls it so the focused field and the messages under it sit above the bar (useRevealFocusedField). Make it
+   * with useRevealScrollRef and put its onScrollBeginDrag on the scroll view.
    */
-  scrollRef?: React.RefObject<KeyboardRevealTarget | null>;
+  scrollRef?: RevealScrollRef;
 }
 
 const makeStyles = (t: ThemeTokens) => ({

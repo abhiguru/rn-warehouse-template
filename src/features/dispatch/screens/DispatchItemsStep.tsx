@@ -25,6 +25,7 @@ import {
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
@@ -103,7 +104,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     });
 
     // Refs
-    const scrollViewRef = useRef<any>(null);
+    const scrollViewRef = useRevealScrollRef<KeyboardAwareScrollView>();
     const quantityInputRef = useRef<TextInputRef>(null);
     // The three pickers and where each sits in the scroll content, so a tap on an incomplete line can bring the first missing one into view.
     const pickerRefs = useRef<Record<string, ViewRef | null>>({});
@@ -980,6 +981,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             >
                 <KeyboardAwareScrollView
                     ref={scrollViewRef}
+                    onScrollBeginDrag={scrollViewRef.onScrollBeginDrag}
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"

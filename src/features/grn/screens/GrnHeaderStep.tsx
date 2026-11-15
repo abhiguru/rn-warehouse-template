@@ -13,6 +13,7 @@ import {
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
@@ -91,7 +92,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // Bottom sheet refs
   const senderBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
   const customerBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
-  const scrollRef = useRef<KeyboardAwareScrollView>(null);
+  const scrollRef = useRevealScrollRef<KeyboardAwareScrollView>();
 
   // Input refs
   const registrationInputRef = useRef<GhostTextInputRef>(null);
@@ -265,6 +266,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
       <KeyboardAwareScrollView
         ref={scrollRef}
+        onScrollBeginDrag={scrollRef.onScrollBeginDrag}
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}

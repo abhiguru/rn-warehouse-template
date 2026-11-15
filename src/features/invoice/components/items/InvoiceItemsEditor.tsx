@@ -132,6 +132,8 @@ interface Props {
   ListHeaderComponent?: React.ReactElement | null;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /** The person started dragging the list (useRevealScrollRef, for the wizard bar's reveal). */
+  onScrollBeginDrag?: () => void;
 }
 
 interface FocusRecord {
@@ -177,7 +179,7 @@ const spokenItemOf = (group: InvoiceItemGroup): string => {
 };
 
 export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle, Props>(function InvoiceItemsEditor(
-  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle },
+  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle, onScrollBeginDrag },
   ref
 ) {
   const styles = useThemedStyles(makeItemsStyles);
@@ -809,6 +811,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
       getItemType={rowType}
       innerRef={setListRef}
       ref={keyboardListRef}
+      onScrollBeginDrag={onScrollBeginDrag}
       ListHeaderComponent={ListHeaderComponent ? <View style={styles.listHeader}>{ListHeaderComponent}</View> : null}
       ListEmptyComponent={
         <View style={styles.empty}>
