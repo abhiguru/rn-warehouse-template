@@ -18,7 +18,7 @@ import {
   ActivityIndicator,
   Switch,
 } from 'react-native';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { adminUserService } from '@/services/admin-user-service';
@@ -34,6 +34,8 @@ import { SearchableBottomSheet } from '@/components/common/SearchableBottomSheet
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
+import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import {
   fontWeight,
   iconSize,
@@ -600,15 +602,24 @@ export default function UserEditScreen() {
   // RENDER
   // ===========================================================================
 
-  // The header is drawn here, as Edit item does, not through Stack.Screen options.
+  // The stack header, as the document pages have it. The page is the edit form, so nothing sits at its end.
   const header = (
-    <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
-      <HeaderBackButton />
-      <Text style={styles.headerTitle} accessibilityRole="header">
-        {tr('users.edit.title')}
-      </Text>
-      <View style={styles.headerSide} />
-    </View>
+    <Stack.Screen
+      options={{
+        headerShown: true,
+        headerStyle: { backgroundColor: t.surface.header },
+        headerTintColor: t.brand.tint,
+        headerShadowVisible: false,
+        headerTitleAlign: 'center',
+        title: tr('users.edit.title'),
+        headerTitle: () => (
+          <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+            {tr('users.edit.title')}
+          </Text>
+        ),
+        headerLeft: () => <HeaderBackButton />,
+      }}
+    />
   );
 
   // Loading state
@@ -616,14 +627,7 @@ export default function UserEditScreen() {
     return (
       <View style={styles.container}>
         {header}
-        <View
-          style={[styles.flex, styles.centerContainer]}
-          accessibilityRole="progressbar"
-          accessibilityLabel={tr('users.edit.loading')}
-        >
-          <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.loadingText}>{tr('users.edit.loadingText')}</Text>
-        </View>
+        <DetailSkeleton tabCount={1} cardCount={3} />
       </View>
     );
   }
@@ -645,21 +649,13 @@ export default function UserEditScreen() {
     return (
       <View style={styles.container}>
         {header}
-        <View style={[styles.flex, styles.centerContainer]} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.errorTitle} accessibilityRole="header">
-            {tr('users.edit.errorTitle')}
-          </Text>
-          <Text style={styles.errorText}>{endText ?? tr(failure === 'network' ? 'common.checkConnection' : 'users.edit.tryAgainSoon')}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
-            onPress={endText ? backToUsers : loadUser}
-            accessibilityRole="button"
-          >
-            <Icon name={endText ? 'arrow-left' : 'refresh'} size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.retryButtonText}>{endText ? tr('users.edit.backToUsers') : tr('common.retry')}</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          title={tr('users.edit.errorTitle')}
+          message={endText ?? tr(failure === 'network' ? 'common.checkConnection' : 'users.edit.tryAgainSoon')}
+          onRetry={endText ? undefined : loadUser}
+          secondaryActionLabel={endText ? tr('users.edit.backToUsers') : undefined}
+          onSecondaryAction={endText ? backToUsers : undefined}
+        />
       </View>
     );
   }
@@ -984,60 +980,10 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: space.xxl,
     gap: space.sm,
   },
-  header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingBottom: space.xs,
-    paddingHorizontal: space.sm,
-    gap: space.xs,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
   headerTitle: {
     ...typography.headline,
-    flex: 1,
     textAlign: 'center' as const,
     color: t.text.primary,
-  },
-  // Same width as the Back button, so the title is centred.
-  headerSide: {
-    width: 80,
-  },
-  loadingText: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    marginTop: space.md,
-  },
-  errorTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.sm,
-  },
-  errorText: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.md,
-  },
-  retryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    paddingHorizontal: space.xl,
-    gap: space.sm,
-  },
-  retryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  retryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
   },
   card: {
     backgroundColor: t.surface.card,
