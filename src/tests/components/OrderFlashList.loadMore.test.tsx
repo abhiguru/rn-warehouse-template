@@ -78,18 +78,14 @@ it('refreshes the whole loaded window so live updates do not drop scrolled rows'
     await renderer.root.findByType('FlashList' as unknown as React.ElementType).props.onEndReached();
   });
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(0, 40), metadata: { has_more: true } });
-  // The screen-reader Refresh action sits on the section heading (WH-220): the stub list draws no rows, so the
-  // heading row is drawn here the way the list would draw it.
+  // The screen-reader Refresh action sits on the list's title (WH-220), which the list always shows.
   const flash = renderer.root.findByType('FlashList' as unknown as React.ElementType);
-  const headingRow = flash.props.data.find((row: { type: string }) => row.type === 'header');
-  let heading!: ReturnType<typeof create>;
-  await act(async () => { heading = create(flash.props.renderItem({ item: headingRow, index: 0 })); });
-  const refreshTarget = heading.root.find(node => typeof node.type === 'string'
+  expect(flash).toBeTruthy();
+  const refreshTarget = renderer.root.find(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
     && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
   await act(async () => {
     refreshTarget.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } });
   });
-  await act(async () => { heading.unmount(); });
   expect(getOrdersList).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0, limit: 40 }));
   expect(listedIds(renderer)).toHaveLength(40);
   await act(async () => { renderer.unmount(); });

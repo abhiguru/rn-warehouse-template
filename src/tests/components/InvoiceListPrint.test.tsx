@@ -38,7 +38,12 @@ jest.mock('expo-crypto', () => ({ randomUUID: () => jest.requireActual('node:cry
 jest.mock('@/features/filters/configs', () => ({ INVOICE_FILTERS: { listKey: 'invoice-list' } }));
 jest.mock('@/features/filters/filterModel', () => ({ readSearch: () => ({ text: '' }) }));
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
-  FilteredListHeader: () => null,
+  // Draws the title the way the real header does (a heading with the Refresh action when the screen passes onRefresh).
+  FilteredListHeader: ({ title, onRefresh }: { title: string; onRefresh?: () => void }) => {
+    const { Text } = require('react-native');
+    const { listRefreshAccessibility } = require('@/components/lists/listRefreshAccessibility');
+    return require('react').createElement(Text, { accessibilityRole: 'header', ...(onRefresh ? listRefreshAccessibility(onRefresh) : null) }, title);
+  },
   filteredEmptyProps: () => ({ activeFilterCount: 0 }),
 }));
 const mockFilters = {
@@ -236,14 +241,18 @@ describe('invoices that need care', () => {
 });
 
 describe('screen-reader Refresh (WH-220)', () => {
-  it('the list offers a Refresh action that reads the invoices again', async () => {
-    // The Refresh action sits on a date heading, which only a list sorted by date has.
-    mockFilters.sort = { field: 'inv_date', order: 'desc' };
+  // The Refresh action sits on the list's title ("Invoices"), which every sort shows: by date (with date headings) and by number (without).
+  it.each([['date', 'inv_date'], ['number', 'inv_no']])('the title offers a Refresh action that reads the invoices again, sorted by %s', async (_name, field) => {
+    mockFilters.sort = { field, order: 'desc' };
     const tree = await renderList();
-    const list = tree.root.find((node) => Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
-    expect(list.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+    const title = tree.root.findAll((node) => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
+      && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    expect(title).toHaveLength(1);
+    expect(title[0].props.children).toBe('Invoices');
+    expect(title[0].props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
     const before = jest.mocked(getInvoicesList).mock.calls.length;
-    await act(async () => { list.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    await act(async () => { title[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
     expect(jest.mocked(getInvoicesList).mock.calls.length).toBe(before + 1);
+    mockFilters.sort = { field: 'inv_no', order: 'desc' };
   });
 });

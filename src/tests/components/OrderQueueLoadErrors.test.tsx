@@ -35,7 +35,8 @@ jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 })
 jest.mock('@/features/filters/configs', () => ({ ORDER_QUEUE_FILTERS: { listKey: 'order-queue' } }));
 const mockHeader: { loading?: boolean } = {};
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
-  FilteredListHeader: (props: { loading?: boolean }) => { mockHeader.loading = props.loading; return null; },
+  // The header's own `actions` slot (where the order-count badge sits) is drawn; the rest of the header is not.
+  FilteredListHeader: (props: { loading?: boolean; actions?: React.ReactNode }) => { mockHeader.loading = props.loading; return props.actions ?? null; },
   filteredEmptyProps: () => ({}),
 }));
 const mockFilters: { request: { search?: string }; values: object } = { request: {}, values: {} };
@@ -188,9 +189,14 @@ it('the list offers a screen-reader Refresh action that reloads the queue like a
   getOrdersList.mockResolvedValue(answer(page(0, 2)));
   let tree!: Tree;
   await act(async () => { tree = create(<SupervisorOrderQueueList />); });
-  expect(list(tree).props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+  // The action sits on the order-count badge, which a screen reader focuses (a scroll container is not offered it).
+  const badge = tree.root.findAll(node => typeof node.type === 'string' && Array.isArray(node.props.accessibilityActions));
+  expect(badge).toHaveLength(1);
+  expect(badge[0].props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+  expect(badge[0].props.accessibilityLabel).toBe('2 orders in the queue');
+  expect(list(tree).props.accessibilityActions).toBeUndefined();
   expect(getOrdersList).toHaveBeenCalledTimes(1);
-  await act(async () => { list(tree).props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  await act(async () => { badge[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
   expect(getOrdersList).toHaveBeenCalledTimes(2);
   expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Refresh order queue')).toHaveLength(0);
   await act(async () => { tree.unmount(); });

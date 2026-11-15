@@ -62,13 +62,14 @@ const draw = (element: React.ReactElement) => {
   act(() => { drawn = create(element); });
   return drawn;
 };
-// The screen-reader "Refresh" action (WH-220) sits on the section heading, an element a screen reader focuses: the
-// same refresh as the pull. The heading row is drawn the way the list would draw it.
+// The screen-reader "Refresh" action (WH-220) sits on the list's title ("Orders"), which every state shows: the
+// same refresh as the pull.
 const refreshTarget = (tree: Tree) => {
-  const heading = list(tree).props.data.find((row: { type: string }) => row.type === 'header');
-  const drawn = draw(list(tree).props.renderItem({ item: heading, index: 0 }));
-  return drawn.root.find(node => typeof node.type === 'string'
+  const title = tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
     && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+  expect(title).toHaveLength(1);
+  expect(title[0].props.children).toBe('Orders');
+  return title[0];
 };
 const refresh = (tree: Tree) => {
   const target = refreshTarget(tree);
