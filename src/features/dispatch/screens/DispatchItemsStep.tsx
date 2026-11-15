@@ -25,7 +25,7 @@ import {
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
+import { FIELD_BLOCK_ID, useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
@@ -1161,8 +1161,8 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                         {renderError(validationErrors.grnItems_id)}
                     </View>
 
-                    {/* Quantity Input - after Lot selector */}
-                    <View style={styles.formGroup}>
+                    {/* Quantity Input - after Lot selector. The group ends at the error under the row: the block the wizard bar keeps above itself. */}
+                    <View style={styles.formGroup} nativeID={FIELD_BLOCK_ID}>
                         <Text style={[styles.label, quantityHasError && styles.labelError]}>
                             {tr('dispatch.items.packsToDispatch', { things: packNounCapital(currentItem.grnItems_packaging) })}<Text style={styles.required}> *</Text>
                         </Text>

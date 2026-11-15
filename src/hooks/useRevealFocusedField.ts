@@ -6,24 +6,34 @@
  * aims at the keyboard's top edge and adds the keyboard's height as empty room at the end of the content, but the
  * bar now sits on the keyboard and the scroll view ends at the bar's top, so both would be wrong. Instead the
  * focused field's block and the bar's top are measured in the window and the content is scrolled by exactly the
- * part that is missing: block bottom + space.sm ≤ bar top. The block is read from the view tree: the field's box
- * (the bordered container the input sits in), then the messages directly under it (a helper, an error or a
- * character count, each starting within space.xs of the one above), so a message that wraps to two lines counts in
- * full. No room is kept for a message that is not showing: when one appears it is revealed then (below). Where the
- * view tree cannot be read, one footnote line at the current font scale stands in for the box and its messages.
- * Measuring the bar's top makes the rule hold whatever moved the bar there: the lift on Android when the window does
- * not shrink, the shrunken window (lift 0) and iOS. A block taller than the room keeps its bottom in view; the
- * field's top may scroll out.
+ * part that is missing: block bottom + space.sm ≤ bar top. The block is declared by the screen, not guessed: the
+ * focused input's nearest ancestor View with `nativeID={FIELD_BLOCK_ID}`, which holds the field's box and the
+ * messages under it (a helper, an error or a character count) and ends at the last of them, so a message that wraps
+ * to two lines counts in full. An input with no such ancestor is its own block (a fallback: its box may then end
+ * behind the bar). No room is kept for a message that is not showing: when one appears it is revealed then (below).
+ * Where the view tree cannot be read, one footnote line at the current font scale stands in for the box and its
+ * messages. Measuring the bar's top makes the rule hold whatever moved the bar there: the lift on Android when the
+ * window does not shrink, the shrunken window (lift 0) and iOS. A block taller than the room keeps its bottom in
+ * view; the field's top may scroll out.
+ *
+ * Marking a field: every text input of a wizard step has a block. Put `nativeID={FIELD_BLOCK_ID}` on the smallest
+ * View that holds the field's box and every message that can show under it and ends at the last of them (no bottom
+ * padding inside it, no other field, not the next row); a field with nothing under it marks its box.
  *
  * When it runs: when the keyboard shows, when another field takes the focus, and when the focused block changes
  * height (a multiline field grows, a message appears, wraps or goes); while the keyboard is up these are checked
  * every FOCUS_CHECK_MS, since none of them sends a keyboard event. When the bar's top moves (the lift changed) it runs
- * again, unless the person has dragged the content since the last reveal. A re-layout that moves nothing does not
- * scroll. A field outside the scroll view (a sheet over the step) is left alone.
+ * again. After each of these the same check measures the block again once the content is at rest and scrolls by what
+ * is still missing, until it finds the block in place, so the result is the same however the keyboard came up (a new
+ * focus, or a keyboard that opens again on a field that kept the focus, where the reveals run while the scroll view
+ * is still being resized and scrolled). Once in place it does nothing more, so a scroll by the step itself (to a
+ * field with an error) is not undone. After a drag by the person only a focus change or a block that changed height
+ * scrolls again. A re-layout that moves nothing does not scroll, and a check does not ask again from a place where
+ * the content could not go further. A field outside the scroll view (a sheet over the step) is left alone.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { PixelRatio, TextInput } from 'react-native';
-import { space, touchTarget, typography } from '@/theme/tokens';
+import { space, typography } from '@/theme/tokens';
 import type { ViewRef } from '@/types/nativeRefs';
 
 /** A KeyboardAwareScrollView, or a list made with the same library's HOC (KeyboardAwareFlashList). */
@@ -60,12 +70,18 @@ interface MeasurableInput {
   measureInWindow?: (callback: MeasureCallback) => void;
   measureLayout?: (relativeTo: unknown, onSuccess: MeasureCallback, onFail: () => void) => void;
 }
-/** The DOM-like reading of the view tree that React Native's new architecture gives host views. */
+/**
+ * The DOM-like reading of the view tree that React Native's new architecture gives host views (ReactNativeElement):
+ * `id` is the view's `id` or `nativeID` prop.
+ */
 interface TreeNode {
+  id?: string;
   parentElement?: TreeNode | null;
-  nextElementSibling?: TreeNode | null;
   getBoundingClientRect?: () => { top: number; bottom: number; height: number };
 }
+
+/** The `nativeID` of the View that holds a field's box and the messages under it (see the top of this file). */
+export const FIELD_BLOCK_ID = 'field-block';
 
 /** Room kept under the focused field where the view tree cannot be read: one helper or error line and a small gap. */
 export function roomUnderFocusedField(): number {
@@ -74,64 +90,30 @@ export function roomUnderFocusedField(): number {
 
 /** How often the focus and the focused block are checked while the keyboard is up. */
 const FOCUS_CHECK_MS = 150;
-/** A message starts at most this far under the field's box (or the message above it); a 1 pt allowance for rounding. */
-const MESSAGE_GAP = space.xs + 1;
-/** How many of the input's containers can make up its box (a wrapper, the bordered box, a row of the box and buttons). */
-const MAX_BOX_DEPTH = 3;
-/** How many levels up from the field's box the messages are looked for. */
-const MAX_BLOCK_DEPTH = 6;
+/** How many levels above the input its declared block is looked for (the wizard steps' marks are 1 to 3 levels up). */
+const MAX_BLOCK_DEPTH = 12;
 
-/**
- * How far below the input its box may end. Every text input uses the body style: centred in a box at least
- * touchTarget high, the input leaves at most (touchTarget − body line) / 2 under it (an input that fills a taller box
- * leaves only the box's border and padding). space.xxs, the 2 dp of an error or focus border, is added as a margin;
- * it also covers the shorter input of a font scale down to about 0.82. Read when used: the body line follows the
- * language.
- */
-function fieldBoxInset(): number {
-  return (touchTarget - typography.body.lineHeight) / 2 + space.xxs;
+/** The focused input's block: its nearest ancestor marked FIELD_BLOCK_ID, at most MAX_BLOCK_DEPTH levels up, else the input. */
+function fieldBlock(input: TreeNode): TreeNode {
+  let node = input.parentElement;
+  for (let depth = 0; node && depth < MAX_BLOCK_DEPTH; depth++) {
+    if (node.id === FIELD_BLOCK_ID) return node;
+    node = node.parentElement;
+  }
+  return input;
 }
 
-/**
- * How far the field's block reaches below the input. First the box: the input's containers, at most MAX_BOX_DEPTH
- * levels up, that end no more than fieldBoxInset() below the input (each measured from the input, so the box never
- * reaches further than that); the first container that ends further down holds more than the box, and the climb
- * stops there. Then the messages: the views directly under the block so far (a sibling of the box or of one of its
- * containers that starts within MESSAGE_GAP of the bottom so far), climbing while the container holds nothing
- * further down. Views beside the box (same row) are skipped. Null when the view tree cannot be read.
- */
+/** How far the focused input's block reaches below the input; null when the view tree cannot be read. */
 function blockBelowField(input: TreeNode): number | null {
   if (typeof input.getBoundingClientRect !== 'function') return null;
   const fieldBottom = input.getBoundingClientRect().bottom;
-  const boxLimit = fieldBottom + fieldBoxInset();
-  let bottom = fieldBottom;
-  let node: TreeNode = input;
-  for (let depth = 0; depth < MAX_BOX_DEPTH; depth++) {
-    const parent = node.parentElement;
-    const parentRect = parent?.getBoundingClientRect?.();
-    if (!parent || !parentRect || parentRect.bottom > boxLimit) break;
-    node = parent;
-    bottom = Math.max(bottom, parentRect.bottom);
-  }
-  for (let depth = 0; depth < MAX_BLOCK_DEPTH; depth++) {
-    for (let sibling = node.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
-      const rect = sibling.getBoundingClientRect?.();
-      if (!rect || rect.height <= 0 || rect.top < bottom - 1) continue;
-      if (rect.top > bottom + MESSAGE_GAP) break;
-      bottom = Math.max(bottom, rect.bottom);
-    }
-    const parent = node.parentElement;
-    const parentRect = parent?.getBoundingClientRect?.();
-    if (!parent || !parentRect || parentRect.bottom > bottom + MESSAGE_GAP) break;
-    node = parent;
-  }
-  return bottom - fieldBottom;
+  const blockBottom = fieldBlock(input).getBoundingClientRect?.().bottom ?? fieldBottom;
+  return Math.max(0, blockBottom - fieldBottom);
 }
 
 /**
- * The focused block's height, from the input's top to the bottom of its box and messages (the block the reveal
- * measures), for noticing a field that grows or a message that appears, wraps or goes; null when the view tree
- * cannot be read.
+ * The focused block's height, from the input's top to the block's bottom (the block the reveal measures), for
+ * noticing a field that grows or a message that appears, wraps or goes; null when the view tree cannot be read.
  */
 function blockHeight(input: unknown): number | null {
   const node = input as TreeNode | null;
@@ -144,20 +126,42 @@ function currentlyFocused(): unknown {
   return TextInput.State.currentlyFocusedInput?.() ?? null;
 }
 
+interface LastSeen {
+  input: unknown;
+  barTop: number | null;
+  height: number | null;
+  top: number | null;
+  tried: number | null;
+  settling: boolean;
+}
+const emptyLastSeen = (input: unknown): LastSeen => ({ input, barTop: null, height: null, top: null, tried: null, settling: false });
+
 export function useRevealFocusedField(
   barRef: RefObject<ViewRef | null>,
   scrollRef: RevealScrollRef | undefined,
   keyboardShown: boolean,
   revision: number
 ) {
-  /** The focused field, the bar's top the last reveal saw, and the block's height that growth is checked against. */
-  const last = useRef<{ input: unknown; barTop: number | null; height: number | null }>({ input: null, barTop: null, height: null });
+  /**
+   * What the reveals saw: the focused field, the bar's top, the block's height that growth is checked against, the
+   * field's top in the window at the last measuring (to tell content at rest), the field's top when a scroll was last
+   * asked for (a check does not ask again from the same place: the content could not go further), and whether a
+   * reveal has yet to be seen in place at rest (`settling`; only then does the 150 ms check measure).
+   */
+  const last = useRef<LastSeen>(emptyLastSeen(null));
   /** Each reveal takes a number; the answers of an older one are dropped. */
   const runs = useRef(0);
   const wasShown = useRef(false);
 
-  /** `force`: the keyboard showed, the focus moved or the block changed height. Otherwise only a moved bar top counts. */
-  const reveal = useCallback((force: boolean) => {
+  /**
+   * `force`: the keyboard showed, the focus moved or the block changed height: always measured. `bar`: the bar was
+   * measured again: only a moved bar top counts. Both leave the block settling. `check`: the 150 ms check while it
+   * settles: content at rest (the field where the last measuring saw it) that ends too low is scrolled again; found
+   * in place, it stops. `bar` and `check` wait while a drag holds.
+   */
+  const reveal = useCallback((kind: 'force' | 'bar' | 'check') => {
+    // Settled: a scroll by the step itself (to a field with an error) is not undone.
+    if (kind === 'check' && !last.current.settling) return;
     const target = scrollRef?.current;
     const bar = barRef.current;
     const input = currentlyFocused() as MeasurableInput | null;
@@ -170,15 +174,28 @@ export function useRevealFocusedField(
         if (!current()) return;
         const barMoved = last.current.barTop === null || Math.abs(barTop - last.current.barTop) >= 1;
         last.current.barTop = barTop;
-        if (!force && (!barMoved || scrollRef.userScrolled)) return;
+        if (barMoved) last.current.tried = null;
+        if (kind !== 'force' && scrollRef.userScrolled) return;
+        if (kind === 'bar' && !barMoved) return;
         input.measureInWindow?.((_x, inputTop, _width, inputHeight) => {
           if (!current()) return;
+          const atRest = last.current.top !== null && Math.abs(inputTop - last.current.top) < 1;
+          last.current.top = inputTop;
+          if (kind === 'check' && !atRest) return;
+          if (kind !== 'check') last.current.settling = true;
           const below = blockBelowField(input as TreeNode);
           const room = below === null ? roomUnderFocusedField() : below + space.sm;
           last.current.height = blockHeight(input);
           scrollRef.userScrolled = false;
           const missing = Math.ceil(inputTop + inputHeight + room - barTop);
-          if (missing > 0) target.scrollForExtraHeightOnAndroid(missing);
+          const stuck = last.current.tried !== null && Math.abs(inputTop - last.current.tried) < 1;
+          if (missing <= 0 || (kind === 'check' && stuck)) {
+            if (missing <= 0) last.current.tried = null;
+            if (kind === 'check') last.current.settling = false;
+            return;
+          }
+          last.current.tried = inputTop;
+          target.scrollForExtraHeightOnAndroid(missing);
         });
       });
     };
@@ -199,39 +216,46 @@ export function useRevealFocusedField(
     wasShown.current = keyboardShown;
     if (!keyboardShown) {
       runs.current++;
-      last.current = { input: null, barTop: null, height: null };
+      last.current = emptyLastSeen(null);
       return;
     }
     if (justShown) {
-      last.current = { input: currentlyFocused(), barTop: null, height: null };
+      last.current = emptyLastSeen(currentlyFocused());
       if (scrollRef) scrollRef.userScrolled = false;
     }
-    reveal(justShown);
+    reveal(justShown ? 'force' : 'bar');
   }, [keyboardShown, revision, reveal, scrollRef]);
 
-  // A focus change or a block that grew or shrank sends no keyboard event: check while the keyboard is up.
+  // Every 150 ms while the keyboard is up: a focus change or a block that grew or shrank sends no keyboard event, and
+  // the reveals above can run before the content has settled (a keyboard that opens again on a field that kept the
+  // focus: the bar's lift shrinks the scroll view, which scrolls the focused field to its own new bottom edge, while
+  // the reveal's own scroll starts from the offset the library last heard of). So after a reveal the check measures
+  // the field again once it is at rest and scrolls by what is still missing, until it finds the block in place or a
+  // drag holds.
   useEffect(() => {
     if (!keyboardShown || !scrollRef) return;
     const timer = setInterval(() => {
       const now = currentlyFocused();
       if (now !== last.current.input) {
-        last.current.input = now;
+        last.current = { ...emptyLastSeen(now), barTop: last.current.barTop };
         // The new field's baseline is taken here, not left to its reveal, which may return early or never answer.
         last.current.height = blockHeight(now);
-        if (now) reveal(true);
+        // A drag before the focus moved holds no longer.
+        scrollRef.userScrolled = false;
+        if (now) reveal('force');
         return;
       }
+      if (!now) return;
       const height = blockHeight(now);
-      if (height === null) return;
-      // No baseline yet (the keyboard just showed and its reveal returned early or has not answered): this is it.
-      if (last.current.height === null) {
+      if (height !== null && last.current.height !== null && Math.abs(height - last.current.height) >= 1) {
         last.current.height = height;
+        scrollRef.userScrolled = false;
+        reveal('force');
         return;
       }
-      if (Math.abs(height - last.current.height) >= 1) {
-        last.current.height = height;
-        reveal(true);
-      }
+      // No baseline yet (the keyboard just showed and its reveal returned early or has not answered): this is it.
+      if (height !== null && last.current.height === null) last.current.height = height;
+      reveal('check');
     }, FOCUS_CHECK_MS);
     return () => clearInterval(timer);
   }, [keyboardShown, scrollRef, reveal]);

@@ -26,6 +26,7 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Pressable, TextInput, View, type TextInputProps } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
+import { FIELD_BLOCK_ID } from '@/hooks/useRevealFocusedField';
 import { localizeDigits, normalizeDigits } from '@/i18n';
 import { radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { TextInputRef } from '@/types/nativeRefs';
@@ -155,7 +156,8 @@ export function EditableNumberCell({
       style={width !== undefined ? { width } : styles.grow}
       testID={rest.testID ? `${rest.testID}-tap` : undefined}
     >
-      <View pointerEvents="none" testID={rest.testID ? `${rest.testID}-touch` : undefined}>
+      {/* Holds only the cell's box (the input draws it): the block the wizard bar keeps above itself. */}
+      <View pointerEvents="none" testID={rest.testID ? `${rest.testID}-touch` : undefined} nativeID={FIELD_BLOCK_ID}>
         <TextInput
           ref={setRefs}
           selectTextOnFocus

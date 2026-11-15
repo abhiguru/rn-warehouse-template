@@ -19,7 +19,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
+import { FIELD_BLOCK_ID, useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -407,36 +407,39 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 <Text style={styles.label}>
                                     {tr('common.dispatchNumber')}<Text style={styles.required}> *</Text>
                                 </Text>
-                                {isCreateMode && isGeneratingNumber ? (
-                                    <View
-                                        style={styles.loadingInputContainer}
-                                        accessibilityLabel={tr('dispatch.form.generatingNumber')}
-                                        accessibilityState={{ busy: true }}
-                                    >
-                                        <ActivityIndicator size="small" color={t.brand.tint} />
-                                    </View>
-                                ) : (
-                                    <View style={[styles.inputContainer, validationErrors.disp_no && styles.inputContainerError, dateAndNumberLocked && styles.inputContainerLocked]}>
-                                        <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
-                                        <TextInput
-                                            style={styles.input}
-                                            accessibilityLabel={tr('common.dispatchNumber')}
-                                            accessibilityState={{ disabled: dateAndNumberLocked }}
-                                            accessibilityHint={lockedReason}
-                                            editable={!dateAndNumberLocked}
-                                            value={header.disp_no}
-                                            onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase().replace(/\s+/g, ''))}
-                                            placeholder={numberBoxPlaceholder(numberHint, numberReason, 'I####')}
-                                            placeholderTextColor={t.text.placeholder}
-                                            autoCapitalize="characters"
-                                            maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
-                                            // A long number at a large text size wraps instead of scrolling; Enter still just leaves the box.
-                                            multiline
-                                            submitBehavior="blurAndSubmit"
-                                        />
-                                    </View>
-                                )}
-                                <FieldError message={validationErrors.disp_no} styles={styles} color={t.status.negative.text} />
+                                {/* The box and its error, the block the wizard bar keeps above itself: in a row beside the date this group can be stretched, so not the group's own View. */}
+                                <View nativeID={FIELD_BLOCK_ID}>
+                                    {isCreateMode && isGeneratingNumber ? (
+                                        <View
+                                            style={styles.loadingInputContainer}
+                                            accessibilityLabel={tr('dispatch.form.generatingNumber')}
+                                            accessibilityState={{ busy: true }}
+                                        >
+                                            <ActivityIndicator size="small" color={t.brand.tint} />
+                                        </View>
+                                    ) : (
+                                        <View style={[styles.inputContainer, validationErrors.disp_no && styles.inputContainerError, dateAndNumberLocked && styles.inputContainerLocked]}>
+                                            <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
+                                            <TextInput
+                                                style={styles.input}
+                                                accessibilityLabel={tr('common.dispatchNumber')}
+                                                accessibilityState={{ disabled: dateAndNumberLocked }}
+                                                accessibilityHint={lockedReason}
+                                                editable={!dateAndNumberLocked}
+                                                value={header.disp_no}
+                                                onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase().replace(/\s+/g, ''))}
+                                                placeholder={numberBoxPlaceholder(numberHint, numberReason, 'I####')}
+                                                placeholderTextColor={t.text.placeholder}
+                                                autoCapitalize="characters"
+                                                maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
+                                                // A long number at a large text size wraps instead of scrolling; Enter still just leaves the box.
+                                                multiline
+                                                submitBehavior="blurAndSubmit"
+                                            />
+                                        </View>
+                                    )}
+                                    <FieldError message={validationErrors.disp_no} styles={styles} color={t.status.negative.text} />
+                                </View>
                             </View>
 
                             {/* Date */}
@@ -508,8 +511,8 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                             <FieldError message={validationErrors.customer_id} styles={styles} color={t.status.negative.text} />
                         </View>
 
-                        {/* Vehicle Registration - uses customer-specific suggestions */}
-                        <View style={styles.formGroup}>
+                        {/* Vehicle Registration - uses customer-specific suggestions. The group ends at its error: the block the wizard bar keeps above itself. */}
+                        <View style={styles.formGroup} nativeID={FIELD_BLOCK_ID}>
                             <Text style={styles.label}>
                                 {tr('dispatch.form.vehicleRegistration')}<Text style={styles.required}> *</Text>
                             </Text>
@@ -584,9 +587,9 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         </Pressable>
                     )}
 
-                    {/* Notes (Optional) */}
+                    {/* Notes (Optional). The group ends at its count: the block the wizard bar keeps above itself. */}
                     {showOptionalFields && (
-                        <View style={styles.formGroup}>
+                        <View style={styles.formGroup} nativeID={FIELD_BLOCK_ID}>
                             <Text style={styles.label}>{tr('common.notes')}</Text>
                             <View style={styles.inputContainer}>
                                 <Icon name="note-text-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
