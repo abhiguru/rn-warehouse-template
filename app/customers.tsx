@@ -779,8 +779,9 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingTop: space.md,
     paddingRight: 44, // Make room for the rail
   },
+  // flexGrow, not flex: a scroll view's content with flex: 1 collapses to no height and the empty state never showed.
   listContentEmpty: {
-    flex: 1,
+    flexGrow: 1,
   },
 
   // Alphabetical Rail
