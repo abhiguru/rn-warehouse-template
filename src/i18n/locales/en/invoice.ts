@@ -383,7 +383,7 @@ export const invoice = {
     setBy: 'Set by {{name}}, {{date}}',
     notFoundTitle: 'Invoice not found',
     notFoundMessage: 'This invoice may have been deleted, or you may not have access to it.',
-    loadFailedTitle: "Couldn't load invoice",
+    loadFailedTitle: "Couldn't load the invoice",
     loadFailed: "Couldn't load the invoice. Check your connection and try again.",
     deleteTitle: 'Delete invoice {{number}}?',
     deleteMessage: "Invoice {{number}} will be deleted. This can't be undone.",

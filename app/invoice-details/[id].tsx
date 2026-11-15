@@ -527,7 +527,7 @@ function InvoiceDetailScreen() {
           ) : loadFailed ? (
             <ErrorStateView
               title={tr('invoice.details.loadFailedTitle')}
-              message={tr('invoice.details.loadFailed')}
+              message={tr('common.checkConnection')}
               onRetry={() => {
                 setLoadFailed(false);
                 setLoading(true);

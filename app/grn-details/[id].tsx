@@ -758,7 +758,7 @@ function GRNDetailScreen() {
           ) : displayError ? (
             <ErrorStateView
               title={tr('grn.details.loadFailedTitle')}
-              message={displayError}
+              message={tr('common.checkConnection')}
               onRetry={() => {
                 setLoading(true);
                 fetchGRNDetails();

@@ -422,7 +422,7 @@ function DispatchDetailScreen() {
           ) : error ? (
             <ErrorStateView
               title={tr('dispatch.details.loadFailedTitle')}
-              message={error}
+              message={tr('common.checkConnection')}
               onRetry={() => {
                 setLoading(true);
                 fetchDispatchDetails();
