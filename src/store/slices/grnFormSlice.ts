@@ -323,7 +323,14 @@ const grnFormSlice = createSlice({
 
     // Header management
     updateHeader: (state, action: PayloadAction<Partial<GRNHeaderData>>) => {
-      state.header = { ...state.header, ...action.payload };
+      // WH-230: a sender or supervisor that was empty at load stays exempt only until it is changed (even back to empty).
+      const next = action.payload;
+      if (next.sender_name !== undefined && next.sender_name !== state.header.sender_name) state.loadedSenderEmpty = false;
+      if (
+        (next.supervisor_name !== undefined && next.supervisor_name !== state.header.supervisor_name) ||
+        (next.supervisor_id !== undefined && next.supervisor_id !== state.header.supervisor_id)
+      ) state.loadedSupervisorEmpty = false;
+      state.header = { ...state.header, ...next };
     },
 
     // Item management
