@@ -142,10 +142,23 @@ describe('Back on step 1 of a new invoice', () => {
     await act(async () => { tree.unmount(); });
   });
 
+  it('the X closes at once, asking nothing, while only the suggested number and today\'s date are in the form (WH-217)', async () => {
+    const tree = await render();
+    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close new invoice' && typeof node.props.onPress === 'function');
+
+    await act(async () => { close.props.onPress(); });
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.dismissTo).toHaveBeenCalledTimes(1);
+    expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
+    expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+    await act(async () => { tree.unmount(); });
+  });
+
   it('asks exactly what the X asks, and "Discard" does what the X\'s does', async () => {
     chooseGrn();
     const tree = await render();
-    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Cancel Invoice' && typeof node.props.onPress === 'function');
+    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close new invoice' && typeof node.props.onPress === 'function');
 
     // The X: its question, then what its "Discard" does.
     await act(async () => { close.props.onPress(); });

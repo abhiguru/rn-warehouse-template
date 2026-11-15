@@ -62,11 +62,11 @@ const closeButton = (tree: ReactTestRenderer) =>
 
 describe('GenericStepIndicatorHeader', () => {
   it.each([
-    ['grn', 'create', 'Cancel GRN', 'આવક પાવતી રદ કરો'],
-    ['grn', 'edit', 'Cancel editing', 'ફેરફાર રદ કરો'],
-    ['dispatch', 'create', 'Cancel Dispatch', 'જાવક રદ કરો'],
-    ['dispatch', 'edit', 'Cancel editing', 'ફેરફાર રદ કરો'],
-    ['invoice', 'create', 'Cancel Invoice', 'ઇન્વૉઇસ રદ કરો'],
+    ['grn', 'create', 'Close new GRN', 'નવી આવક પાવતી બંધ કરો'],
+    ['grn', 'edit', 'Close GRN edit', 'આવક પાવતીનો ફેરફાર બંધ કરો'],
+    ['dispatch', 'create', 'Close new dispatch', 'નવી જાવક બંધ કરો'],
+    ['dispatch', 'edit', 'Close dispatch edit', 'જાવકનો ફેરફાર બંધ કરો'],
+    ['invoice', 'create', 'Close new invoice', 'નવું ઇન્વૉઇસ બંધ કરો'],
   ] as const)('names the close button for %s in %s mode in both languages', (entity, mode, english, gujarati) => {
     expect(closeButton(header({ entity, mode })).props.accessibilityLabel).toBe(english);
     setLanguage('gu');
@@ -75,10 +75,10 @@ describe('GenericStepIndicatorHeader', () => {
 
   it('chooses by mode, not by the label on screen', () => {
     // The label reads "Edit" but the wizard creates: before, the word on screen decided.
-    expect(closeButton(header({ entity: 'grn', mode: 'create', entityName: 'Edit' })).props.accessibilityLabel).toBe('Cancel GRN');
+    expect(closeButton(header({ entity: 'grn', mode: 'create', entityName: 'Edit' })).props.accessibilityLabel).toBe('Close new GRN');
     setLanguage('gu');
     // A Gujarati label never matched 'edit': edit mode must still say "cancel the changes".
-    expect(closeButton(header({ entity: 'dispatch', mode: 'edit', entityName: 'ફેરફાર' })).props.accessibilityLabel).toBe('ફેરફાર રદ કરો');
+    expect(closeButton(header({ entity: 'dispatch', mode: 'edit', entityName: 'ફેરફાર' })).props.accessibilityLabel).toBe('જાવકનો ફેરફાર બંધ કરો');
   });
 
   it('shows the name of the entity when no label is given, and the given label otherwise', () => {
@@ -91,7 +91,7 @@ describe('GenericStepIndicatorHeader', () => {
   it('asks a whole-sentence discard question when the screen gives no title', () => {
     setLanguage('gu');
     const tree = header({ entity: 'dispatch' });
-    const close = tree.root.find(node => node.props.accessibilityLabel === 'જાવક રદ કરો' && typeof node.props.onPress === 'function');
+    const close = tree.root.find(node => node.props.accessibilityLabel === 'નવી જાવક બંધ કરો' && typeof node.props.onPress === 'function');
     act(() => close.props.onPress());
     expect((showAlert as jest.Mock).mock.calls[0][0]).toBe('આ જાવક છોડી દેવી છે?');
   });

@@ -39,7 +39,7 @@ function render(props: { disabled?: boolean; leaveWarning?: string }, handlers =
   return { tree, ...handlers };
 }
 const close = (tree: ReactTestRenderer) =>
-  tree.root.find((node) => node.props.accessibilityLabel === 'Cancel GRN' && typeof node.props.onPress === 'function');
+  tree.root.find((node) => node.props.accessibilityLabel === 'Close new GRN' && typeof node.props.onPress === 'function');
 const circles = (tree: ReactTestRenderer) =>
   tree.root.findAll((node) => node.props.accessibilityRole === 'button' && typeof node.props.hitSlop === 'object' && 'onPress' in node.props);
 const lastQuestion = () => jest.mocked(showAlert).mock.calls.at(-1)!;

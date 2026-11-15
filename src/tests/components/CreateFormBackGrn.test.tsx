@@ -98,7 +98,7 @@ const pressBack = async () => {
   return taken;
 };
 const pressX = async (tree: ReactTestRenderer) => {
-  const close = tree.root.find((node) => node.props.accessibilityLabel === 'Cancel GRN' && typeof node.props.onPress === 'function');
+  const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close new GRN' && typeof node.props.onPress === 'function');
   await act(async () => { close.props.onPress(); });
 };
 /** The last question shown, with its buttons made comparable. */
@@ -149,6 +149,30 @@ describe('Back on step 1 of a new GRN', () => {
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('the X closes at once, asking nothing, while nothing was entered (WH-217)', async () => {
+    const tree = await render();
+
+    await pressX(tree);
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith('/grn');
+    expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it.each(ENTERED)('the X asks, and does not leave, when the form has %s (WH-217)', async (_what, enter) => {
+    enter();
+    const tree = await render();
+
+    await pressX(tree);
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(question().title).toBe('Discard this GRN?');
+    expect(router.replace).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
 
@@ -284,7 +308,7 @@ describe('Back on step 1 of a GRN that is being edited', () => {
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
 
-    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Cancel editing' && typeof node.props.onPress === 'function');
+    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close GRN edit' && typeof node.props.onPress === 'function');
     await act(async () => { close.props.onPress(); });
     expect(question()).toEqual(fromBack);
     await act(async () => { tree.unmount(); });

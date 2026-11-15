@@ -86,7 +86,7 @@ const pressBack = async () => {
   await act(async () => { taken = back.press(); });
   return taken;
 };
-const pressX = async (tree: ReactTestRenderer, label = 'Cancel Dispatch') => {
+const pressX = async (tree: ReactTestRenderer, label = 'Close new dispatch') => {
   const close = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
   await act(async () => { close.props.onPress(); });
 };
@@ -192,6 +192,18 @@ describe('The X on step 1 of a new dispatch', () => {
     await act(async () => { tree.unmount(); });
   });
 
+  it('closes at once, asking nothing, while nothing was entered (WH-217)', async () => {
+    const tree = await render();
+
+    await pressX(tree);
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith('/dispatch');
+    expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+    await act(async () => { tree.unmount(); });
+  });
+
   it('"Discard" is the end of it: the form is emptied and the list is shown, no second question', async () => {
     mockForm.header.customer_id = 'c1';
     const tree = await render();
@@ -288,7 +300,7 @@ describe('Step 1 of a dispatch that is being edited', () => {
   it('the X asks once, about the changes, and "Discard changes" goes back', async () => {
     const tree = await render(<DispatchEditStep1 />);
 
-    await pressX(tree, 'Cancel editing');
+    await pressX(tree, 'Close dispatch edit');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question()).toMatchObject({
