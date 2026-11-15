@@ -164,11 +164,12 @@ export default function CustomerPage() {
           headerShadowVisible: false,
           headerTitleAlign: 'center',
           title: shown?.name ?? '',
-          headerTitle: () => (
-            <Text style={styles.navTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
-              {shown?.name ?? ''}
-            </Text>
-          ),
+          headerTitle: () =>
+            shown ? (
+              <Text style={styles.navTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+                {shown.name}
+              </Text>
+            ) : null,
           headerLeft: () => <HeaderBackButton />,
           headerRight: () =>
             shown ? (
