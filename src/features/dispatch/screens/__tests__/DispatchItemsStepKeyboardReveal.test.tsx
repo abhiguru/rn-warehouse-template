@@ -41,12 +41,12 @@ const mockScrolls: number[] = [];
 jest.mock('react-native-keyboard-aware-scroll-view', () => {
   const React = require('react');
   return {
-    KeyboardAwareScrollView: React.forwardRef((props: { children?: unknown }, ref: unknown) => {
+    KeyboardAwareScrollView: React.forwardRef((props: { children?: unknown; onScrollBeginDrag?: () => void }, ref: unknown) => {
       React.useImperativeHandle(ref, () => ({
         scrollForExtraHeightOnAndroid: (by: number) => { mockScrolls.push(by); },
         scrollToPosition: jest.fn(),
       }));
-      return React.createElement('View', null, props.children);
+      return React.createElement('View', { onScrollBeginDrag: props.onScrollBeginDrag }, props.children);
     }),
   };
 });
@@ -144,4 +144,9 @@ it('Dispatch Items: a field already above the bar is not scrolled', async () => 
   } as never);
   await act(async () => { handlers.forEach((h) => h({ endCoordinates: { screenY: KEYBOARD_TOP, height: 800 } })); });
   expect(mockScrolls).toHaveLength(0);
+});
+
+it('Dispatch Items: notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', () => {
+  const scrolls = tree.root.findAll((n) => (n.type as unknown) === 'View' && typeof n.props.onScrollBeginDrag === 'function');
+  expect(scrolls).toHaveLength(1);
 });

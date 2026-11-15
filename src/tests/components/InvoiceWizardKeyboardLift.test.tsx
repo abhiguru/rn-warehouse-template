@@ -49,4 +49,14 @@ describe('Invoice wizard, details step: the bottom bar and the keyboard', () => 
     await act(async () => { tree = create(<InvoiceFormStep1 />); });
     return tree;
   });
+
+  it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
+    mockStore = makeInvoiceStore();
+    fillNewInvoice(mockStore, groupLines(1));
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<InvoiceFormStep1 />); });
+    const scrolls = tree.root.findAll(n => (n.type as unknown) === 'KeyboardAwareScrollView' && typeof n.props.onScrollBeginDrag === 'function');
+    expect(scrolls).toHaveLength(1);
+    await act(async () => { tree.unmount(); });
+  });
 });

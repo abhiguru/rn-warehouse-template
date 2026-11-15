@@ -43,4 +43,12 @@ describe('GRN wizard, details step: the bottom bar and the keyboard', () => {
     await act(async () => { tree = create(<GrnHeaderStep mode="create" />); });
     return tree;
   });
+
+  it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<GrnHeaderStep mode="create" />); });
+    const scrolls = tree.root.findAll(n => (n.type as unknown) === 'ScrollView' && typeof n.props.onScrollBeginDrag === 'function');
+    expect(scrolls).toHaveLength(1);
+    await act(async () => { tree.unmount(); });
+  });
 });

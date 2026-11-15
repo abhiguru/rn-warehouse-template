@@ -61,6 +61,13 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it('the items list notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
+  const tree = await render();
+  const lists = tree.root.findAll((n) => typeof n.type === 'string' && typeof n.props.onScrollBeginDrag === 'function');
+  expect(lists.length).toBeGreaterThan(0);
+  await act(async () => { tree.unmount(); });
+});
+
 describe('the pricing pencil', () => {
   it('is gone from a new invoice and from an edit', async () => {
     for (const mode of ['create', 'edit'] as const) {
