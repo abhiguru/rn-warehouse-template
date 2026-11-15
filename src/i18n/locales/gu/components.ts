@@ -364,27 +364,23 @@ export const components: Translation<typeof source> = {
     deleteMessage: 'તે બધા માટે નીકળી જશે. આ પાછું ફેરવી શકાશે નહીં.',
     deleteEntity: '{{entity}} ડિલીટ કરો',
     printEntity: '{{entity}} પ્રિન્ટ કરો',
-    editEntity: '{{entity}}માં ફેરફાર કરો',
     grn: {
       deleteNumberedTitle: 'આવક પાવતી {{number}} ડિલીટ કરવી છે?',
       deleteThisTitle: 'આ આવક પાવતી ડિલીટ કરવી છે?',
       delete: 'આવક પાવતી ડિલીટ કરો',
       print: 'આવક પાવતી પ્રિન્ટ કરો',
-      edit: 'આવક પાવતીમાં ફેરફાર કરો',
     },
     dispatch: {
       deleteNumberedTitle: 'જાવક {{number}} ડિલીટ કરવી છે?',
       deleteThisTitle: 'આ જાવક ડિલીટ કરવી છે?',
       delete: 'જાવક ડિલીટ કરો',
       print: 'જાવક પ્રિન્ટ કરો',
-      edit: 'જાવકમાં ફેરફાર કરો',
     },
     invoice: {
       deleteNumberedTitle: 'ઇન્વૉઇસ {{number}} ડિલીટ કરવું છે?',
       deleteThisTitle: 'આ ઇન્વૉઇસ ડિલીટ કરવું છે?',
       delete: 'ઇન્વૉઇસ ડિલીટ કરો',
       print: 'ઇન્વૉઇસ પ્રિન્ટ કરો',
-      edit: 'ઇન્વૉઇસમાં ફેરફાર કરો',
     },
   },
   contact: {

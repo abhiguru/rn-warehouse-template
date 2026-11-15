@@ -364,28 +364,24 @@ export const components = {
     deleteMessage: "It will be removed for everyone. You can't undo this.",
     deleteEntity: 'Delete {{entity}}',
     printEntity: 'Print {{entity}}',
-    editEntity: 'Edit {{entity}}',
     // Whole sentences by document (ActionsSection `entity`).
     grn: {
       deleteNumberedTitle: 'Delete GRN {{number}}?',
       deleteThisTitle: 'Delete this GRN?',
       delete: 'Delete GRN',
       print: 'Print GRN',
-      edit: 'Edit GRN',
     },
     dispatch: {
       deleteNumberedTitle: 'Delete Dispatch {{number}}?',
       deleteThisTitle: 'Delete this Dispatch?',
       delete: 'Delete Dispatch',
       print: 'Print Dispatch',
-      edit: 'Edit Dispatch',
     },
     invoice: {
       deleteNumberedTitle: 'Delete Invoice {{number}}?',
       deleteThisTitle: 'Delete this Invoice?',
       delete: 'Delete Invoice',
       print: 'Print Invoice',
-      edit: 'Edit Invoice',
     },
   },
   contact: {
