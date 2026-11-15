@@ -38,6 +38,7 @@ import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { LastUpdatedLine, StaleListStrip } from '@/components/lists/ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { ChoiceChips } from '@/features/filters/components/ChoiceChips';
 import { MasterListHeader } from '@/components/common/MasterListHeader';
 import { useHaptics } from '@/hooks/useHaptics';
@@ -114,6 +115,8 @@ export default function CustomersScreen() {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const isOffline = useIsOffline();
+  // While the keyboard is up the list area ends at its top (WH-239), so the no-match state is centred above it.
+  const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const flatListRef = useRef<FlatList<CustomerListItem>>(null);
   const [activeLetter, setActiveLetter] = useState<string | null>(null);
   const [state, setState] = useState<ListState>({
@@ -570,7 +573,7 @@ export default function CustomersScreen() {
         {isOffline && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="customers-last-updated" />
         ) : null}
-        <View style={styles.listWithRail}>
+        <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.listWithRail, { marginBottom: keyboardLift }]}>
           <FlatList
             ref={flatListRef}
             data={visible}
