@@ -8,7 +8,7 @@ import React from 'react';
 import { PixelRatio, TextInput } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { space, typography } from '@/theme/tokens';
-import { roomUnderFocusedField, useRevealFocusedField, type KeyboardRevealTarget } from '../useRevealFocusedField';
+import { FIELD_BLOCK_ID, roomUnderFocusedField, useRevealFocusedField, type KeyboardRevealTarget } from '../useRevealFocusedField';
 
 type Props = { keyboardShown: boolean; revision: number };
 let barTop: number;
@@ -165,25 +165,26 @@ function NoScroll() {
   return null;
 }
 
-/** A field that reads the view tree the way the new architecture does: its own rect, and the views under it. */
+/** A field that reads the view tree the way the new architecture does: its own rect, and its declared block (a parent marked FIELD_BLOCK_ID). */
 type Rect = { top: number; bottom: number; height: number };
-type TreeNodeStub = { rect: Rect; nextElementSibling: TreeNodeStub | null; parentElement: null; getBoundingClientRect: () => Rect };
-const treeNode = (rect: Rect): TreeNodeStub => {
-  const created: TreeNodeStub = { rect, nextElementSibling: null, parentElement: null, getBoundingClientRect: () => created.rect };
+type TreeNodeStub = { id?: string; rect: Rect; parentElement: TreeNodeStub | null; getBoundingClientRect: () => Rect };
+const treeNode = (rect: Rect, id?: string): TreeNodeStub => {
+  const created: TreeNodeStub = { id, rect, parentElement: null, getBoundingClientRect: () => created.rect };
   return created;
 };
 let field: TreeNodeStub;
-/** Places the field from `focus` (so measureInWindow and the tree agree) with a message of that height under it. */
+let block: TreeNodeStub;
+/** Places the field from `focus` (so measureInWindow and the tree agree) and its block, which holds a message of that height under it (space.xs gap). */
 const placeTree = (messageHeight: number | null) => {
   field.rect = { top: focus!.top, bottom: focus!.top + focus!.height, height: focus!.height };
-  field.nextElementSibling = messageHeight === null
-    ? null
-    : treeNode({ top: field.rect.bottom + space.xs, bottom: field.rect.bottom + space.xs + messageHeight, height: messageHeight });
+  const blockBottom = messageHeight === null ? field.rect.bottom : field.rect.bottom + space.xs + messageHeight;
+  block.rect = { top: field.rect.top, bottom: blockBottom, height: blockBottom - field.rect.top };
 };
 const useTreeInput = () => {
   field = treeNode({ top: 0, bottom: 0, height: 0 });
-  const input = { ...makeInput(), getBoundingClientRect: () => field.rect, parentElement: null };
-  Object.defineProperty(input, "nextElementSibling", { get: () => field.nextElementSibling });
+  block = treeNode({ top: 0, bottom: 0, height: 0 }, FIELD_BLOCK_ID);
+  field.parentElement = block;
+  const input = { ...makeInput(), getBoundingClientRect: () => field.rect, parentElement: block };
   focused = input as never;
 };
 
