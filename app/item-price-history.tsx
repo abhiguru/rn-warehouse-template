@@ -8,7 +8,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -219,14 +219,22 @@ const ItemPriceHistoryScreen: React.FC = () => {
   };
 
   const header = (
-    <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-      <View style={styles.titleRow}>
-        <HeaderBackButton />
-        <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
-          {title}
-        </Text>
-      </View>
-    </View>
+    <Stack.Screen
+      options={{
+        headerShown: true,
+        headerStyle: { backgroundColor: t.surface.header },
+        headerTintColor: t.brand.tint,
+        headerShadowVisible: false,
+        headerTitleAlign: 'center',
+        title,
+        headerTitle: () => (
+          <Text style={styles.title} accessibilityRole="header" numberOfLines={2} maxFontSizeMultiplier={1.5}>
+            {title}
+          </Text>
+        ),
+        headerLeft: () => <HeaderBackButton />,
+      }}
+    />
   );
 
   if (!allowed) return <View style={styles.container}>{header}</View>;
@@ -310,22 +318,10 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     backgroundColor: t.background.base,
   },
-  header: {
-    paddingBottom: space.sm,
-    paddingHorizontal: space.sm,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  titleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-  },
   title: {
     ...typography.headline,
     color: t.text.primary,
-    flexShrink: 1,
+    textAlign: 'center' as const,
   },
   refreshStrip: {
     marginHorizontal: layout.marginCompact,
