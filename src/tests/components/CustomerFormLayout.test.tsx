@@ -50,7 +50,9 @@ const mount = async () => {
   await act(async () => { tree = create(<CustomerFormRoute />); });
   return tree as ReactTestRenderer;
 };
-const bar = (screen: ReactTestRenderer) => screen.root.findByProps({ testID: 'customer-save-bar' });
+// WH-227: the bar is the shared FormSaveBar, so its testID is on the component and on its host View; take the View.
+const bar = (screen: ReactTestRenderer) =>
+  screen.root.find(node => node.props.testID === 'customer-save-bar' && (node.type as unknown) === 'View');
 
 it('draws the save bar in the flow, as the last child of the root column', async () => {
   const screen = await mount();

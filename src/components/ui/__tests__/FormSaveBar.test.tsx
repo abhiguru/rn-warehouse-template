@@ -3,9 +3,10 @@
  * a busy state, an optional helper line, and the bottom inset on iOS only. Real FormSaveBar and Button.
  */
 import React from 'react';
-import { Platform, StyleSheet, Text } from 'react-native';
+import { Keyboard, Platform, StyleSheet, Text } from 'react-native';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { FormSaveBar, type FormSaveBarProps } from '../FormSaveBar';
+import { space } from '@/theme/tokens';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
@@ -73,5 +74,49 @@ describe('FormSaveBar', () => {
     Platform.OS = 'android';
     await render();
     expect(ios - paddingBottom()).toBe(34);
+  });
+
+  describe('keyboard (WH-227)', () => {
+    // The test renderer has no keyboard: record the listeners the bar registers and call them.
+    let listeners: Record<string, () => void>;
+    let removes: jest.Mock[];
+    beforeEach(() => {
+      listeners = {};
+      removes = [];
+      jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, handler: () => void) => {
+        listeners[name] = handler;
+        const remove = jest.fn();
+        removes.push(remove);
+        return { remove };
+      }) as never);
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('on iOS keeps the inset with no keyboard and drops it while the keyboard is up', async () => {
+      Platform.OS = 'ios';
+      await render();
+      expect(paddingBottom()).toBe(34 + space.md);
+      await act(async () => { listeners.keyboardDidShow(); });
+      expect(paddingBottom()).toBe(space.md);
+      await act(async () => { listeners.keyboardDidHide(); });
+      expect(paddingBottom()).toBe(34 + space.md);
+    });
+
+    it('on Android is the same with and without the keyboard', async () => {
+      Platform.OS = 'android';
+      await render();
+      expect(paddingBottom()).toBe(space.md);
+      await act(async () => { listeners.keyboardDidShow(); });
+      expect(paddingBottom()).toBe(space.md);
+      await act(async () => { listeners.keyboardDidHide(); });
+      expect(paddingBottom()).toBe(space.md);
+    });
+
+    it('removes its keyboard listeners when it unmounts', async () => {
+      await render();
+      expect(removes.length).toBe(2);
+      await act(async () => { tree!.unmount(); });
+      removes.forEach(remove => expect(remove).toHaveBeenCalledTimes(1));
+    });
   });
 });
