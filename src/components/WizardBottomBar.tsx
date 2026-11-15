@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, ActivityIndicator, Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -115,7 +116,7 @@ const makeStyles = (t: ThemeTokens) => ({
 /**
  * Bottom bar of the GRN wizard: Back (secondary) and Next, or Create/Save on
  * the review step (primary). Sits on surface.card with shadow[3]. It adds the
- * bottom inset on iOS only: on Android the root stack already pads the screen by it. Render it below the step content, not over it.
+ * bottom inset on iOS only: on Android the root stack already pads the screen by it. While the keyboard is up it is lifted by the part the keyboard covers (useKeyboardCoverLift). Render it below the step content, not over it.
  */
 export default function WizardBottomBar({
   currentStep,
@@ -138,6 +139,8 @@ export default function WizardBottomBar({
   addTestID,
 }: WizardBottomBarProps) {
   const insets = useSafeAreaInsets();
+  // Lifted by the part of the bar the keyboard covers (WH-228), as FormSaveBar is.
+  const { ref: barRef, lift, onLayout: measureLift } = useKeyboardCoverLift();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const { stacked } = useTableLayout();
@@ -244,7 +247,7 @@ export default function WizardBottomBar({
 
   // Stacked, Next comes first: the drawing, the reading order and the focus order agree.
   return (
-    <View style={[styles.container, stacked && styles.containerStacked, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
+    <View ref={barRef} onLayout={measureLift} style={[styles.container, stacked && styles.containerStacked, { marginBottom: lift, paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
       {stacked ? (
         <>
           {nextButton}
