@@ -79,14 +79,14 @@ describe('PrintRangeDialog above the keyboard', () => {
     expect(flatStyle(overlay.props.style)).toMatchObject({ paddingTop: 24 + 16, paddingBottom: 24 + 16 });
   });
 
-  it('scrolls both fields and keeps View jobs, Cancel and Print outside the scrolling part', async () => {
+  it('scrolls both fields and keeps Cancel and Print outside the scrolling part', async () => {
     await render();
     const scroll = tree.root.findByType(ScrollView);
     expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
     const inputs = tree.root.findAllByType(TextInput);
     expect(inputs).toHaveLength(2);
     inputs.forEach(input => expect(isInside(input, scroll)).toBe(true));
-    expect(isInside(button('View print jobs'), scroll)).toBe(false);
+    expect(isInside(button('View print jobs'), scroll)).toBe(true); // WH-219: Print jobs sits in the body
     expect(isInside(button('Cancel'), scroll)).toBe(false);
     expect(isInside(button('Print'), scroll)).toBe(false);
     // The dialog never grows past the space left above the keyboard.
@@ -115,7 +115,7 @@ describe('PrintRangeDialog above the keyboard', () => {
     await render();
     act(() => tree.root.findByType(Modal).props.onRequestClose());
     expect(onDismiss).toHaveBeenCalledTimes(1);
-    act(() => button('Cancel printing').props.onPress());
+    act(() => button('Cancel').props.onPress());
     expect(onDismiss).toHaveBeenCalledTimes(2);
   });
 });

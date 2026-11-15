@@ -109,7 +109,7 @@ describe.each(THEMES)('order components in %s %s', (brand, mode) => {
     const tree = await renderIn(<CustomerSearchBottomSheet onSelect={jest.fn()} />, brand, mode);
     expect(hasStyle(tree, 'backgroundColor', t.surface.sheet)).toBe(true);
     expect(allText(tree)).toContain('Select customer');
-    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Close customer search').length).toBeGreaterThan(0);
+    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Close').length).toBeGreaterThan(0);
     await act(async () => tree.unmount());
   });
 });

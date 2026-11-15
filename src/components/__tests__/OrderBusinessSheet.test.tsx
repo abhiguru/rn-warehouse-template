@@ -64,7 +64,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
   it('lists the businesses with their cities on theme tokens', async () => {
     mockRead.mockResolvedValue(TWO);
     await open(brand, mode);
-    expect(texts()).toEqual(expect.arrayContaining(['Choose a business', 'Cancel', 'Amber Field Traders', 'Northgate', 'Birchwood Produce', 'Southmere']));
+    expect(texts()).toEqual(expect.arrayContaining(['Choose a business', 'Amber Field Traders', 'Northgate', 'Birchwood Produce', 'Southmere']));
     expect(flat(sheet().props.style).backgroundColor).toBe(t.surface.sheet);
     expect(rows()).toHaveLength(2);
     expect(flat(rows()[0].props.style).backgroundColor).toBe(t.surface.card);
@@ -167,10 +167,10 @@ describe('choosing and closing', () => {
     expect(onPick).toHaveBeenCalledWith({ id: 'b2', name: '', city: 'Southmere' });
   });
 
-  it('closes on Cancel without choosing', async () => {
+  it('closes on the X (Close) without choosing', async () => {
     mockRead.mockResolvedValue(TWO);
     const { onPick, onClose } = await open();
-    act(() => pressable('Cancel').props.onPress());
+    act(() => pressable('Close').props.onPress());
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onPick).not.toHaveBeenCalled();
   });
