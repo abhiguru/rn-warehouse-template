@@ -558,7 +558,6 @@ export const grn: Translation<typeof source> = {
     loadFailedTitle: 'આવક પાવતી લોડ કરી શકાઈ નથી',
     loadFailed: 'આવક પાવતી લોડ થઈ શકી નથી. ફરી પ્રયાસ કરો.',
     loadFailedConnection: 'આવક પાવતી લોડ થઈ શકી નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
-    unavailable: 'આ આવક પાવતીની વિગતો હાલ મળી શકતી નથી.',
     notFoundTitle: 'આવક પાવતી મળી નથી',
     notFoundMessage: 'તે ડિલીટ થઈ ગઈ હશે, અથવા તમને તે જોવાની પરવાનગી નહીં હોય.',
     dispatchHistoryFailed: 'જાવકની વિગતો લોડ થઈ શકી નથી. ફરી પ્રયાસ કરો.',

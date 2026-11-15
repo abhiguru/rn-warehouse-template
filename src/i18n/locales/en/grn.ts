@@ -562,7 +562,6 @@ export const grn = {
     loadFailedTitle: "Couldn't load the GRN",
     loadFailed: "Couldn't load the GRN. Try again.",
     loadFailedConnection: "Couldn't load the GRN. Check your connection and try again.",
-    unavailable: "This GRN's details aren't available right now.",
     notFoundTitle: 'GRN not found',
     notFoundMessage: 'It may have been deleted, or you may not have access to it.',
     dispatchHistoryFailed: "Couldn't load the dispatch history. Try again.",
