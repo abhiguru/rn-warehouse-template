@@ -2,8 +2,10 @@
  * useRevealFocusedField (WH-228 rework 4, WH-240): a scroll that the platform shows LATER than asked, or only part of
  * the way, and a block that the page moves without growing.
  *
- * The scroll mock models the library: the content moves after `delay` ms, by a fraction of what was asked
- * (`fractions`, one per ask; the last one repeats), and not at all when `canScroll` is false. The input answers
+ * The scroll mock models the library (KeyboardAwareHOC.js:302-303): a scroll goes to an ABSOLUTE target, the offset
+ * the library last heard of (`heard`, updated when a scroll lands) + what is asked, so an ask repeated before the
+ * first has landed asks for the same place. The content moves after `delay` ms, by a fraction of the way to the
+ * target (`fractions`, one per ask; the last one repeats), and not at all when `canScroll` is false. The input answers
  * measureInWindow (its place in the window: content place - scrolled) and measureLayout (its place within the scroll
  * content, which scrolling never changes), as the hook reads them. Timers are fake.
  */
@@ -33,11 +35,13 @@ let canScroll: boolean;
 let delay: number;
 let fractions: number[];
 let asks: number;
+let heard: number;
 const scroll = jest.fn((by: number) => {
   const fraction = fractions[Math.min(asks, fractions.length - 1)];
   asks++;
   if (!canScroll) return;
-  setTimeout(() => { scrolled += by * fraction; }, delay);
+  const to = heard + by;
+  setTimeout(() => { scrolled += (to - scrolled) * fraction; heard = scrolled; }, delay);
 });
 const target = {
   scrollForExtraHeightOnAndroid: scroll,
@@ -83,6 +87,11 @@ function fieldWithBlock(top: number, below = 0) {
 }
 /** Where the block's bottom + space.sm sits relative to the bar's top now (<= 0: above it). */
 const overBar = (block: FakeNode, bar = barTop) => bottomOf(block) - scrolled + space.sm - bar;
+/** In place: the block ends at the bar minus space.sm, to within a pixel (never past it, never more than 1 px above): an over-scroll fails too. */
+const expectInPlace = (block: FakeNode, bar = barTop) => {
+  expect(overBar(block, bar)).toBeLessThanOrEqual(0);
+  expect(overBar(block, bar)).toBeGreaterThanOrEqual(-1);
+};
 
 let focused: FakeNode | null;
 beforeEach(() => {
@@ -93,6 +102,7 @@ beforeEach(() => {
   delay = 200; // after the first check (150 ms), before the second (300 ms)
   fractions = [1];
   asks = 0;
+  heard = 0;
   barTop = BAR_TOP;
   scrollRef.userScrolled = false;
   jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockImplementation((() => focused) as never);
@@ -119,19 +129,31 @@ describe('a scroll that shows later than asked, or only part of the way', () => 
     expect(scroll).toHaveBeenCalledTimes(1);
     await tick(150); // the check lands before the scroll has moved anything
     await tick(3000);
-    expect(overBar(block)).toBeLessThanOrEqual(0);
+    expectInPlace(block);
     expect(scroll.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(scroll.mock.calls.length).toBeLessThanOrEqual(4);
   });
-
-  it('a force reveal whose scroll shows one tick late: the block ends above the bar with no more than the asks needed', async () => {
+  it('a force reveal (the keyboard shows) whose scroll lands one tick late and half way: the check goes on, and the block ends in place', async () => {
+    fractions = [0.5, 1];
     const { input, block } = fieldWithBlock(BAR_TOP - BOX_HEIGHT + 30);
     focused = input;
     await mount(1);
     expect(scroll).toHaveBeenCalledTimes(1);
     await tick(3000);
-    expect(overBar(block)).toBeLessThanOrEqual(0);
+    expectInPlace(block);
+    expect(scroll.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(scroll.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+
+  it('the busy UI: a scroll that lands only after a re-ask (450 ms): the re-ask is for the same place, so the block ends in place, not past it', async () => {
+    delay = 450;
+    const { input, block } = fieldWithBlock(BAR_TOP - BOX_HEIGHT + 30);
+    focused = input;
+    await mount(1);
+    await tick(3000);
+    expect(scroll.mock.calls.length).toBeGreaterThanOrEqual(2); // asked again before the first landed
+    expect(scroll.mock.calls.length).toBeLessThanOrEqual(4);
+    expectInPlace(block);
   });
 
   it('content that truly cannot scroll: asked once and re-asked 3 times, then no more over many ticks', async () => {
@@ -211,7 +233,7 @@ describe('the keyboard opens again on a field that kept the focus (rule 7), the 
     const liftedBarTop = UNLIFTED_TOP - appliedLift;
     expect(scroll.mock.calls.length).toBeGreaterThanOrEqual(1);
     expect(scroll.mock.calls.length).toBeLessThanOrEqual(4);
-    expect(overBar(block, liftedBarTop)).toBeLessThanOrEqual(0);
+    expectInPlace(block, liftedBarTop);
   });
 });
 
@@ -229,7 +251,7 @@ describe('WH-240: a block that the page moves without growing', () => {
     movePage([input, block], MOVE);
     await tick(3000);
     expect(scroll).toHaveBeenCalled();
-    expect(overBar(block)).toBeLessThanOrEqual(0);
+    expectInPlace(block);
     expect(scroll.mock.calls.length).toBeLessThanOrEqual(4);
   });
 
@@ -245,12 +267,26 @@ describe('WH-240: a block that the page moves without growing', () => {
     expect(overBar(block)).toBeGreaterThan(0);
   });
 
-  it('scrolled with no drag flag (momentum, or the library): the content place did not change, so nothing is asked', async () => {
-    const { input } = fieldWithBlock(BAR_TOP - BOX_HEIGHT - 40 - space.sm, 30);
+  it('a drag, THEN the page moves the block (Design check 3): the person\'s place is not undone', async () => {
+    const { input, block } = fieldWithBlock(BAR_TOP - BOX_HEIGHT - 40 - space.sm, 30);
     focused = input;
     await mount(1);
     await tick(450);
-    scrolled += 50; // the block goes higher in the window: still in place
+    scrollRef.onScrollBeginDrag();
+    scrolled -= 30; // the person drags the page
+    movePage([input, block], MOVE); // then the "Left after dispatch N" line wraps: the block moves within the content
+    await tick(3000);
+    expect(scroll).not.toHaveBeenCalled();
+    expect(overBar(block)).toBeGreaterThan(0);
+  });
+
+  it('scrolled with no drag flag (momentum, or the library) so that the block goes behind the bar: its place in the content did not change, so nothing is asked', async () => {
+    const { input, block } = fieldWithBlock(BAR_TOP - BOX_HEIGHT - 40 - space.sm, 30);
+    focused = input;
+    await mount(1);
+    await tick(450);
+    scrolled -= 50; // the block goes lower in the window, behind the bar
+    expect(overBar(block)).toBeGreaterThan(0);
     await tick(3000);
     expect(scroll).not.toHaveBeenCalled();
   });

@@ -303,7 +303,9 @@ describe('the at-rest check stops (2f)', () => {
     expect(scroll).toHaveBeenCalledTimes(5);
     expect(scroll).toHaveBeenLastCalledWith(needed(bottomOf(block)));
     await tick(6000);
-    expect(scroll.mock.calls.length).toBeLessThanOrEqual(8); // bounded again, not endless
+    // WH-242: the count of asks carries over from the earlier trigger, so the later ones get no re-asks; a fix
+    // gives up to 3 more, and then this number changes on purpose. Today: the one ask for the message, 5 in all.
+    expect(scroll).toHaveBeenCalledTimes(5);
     const settled = scroll.mock.calls.length;
     await tick(6000);
     expect(scroll).toHaveBeenCalledTimes(settled);
