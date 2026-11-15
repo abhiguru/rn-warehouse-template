@@ -161,7 +161,7 @@ describe('FormSaveBar', () => {
 
     it('removes its keyboard listeners when it unmounts', async () => {
       await render();
-      expect(removes.length).toBe(2);
+      expect(removes.length).toBe(3); // keyboardDidShow, keyboardDidChangeFrame, keyboardDidHide (WH-228)
       await act(async () => { tree!.unmount(); });
       removes.forEach(remove => expect(remove).toHaveBeenCalledTimes(1));
     });
