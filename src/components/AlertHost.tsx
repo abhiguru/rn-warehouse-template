@@ -127,7 +127,7 @@ export function AlertHost() {
       <DialogOverlay onScrimPress={cancel} scrimLabel={tr('components.alert.closeDialog')}>
         <DialogCard accessibilityRole="alert">
           <DialogBody>
-            <DialogHeading title={shown.title} message={shown.message || undefined} />
+            <DialogHeading key={shown.id} title={shown.title} message={shown.message || undefined} />
           </DialogBody>
           <DialogActions stacked={stacked}>
             {ordered.map((button, index) => {
