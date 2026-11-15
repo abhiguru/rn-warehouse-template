@@ -78,8 +78,7 @@ describe('sheet header', () => {
       const style = StyleSheet.flatten(typeof target.props.style === 'function' ? target.props.style({ pressed: false }) : target.props.style);
       expect(target.props.hitSlop).toBeUndefined();
       expect(style.minHeight).toBe(touchTarget);
-      // SheetFrame's text action no longer sets a minimum width (it had 80): its width comes from its label, so only the X is checked.
-      if (label === 'Close') expect(style.minWidth).toBeGreaterThanOrEqual(touchTarget);
+      expect(style.minWidth).toBeGreaterThanOrEqual(touchTarget);
     }
   });
 });
