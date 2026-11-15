@@ -60,3 +60,11 @@ it('Invoice number: the block holds the box and its error line, and no other fie
   expect(inputsIn(block!)).toBe(1);
   expect(wordsIn(block!).join(' ')).toContain('Invoice number must be between 1 and 99999999');
 });
+
+it('Invoice number: the helper line "The next number is filled in. You can change it." is inside the block (WH-235)', async () => {
+  await act(async () => { mockStore.dispatch(updateHeader({ inv_no: 55, inv_no_typed: false })); });
+  const block = blockOf(numberField());
+  expect(block).not.toBeNull();
+  expect(inputsIn(block!)).toBe(1);
+  expect(wordsIn(block!)).toContain('The next number is filled in. You can change it.');
+});

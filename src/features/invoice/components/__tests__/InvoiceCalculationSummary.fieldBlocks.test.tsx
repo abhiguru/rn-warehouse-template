@@ -50,13 +50,16 @@ const input = (key: string) => tree.root.findAllByType(TextInput).find((node) =>
 
 describe('Invoice step 3 field blocks', () => {
   it('Discount: the block holds the box and its error line, and no other field', async () => {
-    await mount({});
+    const onError = jest.fn();
+    await mount({ onDiscountErrorChange: onError });
     await act(async () => { input('invoice-summary-discount').props.onChangeText('abc'); });
     const block = blockOf(input('invoice-summary-discount'));
     expect(block).not.toBeNull();
     expect(inputsIn(block!)).toBe(1);
-    // Whatever message the field shows for this text is inside the block.
-    expect(wordsIn(block!).length).toBeGreaterThan(0);
+    // The message the field raised for this text is inside the block.
+    const message = onError.mock.calls.map((call) => call[0]).filter(Boolean).pop() as string;
+    expect(message).toBeTruthy();
+    expect(wordsIn(block!)).toContain(message);
   });
 
   it('Discount reason: the block holds the field and its "reason missing" line', async () => {

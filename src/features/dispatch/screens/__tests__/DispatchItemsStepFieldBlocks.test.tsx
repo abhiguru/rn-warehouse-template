@@ -56,3 +56,31 @@ it('Bags to dispatch: the block holds the quantity row and its error line, and n
   expect(inputsIn(block!)).toBe(1);
   expect(wordsIn(block!)).toContain('Quantity must be a whole number');
 });
+
+describe('WH-234 and WH-235: the whole group is the block, whatever the font scale or wrap', () => {
+  // The test renderer has no layout, so whether the -10/-5/+5/+10 buttons wrap is not decided here: the block must
+  // hold the box, the buttons and the error line in the same view either way, which is what lets the wrapped case work.
+  const buttons = (block: NonNullable<ReturnType<typeof blockOf>>) =>
+    new Set(
+      block
+        .findAll((node) => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string')
+        .map((node) => node.props.accessibilityLabel as string),
+    );
+
+  it('the block holds the box, the four step buttons and the error line', async () => {
+    await act(async () => { bags().props.onChangeText('12.5'); });
+    const block = blockOf(bags())!;
+    expect(block).not.toBeNull();
+    expect(buttons(block).size).toBe(4);
+    expect(wordsIn(block)).toEqual(expect.arrayContaining(['−10', '−5', '+5', '+10', 'Quantity must be a whole number']));
+  });
+
+  it('deleting the number removes the error line from the block (the block shrinks)', async () => {
+    await act(async () => { bags().props.onChangeText('12.5'); });
+    expect(wordsIn(blockOf(bags())!)).toContain('Quantity must be a whole number');
+    await act(async () => { bags().props.onChangeText(''); });
+    const block = blockOf(bags())!;
+    expect(wordsIn(block)).not.toContain('Quantity must be a whole number');
+    expect(buttons(block).size).toBe(4);
+  });
+});
