@@ -460,7 +460,7 @@ describe('invoice history, every customer', () => {
     await screen.press('Sorted by Amount, highest first. Change sort');
     await screen.press('Customer');
     await screen.press('A to Z');
-    await screen.press('Done');
+    await screen.press('Close');
 
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Hillside Produce Co', 'Riverbank Produce']);
@@ -483,7 +483,7 @@ describe('invoice history, every customer', () => {
     await screen.press('Last 240 days');
     await screen.press('Sorted by Amount, highest first. Change sort');
     await screen.press('Invoices');
-    await screen.press('Done');
+    await screen.press('Close');
     const byInvoices = ['Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods', 'Green Valley Traders', 'Old Mill Stores'];
     expect(screen.customers()).toEqual(byInvoices);
     expect(screen.texts()).not.toContain('Last opened');
@@ -533,12 +533,12 @@ describe('invoice history, one customer', () => {
     expect(screen.invoiceRows()).toEqual(['Invoice 2026/0100', 'Invoice 2026/0050', 'Invoice 2026/0010', 'Invoice 2026/0009']);
     await screen.press('Lowest number first');
     expect(screen.invoiceRows()).toEqual(['Invoice 2026/0009', 'Invoice 2026/0010', 'Invoice 2026/0050', 'Invoice 2026/0100']);
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.texts()).toEqual(expect.arrayContaining(['11/10/26', '12/10/26', '20/09/26']));
 
     await screen.press('Sorted by Invoice number, lowest number first. Change sort');
     await screen.press('Date');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.invoiceRows()).toEqual(['20/09/26', 'Invoice 2026/0050', 'Yesterday', 'Invoice 2026/0009', 'Invoice 2026/0100', 'Today', 'Invoice 2026/0010']);
     expect(customerHistory).toHaveBeenCalledTimes(1);
   });
@@ -1806,7 +1806,7 @@ describe('invoice history, the report PDF', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Amount, highest first. Change sort');
     await screen.press('Invoices');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.has('Sorted by Invoices, highest first. Change sort')).toBe(true);
     await sharesThePdf(
       screen,
@@ -1820,7 +1820,7 @@ describe('invoice history, the report PDF', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('Invoice number');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.has('Sorted by Invoice number, highest number first. Change sort')).toBe(true);
     await sharesThePdf(
       screen,
