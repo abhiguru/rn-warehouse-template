@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { ReportEmptyState } from '@/components/reports';
 import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
@@ -81,6 +82,8 @@ function refusedField(code: string | undefined): { name: SensorFormField; messag
 const SensorEditScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const styles = useThemedStyles(makeStyles);
+  // The native header sits above the form: on iOS the keyboard view lifts by its height too.
+  const headerHeight = useHeaderHeight();
   const t = useTokens();
   const deviceQuery = useSensorDevice(id);
   const device = deviceQuery.data?.device ?? null;
@@ -203,7 +206,11 @@ const SensorEditScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
+      >
         <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={styles.deviceName} testID="sensor-edit-device-name">{device.device_name}</Text>
           <View style={styles.card}>
