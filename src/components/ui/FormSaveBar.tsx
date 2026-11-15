@@ -1,11 +1,11 @@
 /**
  * The Save bar of a form or settings screen (WH-218, APP-SPEC §1): one full-width primary button on `surface.card`
  * with a hairline `border.separator` above and `shadow[3]`, the look of WizardBottomBar. Render it below the scroll
- * view, not over it. It adds the bottom inset on iOS only: on Android the root stack already pads the screen by it
+ * view, not over it. It adds the bottom inset on iOS only, and drops it while the keyboard is up: on Android the root stack already pads the screen by it
  * (STYLE_GUIDE §13.8, form chrome).
  */
-import React from 'react';
-import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Keyboard, Platform, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { layout, space, typography } from '@/theme/tokens';
@@ -46,8 +46,18 @@ const makeStyles = (t: ThemeTokens) =>
 export function FormSaveBar({ label, onPress, loading = false, disabled = false, helper, loadingText, onLayout, testID, buttonTestID }: FormSaveBarProps) {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
+  // With the keyboard up the bar sits on it: no home-indicator space under it.
+  const [keyboardShown, setKeyboardShown] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardShown(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardShown(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   return (
-    <View testID={testID} onLayout={onLayout} style={[styles.container, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
+    <View testID={testID} onLayout={onLayout} style={[styles.container, { paddingBottom: (Platform.OS === 'ios' && !keyboardShown ? insets.bottom : 0) + space.md }]}>
       {helper ? (typeof helper === 'string' ? <Text style={styles.helper}>{helper}</Text> : helper) : null}
       <Button type="primary" size="fullWidth" onPress={onPress} loading={loading} loadingText={loadingText} disabled={disabled} testID={buttonTestID}>
         {label}
