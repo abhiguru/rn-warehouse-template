@@ -60,6 +60,8 @@ export interface InputProps extends TextInputProps {
   required?: boolean;
   /** Maximum character count (enables character counter) */
   maxLength?: number;
+  /** The last field of a card or group: drops the bottom margin, so the container's own padding is the only space after it. */
+  last?: boolean;
   /** Typing stops at `maxLength` (the TextInput gets it) instead of the soft "too long" error. Off by default. */
   hardLimit?: boolean;
   /** Fixed text in the field before the typed text, such as "+91": `body`, `text.secondary`, hidden from the screen reader (the label or `accessibilityLabel` names it). */
@@ -109,6 +111,7 @@ export function Input({
   required = false,
   maxLength,
   hardLimit = false,
+  last = false,
   prefix,
   showCharacterCount = false,
   readOnly = false,
@@ -192,6 +195,7 @@ export function Input({
     <View
       style={[
         styles.container,
+        last && styles.containerLast,
         isDisabled && styles.containerDisabled,
         containerStyle,
       ]}
@@ -370,6 +374,9 @@ export function SearchInput(props: InputProps) {
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     marginBottom: space.lg,
+  },
+  containerLast: {
+    marginBottom: 0,
   },
   containerDisabled: {
     opacity: t.interaction.disabledOpacity,

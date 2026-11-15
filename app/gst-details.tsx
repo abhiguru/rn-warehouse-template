@@ -268,6 +268,7 @@ export default function GstDetailsScreen() {
                   />
                   <Input
                     label={tr('gst.settings.sacLabour')}
+                    last
                     identifier
                     value={draft.sacLabour}
                     onChangeText={text => change({ sacLabour: text.replace(/\D/g, '') })}

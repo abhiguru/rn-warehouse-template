@@ -244,6 +244,7 @@ const SensorEditScreen: React.FC = () => {
               onSubmitEditing={() => inputs.current.minutes?.focus()}
             />
             <Input
+              last
               label={tr('sensors.edit.minutes')}
               required
               numeric
@@ -281,6 +282,7 @@ const SensorEditScreen: React.FC = () => {
               }}
             />
             <Input
+              last
               label={tr('sensors.edit.highest')}
               numeric
               value={values.highest}

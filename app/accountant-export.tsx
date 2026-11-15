@@ -154,6 +154,7 @@ export default function AccountantExportScreen() {
                   testID={`accountant-export-${key}`}
                   label={labelOf(key)}
                   required
+                  last={key === LEDGER_KEYS[LEDGER_KEYS.length - 1]}
                   value={draft[key]}
                   onChangeText={text => change(key, text)}
                   error={fieldErrors[key]}

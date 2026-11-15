@@ -351,6 +351,7 @@ const ItemEditScreen: React.FC = () => {
               </View>
             )}
             <Input
+              last
               label={tr('items.form.description')}
               value={formData.description}
               onChangeText={(text) => handleFieldChange('description', text)}
