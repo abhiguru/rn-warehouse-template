@@ -12,6 +12,9 @@ jest.mock('@/store/hooks', () => ({
     selector({ auth: { userProfile: { role: mockRole } }, theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() }, Stack: { Screen: () => null }, useIsFocused: () => true }));
+jest.mock('@/hooks/useLeaveGuard', () => ({
+  useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }),
+}));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
