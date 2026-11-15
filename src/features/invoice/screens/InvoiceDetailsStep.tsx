@@ -32,7 +32,7 @@ import {
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
 import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInput } from '@/i18n';
-import { formatFinancialYear } from '@/utils/formatters';
+import { formatFinancialYear, toLocalISODate } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
 import { INVOICE_NUMBER_DIGITS } from '@/features/invoice/schemas/invoiceValidation';
 import {
@@ -135,9 +135,10 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
   const noItemsClosed = useAfterClosed(showNoItemsDialog);
   const sheetClosed = useAfterClosed(showGRNBottomSheet);
 
-  // What the user has put into a new invoice. The suggested number and
-  // today's date are filled in by the form itself and are not counted.
-  const hasEnteredData = !!header.gr_id || items.length > 0 || !!header.inv_no_typed;
+  // What the user has put into a new invoice. The suggested number, and the date while it is still today's, are filled in
+  // by the form itself and are not counted; a date the person changed is.
+  const dateChanged = !!header.inv_date && header.inv_date !== toLocalISODate(new Date());
+  const hasEnteredData = !!header.gr_id || items.length > 0 || !!header.inv_no_typed || dateChanged;
 
   // WH-162: a form opened from GRN details opens here only when Details' checks would stop the person (no suggested
   // number, a date the lines refuse): the GRN and its lines are already in the form. This step then goes on as Next
