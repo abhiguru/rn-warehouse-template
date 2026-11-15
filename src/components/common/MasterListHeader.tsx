@@ -30,7 +30,6 @@ import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { ListSearchField } from '@/features/filters/components/ListSearchField';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { Button } from '@/components/ui/Button';
-import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
 
 export interface MasterListHeaderProps {
   /** Key of the list's recent searches (for example 'customers', 'items', 'users'). */
@@ -47,7 +46,7 @@ export interface MasterListHeaderProps {
   countText?: string;
   /** A reload failed and the list shown is older: the message and what "Try again" does. */
   refreshError?: { message: string; onRetry: () => void };
-  /** The list's refresh: offered to screen readers as a "Refresh" action on the count line (WH-220). */
+  /** The list's refresh: offered to screen readers as a "Refresh" action on the search field, which is there in every state (WH-220). */
   onRefresh?: () => void;
 }
 
@@ -88,9 +87,9 @@ export function MasterListHeader({
 
   return (
     <View style={styles.container}>
-      <ListSearchField listKey={listKey} value={search} onSearch={onSearch} placeholder={placeholder} loading={loading} />
+      <ListSearchField listKey={listKey} value={search} onSearch={onSearch} placeholder={placeholder} loading={loading} onRefresh={onRefresh} />
       {countText ? (
-        <Text style={styles.count} accessibilityLiveRegion="polite" {...(onRefresh ? listRefreshAccessibility(onRefresh) : null)}>
+        <Text style={styles.count} accessibilityLiveRegion="polite">
           {countText}
         </Text>
       ) : null}

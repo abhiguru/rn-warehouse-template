@@ -14,6 +14,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 
 import { SEARCH_MIN_LENGTH, recentSearches, rememberSearch } from '../recentSearches';
 import { hasTooManyWords } from '../searchMatch';
+import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
 
 export const SEARCH_DEBOUNCE_MS = 300;
 /** The server reads at most this much of a search (search_terms, backend migrations 35 and 36). */
@@ -28,6 +29,8 @@ export interface ListSearchFieldProps {
   placeholder: string;
   /** The list is loading results for the current search. */
   loading?: boolean;
+  /** The list's refresh: offered to screen readers as a "Refresh" action on the field itself (WH-220). */
+  onRefresh?: () => void;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -79,7 +82,7 @@ const makeStyles = (t: ThemeTokens) => ({
   recentText: { ...typography.footnote, fontWeight: fontWeight.medium, color: t.text.primary },
 });
 
-export function ListSearchField({ listKey, value, onSearch, placeholder, loading = false }: ListSearchFieldProps) {
+export function ListSearchField({ listKey, value, onSearch, placeholder, loading = false, onRefresh }: ListSearchFieldProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const [text, setText] = useState(value);
@@ -127,6 +130,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
           placeholder={placeholder}
           placeholderTextColor={t.text.placeholder}
           accessibilityLabel={placeholder}
+          {...(onRefresh ? listRefreshAccessibility(onRefresh) : null)}
           returnKeyType="search"
           // Names and numbers are typed here; a number range is put in capitals when it is read.
           autoCapitalize="none"
