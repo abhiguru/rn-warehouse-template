@@ -71,6 +71,10 @@ export const REFUSAL = {
   GRN_PHOTO_REQUIRED: 'GRN_PHOTO_REQUIRED',
   /** A GRN number with a space in it (`gr_no`). */
   GRN_NUMBER_SPACES: 'GRN_NUMBER_SPACES',
+  /** WH-231: a new GRN with no sender name. Nothing was saved. */
+  SENDER_REQUIRED: 'SENDER_REQUIRED',
+  /** WH-231: a new GRN with no supervisor. Nothing was saved. */
+  SUPERVISOR_REQUIRED: 'SUPERVISOR_REQUIRED',
   /** A dispatch number with a space in it (`number`). Nothing was saved. */
   DISPATCH_NUMBER_SPACES: 'DISPATCH_NUMBER_SPACES',
   // Backend migration 129 (invoices).
