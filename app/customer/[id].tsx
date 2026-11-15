@@ -9,24 +9,23 @@
  * A load that was asked for before Deactivate / Activate finished never undoes it.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View } from 'react-native';
+import { router, Stack, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { CustomerOverviewTab } from '@/components/customer-details/CustomerOverviewTab';
 import { CustomerTabNavigator, type CustomerTabKey } from '@/components/customer-details/CustomerTabNavigator';
-import { RatesState } from '@/features/item-pricing/components/RatesState';
 import { CustomerPricingTab } from '@/features/item-pricing/components/CustomerPricingTab';
-import { SkeletonBox } from '@/components/skeletons/SkeletonBox';
+import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { canOpenScreen } from '@/config/roles';
 import { customerService } from '@/services/customer-service';
 import { useAppSelector } from '@/store/hooks';
 import type { Customer } from '@/types/customer.types';
-import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { showAlert } from '@/utils/alert';
 import { formatTime } from '@/utils/formatters';
@@ -38,7 +37,6 @@ export default function CustomerPage() {
   const isFocused = useIsFocused();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const insets = useSafeAreaInsets();
   const role = useAppSelector(state => state.auth.userProfile?.role);
   // The Pricing tab is for the roles that may open Item pricing; anyone else sees the Overview alone, with no tab bar.
   const canSeePricing = canOpenScreen(role, 'itemPricing');
@@ -156,51 +154,45 @@ export default function CustomerPage() {
   }, [shown, setActive]);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={styles.root}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-      <View style={styles.navigationBar}>
-        <HeaderBackButton style={styles.navSide} />
-        <Text
-          style={styles.navTitle}
-          numberOfLines={2}
-          accessibilityRole={shown ? 'header' : undefined}
-          accessibilityLabel={shown?.name}
-        >
-          {shown?.name ?? ''}
-        </Text>
-        <View style={[styles.navSide, styles.navEnd]}>
-          {shown && (
-            <Button
-              type="tertiary"
-              onPress={() => router.push({ pathname: '/customer-edit/[id]', params: { id: shown.id } })}
-            >
-              {tr('common.edit')}
-            </Button>
-          )}
-        </View>
-      </View>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: t.surface.header },
+          headerTintColor: t.brand.tint,
+          headerShadowVisible: false,
+          headerTitleAlign: 'center',
+          title: shown?.name ?? '',
+          headerTitle: () => (
+            <Text style={styles.navTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+              {shown?.name ?? ''}
+            </Text>
+          ),
+          headerLeft: () => <HeaderBackButton />,
+          headerRight: () =>
+            shown ? (
+              <Button
+                type="tertiary"
+                onPress={() => router.push({ pathname: '/customer-edit/[id]', params: { id: shown.id } })}
+              >
+                {tr('common.edit')}
+              </Button>
+            ) : null,
+        }}
+      />
 
-      {!shown && !failed && (
-        <View style={styles.state} accessibilityRole="progressbar" accessibilityLabel={tr('customers.form.loadingLabel')}>
-          <SkeletonBox width="100%" height={touchTarget * 2} />
-          <SkeletonBox width="100%" height={touchTarget} />
-          <SkeletonBox width="100%" height={touchTarget} />
-        </View>
-      )}
+      {!shown && !failed && <DetailSkeleton tabCount={canSeePricing ? 2 : 1} cardCount={3} />}
 
       {!shown && failed && (
-        <View style={styles.state} accessibilityRole="alert">
-          <RatesState
-            icon="alert-circle-outline"
-            title={tr('customers.page.loadFailedTitle')}
-            text={tr('common.checkConnection')}
-            actionLabel={tr('common.retry')}
-            onAction={() => {
-              setFailed(false);
-              setAttempt(count => count + 1);
-            }}
-          />
-        </View>
+        <ErrorStateView
+          title={tr('customers.page.loadFailedTitle')}
+          message={tr('common.checkConnection')}
+          onRetry={() => {
+            setFailed(false);
+            setAttempt(count => count + 1);
+          }}
+        />
       )}
 
       {shown && failed && (
@@ -248,20 +240,7 @@ export default function CustomerPage() {
 
 const makeStyles = (t: ThemeTokens) => ({
   root: { flex: 1, backgroundColor: t.background.base },
-  navigationBar: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    minHeight: touchTarget,
-    paddingHorizontal: space.sm,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  navSide: { minWidth: 80 },
-  navEnd: { alignItems: 'flex-end' as const },
-  navTitle: { ...typography.headline, color: t.text.primary, flexShrink: 1, textAlign: 'center' as const },
-  state: { flex: 1, padding: layout.marginCompact, gap: space.md, justifyContent: 'center' as const },
+  navTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' as const },
   refreshStrip: { paddingHorizontal: layout.marginCompact, paddingTop: space.sm },
   refreshRetry: { alignSelf: 'flex-start' as const, paddingHorizontal: space.sm },
 });
