@@ -12,7 +12,6 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   NotesSection,
   ActionsSection,
-  useOverviewStyles,
 } from '@/components/common/overview-tab';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -219,7 +218,6 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   gst_card,
 }) => {
   const styles = useThemedStyles(makeStyles);
-  const overviewStyles = useOverviewStyles();
   const t = useTokens();
 
   const handlePhonePress = (phone: string) => {
@@ -474,7 +472,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: CUSTOMER */}
       {customer_details && (
         <>
-          <SectionHeader title={tr('common.customer')} style={overviewStyles.sectionHeaderInset} />
+          <SectionHeader title={tr('common.customer')} inset={false} />
           {renderCustomerCard()}
         </>
       )}
@@ -482,7 +480,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: LINKED GRN */}
       {grn_details && (
         <>
-          <SectionHeader title={tr('invoice.details.reference')} style={overviewStyles.sectionHeaderInset} />
+          <SectionHeader title={tr('invoice.details.reference')} inset={false} />
           {renderGRNReferenceCard()}
         </>
       )}
@@ -490,13 +488,13 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: DOCUMENT TYPE AND GST (WH-151) */}
       {gst_card ? (
         <>
-          <SectionHeader title={tr('gst.detail.section')} style={overviewStyles.sectionHeaderInset} />
+          <SectionHeader title={tr('gst.detail.section')} inset={false} />
           {gst_card}
         </>
       ) : null}
 
       {/* SECTION: FINANCIAL SUMMARY */}
-      <SectionHeader title={tr('invoice.details.financialSummary')} style={overviewStyles.sectionHeaderInset} />
+      <SectionHeader title={tr('invoice.details.financialSummary')} inset={false} />
       {renderFinancialSummaryCard()}
 
       {/* SECTION: NOTES */}

@@ -143,7 +143,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
 
   return (
     <>
-      <SectionHeader title={t('components.actions.title')} style={overviewStyles.sectionHeaderInset} />
+      <SectionHeader title={t('components.actions.title')} inset={false} />
       <View style={overviewStyles.actionsContainer}>
         {/* Share PDF Button - Secondary Tint */}
         {showShareButton && (

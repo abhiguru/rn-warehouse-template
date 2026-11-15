@@ -27,7 +27,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
 
   return (
     <>
-      <SectionHeader title={title} style={overviewStyles.sectionHeaderInset} />
+      <SectionHeader title={title} inset={false} />
       <View style={[overviewStyles.card, colorStyles.card]}>
         <View style={overviewStyles.notesContent}>
           <Icon

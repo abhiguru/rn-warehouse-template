@@ -40,11 +40,6 @@ const makeOverviewStyles = (_t: ThemeTokens) => ({
     height: space.xxxl,
   },
 
-  // ui/SectionHeader carries its own 16 dp side padding; these tabs already pad their content by 16.
-  sectionHeaderInset: {
-    paddingHorizontal: 0,
-  },
-
   // Card
   card: {
     borderRadius: radius.card,

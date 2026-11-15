@@ -21,7 +21,7 @@ export function GrnOnlyRates({ rates }: { rates: RpcGrnRate[] }) {
   const overview = useOverviewStyles();
   return (
     <>
-      <SectionHeader title={t('grn.details.ratesTitle')} style={overview.sectionHeaderInset} />
+      <SectionHeader title={t('grn.details.ratesTitle')} inset={false} />
       <View style={overview.chipsCard} testID="grn-only-rates">
         {rates.map(rate => (
           <View key={rate.id} style={styles.row}>

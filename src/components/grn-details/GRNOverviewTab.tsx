@@ -101,7 +101,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: PARTICIPANTS */}
       {(customer_details || supervisor_details) && (
         <>
-          <SectionHeader title={tr('grn.overview.participants')} style={overviewStyles.sectionHeaderInset} />
+          <SectionHeader title={tr('grn.overview.participants')} inset={false} />
 
           {customer_details && (
             <ContactCard
@@ -131,7 +131,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: VEHICLE INFORMATION */}
       {registration && (
         <>
-          <SectionHeader title={tr('grn.overview.vehicle')} style={overviewStyles.sectionHeaderInset} />
+          <SectionHeader title={tr('grn.overview.vehicle')} inset={false} />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
               icon="truck-outline"
@@ -145,7 +145,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: BILLING TYPE */}
       {pricing_mode && (
         <>
-          <SectionHeader title={tr('grn.overview.billing')} style={overviewStyles.sectionHeaderInset} />
+          <SectionHeader title={tr('grn.overview.billing')} inset={false} />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
               icon={isOneTime ? 'calendar-check' : 'calendar-sync'}

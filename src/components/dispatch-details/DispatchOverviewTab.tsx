@@ -79,7 +79,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
       {/* SECTION: PARTICIPANTS */}
       {(customer_details || supervisor_details) && (
         <>
-          <SectionHeader title={tr('dispatch.details.participants')} style={overviewStyles.sectionHeaderInset} />
+          <SectionHeader title={tr('dispatch.details.participants')} inset={false} />
 
           {customer_details && (
             <ContactCard
@@ -109,7 +109,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
       {/* SECTION: ADDITIONAL INFORMATION */}
       {(registration || source_order_no) && (
         <>
-          <SectionHeader title={tr('dispatch.details.additionalInfo')} style={overviewStyles.sectionHeaderInset} />
+          <SectionHeader title={tr('dispatch.details.additionalInfo')} inset={false} />
           <View style={overviewStyles.chipsCard}>
             {registration && (
               <InfoChip
