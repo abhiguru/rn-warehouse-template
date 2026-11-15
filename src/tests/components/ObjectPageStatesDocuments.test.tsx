@@ -4,9 +4,7 @@
  * tab components are stand-ins. Stack.Screen draws what the page puts in the stack header.
  * Fictional data only.
  *
- * Not tested here: the "not found" layout of these two pages. In the code a missing GRN or dispatch
- * ends in the load error (the page has no state in which a read succeeded with nothing in it),
- * so its texts are never shown; reported to Development.
+ * A missing GRN or dispatch (the service answers notFound) shows "not found", not the load error.
  */
 import React from 'react';
 import { Text } from 'react-native';
@@ -157,6 +155,49 @@ describe.each([
     await press(screen === 'dispatch' ? 'Try loading the dispatch again' : 'Try again');
     expect(service).toHaveBeenCalledTimes(2);
     expect(shownText()).not.toContain(titleEn);
+  });
+});
+
+describe.each([
+  ['grn', mockGetGRNDetails, 'GRN not found', 'It may have been deleted, or you may not have access to it.', "Couldn't load the GRN", 'આવક પાવતી મળી નથી', 'તે ડિલીટ થઈ ગઈ હશે, અથવા તમને તે જોવાની પરવાનગી નહીં હોય.'],
+  ['dispatch', mockGetDispatchDetails, 'Dispatch not found', 'It may have been deleted. Go back to the dispatch list.', "Couldn't load the dispatch", 'જાવક મળી નથી', 'કદાચ તે ડિલીટ થઈ ગઈ છે. જાવકની યાદી પર પાછા જાઓ.'],
+] as const)('%s page that does not exist (WH-216)', (screen, service, titleEn, messageEn, loadErrorEn, titleGu, messageGu) => {
+  const NOT_FOUND = { success: false, message: 'none found', error: 'not found or denied', notFound: true };
+
+  it('says "not found" with its message and Go back, not the load error (English)', async () => {
+    service.mockResolvedValue(NOT_FOUND);
+    await mount(screen);
+    expect(shownText()).toEqual(expect.arrayContaining([titleEn, messageEn]));
+    expect(shownText()).not.toContain(loadErrorEn);
+    expect(shownText()).not.toContain('Check your connection and try again.');
+    expect(editButtons()).toHaveLength(0);
+    await press('Go back');
+    expect(router.back).toHaveBeenCalledTimes(1);
+  });
+
+  it('says it in Gujarati', async () => {
+    setLanguage('gu');
+    service.mockResolvedValue(NOT_FOUND);
+    await mount(screen);
+    expect(shownText()).toEqual(expect.arrayContaining([titleGu, messageGu]));
+    await press('પાછા જાઓ');
+    expect(router.back).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed read without notFound stays the load error', async () => {
+    service.mockResolvedValue({ success: false, message: 'Failed to fetch' });
+    await mount(screen);
+    expect(shownText()).toContain(loadErrorEn);
+    expect(shownText()).not.toContain(titleEn);
+  });
+
+  it('while loading shows no empty heading and neither the not-found nor the load-error text', async () => {
+    service.mockReturnValue(new Promise(() => undefined));
+    await mount(screen);
+    const headings = tree!.root.findAll(node => node.props.accessibilityRole === 'header' && typeof node.type === 'string');
+    expect(headings.filter(node => [node.props.children].flat(3).join('') === '')).toHaveLength(0);
+    expect(shownText()).not.toContain(titleEn);
+    expect(shownText()).not.toContain(loadErrorEn);
   });
 });
 

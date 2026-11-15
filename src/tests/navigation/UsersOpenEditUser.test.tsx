@@ -124,9 +124,8 @@ it('pressing a user row opens Edit user for that person', async () => {
   expect(text).toContain('Dev Customer One');
 });
 
-it('Edit user draws its own header: the title and a Back button, even while loading', async () => {
-  // Edit user must not depend on Stack.Screen options for its header (Edit item does not).
-  const screenOptions = jest.spyOn(Stack, 'Screen').mockImplementation((() => null) as never);
+it('Edit user shows the title and a Back button in the stack header, even while loading', async () => {
+  // WH-216: the title and Back come from the stack header (Stack.Screen options), which the loading state also renders.
   jest.mocked(adminUserService.getUserDetails).mockReturnValue(new Promise(() => undefined) as never);
   await act(async () => { rowFor('Dev Staff, Staff, +91 90000 00002').props.onPress(); });
   await settle();
@@ -135,5 +134,4 @@ it('Edit user draws its own header: the title and a Back button, even while load
   expect(shownText()).toContain('Edit user');
   const back = tree.root.findAll((node) => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === 'Back');
   expect(back.length).toBeGreaterThan(0);
-  screenOptions.mockRestore();
 });
