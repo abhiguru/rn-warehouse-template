@@ -3,11 +3,11 @@
  * - WH-234: Dispatch step 2, the -10/-5/+5/+10 buttons wrapped under the box: the declared block (box, buttons,
  *   error line) is kept above the bar whole; deleting the number removes the error and the block shrinks with no
  *   further scroll.
- * - WH-235: a small font scale: the block's size is never guessed from the font scale, so the same block geometry
- *   gives the same scroll at 0.8, 1.0 and 1.3.
- * - A bar that lifts after the 150 ms check already found the block in place (a keyboard that opens again on a
- *   field that kept the focus), with the real useKeyboardCoverLift as WizardBottomBar uses it: the lift bumps
- *   `revision`, which reveals again.
+ * - WH-235: the measured block's size is never guessed from the font scale (only the fallback for a view tree that
+ *   cannot be read scales with it), so the same measured block geometry gives the same scroll at 0.8, 1.0 and 1.3.
+ * - A bar that lifts after the 150 ms check already found the block in place, with the real useKeyboardCoverLift as
+ *   WizardBottomBar uses it: the lift bumps `revision`, which reveals again. (The keyboard that hides and shows again
+ *   on a field that kept the focus, rule 7, is in useRevealFocusedField.lag.test.tsx.)
  * Fake nodes with id, parentElement and getBoundingClientRect; the scroll mock moves them; timers are fake.
  */
 import React from 'react';
@@ -130,8 +130,8 @@ describe('WH-234: Dispatch step 2, the quantity buttons wrapped under the box', 
   });
 });
 
-describe('WH-235: a small font scale', () => {
-  it.each([0.8, 1.0, 1.3])('the same block geometry scrolls by the same amount at font scale %s', async (fontScale) => {
+describe('WH-235: the measured block does not read the font scale (only the unmeasured fallback does)', () => {
+  it.each([0.8, 1.0, 1.3])('measured block, same geometry: the same scroll at font scale %s', async (fontScale) => {
     jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(fontScale);
     const input = makeInput(BAR_TOP - BOX_HEIGHT - 6);
     // The Invoice number block: the box, its error line and its helper line.
@@ -143,7 +143,7 @@ describe('WH-235: a small font scale', () => {
     expect(scroll).toHaveBeenCalledWith(needed(bottomOf(block)));
   });
 
-  it.each([0.8, 1.0, 1.3])('a block with nothing under the box (font scale %s): the box bottom + space.sm, no room guessed', async (fontScale) => {
+  it.each([0.8, 1.0, 1.3])('measured block with nothing under the box: box bottom + space.sm at font scale %s, no room guessed', async (fontScale) => {
     jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(fontScale);
     const input = makeInput(BAR_TOP - BOX_HEIGHT + 3);
     const block = node(input.top, BOX_HEIGHT, FIELD_BLOCK_ID);

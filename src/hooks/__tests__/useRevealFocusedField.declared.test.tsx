@@ -287,21 +287,26 @@ describe('the at-rest check stops (2f)', () => {
     expect(scroll).not.toHaveBeenCalled();
   });
 
-  it('when the content cannot scroll further: asked once, not endlessly; a message that appears later is revealed', async () => {
+  it('when the content cannot scroll further: asked once and re-asked 3 times (4 scrolls), then no more; a message that appears later is revealed', async () => {
     canScroll = false;
     const input = makeInput(topFor(30, 10));
     focused = input;
     const block = wrap(input, 10, FIELD_BLOCK_ID);
     await render();
     expect(scroll).toHaveBeenCalledTimes(1);
-    await tick(1500);
-    expect(scroll).toHaveBeenCalledTimes(1);
+    await tick(6000);
+    expect(scroll).toHaveBeenCalledTimes(4); // 1 ask + MAX_REASKS_IN_PLACE (3) bounded re-asks
+    await tick(6000);
+    expect(scroll).toHaveBeenCalledTimes(4);
     block.height += 24; // a message appears
     await tick();
-    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll).toHaveBeenCalledTimes(5);
     expect(scroll).toHaveBeenLastCalledWith(needed(bottomOf(block)));
-    await tick(1500);
-    expect(scroll).toHaveBeenCalledTimes(2);
+    await tick(6000);
+    expect(scroll.mock.calls.length).toBeLessThanOrEqual(8); // bounded again, not endless
+    const settled = scroll.mock.calls.length;
+    await tick(6000);
+    expect(scroll).toHaveBeenCalledTimes(settled);
   });
 
   it('a message that appears after the block was found in place is revealed', async () => {
