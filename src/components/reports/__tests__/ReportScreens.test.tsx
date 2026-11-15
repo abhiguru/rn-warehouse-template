@@ -40,11 +40,13 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunity
 jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
 }));
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn(), push: jest.fn() }),
   router: { back: jest.fn(), push: jest.fn() },
   useLocalSearchParams: () => ({ id: 'dev-1' }),
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
 }));
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
 // GRN activity is drawn by ReportScaffold (a FlashList) and keeps its choices per facility.
@@ -397,7 +399,7 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
     const tree = await render(brand, mode, <OperationsDashboardScreen />);
     // The period is the filter bar's chip now, not a segmented control in brand.fill.
     expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.neutral.background]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Operations dashboard', 'GRNs', 'Total stock', 'Period averages', 'Latest activity (any date)', 'A0001']));
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Operations dashboard', 'GRNs', 'Total stock', 'Period averages', 'LATEST ACTIVITY (ANY DATE)', 'A0001']));
     // The answer's total_stock_weight (5,400.5 kg) is a total: no tile for it.
     expect(texts(tree)).not.toContain('Total weight');
     act(() => tree.unmount());

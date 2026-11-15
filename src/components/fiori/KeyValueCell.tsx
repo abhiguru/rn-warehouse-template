@@ -35,6 +35,8 @@ interface KeyValueCellProps {
   emphasized?: boolean;
   valuePrefix?: string;
   valueSuffix?: string;
+  /** A node shown in the value position (a StatusTag); `value` is still what a screen reader says. */
+  valueAccessory?: React.ReactNode;
   showDivider?: boolean;
 }
 
@@ -48,6 +50,7 @@ export const KeyValueCell: React.FC<KeyValueCellProps> = ({
   emphasized = false,
   valuePrefix,
   valueSuffix,
+  valueAccessory,
   showDivider = false,
 }) => {
   const t = useTokens();
@@ -68,16 +71,18 @@ export const KeyValueCell: React.FC<KeyValueCellProps> = ({
     >
       <Text style={styles.keyLabel}>{keyLabel}</Text>
       <View style={isStacked ? styles.valueContainerStacked : styles.valueContainer}>
-        <Text
-          style={[
-            styles.value,
-            isStacked && styles.valueStacked,
-            actionable && styles.valueActionable,
-            emphasized && styles.valueEmphasized,
-          ]}
-        >
-          {formattedValue}
-        </Text>
+        {valueAccessory ?? (
+          <Text
+            style={[
+              styles.value,
+              isStacked && styles.valueStacked,
+              actionable && styles.valueActionable,
+              emphasized && styles.valueEmphasized,
+            ]}
+          >
+            {formattedValue}
+          </Text>
+        )}
         {isPressable && (
           <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         )}

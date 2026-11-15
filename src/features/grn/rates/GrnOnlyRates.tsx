@@ -1,7 +1,8 @@
 /** "Rates for this GRN only" on the GRN details screen (backend migration 86): band and figures per item, and a tag once the GRN is invoiced. */
 import React from 'react';
 import { Text, View } from 'react-native';
-import { SectionHeader, useOverviewStyles } from '@/components/common/overview-tab';
+import { useOverviewStyles } from '@/components/common/overview-tab';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { StatusTag } from '@/components/ui';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
@@ -20,7 +21,7 @@ export function GrnOnlyRates({ rates }: { rates: RpcGrnRate[] }) {
   const overview = useOverviewStyles();
   return (
     <>
-      <SectionHeader title={t('grn.details.ratesTitle')} />
+      <SectionHeader title={t('grn.details.ratesTitle')} inset={false} />
       <View style={overview.chipsCard} testID="grn-only-rates">
         {rates.map(rate => (
           <View key={rate.id} style={styles.row}>

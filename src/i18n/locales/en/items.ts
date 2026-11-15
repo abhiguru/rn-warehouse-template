@@ -19,8 +19,10 @@ export const items = {
     deactivateItem: 'Deactivate item',
     deactivateConfirmMessage: "It won't appear when you choose an item for a new GRN or order. Its records and prices stay, and you can activate it again.",
     searchPlaceholder: 'Search by name, packaging or description',
-    noMatch: 'No items match "{{search}}". Try fewer letters.',
-    refreshFailed: "Couldn't refresh items. Showing the list from {{time}}.",
+    noMatchTitle: 'No items match "{{search}}"',
+    staleTitle: "Couldn't refresh items.",
+    staleText: 'Showing the items loaded at {{time}}.',
+    retryRefresh: 'Try loading the items again',
     couldNotActivateTitle: "Couldn't activate the item",
     couldNotDeactivateTitle: "Couldn't deactivate the item",
     couldNotUpdateTitle: "Couldn't update the item",
@@ -37,7 +39,6 @@ export const items = {
     noRateShowing: 'Showing only items with no rate.',
     noRateShowAll: 'Show all items',
     noRateNone: 'Every item has a rate.',
-    noRateNoMatch: 'No item without a rate matches "{{search}}".',
   },
   // Add, Save, Delete and Activate need a connection (nothing is sent while the phone is offline).
   offline: {
@@ -49,6 +50,9 @@ export const items = {
     details: 'Details',
     activate: 'Activate item',
     loadFailed: "Couldn't open this item. Check your connection and try again.",
+    loadFailedTitle: "Couldn't open this item",
+    notFoundTitle: 'Item not found',
+    notFoundMessage: 'It may have been deleted.',
   },
   delete: {
     confirmTitle: 'Delete {{name}}?',
@@ -123,7 +127,6 @@ export const items = {
   summary: {
     title: 'Saved items',
     titleCount: '{{title}} ({{count}})',
-    closeTitle: 'Close {{title}}',
     emptyTitle: 'No items yet',
     emptySubtitle: 'Items you save with the form above appear here.',
     protectedTitle: "Can't delete this {{entity}}",
@@ -137,7 +140,6 @@ export const items = {
     tapToEdit: 'Tap to edit',
     swipeToDelete: 'Swipe left to delete',
     editHint: 'Opens this {{entity}} for editing',
-    closeDefault: 'Close saved items',
     // Whole sentences for the usual case, a list of items.
     item: {
       protectedTitle: "Can't delete this item",

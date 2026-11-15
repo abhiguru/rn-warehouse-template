@@ -307,7 +307,7 @@ describe('stock summary, every customer', () => {
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('Customer');
     await screen.press('A to Z');
-    await screen.press('Done');
+    await screen.press('Close');
 
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Hillside Produce Co', 'Riverbank Produce']);
@@ -327,7 +327,7 @@ describe('stock summary, every customer', () => {
     const screen = await open(store);
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('GRNs');
-    await screen.press('Done');
+    await screen.press('Close');
     const byGrns = ['Hillside Produce Co', 'Riverbank Produce', 'Green Valley Traders', 'Sunrise Agro Foods'];
     expect(screen.customers()).toEqual(byGrns);
     expect(screen.texts()).not.toContain('Last opened');
@@ -506,7 +506,7 @@ describe('stock summary, the stock PDF', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('Items');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.has('Sorted by Items, highest first. Change sort')).toBe(true);
     await sharesThePdf(screen, { report: 'stock-summary', sort: { field: 'items', order: 'desc' } }, 'Stock_summary_All_customers.pdf');
   });
@@ -516,7 +516,7 @@ describe('stock summary, the stock PDF', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('Item');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.has('Sorted by Item, Z to A. Change sort')).toBe(true);
     await sharesThePdf(
       screen,
@@ -546,7 +546,7 @@ describe('stock summary, one customer', () => {
     await screen.press('Item');
     expect(screen.items()).toEqual(['Turmeric', 'Red chilli', 'Garlic', 'Cumin']);
     await screen.press('A to Z');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.items()).toEqual(['Cumin', 'Garlic', 'Red chilli', 'Turmeric']);
     expect(customerStock).toHaveBeenCalledTimes(1);
   });
@@ -557,7 +557,7 @@ describe('stock summary, one customer', () => {
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('Item');
     await screen.press('A to Z');
-    await screen.press('Done');
+    await screen.press('Close');
 
     await screen.search('a0042');
     expect(screen.items()).toEqual(['Red chilli']);
@@ -613,7 +613,7 @@ describe('stock summary, one customer', () => {
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('Item');
     await screen.press('A to Z');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.items()).toEqual(['Example Mustard', 'Fictional Onions']);
 
     await screen.press(section);

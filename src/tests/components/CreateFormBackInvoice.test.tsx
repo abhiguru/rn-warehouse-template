@@ -7,6 +7,7 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
+import { toLocalISODate } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { resetSheetBack, sheetBackPresses } from '@/tests/helpers/backClosingSheet';
@@ -15,7 +16,7 @@ import InvoiceFormStep2 from '../../../app/invoice-form/step2';
 
 const emptyHeader = () => ({
   // Filled in by the form itself when a new invoice opens: today's date and the suggested number.
-  inv_date: '2026-10-11', inv_fin_year: '2026-27', inv_no: 55, inv_no_typed: false,
+  inv_date: toLocalISODate(new Date()), inv_fin_year: '2026-27', inv_no: 55, inv_no_typed: false,
   customer_id: '', customer_name: '', gr_id: '', gr_no: '', one_time_charge: false,
 });
 const mockForm = {
@@ -47,7 +48,7 @@ jest.mock('@/hooks/useRoleBasedAccess', () => ({ useRoleBasedAccess: () => ({ ro
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppStore: () => ({ getState: () => ({ invoiceForm: { items: [], editedItems: {}, bulkPricing: {}, header: {} } }), subscribe: () => () => undefined, dispatch: jest.fn() }),
-  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1' } } }),
 }));
 jest.mock('expo-router', () => {
   const mockRouter = { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismiss: jest.fn(), dismissTo: jest.fn(), canGoBack: jest.fn(() => true) };
@@ -123,6 +124,7 @@ describe('Back on step 1 of a new invoice', () => {
   it.each([
     ['a GRN was chosen', chooseGrn],
     ['an invoice number was typed', () => { mockForm.header.inv_no = 7301; mockForm.header.inv_no_typed = true; }],
+    ['only a changed date', () => { mockForm.header.inv_date = '2020-01-01'; }],
   ])('asks "Discard this invoice?" and stays when %s', async (_what, enter) => {
     enter();
     const tree = await render();
@@ -142,10 +144,23 @@ describe('Back on step 1 of a new invoice', () => {
     await act(async () => { tree.unmount(); });
   });
 
+  it('the X closes at once, asking nothing, while only the suggested number and today\'s date are in the form (WH-217)', async () => {
+    const tree = await render();
+    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close new invoice' && typeof node.props.onPress === 'function');
+
+    await act(async () => { close.props.onPress(); });
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.dismissTo).toHaveBeenCalledTimes(1);
+    expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
+    expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+    await act(async () => { tree.unmount(); });
+  });
+
   it('asks exactly what the X asks, and "Discard" does what the X\'s does', async () => {
     chooseGrn();
     const tree = await render();
-    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Cancel Invoice' && typeof node.props.onPress === 'function');
+    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close new invoice' && typeof node.props.onPress === 'function');
 
     // The X: its question, then what its "Discard" does.
     await act(async () => { close.props.onPress(); });

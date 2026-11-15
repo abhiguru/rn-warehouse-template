@@ -2,7 +2,6 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { mergeRefreshedOrders, refreshLimit } from '@/features/orders/refreshWindow';
 import { createLogger } from '@/utils/logger';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
-import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 /**
  * OrderFlashList - FlashList Implementation (2025 Best Practices)
  *
@@ -110,7 +109,7 @@ const OrderSectionHeader = React.memo<SectionHeaderProps>(({ title, count, more 
       countText={more ? translate('lists.section.countMore', { count: formatNumber(count) }) : formatNumber(count)}
       countLabel={more ? translate('lists.section.moreThan', { count: formatNumber(count) }) : formatCount(count, 'order')}
     />
-    {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} testID="orders-last-updated" /> : null}
+    {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} withDate testID="orders-last-updated" /> : null}
   </>
 ));
 
@@ -526,7 +525,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       config={ORDER_FILTERS}
       filters={filters}
       loading={isLoading}
-      actions={<OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label={translate('lists.order.refresh')} />}
+      onRefresh={handleRefresh}
     >
       {subHeader}
     </FilteredListHeader>

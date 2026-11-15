@@ -19,7 +19,7 @@ export function HowInvoiceSheet({ visible, onClose, packaging }: { visible: bool
   const styles = useThemedStyles(makeStyles);
   const lines = ['l0a', 'l0b', 'l1', 'l2', 'l3', 'l4', 'l5'] as const;
   return (
-    <SheetFrame visible={visible} title={t('pricing.how.title')} onClose={onClose} closeLabel={t('pricing.how.close')}>
+    <SheetFrame visible={visible} title={t('pricing.how.title')} onClose={onClose}>
       <View style={styles.list}>
         {lines.map((key, index) => (
           <View key={key} style={styles.line}>

@@ -95,6 +95,7 @@ interface SectionHeaderProps {
   count: number;
   /** Offline: when the rows were loaded, shown under the heading (§14.9). */
   updatedAt?: number;
+  /** The list's refresh, offered to screen readers on the heading. */
 }
 
 // Section header: footnote, capitals, text.secondary (style guide §13.6)
@@ -113,7 +114,7 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt 
           <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
         </View>
       </View>
-      {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} testID="invoice-last-updated" /> : null}
+      {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} withDate testID="invoice-last-updated" /> : null}
     </>
   );
 });
@@ -446,7 +447,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   // Sorted by anything but date there are no headings: the offline line is then the top of the list.
   const listHeader = useMemo(
-    () => (!sortedByDate && offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top testID="invoice-last-updated" /> : null),
+    () => (!sortedByDate && offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="invoice-last-updated" /> : null),
     [sortedByDate, offlineUpdatedAt]
   );
 
@@ -527,7 +528,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   return (
     <View style={styles.container}>
       {/* The header, search field and filter bar are shown in every state. */}
-      <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} />
+      <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} onRefresh={handleRefresh} />
       {content}
 
       {/* Print dialog and jobs sheet */}

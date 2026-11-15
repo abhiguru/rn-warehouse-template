@@ -91,6 +91,8 @@ export interface GRNDetailsResponse {
   };
   message: string;
   error?: string;
+  /** The server answered but there is no such GRN (deleted, or not visible to the caller): not a failed load. */
+  notFound?: boolean;
 }
 
 // Helper function to generate signed URL from storage path
@@ -219,6 +221,9 @@ const processImagesForDisplay = async (
   if (__DEV__) console.log('[GRNDetailService] Background processing total time:', totalTime, 'ms');
 };
 
+/** The server's own words for a GRN that is not there or not the caller's (get_grn_details), whatever the app's language. */
+const GRN_NOT_FOUND = /grn not found or access denied/i;
+
 export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> => {
   const startTime = Date.now();
   try {
@@ -269,11 +274,21 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
     }
 
     if (!responseData || !responseData.grn) {
-      console.log('[GRNDetailService] No GRN found in response');
+      // Only the server's "GRN not found or access denied" answer is a missing document. Its "Error retrieving GRN
+      // details: ..." answer (a SQL error, also {success:false, data:null}) and an empty answer are load errors.
+      const serverMessage = String(data?.message ?? '');
+      if (GRN_NOT_FOUND.test(serverMessage)) {
+        return {
+          success: false,
+          message: t('errors.grn.noneFound'),
+          error: t('errors.grn.notFoundOrDenied'),
+          notFound: true
+        };
+      }
       return {
         success: false,
-        message: t('errors.grn.noneFound'),
-        error: t('errors.grn.notFoundOrDenied')
+        message: t('errors.grn.fetchDetailsFailed'),
+        error: serverMessage || t('errors.grn.fetchDetailsFailed')
       };
     }
 

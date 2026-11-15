@@ -298,7 +298,7 @@ describe('GRN activity, every customer', () => {
     await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Customer');
     await screen.press('A to Z');
-    await screen.press('Done');
+    await screen.press('Close');
 
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Hillside Produce Co', 'Riverbank Produce']);
@@ -321,7 +321,7 @@ describe('GRN activity, every customer', () => {
     await screen.press('Last 240 days');
     await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('GRNs');
-    await screen.press('Done');
+    await screen.press('Close');
     const byGrns = ['Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods', 'Green Valley Traders', 'Old Mill Stores'];
     expect(screen.customers()).toEqual(byGrns);
     expect(screen.texts()).not.toContain('Last opened');
@@ -368,7 +368,7 @@ describe('GRN activity, one customer', () => {
 
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('Units');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.grnRows()).toEqual(['GRN A0009', 'GRN A0100', 'GRN A0010', 'GRN A0050']);
     // With no heading above it, each card gives its own date.
     expect(screen.texts()).toEqual(expect.arrayContaining(['11/10/26', '12/10/26', '20/09/26']));
@@ -376,7 +376,7 @@ describe('GRN activity, one customer', () => {
     await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Date');
     await screen.press('Oldest first');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.grnRows()).toEqual(['20/09/26', 'GRN A0050', 'Yesterday', 'GRN A0009', 'GRN A0100', 'Today', 'GRN A0010']);
   });
 
@@ -528,7 +528,7 @@ describe('GRN activity, the report PDF', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Latest GRN');
-    await screen.press('Done');
+    await screen.press('Close');
     await sharesThePdf(
       screen,
       { report: 'grn-activity', from: '2026-06-15', to: '2026-10-12', sort: { field: 'latest', order: 'desc' } },
@@ -541,7 +541,7 @@ describe('GRN activity, the report PDF', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('GRN number');
-    await screen.press('Done');
+    await screen.press('Close');
     await sharesThePdf(
       screen,
       { report: 'grn-activity', customer_id: 'c2', from: '2026-06-15', to: '2026-10-12', sort: { field: 'gr_no', order: 'desc' } },

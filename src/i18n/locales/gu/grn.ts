@@ -77,19 +77,11 @@ export const grn: Translation<typeof source> = {
 
   pickers: {
     customerTitle: 'વેપારી પસંદ કરો',
-    customerPlaceholder: 'નામ અથવા સ્થળથી શોધો',
-    customerEmptyInitial: 'વેપારી શોધો',
-    typeToFindCustomers: 'વેપારી શોધવા ઓછામાં ઓછા ૨ અક્ષર લખો',
     senderTitle: 'મોકલનાર પસંદ કરો',
-    senderPlaceholder: 'વેપારી શોધો…',
-    senderEmptyInitial: 'મોકલનાર શોધો',
     supervisorTitle: 'સુપરવાઇઝર પસંદ કરો',
     supervisorPlaceholder: 'નામથી સુપરવાઇઝર શોધો',
     supervisorEmptyInitial: 'સુપરવાઇઝર શોધો',
     supervisorEmptySub: 'સુપરવાઇઝર કે એડમિન શોધવા ઓછામાં ઓછા ૨ અક્ષર લખો',
-    searchCustomers: 'વેપારી શોધો',
-    searchSupervisors: 'સુપરવાઇઝર શોધો',
-    noMatches: 'કોઈ પરિણામ મળ્યું નથી',
   },
 
   item: {
@@ -566,7 +558,6 @@ export const grn: Translation<typeof source> = {
     loadFailedTitle: 'આવક પાવતી લોડ કરી શકાઈ નથી',
     loadFailed: 'આવક પાવતી લોડ થઈ શકી નથી. ફરી પ્રયાસ કરો.',
     loadFailedConnection: 'આવક પાવતી લોડ થઈ શકી નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
-    unavailable: 'આ આવક પાવતીની વિગતો હાલ મળી શકતી નથી.',
     notFoundTitle: 'આવક પાવતી મળી નથી',
     notFoundMessage: 'તે ડિલીટ થઈ ગઈ હશે, અથવા તમને તે જોવાની પરવાનગી નહીં હોય.',
     dispatchHistoryFailed: 'જાવકની વિગતો લોડ થઈ શકી નથી. ફરી પ્રયાસ કરો.',

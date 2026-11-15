@@ -23,9 +23,11 @@ import {
   ActivityIndicator,
   BackHandler,
 } from 'react-native';
+import type { TextInputProps } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetBackdropProps, BottomSheetTextInput, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
+import { SheetSearchField } from '@/components/common/SheetSearchField';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { searchService } from '@/services/search-service';
 import { RecentCustomersService, RecentCustomer } from '@/services/recent-customers-service';
@@ -261,53 +263,25 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                 pressed && styles.closeButtonPressed,
                             ]}
                             accessibilityRole="button"
-                            accessibilityLabel={tr('customers.search.close')}
+                            accessibilityLabel={tr('common.close')}
                         >
                             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
                         </Pressable>
                     </View>
 
                     {/* Search field, kept at the top */}
-                    <View style={styles.searchContainer}>
-                        <View style={styles.searchBar}>
-                            <Icon
-                                name="magnify"
-                                size={iconSize.md}
-                                color={t.icon.secondary}
-                                style={styles.searchIcon}
-                            />
-                            <BottomSheetTextInput
-                                ref={searchInputRef}
-                                placeholder={tr('customers.search.placeholder')}
-                                value={searchQuery}
-                                onChangeText={setSearchQuery}
-                                style={styles.searchInput}
-                                placeholderTextColor={t.text.placeholder}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                                returnKeyType="search"
-                                accessibilityLabel={tr('customers.search.placeholder')}
-                            />
-                            {isSearching && (
-                                <ActivityIndicator
-                                    size="small"
-                                    color={t.brand.tint}
-                                    style={styles.searchLoader}
-                                    accessibilityLabel={tr('customers.search.searchingLabel')}
-                                />
-                            )}
-                            {searchQuery.length > 0 && (
-                                <Pressable
-                                    onPress={() => setSearchQuery('')}
-                                    style={styles.clearButton}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={tr('common.clearSearch')}
-                                >
-                                    <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
-                                </Pressable>
-                            )}
-                        </View>
-                    </View>
+                    <SheetSearchField
+                        ref={searchInputRef}
+                        InputComponent={BottomSheetTextInput as React.ComponentType<TextInputProps>}
+                        style={styles.searchField}
+                        value={searchQuery}
+                        placeholder={tr('customers.search.placeholder')}
+                        onChangeText={setSearchQuery}
+                        loading={isSearching}
+                        loadingLabel={tr('customers.search.searchingLabel')}
+                        onClear={() => setSearchQuery('')}
+                        inputProps={{ autoCapitalize: 'none', autoCorrect: false }}
+                    />
 
                     {/* Customer List */}
                     <BottomSheetFlatList
@@ -450,37 +424,8 @@ const makeStyles = (t: ThemeTokens) => ({
   closeButtonPressed: {
     backgroundColor: t.surface.cardPressed,
   },
-  searchContainer: {
-    paddingVertical: space.md,
-  },
-  // Text field per §13.2
-  searchBar: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    borderRadius: radius.field,
-    borderWidth: 1,
-    borderColor: t.border.field,
-    backgroundColor: t.surface.field,
-    paddingLeft: space.md,
-    minHeight: layout.rowMinHeight,
-  },
-  searchIcon: {
-    marginRight: space.sm,
-  },
-  searchInput: {
-    ...typography.body,
-    flex: 1,
-    color: t.text.primary,
-    paddingVertical: Platform.OS === 'android' ? space.sm : 0,
-  },
-  searchLoader: {
-    marginHorizontal: space.md,
-  },
-  clearButton: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+  searchField: {
+    marginVertical: space.md,
   },
   sectionHeader: {
     ...typography.footnote,

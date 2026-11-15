@@ -90,7 +90,7 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
         { value: 'partly_invoiced', get label() { return t('charging.invoiceState.partly_invoiced'); } },
       ],
     },
-    { kind: 'dateRange', key: 'date', get label() { return t('common.date'); }, icon: 'calendar-range' },
+    { kind: 'dateRange', key: 'date', get label() { return t('reports.period.label'); }, icon: 'calendar-range' },
     {
       kind: 'picker',
       key: 'customers',

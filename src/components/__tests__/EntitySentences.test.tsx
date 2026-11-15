@@ -62,11 +62,11 @@ const closeButton = (tree: ReactTestRenderer) =>
 
 describe('GenericStepIndicatorHeader', () => {
   it.each([
-    ['grn', 'create', 'Cancel GRN', 'આવક પાવતી રદ કરો'],
-    ['grn', 'edit', 'Cancel editing', 'ફેરફાર રદ કરો'],
-    ['dispatch', 'create', 'Cancel Dispatch', 'જાવક રદ કરો'],
-    ['dispatch', 'edit', 'Cancel editing', 'ફેરફાર રદ કરો'],
-    ['invoice', 'create', 'Cancel Invoice', 'ઇન્વૉઇસ રદ કરો'],
+    ['grn', 'create', 'Close new GRN', 'નવી આવક પાવતી બંધ કરો'],
+    ['grn', 'edit', 'Close GRN edit', 'આવક પાવતીનો ફેરફાર બંધ કરો'],
+    ['dispatch', 'create', 'Close new dispatch', 'નવી જાવક બંધ કરો'],
+    ['dispatch', 'edit', 'Close dispatch edit', 'જાવકનો ફેરફાર બંધ કરો'],
+    ['invoice', 'create', 'Close new invoice', 'નવું ઇન્વૉઇસ બંધ કરો'],
   ] as const)('names the close button for %s in %s mode in both languages', (entity, mode, english, gujarati) => {
     expect(closeButton(header({ entity, mode })).props.accessibilityLabel).toBe(english);
     setLanguage('gu');
@@ -75,10 +75,10 @@ describe('GenericStepIndicatorHeader', () => {
 
   it('chooses by mode, not by the label on screen', () => {
     // The label reads "Edit" but the wizard creates: before, the word on screen decided.
-    expect(closeButton(header({ entity: 'grn', mode: 'create', entityName: 'Edit' })).props.accessibilityLabel).toBe('Cancel GRN');
+    expect(closeButton(header({ entity: 'grn', mode: 'create', entityName: 'Edit' })).props.accessibilityLabel).toBe('Close new GRN');
     setLanguage('gu');
     // A Gujarati label never matched 'edit': edit mode must still say "cancel the changes".
-    expect(closeButton(header({ entity: 'dispatch', mode: 'edit', entityName: 'ફેરફાર' })).props.accessibilityLabel).toBe('ફેરફાર રદ કરો');
+    expect(closeButton(header({ entity: 'dispatch', mode: 'edit', entityName: 'ફેરફાર' })).props.accessibilityLabel).toBe('જાવકનો ફેરફાર બંધ કરો');
   });
 
   it('shows the name of the entity when no label is given, and the given label otherwise', () => {
@@ -91,7 +91,7 @@ describe('GenericStepIndicatorHeader', () => {
   it('asks a whole-sentence discard question when the screen gives no title', () => {
     setLanguage('gu');
     const tree = header({ entity: 'dispatch' });
-    const close = tree.root.find(node => node.props.accessibilityLabel === 'જાવક રદ કરો' && typeof node.props.onPress === 'function');
+    const close = tree.root.find(node => node.props.accessibilityLabel === 'નવી જાવક બંધ કરો' && typeof node.props.onPress === 'function');
     act(() => close.props.onPress());
     expect((showAlert as jest.Mock).mock.calls[0][0]).toBe('આ જાવક છોડી દેવી છે?');
   });
@@ -104,12 +104,12 @@ describe('GenericStepIndicatorHeader', () => {
 
 describe('ActionsSection', () => {
   const actions = (props: Partial<React.ComponentProps<typeof ActionsSection>>) =>
-    render(<ActionsSection entityNumber="311" entityId="g1" canEdit onEdit={jest.fn()} onDelete={jest.fn()} onPrint={jest.fn()} {...props} />);
+    render(<ActionsSection entityNumber="311" entityId="g1" canEdit onDelete={jest.fn()} onPrint={jest.fn()} {...props} />);
 
   it.each([
-    ['grn', ['Print GRN', 'Edit GRN', 'Delete GRN'], ['આવક પાવતી પ્રિન્ટ કરો', 'આવક પાવતીમાં ફેરફાર કરો', 'આવક પાવતી ડિલીટ કરો']],
-    ['dispatch', ['Print Dispatch', 'Edit Dispatch', 'Delete Dispatch'], ['જાવક પ્રિન્ટ કરો', 'જાવકમાં ફેરફાર કરો', 'જાવક ડિલીટ કરો']],
-    ['invoice', ['Print Invoice', 'Edit Invoice', 'Delete Invoice'], ['ઇન્વૉઇસ પ્રિન્ટ કરો', 'ઇન્વૉઇસમાં ફેરફાર કરો', 'ઇન્વૉઇસ ડિલીટ કરો']],
+    ['grn', ['Print GRN', 'Delete GRN'], ['આવક પાવતી પ્રિન્ટ કરો', 'આવક પાવતી ડિલીટ કરો']],
+    ['dispatch', ['Print Dispatch', 'Delete Dispatch'], ['જાવક પ્રિન્ટ કરો', 'જાવક ડિલીટ કરો']],
+    ['invoice', ['Print Invoice', 'Delete Invoice'], ['ઇન્વૉઇસ પ્રિન્ટ કરો', 'ઇન્વૉઇસ ડિલીટ કરો']],
   ] as const)('labels the buttons for %s in both languages', (entity, english, gujarati) => {
     expect(texts(actions({ entity }))).toEqual(expect.arrayContaining([...english]));
     setLanguage('gu');
@@ -129,20 +129,22 @@ describe('ActionsSection', () => {
   });
 
   it('shows neither Edit nor Delete unless the caller says the role may', () => {
-    const shown = texts(render(<ActionsSection entity="grn" entityNumber="311" entityId="g1" onEdit={jest.fn()} onDelete={jest.fn()} onPrint={jest.fn()} />));
+    const shown = texts(render(<ActionsSection entity="grn" entityNumber="311" entityId="g1" onDelete={jest.fn()} onPrint={jest.fn()} />));
     expect(shown).toContain('Print GRN');
     expect(shown).not.toContain('Edit GRN');
     expect(shown).not.toContain('Delete GRN');
   });
 
-  it('shows Edit without Delete to a role that may edit but not delete', () => {
+  // WH-216: Edit is in the page header, so this section never draws it.
+  it('shows no Delete, and no Edit (it is in the header), to a role that may edit but not delete', () => {
     const shown = texts(actions({ entity: 'grn', canEdit: true, canDelete: false }));
-    expect(shown).toContain('Edit GRN');
+    expect(shown).toContain('Print GRN');
+    expect(shown).not.toContain('Edit GRN');
     expect(shown).not.toContain('Delete GRN');
   });
 
   it('still accepts a caller word alone, for English', () => {
-    expect(texts(actions({ entityType: 'GRN' }))).toEqual(expect.arrayContaining(['Print GRN', 'Edit GRN', 'Delete GRN']));
+    expect(texts(actions({ entityType: 'GRN' }))).toEqual(expect.arrayContaining(['Print GRN', 'Delete GRN']));
   });
 });
 

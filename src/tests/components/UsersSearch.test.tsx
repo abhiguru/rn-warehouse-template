@@ -8,6 +8,11 @@ import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
+// The stale-list strip reads the network state from NetInfo (a native module, absent under Jest): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -114,7 +119,8 @@ describe('Users search', () => {
       filters.search_query === 'zzzz' ? answer([]) : answer(ALL)) as never);
     await act(async () => { tree = create(<UsersScreen />); });
     await type('zzzz');
-    expect(shownText()).toContain('No users match "zzzz". Try fewer letters.');
+    expect(shownText()).toContain('No users match "zzzz"');
+    expect(shownText()).toContain('Try fewer letters or another spelling.');
     expect(shownText()).not.toContain('No users yet');
     const list = tree!.root.find(node => typeof node.props.ListEmptyComponent === 'function' && node.props.contentContainerStyle);
     expect(StyleSheet.flatten(list.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
@@ -127,8 +133,57 @@ describe('Users search', () => {
     jest.mocked(adminUserService.getUsersList).mockResolvedValueOnce({ success: false, error: 'offline' } as never);
     const list = tree!.root.find(node => typeof node.props.refreshControl === 'object' && node.props.refreshControl !== null && 'props' in node.props.refreshControl);
     await act(async () => { list.props.refreshControl.props.onRefresh(); });
-    expect(shownText()).toContain("Couldn't refresh users. Showing the list from");
+    expect(shownText()).toContain("Couldn't refresh users.");
+    expect(shownText()).toContain('Showing the users loaded at');
     expect(shownText()).toContain('Dev Staff');
     expect(shownText()).not.toContain("Couldn't load users");
+  });
+});
+
+describe('Users screen-reader Refresh (WH-220)', () => {
+  it('offers Refresh on the search field, and it reads the list again', async () => {
+    jest.mocked(adminUserService.getUsersList).mockResolvedValue(answer(ALL) as never);
+    await act(async () => { tree = create(<UsersScreen />); });
+    const target = tree!.root.find(node => typeof node.type === 'string'
+      && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    expect(target.type).toBe('TextInput');
+    expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+    const before = jest.mocked(adminUserService.getUsersList).mock.calls.length;
+    await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(jest.mocked(adminUserService.getUsersList).mock.calls.length).toBe(before + 1);
+  });
+});
+
+describe('Users Refresh stays reachable when the list has nothing to count (WH-220)', () => {
+  const refreshTargets = () => tree!.root.findAll(node => typeof node.type === 'string'
+    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+  const expectRefreshWorks = async () => {
+    const targets = refreshTargets();
+    expect(targets).toHaveLength(1);
+    expect(targets[0].type).toBe('TextInput');
+    const before = jest.mocked(adminUserService.getUsersList).mock.calls.length;
+    await act(async () => { targets[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(jest.mocked(adminUserService.getUsersList).mock.calls.length).toBe(before + 1);
+  };
+
+  it('with no users at all', async () => {
+    jest.mocked(adminUserService.getUsersList).mockResolvedValue(answer([]) as never);
+    await act(async () => { tree = create(<UsersScreen />); });
+    await expectRefreshWorks();
+  });
+
+  it('during the first load', async () => {
+    jest.mocked(adminUserService.getUsersList).mockReturnValue(new Promise(() => undefined) as never);
+    await act(async () => { tree = create(<UsersScreen />); });
+    await expectRefreshWorks();
+  });
+
+  it('on a search with no match', async () => {
+    jest.mocked(adminUserService.getUsersList).mockImplementation((async (filters: { search_query?: string }) =>
+      filters.search_query === 'zzzz' ? answer([]) : answer(ALL)) as never);
+    await act(async () => { tree = create(<UsersScreen />); });
+    await type('zzzz');
+    expect(shownText()).toContain('No users match "zzzz"');
+    await expectRefreshWorks();
   });
 });

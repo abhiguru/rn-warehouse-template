@@ -22,6 +22,9 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@/hooks/useLeaveGuard', () => ({
+  useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }),
+}));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
@@ -62,13 +65,13 @@ async function render() { await act(async () => { tree = create(<AccountantExpor
 const field = (key: string) => tree!.root.find(n => n.props.testID === `accountant-export-${key}` && typeof n.props.onChangeText === 'function');
 const type = async (key: string, value: string) => { await act(async () => { field(key).props.onChangeText(value); }); };
 const save = async () => { await act(async () => { tree!.root.find(n => n.props.testID === 'accountant-export-save' && typeof n.props.onPress === 'function').props.onPress(); }); await act(async () => {}); };
-const texts = () => tree!.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat(Infinity).join(''));
+const texts = () => tree!.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat(Infinity).filter(c => typeof c === 'string').join(''));
 
 it('[crit 11] loads the names with get_accountant_ledgers and shows the help line and 13 fields in the contract\'s order, each at most 60 characters', async () => {
   await render();
   expect(mockRpc.mock.calls[0][0]).toBe('get_accountant_ledgers');
   expect(texts()).toContain('The ledger names your accountant uses in Tally.');
-  const fields = tree!.root.findAll(n => /^accountant-export-(?!save$|error$)/.test(String(n.props.testID ?? '')) && typeof n.props.onChangeText === 'function');
+  const fields = tree!.root.findAll(n => /^accountant-export-(?!save$|error$)/.test(String(n.props.testID ?? '')) && typeof n.props.onChangeText === 'function' && typeof n.type === 'string');
   expect(fields.map(n => n.props.testID)).toEqual(KEYS.map(k => `accountant-export-${k}`));
   KEYS.forEach((key, i) => {
     expect(field(key).props.value).toBe(DEFAULTS[key]);

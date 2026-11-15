@@ -4,6 +4,7 @@ import type { Translation } from '../../types';
 
 export const lists: Translation<typeof source> = {
   loadingContent: 'વિગતો લોડ થઈ રહી છે',
+  refreshAction: 'રિફ્રેશ કરો',
   section: {
     label: '{{title}}, {{countText}}',
     countMore: '{{count}}+',
@@ -137,7 +138,6 @@ export const lists: Translation<typeof source> = {
     location: 'સ્થળ: {{city}}',
     openHint: 'ઑર્ડરની વિગતો જોવા બે વાર ટૅપ કરો',
     create: 'ઑર્ડર બનાવો',
-    refresh: 'ઑર્ડર રિફ્રેશ કરો',
     selectCustomer: 'વેપારી પસંદ કરો',
     chooseBusiness: 'વેપારી પસંદ કરો',
     chooseBusinessHint: 'આ વેપારીનો ઑર્ડર ખોલે છે',
@@ -158,7 +158,6 @@ export const lists: Translation<typeof source> = {
   },
   queue: {
     title: 'ઑર્ડરની કતાર',
-    refresh: 'ઑર્ડરની કતાર રિફ્રેશ કરો',
     countLabel: 'કતારમાં {{orders}}',
     loadFailedTitle: 'ઑર્ડરની કતાર લોડ કરી શકાઈ નથી',
     staleTitle: 'ઑર્ડરની કતાર રિફ્રેશ કરી શકાઈ નથી.',

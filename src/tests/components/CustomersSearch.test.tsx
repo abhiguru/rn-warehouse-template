@@ -6,6 +6,11 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
 
+// The stale-list strip reads the network state from NetInfo (a native module, absent under Jest): the phone is online.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
@@ -96,7 +101,8 @@ it('finds by city', async () => {
 it('says nothing matches, offers Clear search, and brings everything and the rail back', async () => {
   const screen = await mount();
   await search(screen, 'acmezzz');
-  expect(text(screen)).toContain('No customers match "acmezzz". Try fewer letters.');
+  expect(text(screen)).toContain('No customers match "acmezzz"');
+  expect(text(screen)).toContain('Try fewer letters or another spelling.');
   expect(rowNames(screen)).toEqual([]);
   const clear = screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.findAllByType(Text).some(t => t.props.children === 'Clear search'))[0];
   await act(async () => { clear.props.onPress(); });
@@ -110,7 +116,8 @@ it('keeps the rows and says they are old when a refresh fails after a first succ
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: false, message: 'offline', data: [] } as never);
   const list = screen.root.findAll(node => typeof node.props.onRefresh === 'function' || typeof node.props.refreshControl?.props?.onRefresh === 'function')[0];
   await act(async () => { (list.props.onRefresh ?? list.props.refreshControl.props.onRefresh)(); });
-  expect(text(screen)).toContain("Couldn't refresh customers. Showing the list from");
+  expect(text(screen)).toContain("Couldn't refresh customers.");
+  expect(text(screen)).toContain('Showing the customers loaded at');
   expect(rowNames(screen)).toHaveLength(5);
   expect(text(screen)).not.toContain("Couldn't load customers");
 
@@ -142,4 +149,56 @@ it('shows "5 customers · 1 deactivated" from the head counts, and the Deactivat
   // With the filter on, the count line is the rows shown.
   expect(text(screen)).toContain('1 customer');
   expect(text(screen)).not.toContain('deactivated');
+});
+
+it('lets the empty list content grow instead of collapsing, so the no-match state is visible (WH-215)', async () => {
+  const screen = await mount();
+  await search(screen, 'acmezzz');
+  const { StyleSheet } = jest.requireActual('react-native');
+  const holder = screen.root.findAll(node => node.props.contentContainerStyle !== undefined)[0];
+  const style = StyleSheet.flatten(holder.props.contentContainerStyle);
+  expect(style.flexGrow).toBe(1);
+  expect(style.flex).toBeUndefined();
+});
+
+it('offers the screen-reader Refresh action on the search field, and it reads the list again (WH-220)', async () => {
+  const screen = await mount();
+  const target = screen.root.find(node => typeof node.type === 'string'
+    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+  // The action sits on the search field, an element a screen reader focuses in every state.
+  expect(target.type).toBe('TextInput');
+  expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+  const before = jest.mocked(customerService.getCustomerList).mock.calls.length;
+  await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  expect(jest.mocked(customerService.getCustomerList).mock.calls.length).toBe(before + 1);
+});
+
+describe('the screen-reader Refresh stays reachable when the list has nothing to count (WH-220)', () => {
+  const refreshTargets = (screen: ReactTestRenderer) => screen.root.findAll(node => typeof node.type === 'string'
+    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+  const expectRefreshWorks = async (screen: ReactTestRenderer) => {
+    const targets = refreshTargets(screen);
+    expect(targets).toHaveLength(1);
+    expect(targets[0].type).toBe('TextInput');
+    const before = jest.mocked(customerService.getCustomerList).mock.calls.length;
+    await act(async () => { targets[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(jest.mocked(customerService.getCustomerList).mock.calls.length).toBe(before + 1);
+  };
+
+  it('with no customers at all', async () => {
+    jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: [], pagination: { total_count: 0 } } as never);
+    await expectRefreshWorks(await mount());
+  });
+
+  it('during the first load', async () => {
+    jest.mocked(customerService.getCustomerList).mockReturnValue(new Promise(() => undefined) as never);
+    await expectRefreshWorks(await mount());
+  });
+
+  it('on a search with no match', async () => {
+    const screen = await mount();
+    await search(screen, 'acmezzz');
+    expect(text(screen)).toContain('No customers match "acmezzz"');
+    await expectRefreshWorks(screen);
+  });
 });

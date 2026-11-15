@@ -9,10 +9,11 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ReportEmptyState, ReportHeader } from '@/components/reports';
-import { Button } from '@/components/ui/Button';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useHeaderHeight } from 'expo-router/react-navigation';
+import { ReportEmptyState } from '@/components/reports';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Input } from '@/components/ui/Input';
 import { invalidateSensorQueries } from '@/features/sensors/sensorQueries';
 import {
@@ -54,14 +55,9 @@ const makeStyles = (t: ThemeTokens) =>
       gap: space.lg,
       ...t.shadow[2],
     },
+    deviceName: { ...typography.subhead, color: t.text.secondary },
     cardTitle: { ...typography.headline, color: t.text.primary },
     cardHint: { ...typography.footnote, color: t.text.secondary },
-    bottomBar: {
-      paddingHorizontal: layout.marginCompact,
-      paddingTop: space.md,
-      backgroundColor: t.surface.card,
-      ...t.shadow[3],
-    },
   });
 
 /** The order of the fields on the screen: the first wrong one gets the focus. */
@@ -86,8 +82,9 @@ function refusedField(code: string | undefined): { name: SensorFormField; messag
 const SensorEditScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const styles = useThemedStyles(makeStyles);
+  // The native header sits above the form: on iOS the keyboard view lifts by its height too.
+  const headerHeight = useHeaderHeight();
   const t = useTokens();
-  const insets = useSafeAreaInsets();
   const deviceQuery = useSensorDevice(id);
   const device = deviceQuery.data?.device ?? null;
 
@@ -137,11 +134,6 @@ const SensorEditScreen: React.FC = () => {
       return;
     }
     setRefused({});
-    // Nothing changed: there is nothing to save, so just go back.
-    if (!changed) {
-      router.back();
-      return;
-    }
     savingRef.current = true;
     setSaving(true);
     try {
@@ -176,7 +168,11 @@ const SensorEditScreen: React.FC = () => {
     }
   };
 
-  const header = <ReportHeader title={tr('sensors.edit.title')} subtitle={device?.device_name} />;
+  const header = (
+    <Stack.Screen
+      options={{ title: tr('sensors.edit.title'), headerShown: true, headerTitleAlign: 'center', headerLeft: () => <HeaderBackButton /> }}
+    />
+  );
 
   if (deviceQuery.phase === 'loading') {
     return (
@@ -210,8 +206,13 @@ const SensorEditScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
+      >
         <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Text style={styles.deviceName} testID="sensor-edit-device-name">{device.device_name}</Text>
           <View style={styles.card}>
             <Input
               label={tr('sensors.edit.name')}
@@ -298,11 +299,12 @@ const SensorEditScreen: React.FC = () => {
         </ScrollView>
 
         {/* Under the form, not floating over it (style guide §14.4) */}
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
-          <Button size="fullWidth" onPress={() => void save()} loading={saving} disabled={saving}>
-            {tr('common.save')}
-          </Button>
-        </View>
+        <FormSaveBar
+          label={tr('sensors.edit.saveLabel')}
+          onPress={() => void save()}
+          loading={saving}
+          disabled={saving || !changed}
+        />
       </KeyboardAvoidingView>
     </View>
   );

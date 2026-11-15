@@ -218,20 +218,20 @@ describe('items summary sheet wording', () => {
 
   it('uses whole sentences for a list of items in both languages', () => {
     const english = sheet();
-    expect(spoken(english, 'accessibilityLabel')).toContain('Close saved items');
+    expect(spoken(english, 'accessibilityLabel')).toContain('Close');
     expect(spoken(english, 'accessibilityHint')).toContain('Opens this item for editing');
     act(() => english.unmount());
 
     setLanguage('gu');
     const gujarati = sheet();
-    expect(spoken(gujarati, 'accessibilityLabel')).toContain('સાચવેલી આઇટમ બંધ કરો');
+    expect(spoken(gujarati, 'accessibilityLabel')).toContain('બંધ કરો');
     expect(spoken(gujarati, 'accessibilityHint')).toContain('ફેરફાર માટે આ આઇટમ ખોલે છે');
     act(() => gujarati.unmount());
   });
 
   it("still places a caller's own word into the English sentences", () => {
     const tree = sheet({ title: 'Saved lots', entityName: 'lot' });
-    expect(spoken(tree, 'accessibilityLabel')).toContain('Close saved lots');
+    expect(spoken(tree, 'accessibilityLabel')).toContain('Close');
     expect(spoken(tree, 'accessibilityHint')).toContain('Opens this lot for editing');
     act(() => tree.unmount());
   });

@@ -21,9 +21,9 @@ import {
   ContactCard,
   InfoChip,
   NotesSection,
-  SectionHeader,
 } from '../common/overview-tab';
 import { formatContactPhone } from '../common/overview-tab/ContactCard';
+import { SectionHeader } from '../ui/SectionHeader';
 
 type MockState = {
   theme: { preference: string; brand: string };
@@ -208,13 +208,14 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
         <ContactCard type="Customer" name="Patel Traders" phone="9876543210" iconName="account-outline" iconColor={t.brand.tint} iconBgColor={t.brand.subtle} />
         <InfoChip icon="calendar" label="9 Oct 2026" />
         <NotesSection note="Handle with care" />
-        <ActionsSection entityType="GRN" entityNumber="311" entityId="g1" canEdit onEdit={jest.fn()} onDelete={jest.fn()} onSharePDF={jest.fn()} />
+        <ActionsSection entityType="GRN" entityNumber="311" entityId="g1" canEdit onDelete={jest.fn()} onSharePDF={jest.fn()} />
       </>
     );
     expect(hasBackground(tree, t.surface.card)).toBe(true);
     expect(hasBackground(tree, t.status.neutral.background)).toBe(true);
-    expect(hasBackground(tree, t.brand.fill)).toBe(true);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['CUSTOMER', '+91 98765 43210', 'Edit GRN', 'Delete GRN']));
+    // WH-216: the primary Edit button moved to the page header, so this section no longer draws a brand fill.
+    expect(hasBackground(tree, t.brand.fill)).toBe(false);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['CUSTOMER', '+91 98765 43210', 'Delete GRN']));
     act(() => tree.unmount());
   });
 });

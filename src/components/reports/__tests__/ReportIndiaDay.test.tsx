@@ -261,7 +261,7 @@ describe('invoice history', () => {
     const screen = await open(InvoiceHistoryScreen, GREEN);
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('Amount');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.rows(/^Invoice \d{4}\/\d{4}$/)).toEqual(['Invoice 2026/0011', 'Invoice 2026/0001', 'Invoice 2026/0012']);
     const dates = screen.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
     expect(dates).toEqual(['11/10/26', '01/10/26', '12/10/26']);
@@ -332,7 +332,7 @@ describe('GRN activity', () => {
     const screen = await open(GRNActivityScreen, GREEN);
     await screen.press('Sorted by Date, newest first. Change sort');
     await screen.press('Units');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.rows(/^GRN A\d+$/)).toEqual(['GRN A0011', 'GRN A0001', 'GRN A0012']);
     const dates = screen.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
     expect(dates).toEqual(['11/10/26', '01/10/26', '12/10/26']);

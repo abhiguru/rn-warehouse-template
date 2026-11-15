@@ -40,6 +40,7 @@ import SwipeableFormStep from '@/components/SwipeableFormStep';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { toLocalISODate, formatDate, formatSpokenDate, toDate } from '@/utils/formatters';
+import { useAppSelector } from '@/store/hooks';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 import { formatIdentifier, getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
@@ -268,9 +269,12 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         setShowOptionalFields(!showOptionalFields);
     };
 
-    // What the user has put into a new dispatch. The number, the date and the
-    // supervisor are filled in by the form itself and are not counted.
-    const hasEnteredData = !!(header.customer_id || header.registration || header.note);
+    // What the user has put into a new dispatch. The number, and the date and supervisor while they are still what
+    // the form filled in (today, the signed-in user), are not counted; a date or supervisor the person changed is.
+    const { userProfile } = useAppSelector((state) => state.auth);
+    const dateChanged = !!header.disp_date && header.disp_date !== toLocalISODate(new Date());
+    const supervisorChanged = !!header.supervisor_id && header.supervisor_id !== userProfile?.id;
+    const hasEnteredData = !!(header.customer_id || header.registration || header.note || dateChanged || supervisorChanged);
 
     // The X in the step header asks before it calls this, so there is no second question here.
     const handleCancel = () => {

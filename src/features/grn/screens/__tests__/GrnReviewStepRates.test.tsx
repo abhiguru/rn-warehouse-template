@@ -60,7 +60,8 @@ jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(),
 let backOptions: { enabled?: boolean; onBackPress?: () => boolean } = {};
 jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: (options: typeof backOptions) => { backOptions = options; } }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
+jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
+import { showToast } from '@/utils/toast';
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
@@ -459,16 +460,16 @@ describe('round 3', () => {
     const tree = await render('create');
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([]));
-    const bar = one(tree, 'Snackbar');
-    expect(bar.props.visible).toBe(true);
-    expect(bar.props.children.props.children).toBe('Rates set for the other price type were removed.');
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith('Rates set for the other price type were removed.');
   });
 
   it('D7: nothing is dropped, and no notice shown, when every entry is of the GRN price type', async () => {
     mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5 }];
     const tree = await render('create');
     expect(mockDispatch).not.toHaveBeenCalledWith(setGrnRates([]));
-    expect(one(tree, 'Snackbar').props.visible).toBe(false);
+    expect(tree).toBeTruthy();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it('a refused Create leaves the form open, and the second Create sends the call again', async () => {

@@ -26,11 +26,15 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { adminUserService } from '@/services/admin-user-service';
 import { UserListItem, UserFilters, UserRole } from '@/types/user.types';
 import { subscribeUserListChanges } from '@/utils/userListSync';
-import { LoadMoreErrorFooter } from '@/components/lists/ListLoadErrors';
+import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from '@/components/lists/ListLoadErrors';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { MasterListHeader } from '@/components/common/MasterListHeader';
+import { ListSkeleton } from '@/components/skeletons';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { ErrorStateView } from '@/components/ErrorBoundary';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import {
   fontWeight,
   iconSize,
@@ -102,6 +106,7 @@ export default function UsersScreen() {
   const { userProfile } = useAppSelector((state) => state.auth);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const isOffline = useIsOffline();
 
   const [state, setState] = useState<ListState>({
     data: [],
@@ -312,61 +317,43 @@ export default function UsersScreen() {
 
   const renderEmpty = useCallback(() => {
     if (state.loading) {
-      return (
-        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel={tr('users.list.loading')}>
-          <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.emptyText}>{tr('users.list.loadingText')}</Text>
-        </View>
-      );
+      return <ListSkeleton count={5} metricsCount={3} />;
     }
 
     if (state.error) {
       return (
-        <View style={styles.emptyContainer} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.emptyTitle} accessibilityRole="header">
-            {tr('users.list.errorTitle')}
-          </Text>
-          <Text style={styles.emptyText}>{tr('common.checkConnection')}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={handleRefresh}
-            accessibilityRole="button"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          presentation="inline"
+          title={tr('users.list.loadErrorTitle')}
+          message={tr('common.checkConnection')}
+          onRetry={handleRefresh}
+        />
       );
     }
 
     // A search with no match is not an empty list: say so and offer to clear it.
     if (state.filters.search_query) {
       return (
-        <View style={styles.emptyContainer}>
-          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyText}>{tr('users.list.noMatch', { search: state.filters.search_query })}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => handleSearch('')}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>{tr('common.clearSearch')}</Text>
-          </Pressable>
-        </View>
+        <ListEmptyState
+          activeFilterCount={1}
+          filteredIcon="magnify"
+          filteredTitle={tr('users.list.noMatchTitle', { search: state.filters.search_query })}
+          filteredSubtitle={tr('customers.search.noMatchMessage')}
+          clearFiltersLabel={tr('common.clearSearch')}
+          onClearFilters={() => handleSearch('')}
+        />
       );
     }
 
     return (
-      <View style={styles.emptyContainer}>
-        <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle} accessibilityRole="header">
-          {tr('users.list.emptyTitle')}
-        </Text>
-        <Text style={styles.emptyText}>{tr('users.list.emptyMessage')}</Text>
-      </View>
+      <ListEmptyState
+        activeFilterCount={0}
+        emptyIcon="account-group-outline"
+        emptyTitle={tr('users.list.emptyTitle')}
+        emptySubtitle={tr('users.list.emptyMessage')}
+      />
     );
-  }, [state.loading, state.error, state.filters.search_query, handleRefresh, handleSearch, styles, t]);
+  }, [state.loading, state.error, state.filters.search_query, handleRefresh, handleSearch]);
 
   const renderFooter = useCallback(() => {
     if (state.moreFailed && !state.loadingMore) {
@@ -449,15 +436,21 @@ export default function UsersScreen() {
           placeholder={tr('users.list.searchPlaceholder')}
           loading={state.loading}
           countText={peopleCount > 0 ? formatCount(peopleCount, 'user') : undefined}
-          refreshError={
-            state.refreshFailed
-              ? {
-                  message: tr('users.list.refreshFailed', { time: formatTime(state.loadedAt) }),
-                  onRetry: () => fetchUsers(state.filters, 0),
-                }
-              : undefined
-          }
+          onRefresh={handleRefresh}
         />
+        {state.refreshFailed && state.loadedAt ? (
+          <StaleListStrip
+            title={tr('users.list.staleTitle')}
+            text={tr('users.list.staleText', { time: formatTime(state.loadedAt) })}
+            retryLabel={tr('users.list.retryRefresh')}
+            onRetry={() => fetchUsers(state.filters, 0)}
+            retrying={state.refreshing}
+            testID="users-stale-strip"
+          />
+        ) : null}
+        {isOffline && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
+          <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="users-last-updated" />
+        ) : null}
         <FlatList
           style={styles.flatList}
           data={rows}
@@ -691,26 +684,6 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'center' as const,
     marginBottom: space.md,
   },
-  secondaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    paddingHorizontal: space.xl,
-    gap: space.sm,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-  },
-
   // Footer
   footerContainer: {
     flexDirection: 'row' as const,

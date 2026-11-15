@@ -15,15 +15,23 @@
 /** How long a toast stays, in milliseconds (style guide §13.9). */
 export const TOAST_DURATION_MS = 4000;
 
+/** One optional action at the end of a toast (style guide §13.9), e.g. "Retry". Tapping it runs onPress and closes the toast. */
+export interface ToastAction {
+  label: string;
+  onPress: () => void;
+}
+
 export interface ToastOptions {
   /** How long the toast stays; default 4000 ms. */
   durationMs?: number;
+  action?: ToastAction;
 }
 
 export interface ToastRequest {
   id: number;
   message: string;
   durationMs: number;
+  action?: ToastAction;
 }
 
 type Listener = (request: ToastRequest) => void;
@@ -42,5 +50,5 @@ export function registerToastHost(fn: Listener): () => void {
 /** Show a success message for 4 seconds (or `options.durationMs`). */
 export function showToast(message: string, options?: ToastOptions): void {
   if (!listener) return;
-  listener({ id: nextId++, message, durationMs: options?.durationMs ?? TOAST_DURATION_MS });
+  listener({ id: nextId++, message, durationMs: options?.durationMs ?? TOAST_DURATION_MS, ...(options?.action ? { action: options.action } : {}) });
 }

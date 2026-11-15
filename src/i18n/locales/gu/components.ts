@@ -150,7 +150,6 @@ export const components: Translation<typeof source> = {
   preparingPdf: 'PDF તૈયાર થઈ રહી છે…',
   changeLog: {
     title: 'ફેરફારનો ઇતિહાસ',
-    close: 'ફેરફારનો ઇતિહાસ બંધ કરો',
     loading: 'ફેરફારનો ઇતિહાસ લોડ થઈ રહ્યો છે…',
     loadFailed: 'ફેરફારનો ઇતિહાસ લોડ કરી શકાયો નથી',
     emptyTitle: 'હજુ કોઈ ફેરફાર નથી',
@@ -217,7 +216,6 @@ export const components: Translation<typeof source> = {
   },
   printJobs: {
     title: 'પ્રિન્ટ જૉબ',
-    close: 'પ્રિન્ટ જૉબ બંધ કરો',
     loadingLabel: 'પ્રિન્ટ જૉબ લોડ થઈ રહી છે',
     loading: 'પ્રિન્ટ જૉબ લોડ થઈ રહી છે…',
     loadFailed: 'પ્રિન્ટ જૉબ લોડ કરી શકાઈ નથી. ફરી પ્રયાસ કરવા નીચે ખેંચો.',
@@ -272,11 +270,8 @@ export const components: Translation<typeof source> = {
   printRange: {
     enterBoth: 'શરૂઆતનો અને છેલ્લો, બંને નંબર લખો.',
     printFailed: 'પ્રિન્ટ કરી શકાયું નથી. પ્રિન્ટર તપાસો અને ફરી પ્રયાસ કરો.',
-    closeNotice: 'પ્રિન્ટની સૂચના બંધ કરો',
     unavailableTitle: 'પ્રિન્ટ ઉપલબ્ધ નથી',
     unavailableMessage: 'લોકલ ડેમોમાં પ્રિન્ટ ઉપલબ્ધ નથી. તેના બદલે PDF ડાઉનલોડ કરો અથવા શેર કરો.',
-    cancelPrinting: 'પ્રિન્ટ રદ કરો',
-    closeDialog: 'પ્રિન્ટની વિન્ડો બંધ કરો',
     chooseRange: 'પ્રિન્ટ કરવા માટે {{label}}ની રેન્જ પસંદ કરો.',
     sameNumberHint: 'એક જ {{label}} પ્રિન્ટ કરવા બંને ખાનામાં એક જ નંબર લખો.',
     from: 'શરૂઆતનો નંબર',
@@ -326,9 +321,9 @@ export const components: Translation<typeof source> = {
     cancelEditing: 'ફેરફાર રદ કરો',
     cancelEntity: '{{entity}} રદ કરો',
     cancelFor: {
-      grn: { create: 'આવક પાવતી રદ કરો', edit: 'ફેરફાર રદ કરો' },
-      dispatch: { create: 'જાવક રદ કરો', edit: 'ફેરફાર રદ કરો' },
-      invoice: { create: 'ઇન્વૉઇસ રદ કરો', edit: 'ઇન્વૉઇસના ફેરફાર રદ કરો' },
+      grn: { create: 'નવી આવક પાવતી બંધ કરો', edit: 'આવક પાવતીનો ફેરફાર બંધ કરો' },
+      dispatch: { create: 'નવી જાવક બંધ કરો', edit: 'જાવકનો ફેરફાર બંધ કરો' },
+      invoice: { create: 'નવું ઇન્વૉઇસ બંધ કરો', edit: 'ઇન્વૉઇસનો ફેરફાર બંધ કરો' },
     },
     discardFor: {
       grn: 'આ આવક પાવતી છોડી દેવી છે?',
@@ -369,27 +364,23 @@ export const components: Translation<typeof source> = {
     deleteMessage: 'તે બધા માટે નીકળી જશે. આ પાછું ફેરવી શકાશે નહીં.',
     deleteEntity: '{{entity}} ડિલીટ કરો',
     printEntity: '{{entity}} પ્રિન્ટ કરો',
-    editEntity: '{{entity}}માં ફેરફાર કરો',
     grn: {
       deleteNumberedTitle: 'આવક પાવતી {{number}} ડિલીટ કરવી છે?',
       deleteThisTitle: 'આ આવક પાવતી ડિલીટ કરવી છે?',
       delete: 'આવક પાવતી ડિલીટ કરો',
       print: 'આવક પાવતી પ્રિન્ટ કરો',
-      edit: 'આવક પાવતીમાં ફેરફાર કરો',
     },
     dispatch: {
       deleteNumberedTitle: 'જાવક {{number}} ડિલીટ કરવી છે?',
       deleteThisTitle: 'આ જાવક ડિલીટ કરવી છે?',
       delete: 'જાવક ડિલીટ કરો',
       print: 'જાવક પ્રિન્ટ કરો',
-      edit: 'જાવકમાં ફેરફાર કરો',
     },
     invoice: {
       deleteNumberedTitle: 'ઇન્વૉઇસ {{number}} ડિલીટ કરવું છે?',
       deleteThisTitle: 'આ ઇન્વૉઇસ ડિલીટ કરવું છે?',
       delete: 'ઇન્વૉઇસ ડિલીટ કરો',
       print: 'ઇન્વૉઇસ પ્રિન્ટ કરો',
-      edit: 'ઇન્વૉઇસમાં ફેરફાર કરો',
     },
   },
   contact: {

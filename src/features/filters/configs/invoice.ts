@@ -69,7 +69,7 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
     default: { field: 'inv_date', order: 'desc' },
   },
   fields: [
-    { kind: 'dateRange', key: 'date', get label() { return t('common.date'); }, icon: 'calendar-range' },
+    { kind: 'dateRange', key: 'date', get label() { return t('reports.period.label'); }, icon: 'calendar-range' },
     {
       kind: 'picker',
       key: 'customers',

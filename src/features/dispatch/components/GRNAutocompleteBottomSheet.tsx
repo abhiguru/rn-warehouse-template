@@ -29,6 +29,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
+import { SheetSearchField } from '@/components/common/SheetSearchField';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -188,37 +189,9 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 
   // CustomKeyboard
-  searchContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+  searchField: {
     marginHorizontal: layout.marginCompact,
     marginVertical: space.md,
-    paddingLeft: space.md,
-    minHeight: touchTarget,
-    backgroundColor: t.surface.field,
-    borderRadius: radius.field,
-    borderWidth: 1,
-    borderColor: t.border.field,
-  },
-  searchIcon: {
-    marginRight: space.sm,
-  },
-  searchInputText: {
-    ...typography.body,
-    color: t.text.primary,
-    fontWeight: fontWeight.semibold,
-    flex: 1,
-    fontVariant: ['tabular-nums' as const],
-  },
-  searchPlaceholder: {
-    color: t.text.placeholder,
-    fontWeight: fontWeight.regular,
-  },
-  clearButton: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
   },
   quickInputContainer: {
     flexDirection: 'row' as const,
@@ -487,38 +460,14 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
 
   return (
     <>
-      {/* Search Input Display */}
-      <View
-        style={styles.searchContainer}
-        accessible
-        accessibilityRole="search"
-        accessibilityLabel={localQuery.length > 0 ? tr('dispatch.grnSheet.searchLabel', { query: localQuery }) : tr('dispatch.grnSheet.searchEmptyLabel')}
-      >
-        <Icon
-          name="magnify"
-          size={iconSize.md}
-          color={t.icon.secondary}
-          style={styles.searchIcon}
-        />
-        <Text
-          style={[
-            styles.searchInputText,
-            localQuery.length === 0 && styles.searchPlaceholder,
-          ]}
-        >
-          {localQuery.length > 0 ? localQuery : tr('dispatch.grnSheet.searchPlaceholder')}
-        </Text>
-        {localQuery.length > 0 && (
-          <Pressable
-            onPress={handleClear}
-            style={styles.clearButton}
-            accessibilityRole="button"
-            accessibilityLabel={tr('common.clearSearch')}
-          >
-            <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
-          </Pressable>
-        )}
-      </View>
+      {/* Search field: shows what the prefix keys and number keys typed */}
+      <SheetSearchField
+        style={styles.searchField}
+        value={localQuery}
+        placeholder={tr('dispatch.grnSheet.searchPlaceholder')}
+        displayLabel={localQuery.length > 0 ? tr('dispatch.grnSheet.searchLabel', { query: localQuery }) : tr('dispatch.grnSheet.searchEmptyLabel')}
+        onClear={handleClear}
+      />
 
       {/* Quick Input Keyboard */}
       <View style={styles.quickInputContainer}>
@@ -975,7 +924,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
             style={styles.backdrop}
             onPress={handleClose}
             accessibilityRole="button"
-            accessibilityLabel={tr('dispatch.grnSheet.close')}
+            accessibilityLabel={tr('common.close')}
           />
 
           {/* Bottom Sheet Content */}
@@ -987,7 +936,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
                 onPress={handleClose}
                 style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={tr('dispatch.grnSheet.close')}
+                accessibilityLabel={tr('common.close')}
               >
                 <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>

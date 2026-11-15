@@ -313,7 +313,7 @@ describe('stock aging, every customer', () => {
     // The field changed and the direction was kept: A to Z.
     await screen.press('Customer');
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods']);
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.has('Sorted by Customer, A to Z. Change sort')).toBe(true);
     // Sorting is done on the rows already read: nothing more is asked.
     expect(allAging).toHaveBeenCalledTimes(1);
@@ -323,7 +323,7 @@ describe('stock aging, every customer', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Average age, highest first. Change sort');
     await screen.press('Stock');
-    await screen.press('Done');
+    await screen.press('Close');
 
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Riverbank Produce', 'Hillside Produce Co']);
@@ -373,7 +373,7 @@ describe('stock aging, every customer', () => {
     await screen.press('Sorted by Average age, highest first. Change sort');
     await screen.press('Customer');
     await screen.press('A to Z');
-    await screen.press('Done');
+    await screen.press('Close');
     const byName = ['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods'];
     expect(screen.customers()).toEqual(byName);
     expect(screen.texts()).not.toContain('Last opened');
@@ -453,7 +453,7 @@ describe('stock aging, one customer', () => {
     expect(screen.items()).toEqual(['Cumin', 'Garlic', 'Red chilli', 'Turmeric']);
     await screen.press('Age');
     expect(screen.items()).toEqual(['Red chilli', 'Cumin', 'Turmeric', 'Garlic']);
-    await screen.press('Done');
+    await screen.press('Close');
     expect(customerAging).toHaveBeenCalledTimes(1);
   });
 
@@ -462,7 +462,7 @@ describe('stock aging, one customer', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Age, highest first. Change sort');
     await screen.press('Stock');
-    await screen.press('Done');
+    await screen.press('Close');
 
     await screen.press('Filter by stock age');
     await screen.press('0–120 days');
@@ -749,7 +749,7 @@ describe('stock aging, the report PDF', () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Average age, highest first. Change sort');
     await screen.press('Customer');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.has('Sorted by Customer, Z to A. Change sort')).toBe(true);
     await sharesThePdf(screen, { report: 'stock-aging', sort: { field: 'customer', order: 'desc' } }, 'Stock_aging_All_customers.pdf');
   });

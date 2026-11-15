@@ -41,7 +41,7 @@ const press = (label: string) => {
 describe('the Delete button of the Overview tab', () => {
   it('GRN: hands over to the page at once, with no question of its own', () => {
     const onDelete = jest.fn();
-    render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete onEdit={jest.fn()} onDelete={onDelete} />);
+    render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete onDelete={onDelete} />);
 
     press('Delete GRN');
 
@@ -51,10 +51,10 @@ describe('the Delete button of the Overview tab', () => {
 
   it('GRN: while the orders it would change are read, the button says "Checking orders…" and waits; while deleting it says Deleting', () => {
     const texts = () => tree.root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat(Infinity).join(''));
-    render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_checking_orders onEdit={jest.fn()} onDelete={jest.fn()} />);
+    render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_checking_orders onDelete={jest.fn()} />);
     expect(texts()).toContain('Checking orders…');
     expect(tree.root.find((n) => n.props?.accessibilityLabel === 'Delete GRN' && typeof n.props?.onPress === 'function').props.disabled).toBe(true);
-    act(() => tree.update(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_deleting is_checking_orders onEdit={jest.fn()} onDelete={jest.fn()} />));
+    act(() => tree.update(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_deleting is_checking_orders onDelete={jest.fn()} />));
     expect(texts()).not.toContain('Checking orders…');
     expect(texts()).toContain('Deleting…');
   });
@@ -68,7 +68,6 @@ describe('the Delete button of the Overview tab', () => {
         financial_summary={{ subtotal: 100, discount: 0, labour: 0, tax_amount: 0, total: 100 }}
         can_edit
         can_cancel
-        on_edit_invoice={jest.fn()}
         on_cancel_invoice={onCancel}
       />
     );
@@ -81,7 +80,7 @@ describe('the Delete button of the Overview tab', () => {
 
   it('dispatch: the tab asks once, and deletes only when that question is answered Delete', () => {
     const onDelete = jest.fn();
-    render(<DispatchOverviewTab dispatch_id="d1" disp_no="I0042" can_edit can_delete onEdit={jest.fn()} onDelete={onDelete} />);
+    render(<DispatchOverviewTab dispatch_id="d1" disp_no="I0042" can_edit can_delete onDelete={onDelete} />);
 
     press('Delete Dispatch');
 

@@ -78,10 +78,13 @@ it('refreshes the whole loaded window so live updates do not drop scrolled rows'
     await renderer.root.findByType('FlashList' as unknown as React.ElementType).props.onEndReached();
   });
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(0, 40), metadata: { has_more: true } });
+  // The screen-reader Refresh action sits on the list's title (WH-220), which the list always shows.
+  const flash = renderer.root.findByType('FlashList' as unknown as React.ElementType);
+  expect(flash).toBeTruthy();
+  const refreshTarget = renderer.root.find(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
+    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
   await act(async () => {
-    renderer.root.find(node =>
-      node.type === ('IconButton' as unknown) && node.props.accessibilityLabel === 'Refresh orders'
-    ).props.onPress();
+    refreshTarget.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } });
   });
   expect(getOrdersList).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0, limit: 40 }));
   expect(listedIds(renderer)).toHaveLength(40);

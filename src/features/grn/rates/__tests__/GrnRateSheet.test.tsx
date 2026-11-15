@@ -208,7 +208,7 @@ describe('Change', () => {
     ]);
     expect(part('rate-confirm-reach')).toEqual(['GRNs of every customer from 12/10/26 that are not invoiced yet will use it. Saved invoices keep their figures.']);
     const buttons = ['rate-confirm-change', 'rate-confirm-only-grn', 'rate-confirm-back'].map(id => tree!.root.find(n => n.props.testID === id && typeof n.props.onPress === 'function'));
-    expect(buttons.map(b => [b.props.type, b.props.children])).toEqual([['primary', 'Change the rate'], ['secondary', 'Only this GRN'], ['secondary', 'Back']]);
+    expect(buttons.map(b => [b.props.role ?? 'secondary', b.props.label])).toEqual([['primary', 'Change the rate'], ['secondary', 'Only this GRN'], ['secondary', 'Back']]);
   });
 
   it('a one-time GRN has no labour row in the question', async () => {

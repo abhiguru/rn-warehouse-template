@@ -267,6 +267,11 @@ describe('customer activity, every customer', () => {
     expect(screen.customers()).toEqual([...DEFAULT_ORDER, 'Old Mill Stores']);
   });
 
+  it('names the whole list with the shared "All customers" subtitle (WH-221)', async () => {
+    const screen = await open(makeStore());
+    expect(screen.texts()).toContain('All customers');
+  });
+
   it('orders the rows by the field chosen in the sort sheet, and the other direction reverses them', async () => {
     const screen = await open(makeStore());
     await screen.press('Sorted by Last active, newest first. Change sort');
@@ -289,7 +294,7 @@ describe('customer activity, every customer', () => {
     expect(screen.customers()).toEqual(['Hillside Produce Co', 'Green Valley Traders', 'Riverbank Produce', 'Sunrise Agro Foods']);
     await screen.press('Customer');
     expect(screen.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods']);
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.has('Sorted by Customer, A to Z. Change sort')).toBe(true);
     expect(screen.labels()).toContain('Green Valley Traders, Surat · Last active 20/09/26, 300 in stock');
     expect(screen.labels().filter(label => label.includes('Invoiced ₹'))).toEqual([]);
@@ -302,7 +307,7 @@ describe('customer activity, every customer', () => {
     await screen.press('Last 240 days');
     await screen.press('Sorted by Last active, newest first. Change sort');
     await screen.press('Stock');
-    await screen.press('Done');
+    await screen.press('Close');
 
     await screen.search('produce');
     expect(screen.customers()).toEqual(['Riverbank Produce', 'Hillside Produce Co']);
@@ -322,7 +327,7 @@ describe('customer activity, every customer', () => {
     const screen = await open(store);
     await screen.press('Sorted by Last active, newest first. Change sort');
     await screen.press('Invoiced amount');
-    await screen.press('Done');
+    await screen.press('Close');
     await screen.pressStarting('Riverbank Produce, ');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/customer-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({ 'customer-activity': { id: 'c1', name: 'Riverbank Produce' } });

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, ActivityIndicator, Text, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useAppSelector } from '@/store/hooks';
 import { router } from 'expo-router';
@@ -12,7 +12,7 @@ import { ChangeLogService } from '@/services/change-log-service';
 import type { ChangeLogEntry, ChangeLogAnalytics, CustomerSummary } from '@/types/order.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { iconSize, radius, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -29,7 +29,6 @@ export default function CustomerOrderScreen() {
     (state) => Boolean(state.auth.userProfile) || Boolean(state.auth.user && state.auth.session)
   );
   const staffView = useAppSelector((state) => isWarehouseUser(state.auth.userProfile?.role));
-  const insets = useSafeAreaInsets();
   const [customerName, setCustomerName] = useState<string>('');
   // The business whose name has been read. `loading` follows from it, so on a change of
   // `customerId` the very next render is the spinner: the editor of the old business is
@@ -190,11 +189,62 @@ export default function CustomerOrderScreen() {
     return null; // Will redirect in useEffect
   }
 
+  // The stack header, as the document pages have it: title, then the order number; History and + at the end.
+  const header = (
+    <Stack.Screen
+      options={{
+        headerShown: true,
+        headerStyle: { backgroundColor: t.surface.header },
+        headerTintColor: t.brand.tint,
+        headerShadowVisible: false,
+        headerTitleAlign: 'center',
+        title: loading ? '' : tr('orders.screen.title', { name: customerName }),
+        headerTitle: () =>
+          loading ? null : (
+            <View style={styles.headerTitleContainer}>
+              <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+                {tr('orders.screen.title', { name: customerName })}
+              </Text>
+              {orderNo ? (
+                <Text style={styles.headerSubtitle} numberOfLines={1} maxFontSizeMultiplier={1.5} testID="order-screen-number">
+                  {tr('orders.screen.orderNumber', { number: formatIdentifier(orderNo) })}
+                </Text>
+              ) : null}
+            </View>
+          ),
+        headerLeft: () => <HeaderBackButton />,
+        headerRight: () =>
+          loading ? null : (
+            <View style={styles.headerActions}>
+              <Pressable
+                style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                onPress={handleOpenChangelog}
+                accessibilityLabel={tr('orders.screen.viewHistory')}
+                accessibilityRole="button"
+              >
+                <Icon name="history" size={iconSize.lg} color={t.brand.tint} />
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                onPress={handleOpenItemCatalog}
+                disabled={businessDeleted}
+                accessibilityState={{ disabled: businessDeleted }}
+                accessibilityLabel={tr('orders.screen.addItemsToOrder')}
+                accessibilityRole="button"
+              >
+                <Icon name="plus" size={iconSize.lg} color={businessDeleted ? t.text.disabled : t.brand.tint} />
+              </Pressable>
+            </View>
+          ),
+      }}
+    />
+  );
+
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel={tr('customers.form.loadingLabel')} />
-        <Text style={styles.loadingText}>{tr('customers.form.loading')}</Text>
+      <View style={styles.screen}>
+        {header}
+        <DetailSkeleton tabCount={1} cardCount={3} />
       </View>
     );
   }
@@ -202,43 +252,8 @@ export default function CustomerOrderScreen() {
   return (
     <>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-      <Stack.Screen options={{ headerShown: false }} />
+      {header}
       <View style={styles.screen}>
-        {/* Object page header (style guide §13.8): surface.header, brand.tint actions */}
-        <View style={styles.customHeader}>
-          <View style={[styles.customHeaderContent, { paddingTop: insets.top }]}>
-            <HeaderBackButton />
-            <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="middle" accessibilityRole="header">
-                {tr('orders.screen.title', { name: customerName })}
-              </Text>
-              {orderNo ? (
-                <Text style={styles.headerSubtitle} numberOfLines={1} testID="order-screen-number">
-                  {tr('orders.screen.orderNumber', { number: formatIdentifier(orderNo) })}
-                </Text>
-              ) : null}
-            </View>
-            <Pressable
-              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-              onPress={handleOpenChangelog}
-              accessibilityLabel={tr('orders.screen.viewHistory')}
-              accessibilityRole="button"
-            >
-              <Icon name="history" size={iconSize.lg} color={t.brand.tint} />
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-              onPress={handleOpenItemCatalog}
-              disabled={businessDeleted}
-              accessibilityState={{ disabled: businessDeleted }}
-              accessibilityLabel={tr('orders.screen.addItemsToOrder')}
-              accessibilityRole="button"
-            >
-              <Icon name="plus" size={iconSize.lg} color={businessDeleted ? t.text.disabled : t.brand.tint} />
-            </Pressable>
-          </View>
-        </View>
-
         {/* Main Content Area */}
         <View style={styles.container}>
           <OrderManagement
@@ -287,44 +302,23 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     backgroundColor: t.background.base,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.background.base,
-  },
-  loadingText: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    marginTop: space.lg,
-  },
-  // Header extends behind the status bar; no shadow, hairline bottom
-  customHeader: {
-    backgroundColor: t.surface.header,
-    borderBottomWidth: 1,
-    borderBottomColor: t.border.divider,
-  },
-  customHeaderContent: {
-    // paddingTop is set dynamically with insets
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: space.xs,
-    paddingBottom: space.xs,
-  },
   headerTitleContainer: {
-    flex: 1,
-    marginHorizontal: space.xs,
+    alignItems: 'center' as const,
   },
   headerTitle: {
     ...typography.headline,
     color: t.text.primary,
+    textAlign: 'center' as const,
   },
   headerSubtitle: {
     ...typography.footnote,
     color: t.text.secondary,
+    textAlign: 'center' as const,
   },
-  // Custom back button (same on every headerless screen): platform glyph,
-  // brand.tint, the word "Back", at least touchTarget in size (§8)
+  headerActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+  },
   iconButton: {
     width: touchTarget,
     height: touchTarget,

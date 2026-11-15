@@ -146,7 +146,6 @@ export const components = {
   preparingPdf: 'Preparing PDF…',
   changeLog: {
     title: 'Change history',
-    close: 'Close change history',
     loading: 'Loading change history…',
     loadFailed: "Couldn't load the change history",
     emptyTitle: 'No changes yet',
@@ -214,7 +213,6 @@ export const components = {
   },
   printJobs: {
     title: 'Print jobs',
-    close: 'Close print jobs',
     loadingLabel: 'Loading print jobs',
     loading: 'Loading print jobs…',
     loadFailed: "Couldn't load print jobs. Pull down to try again.",
@@ -269,11 +267,8 @@ export const components = {
   printRange: {
     enterBoth: 'Enter both a start and an end number.',
     printFailed: "Couldn't print. Check the printer and try again.",
-    closeNotice: 'Close printing notice',
     unavailableTitle: 'Printing unavailable',
     unavailableMessage: 'Printing is unavailable in the local demo. Download the PDF or share it instead.',
-    cancelPrinting: 'Cancel printing',
-    closeDialog: 'Close print dialog',
     chooseRange: 'Choose the range of {{label}}s to print.',
     sameNumberHint: 'Use the same number in both fields to print one {{label}}.',
     from: 'From',
@@ -325,15 +320,15 @@ export const components = {
     cancelEntity: 'Cancel {{entity}}',
     // Spoken name of the close button, by what the wizard is about and whether it creates or edits.
     cancelFor: {
-      grn: { create: 'Cancel GRN', edit: 'Cancel editing' },
-      dispatch: { create: 'Cancel Dispatch', edit: 'Cancel editing' },
-      invoice: { create: 'Cancel Invoice', edit: 'Cancel invoice edit' },
+      grn: { create: 'Close new GRN', edit: 'Close GRN edit' },
+      dispatch: { create: 'Close new dispatch', edit: 'Close dispatch edit' },
+      invoice: { create: 'Close new invoice', edit: 'Close invoice edit' },
     },
     // The discard question when a screen gives no title of its own.
     discardFor: {
       grn: 'Discard this GRN?',
-      dispatch: 'Discard this Dispatch?',
-      invoice: 'Discard this Invoice?',
+      dispatch: 'Discard this dispatch?',
+      invoice: 'Discard this invoice?',
     },
     cancelHint: 'Asks before discarding your changes',
   },
@@ -369,28 +364,24 @@ export const components = {
     deleteMessage: "It will be removed for everyone. You can't undo this.",
     deleteEntity: 'Delete {{entity}}',
     printEntity: 'Print {{entity}}',
-    editEntity: 'Edit {{entity}}',
     // Whole sentences by document (ActionsSection `entity`).
     grn: {
       deleteNumberedTitle: 'Delete GRN {{number}}?',
       deleteThisTitle: 'Delete this GRN?',
       delete: 'Delete GRN',
       print: 'Print GRN',
-      edit: 'Edit GRN',
     },
     dispatch: {
       deleteNumberedTitle: 'Delete Dispatch {{number}}?',
       deleteThisTitle: 'Delete this Dispatch?',
       delete: 'Delete Dispatch',
       print: 'Print Dispatch',
-      edit: 'Edit Dispatch',
     },
     invoice: {
       deleteNumberedTitle: 'Delete Invoice {{number}}?',
       deleteThisTitle: 'Delete this Invoice?',
       delete: 'Delete Invoice',
       print: 'Print Invoice',
-      edit: 'Edit Invoice',
     },
   },
   contact: {

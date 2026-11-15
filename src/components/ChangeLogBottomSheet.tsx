@@ -435,7 +435,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           pressed && dynamicStyles.closeButtonPressed,
         ]}
         onPress={onClose}
-        accessibilityLabel={tr('components.changeLog.close')}
+        accessibilityLabel={tr('common.close')}
         accessibilityRole="button"
       >
         <MaterialCommunityIcons name="close" size={iconSize.lg} color={t.icon.primary} />

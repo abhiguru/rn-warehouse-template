@@ -9,6 +9,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { InlineValidation } from '@/components/fiori';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { RadioGroup } from '@/components/ui/RadioButton';
@@ -229,7 +230,7 @@ function Editor({ rule, onClose, onSaved, onRefreshed, onUnconfirmed, styles }: 
         visible
         title={title}
         onClose={saving ? () => undefined : () => setStep('edit')}
-        closeLabel={tr('common.back')}
+        leading={<HeaderBackButton onPress={saving ? () => undefined : () => setStep('edit')} />}
         footer={
           <View style={styles.footer}>
             {strip}

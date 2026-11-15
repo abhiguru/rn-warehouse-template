@@ -9,7 +9,7 @@ let mockTheme = { preference: 'light', brand: 'orange' };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: mockTheme, grnForm: { items: [{ qty: 120, stock: 100 }] } }),
+    selector({ theme: mockTheme, auth: { userProfile: { id: 'u1' } }, grnForm: { items: [{ qty: 120, stock: 100 }] } }),
 }));
 
 const mockForm = {

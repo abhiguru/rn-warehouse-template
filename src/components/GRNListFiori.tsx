@@ -939,6 +939,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
       config={GRN_FILTERS}
       filters={filters}
       loading={loading}
+      onRefresh={onRefresh}
       busy={loading && !refreshing && data !== null}
       expand={{ expanded: open.all, onToggle: handleToggleAll, nounPlural: 'GRNs', disabled: !hasRows }}
     />

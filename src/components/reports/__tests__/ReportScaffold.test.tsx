@@ -218,7 +218,11 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     const { labelled, tree } = render({ rows: [], action: { label: 'Choose period', onPress } });
     const [button] = labelled('Choose period');
     expect(button).toBeDefined();
-    expect(StyleSheet.flatten(button.props.style({ pressed: false })).backgroundColor).toBe(getTokens(brand, mode).brand.fill);
+    // WH-215: the empty state's button is a ui/Button, tertiary: no fill, the label in the theme's brand tint.
+    const touchable = labelled('Choose period').find(node => node.props.style !== undefined)!;
+    expect(StyleSheet.flatten(touchable.props.style).backgroundColor).toBe('transparent');
+    const label = button.findAll(node => (node.type as unknown) === 'Text' && node.props.children === 'Choose period')[0];
+    expect(StyleSheet.flatten(label.props.style).color).toBe(getTokens(brand, mode).brand.tint);
     expect(tree.root.findAll(node => (node.type as unknown) === 'Icon' && node.props.name === 'calendar-range').length).toBeGreaterThan(0);
     act(() => button.props.onPress());
     expect(onPress).toHaveBeenCalledTimes(1);

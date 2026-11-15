@@ -139,11 +139,11 @@ describe('a customer account with two businesses', () => {
     expect(snackbar()).toBeUndefined();
   });
 
-  it('stays on the list when the sheet is cancelled', async () => {
+  it('stays on the list when the sheet is closed with the X', async () => {
     await renderList(customerWith(AMBER.id, BIRCH.id));
     await tapCreateOrder();
     expect(chooserIsOpen()).toBe(true);
-    await act(async () => pressable('Cancel').props.onPress());
+    await act(async () => pressable('Close').props.onPress());
     expect(chooserIsOpen()).toBe(false);
     expect(push).not.toHaveBeenCalled();
   });

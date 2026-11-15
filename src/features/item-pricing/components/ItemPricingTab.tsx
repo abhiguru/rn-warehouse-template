@@ -51,7 +51,7 @@ export interface ItemPricingTabProps {
   itemName: string;
   /** The item's packaging (Bag, Box, Crate), for "per box" in the rate texts. */
   packaging?: string | null;
-  /** The item is deactivated (Overview -> Deactivate): its rates cannot change, so the tab says so. */
+  /** The item is deactivated (Overview -> Deactivate): its rates cannot change; the item page shows the strip under its header. */
   active?: boolean;
 }
 
@@ -176,11 +176,6 @@ export function ItemPricingTab({ itemId, itemName, packaging, active = true }: I
     const hasButtons = periods.some(p => buttonsOf(p).length > 0) || canChange;
     body = (
       <View style={styles.block}>
-        {!active ? (
-          <View style={styles.strip}>
-            <InlineValidation variant="warning" message={t('pricing.itemTab.deactivated')} />
-          </View>
-        ) : null}
         {refreshError ? (
           <View style={styles.strip}>
             <InlineValidation variant="error" message={t('pricing.list.refreshFailed', { time: lastUpdated ? formatTime(new Date(lastUpdated)) : '' })} />

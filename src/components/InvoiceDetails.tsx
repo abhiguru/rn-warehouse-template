@@ -6,6 +6,7 @@
  * calculation summary).
  */
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
+import { showToast } from '@/utils/toast';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -15,7 +16,6 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Portal, Snackbar } from 'react-native-paper';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -145,7 +145,6 @@ const makeStyles = (t: ThemeTokens) => ({
   emptySection: { paddingVertical: space.max, alignItems: 'center' as const, gap: space.md },
   emptyTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
   emptyText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
-  snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button },
   emphasis: { fontWeight: fontWeight.semibold },
 });
 
@@ -158,8 +157,9 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
   const [, setInvoiceItems] = useState<InvoiceItem[]>([]);
   const [detailedItems, setDetailedItems] = useState<InvoiceItemDetailed[]>([]);
   const [itemsSummary, setItemsSummary] = useState<InvoiceItemsSummary | null>(null);
-  const [errorVisible, setErrorVisible] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  // The toast's Retry runs the latest fetch (the fetch itself shows the toast, so it cannot name itself).
+  const retryRef = useRef<() => void>(() => undefined);
+  const showLoadFailed = () => showToast(tr('invoice.details.loadFailed'), { action: { label: tr('common.retry'), onPress: () => retryRef.current() } });
 
   // P3: AbortController for cancelling requests on unmount/re-fetch
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -197,8 +197,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         setInvoiceHeader(headerResult.data.header);
         setInvoiceItems(headerResult.data.items || []);
       } else {
-        setErrorMessage(tr('invoice.details.loadFailed'));
-        setErrorVisible(true);
+        showLoadFailed();
         return;
       }
 
@@ -218,8 +217,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         return;
       }
       console.error('[InvoiceDetails] Error fetching data:', error);
-      setErrorMessage(tr('invoice.details.loadFailed'));
-      setErrorVisible(true);
+      showLoadFailed();
     } finally {
       // Only update loading state if not aborted
       if (!controller.signal.aborted) {
@@ -228,6 +226,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
       }
     }
   }, [invoiceId]);
+  retryRef.current = fetchInvoiceData;
 
   useEffect(() => {
     if (invoiceId) {
@@ -424,23 +423,6 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         {renderDetailedItems()}
       </ScrollView>
 
-      {/* Error snackbar */}
-      <Portal>
-        <Snackbar
-          visible={errorVisible}
-          onDismiss={() => setErrorVisible(false)}
-          duration={4000}
-          style={styles.snackbar}
-          theme={{ colors: { inverseOnSurface: t.text.inverse, inversePrimary: t.text.inverse } }}
-          action={{
-            label: tr('common.retry'),
-            textColor: t.text.inverse,
-            onPress: () => fetchInvoiceData(),
-          }}
-        >
-          {errorMessage}
-        </Snackbar>
-      </Portal>
     </>
   );
 };

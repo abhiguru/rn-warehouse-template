@@ -18,7 +18,6 @@ export const users: Translation<typeof source> = {
   },
   rolePicker: {
     title: 'હોદ્દો પસંદ કરો',
-    close: 'હોદ્દાની યાદી બંધ કરો',
     optionLabel: '{{role}}. {{description}}',
     adminOnly: 'એડમિનનો હોદ્દો ફક્ત એડમિન જ આપી શકે છે.',
   },
@@ -34,7 +33,7 @@ export const users: Translation<typeof source> = {
     title: 'યુઝર',
     loading: 'યુઝર લોડ થઈ રહ્યા છે',
     loadingText: 'યુઝર લોડ થઈ રહ્યા છે…',
-    errorTitle: 'યુઝર લોડ કરી શકાયા નથી',
+    loadErrorTitle: 'યુઝર લોડ કરી શકાયા નથી',
     emptyTitle: 'હજુ કોઈ યુઝર નથી',
     emptyMessage: 'આ કોલ્ડ સ્ટોરેજમાં જોડાનારા લોકો અહીં દેખાશે.',
     loadingMore: 'વધુ યુઝર લોડ થઈ રહ્યા છે',
@@ -47,8 +46,10 @@ export const users: Translation<typeof source> = {
     openHint: 'યુઝરમાં ફેરફાર કરવા માટે ખોલે છે',
     // Draft for the owner's wording review (Users review 2026-10-20).
     searchPlaceholder: 'નામ કે મોબાઇલથી શોધો',
-    noMatch: '"{{search}}" સાથે મળતો કોઈ યુઝર નથી. ઓછા અક્ષરો લખી જુઓ.',
-    refreshFailed: 'યુઝર રિફ્રેશ કરી શકાયા નથી. {{time}} ની યાદી બતાવી છે.',
+    noMatchTitle: '"{{search}}" સાથે મળતો કોઈ યુઝર નથી',
+    staleTitle: 'યુઝર રિફ્રેશ કરી શકાયા નથી.',
+    staleText: '{{time}} વાગ્યે લોડ થયેલા યુઝર દેખાય છે.',
+    retryRefresh: 'યુઝર ફરી લોડ કરવાનો પ્રયાસ કરો',
     connections: 'કનેક્શન',
     connectionTag: 'કનેક્શન',
     // Draft for the owner's wording review (Users review 2026-10-20).

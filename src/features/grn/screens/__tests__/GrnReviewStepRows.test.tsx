@@ -64,7 +64,8 @@ jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 
 jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() }, useRouter: () => ({ back: jest.fn() }), useFocusEffect: jest.fn(), useLocalSearchParams: () => ({}) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
+jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
+import { showToast } from '@/utils/toast';
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
@@ -192,11 +193,11 @@ describe('GRN review step: save of an edit with lines the server did not change'
     await act(async () => { await visibleDialogs(tree)[0].props.onConfirm(); });
     return tree;
   }
-  const snackbarText = (tree: ReactTestRenderer) => String(tree.root.findByType('Snackbar' as never).props.children.props.children);
+  const toastText = () => String((showToast as jest.Mock).mock.calls.at(-1)?.[0]);
   const successShown = (tree: ReactTestRenderer) => tree.root.findByType('DocumentSuccessDialog' as never).props.isVisible;
   const photosDialogShown = (tree: ReactTestRenderer) => visibleDialogs(tree).some((dialog) => dialog.props.title === 'Photos not uploaded');
   const pressOk = async () => { await act(async () => { const asked = mockAsked[0]; asked.resolve(asked.ok); }); };
-  beforeEach(() => { mockAsked.length = 0; });
+  beforeEach(() => { mockAsked.length = 0; (showToast as jest.Mock).mockClear(); });
 
   it('warns in its own dialog first, naming the item and its dispatched count, then shows the success dialog after OK', async () => {
     const tree = await saveEdit([skipped]);
@@ -207,10 +208,10 @@ describe('GRN review step: save of an edit with lines the server did not change'
     expect(text).toContain('• Test Item Alpha: 3 already dispatched');
     expect(text).not.toContain('Cannot update');
     expect(successShown(tree)).toBe(false);
-    expect(tree.root.findByType('Snackbar' as never).props.visible).toBe(false);
+    expect(showToast).not.toHaveBeenCalled();
     await pressOk();
     expect(successShown(tree)).toBe(true);
-    expect(tree.root.findByType('Snackbar' as never).props.visible).toBe(false);
+    expect(showToast).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
 
@@ -256,7 +257,7 @@ describe('GRN review step: save of an edit with lines the server did not change'
   it('does not warn for a dispatched line whose quantity was not changed (the server lists every dispatched line)', async () => {
     const tree = await saveEdit([{ ...skipped, current_qty: LINES[0].qty }]);
     expect(mockAsked).toHaveLength(0);
-    expect(snackbarText(tree)).toBe('GRN A0010 saved.');
+    expect(toastText()).toBe('GRN A0010 saved.');
     expect(successShown(tree)).toBe(true);
     await act(async () => { tree.unmount(); });
   });
@@ -264,7 +265,7 @@ describe('GRN review step: save of an edit with lines the server did not change'
   it('control: an empty skipped list gives the plain saved message', async () => {
     const tree = await saveEdit([]);
     expect(mockAsked).toHaveLength(0);
-    expect(snackbarText(tree)).toBe('GRN A0010 saved.');
+    expect(toastText()).toBe('GRN A0010 saved.');
     await act(async () => { tree.unmount(); });
   });
 });

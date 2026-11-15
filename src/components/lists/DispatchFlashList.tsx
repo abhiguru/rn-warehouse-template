@@ -507,6 +507,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       config={DISPATCH_FILTERS}
       filters={filters}
       loading={isLoading}
+      onRefresh={handleRefresh}
       expand={{
         expanded: open.all,
         onToggle: handleToggleAllExpanded,

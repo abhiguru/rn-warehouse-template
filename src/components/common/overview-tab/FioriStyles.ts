@@ -40,19 +40,6 @@ const makeOverviewStyles = (_t: ThemeTokens) => ({
     height: space.xxxl,
   },
 
-  // Section header (§13.6): footnote, capitals, 24 above, 8 below
-  sectionHeader: {
-    paddingTop: space.xxl,
-    paddingBottom: space.sm,
-  },
-  // Section header text (§13.6): footnote, semibold, capitals.
-  sectionHeaderText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    textTransform: 'uppercase' as const,
-  },
-
   // Card
   card: {
     borderRadius: radius.card,
@@ -241,7 +228,6 @@ export function useOverviewStyles() {
 
 const makeOverviewColorStyles = (t: ThemeTokens) => ({
   container: { backgroundColor: t.background.base } as ViewStyle,
-  sectionHeaderText: { color: t.text.secondary } as TextStyle,
   card: { backgroundColor: t.surface.card, ...t.shadow[2] } as ViewStyle,
   cardPressed: { backgroundColor: t.surface.cardPressed } as ViewStyle,
   objectCellLabel: { color: t.text.secondary } as TextStyle,

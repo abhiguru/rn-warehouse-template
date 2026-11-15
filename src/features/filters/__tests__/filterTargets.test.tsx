@@ -64,7 +64,7 @@ describe('Apply', () => {
 });
 
 describe('sheet header', () => {
-  it('makes Reset a whole touch target, as Cancel is', () => {
+  it('makes Reset and the Close X whole touch targets (WH-219: the X replaces Cancel at the end)', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {
       renderer = TestRenderer.create(
@@ -73,7 +73,7 @@ describe('sheet header', () => {
         </SheetFrame>
       );
     });
-    for (const label of ['Reset', 'Cancel']) {
+    for (const label of ['Reset', 'Close']) {
       const target = renderer.root.findAll((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
       const style = StyleSheet.flatten(typeof target.props.style === 'function' ? target.props.style({ pressed: false }) : target.props.style);
       expect(target.props.hitSlop).toBeUndefined();

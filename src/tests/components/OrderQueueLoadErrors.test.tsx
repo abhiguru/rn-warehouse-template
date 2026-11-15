@@ -35,7 +35,8 @@ jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 })
 jest.mock('@/features/filters/configs', () => ({ ORDER_QUEUE_FILTERS: { listKey: 'order-queue' } }));
 const mockHeader: { loading?: boolean } = {};
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
-  FilteredListHeader: (props: { loading?: boolean }) => { mockHeader.loading = props.loading; return null; },
+  // The header's own `actions` slot (where the order-count badge sits) is drawn; the rest of the header is not.
+  FilteredListHeader: (props: { loading?: boolean; actions?: React.ReactNode }) => { mockHeader.loading = props.loading; return props.actions ?? null; },
   filteredEmptyProps: () => ({}),
 }));
 const mockFilters: { request: { search?: string }; values: object } = { request: {}, values: {} };
@@ -164,5 +165,39 @@ it('keeps the recently dispatched section mounted when the offline line comes an
   await act(async () => { tree.update(<SupervisorOrderQueueList />); });
   expect(texts(tree).some(text => text.startsWith('Last updated'))).toBe(false);
   expect(mockRecentMounts).toBe(1);
+  await act(async () => { tree.unmount(); });
+});
+
+it('offline, the line at the top shows the date as well as the time when the queue was loaded on an earlier day (WH-220)', async () => {
+  getOrdersList.mockResolvedValue(answer(page(0, 2)));
+  const real = Date.now();
+  jest.useFakeTimers({ now: new Date(2026, 9, 9, 16, 5), doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+  let tree!: Tree;
+  try {
+    await act(async () => { tree = create(<SupervisorOrderQueueList />); });
+    jest.setSystemTime(real);
+    mockOffline = true;
+    await act(async () => { tree.update(<SupervisorOrderQueueList />); });
+    expect(texts(part(tree, 'ListHeaderComponent')!).find(text => text.startsWith('Last updated'))).toBe('Last updated 09/10/26, 4:05 pm');
+  } finally {
+    jest.useRealTimers();
+  }
+  await act(async () => { tree.unmount(); });
+});
+
+it('the list offers a screen-reader Refresh action that reloads the queue like a pull, and its header has no Refresh icon (WH-220)', async () => {
+  getOrdersList.mockResolvedValue(answer(page(0, 2)));
+  let tree!: Tree;
+  await act(async () => { tree = create(<SupervisorOrderQueueList />); });
+  // The action sits on the order-count badge, which a screen reader focuses (a scroll container is not offered it).
+  const badge = tree.root.findAll(node => typeof node.type === 'string' && Array.isArray(node.props.accessibilityActions));
+  expect(badge).toHaveLength(1);
+  expect(badge[0].props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+  expect(badge[0].props.accessibilityLabel).toBe('2 orders in the queue');
+  expect(list(tree).props.accessibilityActions).toBeUndefined();
+  expect(getOrdersList).toHaveBeenCalledTimes(1);
+  await act(async () => { badge[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  expect(getOrdersList).toHaveBeenCalledTimes(2);
+  expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Refresh order queue')).toHaveLength(0);
   await act(async () => { tree.unmount(); });
 });

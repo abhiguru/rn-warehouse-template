@@ -336,7 +336,7 @@ describe('the figures with a search typed (backend with migration 52)', () => {
     // Sorted otherwise with the search still typed: the whole list read under the other sort still counts.
     await screen.press('Sorted by Item, A to Z. Change sort');
     await screen.press('Stock');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(calls()).toEqual([page0(), page0({ p_search_query: 'oni' }), page0({ p_search_query: 'oni', p_sort_by: 'total_stock' })]);
     // A broken screen falls back to the searched figures here: Items 1, Stock 90.
     expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
@@ -356,7 +356,7 @@ describe('the figures with a search typed (backend with migration 52)', () => {
     // Sorted otherwise: the whole list already read stands; it is not asked for again.
     await screen.press('Sorted by Item, A to Z. Change sort');
     await screen.press('Stock');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(calls()).toEqual([page0({ p_search_query: 'oni' }), page0(), page0({ p_search_query: 'oni', p_sort_by: 'total_stock' })]);
     expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
   });
@@ -403,13 +403,13 @@ describe('the sort (backend with migration 52)', () => {
     expect(calls()[1]).toEqual(page0({ p_sort_by: 'total_stock', p_sort_order: 'asc' }));
     expect(screen.items()).toEqual(['Example Cumin', 'Example Garlic', 'Example Onions']);
     await screen.press('Highest first');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(calls()[2]).toEqual(page0({ p_sort_by: 'total_stock', p_sort_order: 'desc' }));
     expect(screen.items()).toEqual(['Example Onions', 'Example Garlic', 'Example Cumin']);
 
     await screen.press('Sorted by Stock, highest first. Change sort');
     await screen.press('GRNs');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(calls()[3]).toEqual(page0({ p_sort_by: 'grn_count', p_sort_order: 'desc' }));
     expect(screen.items()).toEqual(['Example Garlic', 'Example Cumin', 'Example Onions']);
     expect(screen.figure('Stock')).toBe('Stock: 4,321');
@@ -437,7 +437,7 @@ describe('a backend without migration 52', () => {
     await screen.press('Sorted by Item, A to Z. Change sort');
     await screen.press('Stock');
     await screen.press('Highest first');
-    await screen.press('Done');
+    await screen.press('Close');
     // The facility is known not to sort: no second refused call, and the 50 loaded are sorted here.
     expect(calls().slice(2)).toEqual([
       { p_customer_id: null, p_search_query: null, p_limit: 50, p_offset: 0 },
@@ -1156,7 +1156,7 @@ describe('the report PDF (backend with migration 52)', () => {
     await screen.press('Sorted by Item, A to Z. Change sort');
     await screen.press('Received quantity');
     await screen.press('Highest first');
-    await screen.press('Done');
+    await screen.press('Close');
     expect(screen.has('Sorted by Received quantity, highest first. Change sort')).toBe(true);
     await sharesThePdf(screen, { report: 'item-stock-summary', sort: { field: 'received', order: 'desc' } }, 'Item_stock_summary_All_customers.pdf');
   });

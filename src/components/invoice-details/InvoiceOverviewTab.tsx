@@ -10,10 +10,10 @@ import React from 'react';
 import { View, Text, ScrollView, Pressable, Linking, StyleSheet } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
-  SectionHeader,
   NotesSection,
   ActionsSection,
 } from '@/components/common/overview-tab';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -65,7 +65,6 @@ interface InvoiceOverviewTabProps {
   invoice_number?: string;
   invoice_id?: string;
   on_view_grn?: (grn_id: string) => void;
-  on_edit_invoice?: () => void;
   /** Cancel the invoice (administrators and supervisors; the page asks for the reason). */
   on_cancel_invoice?: () => void;
   /** Delete the invoice (administrators and supervisors, live or cancelled; the page asks the one question). */
@@ -202,7 +201,6 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   invoice_number,
   invoice_id,
   on_view_grn,
-  on_edit_invoice,
   on_cancel_invoice,
   on_delete_invoice,
   can_edit = false,
@@ -474,7 +472,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: CUSTOMER */}
       {customer_details && (
         <>
-          <SectionHeader title={tr('common.customer')} />
+          <SectionHeader title={tr('common.customer')} inset={false} />
           {renderCustomerCard()}
         </>
       )}
@@ -482,7 +480,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: LINKED GRN */}
       {grn_details && (
         <>
-          <SectionHeader title={tr('invoice.details.reference')} />
+          <SectionHeader title={tr('invoice.details.reference')} inset={false} />
           {renderGRNReferenceCard()}
         </>
       )}
@@ -490,13 +488,13 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: DOCUMENT TYPE AND GST (WH-151) */}
       {gst_card ? (
         <>
-          <SectionHeader title={tr('gst.detail.section')} />
+          <SectionHeader title={tr('gst.detail.section')} inset={false} />
           {gst_card}
         </>
       ) : null}
 
       {/* SECTION: FINANCIAL SUMMARY */}
-      <SectionHeader title={tr('invoice.details.financialSummary')} />
+      <SectionHeader title={tr('invoice.details.financialSummary')} inset={false} />
       {renderFinancialSummaryCard()}
 
       {/* SECTION: NOTES */}
@@ -511,7 +509,6 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         isShareLoading={is_share_loading}
         onPrint={on_print}
         isPrintLoading={is_print_loading}
-        onEdit={on_edit_invoice}
         canEdit={can_edit}
         // Cancel invoice (live invoices) and Delete invoice (live and cancelled): the page asks its own question for each
         // (the reason for Cancel, the one confirmation for Delete), so the section asks none.

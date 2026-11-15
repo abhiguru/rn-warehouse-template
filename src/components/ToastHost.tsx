@@ -11,10 +11,10 @@
  * Touches around the toast reach the screen under it.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Keyboard, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '@/hooks/useTheme';
-import { layout, motion, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, layout, motion, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { registerToastHost, type ToastRequest } from '@/utils/toast';
 
 // The host draws no colour of its own; only a shown toast reads the theme.
@@ -39,6 +39,27 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   text: {
     ...typography.subhead,
+    color: t.text.inverse,
+  },
+  row: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+  },
+  message: {
+    flex: 1,
+  },
+  action: {
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    // Pulls the touch target's height back into the bar's padding
+    marginVertical: -space.md,
+  },
+  actionText: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
     color: t.text.inverse,
   },
 });
@@ -80,7 +101,22 @@ function Toast({ toast, onGone }: { toast: ToastRequest; onGone: (id: number) =>
   return (
     // Read once, by announceForAccessibility above; a live region as well would read it twice.
     <Animated.View style={[styles.toast, { opacity }]}>
-      <Text style={styles.text}>{toast.message}</Text>
+      {toast.action ? (
+        <View style={styles.row}>
+          <Text style={[styles.text, styles.message]}>{toast.message}</Text>
+          <Pressable
+            style={styles.action}
+            accessibilityRole="button"
+            accessibilityLabel={toast.action.label}
+            onPress={() => { toast.action?.onPress(); onGone(toast.id); }}
+            testID="toast-action"
+          >
+            <Text style={styles.actionText}>{toast.action.label}</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Text style={styles.text}>{toast.message}</Text>
+      )}
     </Animated.View>
   );
 }

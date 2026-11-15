@@ -138,10 +138,10 @@ describe('PreferenceSheet with a long list (the states)', () => {
     expect(tree!.root.findAll(n => n.props.testID === 's' && n.props.accessibilityRole === 'radiogroup').length).toBeGreaterThan(0);
   });
 
-  it('Done closes the sheet', async () => {
+  it('the Close X closes the sheet (WH-219: it replaces Done)', async () => {
     const onClose = jest.fn();
     await render(<PreferenceSheet visible title="State" options={states} selected="" onSelect={jest.fn()} onClose={onClose} />);
-    const done = buttonByLabel(tr('common.done'));
+    const done = buttonByLabel(tr('common.close'));
     expect(done.length).toBeGreaterThan(0);
     await act(async () => done[0].props.onPress());
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -163,7 +163,7 @@ describe('PreferenceSheet with a short list (language)', () => {
     expect(rows().filter(n => typeof n.props.onLayout === 'function')).toHaveLength(0);
     await act(async () => rowByLabel('Gujarati')!.props.onPress());
     expect(onSelect).toHaveBeenCalledWith('gu');
-    await act(async () => buttonByLabel(tr('common.done'))[0].props.onPress());
+    await act(async () => buttonByLabel(tr('common.close'))[0].props.onPress());
     expect(onClose).toHaveBeenCalled();
   });
 

@@ -77,19 +77,11 @@ export const grn = {
   // Customer, sender and supervisor pickers
   pickers: {
     customerTitle: 'Select customer',
-    customerPlaceholder: 'Search by name or location',
-    customerEmptyInitial: 'Search for a customer',
-    typeToFindCustomers: 'Type at least 2 characters to find customers',
     senderTitle: 'Select sender',
-    senderPlaceholder: 'Search customers...',
-    senderEmptyInitial: 'Search for a sender',
     supervisorTitle: 'Select supervisor',
     supervisorPlaceholder: 'Search supervisors by name',
     supervisorEmptyInitial: 'Search for a supervisor',
     supervisorEmptySub: 'Type at least 2 characters to find supervisors or admins',
-    searchCustomers: 'Search customers',
-    searchSupervisors: 'Search supervisors',
-    noMatches: 'No matches',
   },
 
   // Step 2: the item form and the saved item cards
@@ -570,7 +562,6 @@ export const grn = {
     loadFailedTitle: "Couldn't load the GRN",
     loadFailed: "Couldn't load the GRN. Try again.",
     loadFailedConnection: "Couldn't load the GRN. Check your connection and try again.",
-    unavailable: "This GRN's details aren't available right now.",
     notFoundTitle: 'GRN not found',
     notFoundMessage: 'It may have been deleted, or you may not have access to it.',
     dispatchHistoryFailed: "Couldn't load the dispatch history. Try again.",

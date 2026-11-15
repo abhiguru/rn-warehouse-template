@@ -77,7 +77,8 @@ describe('Items search with no match', () => {
     await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
     expect(shownText()).toContain('Garlic');
     await type('zzzz');
-    expect(shownText()).toContain('No items match "zzzz". Try fewer letters.');
+    expect(shownText()).toContain('No items match "zzzz"');
+    expect(shownText()).toContain('Try fewer letters or another spelling.');
     expect(shownText()).not.toContain('Garlic');
     expect(shownText()).not.toContain('No items yet');
     expect(byLabel('Clear search')).toBeDefined();

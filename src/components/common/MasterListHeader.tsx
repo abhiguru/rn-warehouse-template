@@ -46,6 +46,8 @@ export interface MasterListHeaderProps {
   countText?: string;
   /** A reload failed and the list shown is older: the message and what "Try again" does. */
   refreshError?: { message: string; onRetry: () => void };
+  /** The list's refresh: offered to screen readers as a "Refresh" action on the search field, which is there in every state (WH-220). */
+  onRefresh?: () => void;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -79,12 +81,13 @@ export function MasterListHeader({
   loading = false,
   countText,
   refreshError,
+  onRefresh,
 }: MasterListHeaderProps) {
   const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={styles.container}>
-      <ListSearchField listKey={listKey} value={search} onSearch={onSearch} placeholder={placeholder} loading={loading} />
+      <ListSearchField listKey={listKey} value={search} onSearch={onSearch} placeholder={placeholder} loading={loading} onRefresh={onRefresh} />
       {countText ? (
         <Text style={styles.count} accessibilityLiveRegion="polite">
           {countText}

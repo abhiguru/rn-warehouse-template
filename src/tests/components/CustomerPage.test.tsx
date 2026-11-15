@@ -13,11 +13,14 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
-  Stack: { Screen: () => null },
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
   useIsFocused: () => true,
   useLocalSearchParams: jest.fn(),
 }));
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
+}));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   KeyboardAwareScrollView: ({ children }: { children?: React.ReactNode }) => children,
 }));
@@ -139,4 +142,28 @@ it('CR-60: while loading there is no empty heading; once shown the name is the h
   expect(headings().filter(node => [node.props.children].flat(3).join('') === '')).toHaveLength(0);
   await act(async () => { release({ success: true, message: '', data: c1 }); });
   expect(headings().map(node => [node.props.children].flat(3).join(''))).toContain('24 Seven Foods');
+});
+
+it('WH-216: a customer that cannot be opened says it in Gujarati, with the check-connection text under it', async () => {
+  const { setLanguage } = require('@/i18n');
+  setLanguage('gu');
+  try {
+    jest.mocked(customerService.getCustomerById).mockResolvedValueOnce({ success: false, message: '' } as never);
+    const screen = await mount();
+    expect(shownText(screen)).toContain('આ વેપારી ખોલી શકાયા નથી | તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.');
+    expect(button(screen, 'ફરી પ્રયાસ કરો')).toBeDefined();
+    expect(button(screen, 'Edit')).toBeUndefined();
+  } finally {
+    setLanguage('en');
+  }
+});
+
+it('WH-216: Edit is in the stack header, and not while the customer is unread', async () => {
+  jest.mocked(customerService.getCustomerById).mockResolvedValueOnce({ success: false, message: '' } as never);
+  const failed = await mount();
+  expect(button(failed, 'Edit')).toBeUndefined();
+  await act(async () => { failed.unmount(); });
+  tree = undefined;
+  const screen = await mount();
+  expect(button(screen, 'Edit')).toBeDefined();
 });

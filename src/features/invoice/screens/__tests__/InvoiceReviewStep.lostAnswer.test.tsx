@@ -64,8 +64,8 @@ const TITLE = 'Leave without an answer?';
 const MESSAGE = 'It may have been saved. Check the list before entering it again.';
 
 const MODES = [
-  ['create', 'Create invoice', 'Cancel Invoice', '/(tabs)/invoices', InvoiceFormStep3],
-  ['edit', 'Save invoice', 'Cancel invoice edit', '/invoice-details/inv-42', InvoiceEditStep3],
+  ['create', 'Create invoice', 'Close new invoice', '/(tabs)/invoices', InvoiceFormStep3],
+  ['edit', 'Save invoice', 'Close invoice edit', '/invoice-details/inv-42', InvoiceEditStep3],
 ] as const;
 
 const pressable = (label: string) =>

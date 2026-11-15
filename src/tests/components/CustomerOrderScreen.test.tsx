@@ -6,7 +6,6 @@
  * meanwhile, which unmounted the order editor and the Add items picker inside it.
  */
 import React from 'react';
-import { ActivityIndicator } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import CustomerOrderScreen from '../../../app/orders/[customerId]';
 import { router } from 'expo-router';
@@ -14,10 +13,13 @@ import { router } from 'expo-router';
 const mockParams: { customerId?: string } = { customerId: 'customer-fictional-1' };
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
-  Stack: { Screen: () => null },
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
   router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() },
 }));
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
+}));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('@/components/ui/HeaderBackButton', () => ({ HeaderBackButton: () => null }));
@@ -64,7 +66,8 @@ jest.mock('@/store/hooks', () => ({
 }));
 
 let renderer: ReactTestRenderer | undefined;
-const spinners = () => renderer!.root.findAllByType(ActivityIndicator).length;
+// WH-216: the loading state is the detail skeleton (tabCount 1, cardCount 3), not a spinner.
+const spinners = () => renderer!.root.findAll(node => node.props.cardCount === 3 && node.props.tabCount === 1).length;
 const editors = () => renderer!.root.findAllByType('OrderEditor' as never).length;
 const screenText = () => JSON.stringify(renderer!.toJSON());
 

@@ -35,9 +35,8 @@ async function render() {
 const byLabel = (label: string) =>
   tree.root.find((node) => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
 const closers = () => [
-  () => byLabel('Cancel printing').props.onPress(),
-  () => byLabel('Close print dialog').props.onPress(),
   () => byLabel('Cancel').props.onPress(),
+  () => tree.root.find((node) => node.props.importantForAccessibility === 'no' && typeof node.props.onPress === 'function').props.onPress(),
   () => tree.root.findByType(Modal).props.onRequestClose(),
 ];
 
@@ -45,7 +44,7 @@ beforeEach(() => jest.clearAllMocks());
 afterEach(() => { act(() => tree?.unmount()); });
 
 describe('closing the print dialog', () => {
-  it('is ignored by the backdrop, the X, Cancel and Android back while a print is being sent', async () => {
+  it('is ignored by the backdrop, Cancel and Android back (the X is gone, WH-219) while a print is being sent', async () => {
     await render();
     await act(async () => { byLabel('Print').props.onPress(); });
     for (const close of closers()) {
@@ -70,6 +69,6 @@ describe('closing the print dialog', () => {
     for (const close of closers()) {
       await act(async () => { close(); });
     }
-    expect(onDismiss).toHaveBeenCalledTimes(4);
+    expect(onDismiss).toHaveBeenCalledTimes(3);
   });
 });

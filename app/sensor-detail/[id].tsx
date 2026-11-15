@@ -27,9 +27,13 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { ReportHeader, ReportEmptyState } from '@/components/reports';
+import { Button } from '@/components/ui/Button';
+import { KeyValueCell } from '@/components/fiori/KeyValueCell';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { SensorHistoryChart, formatHumidity, formatTemperature } from '@/components/sensors/SensorHistoryChart';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -122,12 +126,18 @@ const makeStyles = (t: ThemeTokens) =>
       flex: 1,
       backgroundColor: t.background.base,
     },
-    loadingContainer: {
-      flex: 1,
+    headerTitleBox: { alignItems: 'center' },
+    headerTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' },
+    headerSubtitle: { ...typography.footnote, color: t.text.secondary, textAlign: 'center' },
+    headerActions: { flexDirection: 'row', alignItems: 'center' },
+    headerRefresh: {
+      width: touchTarget,
+      height: touchTarget,
       justifyContent: 'center',
       alignItems: 'center',
-      gap: space.lg,
+      borderRadius: radius.pill,
     },
+    headerRefreshPressed: { backgroundColor: t.brand.subtle },
     loadingText: {
       ...typography.subhead,
       color: t.text.secondary,
@@ -148,25 +158,6 @@ const makeStyles = (t: ThemeTokens) =>
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: space.sm,
-    },
-    keyValueRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: space.md,
-      minHeight: layout.rowMinHeight,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: t.border.divider,
-    },
-    keyLabel: {
-      ...typography.subhead,
-      color: t.text.secondary,
-    },
-    keyValue: {
-      ...typography.body,
-      color: t.text.primary,
-      textAlign: 'right',
-      flexShrink: 1,
     },
     readingsRow: {
       flexDirection: 'row',
@@ -384,17 +375,6 @@ const makeStyles = (t: ThemeTokens) =>
 
 type Styles = ReturnType<typeof makeStyles>;
 
-function KeyValue({ label, value, spokenValue, styles, accessory }: {
-  label: string; value: string; spokenValue?: string; styles: Styles; accessory?: React.ReactNode;
-}) {
-  return (
-    <View style={styles.keyValueRow} accessible accessibilityLabel={tr('sensors.labelValue', { label, value: spokenValue ?? value })}>
-      <Text style={styles.keyLabel}>{label}</Text>
-      {accessory ?? <Text style={styles.keyValue}>{value}</Text>}
-    </View>
-  );
-}
-
 const SensorDetailScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const styles = useThemedStyles(makeStyles);
@@ -558,14 +538,48 @@ const SensorDetailScreen: React.FC = () => {
     </View>
   );
 
+  // The stack header, as the document pages have it: name, then the location; Refresh and Edit at the end.
   const header = (
-    <ReportHeader
-      title={device?.device_name || tr('sensors.sensor')}
-      subtitle={device?.location}
-      actionIcon={device ? 'refresh' : undefined}
-      actionLabel={tr('sensors.refresh')}
-      onAction={device ? () => void onRefresh() : undefined}
-      actions={device && canEdit ? [{ icon: 'pencil-outline', label: tr('sensors.edit.title'), onPress: () => router.push(`/sensor-edit/${device.id}`) }] : undefined}
+    <Stack.Screen
+      options={{
+        headerShown: true,
+        headerStyle: { backgroundColor: t.surface.header },
+        headerTintColor: t.brand.tint,
+        headerShadowVisible: false,
+        headerTitleAlign: 'center',
+        title: device?.device_name || tr('sensors.sensor'),
+        headerTitle: () => (
+          <View style={styles.headerTitleBox}>
+            <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+              {device?.device_name || tr('sensors.sensor')}
+            </Text>
+            {device?.location ? (
+              <Text style={styles.headerSubtitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>
+                {device.location}
+              </Text>
+            ) : null}
+          </View>
+        ),
+        headerLeft: () => <HeaderBackButton />,
+        headerRight: () =>
+          device ? (
+            <View style={styles.headerActions}>
+              <Pressable
+                style={({ pressed }) => [styles.headerRefresh, pressed && styles.headerRefreshPressed]}
+                onPress={() => void onRefresh()}
+                accessibilityRole="button"
+                accessibilityLabel={tr('sensors.refresh')}
+              >
+                <Icon name="refresh" size={iconSize.lg} color={t.brand.tint} />
+              </Pressable>
+              {canEdit ? (
+                <Button type="tertiary" onPress={() => router.push(`/sensor-edit/${device.id}`)}>
+                  {tr('common.edit')}
+                </Button>
+              ) : null}
+            </View>
+          ) : null,
+      }}
     />
   );
 
@@ -574,10 +588,7 @@ const SensorDetailScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         {header}
-        <View style={styles.loadingContainer} accessibilityLiveRegion="polite">
-          <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.loadingText}>{tr('sensors.detail.loading')}</Text>
-        </View>
+        <DetailSkeleton tabCount={1} cardCount={3} />
       </View>
     );
   }
@@ -587,13 +598,11 @@ const SensorDetailScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         {header}
-        <ReportEmptyState
+        <ErrorStateView
           icon={notFound ? 'thermometer-off' : 'alert-circle-outline'}
-          tone={notFound ? 'default' : 'error'}
-          message={notFound ? tr('sensors.detail.notFoundTitle') : tr('sensors.somethingWentWrong')}
-          description={notFound ? tr('sensors.detail.notFound') : deviceQuery.error ?? tr('sensors.detail.deviceError')}
-          actionLabel={tr('common.retry')}
-          onAction={retryAll}
+          title={notFound ? tr('sensors.detail.notFoundTitle') : tr('sensors.somethingWentWrong')}
+          message={notFound ? tr('sensors.detail.notFound') : deviceQuery.error ?? tr('sensors.detail.deviceError')}
+          onRetry={retryAll}
         />
       </View>
     );
@@ -668,24 +677,23 @@ const SensorDetailScreen: React.FC = () => {
           {lastKnown ? <Text style={styles.lastKnownText}>{lastKnown}</Text> : null}
 
           <View>
-            <KeyValue
-              label={tr('sensors.detail.connection')}
+            <KeyValueCell
+              keyLabel={tr('sensors.detail.connection')}
               value={connection.label}
-              styles={styles}
-              accessory={<StatusTag status={connection.kind} label={connection.label} />}
+              valueAccessory={<StatusTag status={connection.kind} label={connection.label} />}
+              showDivider
             />
-            <KeyValue
-              label={tr('sensors.detail.battery')}
+            <KeyValueCell
+              keyLabel={tr('sensors.detail.battery')}
               value={battery.label}
-              styles={styles}
-              accessory={<StatusTag status={battery.kind} label={battery.label} />}
+              valueAccessory={<StatusTag status={battery.kind} label={battery.label} />}
+              showDivider={!!lastReading}
             />
             {lastReading ? (
-              <KeyValue
-                label={tr('sensors.detail.lastReading')}
+              <KeyValueCell
+                keyLabel={tr('sensors.detail.lastReading')}
                 value={formatDateTime(lastReading)}
                 spokenValue={formatSpokenDateTime(lastReading)}
-                styles={styles}
               />
             ) : null}
           </View>

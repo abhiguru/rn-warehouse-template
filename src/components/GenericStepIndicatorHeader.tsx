@@ -225,6 +225,12 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   const cancelDisabled = disabled && !leaveWarning;
   const handleCancelPress = () => {
     if (cancelDisabled) return;
+    // A new form with nothing entered (the date and number the app fills in do not count): nothing would be lost, so
+    // the X leaves at once, as the Back key does (DECISIONS D2.3).
+    if (!disabled && backOnFirstStep && backOnFirstStep.enabled !== false && !backOnFirstStep.hasData) {
+      onCancel();
+      return;
+    }
     // The server is being asked what became of a request (leaveWarning): the person waits, or leaves anyway.
     const waiting = disabled && !!leaveWarning;
     showAlert(

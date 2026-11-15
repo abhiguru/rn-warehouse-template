@@ -23,8 +23,10 @@ export const items: Translation<typeof source> = {
     deactivateConfirmMessage: 'નવી આવક પાવતી કે ઑર્ડર માટે આઇટમ પસંદ કરતી વખતે તે દેખાશે નહીં. તેના રેકોર્ડ અને દર રહેશે, અને તમે તેને ફરી સક્રિય કરી શકશો.',
     // Draft for the owner's wording review (Items screens 2026-10-20).
     searchPlaceholder: 'નામ, પેકિંગ કે વર્ણનથી શોધો',
-    noMatch: '"{{search}}" સાથે મળતી કોઈ આઇટમ નથી. ઓછા અક્ષરો લખી જુઓ.',
-    refreshFailed: 'આઇટમ રિફ્રેશ કરી શકાઈ નથી. {{time}} ની યાદી બતાવી છે.',
+    noMatchTitle: '"{{search}}" સાથે કોઈ આઇટમ મળતી નથી',
+    staleTitle: 'આઇટમ રિફ્રેશ કરી શકાઈ નથી.',
+    staleText: '{{time}} વાગ્યે લોડ થયેલી આઇટમ દેખાય છે.',
+    retryRefresh: 'આઇટમ ફરી લોડ કરો',
     couldNotActivateTitle: 'આઇટમ સક્રિય કરી શકાઈ નથી',
     couldNotDeactivateTitle: 'આઇટમ નિષ્ક્રિય કરી શકાઈ નથી',
     couldNotUpdateTitle: 'આઇટમમાં ફેરફાર કરી શકાયો નથી',
@@ -42,7 +44,6 @@ export const items: Translation<typeof source> = {
     noRateShowing: 'ફક્ત દર વગરની આઇટમ બતાવી છે.',
     noRateShowAll: 'બધી આઇટમ બતાવો',
     noRateNone: 'દરેક આઇટમનો દર છે.',
-    noRateNoMatch: '"{{search}}" સાથે મળતી દર વગરની કોઈ આઇટમ નથી.',
   },
   // Add, Save, Delete and Activate need a connection (nothing is sent while the phone is offline).
   offline: {
@@ -55,6 +56,9 @@ export const items: Translation<typeof source> = {
     details: 'વિગતો',
     activate: 'આઇટમ સક્રિય કરો',
     loadFailed: 'આ આઇટમ ખોલી શકાઈ નથી. તમારું કનેક્શન તપાસીને ફરી પ્રયાસ કરો.',
+    loadFailedTitle: 'આ આઇટમ ખોલી શકાઈ નથી',
+    notFoundTitle: 'આઇટમ મળી નથી',
+    notFoundMessage: 'કદાચ તે ડિલીટ થઈ ગઈ છે.',
   },
   delete: {
     confirmTitle: '{{name}} ડિલીટ કરવી છે?',
@@ -132,7 +136,6 @@ export const items: Translation<typeof source> = {
   summary: {
     title: 'સાચવેલી આઇટમ',
     titleCount: '{{title}} ({{count}})',
-    closeTitle: '{{title}} બંધ કરો',
     emptyTitle: 'હજુ કોઈ આઇટમ નથી',
     emptySubtitle: 'ઉપરના ફોર્મથી સાચવેલી આઇટમ અહીં દેખાશે.',
     protectedTitle: 'આ {{entity}} ડિલીટ કરી શકાતી નથી',
@@ -146,7 +149,6 @@ export const items: Translation<typeof source> = {
     tapToEdit: 'ફેરફાર કરવા ટૅપ કરો',
     swipeToDelete: 'ડિલીટ કરવા ડાબી બાજુ સ્વાઇપ કરો',
     editHint: 'ફેરફાર માટે આ {{entity}} ખોલે છે',
-    closeDefault: 'સાચવેલી આઇટમ બંધ કરો',
     item: {
       protectedTitle: 'આ આઇટમ ડિલીટ કરી શકાતી નથી',
       deleteTitle: 'આઇટમ ડિલીટ કરવી છે?',

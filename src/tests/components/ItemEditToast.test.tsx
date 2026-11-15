@@ -84,13 +84,21 @@ describe('Edit item save', () => {
     expect(showAlert).not.toHaveBeenCalled();
   });
 
-  it('with nothing changed goes back without saving, a message or a dialog', async () => {
+  const saveButton = () => tree!.root.find(node => node.props.accessibilityLabel === 'Save item' && node.props.accessibilityState !== undefined);
+
+  it('with nothing changed has Save switched off (WH-218): nothing is saved, no message, no dialog, no leaving', async () => {
     await renderEdit();
-    await press('Save item');
+    expect(saveButton().props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
     expect(itemService.updateItem).not.toHaveBeenCalled();
-    expect(router.back).toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('switches Save on once a field changes', async () => {
+    await renderEdit();
+    await typeInto('Item name, required', 'Garlic bulbs');
+    expect(saveButton().props.accessibilityState).toEqual(expect.objectContaining({ disabled: false }));
   });
 });
 

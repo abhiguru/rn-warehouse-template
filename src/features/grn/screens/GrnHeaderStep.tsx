@@ -69,6 +69,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
   // Items still needed for dispatched check
   const items = useAppSelector(selectGRNFormItems);
+  const { userProfile } = useAppSelector((state) => state.auth);
   // An edited GRN: the form differs from the GRN as it was loaded (always false for a new GRN).
   const editChanged = useAppSelector(selectGRNFormChanged);
   // Edit only (get_grn_edit_state, backend migration 121). The date of a GRN that is on an invoice is locked (D23), and
@@ -100,9 +101,13 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const hasLockInfo = !isCreateMode && items.some((item) => item.locks !== undefined);
   const hasInvoicedItems = !isCreateMode && items.some((item) => item.locks?.invoiced === true);
 
-  // What the user has put into a new GRN. The number, the date and the
-  // supervisor are filled in by the form itself and are not counted.
+  // What the user has put into a new GRN. The number, and the date and supervisor while they are still what the form
+  // filled in (today, the signed-in user), are not counted; a date or supervisor the person changed is.
+  const dateChanged = !!header.date && header.date !== toLocalISODate(new Date());
+  const supervisorChanged = !!header.supervisor_id && header.supervisor_id !== userProfile?.id;
   const hasEnteredData = !!(
+    dateChanged ||
+    supervisorChanged ||
     header.customer_id ||
     header.sender_id ||
     header.sender_name ||

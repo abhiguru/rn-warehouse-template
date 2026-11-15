@@ -15,6 +15,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, Platform, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
@@ -22,6 +23,7 @@ import { useFocusEffect } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { Button } from '@/components/ui/Button';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -31,7 +33,6 @@ import { generateDispatchPDF, pdfRefusalText } from '@/services/pdf-service';
 import { printDispatchRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
-import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -57,8 +58,10 @@ import { withNativeHandoff } from '@/config/nativeHandoff';
 import { deleteDispatchImage, uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { loadFailureText } from '@/utils/loadFailureText';
 import { photoAddFailure } from '@/utils/photoUploadError';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 // ============================================================================
@@ -78,69 +81,10 @@ const makeStyles = (t: ThemeTokens) => ({
   tabContent: {
     flex: 1,
   },
-  errorContainer: {
-    alignItems: 'center' as const,
-    padding: space.xl,
-    maxWidth: 320,
-  },
-  errorTitle: {
-    ...typography.title3,
-    marginTop: space.lg,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-  },
-  errorMessage: {
-    ...typography.subhead,
-    marginTop: space.sm,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-  },
-  retryButton: {
-    marginTop: space.xl,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xl,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    gap: space.sm,
-  },
-  retryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  retryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
-  },
-  tertiaryButton: {
-    marginTop: space.sm,
-    minHeight: touchTarget,
-    justifyContent: 'center' as const,
-    paddingHorizontal: space.xl,
-    borderRadius: radius.button,
-  },
-  tertiaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  tertiaryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
-  },
   headerTitle: {
     ...typography.headline,
     color: t.text.primary,
     textAlign: 'center' as const,
-  },
-  snackbar: {
-    backgroundColor: t.surface.inverse,
-    borderRadius: radius.button,
-  },
-  snackbarText: {
-    ...typography.subhead,
-    color: t.text.inverse,
   },
 });
 
@@ -161,8 +105,6 @@ function DispatchDetailScreen() {
   const [data, setData] = useState<DispatchDetailsResponse['data'] | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageUploadRef = useRef(false);
   const [isDeletingImage, setIsDeletingImage] = useState(false);
@@ -219,8 +161,12 @@ function DispatchDetailScreen() {
       if (result.success && result.data) {
         setData(result.data);
         setError(null);
+      } else if (result.notFound) {
+        // The server answered that there is no such dispatch: the page says so, not "couldn't load".
+        setData(null);
+        setError(null);
       } else {
-        setError(serverText(result.error || result.message, tr('common.checkConnection')));
+        setError(loadFailureText(result.error, tr('common.checkConnection')));
       }
     } catch (err) {
       // Ignore abort errors - they're expected when navigating away
@@ -479,47 +425,25 @@ function DispatchDetailScreen() {
           {loading ? (
             <DetailSkeleton tabCount={5} cardCount={3} />
           ) : error ? (
-            <View style={styles.errorContainer}>
-              <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-              <Text style={styles.errorTitle} accessibilityRole="header">{tr('dispatch.details.loadFailedTitle')}</Text>
-              <Text style={styles.errorMessage}>{error}</Text>
-              <Pressable
-                style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
-                onPress={() => {
-                  setLoading(true);
-                  fetchDispatchDetails();
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={tr('dispatch.details.retryLoad')}
-              >
-                <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-                <Text style={styles.retryButtonText}>{tr('common.retry')}</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.tertiaryButton, pressed && styles.tertiaryButtonPressed]}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.goBack')}
-              >
-                <Text style={styles.tertiaryButtonText}>{tr('common.goBack')}</Text>
-              </Pressable>
-            </View>
+            <ErrorStateView
+              title={tr('dispatch.details.loadFailedTitle')}
+              message={error}
+              onRetry={() => {
+                setLoading(true);
+                fetchDispatchDetails();
+              }}
+              retryAccessibilityLabel={tr('dispatch.details.retryLoad')}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           ) : (
-            <View style={styles.errorContainer}>
-              <Icon name="truck-delivery-outline" size={iconSize.hero} color={t.icon.secondary} />
-              <Text style={styles.errorTitle} accessibilityRole="header">{tr('dispatch.details.notFoundTitle')}</Text>
-              <Text style={styles.errorMessage}>
-                {tr('dispatch.details.notFoundMessage')}
-              </Text>
-              <Pressable
-                style={({ pressed }) => [styles.tertiaryButton, pressed && styles.tertiaryButtonPressed]}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.goBack')}
-              >
-                <Text style={styles.tertiaryButtonText}>{tr('common.goBack')}</Text>
-              </Pressable>
-            </View>
+            <ErrorStateView
+              icon="truck-delivery-outline"
+              title={tr('dispatch.details.notFoundTitle')}
+              message={tr('dispatch.details.notFoundMessage')}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           )}
         </View>
       </>
@@ -555,8 +479,7 @@ function DispatchDetailScreen() {
       if (Platform.OS !== 'android') {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          setSnackbarMessage(tr('dispatch.photos.allowAccess'));
-          setSnackbarVisible(true);
+          showToast(tr('dispatch.photos.allowAccess'));
           return;
         }
       }
@@ -581,8 +504,7 @@ function DispatchDetailScreen() {
         return;
       }
       await fetchDispatchDetails();
-      setSnackbarMessage(tr('dispatch.photos.added'));
-      setSnackbarVisible(true);
+      showToast(tr('dispatch.photos.added'));
     } catch (error) {
       const failure = photoAddFailure(error, tr('dispatch.photos.uploadFailedRetry'));
       showAlert(tr('dispatch.photos.uploadFailedTitle'), failure.message);
@@ -609,20 +531,19 @@ function DispatchDetailScreen() {
             const result = await deleteDispatchImage(image.id, image.image_url);
             if (result.success) {
               await fetchDispatchDetails();
-              setSnackbarMessage(result.partial ? serverText(result.error, tr('dispatch.photos.removedFileUnconfirmed'), { write: true, photo: true }) : tr('dispatch.photos.deleted'));
+              showToast(result.partial ? serverText(result.error, tr('dispatch.photos.removedFileUnconfirmed'), { write: true, photo: true }) : tr('dispatch.photos.deleted'));
             } else {
               const failure = photoAddFailure(result.error, tr('dispatch.photos.deleteFailed'));
-              setSnackbarMessage(failure.message);
+              showToast(failure.message);
               if (failure.reread) await fetchDispatchDetails();
             }
           } catch (error) {
             const failure = photoAddFailure(error, tr('dispatch.photos.deleteFailed'));
-            setSnackbarMessage(failure.message);
+            showToast(failure.message);
             if (failure.reread) await fetchDispatchDetails();
           } finally {
             setIsDeletingImage(false);
             imageUploadRef.current = false;
-            setSnackbarVisible(true);
           }
         },
       },
@@ -652,8 +573,15 @@ function DispatchDetailScreen() {
           headerLeft: () => (
             <HeaderBackButton onPress={isCheckingDelete ? leaveWhileChecking : isDeleting ? () => {} : undefined} />
           ),
+          // Edit is at the end of the header, so it can be reached from any tab.
+          headerRight: () =>
+            canUpdate && !isDeleted && dispatch.imported !== true ? (
+              <Button type="tertiary" onPress={handleEditDispatch} disabled={isDeleting || isCheckingDelete}>
+                {tr('common.edit')}
+              </Button>
+            ) : null,
           headerTitle: () => (
-            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+            <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
               {[tr('common.dispatch'), formatIdentifier(dispatch.disp_no)].filter(Boolean).join(' ')}
             </Text>
           ),
@@ -703,7 +631,6 @@ function DispatchDetailScreen() {
               // Once the dispatch is deleted there is nothing left to edit or delete
               can_edit={canUpdate && !isDeleted && dispatch.imported !== true}
               can_delete={canDelete && !isDeleted && dispatch.imported !== true}
-              onEdit={handleEditDispatch}
               onDelete={handleDeleteDispatch}
               is_deleting={isDeleting}
               onSharePDF={handleSharePDF}
@@ -759,7 +686,7 @@ function DispatchDetailScreen() {
         onConfirm={async (start, end) => {
           const result = await printDispatchRange(start, end);
           if (result.success) {
-            setSnackbarMessage(
+            showToast(
               result.print_job?.cups_job_id
                 ? tr('dispatch.details.printSentWithJob', { job: String(result.print_job.cups_job_id) })
                 : tr('dispatch.details.printSent')
@@ -773,7 +700,6 @@ function DispatchDetailScreen() {
             // Thrown, so the dialog stays open and shows the reason above its buttons.
             throw new Error(printFailureMessage(result));
           }
-          setSnackbarVisible(true);
           setShowPrintDialog(false);
         }}
         title={tr('dispatch.details.printTitle')}
@@ -782,17 +708,6 @@ function DispatchDetailScreen() {
         placeholder={tr('dispatch.review.printPlaceholder', { example: 'I4613' })}
       />
 
-      {/* Snackbar for print and photo feedback (guide §13.9) */}
-      <Portal>
-        <Snackbar
-          visible={snackbarVisible}
-          onDismiss={() => setSnackbarVisible(false)}
-          duration={4000}
-          style={styles.snackbar}
-        >
-          <Text style={styles.snackbarText}>{snackbarMessage}</Text>
-        </Snackbar>
-      </Portal>
     </>
   );
 }

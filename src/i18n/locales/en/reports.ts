@@ -236,7 +236,6 @@ export const reports = {
     listError: "Couldn't load customer activity. Check your connection and try again.",
     detailError: "Couldn't load this customer's activity. Check your connection and try again.",
     errorTitle: 'Something went wrong',
-    allCustomers: 'All customers',
     myCustomers: 'My customers',
     emptyTitle: 'No customer activity',
     emptyDescription: 'No GRNs, dispatches or invoices in this period. Try a longer period.',

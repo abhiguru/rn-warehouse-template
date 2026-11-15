@@ -17,6 +17,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
 import { FioriLinearProgress } from '@/components/FioriLinearProgress';
 import { FILTER_CONFIGS } from '../configs';
 import type { FilterListDefinition } from '../types';
@@ -50,6 +51,8 @@ export interface FilteredListHeaderProps {
   expand?: { expanded: boolean; onToggle: () => void; nounPlural: ListNounPlural; disabled?: boolean };
   /** Extra buttons in the title row, before the profile. */
   actions?: React.ReactNode;
+  /** The list's refresh: offered to screen readers as a "Refresh" action on the title, which every state shows (WH-220). */
+  onRefresh?: () => void;
   /** Shown between the title row and the search field. */
   children?: React.ReactNode;
 }
@@ -82,7 +85,7 @@ const makeStyles = (t: ThemeTokens) => ({
   busy: { position: 'absolute' as const, left: 0, right: 0, bottom: 0 },
 });
 
-export function FilteredListHeader({ title, config, filters, loading, busy = false, expand, actions, children }: FilteredListHeaderProps) {
+export function FilteredListHeader({ title, config, filters, loading, busy = false, expand, actions, onRefresh, children }: FilteredListHeaderProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const countable = FILTER_CONFIGS[config.listKey];
@@ -93,7 +96,7 @@ export function FilteredListHeader({ title, config, filters, loading, busy = fal
   return (
     <>
       <View style={styles.header}>
-        <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{title}</Text>
+        <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} {...(onRefresh ? listRefreshAccessibility(onRefresh) : null)}>{title}</Text>
         <View style={styles.actions}>
           {expand ? (
             <Pressable

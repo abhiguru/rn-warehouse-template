@@ -38,7 +38,12 @@ jest.mock('expo-crypto', () => ({ randomUUID: () => jest.requireActual('node:cry
 jest.mock('@/features/filters/configs', () => ({ DISPATCH_FILTERS: { listKey: 'dispatch-list' } }));
 jest.mock('@/features/filters/filterModel', () => ({ readSearch: () => ({ text: '' }) }));
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
-  FilteredListHeader: () => null,
+  // Draws the title the way the real header does (a heading with the Refresh action when the screen passes onRefresh).
+  FilteredListHeader: ({ title, onRefresh }: { title: string; onRefresh?: () => void }) => {
+    const { Text } = require('react-native');
+    const { listRefreshAccessibility } = require('@/components/lists/listRefreshAccessibility');
+    return require('react').createElement(Text, { accessibilityRole: 'header', ...(onRefresh ? listRefreshAccessibility(onRefresh) : null) }, title);
+  },
   filteredEmptyProps: () => ({ activeFilterCount: 0 }),
 }));
 const mockFilters = {
@@ -144,7 +149,8 @@ describe('who sees Print', () => {
     mockRole = 'customer';
     const tree = await renderList();
     expect(printAction(tree, 1)).toHaveLength(0);
-    expect(tree.root.findAll((node) => node.props.accessibilityActions !== undefined)).toHaveLength(0);
+    // The list itself still offers its screen-reader Refresh (WH-220); a customer gets no Print action anywhere.
+    expect(tree.root.findAll((node) => node.props.accessibilityActions?.some((action: { name: string }) => action.name === 'print'))).toHaveLength(0);
     expect(texts(tree)).not.toContain('Print');
   });
 
@@ -208,5 +214,22 @@ describe('pressing Print', () => {
     expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.');
     expect(dialog(tree)).toHaveLength(0);
     expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('screen-reader Refresh (WH-220)', () => {
+  // The Refresh action sits on the list's title ("Dispatches"), which every sort shows: by date (with date headings) and by number (without).
+  it.each([['date', 'dispatch_date'], ['number', 'disp_no']])('the title offers a Refresh action that reads the dispatches again, sorted by %s', async (_name, field) => {
+    mockFilters.sort = { field, order: 'desc' };
+    const tree = await renderList();
+    const title = tree.root.findAll((node) => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
+      && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    expect(title).toHaveLength(1);
+    expect(title[0].props.children).toBe('Dispatches');
+    expect(title[0].props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+    const before = jest.mocked(getDispatchListWithItems).mock.calls.length;
+    await act(async () => { title[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(jest.mocked(getDispatchListWithItems).mock.calls.length).toBe(before + 1);
+    mockFilters.sort = { field: 'disp_no', order: 'desc' };
   });
 });

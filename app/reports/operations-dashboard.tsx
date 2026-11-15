@@ -27,11 +27,12 @@ import { describeDateRange } from '@/features/filters/filterModel';
 import { longestPeriodAction } from '@/features/reports/reportActions';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier, localizeDigits } from '@/i18n';
 import { getOperationsDashboard } from '@/services/reporting';
-import { fontWeight, iconSize, layout, radius, space, trackedText, typography, type ThemeTokens } from '@/theme/tokens';
+import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { OperationsDashboardData, RecentActivityItem } from '@/types/report.types';
 import { formatIndiaDate, formatIndiaSpokenDate, formatRelativeTime, todayInIST } from '@/utils/formatters';
 
@@ -73,19 +74,6 @@ const makeStyles = (t: ThemeTokens) => ({
   averageLabel: { ...typography.footnote, color: t.text.secondary, marginBottom: space.s6, textAlign: 'center' as const },
   averageValue: { ...typography.title2, color: t.text.primary, fontVariant: ['tabular-nums' as const], textAlign: 'center' as const },
   averageDivider: { width: 1, marginHorizontal: space.md, backgroundColor: t.border.divider },
-
-  sectionHeading: {
-    paddingTop: space.xl,
-    paddingBottom: space.sm,
-    paddingHorizontal: layout.marginCompact + space.xs,
-  },
-  sectionHeadingText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: trackedText(0.5),
-    textTransform: 'uppercase' as const,
-    color: t.text.secondary,
-  },
 
   // A recent GRN or dispatch: read-only, so no chevron and no pressed state.
   activity: {
@@ -213,7 +201,7 @@ function OperationsDashboardReport() {
         <>
           <PeriodAverages grnDaily={data.trends.grn_daily} dispatchDaily={data.trends.dispatch_daily} days={periodDays(period, todayInIST())} />
           {/* The server sends the latest GRNs and dispatches of any date, not those of the period. */}
-          <SectionHeading title={tr('reports.operations.latestActivity')} />
+          <SectionHeader title={tr('reports.operations.latestActivity')} />
         </>
       ) : null}
     </ReportScaffold>
@@ -250,17 +238,6 @@ function PeriodAverages({ grnDaily, dispatchDaily, days }: { grnDaily: { count: 
           ))}
         </View>
       </View>
-    </View>
-  );
-}
-
-function SectionHeading({ title }: { title: string }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.sectionHeading}>
-      <Text style={styles.sectionHeadingText} accessibilityRole="header">
-        {title}
-      </Text>
     </View>
   );
 }

@@ -30,7 +30,7 @@ jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [] } }),
+    selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1' } }, grnForm: { items: [] } }),
 }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() }, useLocalSearchParams: () => ({}) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');

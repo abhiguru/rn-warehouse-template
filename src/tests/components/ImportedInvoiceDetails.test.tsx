@@ -13,7 +13,7 @@ let mockHero: any;
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'fictional-invoice' }),
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
-  Stack: { Screen: () => null },
+  Stack: { Screen: (props: object) => { const { StackScreenMock } = require('@/tests/helpers/stackScreenMock'); return <StackScreenMock {...props} />; } },
   useFocusEffect: (callback: () => void) => {
     const React = require('react');
     React.useEffect(() => { callback(); }, [callback]);
@@ -28,7 +28,10 @@ jest.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({ isCustomer: false, role: 'admin', canUpdate: true, canDelete: true }),
 }));
 jest.mock('@/hooks/useCapability', () => ({ useCapability: () => true }));
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }) }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
+}));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Portal: 'Portal', Snackbar: 'Snackbar' }));
 jest.mock('@/components/skeletons', () => ({ DetailSkeleton: () => null }));
@@ -82,7 +85,7 @@ afterEach(async () => { await act(async () => { renderer?.unmount(); }); });
 it('an imported invoice shows the mark and offers no Edit, Cancel invoice or Delete', async () => {
   await open({ imported: true });
   expect(mockHero.imported).toBe(true);
-  expect(byLabel('Edit Invoice')).toHaveLength(0);
+  expect(byLabel('Edit')).toHaveLength(0);
   expect(byLabel('Cancel invoice')).toHaveLength(0);
   expect(byLabel('Delete Invoice')).toHaveLength(0);
 });
@@ -90,6 +93,6 @@ it('an imported invoice shows the mark and offers no Edit, Cancel invoice or Del
 it.each([[false], [undefined]])('an invoice that is not imported (flag %s) keeps Edit and Cancel invoice', async flag => {
   await open(flag === undefined ? {} : { imported: flag });
   expect(mockHero.imported).toBe(false);
-  expect(byLabel('Edit Invoice').length).toBeGreaterThan(0);
+  expect(byLabel('Edit').length).toBeGreaterThan(0);
   expect(byLabel('Cancel invoice')).toHaveLength(1);
 });

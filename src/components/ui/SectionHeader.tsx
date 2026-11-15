@@ -71,6 +71,8 @@ export interface SectionHeaderProps {
   action?: SectionHeaderAction;
   /** Custom container style */
   style?: ViewStyle;
+  /** Side padding (default true). False drops it, for use inside a container that already pads its content. */
+  inset?: boolean;
   /** Whether to use grouped style (gray background) */
   grouped?: boolean;
   /** Test ID */
@@ -89,6 +91,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   action,
   style,
   grouped = false,
+  inset = true,
   testID,
 }) => {
   const t = useTokens();
@@ -101,6 +104,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         styles.container,
         hasButton && styles.containerWithButton,
         grouped && styles.containerGrouped,
+        !inset && styles.containerFlush,
         style,
       ]}
       testID={testID}
@@ -253,6 +257,9 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingTop: space.lg,
     paddingBottom: space.xs,
     minHeight: touchTarget,
+  },
+  containerFlush: {
+    paddingHorizontal: 0,
   },
   containerGrouped: {
     backgroundColor: t.background.grouped,

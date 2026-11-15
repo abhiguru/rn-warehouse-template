@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, Pressable, Platform, BackHandler } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -29,12 +30,12 @@ import { REFUSAL } from '@/utils/serverRefusal';
 import { deleteInvoicePair } from '@/services/gstService';
 import { docTypeKey } from '@/features/gst/docType';
 import { getUserFriendlyError, parseErrorToFriendly } from '@/utils/errorHandler';
+import { loadFailureText } from '@/utils/loadFailureText';
 import { generateInvoicePDF, pdfRefusalText } from '@/services/pdf-service';
 import { printInvoiceRange, printFailureMessage } from '@/services/print-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { invoiceFileName, invoiceLabelOf } from '@/utils/invoiceLabel';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
-import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -49,10 +50,12 @@ import {
 } from '@/components/invoice-details';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { Button } from '@/components/ui/Button';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { showToast } from '@/utils/toast';
 import { formatDate } from '@/utils/formatters';
 import { parseChargingRule } from '@/features/charging/chargingRule';
 import { buildInvoiceLineItems, relatedDispatchDocuments } from '@/features/invoice/utils/invoiceLineItems';
@@ -81,26 +84,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.background.base,
   },
   tabContent: { flex: 1 },
-  errorContainer: {
-    alignItems: 'center' as const,
-    padding: space.xl,
-    maxWidth: layout.maxFormWidth,
-    gap: space.sm,
-  },
-  errorTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const, marginTop: space.lg },
-  errorMessage: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const, marginBottom: space.lg },
-  secondaryButton: {
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.lg,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-  },
-  secondaryButtonPressed: { backgroundColor: t.brand.subtle },
-  secondaryButtonText: { ...typography.callout, color: t.brand.tint },
   navBar: { backgroundColor: t.surface.header },
   headerTitleContainer: { alignItems: 'center' as const, justifyContent: 'center' as const },
   headerTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' as const },
@@ -110,7 +93,6 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'center' as const,
     maxWidth: 220,
   },
-  snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button },
 });
 
 function InvoiceDetailScreen() {
@@ -176,12 +158,12 @@ function InvoiceDetailScreen() {
   const hadData = useRef(false);
   // The first load failed for a reason other than "not there" (a lost connection, a 502): an error page with Try again.
   const [loadFailed, setLoadFailed] = useState(false);
+  // What the error page says: the connection text for a network failure or a timeout, a refusal's own text otherwise.
+  const [loadFailedText, setLoadFailedText] = useState('');
   // Why the discount or zero charge was given, and by whom (staff and up).
   const [reasons, setReasons] = useState<InvoiceReasons | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   // Auth check
   useEffect(() => {
@@ -217,6 +199,7 @@ function InvoiceDetailScreen() {
         return;
       } else if (!hadData.current && !(result.notFound || result.accessDenied)) {
         // A first load that failed: the page says so and offers Try again. "Invoice not found" is for the server saying so.
+        setLoadFailedText(loadFailureText(result.error, tr('common.checkConnection')));
         setLoadFailed(true);
         return;
       } else if (hadData.current) {
@@ -249,7 +232,10 @@ function InvoiceDetailScreen() {
     } catch (error) {
       console.error('[InvoiceDetailScreen] Exception:', error);
       if (hadData.current) showAlert(tr('invoice.details.loadFailedTitle'), getUserFriendlyError('invoice', 'load'));
-      else setLoadFailed(true);
+      else {
+        setLoadFailedText(tr('common.checkConnection'));
+        setLoadFailed(true);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -546,59 +532,25 @@ function InvoiceDetailScreen() {
           {loading ? (
             <DetailSkeleton tabCount={3} cardCount={3} />
           ) : loadFailed ? (
-            <View style={styles.errorContainer} accessibilityLiveRegion="polite">
-              <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-              <Text style={styles.errorTitle} accessibilityRole="header">
-                {tr('invoice.edit.loadFailedTitle')}
-              </Text>
-              <Text style={styles.errorMessage}>{tr('common.checkConnection')}</Text>
-              <Pressable
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                onPress={() => {
-                  setLoadFailed(false);
-                  setLoading(true);
-                  void fetchInvoiceDetails();
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.retry')}
-                testID="invoice-load-retry"
-              >
-                <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.goBack')}
-              >
-                <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
-              </Pressable>
-            </View>
+            <ErrorStateView
+              title={tr('invoice.details.loadFailedTitle')}
+              message={loadFailedText || tr('common.checkConnection')}
+              onRetry={() => {
+                setLoadFailed(false);
+                setLoading(true);
+                void fetchInvoiceDetails();
+              }}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           ) : (
-            <View style={styles.errorContainer}>
-              <Icon
-                name="file-document-outline"
-                size={iconSize.hero}
-                color={t.icon.secondary}
-              />
-              <Text style={styles.errorTitle} accessibilityRole="header">
-                {tr(gone ? 'invoice.details.deletedGoneTitle' : 'invoice.details.notFoundTitle')}
-              </Text>
-              <Text style={styles.errorMessage}>
-                {tr(gone ? 'invoice.details.deletedGoneMessage' : 'invoice.details.notFoundMessage')}
-              </Text>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  pressed && styles.secondaryButtonPressed,
-                ]}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.goBack')}
-              >
-                <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
-              </Pressable>
-            </View>
+            <ErrorStateView
+              icon="file-document-outline"
+              title={tr(gone ? 'invoice.details.deletedGoneTitle' : 'invoice.details.notFoundTitle')}
+              message={tr(gone ? 'invoice.details.deletedGoneMessage' : 'invoice.details.notFoundMessage')}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           )}
         </View>
       </>
@@ -659,6 +611,13 @@ function InvoiceDetailScreen() {
           gestureEnabled: !lostDelete,
           // Custom back button to ensure it always works
           headerLeft: () => <HeaderBackButton onPress={lostDelete ? askLeaveLostDelete : undefined} />,
+          // Edit is at the end of the header, so it can be reached from any tab.
+          headerRight: () =>
+            canUpdate && !isCancelled && !isImported ? (
+              <Button type="tertiary" onPress={handleEditInvoice} disabled={isDeleting || isCancelling || lostDelete}>
+                {tr('common.edit')}
+              </Button>
+            ) : null,
           headerTitle: () => (
             <View
               style={styles.headerTitleContainer}
@@ -666,7 +625,7 @@ function InvoiceDetailScreen() {
               accessibilityRole="header"
               accessibilityLabel={tr('invoice.details.titleNumber', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) })}
             >
-              <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
+              <Text style={styles.headerTitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>
                 {tr('invoice.details.titleNumber', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) })}
               </Text>
               {/* Two lines when the date and the GRN number do not fit on one: the number is never cut. */}
@@ -720,7 +679,6 @@ function InvoiceDetailScreen() {
               invoice_number={invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)}
               invoice_id={id}
               on_view_grn={handleViewGRN}
-              on_edit_invoice={handleEditInvoice}
               on_cancel_invoice={handleCancelInvoice}
               can_edit={canUpdate && !isCancelled && !isImported}
               can_cancel={canDelete && !isCancelled && !isImported}
@@ -797,7 +755,7 @@ function InvoiceDetailScreen() {
 
           const result = await printInvoiceRange(start, end, finYearNum);
           if (result.success) {
-            setSnackbarMessage(
+            showToast(
               result.print_job?.cups_job_id
                 ? tr('invoice.print.sentWithJob', { job: String(result.print_job.cups_job_id) })
                 : tr('invoice.print.sent')
@@ -811,7 +769,6 @@ function InvoiceDetailScreen() {
             // Thrown, so the dialog stays open and shows the reason above its buttons.
             throw new Error(printFailureMessage(result));
           }
-          setSnackbarVisible(true);
           // WH-151: invoices the form did not print are named in the dialog, which stays open until it is closed.
           const skippedNote = printSkippedNote(result);
           if (skippedNote) return skippedNote;
@@ -823,18 +780,6 @@ function InvoiceDetailScreen() {
         placeholder={tr('invoice.print.exampleShort', { example: '2555' })}
       />
 
-      {/* Snackbar for print feedback */}
-      <Portal>
-        <Snackbar
-          visible={snackbarVisible}
-          onDismiss={() => setSnackbarVisible(false)}
-          duration={4000}
-          style={styles.snackbar}
-          theme={{ colors: { inverseOnSurface: t.text.inverse } }}
-        >
-          {snackbarMessage}
-        </Snackbar>
-      </Portal>
     </>
   );
 }

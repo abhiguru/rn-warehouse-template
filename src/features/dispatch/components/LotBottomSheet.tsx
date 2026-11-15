@@ -535,7 +535,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
           onPress={() => sheet.dismiss()}
           style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={tr('dispatch.lotSheet.close')}
+          accessibilityLabel={tr('common.close')}
         >
           <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
         </Pressable>

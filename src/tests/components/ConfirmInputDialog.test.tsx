@@ -95,7 +95,7 @@ describe('ConfirmInputDialog above the keyboard', () => {
     expect(isInside(button('Cancel'), scroll)).toBe(false);
     expect(isInside(button('Delete account'), scroll)).toBe(false);
     // The dialog never grows past the space left above the keyboard.
-    const dialog = scroll.parent!;
+    const dialog = scroll.parent!.parent!;
     expect(flatStyle(dialog.props.style)).toMatchObject({ maxHeight: '100%', flexShrink: 1, maxWidth: 420 });
   });
 

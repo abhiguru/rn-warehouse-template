@@ -5,36 +5,23 @@
  * server's defaults are shown. The screen shows what the server confirmed. docs/STYLE_GUIDE.md §14.12 and §13.9.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Stack, useIsFocused } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { Input } from '@/components/ui/Input';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { LEDGER_KEYS, getAccountantLedgers, setAccountantLedgers, type LedgerKey, type LedgerNames } from '@/services/accountantExportService';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { showToast } from '@/utils/toast';
+import type { TextInputRef } from '@/types/nativeRefs';
 
 const NAME_MAX = 60;
-
-/**
- * One ledger name field. The test identifier sits on this one element (not on the native input inside it), so a field is
- * found once; the label is the input's accessible name.
- */
-function LedgerField(props: { testID: string; label: string; value: string; onChangeText: (text: string) => void; maxLength: number; error?: string; editable: boolean }) {
-  const styles = useThemedStyles(makeStyles);
-  const { testID: _testID, label, ...input } = props;
-  return (
-    <View>
-      <Text style={[styles.label, input.error ? styles.labelError : null]}>{label}</Text>
-      <Input {...input} accessibilityLabel={label} autoCorrect={false} />
-    </View>
-  );
-}
 
 type FieldErrors = Partial<Record<LedgerKey, string>>;
 
@@ -55,7 +42,6 @@ export default function AccountantExportScreen() {
   const isFocused = useIsFocused();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const insets = useSafeAreaInsets();
   const [stored, setStored] = useState<LedgerNames | null>(null);
   const [draft, setDraft] = useState<LedgerNames | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,6 +50,7 @@ export default function AccountantExportScreen() {
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const inputs = useRef<Partial<Record<LedgerKey, TextInputRef | null>>>({});
   // The latest read wins: an answer that arrives after a newer request is dropped.
   const requestRef = useRef(0);
 
@@ -92,6 +79,9 @@ export default function AccountantExportScreen() {
 
   const dirty = stored !== null && draft !== null && !sameNames(stored, draft);
 
+  // Every way out asks first when a name was changed; while a save runs the ways out are held.
+  useLeaveGuard({ hasChanges: dirty, blocked: saving });
+
   const change = (key: LedgerKey, value: string) => {
     setDraft(current => (current ? { ...current, [key]: value } : current));
     setFieldErrors(current => (current[key] ? { ...current, [key]: undefined } : current));
@@ -102,7 +92,12 @@ export default function AccountantExportScreen() {
     if (!draft || savingRef.current) return;
     const errors = check(draft);
     setFieldErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    const wrong = LEDGER_KEYS.filter(key => errors[key]);
+    if (wrong.length > 0) {
+      inputs.current[wrong[0]]?.focus();
+      AccessibilityInfo.announceForAccessibility(tr('sensors.edit.fixFields', { count: wrong.length }));
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     setSaveError(null);
@@ -135,7 +130,7 @@ export default function AccountantExportScreen() {
       />
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <KeyboardAwareScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}
+        contentContainerStyle={{ paddingBottom: space.xl }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         enableOnAndroid
@@ -154,15 +149,20 @@ export default function AccountantExportScreen() {
           <>
             <View style={styles.fields}>
               {LEDGER_KEYS.map(key => (
-                <LedgerField
+                <Input
                   key={key}
+                  testID={`accountant-export-${key}`}
                   label={labelOf(key)}
+                  required
                   value={draft[key]}
                   onChangeText={text => change(key, text)}
-                  maxLength={NAME_MAX}
                   error={fieldErrors[key]}
+                  maxLength={NAME_MAX}
                   editable={!saving}
-                  testID={`accountant-export-${key}`}
+                  autoCorrect={false}
+                  ref={node => {
+                    inputs.current[key] = node;
+                  }}
                 />
               ))}
             </View>
@@ -171,14 +171,18 @@ export default function AccountantExportScreen() {
                 {saveError}
               </Text>
             ) : null}
-            <View style={styles.actions}>
-              <Button testID="accountant-export-save" disabled={!dirty || saving} loading={saving} onPress={() => void save()}>
-                {tr('common.save')}
-              </Button>
-            </View>
           </>
         ) : null}
       </KeyboardAwareScrollView>
+      {stored && draft ? (
+        <FormSaveBar
+          label={tr('settings.accountantExport.saveLabel')}
+          onPress={() => void save()}
+          loading={saving}
+          disabled={!dirty || saving}
+          buttonTestID="accountant-export-save"
+        />
+      ) : null}
     </View>
   );
 }
@@ -187,12 +191,9 @@ const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.background.grouped },
     intro: { ...typography.footnote, color: t.text.secondary, marginHorizontal: layout.marginCompact, marginVertical: space.lg },
-    label: { ...typography.footnote, color: t.text.secondary, marginBottom: space.xs },
-    labelError: { color: t.status.negative.text },
     loading: { marginTop: space.xxl },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     fields: { marginHorizontal: layout.marginCompact, gap: space.md },
     saveError: { ...typography.subhead, color: t.status.negative.text, marginHorizontal: layout.marginCompact, marginTop: space.md },
-    actions: { marginHorizontal: layout.marginCompact, marginTop: space.md },
     stateMessage: { ...typography.body, color: t.text.secondary, textAlign: 'center' },
   });

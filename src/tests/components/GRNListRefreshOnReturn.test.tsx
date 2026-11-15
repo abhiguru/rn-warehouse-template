@@ -49,7 +49,12 @@ jest.mock('@/services/grn-service', () => ({
 jest.mock('@/features/filters/configs', () => ({ GRN_FILTERS: { listKey: 'grn-list' } }));
 jest.mock('@/features/filters/filterModel', () => ({ readSearch: () => ({ text: '' }) }));
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
-  FilteredListHeader: () => null,
+  // Draws the title the way the real header does (a heading with the Refresh action when the screen passes onRefresh).
+  FilteredListHeader: ({ title, onRefresh }: { title: string; onRefresh?: () => void }) => {
+    const { Text } = require('react-native');
+    const { listRefreshAccessibility } = require('@/components/lists/listRefreshAccessibility');
+    return require('react').createElement(Text, { accessibilityRole: 'header', ...(onRefresh ? listRefreshAccessibility(onRefresh) : null) }, title);
+  },
   filteredEmptyProps: () => ({ activeFilterCount: 0 }),
 }));
 let mockFilters = {
@@ -117,7 +122,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockFocusEffect = null;
   cleanup = undefined;
-  mockFilters = { ...mockFilters, request: { p_sort_by: 'gr_no', p_sort_order: 'desc' } };
+  mockFilters = { ...mockFilters, request: { p_sort_by: 'gr_no', p_sort_order: 'desc' }, sort: { field: 'gr_no', order: 'desc' } };
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(async () => {
@@ -170,5 +175,21 @@ describe('the GRN list on return', () => {
     await blur();
     await focus();
     expect(getAllGRNItems).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('screen-reader Refresh (WH-220)', () => {
+  // The Refresh action sits on the list's title ("GRNs"), which every sort shows: by date (with date headings) and by number (without).
+  it.each([['date', 'receipt_date'], ['number', 'gr_no']])('the title offers a Refresh action that reads from the first row again, sorted by %s', async (_name, field) => {
+    mockFilters = { ...mockFilters, sort: { field, order: 'desc' } };
+    await mount(3);
+    const title = tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
+      && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    expect(title).toHaveLength(1);
+    expect(title[0].props.children).toBe('GRNs');
+    expect(title[0].props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+    await act(async () => { title[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    expect(getAllGRNItems).toHaveBeenCalledTimes(2);
+    expect(reads()[1]).toMatchObject({ p_offset: 0 });
   });
 });

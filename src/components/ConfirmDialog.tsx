@@ -1,10 +1,11 @@
 /**
  * ConfirmDialog - confirmation dialog (docs/STYLE_GUIDE.md §13.9).
  *
- * surface.sheet, radius.card and shadow[4] over overlay.scrim. Optional icon:
- * warning in status.critical.text, danger in status.negative.text. Title in
- * title3, message in body text.secondary. Cancel is a secondary button and the
- * action a primary one (the destructive fill for `danger`). The Android back
+ * The frame is DialogFrame's (surface.sheet, radius.card and shadow[4] over
+ * overlay.scrim). Optional icon: warning in status.critical.text, danger in
+ * status.negative.text. Title in title3, message in body text.secondary. Cancel
+ * is a secondary button and the action a primary one (the destructive fill for
+ * `danger`). The Android back
  * button and a tap on the scrim cancel, except while `busy`: then the action
  * shows a spinner, both buttons are disabled and neither Back nor the scrim
  * closes the dialog.
@@ -14,15 +15,10 @@
  */
 
 import React from 'react';
-import { View, Text, Modal, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { Modal } from 'react-native';
 import type { IconName } from '@/types/icon.types';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
-import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
-
-
+import { DialogActions, DialogBody, DialogButton, DialogCard, DialogHeading, DialogOverlay } from './DialogFrame';
 
 export type ConfirmVariant = 'default' | 'warning' | 'danger';
 
@@ -51,91 +47,6 @@ export interface ConfirmDialogProps {
   onDismissed?: () => void;
 }
 
-const ICON_CIRCLE = layout.avatar.lg - space.xs;
-
-const makeStyles = (t: ThemeTokens) => ({
-  overlay: {
-    flex: 1,
-    backgroundColor: t.overlay.scrim,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    padding: space.xxl,
-  },
-  dialog: {
-    backgroundColor: t.surface.sheet,
-    borderRadius: radius.card,
-    padding: space.xxl,
-    width: '100%' as const,
-    maxWidth: layout.maxFormWidth,
-    alignItems: 'center' as const,
-    ...t.shadow[4],
-  },
-  iconContainer: {
-    width: ICON_CIRCLE,
-    height: ICON_CIRCLE,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    marginBottom: space.lg,
-  },
-  iconDefault: { backgroundColor: t.brand.subtle },
-  iconWarning: { backgroundColor: t.status.critical.background },
-  iconDanger: { backgroundColor: t.status.negative.background },
-  title: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginBottom: space.sm,
-  },
-  message: {
-    ...typography.body,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.xxl,
-  },
-  buttonContainer: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: space.sm,
-    width: '100%' as const,
-  },
-  button: {
-    flexGrow: 1,
-    flexBasis: 120,
-    minHeight: touchTarget,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.sm,
-    borderRadius: radius.button,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: t.border.button,
-  },
-  cancelButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  cancelButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-  },
-  confirmPrimary: { backgroundColor: t.brand.fill },
-  confirmPrimaryPressed: { backgroundColor: t.brand.fillPressed },
-  confirmPrimaryText: { color: t.brand.onFill },
-  confirmDestructive: { backgroundColor: t.destructive.fill },
-  confirmDestructivePressed: { backgroundColor: t.destructive.fillPressed },
-  confirmDestructiveText: { color: t.destructive.onFill },
-  confirmButtonText: {
-    ...typography.callout,
-    fontWeight: fontWeight.semibold,
-    textAlign: 'center' as const,
-  },
-  disabled: { opacity: t.interaction.disabledOpacity },
-});
-
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   visible,
   title,
@@ -154,20 +65,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   testID,
   onDismissed,
 }) => {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
   const confirmText = confirmTextProp ?? tr('common.confirm');
   const cancelText = cancelTextProp ?? tr('common.cancel');
-
   const destructive = variant === 'danger';
-
-  // Icon: status colours for warning and danger, brand tint otherwise
-  const iconName: IconName | undefined =
-    icon ?? (variant === 'danger' ? 'alert-circle-outline' : variant === 'warning' ? 'alert-outline' : undefined);
-  const iconColor =
-    variant === 'danger' ? t.status.negative.text : variant === 'warning' ? t.status.critical.text : t.brand.tint;
-  const iconBg =
-    variant === 'danger' ? styles.iconDanger : variant === 'warning' ? styles.iconWarning : styles.iconDefault;
+  const stacked = !!(cancelText && middleText && onMiddle);
+  const confirmButton = <DialogButton stacked={stacked} label={confirmText} onPress={onConfirm} role={destructive ? 'negative' : 'primary'} busy={busy} />;
 
   return (
     <Modal
@@ -178,90 +80,22 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       onDismiss={onDismissed}
       statusBarTranslucent
     >
-      <View style={styles.overlay}>
-        {/* Scrim: tap to cancel */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={dismissible && !busy ? onCancel : undefined}
-          accessible={false}
-          importantForAccessibility="no"
-        />
-        <View
-          style={styles.dialog}
-          accessibilityViewIsModal
-          accessibilityRole="alert"
-          accessibilityLabel={title}
-          testID={testID}
-        >
-          {iconName && (
-            <View style={[styles.iconContainer, iconBg]} accessible={false} importantForAccessibility="no-hide-descendants">
-              <Icon name={iconName} size={iconSize.xl} color={iconColor} />
-            </View>
-          )}
-
-          <Text style={styles.title} accessibilityRole="header">
-            {title}
-          </Text>
-
-          <Text style={styles.message}>{message}</Text>
-
-          <View style={styles.buttonContainer}>
+      {/* Scrim: tap to cancel */}
+      <DialogOverlay onScrimPress={dismissible && !busy ? onCancel : undefined}>
+        <DialogCard accessibilityRole="alert" accessibilityLabel={title} testID={testID}>
+          <DialogBody>
+            <DialogHeading title={title} message={message} tone={variant === 'danger' ? 'danger' : variant === 'warning' ? 'warning' : 'default'} icon={icon} />
+          </DialogBody>
+          {/* Three buttons are stacked, the action first and Cancel last; two sit side by side. */}
+          <DialogActions stacked={stacked}>
+            {stacked ? confirmButton : null}
+            {stacked && middleText && onMiddle ? <DialogButton stacked label={middleText} onPress={onMiddle} disabled={busy} testID="confirm-middle" /> : null}
             {/* cancelText="" asks for a one-button dialog; an unlabelled button is not drawn. */}
-            {cancelText ? (
-              <Pressable
-                style={({ pressed }) => [styles.button, styles.cancelButton, pressed && styles.cancelButtonPressed, busy && styles.disabled]}
-                onPress={onCancel}
-                disabled={busy}
-                accessibilityRole="button"
-                accessibilityLabel={cancelText}
-                accessibilityState={{ disabled: busy }}
-              >
-                <Text style={styles.cancelButtonText}>{cancelText}</Text>
-              </Pressable>
-            ) : null}
-
-            {middleText && onMiddle ? (
-              <Pressable
-                style={({ pressed }) => [styles.button, styles.cancelButton, pressed && styles.cancelButtonPressed, busy && styles.disabled]}
-                onPress={onMiddle}
-                disabled={busy}
-                accessibilityRole="button"
-                accessibilityLabel={middleText}
-                accessibilityState={{ disabled: busy }}
-                testID="confirm-middle"
-              >
-                <Text style={styles.cancelButtonText}>{middleText}</Text>
-              </Pressable>
-            ) : null}
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                destructive ? styles.confirmDestructive : styles.confirmPrimary,
-                pressed && (destructive ? styles.confirmDestructivePressed : styles.confirmPrimaryPressed),
-              ]}
-              onPress={onConfirm}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={confirmText}
-              accessibilityState={{ disabled: busy, busy }}
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color={destructive ? t.destructive.onFill : t.brand.onFill} />
-              ) : (
-                <Text
-                  style={[
-                    styles.confirmButtonText,
-                    destructive ? styles.confirmDestructiveText : styles.confirmPrimaryText,
-                  ]}
-                >
-                  {confirmText}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </View>
+            {cancelText ? <DialogButton stacked={stacked} label={cancelText} onPress={onCancel} disabled={busy} /> : null}
+            {stacked ? null : confirmButton}
+          </DialogActions>
+        </DialogCard>
+      </DialogOverlay>
     </Modal>
   );
 };

@@ -10,9 +10,11 @@ import { router, Stack, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useAppSelector } from '@/store/hooks';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
@@ -66,6 +68,12 @@ export default function RackPresetsScreen() {
     };
   }, [allowed, isFocused, load]);
 
+  // A button added, renamed, moved or removed asks before leaving; a save in progress holds the ways out.
+  const dirty =
+    !!loaded && !!draft && (draft.floor.join('\n') !== loaded.floor.join('\n') || draft.chamber.join('\n') !== loaded.chamber.join('\n'));
+
+  useLeaveGuard({ hasChanges: dirty, blocked: saving });
+
   const header = (
     <Stack.Screen
       options={{ title: tr('settings.rackPresets.title'), headerShown: true, headerTitleAlign: 'center', headerLeft: () => <HeaderBackButton /> }}
@@ -95,9 +103,6 @@ export default function RackPresetsScreen() {
       [next[index], next[to]] = [next[to], next[index]];
       return next;
     });
-
-  const dirty =
-    !!loaded && !!draft && (draft.floor.join('\n') !== loaded.floor.join('\n') || draft.chamber.join('\n') !== loaded.chamber.join('\n'));
 
   const save = async () => {
     if (!loaded || !draft || saving) return;
@@ -215,11 +220,13 @@ export default function RackPresetsScreen() {
         ) : null}
       </ScrollView>
       {draft ? (
-        <View style={[styles.footer, { paddingBottom: space.md + insets.bottom }]}>
-          <Button size="fullWidth" onPress={() => void save()} disabled={!dirty || saving} loading={saving} testID="rack-presets-save">
-            {tr('settings.rackPresets.save')}
-          </Button>
-        </View>
+        <FormSaveBar
+          label={tr('settings.rackPresets.save')}
+          onPress={() => void save()}
+          loading={saving}
+          disabled={!dirty || saving}
+          buttonTestID="rack-presets-save"
+        />
       ) : null}
     </View>
   );
@@ -246,7 +253,6 @@ const makeStyles = (t: ThemeTokens) =>
       paddingHorizontal: space.md,
     },
     iconButton: { width: touchTarget, height: touchTarget, alignItems: 'center', justifyContent: 'center' },
-    footer: { paddingHorizontal: layout.marginCompact, paddingTop: space.md, backgroundColor: t.surface.card },
     stateScreen: {
       flex: 1,
       alignItems: 'center',

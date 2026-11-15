@@ -5,16 +5,18 @@
  * "No gaps". docs/STYLE_GUIDE.md §14.12 and §13.9.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { SettingsSection } from '@/features/settings/components/SettingsList';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
 import { getConnectionHistory, type ConnectionDay } from '@/services/connectionHistoryService';
@@ -111,9 +113,13 @@ export default function ConnectionHistoryScreen() {
           />
         }
       >
-        <Text style={styles.intro}>{tr('connectionHistory.intro')}</Text>
+        <Text style={styles.intro} {...listRefreshAccessibility(() => void load())}>{tr('connectionHistory.intro')}</Text>
         {days === null && busy ? (
-          <ActivityIndicator style={styles.loading} color={t.brand.tint} accessibilityLabel={tr('common.loading')} />
+          <View accessibilityRole="progressbar" accessibilityLabel={tr('common.loading')} style={styles.loading}>
+            {[0, 1, 2].map((row) => (
+              <ListSkeletonCard key={row} metricsCount={2} showFooter={false} />
+            ))}
+          </View>
         ) : null}
         {days === null && !busy && error ? (
           <View style={styles.errorBox} testID="connection-history-error">
@@ -165,7 +171,7 @@ const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.background.grouped },
     intro: { ...typography.footnote, color: t.text.secondary, marginHorizontal: layout.marginCompact, marginVertical: space.lg },
-    loading: { marginTop: space.xxl },
+    loading: { marginTop: space.md, gap: space.md },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
     dayRow: { paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.xs, borderRadius: radius.card },

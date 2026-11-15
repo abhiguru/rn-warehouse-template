@@ -115,7 +115,6 @@ export const pricing = {
     l3For: 'The narrowest weight band that holds the weight of one {{unit}}.',
     l4: 'The rate in force on the day the goods were received, not the invoice or dispatch day.',
     l5: 'If two rates tie, the one that started last.',
-    close: 'Close',
   },
   action: {
     correct: 'Correct this rate',

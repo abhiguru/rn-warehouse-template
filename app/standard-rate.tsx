@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
@@ -35,7 +35,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
 import { setStandardRate } from '@/services/item-pricing-service';
 import type { SetStandardRateResult, StandardTier } from '@/types/item-pricing.types';
-import { layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { askAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
 import { fieldOrder, hasChanges, rentErrors, wholeKg, type Draft, type EditorContext } from '@/features/item-pricing/editModel';
@@ -403,7 +403,7 @@ export default function StandardRateScreen() {
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
       <HeaderBackButton />
-      <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+      <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={2}>
         {t('pricing.standard.title')}
       </Text>
     </View>
@@ -469,27 +469,20 @@ export default function StandardRateScreen() {
           {lastUpTo !== null ? <Text style={styles.note} testID="standard-last-tier-hint">{t('pricing.standard.lastTierHint', { kg: lastUpTo })}</Text> : null}
         </ScrollView>
 
-        <View
-          style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, space.md) }]}
+        <FormSaveBar
           testID="save-bar"
+          buttonTestID="standard-save"
+          label={t('pricing.standard.save')}
+          helper={helper}
+          onPress={() => void submit()}
+          disabled={saving || offline || unconfirmed}
+          loading={saving}
+          loadingText={t('pricing.edit.saving')}
           onLayout={(e: LayoutChangeEvent) => {
             barHeightRef.current = e.nativeEvent.layout.height;
             setBarHeight(e.nativeEvent.layout.height);
           }}
-        >
-          {helper ? <Text style={styles.helper}>{helper}</Text> : null}
-          <Button
-            type="primary"
-            size="fullWidth"
-            onPress={() => void submit()}
-            disabled={saving || offline || unconfirmed}
-            loading={saving}
-            loadingText={t('pricing.edit.saving')}
-            testID="standard-save"
-          >
-            {t('pricing.standard.save')}
-          </Button>
-        </View>
+        />
       </KeyboardAvoidingView>
     </View>
   );
@@ -508,7 +501,7 @@ const makeStyles = (th: ThemeTokens) => ({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: th.border.divider,
   },
-  headerTitle: { ...typography.title2, color: th.text.primary, flexShrink: 1 },
+  headerTitle: { ...typography.headline, color: th.text.primary, flexShrink: 1 },
   center: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const },
   body: {
     padding: layout.marginCompact,
@@ -518,13 +511,4 @@ const makeStyles = (th: ThemeTokens) => ({
     alignSelf: 'center' as const,
   },
   note: { ...typography.subhead, color: th.text.secondary },
-  helper: { ...typography.footnote, color: th.text.secondary, textAlign: 'center' as const },
-  saveBar: {
-    paddingTop: space.md,
-    paddingHorizontal: layout.marginCompact,
-    gap: space.xs,
-    minHeight: touchTarget,
-    backgroundColor: th.surface.card,
-    ...th.shadow[3],
-  },
 });

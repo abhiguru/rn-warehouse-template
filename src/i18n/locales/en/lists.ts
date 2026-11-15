@@ -1,6 +1,8 @@
 /** English text: lists. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const lists = {
   loadingContent: 'Loading content',
+  // The screen-reader action on every list (TalkBack actions menu, VoiceOver rotor)
+  refreshAction: 'Refresh',
   // A date or status section of a list: "Today, 3 dispatches"
   section: {
     label: '{{title}}, {{countText}}',
@@ -132,7 +134,6 @@ export const lists = {
     location: 'Location: {{city}}',
     openHint: 'Double tap to view order details',
     create: 'Create order',
-    refresh: 'Refresh orders',
     selectCustomer: 'Select customer',
     chooseBusiness: 'Choose a business',
     chooseBusinessHint: 'Opens the order for this business',
@@ -153,7 +154,6 @@ export const lists = {
   },
   queue: {
     title: 'Order queue',
-    refresh: 'Refresh order queue',
     countLabel: '{{orders}} in the queue',
     loadFailedTitle: "Couldn't load the order queue",
     staleTitle: "Couldn't refresh the order queue.",

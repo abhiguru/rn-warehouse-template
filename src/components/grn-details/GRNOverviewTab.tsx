@@ -10,12 +10,12 @@ import { useTokens } from '@/hooks/useTheme';
 import {
   useOverviewStyles,
   useOverviewColors,
-  SectionHeader,
   ContactCard,
   InfoChip,
   NotesSection,
   ActionsSection,
 } from '@/components/common/overview-tab';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { t as tr } from '@/i18n';
 import { GrnItemRates } from '@/features/grn/rates/GrnItemRates';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
@@ -51,7 +51,6 @@ interface GRNOverviewTabProps {
   is_deleting?: boolean;
   /** Delete is busy only because the orders it would change are being read: the button says so. */
   is_checking_orders?: boolean;
-  onEdit?: () => void;
   onDelete?: () => void;
   onSharePDF?: () => void;
   is_share_loading?: boolean;
@@ -79,7 +78,6 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   can_delete,
   is_deleting = false,
   is_checking_orders = false,
-  onEdit,
   onDelete,
   onSharePDF,
   is_share_loading = false,
@@ -103,7 +101,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: PARTICIPANTS */}
       {(customer_details || supervisor_details) && (
         <>
-          <SectionHeader title={tr('grn.overview.participants')} />
+          <SectionHeader title={tr('grn.overview.participants')} inset={false} />
 
           {customer_details && (
             <ContactCard
@@ -133,7 +131,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: VEHICLE INFORMATION */}
       {registration && (
         <>
-          <SectionHeader title={tr('grn.overview.vehicle')} />
+          <SectionHeader title={tr('grn.overview.vehicle')} inset={false} />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
               icon="truck-outline"
@@ -147,7 +145,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: BILLING TYPE */}
       {pricing_mode && (
         <>
-          <SectionHeader title={tr('grn.overview.billing')} />
+          <SectionHeader title={tr('grn.overview.billing')} inset={false} />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
               icon={isOneTime ? 'calendar-check' : 'calendar-sync'}
@@ -173,7 +171,6 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
         isShareLoading={is_share_loading}
         onPrint={onPrint}
         isPrintLoading={is_print_loading}
-        onEdit={onEdit}
         canEdit={can_edit}
         canDelete={can_delete}
         onDelete={onDelete}

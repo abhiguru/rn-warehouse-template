@@ -177,7 +177,7 @@ describe('Preferences rows', () => {
     expect(tree!.root.findAll(node => node.props.accessibilityRole === 'radio')).toHaveLength(0);
   });
 
-  it('Appearance: a choice applies at once and the sheet stays open; Done closes it', async () => {
+  it('Appearance: a choice applies at once and the sheet stays open; the Close X closes it', async () => {
     await render();
     await press(row('settings-pref-appearance'));
     expect(checked('settings-sheet-appearance')).toEqual(['Dark']);
@@ -186,7 +186,7 @@ describe('Preferences rows', () => {
     expect(mockDispatch).toHaveBeenCalledWith({ type: 'theme/setThemePreference', payload: 'light' });
     expect(checked('settings-sheet-appearance')).toEqual(['Light']);
     expect(row('settings-pref-appearance').props.accessibilityLabel).toBe('Appearance, Light');
-    const done = tree!.root.find(node => node.props.accessibilityLabel === 'Done' && typeof node.props.onPress === 'function');
+    const done = tree!.root.find(node => node.props.accessibilityLabel === 'Close' && typeof node.props.onPress === 'function');
     await press(done);
     expect(radios('settings-sheet-appearance')).toHaveLength(0);
   });
