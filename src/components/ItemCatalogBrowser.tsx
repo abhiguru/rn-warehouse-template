@@ -1257,8 +1257,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         testID="catalog-scrim"
         style={StyleSheet.absoluteFill}
         onPress={() => { void requestClose('scrim'); }}
-        accessibilityRole="button"
-        accessibilityLabel={tr('orders.catalog.cancelAdding')}
+        // Not a stop for a screen reader: the header's cancel button leaves the sheet.
+        accessible={false}
+        importantForAccessibility="no"
       />
     </BottomSheetBackdrop>
   ), [styles, requestClose]);

@@ -18,11 +18,16 @@ import { BottomSheetHandle, type BottomSheetBackgroundProps } from '@gorhom/bott
  * - `SHEET_BACKDROP_A11Y` goes on every BottomSheetBackdrop.
  */
 
+// The library's own default background style, copied from
+// @gorhom/bottom-sheet src/components/bottomSheetBackground/styles.ts (a library
+// default, not a design value), so the replacement looks identical.
+const LIBRARY_BACKGROUND_DEFAULT = { backgroundColor: 'white', borderRadius: 15 } as const;
+
 function SheetBackgroundComponent({ pointerEvents, style }: BottomSheetBackgroundProps) {
   return (
     <View
       pointerEvents={pointerEvents}
-      style={style}
+      style={[LIBRARY_BACKGROUND_DEFAULT, style]}
       accessible={false}
       importantForAccessibility="no"
       accessibilityElementsHidden
