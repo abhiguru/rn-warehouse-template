@@ -49,7 +49,7 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
       onCancel={onCancel}
       entity="grn"
       mode={isEditMode ? 'edit' : 'create'}
-      entityName={isEditMode ? tr('common.edit') : tr('common.grn')}
+      entityName={isEditMode ? tr('grn.steps.editTitle') : tr('common.grn')}
       entityId={grnNo}
       cancelTitle={isEditMode ? tr('grn.form.discardChangesTitle') : tr('grn.form.discardTitle')}
       cancelMessage={
@@ -58,6 +58,7 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
           ? tr('grn.form.discardChangesMessage')
           : tr('grn.form.discardMessage'))
       }
+      discardText={isEditMode ? tr('grn.form.discardChanges') : tr('grn.form.discardGrn')}
       onStepPress={onStepPress}
       backOnFirstStep={backOnFirstStep}
       disabled={disabled}

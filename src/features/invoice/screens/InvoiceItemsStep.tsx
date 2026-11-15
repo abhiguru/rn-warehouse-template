@@ -172,7 +172,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
         onPrevious={handleBack}
         previousAccessibilityLabel={tr('invoice.items.backToDetails')}
         onNext={handleNext}
-        nextLabel={tr('invoice.items.nextReview')}
+        nextLabel={tr('components.wizard.review')}
       />
     ),
     [handleBack, handleNext, language]

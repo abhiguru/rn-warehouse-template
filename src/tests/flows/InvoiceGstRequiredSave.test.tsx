@@ -62,10 +62,10 @@ const open = async (role: string) => {
   app = await startFlowApp({ location: '/invoices', advance: () => jest.runAllTimersAsync(), pendingTimers: () => jest.getTimerCount() });
   await openNewInvoice(app);
   await pickGrn(app, 'A0010');
-  await app.tap('Next: items');
-  await app.tap('Next: review');
-  await app.tap('Save invoice');
-  await app.tapDialog('Save invoice');
+  await app.tap('Next');
+  await app.tap('Review');
+  await app.tap('Create invoice');
+  await app.tapDialog('Create invoice');
 };
 
 beforeEach(() => {

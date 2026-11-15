@@ -174,7 +174,7 @@ describe('the rows', () => {
     expect(rowTexts(tree, 1)).toEqual(['Fictional Rice', '30 kg each · Labour ₹1.00 · Tax 5%', 'This GRN only', '2.25', 'Undo change', 'Change']);
     expect(texts(tree)).not.toContain('No rate');
     await press(tree);
-    expect(dialogs(tree).find(d => d.props.title === 'Save changes to this GRN?')!.props.visible).toBe(true);
+    expect(dialogs(tree).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.visible).toBe(true);
   });
 
   it('while the rates load or fail, it says so, and Try again reads them again', async () => {
@@ -219,7 +219,7 @@ describe('Create is blocked without a rate', () => {
     const tree = await render('create');
     await press(tree);
     expect(showAlert).not.toHaveBeenCalled();
-    expect(dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.visible).toBe(true);
+    expect(dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.visible).toBe(true);
   });
 
   it('an administrator saving a GRN dated before the items\' first rates is not stopped: the first rate covers the day (D16)', async () => {
@@ -228,7 +228,7 @@ describe('Create is blocked without a rate', () => {
     expect(texts(tree)).not.toContain('No rate');
     await press(tree);
     expect(showAlert).not.toHaveBeenCalledWith('Add the missing rates', expect.anything());
-    expect(dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.visible).toBe(true);
+    expect(dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.visible).toBe(true);
   });
 });
 
@@ -264,7 +264,7 @@ describe('saving the rates with the GRN', () => {
     (createGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
     const tree = await render('create');
     await press(tree);
-    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.onConfirm(); });
+    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.onConfirm(); });
     expect((createGRN as jest.Mock).mock.calls[0][0].rates).toEqual([
       { scope: 'grn', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 },
     ]);
@@ -273,7 +273,7 @@ describe('saving the rates with the GRN', () => {
     (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
     const edit = await render('edit');
     await press(edit);
-    await act(async () => { await dialogs(edit).find(d => d.props.title === 'Save changes to this GRN?')!.props.onConfirm(); });
+    await act(async () => { await dialogs(edit).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.onConfirm(); });
     expect((updateGRN as jest.Mock).mock.calls[0][1].rates).toHaveLength(1);
   });
 
@@ -287,7 +287,7 @@ describe('saving the rates with the GRN', () => {
     (createGRN as jest.Mock).mockResolvedValue({ success: false, error: 'server text', rateError: { code, data } });
     const tree = await render('create');
     await press(tree);
-    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.onConfirm(); });
+    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.onConfirm(); });
     expect(mockRefresh).toHaveBeenCalled();
     expect(showAlert).toHaveBeenCalledWith('Check the rates', text);
   });
@@ -316,14 +316,14 @@ describe('staff set no rates on a GRN (owner, 2026-10-16)', () => {
     const tree = await render('create');
     await press(tree);
     expect(showAlert).not.toHaveBeenCalled();
-    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.onConfirm(); });
+    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.onConfirm(); });
     expect((createGRN as jest.Mock).mock.calls[0][0].rates).toBeUndefined();
     act(() => tree.unmount());
 
     (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
     const edit = await render('edit');
     await press(edit);
-    await act(async () => { await dialogs(edit).find(d => d.props.title === 'Save changes to this GRN?')!.props.onConfirm(); });
+    await act(async () => { await dialogs(edit).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.onConfirm(); });
     expect((updateGRN as jest.Mock).mock.calls[0][1].rates).toBeUndefined();
   });
 
@@ -444,9 +444,9 @@ describe('round 3', () => {
       const tree = await render('edit');
       await press(tree);
       expect(showAlert).not.toHaveBeenCalled();
-      expect(dialogs(tree).find(d => d.props.title === 'Save changes to this GRN?')!.props.visible).toBe(true);
+      expect(dialogs(tree).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.visible).toBe(true);
       (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
-      await act(async () => { await dialogs(tree).find(d => d.props.title === 'Save changes to this GRN?')!.props.onConfirm(); });
+      await act(async () => { await dialogs(tree).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.onConfirm(); });
       expect((updateGRN as jest.Mock).mock.calls[0][1].rates).toEqual([
         { scope: 'grn', item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4.5, labour_rate: 1, tax_percent: 5 },
       ]);
@@ -479,7 +479,7 @@ describe('round 3', () => {
     const tree = await render('create');
     for (let n = 0; n < 2; n += 1) {
       await press(tree);
-      await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create this GRN?')!.props.onConfirm(); });
+      await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.onConfirm(); });
     }
     expect(createGRN).toHaveBeenCalledTimes(2);
     expect(showAlert).toHaveBeenCalledTimes(1);

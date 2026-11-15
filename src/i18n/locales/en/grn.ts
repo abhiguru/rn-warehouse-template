@@ -4,6 +4,7 @@ export const grn = {
   steps: {
     details: 'GRN details',
     detailsShort: 'Details',
+    editTitle: 'Edit GRN',
     items: 'Items',
     review: 'Review',
   },
@@ -329,18 +330,16 @@ export const grn = {
     a11yDispatchedLocked: 'already dispatched, quantity locked',
     a11yDispatchedLockedAll: 'already dispatched, quantity, item and packing locked',
     a11yInvoicedLocked: 'on an invoice, quantity, item, packing and weight locked',
-    confirmCreateTitle: 'Create this GRN?',
-    confirmSaveTitle: 'Save changes to this GRN?',
-    confirmCreateNumbered: {
-      one: 'Create GRN {{number}} with {{count}} item?',
-      other: 'Create GRN {{number}} with {{count}} items?',
+    confirmCreateTitle: 'Create GRN {{number}}?',
+    confirmSaveTitle: 'Save changes to GRN {{number}}?',
+    confirmCreateMessage: {
+      one: '{{count}} item will be received and stock levels updated.',
+      other: '{{count}} items will be received and stock levels updated.',
     },
-    confirmCreate: { one: 'Create this GRN with {{count}} item?', other: 'Create this GRN with {{count}} items?' },
-    confirmSaveNumbered: {
-      one: 'Save GRN {{number}} with {{count}} item?',
-      other: 'Save GRN {{number}} with {{count}} items?',
+    confirmSaveMessage: {
+      one: '{{count}} item will be saved and stock levels updated.',
+      other: '{{count}} items will be saved and stock levels updated.',
     },
-    confirmSave: { one: 'Save this GRN with {{count}} item?', other: 'Save this GRN with {{count}} items?' },
     printSent: 'Print job sent to the printer.',
     printFailed: "Couldn't send the print job. Check the printer and try again.",
     printUnconfirmed: 'The printer did not confirm the job. Check the printer before printing again.',

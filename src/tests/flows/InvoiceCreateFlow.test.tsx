@@ -69,16 +69,16 @@ const saves = () => server.callsOf('save_invoice');
 async function reachReview() {
   await openNewInvoice(app);
   await pickGrn(app, 'A0010');
-  await app.tap('Next: items');
+  await app.tap('Next');
   await app.typeKeys(cell(form().items[0].temp_id), '8');
   await app.typeKeys(groupField('i1:::M1', 'labour_rate'), '3');
-  await app.tap('Next: review');
+  await app.tap('Review');
 }
 
 /** The question of a save, answered with its confirm button; the ConfirmDialog is the real one. */
 const confirmSave = async () => {
-  await app.tap('Save invoice');
-  await app.tapDialog('Save invoice');
+  await app.tap('Create invoice');
+  await app.tapDialog('Create invoice');
 };
 
 beforeEach(() => {
@@ -137,7 +137,7 @@ describe('a new invoice, from the Invoices tab to the saved invoice', () => {
     expect(app.valueOf(NUMBER_FIELD)).toBe('55');
 
     // Step 2: every group and line of the RPC answer, with its amounts.
-    await app.tap('Next: items');
+    await app.tap('Next');
     expect(app.pathname()).toBe('/invoice-form/step2');
     expect(form().currentStep).toBe(2);
     const lines = form().items;
@@ -159,7 +159,7 @@ describe('a new invoice, from the Invoices tab to the saved invoice', () => {
     expect(form().header.total).toBe(2245);
 
     // Step 3: one row per group; the footer total is the step 2 total; CHARGES has the parts and one Total.
-    await app.tap('Next: review');
+    await app.tap('Review');
     expect(app.pathname()).toBe('/invoice-form/step3');
     expect(app.testIDs(/^invoice-review-group-/)).toEqual([reviewRow('i1:::M1'), reviewRow('i2:::M2')]);
     expect(textOf(app.byTestID(reviewRow('i1:::M1')))).toContain('₹1,995.00');
@@ -183,16 +183,16 @@ describe('a new invoice, from the Invoices tab to the saved invoice', () => {
     expect(app.byTestID('invoice-summary-total').props.accessibilityLabel).toBe('Estimated total, ₹2,145.00');
 
     // Saving without the reason a staff member must give is refused, and nothing is sent.
-    await app.tap('Save invoice');
+    await app.tap('Create invoice');
     expect(app.dialogs().map((dialog) => dialog.props.title)).toEqual(['Enter a discount reason']);
     expect(saves()).toHaveLength(0);
     await app.tapDialog('Close');
     await app.typeKeys(DISCOUNT_REASON, 'Damaged bags');
 
     // Save: the question names the invoice; its confirm sends exactly one save_invoice.
-    await app.tap('Save invoice');
-    expect(app.dialog().props.title).toBe('Save invoice 55?');
-    await app.tapDialog('Save invoice');
+    await app.tap('Create invoice');
+    expect(app.dialog().props.title).toBe('Create invoice 55?');
+    await app.tapDialog('Create invoice');
 
     expect(saves()).toHaveLength(1);
     const { p_invoice_id, p_invoice_data, p_invoice_items } = saves()[0].args;

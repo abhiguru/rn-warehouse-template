@@ -64,25 +64,25 @@ afterEach(async () => {
 const MODES = [
   {
     mode: 'new invoice',
-    button: 'Save invoice',
+    button: 'Create invoice',
     rpcName: 'save_invoice',
-    title: 'Save invoice 55?',
+    title: 'Create invoice 55?',
     reach: async () => {
       await openNewInvoice(app);
       await pickGrn(app, 'A0010');
-      await app.tap('Next: items');
-      await app.tap('Next: review');
+      await app.tap('Next');
+      await app.tap('Review');
     },
   },
   {
     mode: 'edit',
-    button: 'Update invoice',
+    button: 'Save invoice',
     rpcName: 'update_invoice',
-    title: 'Update invoice 42?',
+    title: 'Save changes to invoice 42?',
     reach: async () => {
       await openEditFromDetails(app);
-      await app.tap('Next: items');
-      await app.tap('Next: review');
+      await app.tap('Next');
+      await app.tap('Review');
     },
   },
 ] as const;

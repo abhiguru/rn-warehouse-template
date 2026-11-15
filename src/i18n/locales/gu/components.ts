@@ -142,7 +142,6 @@ export const components: Translation<typeof source> = {
     position: '{{total}}માંથી {{current}}',
   },
   wizard: {
-    createGrn: 'આવક પાવતી બનાવો',
     review: 'ચકાસણી',
     addItem: 'આઇટમ ઉમેરો',
     saveChanges: 'ફેરફાર સાચવો',

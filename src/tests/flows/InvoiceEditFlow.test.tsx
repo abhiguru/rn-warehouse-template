@@ -1,6 +1,6 @@
 /**
  * Editing a saved invoice, start to finish, on the real stack: the invoice's page, "Edit", the load, the three steps,
- * "Update invoice" and "View invoice"; and the load that fails. Only the facility's `rpc` is a stand-in.
+ * "Save invoice" and "View invoice"; and the load that fails. Only the facility's `rpc` is a stand-in.
  *
  * The saved invoice 42 (GRN A0010, customer Example Traders, 05/10/26) has the lines of flowLines.grnA() with the
  * first potato line free (charge 0) and the reason "Sample lot" stored for it:
@@ -104,7 +104,7 @@ describe('opening the edit form', () => {
 describe('changing a charge and updating', () => {
   it('sends exactly one update_invoice with the changed charge, the kept zero-charge reason and the new totals', async () => {
     await openEditFromDetails(app);
-    await app.tap('Next: items');
+    await app.tap('Next');
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step2');
     // The saved charges show: 0.00 on the free line, 5.00 on the next.
     expect(app.valueOf(cell(line(0).temp_id))).toBe('0.00');
@@ -115,16 +115,16 @@ describe('changing a charge and updating', () => {
     expect(line(1).item_total).toBe(840);
     expect(form().header.total).toBe(1300);
 
-    await app.tap('Next: review');
+    await app.tap('Review');
     expect(app.pathname()).toBe('/invoice-edit/inv-42/step3');
     // The ITEMS footer shows bags only since F2 (R3b-08: one money total, in CHARGES).
     expect(app.byTestID('invoice-review-items-total').props.accessibilityLabel).not.toContain('₹');
 
-    await app.tap('Update invoice');
-    expect(app.dialog().props.title).toBe('Update invoice 42?');
+    await app.tap('Save invoice');
+    expect(app.dialog().props.title).toBe('Save changes to invoice 42?');
     expect(app.dialog().props.message).toContain('1 item has a charge of 0.');
     expect(updates()).toHaveLength(0);
-    await app.tapDialog('Update invoice');
+    await app.tapDialog('Save invoice');
 
     expect(updates()).toHaveLength(1);
     const { p_invoice_id, p_invoice_data, p_invoice_items } = updates()[0].args;
@@ -146,7 +146,7 @@ describe('changing a charge and updating', () => {
 
     // The invoice dialog reads "updated" with the stored total, and offers "View invoice" only (no "Create another").
     expect(app.successDialog()).toBeDefined();
-    expect(app.texts()).toEqual(expect.arrayContaining(['Invoice updated', 'Invoice 42 has been updated.', '₹1,300.00']));
+    expect(app.texts()).toEqual(expect.arrayContaining(['Invoice updated', 'Invoice 42 saved.', '₹1,300.00']));
     await expect(app.tapSuccess('Create another invoice')).rejects.toThrow('No button');
 
     await app.tapSuccess('View invoice');
@@ -157,11 +157,11 @@ describe('changing a charge and updating', () => {
 
   it('leaves the free line free and the reason as stored when only another line changes', async () => {
     await openEditFromDetails(app);
-    await app.tap('Next: items');
+    await app.tap('Next');
     await app.typeKeys(cell(line(2).temp_id), '9');
-    await app.tap('Next: review');
-    await app.tap('Update invoice');
-    await app.tapDialog('Update invoice');
+    await app.tap('Review');
+    await app.tap('Save invoice');
+    await app.tapDialog('Save invoice');
 
     expect(updates()).toHaveLength(1);
     expect(updates()[0].args.p_invoice_data.zero_charge_reason).toBe('Sample lot');

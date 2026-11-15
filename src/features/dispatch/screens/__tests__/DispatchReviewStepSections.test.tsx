@@ -5,6 +5,7 @@
 import React from 'react';
 import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
+import { showToast } from '@/utils/toast';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { setLanguage } from '@/i18n';
 import { reviewHeader, reviewLine } from '@/tests/helpers/dispatchReviewFixtures';
@@ -182,13 +183,13 @@ describe('the sections of a new dispatch', () => {
 });
 
 describe('the sections of an edited dispatch', () => {
-  it('has no PHOTOS section, says "Save changes", and keeps the edit hint as the table note', async () => {
+  it('has no PHOTOS section, says "Save dispatch", and keeps the edit hint as the table note', async () => {
     await render('edit');
 
     expect(tree.root.findAll((n) => n.props.testID === 'dispatch-review-section-photos')).toHaveLength(0);
     expect(textOf(tree.root)).not.toContain('PHOTOS');
     expect(sectionsOpen()).toEqual(['items']);
-    expect(pressable('dispatch-review-submit').props.accessibilityLabel).toBe('Save changes');
+    expect(pressable('dispatch-review-submit').props.accessibilityLabel).toBe('Save dispatch');
     expect(textOf(tree.root.find((n) => n.props.testID === 'dispatch-review-edit-hint'))).toEqual(['Check the details before you save. Saving updates stock levels.']);
   });
 
@@ -197,8 +198,8 @@ describe('the sections of an edited dispatch', () => {
     expect(tree.root.findAll((n) => n.props.testID === 'dispatch-review-edit-hint')).toHaveLength(0);
   });
 
-  it('after the save, the success dialog goes to the dispatch page', async () => {
-    mockForm.submitForm.mockResolvedValue({ success: true });
+  it('after the save of an edit that carries order notes, the success dialog goes to the dispatch page', async () => {
+    mockForm.submitForm.mockResolvedValue({ success: true, orderSynced: true });
     await render('edit');
     await act(async () => { pressable('dispatch-review-submit').props.onPress(); });
     const dialogs = () => tree.root.findAllByType('ConfirmDialog' as never);
@@ -211,6 +212,19 @@ describe('the sections of an edited dispatch', () => {
     const { router } = jest.requireMock('expo-router');
     expect(router.dismissTo).toHaveBeenCalledWith('/dispatch-details/route-dispatch');
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('after the save of an edit with no order notes, no dialog: a toast names the dispatch and the page is shown', async () => {
+    mockForm.submitForm.mockResolvedValue({ success: true });
+    await render('edit');
+    await act(async () => { pressable('dispatch-review-submit').props.onPress(); });
+    const dialogs = () => tree.root.findAllByType('ConfirmDialog' as never);
+    await act(async () => { dialogs()[0].props.onConfirm(); });
+    await act(async () => { dialogs().forEach((dialog) => dialog.props.onDismissed?.()); });
+    expect(dialogs().find((dialog) => dialog.props.title === 'Dispatch I0042 saved')!.props.visible).toBe(false);
+    expect(showToast).toHaveBeenCalledWith('Dispatch I0042 saved.');
+    const { router } = jest.requireMock('expo-router');
+    expect(router.dismissTo).toHaveBeenCalledWith('/dispatch-details/route-dispatch');
   });
 });
 

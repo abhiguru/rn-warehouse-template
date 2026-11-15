@@ -89,6 +89,8 @@ export interface GenericStepIndicatorHeaderProps {
   cancelTitle?: string;
   /** Message for cancel confirmation alert */
   cancelMessage?: string;
+  /** The leave question's destructive button; "Discard" by default (e.g. "Discard dispatch", "Discard changes"). */
+  discardText?: string;
   /** Optional callback when step pill is tapped (for navigation) */
   onStepPress?: (stepNumber: number) => void;
   /**
@@ -161,6 +163,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   entityName: entityNameProp,
   entityId,
   cancelTitle,
+  discardText,
   cancelMessage: cancelMessageProp,
   onStepPress,
   backOnFirstStep,
@@ -233,7 +236,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
           style: 'cancel',
         },
         {
-          text: waiting ? tr('orders.catalog.leaveAnyway') : tr('common.discard'),
+          text: waiting ? tr('orders.catalog.leaveAnyway') : (discardText ?? tr('common.discard')),
           style: 'destructive',
           onPress: onCancel,
         },

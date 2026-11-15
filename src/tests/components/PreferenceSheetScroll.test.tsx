@@ -2,12 +2,12 @@
  * WH-199: the customer form's State picker (about 37 choices) could not be scrolled, so Gujarat could not be chosen.
  * PreferenceSheet now puts its choices in a ScrollView: more than 8 choices make the sheet tall and scrollable, a short list
  * keeps a maximum height, and the selected row is scrolled into view when the sheet opens (measured, not computed).
+ * (WH-211: the customer State picker moved to the searchable sheet; see CustomerStateSheet.test.tsx.)
  */
 import React from 'react';
 import { Dimensions, ScrollView, Text } from 'react-native';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { PreferenceSheet, type PreferenceOption } from '@/features/settings/components/PreferenceSheet';
-import { CustomerStatePicker } from '@/features/gst/CustomerStatePicker';
 import { ItemGstTreatment } from '@/features/gst/ItemGstTreatment';
 import { INDIAN_STATES } from '@/features/gst/indianStates';
 import { t as tr } from '@/i18n';
@@ -178,44 +178,6 @@ describe('PreferenceSheet with a short list (language)', () => {
   it('renders nothing when not visible', async () => {
     await render(<PreferenceSheet visible={false} title="T" options={short} selected="en" onSelect={jest.fn()} onClose={jest.fn()} />);
     expect(tree!.root.findAllByType(ScrollView)).toHaveLength(0);
-  });
-});
-
-describe('the customer form State picker', () => {
-  it('opens a tall scrolling sheet with Gujarat selectable: it calls onChange("Gujarat") and closes', async () => {
-    const onChange = jest.fn();
-    await render(<CustomerStatePicker value="" onChange={onChange} />);
-    expect(tree!.root.findAllByType(ScrollView)).toHaveLength(0);
-    await act(async () => tree!.root.findByProps({ testID: 'customer-state-picker' }).props.onPress());
-    const scroll = tree!.root.findByType(ScrollView);
-    expect(scroll.props.testID).toBe('customer-state-sheet-scroll');
-    expect(sheetStyle().height).toBe('88%');
-    expect(rows()).toHaveLength(INDIAN_STATES.length + 1);
-    const lastName = INDIAN_STATES[INDIAN_STATES.length - 1].name;
-    expect(rowByLabel(lastName)).toBeDefined();
-    await act(async () => rowByLabel('Gujarat')!.props.onPress());
-    expect(onChange).toHaveBeenCalledWith('Gujarat');
-    expect(tree!.root.findAllByType(ScrollView)).toHaveLength(0);
-  });
-
-  it('with Gujarat already saved, the sheet opens with Gujarat selected and scrolls to it once measured', async () => {
-    await render(<CustomerStatePicker value="Gujarat" onChange={jest.fn()} />);
-    await act(async () => tree!.root.findByProps({ testID: 'customer-state-picker' }).props.onPress());
-    const scrollTo = jest.fn();
-    (tree!.root.findByType(ScrollView).instance as { scrollTo?: unknown }).scrollTo = scrollTo;
-    const selected = rows().filter(n => n.props.accessibilityState?.selected === true);
-    expect(selected).toHaveLength(1);
-    act(() => selected[0].props.onLayout({ nativeEvent: { layout: { x: 0, y: 700, width: 300, height: 48 } } }));
-    expect(scrollTo).toHaveBeenCalledWith({ y: 700, animated: false });
-  });
-
-  it('Done closes the sheet without changing the state', async () => {
-    const onChange = jest.fn();
-    await render(<CustomerStatePicker value="Gujarat" onChange={onChange} />);
-    await act(async () => tree!.root.findByProps({ testID: 'customer-state-picker' }).props.onPress());
-    await act(async () => buttonByLabel(tr('common.done'))[0].props.onPress());
-    expect(tree!.root.findAllByType(ScrollView)).toHaveLength(0);
-    expect(onChange).not.toHaveBeenCalled();
   });
 });
 

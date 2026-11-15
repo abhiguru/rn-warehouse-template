@@ -96,7 +96,7 @@ jest.mock('@/components/InvoiceStepIndicator', () => {
   };
 });
 
-const NEXT = 'Next: items';
+const NEXT = 'Next';
 const GRN = '11111111-2222-4333-8444-555555555555';
 const CUSTOMER = '22222222-3333-4444-8555-666666666666';
 const LINE = '33333333-4444-4555-8666-777777777777';

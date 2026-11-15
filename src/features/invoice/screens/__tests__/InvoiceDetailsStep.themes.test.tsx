@@ -85,7 +85,7 @@ describe.each([['create', InvoiceFormStep1], ['edit', InvoiceEditStep1]] as cons
       expect(flat(scroll.props.contentContainerStyle).paddingBottom).toBeGreaterThan(space.xxl);
 
       const labels = tree.root.findAll((node) => node.props.accessibilityRole === 'button' && typeof node.props.onPress === 'function').map((node) => node.props.accessibilityLabel);
-      expect(labels).toContain('Next: items');
+      expect(labels).toContain('Next');
       expect(labels).not.toContain('Back');
       await act(async () => { tree.unmount(); });
     });

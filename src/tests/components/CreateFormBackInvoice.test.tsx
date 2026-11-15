@@ -132,8 +132,8 @@ describe('Back on step 1 of a new invoice', () => {
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question()).toEqual({
       title: 'Discard this invoice?',
-      message: 'The details you entered for this invoice will be lost.',
-      buttons: [{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard', style: 'destructive' }],
+      message: 'The details you entered will be lost.',
+      buttons: [{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard invoice', style: 'destructive' }],
       options: { cancelable: true },
     });
     expect(router.replace).not.toHaveBeenCalled();
@@ -150,7 +150,7 @@ describe('Back on step 1 of a new invoice', () => {
     // The X: its question, then what its "Discard" does.
     await act(async () => { close.props.onPress(); });
     const fromX = question();
-    await answer('Discard');
+    await answer('Discard invoice');
     const afterX = {
       reset: mockForm.resetFormState.mock.calls.length,
       // The Invoices tab, named (src/tests/navigation/InvoiceFormStack.test.tsx).
@@ -164,7 +164,7 @@ describe('Back on step 1 of a new invoice', () => {
     // Back: the same question, and the same on "Discard".
     await pressBack();
     expect(question()).toEqual(fromX);
-    await answer('Discard');
+    await answer('Discard invoice');
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
     expect(router.back).not.toHaveBeenCalled();

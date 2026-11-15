@@ -22,7 +22,8 @@ export interface ContactDetails {
 
 interface ContactCardProps {
   type: string;
-  name: string;
+  /** Optional: a card with no name (a contact person with only a number) shows the type alone, and the actions read the type in the name's place. */
+  name?: string;
   phone?: string;
   email?: string;
   iconName: IconName;
@@ -68,14 +69,16 @@ export const ContactCard: React.FC<ContactCardProps> = ({
   const phone = phoneProp?.trim() || undefined;
   const email = emailProp?.trim() || undefined;
   const displayPhone = phone ? formatContactPhone(phone) : undefined;
+  const nameText = name?.trim() || undefined;
+  const actionName = nameText ?? type;
 
   return (
     <View style={[overviewStyles.card, colorStyles.card]}>
       <View style={overviewStyles.cardClip}>
         {/* Object cell header */}
-        <View style={overviewStyles.objectCellHeader} accessible accessibilityLabel={`${type}, ${name}`}>
+        <View style={overviewStyles.objectCellHeader} accessible accessibilityLabel={nameText ? `${type}, ${nameText}` : type}>
           {avatarId ? (
-            <Avatar id={avatarId} name={name} size="md" style={overviewStyles.avatarGap} />
+            <Avatar id={avatarId} name={nameText ?? type} size="md" style={overviewStyles.avatarGap} />
           ) : (
             <View style={[overviewStyles.avatar, { backgroundColor: iconBgColor }]}>
               <Icon name={iconName} size={iconSize.lg} color={iconColor} />
@@ -84,12 +87,12 @@ export const ContactCard: React.FC<ContactCardProps> = ({
 
           <View style={overviewStyles.objectCellContent}>
             <Text style={[overviewStyles.objectCellLabel, colorStyles.objectCellLabel]}>{type}</Text>
-            <Text
+            {nameText ? <Text
               style={[overviewStyles.objectCellHeadline, colorStyles.objectCellHeadline]}
               numberOfLines={2}
             >
-              {name}
-            </Text>
+              {nameText}
+            </Text> : null}
           </View>
         </View>
 
@@ -104,7 +107,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
                 ]}
                 onPress={() => handlePhonePress(phone)}
                 accessibilityRole="button"
-                accessibilityLabel={t('components.contact.call', { name, phone: displayPhone })}
+                accessibilityLabel={t('components.contact.call', { name: actionName, phone: displayPhone })}
               >
                 <View style={[overviewStyles.contactActionIcon, colorStyles.contactActionIcon]}>
                   <Icon name="phone-outline" size={iconSize.md} color={colorStyles.iconBrand} />
@@ -126,7 +129,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
                 ]}
                 onPress={() => handleEmailPress(email)}
                 accessibilityRole="button"
-                accessibilityLabel={t('components.contact.email', { name, email })}
+                accessibilityLabel={t('components.contact.email', { name: actionName, email })}
               >
                 <View style={[overviewStyles.contactActionIcon, colorStyles.contactActionIcon]}>
                   <Icon name="email-outline" size={iconSize.md} color={colorStyles.iconBrand} />

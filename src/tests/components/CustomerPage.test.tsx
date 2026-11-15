@@ -71,6 +71,7 @@ it('shows the name, the grouped mobile, the city under Address and no empty sect
   expect(text).toContain('Rajkot');
   expect(text).not.toContain('TAX DETAILS');
   expect(text).not.toContain('CONTACT PERSON');
+  expect(text).not.toContain('Contact person');
   expect(screen.root.findAllByType(TextInput)).toHaveLength(0);
 });
 
@@ -116,8 +117,10 @@ it('shows the sections that have a value: tax details and the contact person', a
   const text = shownText(screen);
   expect(text).toContain('TAX DETAILS');
   expect(text).toContain('22AAAAA0000A1Z5');
-  expect(text).toContain('CONTACT PERSON');
+  // WH-211: the contact person is a card (name, tappable mobile) in place of a CONTACT PERSON section.
+  expect(text).toContain('Contact person');
   expect(text).toContain('Test Person');
+  expect(text).toContain('+91 99999 00399');
 });
 
 it('shows a retry when the customer cannot be opened', async () => {

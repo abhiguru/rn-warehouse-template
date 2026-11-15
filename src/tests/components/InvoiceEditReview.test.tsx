@@ -59,7 +59,7 @@ const shown = (tree: ReactTestRenderer) =>
   tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
 const pressUpdate = async (tree: ReactTestRenderer) => {
   const button = tree.root.find(
-    (node) => node.props.accessibilityLabel === t('invoice.review.updateInvoice') && typeof node.props.onPress === 'function'
+    (node) => node.props.accessibilityLabel === t('invoice.review.saveInvoice') && typeof node.props.onPress === 'function'
   );
   await act(async () => { await button.props.onPress(); });
 };
@@ -110,7 +110,7 @@ describe('the total of an updated invoice', () => {
   const confirmUpdate = async (tree: ReactTestRenderer) => {
     await pressUpdate(tree);
     const dialog = shown(tree)[0];
-    expect(dialog.props.confirmText).toBe(t('invoice.review.updateInvoice'));
+    expect(dialog.props.confirmText).toBe(t('invoice.review.saveInvoice'));
     await act(async () => { await dialog.props.onConfirm(); });
     // The invoice dialog opens once the question has finished closing.
     await act(async () => { dialog.props.onDismissed(); });

@@ -106,7 +106,7 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
   onCancel,
   showCancelButton = true,
   confirmCancel = true,
-  cancelMessage = tr('dispatch.wizard.discardCreateMessage'),
+  cancelMessage = tr('dispatch.wizard.discardDetailsMessage'),
   rightAction,
 }) => {
   const insets = useSafeAreaInsets();

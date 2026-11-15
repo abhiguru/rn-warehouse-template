@@ -29,7 +29,7 @@ export interface DispatchStepIndicatorProps {
   completedSteps: number[];
   onCancel: () => void;
   cancelMessage?: string;
-  /** The question the X asks. Default: "Discard this dispatch?" in a new dispatch, "Cancel dispatch" in an edit. */
+  /** The question the X asks. Default: "Discard this dispatch?" in a new dispatch, "Discard changes to this dispatch?" in an edit. */
   cancelTitle?: string;
   dispNo?: string;
   onStepPress?: (stepNumber: number) => void;
@@ -65,8 +65,9 @@ export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
       mode={isEditMode ? 'edit' : 'create'}
       entityName={isEditMode ? t('dispatch.wizard.editTitle') : t('dispatch.wizard.createTitle')}
       entityId={dispNo}
-      cancelTitle={cancelTitle ?? (isEditMode ? t('dispatch.wizard.cancelDispatch') : t('dispatch.wizard.discardTitle'))}
-      cancelMessage={cancelMessage}
+      cancelTitle={cancelTitle ?? (isEditMode ? t('dispatch.wizard.discardChangesTitle') : t('dispatch.wizard.discardTitle'))}
+      cancelMessage={cancelMessage ?? (isEditMode ? t('dispatch.wizard.discardChangesMessage') : t('dispatch.wizard.discardDetailsMessage'))}
+      discardText={isEditMode ? t('dispatch.wizard.discardChanges') : t('dispatch.wizard.discardDispatch')}
       onStepPress={onStepPress}
       backOnFirstStep={backOnFirstStep}
       disabled={disabled}

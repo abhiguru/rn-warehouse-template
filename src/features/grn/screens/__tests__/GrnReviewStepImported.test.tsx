@@ -103,7 +103,7 @@ async function render() {
 }
 const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
 const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
-const saveDialog = (tree: ReactTestRenderer) => dialogs(tree).find(d => d.props.title === 'Save changes to this GRN?')!;
+const saveDialog = (tree: ReactTestRenderer) => dialogs(tree).find(d => d.props.title === 'Save changes to GRN A0010?')!;
 const press = async (tree: ReactTestRenderer) => { await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); }); };
 const confirm = async (tree: ReactTestRenderer) => { await act(async () => { await saveDialog(tree).props.onConfirm(); }); };
 

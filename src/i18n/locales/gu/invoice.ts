@@ -36,14 +36,17 @@ export const invoice: Translation<typeof source> = {
   },
   // The step header of the create and edit wizard
   steps: {
-    details: 'વિગતો',
+    details: 'ઇન્વૉઇસની વિગતો',
+    detailsShort: 'વિગતો',
     items: 'આઇટમ',
     review: 'ચકાસણી',
-    editInvoice: 'ઇન્વૉઇસમાં ફેરફાર',
+    editInvoice: 'ઇન્વૉઇસમાં ફેરફાર કરો',
     discardEditTitle: 'આ ઇન્વૉઇસના ફેરફાર છોડી દેવા છે?',
     discardNewTitle: 'આ ઇન્વૉઇસ છોડી દેવું છે?',
     discardEditMessage: 'આ ઇન્વૉઇસમાં કરેલા ફેરફાર જતા રહેશે.',
-    discardNewMessage: 'આ ઇન્વૉઇસ માટે લખેલી વિગતો જતી રહેશે.',
+    discardNewMessage: 'તમે ભરેલી વિગતો જતી રહેશે.',
+    discardInvoice: 'ઇન્વૉઇસ છોડી દો',
+    discardChanges: 'ફેરફાર છોડી દો',
     // Draft for the owner's wording review (2026-10-20): the close button's question while the server is asked about a save or delete whose answer was lost (D22).
     lostLeaveTitle: 'જવાબ મળ્યા વગર છોડવું છે?',
   },
@@ -102,7 +105,6 @@ export const invoice: Translation<typeof source> = {
     customerPlaceholder: 'આવક પાવતી પસંદ કરશો એટલે ભરાઈ જશે',
     oneTimeChargeHelp:
       "આવક પાવતીની ભાડાની રીત પરથી લેવાય છે; તે આવક પાવતીમાં બદલો. એક વખત: દરેક નંગનું ભાડું એક જ વાર, મજૂરી વગર. માસિક: જેટલા મહિના રાખ્યું તેટલા મહિનાનું ભાડું, અને મજૂરી.",
-    nextItems: 'આગળ: આઇટમ',
     checkDetailsTitle: 'ઇન્વૉઇસની વિગતો તપાસો',
     fixFields: {
       one: 'લાલ નિશાનીવાળી વિગત સુધારો, પછી આગળ વધો.',
@@ -151,7 +153,6 @@ export const invoice: Translation<typeof source> = {
       other: 'નિશાનવાળા {{count}} આંકડા સુધારો, પછી આગળ વધો.',
     },
     backToDetails: 'વિગતો પર પાછા જાઓ',
-    nextReview: 'આગળ: ચકાસણી',
     emptyText: 'પસંદ કરેલી જાવકની આઇટમ અહીં દેખાશે.',
     hint: 'બદલવા માટે આંકડા પર ટૅપ કરો.',
     howPricingWorks: 'દર કેવી રીતે લાગુ પડે છે',
@@ -271,10 +272,12 @@ export const invoice: Translation<typeof source> = {
     editItemsA11y: 'આઇટમમાં ફેરફાર કરો',
     amounts: 'રકમ',
     backToItems: 'આઇટમ પર પાછા જાઓ',
+    createInvoice: 'ઇન્વૉઇસ બનાવો',
     saveInvoice: 'ઇન્વૉઇસ સાચવો',
-    updateInvoice: 'ઇન્વૉઇસ અપડેટ કરો',
-    saveTitle: 'ઇન્વૉઇસ {{number}} સાચવવું છે?',
-    updateTitle: 'ઇન્વૉઇસ {{number}} અપડેટ કરવું છે?',
+    creating: 'ઇન્વૉઇસ બની રહ્યું છે…',
+    saving: 'ઇન્વૉઇસ સચવાઈ રહ્યું છે…',
+    saveTitle: 'ઇન્વૉઇસ {{number}} બનાવવું છે?',
+    updateTitle: 'ઇન્વૉઇસ {{number}}ના ફેરફાર સાચવવા છે?',
     // Draft for the owner's wording review (2026-10-20): the server checks the total shown here.
     confirmMessage: '{{customer}}\nકુલ {{total}}\nસર્વર જુદી કુલ રકમ ગણે તો કંઈ સચવાશે નહીં અને નવી રકમ બતાવાશે.',
     // Added to the question before saving, for every role, when lines have a charge of 0.
@@ -321,7 +324,7 @@ export const invoice: Translation<typeof source> = {
     savedTitle: 'ઇન્વૉઇસ સચવાઈ ગયું',
     updatedTitle: 'ઇન્વૉઇસ અપડેટ થયું',
     savedMessage: 'ઇન્વૉઇસ {{number}} સચવાઈ ગયું છે.',
-    updatedMessage: 'ઇન્વૉઇસ {{number}} અપડેટ થઈ ગયું છે.',
+    updatedMessage: 'ઇન્વૉઇસ {{number}} સચવાયું.',
     detailsA11y: 'ઇન્વૉઇસ {{number}}, નાણાકીય વર્ષ {{year}}, {{customer}}',
     detailsWithTotalA11y: 'ઇન્વૉઇસ {{number}}, નાણાકીય વર્ષ {{year}}, {{customer}}, કુલ {{total}}',
     totalNotRead: 'સચવાયેલી કુલ રકમ વાંચી શકાઈ નથી. તે જોવા માટે ઇન્વૉઇસ ખોલો.',

@@ -143,7 +143,7 @@ describe('Back on step 1 of a new GRN', () => {
     expect(question()).toEqual({
       title: 'Discard this GRN?',
       message: 'The details you entered will be lost.',
-      buttons: [{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard', style: 'destructive' }],
+      buttons: [{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard GRN', style: 'destructive' }],
       options: { cancelable: true },
     });
     expect(router.replace).not.toHaveBeenCalled();
@@ -170,7 +170,7 @@ describe('Back on step 1 of a new GRN', () => {
     const tree = await render();
     await pressBack();
 
-    await answer('Discard');
+    await answer('Discard GRN');
 
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledTimes(1);
@@ -280,7 +280,7 @@ describe('Back on step 1 of a GRN that is being edited', () => {
     expect(await pressBack()).toBe(true);
     expect(showAlert).toHaveBeenCalledTimes(1);
     const fromBack = question();
-    expect(fromBack.buttons).toEqual([{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard', style: 'destructive' }]);
+    expect(fromBack.buttons).toEqual([{ text: 'Keep editing', style: 'cancel' }, { text: 'Discard changes', style: 'destructive' }]);
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
 
@@ -299,7 +299,7 @@ describe('Back on step 1 of a GRN that is being edited', () => {
     expect(router.replace).not.toHaveBeenCalled();
 
     await pressBack();
-    await answer('Discard');
+    await answer('Discard changes');
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/grn');
     await act(async () => { tree.unmount(); });

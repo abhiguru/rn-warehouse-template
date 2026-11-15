@@ -96,7 +96,7 @@ afterEach(() => { Platform.OS = realOS; });
 beforeEach(() => { jest.spyOn(console, 'error').mockImplementation(() => {}); });
 
 const barPadding = (tree: ReactTestRenderer) => {
-  const next = tree.root.find((n) => n.props.accessibilityLabel === 'Next: review' && typeof n.props.onPress === 'function');
+  const next = tree.root.find((n) => n.props.accessibilityLabel === 'Review' && typeof n.props.onPress === 'function');
   let node = next.parent;
   while (node) {
     const style = StyleSheet.flatten(node.props.style);

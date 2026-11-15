@@ -82,7 +82,7 @@ describe('How pricing works', () => {
 describe('Next', () => {
   it('goes to the review with nothing wrong', async () => {
     const tree = await render();
-    await press(tree, 'Next: review');
+    await press(tree, 'Review');
     expect(mockNavigateToStep).toHaveBeenCalledWith(3);
   });
 
@@ -94,7 +94,7 @@ describe('Next', () => {
     await act(async () => { cell.props.onFocus({}); });
     await act(async () => { cell.props.onChangeText('1000000'); });
 
-    await press(tree, 'Next: review');
+    await press(tree, 'Review');
 
     expect(mockNavigateToStep).not.toHaveBeenCalled();
     expect(announce).toHaveBeenCalledWith('Fix the highlighted figure, then continue.');

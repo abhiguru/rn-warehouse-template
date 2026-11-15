@@ -44,7 +44,7 @@ async function render() {
 }
 const pressNext = async (tree: ReactTestRenderer) => {
   const next = tree.root.find(
-    (node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Next: review' && typeof node.props.onPress === 'function'
+    (node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Review' && typeof node.props.onPress === 'function'
   );
   await act(async () => { await next.props.onPress(); });
 };
