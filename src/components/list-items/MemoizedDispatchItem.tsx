@@ -20,6 +20,7 @@ import { formatPackages, sharedPackaging } from '@/utils/packagingWord';
 import { formatDate, formatSpokenDate, formatCount, formatNumber, formatWeightEach } from '@/utils/formatters';
 import { t as translate, formatIdentifier } from '@/i18n';
 import { ImportedTag } from '@/components/ui/ImportedTag';
+import { getDispatchStatus } from '@/utils/dispatchStatus';
 import type { Dispatch } from '@/services/dispatch-service';
 import { PrintSwipe } from './PrintSwipe';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -84,22 +85,6 @@ export interface MemoizedDispatchItemProps {
 // ============================================================================
 // STATUS HELPERS (guide §3.5)
 // ============================================================================
-
-type StatusKind = 'positive' | 'critical';
-
-interface StatusConfig {
-  kind: StatusKind;
-  label: string;
-  icon: IconName;
-}
-
-const getDispatchStatus = (dispatch: Dispatch): StatusConfig => {
-  // Determine status based on total_qty
-  if (dispatch.total_qty && dispatch.total_qty > 0) {
-    return { kind: 'positive', label: translate('lists.dispatch.statusComplete'), icon: 'check-circle' };
-  }
-  return { kind: 'critical', label: translate('common.pending'), icon: 'alert' };
-};
 
 // ============================================================================
 // STYLES - SAP Fiori Object Cell

@@ -3,7 +3,7 @@
  *
  * Object page header on surface.card (docs/STYLE_GUIDE.md §13.8):
  * document type, number, customer and date, then key facts
- * (items and bags). Never brand-filled.
+ * (items and bags), and the status tag. Never brand-filled.
  */
 
 import React from 'react';
@@ -16,6 +16,8 @@ import { formatPackages, packLabel } from '@/utils/packagingWord';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 import { ImportedTag } from '@/components/ui/ImportedTag';
+import { StatusTag } from '@/components/ui/StatusTag';
+import { getDispatchStatus } from '@/utils/dispatchStatus';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend
@@ -47,6 +49,14 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: t.border.divider,
   },
+  titleRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    justifyContent: 'space-between' as const,
+    gap: space.sm,
+  },
+  titleBlock: { flex: 1 },
+  tag: { marginTop: space.xs },
   docType: {
     ...typography.footnote,
     color: t.text.secondary,
@@ -115,18 +125,24 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
   const safeItems = Number(total_items) || 0;
   const safeQuantity = Number(total_quantity) || 0;
   const dateLabel = toDate(date) ? formatDate(date) : '';
+  const status = getDispatchStatus({ total_qty: safeQuantity });
   const subtitle = [customer_name, dateLabel].filter(Boolean).join(' · ');
 
   return (
     <View style={[styles.surface, compact && styles.surfaceCompact]}>
-      {/* From the compact scale the title bar ("Dispatch <number>") already shows these two. */}
-      {!compact && <Text style={styles.docType} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('common.dispatch')}</Text>}
-      {!compact && !!disp_no && (
-        <Text style={styles.number} accessibilityRole="header" maxFontSizeMultiplier={HEADER_TEXT_CAP}>
-          {disp_no}
-        </Text>
-      )}
-      {!!subtitle && <Text style={[styles.subtitle, compact && styles.subtitleCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{subtitle}</Text>}
+      <View style={styles.titleRow}>
+        <View style={styles.titleBlock}>
+          {/* From the compact scale the title bar ("Dispatch <number>") already shows these two. */}
+          {!compact && <Text style={styles.docType} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('common.dispatch')}</Text>}
+          {!compact && !!disp_no && (
+            <Text style={styles.number} accessibilityRole="header" maxFontSizeMultiplier={HEADER_TEXT_CAP}>
+              {disp_no}
+            </Text>
+          )}
+          {!!subtitle && <Text style={[styles.subtitle, compact && styles.subtitleCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{subtitle}</Text>}
+        </View>
+        <StatusTag status={status.kind} icon={status.icon} label={status.label} style={styles.tag} testID="dispatch-status-tag" />
+      </View>
 
       {imported ? <ImportedTag style={styles.importedTag} testID="dispatch-imported-tag" /> : null}
 
