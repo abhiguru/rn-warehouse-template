@@ -10,6 +10,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
@@ -96,28 +97,6 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
   },
   // Full-screen error and not-found states (style guide §13.6)
-  stateContainer: {
-    alignItems: 'center' as const,
-    paddingHorizontal: space.xxxl,
-    maxWidth: 420,
-    gap: space.sm,
-  },
-  stateTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.sm,
-  },
-  stateMessage: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-  },
-  stateActions: {
-    alignSelf: 'stretch' as const,
-    gap: space.sm,
-  },
   // Header back button
   // Custom back button (same on every headerless screen): platform glyph,
   // brand.tint, the word "Back", at least touchTarget in size (§8)
@@ -777,44 +756,24 @@ function GRNDetailScreen() {
           {loading ? (
             <DetailSkeleton tabCount={4} cardCount={4} />
           ) : displayError ? (
-            <View style={styles.stateContainer} accessibilityLiveRegion="polite">
-              <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-              <Text style={styles.stateTitle} accessibilityRole="header">
-                {tr('grn.details.loadFailedTitle')}
-              </Text>
-              <Text style={styles.stateMessage}>{displayError}</Text>
-              <View style={styles.stateActions}>
-                <Button
-                  type="secondary"
-                  variant="tint"
-                  size="fullWidth"
-                  onPress={() => {
-                    setLoading(true);
-                    fetchGRNDetails();
-                  }}
-                >
-                  {tr('common.retry')}
-                </Button>
-                <Button type="tertiary" variant="tint" size="fullWidth" onPress={() => router.back()}>
-                  {tr('common.goBack')}
-                </Button>
-              </View>
-            </View>
+            <ErrorStateView
+              title={tr('grn.details.loadFailedTitle')}
+              message={displayError}
+              onRetry={() => {
+                setLoading(true);
+                fetchGRNDetails();
+              }}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           ) : (
-            <View style={styles.stateContainer}>
-              <Icon name="package-down" size={iconSize.hero} color={t.icon.secondary} />
-              <Text style={styles.stateTitle} accessibilityRole="header">
-                {tr('grn.details.notFoundTitle')}
-              </Text>
-              <Text style={styles.stateMessage}>
-                {tr('grn.details.notFoundMessage')}
-              </Text>
-              <View style={styles.stateActions}>
-                <Button type="secondary" variant="tint" size="fullWidth" onPress={() => router.back()}>
-                  {tr('common.goBack')}
-                </Button>
-              </View>
-            </View>
+            <ErrorStateView
+              icon="package-down"
+              title={tr('grn.details.notFoundTitle')}
+              message={tr('grn.details.notFoundMessage')}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           )}
         </View>
       </>

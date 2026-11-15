@@ -15,6 +15,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, Platform, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
@@ -78,57 +79,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   tabContent: {
     flex: 1,
-  },
-  errorContainer: {
-    alignItems: 'center' as const,
-    padding: space.xl,
-    maxWidth: 320,
-  },
-  errorTitle: {
-    ...typography.title3,
-    marginTop: space.lg,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-  },
-  errorMessage: {
-    ...typography.subhead,
-    marginTop: space.sm,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-  },
-  retryButton: {
-    marginTop: space.xl,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xl,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    gap: space.sm,
-  },
-  retryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  retryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
-  },
-  tertiaryButton: {
-    marginTop: space.sm,
-    minHeight: touchTarget,
-    justifyContent: 'center' as const,
-    paddingHorizontal: space.xl,
-    borderRadius: radius.button,
-  },
-  tertiaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  tertiaryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
   },
   headerTitle: {
     ...typography.headline,
@@ -470,47 +420,25 @@ function DispatchDetailScreen() {
           {loading ? (
             <DetailSkeleton tabCount={5} cardCount={3} />
           ) : error ? (
-            <View style={styles.errorContainer}>
-              <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-              <Text style={styles.errorTitle} accessibilityRole="header">{tr('dispatch.details.loadFailedTitle')}</Text>
-              <Text style={styles.errorMessage}>{error}</Text>
-              <Pressable
-                style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
-                onPress={() => {
-                  setLoading(true);
-                  fetchDispatchDetails();
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={tr('dispatch.details.retryLoad')}
-              >
-                <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-                <Text style={styles.retryButtonText}>{tr('common.retry')}</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.tertiaryButton, pressed && styles.tertiaryButtonPressed]}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.goBack')}
-              >
-                <Text style={styles.tertiaryButtonText}>{tr('common.goBack')}</Text>
-              </Pressable>
-            </View>
+            <ErrorStateView
+              title={tr('dispatch.details.loadFailedTitle')}
+              message={error}
+              onRetry={() => {
+                setLoading(true);
+                fetchDispatchDetails();
+              }}
+              retryAccessibilityLabel={tr('dispatch.details.retryLoad')}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           ) : (
-            <View style={styles.errorContainer}>
-              <Icon name="truck-delivery-outline" size={iconSize.hero} color={t.icon.secondary} />
-              <Text style={styles.errorTitle} accessibilityRole="header">{tr('dispatch.details.notFoundTitle')}</Text>
-              <Text style={styles.errorMessage}>
-                {tr('dispatch.details.notFoundMessage')}
-              </Text>
-              <Pressable
-                style={({ pressed }) => [styles.tertiaryButton, pressed && styles.tertiaryButtonPressed]}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.goBack')}
-              >
-                <Text style={styles.tertiaryButtonText}>{tr('common.goBack')}</Text>
-              </Pressable>
-            </View>
+            <ErrorStateView
+              icon="truck-delivery-outline"
+              title={tr('dispatch.details.notFoundTitle')}
+              message={tr('dispatch.details.notFoundMessage')}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           )}
         </View>
       </>

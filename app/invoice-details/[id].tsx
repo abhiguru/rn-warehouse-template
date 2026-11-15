@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, Pressable, Platform, BackHandler } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
+import { ErrorStateView } from '@/components/ErrorBoundary';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -82,26 +83,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.background.base,
   },
   tabContent: { flex: 1 },
-  errorContainer: {
-    alignItems: 'center' as const,
-    padding: space.xl,
-    maxWidth: layout.maxFormWidth,
-    gap: space.sm,
-  },
-  errorTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const, marginTop: space.lg },
-  errorMessage: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const, marginBottom: space.lg },
-  secondaryButton: {
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.lg,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-  },
-  secondaryButtonPressed: { backgroundColor: t.brand.subtle },
-  secondaryButtonText: { ...typography.callout, color: t.brand.tint },
   navBar: { backgroundColor: t.surface.header },
   headerTitleContainer: { alignItems: 'center' as const, justifyContent: 'center' as const },
   headerTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' as const },
@@ -544,59 +525,25 @@ function InvoiceDetailScreen() {
           {loading ? (
             <DetailSkeleton tabCount={3} cardCount={3} />
           ) : loadFailed ? (
-            <View style={styles.errorContainer} accessibilityLiveRegion="polite">
-              <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-              <Text style={styles.errorTitle} accessibilityRole="header">
-                {tr('invoice.edit.loadFailedTitle')}
-              </Text>
-              <Text style={styles.errorMessage}>{tr('common.checkConnection')}</Text>
-              <Pressable
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                onPress={() => {
-                  setLoadFailed(false);
-                  setLoading(true);
-                  void fetchInvoiceDetails();
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.retry')}
-                testID="invoice-load-retry"
-              >
-                <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.goBack')}
-              >
-                <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
-              </Pressable>
-            </View>
+            <ErrorStateView
+              title={tr('invoice.details.loadFailedTitle')}
+              message={tr('invoice.details.loadFailed')}
+              onRetry={() => {
+                setLoadFailed(false);
+                setLoading(true);
+                void fetchInvoiceDetails();
+              }}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           ) : (
-            <View style={styles.errorContainer}>
-              <Icon
-                name="file-document-outline"
-                size={iconSize.hero}
-                color={t.icon.secondary}
-              />
-              <Text style={styles.errorTitle} accessibilityRole="header">
-                {tr(gone ? 'invoice.details.deletedGoneTitle' : 'invoice.details.notFoundTitle')}
-              </Text>
-              <Text style={styles.errorMessage}>
-                {tr(gone ? 'invoice.details.deletedGoneMessage' : 'invoice.details.notFoundMessage')}
-              </Text>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  pressed && styles.secondaryButtonPressed,
-                ]}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel={tr('common.goBack')}
-              >
-                <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
-              </Pressable>
-            </View>
+            <ErrorStateView
+              icon="file-document-outline"
+              title={tr(gone ? 'invoice.details.deletedGoneTitle' : 'invoice.details.notFoundTitle')}
+              message={tr(gone ? 'invoice.details.deletedGoneMessage' : 'invoice.details.notFoundMessage')}
+              secondaryActionLabel={tr('common.goBack')}
+              onSecondaryAction={() => router.back()}
+            />
           )}
         </View>
       </>
