@@ -6,21 +6,24 @@
  * aims at the keyboard's top edge and adds the keyboard's height as empty room at the end of the content, but the
  * bar now sits on the keyboard and the scroll view ends at the bar's top, so both would be wrong. Instead the
  * focused field's block and the bar's top are measured in the window and the content is scrolled by exactly the
- * part that is missing: block bottom + space.sm ≤ bar top. The block is the field with the messages directly under
- * it (each starting within space.xs of the one above), found in the view tree, so a message that wraps to two lines
- * counts in full. Where the view tree cannot be read, one footnote line at the current font scale stands in for it.
+ * part that is missing: block bottom + space.sm ≤ bar top. The block is read from the view tree: the field's box
+ * (the bordered container the input sits in), then the messages directly under it (a helper, an error or a
+ * character count, each starting within space.xs of the one above), so a message that wraps to two lines counts in
+ * full. No room is kept for a message that is not showing: when one appears it is revealed then (below). Where the
+ * view tree cannot be read, one footnote line at the current font scale stands in for the box and its messages.
  * Measuring the bar's top makes the rule hold whatever moved the bar there: the lift on Android when the window does
- * not shrink, the shrunken window (lift 0) and iOS.
+ * not shrink, the shrunken window (lift 0) and iOS. A block taller than the room keeps its bottom in view; the
+ * field's top may scroll out.
  *
  * When it runs: when the keyboard shows, when another field takes the focus, and when the focused block changes
- * height (a multiline field grows, a message appears or wraps); while the keyboard is up these are checked every
- * FOCUS_CHECK_MS, since none of them sends a keyboard event. When the bar's top moves (the lift changed) it runs
+ * height (a multiline field grows, a message appears, wraps or goes); while the keyboard is up these are checked
+ * every FOCUS_CHECK_MS, since none of them sends a keyboard event. When the bar's top moves (the lift changed) it runs
  * again, unless the person has dragged the content since the last reveal. A re-layout that moves nothing does not
  * scroll. A field outside the scroll view (a sheet over the step) is left alone.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { PixelRatio, TextInput } from 'react-native';
-import { space, typography } from '@/theme/tokens';
+import { space, touchTarget, typography } from '@/theme/tokens';
 import type { ViewRef } from '@/types/nativeRefs';
 
 /** A KeyboardAwareScrollView, or a list made with the same library's HOC (KeyboardAwareFlashList). */
@@ -71,21 +74,45 @@ export function roomUnderFocusedField(): number {
 
 /** How often the focus and the focused block are checked while the keyboard is up. */
 const FOCUS_CHECK_MS = 150;
-/** A message starts at most this far under the field (or the message above it); a 1 pt allowance for rounding. */
+/** A message starts at most this far under the field's box (or the message above it); a 1 pt allowance for rounding. */
 const MESSAGE_GAP = space.xs + 1;
-/** How many levels up from the field the block is looked for. */
+/** How many of the input's containers can make up its box (a wrapper, the bordered box, a row of the box and buttons). */
+const MAX_BOX_DEPTH = 3;
+/** How many levels up from the field's box the messages are looked for. */
 const MAX_BLOCK_DEPTH = 6;
 
 /**
- * How far the field's block reaches below the field: the views directly under it (a sibling of the field or of one
- * of its containers that starts within MESSAGE_GAP of the bottom so far), climbing while the container holds nothing
- * further down. Views beside the field (same row) are skipped. Null when the view tree cannot be read.
+ * How far below the input its box may end. Every text input uses the body style: centred in a box at least
+ * touchTarget high, the input leaves at most (touchTarget − body line) / 2 under it (an input that fills a taller box
+ * leaves only the box's border and padding). space.xxs, the 2 dp of an error or focus border, is added as a margin;
+ * it also covers the shorter input of a font scale down to about 0.82. Read when used: the body line follows the
+ * language.
+ */
+function fieldBoxInset(): number {
+  return (touchTarget - typography.body.lineHeight) / 2 + space.xxs;
+}
+
+/**
+ * How far the field's block reaches below the input. First the box: the input's containers, at most MAX_BOX_DEPTH
+ * levels up, that end no more than fieldBoxInset() below the input (each measured from the input, so the box never
+ * reaches further than that); the first container that ends further down holds more than the box, and the climb
+ * stops there. Then the messages: the views directly under the block so far (a sibling of the box or of one of its
+ * containers that starts within MESSAGE_GAP of the bottom so far), climbing while the container holds nothing
+ * further down. Views beside the box (same row) are skipped. Null when the view tree cannot be read.
  */
 function blockBelowField(input: TreeNode): number | null {
   if (typeof input.getBoundingClientRect !== 'function') return null;
   const fieldBottom = input.getBoundingClientRect().bottom;
+  const boxLimit = fieldBottom + fieldBoxInset();
   let bottom = fieldBottom;
   let node: TreeNode = input;
+  for (let depth = 0; depth < MAX_BOX_DEPTH; depth++) {
+    const parent = node.parentElement;
+    const parentRect = parent?.getBoundingClientRect?.();
+    if (!parent || !parentRect || parentRect.bottom > boxLimit) break;
+    node = parent;
+    bottom = Math.max(bottom, parentRect.bottom);
+  }
   for (let depth = 0; depth < MAX_BLOCK_DEPTH; depth++) {
     for (let sibling = node.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
       const rect = sibling.getBoundingClientRect?.();
@@ -101,7 +128,11 @@ function blockBelowField(input: TreeNode): number | null {
   return bottom - fieldBottom;
 }
 
-/** The focused block's height (field and messages), for noticing growth; null when the view tree cannot be read. */
+/**
+ * The focused block's height, from the input's top to the bottom of its box and messages (the block the reveal
+ * measures), for noticing a field that grows or a message that appears, wraps or goes; null when the view tree
+ * cannot be read.
+ */
 function blockHeight(input: unknown): number | null {
   const node = input as TreeNode | null;
   if (!node || typeof node.getBoundingClientRect !== 'function') return null;
@@ -119,13 +150,13 @@ export function useRevealFocusedField(
   keyboardShown: boolean,
   revision: number
 ) {
-  /** What the last reveal saw: the focused field, the bar's top and the block's height. */
+  /** The focused field, the bar's top the last reveal saw, and the block's height that growth is checked against. */
   const last = useRef<{ input: unknown; barTop: number | null; height: number | null }>({ input: null, barTop: null, height: null });
   /** Each reveal takes a number; the answers of an older one are dropped. */
   const runs = useRef(0);
   const wasShown = useRef(false);
 
-  /** `force`: the keyboard showed, the focus moved or the block grew. Otherwise only a moved bar top counts. */
+  /** `force`: the keyboard showed, the focus moved or the block changed height. Otherwise only a moved bar top counts. */
   const reveal = useCallback((force: boolean) => {
     const target = scrollRef?.current;
     const bar = barRef.current;
@@ -185,12 +216,18 @@ export function useRevealFocusedField(
       const now = currentlyFocused();
       if (now !== last.current.input) {
         last.current.input = now;
-        last.current.height = null;
+        // The new field's baseline is taken here, not left to its reveal, which may return early or never answer.
+        last.current.height = blockHeight(now);
         if (now) reveal(true);
         return;
       }
       const height = blockHeight(now);
-      if (height === null || last.current.height === null) return;
+      if (height === null) return;
+      // No baseline yet (the keyboard just showed and its reveal returned early or has not answered): this is it.
+      if (last.current.height === null) {
+        last.current.height = height;
+        return;
+      }
       if (Math.abs(height - last.current.height) >= 1) {
         last.current.height = height;
         reveal(true);
