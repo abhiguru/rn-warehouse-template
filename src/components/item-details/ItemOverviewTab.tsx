@@ -60,7 +60,7 @@ export function ItemOverviewTab({ item, busy, onToggleActive, onDelete }: ItemOv
         <ItemGstTreatment itemId={item.id} />
       </View>
       <View style={styles.footer}>
-        <Button type="tertiary" variant={item.active ? 'negative' : 'tint'} onPress={onToggleActive} disabled={busy}>
+        <Button type="tertiary" variant={item.active ? 'negative' : 'tint'} onPress={onToggleActive} loading={busy} disabled={busy}>
           {tr(item.active ? 'items.list.deactivateItem' : 'items.page.activate')}
         </Button>
         <Button type="tertiary" variant="negative" leftIcon="trash-can-outline" onPress={onDelete} disabled={busy}>
@@ -74,7 +74,7 @@ export function ItemOverviewTab({ item, busy, onToggleActive, onDelete }: ItemOv
 const makeStyles = (t: ThemeTokens) => ({
   scroll: { flex: 1 },
   status: { paddingHorizontal: layout.marginCompact, paddingTop: space.md, alignItems: 'flex-start' as const },
-  cells: { backgroundColor: t.surface.card, paddingHorizontal: layout.marginCompact },
+  cells: { backgroundColor: t.surface.card },
   gst: { paddingTop: space.xl },
   footer: { paddingHorizontal: layout.marginCompact, paddingTop: space.xl, alignItems: 'flex-start' as const, gap: space.sm },
 });
