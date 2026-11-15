@@ -9,7 +9,7 @@ import { View, Text } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
 import { useOverviewStyles, useOverviewColors } from './FioriStyles';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { t } from '@/i18n';
 
 interface NotesSectionProps {
@@ -27,7 +27,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
 
   return (
     <>
-      <SectionHeader title={title} />
+      <SectionHeader title={title} style={overviewStyles.sectionHeaderInset} />
       <View style={[overviewStyles.card, colorStyles.card]}>
         <View style={overviewStyles.notesContent}>
           <Icon

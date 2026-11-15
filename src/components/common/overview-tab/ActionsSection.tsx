@@ -11,7 +11,7 @@ import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
 import { useOverviewStyles, useOverviewColors } from './FioriStyles';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
@@ -143,7 +143,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
 
   return (
     <>
-      <SectionHeader title={t('components.actions.title')} />
+      <SectionHeader title={t('components.actions.title')} style={overviewStyles.sectionHeaderInset} />
       <View style={overviewStyles.actionsContainer}>
         {/* Share PDF Button - Secondary Tint */}
         {showShareButton && (

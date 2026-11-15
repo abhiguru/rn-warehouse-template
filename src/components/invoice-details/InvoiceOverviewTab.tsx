@@ -10,10 +10,11 @@ import React from 'react';
 import { View, Text, ScrollView, Pressable, Linking, StyleSheet } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import {
-  SectionHeader,
   NotesSection,
   ActionsSection,
+  useOverviewStyles,
 } from '@/components/common/overview-tab';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -218,6 +219,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   gst_card,
 }) => {
   const styles = useThemedStyles(makeStyles);
+  const overviewStyles = useOverviewStyles();
   const t = useTokens();
 
   const handlePhonePress = (phone: string) => {
@@ -472,7 +474,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: CUSTOMER */}
       {customer_details && (
         <>
-          <SectionHeader title={tr('common.customer')} />
+          <SectionHeader title={tr('common.customer')} style={overviewStyles.sectionHeaderInset} />
           {renderCustomerCard()}
         </>
       )}
@@ -480,7 +482,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: LINKED GRN */}
       {grn_details && (
         <>
-          <SectionHeader title={tr('invoice.details.reference')} />
+          <SectionHeader title={tr('invoice.details.reference')} style={overviewStyles.sectionHeaderInset} />
           {renderGRNReferenceCard()}
         </>
       )}
@@ -488,13 +490,13 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: DOCUMENT TYPE AND GST (WH-151) */}
       {gst_card ? (
         <>
-          <SectionHeader title={tr('gst.detail.section')} />
+          <SectionHeader title={tr('gst.detail.section')} style={overviewStyles.sectionHeaderInset} />
           {gst_card}
         </>
       ) : null}
 
       {/* SECTION: FINANCIAL SUMMARY */}
-      <SectionHeader title={tr('invoice.details.financialSummary')} />
+      <SectionHeader title={tr('invoice.details.financialSummary')} style={overviewStyles.sectionHeaderInset} />
       {renderFinancialSummaryCard()}
 
       {/* SECTION: NOTES */}

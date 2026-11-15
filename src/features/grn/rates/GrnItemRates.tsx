@@ -25,7 +25,8 @@
 import React, { useCallback, useMemo } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { SectionHeader } from '@/components/common/overview-tab';
+import { useOverviewStyles } from '@/components/common/overview-tab';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import {
   HeaderCell,
   ONE_LINE,
@@ -124,6 +125,7 @@ export interface GrnItemRatesProps {
 export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEdit = false, imported = false, fallbackRates, packaging, packagingByLot }: GrnItemRatesProps) {
   const table = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
+  const overview = useOverviewStyles();
   const th = useTokens();
   const screen = useTableLayout();
   const { rates, priceType, status, retry } = useGrnItemRates(grnId);
@@ -251,7 +253,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
 
   return (
     <>
-      <SectionHeader title={t('grn.rates.title')} />
+      <SectionHeader title={t('grn.rates.title')} style={overview.sectionHeaderInset} />
       <View style={[table.card, own.card]} testID="grn-item-rates">
         {status === 'loading' ? (
           <View style={own.state} testID="grn-item-rates-loading">

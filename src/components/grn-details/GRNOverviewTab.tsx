@@ -10,12 +10,12 @@ import { useTokens } from '@/hooks/useTheme';
 import {
   useOverviewStyles,
   useOverviewColors,
-  SectionHeader,
   ContactCard,
   InfoChip,
   NotesSection,
   ActionsSection,
 } from '@/components/common/overview-tab';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { t as tr } from '@/i18n';
 import { GrnItemRates } from '@/features/grn/rates/GrnItemRates';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
@@ -101,7 +101,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: PARTICIPANTS */}
       {(customer_details || supervisor_details) && (
         <>
-          <SectionHeader title={tr('grn.overview.participants')} />
+          <SectionHeader title={tr('grn.overview.participants')} style={overviewStyles.sectionHeaderInset} />
 
           {customer_details && (
             <ContactCard
@@ -131,7 +131,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: VEHICLE INFORMATION */}
       {registration && (
         <>
-          <SectionHeader title={tr('grn.overview.vehicle')} />
+          <SectionHeader title={tr('grn.overview.vehicle')} style={overviewStyles.sectionHeaderInset} />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
               icon="truck-outline"
@@ -145,7 +145,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: BILLING TYPE */}
       {pricing_mode && (
         <>
-          <SectionHeader title={tr('grn.overview.billing')} />
+          <SectionHeader title={tr('grn.overview.billing')} style={overviewStyles.sectionHeaderInset} />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
               icon={isOneTime ? 'calendar-check' : 'calendar-sync'}

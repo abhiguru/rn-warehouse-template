@@ -11,12 +11,12 @@ import { t as tr } from '@/i18n';
 import {
   useOverviewStyles,
   useOverviewColors,
-  SectionHeader,
   ContactCard,
   InfoChip,
   NotesSection,
   ActionsSection,
 } from '@/components/common/overview-tab';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 // Using snake_case to match backend RPC types
 interface CustomerDetails {
@@ -79,7 +79,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
       {/* SECTION: PARTICIPANTS */}
       {(customer_details || supervisor_details) && (
         <>
-          <SectionHeader title={tr('dispatch.details.participants')} />
+          <SectionHeader title={tr('dispatch.details.participants')} style={overviewStyles.sectionHeaderInset} />
 
           {customer_details && (
             <ContactCard
@@ -109,7 +109,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
       {/* SECTION: ADDITIONAL INFORMATION */}
       {(registration || source_order_no) && (
         <>
-          <SectionHeader title={tr('dispatch.details.additionalInfo')} />
+          <SectionHeader title={tr('dispatch.details.additionalInfo')} style={overviewStyles.sectionHeaderInset} />
           <View style={overviewStyles.chipsCard}>
             {registration && (
               <InfoChip
