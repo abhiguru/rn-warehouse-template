@@ -22,6 +22,7 @@ import { useFocusEffect } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { Button } from '@/components/ui/Button';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -639,8 +640,15 @@ function DispatchDetailScreen() {
           headerLeft: () => (
             <HeaderBackButton onPress={isCheckingDelete ? leaveWhileChecking : isDeleting ? () => {} : undefined} />
           ),
+          // Edit is at the end of the header, so it can be reached from any tab.
+          headerRight: () =>
+            canUpdate && !isDeleted && dispatch.imported !== true ? (
+              <Button type="tertiary" onPress={handleEditDispatch} disabled={isDeleting || isCheckingDelete}>
+                {tr('common.edit')}
+              </Button>
+            ) : null,
           headerTitle: () => (
-            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+            <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
               {[tr('common.dispatch'), formatIdentifier(dispatch.disp_no)].filter(Boolean).join(' ')}
             </Text>
           ),
@@ -690,7 +698,6 @@ function DispatchDetailScreen() {
               // Once the dispatch is deleted there is nothing left to edit or delete
               can_edit={canUpdate && !isDeleted && dispatch.imported !== true}
               can_delete={canDelete && !isDeleted && dispatch.imported !== true}
-              onEdit={handleEditDispatch}
               onDelete={handleDeleteDispatch}
               is_deleting={isDeleting}
               onSharePDF={handleSharePDF}

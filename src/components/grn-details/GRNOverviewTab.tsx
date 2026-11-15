@@ -51,7 +51,6 @@ interface GRNOverviewTabProps {
   is_deleting?: boolean;
   /** Delete is busy only because the orders it would change are being read: the button says so. */
   is_checking_orders?: boolean;
-  onEdit?: () => void;
   onDelete?: () => void;
   onSharePDF?: () => void;
   is_share_loading?: boolean;
@@ -79,7 +78,6 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   can_delete,
   is_deleting = false,
   is_checking_orders = false,
-  onEdit,
   onDelete,
   onSharePDF,
   is_share_loading = false,
@@ -173,7 +171,6 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
         isShareLoading={is_share_loading}
         onPrint={onPrint}
         isPrintLoading={is_print_loading}
-        onEdit={onEdit}
         canEdit={can_edit}
         canDelete={can_delete}
         onDelete={onDelete}

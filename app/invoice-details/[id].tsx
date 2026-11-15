@@ -48,6 +48,7 @@ import {
 } from '@/components/invoice-details';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { Button } from '@/components/ui/Button';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -656,6 +657,13 @@ function InvoiceDetailScreen() {
           gestureEnabled: !lostDelete,
           // Custom back button to ensure it always works
           headerLeft: () => <HeaderBackButton onPress={lostDelete ? askLeaveLostDelete : undefined} />,
+          // Edit is at the end of the header, so it can be reached from any tab.
+          headerRight: () =>
+            canUpdate && !isCancelled && !isImported ? (
+              <Button type="tertiary" onPress={handleEditInvoice} disabled={isDeleting || isCancelling || lostDelete}>
+                {tr('common.edit')}
+              </Button>
+            ) : null,
           headerTitle: () => (
             <View
               style={styles.headerTitleContainer}
@@ -663,7 +671,7 @@ function InvoiceDetailScreen() {
               accessibilityRole="header"
               accessibilityLabel={tr('invoice.details.titleNumber', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) })}
             >
-              <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
+              <Text style={styles.headerTitle} numberOfLines={2} maxFontSizeMultiplier={1.5}>
                 {tr('invoice.details.titleNumber', { number: formatIdentifier(invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)) })}
               </Text>
               {/* Two lines when the date and the GRN number do not fit on one: the number is never cut. */}
@@ -717,7 +725,6 @@ function InvoiceDetailScreen() {
               invoice_number={invoiceLabelOf(invoice.invoice_label, invoice.invoice_number)}
               invoice_id={id}
               on_view_grn={handleViewGRN}
-              on_edit_invoice={handleEditInvoice}
               on_cancel_invoice={handleCancelInvoice}
               can_edit={canUpdate && !isCancelled && !isImported}
               can_cancel={canDelete && !isCancelled && !isImported}

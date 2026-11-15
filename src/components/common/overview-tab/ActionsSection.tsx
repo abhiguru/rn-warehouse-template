@@ -1,9 +1,9 @@
 /**
  * ActionsSection Component
  *
- * Actions section for overview tabs (Share PDF, Print, Edit, Delete).
+ * Actions section for overview tabs (Share PDF, Print, Delete). Edit is in the page header.
  * Buttons follow docs/STYLE_GUIDE.md §13.1: Share and Print secondary tint,
- * Edit primary, Delete secondary negative behind a confirmation.
+ * Delete secondary negative behind a confirmation.
  */
 
 import React from 'react';
@@ -38,9 +38,7 @@ interface ActionsSectionProps {
   onPrint?: () => void;
   /** Whether Print is in loading state */
   isPrintLoading?: boolean;
-  /** Called when Edit button is pressed */
-  onEdit?: () => void;
-  /** Whether edit is allowed (for role-based access) */
+  /** Whether edit is allowed (for role-based access); Edit itself is in the page header. Delete follows it unless `canDelete` is given. */
   canEdit?: boolean;
   /** Whether delete is allowed (for role-based access) - defaults to canEdit for backward compatibility */
   canDelete?: boolean;
@@ -81,7 +79,6 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   isShareLoading = false,
   onPrint,
   isPrintLoading = false,
-  onEdit,
   // Hidden unless the caller says the role may: a forgotten prop must not show Edit or Delete.
   canEdit = false,
   canDelete, // If not provided, follows canEdit
@@ -101,14 +98,13 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
 
   const showShareButton = onSharePDF && entityNumber;
   const showPrintButton = onPrint && entityNumber;
-  const showEditButton = canEdit && onEdit && entityId;
   const showDeleteButton = resolvedCanDelete && onDelete && entityId;
   const showSecondAction = !!secondAction && !!entityId;
   // An invoice that is being deleted or cancelled is not edited, and neither action starts over the other.
   const busyAny = isDeleting || !!secondAction?.busy;
 
   // Don't render if no actions available
-  if (!showShareButton && !showPrintButton && !showEditButton && !showDeleteButton && !showSecondAction) {
+  if (!showShareButton && !showPrintButton && !showDeleteButton && !showSecondAction) {
     return null;
   }
 
@@ -118,14 +114,12 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
         deleteThisTitle: t(`components.actions.${entity}.deleteThisTitle`),
         delete: t(`components.actions.${entity}.delete`),
         print: t(`components.actions.${entity}.print`),
-        edit: t(`components.actions.${entity}.edit`),
       }
     : {
         deleteNumberedTitle: (number: string) => t('components.actions.deleteNumberedTitle', { entity: entityType, number }),
         deleteThisTitle: t('components.actions.deleteThisTitle', { entity: entityType }),
         delete: t('components.actions.deleteEntity', { entity: entityType }),
         print: t('components.actions.printEntity', { entity: entityType }),
-        edit: t('components.actions.editEntity', { entity: entityType }),
       };
 
   const handleDeletePress = () => {
@@ -200,26 +194,6 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             <Text style={[overviewStyles.secondaryTintButtonText, colorStyles.secondaryTintButtonText]}>
               {isPrintLoading ? t('components.printRange.printing') : labels.print}
             </Text>
-          </Pressable>
-        )}
-
-        {/* Edit Button - Primary */}
-        {showEditButton && (
-          <Pressable
-            style={({ pressed }) => [
-              overviewStyles.primaryButton,
-              colorStyles.primaryButton,
-              pressed && colorStyles.primaryButtonPressed,
-              busyAny && overviewStyles.buttonDisabled,
-            ]}
-            onPress={onEdit}
-            disabled={busyAny}
-            accessibilityRole="button"
-            accessibilityLabel={labels.edit}
-            accessibilityState={{ disabled: busyAny }}
-          >
-            <Icon name="pencil-outline" size={iconSize.lg} color={colorStyles.iconOnFill} />
-            <Text style={[overviewStyles.primaryButtonText, colorStyles.primaryButtonText]}>{labels.edit}</Text>
           </Pressable>
         )}
 

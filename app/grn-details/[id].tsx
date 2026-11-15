@@ -897,7 +897,7 @@ function GRNDetailScreen() {
           headerTitleAlign: 'center',
           title: tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) }),
           headerTitle: () => (
-            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
+            <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
               {tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) })}
             </Text>
           ),
@@ -910,6 +910,13 @@ function GRNDetailScreen() {
               }}
             />
           ),
+          // Edit is at the end of the header, so it can be reached from any tab.
+          headerRight: () =>
+            canEdit && grn.imported !== true ? (
+              <Button type="tertiary" onPress={handleEditGRN} disabled={isDeleting || deleteChecking}>
+                {tr('common.edit')}
+              </Button>
+            ) : null,
           gestureEnabled: !isDeleting,
         }}
       />
@@ -962,7 +969,6 @@ function GRNDetailScreen() {
               can_delete={canDelete && grn.imported !== true}
               is_deleting={isDeleting}
               is_checking_orders={checkingOrders}
-              onEdit={handleEditGRN}
               onDelete={handleDeleteGRN}
               onSharePDF={handleSharePDF}
               is_share_loading={isShareLoading}
