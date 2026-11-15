@@ -185,8 +185,9 @@ export function useRevealFocusedField(
    * What the reveals saw: the focused field, the bar's top, the block's height that growth is checked against, the
    * field's top in the window at the last measuring (to tell content at rest; cleared when a scroll is asked for, so
    * only two measurings after it can say the content is at rest), the field's top when a scroll was last asked for and
-   * how many times it was asked from there (`tried`, `asks`: see MAX_REASKS_IN_PLACE), and whether a reveal has yet to
-   * be seen in place at rest (`settling`; only then does the 150 ms check measure).
+   * how many times it was asked from there (`tried`, `asks`: see MAX_REASKS_IN_PLACE; every reveal but a check starts
+   * them afresh), and whether a reveal has yet to be seen in place at rest (`settling`; only then does the 150 ms check
+   * measure).
    */
   const last = useRef<LastSeen>(emptyLastSeen(null));
   /** Each reveal takes a number; the answers of an older one are dropped. */
@@ -196,9 +197,10 @@ export function useRevealFocusedField(
   /**
    * `force`: the keyboard showed, the focus moved or the block changed height: always measured. `bar`: the bar was
    * measured again: only a moved bar top counts. `move`: the page moved the field within the content (text above it
-   * appeared or wrapped). These leave the block settling. `check`: the 150 ms check while it settles: content at rest
-   * (the field where the last two measurings saw it) that ends too low is scrolled again; found in place, or still at
-   * the same place after MAX_REASKS_IN_PLACE asks more, it stops. `bar`, `move` and `check` wait while a drag holds.
+   * appeared or wrapped). These leave the block settling, with a fresh count of asks. `check`: the 150 ms check while
+   * it settles: content at rest (the field where the last two measurings saw it) that ends too low is scrolled again;
+   * found in place, or still at the same place after MAX_REASKS_IN_PLACE asks more, it stops. `bar`, `move` and
+   * `check` wait while a drag holds.
    */
   const reveal = useCallback((kind: 'force' | 'bar' | 'move' | 'check') => {
     // Settled: a scroll by the step itself (to a field with an error) is not undone.
@@ -226,7 +228,12 @@ export function useRevealFocusedField(
           const atRest = last.current.top !== null && Math.abs(inputTop - last.current.top) < 1;
           last.current.top = inputTop;
           if (kind === 'check' && !atRest) return;
-          if (kind !== 'check') last.current.settling = true;
+          if (kind !== 'check') {
+            // Every reveal gets the same chance to settle, whatever the checks after an earlier one did (WH-242).
+            last.current.settling = true;
+            last.current.tried = null;
+            last.current.asks = 0;
+          }
           const below = blockBelowField(input as TreeNode);
           const room = below === null ? roomUnderFocusedField() : below + space.sm;
           last.current.height = blockHeight(input);
