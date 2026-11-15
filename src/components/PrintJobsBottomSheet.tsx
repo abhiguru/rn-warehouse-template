@@ -37,6 +37,7 @@ import BottomSheet, {
   BottomSheetBackdropProps,
   BottomSheetFlatList,
 } from '@gorhom/bottom-sheet';
+import { SHEET_A11Y, SHEET_BACKDROP_A11Y } from './common/sheetA11y';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import { router } from 'expo-router';
@@ -621,6 +622,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       (props: BottomSheetBackdropProps) => (
         <BottomSheetBackdrop
           {...props}
+          {...SHEET_BACKDROP_A11Y}
           disappearsOnIndex={-1}
           appearsOnIndex={0}
           opacity={1}
@@ -653,6 +655,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
     return (
       <>
         <BottomSheet
+          {...SHEET_A11Y}
           ref={bottomSheetRef}
           index={-1}
           snapPoints={['50%', '90%']}

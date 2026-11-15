@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import type { TextInputProps } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetBackdropProps, BottomSheetTextInput, BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { SHEET_A11Y, SHEET_BACKDROP_A11Y } from './common/sheetA11y';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { SheetSearchField } from '@/components/common/SheetSearchField';
@@ -209,6 +210,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
             (props: BottomSheetBackdropProps) => (
                 <BottomSheetBackdrop
                     {...props}
+                    {...SHEET_BACKDROP_A11Y}
                     disappearsOnIndex={-1}
                     appearsOnIndex={0}
                     opacity={1}
@@ -241,6 +243,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
 
         return (
             <BottomSheet
+                {...SHEET_A11Y}
                 ref={bottomSheetRef}
                 index={-1}
                 snapPoints={snapPoints}

@@ -51,6 +51,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
+import { SHEET_A11Y, SHEET_BACKDROP_A11Y } from './sheetA11y';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -312,6 +313,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
         {...props}
+        {...SHEET_BACKDROP_A11Y}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
         opacity={1}
@@ -539,6 +541,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
 
   return (
     <BottomSheetModal
+      {...SHEET_A11Y}
       ref={bottomSheetRef}
       onDismiss={sheet.onDismissed}
       index={1}

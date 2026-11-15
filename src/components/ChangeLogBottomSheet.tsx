@@ -23,6 +23,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
+import { SHEET_A11Y, SHEET_BACKDROP_A11Y } from './common/sheetA11y';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -100,6 +101,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
         {...props}
+        {...SHEET_BACKDROP_A11Y}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
         opacity={1}
@@ -445,6 +447,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
 
   return (
     <BottomSheetModal
+      {...SHEET_A11Y}
       ref={bottomSheetModalRef}
       index={1}
       snapPoints={snapPoints}

@@ -17,6 +17,7 @@ import {
   BottomSheetFlatList,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
+import { SHEET_A11Y, SHEET_BACKDROP_A11Y } from './common/sheetA11y';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -1245,11 +1246,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const renderBackdrop = useCallback((props: BottomSheetBackdropProps) => (
     <BottomSheetBackdrop
       {...props}
+      {...SHEET_BACKDROP_A11Y}
       appearsOnIndex={0}
       disappearsOnIndex={-1}
       opacity={1}
       pressBehavior="none"
-      accessible={false}
       style={[props.style, styles.backdrop]}
     >
       <Pressable
@@ -1463,6 +1464,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
 
   return (
     <BottomSheetModal
+      {...SHEET_A11Y}
       ref={bottomSheetModalRef}
       snapPoints={snapPoints}
       onDismiss={handleSheetDismissed}
