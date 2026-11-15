@@ -8,11 +8,13 @@
  * the bar has been measured while the keyboard is up (the lift is drawn by then), the focused field and the bar's
  * top are measured in the window and the content is scrolled by exactly the part that is missing:
  * field bottom + one message line (space.xs + a footnote line at the current font scale) + space.sm ≤ bar top.
+ * Another field focused while the keyboard stays up sends no keyboard event (Android, window that does not shrink),
+ * so while the keyboard is up the focused field is checked every FOCUS_CHECK_MS and a new one is revealed the same way.
  * Measuring the bar's top makes the rule hold whatever moved the bar there: the lift on Android when the window does
  * not shrink, the shrunken window (lift 0) and iOS. A field outside the scroll view (a sheet over the step) is left
  * alone.
  */
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import { PixelRatio, TextInput } from 'react-native';
 import { space, typography } from '@/theme/tokens';
 import type { ViewRef } from '@/types/nativeRefs';
@@ -35,17 +37,35 @@ export function roomUnderFocusedField(): number {
   return space.xs + typography.footnote.lineHeight * PixelRatio.getFontScale() + space.sm;
 }
 
+/** How often the focused field is checked while the keyboard is up (a focus change sends no keyboard event). */
+const FOCUS_CHECK_MS = 150;
+
 export function useRevealFocusedField(
   barRef: RefObject<ViewRef | null>,
   scrollRef: RefObject<KeyboardRevealTarget | null> | undefined,
   keyboardShown: boolean,
   revision: number
 ) {
+  // Bumped when another field takes the focus while the keyboard stays up, so the same reveal runs for it.
+  const [focusChange, setFocusChange] = useState(0);
+
+  useEffect(() => {
+    if (!keyboardShown || !scrollRef) return;
+    let focused = currentlyFocused();
+    const timer = setInterval(() => {
+      const now = currentlyFocused();
+      if (now === focused) return;
+      focused = now;
+      if (now) setFocusChange(previous => previous + 1);
+    }, FOCUS_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [keyboardShown, scrollRef]);
+
   useEffect(() => {
     if (!keyboardShown || !scrollRef) return;
     const target = scrollRef.current;
     const bar = barRef.current;
-    const input = (TextInput.State.currentlyFocusedInput?.() ?? null) as MeasurableInput | null;
+    const input = currentlyFocused() as MeasurableInput | null;
     if (!target || !bar || typeof input?.measureInWindow !== 'function') return;
     let cancelled = false;
 
@@ -68,7 +88,11 @@ export function useRevealFocusedField(
       reveal();
     }
     return () => { cancelled = true; };
-  }, [barRef, scrollRef, keyboardShown, revision]);
+  }, [barRef, scrollRef, keyboardShown, revision, focusChange]);
+}
+
+function currentlyFocused(): unknown {
+  return TextInput.State.currentlyFocusedInput?.() ?? null;
 }
 
 export default useRevealFocusedField;
