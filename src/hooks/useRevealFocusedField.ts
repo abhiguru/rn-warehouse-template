@@ -28,8 +28,10 @@
  * focus, or a keyboard that opens again on a field that kept the focus, where the reveals run while the scroll view
  * is still being resized and scrolled). Once in place it does nothing more, so a scroll by the step itself (to a
  * field with an error) is not undone. After a drag by the person only a focus change or a block that changed height
- * scrolls again. A re-layout that moves nothing does not scroll, and a check does not ask again from a place where
- * the content could not go further. A field outside the scroll view (a sheet over the step) is left alone.
+ * scrolls again. A re-layout that moves nothing does not scroll. A scroll asked for is judged only from two later
+ * measurings that find the content at rest; found at rest still at the place it was asked from, the check asks again,
+ * at most MAX_REASKS_IN_PLACE times, then takes it that the content cannot go further. A field outside the scroll view
+ * (a sheet over the step) is left alone.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { PixelRatio, TextInput } from 'react-native';
@@ -126,15 +128,25 @@ function currentlyFocused(): unknown {
   return TextInput.State.currentlyFocusedInput?.() ?? null;
 }
 
+/**
+ * How many times the 150 ms check asks again for a scroll from the same place, with the content at rest there, before
+ * it takes it that the content cannot go further and stops. Asking again is safe: the library scrolls to an absolute
+ * offset (the offset its onScroll last reported + what is missing, and Fabric's measured layout follows every scroll
+ * change just before that event), so a scroll that has not shown yet still lands on the same target. More than one,
+ * because a busy UI thread (a list drawing its rows) can hold a scroll back for longer than a check.
+ */
+const MAX_REASKS_IN_PLACE = 3;
+
 interface LastSeen {
   input: unknown;
   barTop: number | null;
   height: number | null;
   top: number | null;
   tried: number | null;
+  asks: number;
   settling: boolean;
 }
-const emptyLastSeen = (input: unknown): LastSeen => ({ input, barTop: null, height: null, top: null, tried: null, settling: false });
+const emptyLastSeen = (input: unknown): LastSeen => ({ input, barTop: null, height: null, top: null, tried: null, asks: 0, settling: false });
 
 export function useRevealFocusedField(
   barRef: RefObject<ViewRef | null>,
@@ -144,9 +156,10 @@ export function useRevealFocusedField(
 ) {
   /**
    * What the reveals saw: the focused field, the bar's top, the block's height that growth is checked against, the
-   * field's top in the window at the last measuring (to tell content at rest), the field's top when a scroll was last
-   * asked for (a check does not ask again from the same place: the content could not go further), and whether a
-   * reveal has yet to be seen in place at rest (`settling`; only then does the 150 ms check measure).
+   * field's top in the window at the last measuring (to tell content at rest; cleared when a scroll is asked for, so
+   * only two measurings after it can say the content is at rest), the field's top when a scroll was last asked for and
+   * how many times it was asked from there (`tried`, `asks`: see MAX_REASKS_IN_PLACE), and whether a reveal has yet to
+   * be seen in place at rest (`settling`; only then does the 150 ms check measure).
    */
   const last = useRef<LastSeen>(emptyLastSeen(null));
   /** Each reveal takes a number; the answers of an older one are dropped. */
@@ -156,8 +169,9 @@ export function useRevealFocusedField(
   /**
    * `force`: the keyboard showed, the focus moved or the block changed height: always measured. `bar`: the bar was
    * measured again: only a moved bar top counts. Both leave the block settling. `check`: the 150 ms check while it
-   * settles: content at rest (the field where the last measuring saw it) that ends too low is scrolled again; found
-   * in place, it stops. `bar` and `check` wait while a drag holds.
+   * settles: content at rest (the field where the last two measurings saw it) that ends too low is scrolled again;
+   * found in place, or still at the same place after MAX_REASKS_IN_PLACE asks more, it stops. `bar` and `check` wait
+   * while a drag holds.
    */
   const reveal = useCallback((kind: 'force' | 'bar' | 'check') => {
     // Settled: a scroll by the step itself (to a field with an error) is not undone.
@@ -174,7 +188,10 @@ export function useRevealFocusedField(
         if (!current()) return;
         const barMoved = last.current.barTop === null || Math.abs(barTop - last.current.barTop) >= 1;
         last.current.barTop = barTop;
-        if (barMoved) last.current.tried = null;
+        if (barMoved) {
+          last.current.tried = null;
+          last.current.asks = 0;
+        }
         if (kind !== 'force' && scrollRef.userScrolled) return;
         if (kind === 'bar' && !barMoved) return;
         input.measureInWindow?.((_x, inputTop, _width, inputHeight) => {
@@ -188,13 +205,22 @@ export function useRevealFocusedField(
           last.current.height = blockHeight(input);
           scrollRef.userScrolled = false;
           const missing = Math.ceil(inputTop + inputHeight + room - barTop);
-          const stuck = last.current.tried !== null && Math.abs(inputTop - last.current.tried) < 1;
-          if (missing <= 0 || (kind === 'check' && stuck)) {
-            if (missing <= 0) last.current.tried = null;
+          if (missing <= 0) {
+            last.current.tried = null;
+            last.current.asks = 0;
             if (kind === 'check') last.current.settling = false;
             return;
           }
+          // Asked before from this very place, the content at rest there since: ask again, a few times at most.
+          const samePlace = last.current.tried !== null && Math.abs(inputTop - last.current.tried) < 1;
+          if (kind === 'check' && samePlace && last.current.asks > MAX_REASKS_IN_PLACE) {
+            last.current.settling = false;
+            return;
+          }
+          last.current.asks = samePlace ? last.current.asks + 1 : 1;
           last.current.tried = inputTop;
+          // Whether this scroll moved the content is told only by two later measurings, not by this one.
+          last.current.top = null;
           target.scrollForExtraHeightOnAndroid(missing);
         });
       });
@@ -229,9 +255,9 @@ export function useRevealFocusedField(
   // Every 150 ms while the keyboard is up: a focus change or a block that grew or shrank sends no keyboard event, and
   // the reveals above can run before the content has settled (a keyboard that opens again on a field that kept the
   // focus: the bar's lift shrinks the scroll view, which scrolls the focused field to its own new bottom edge, while
-  // the reveal's own scroll starts from the offset the library last heard of). So after a reveal the check measures
-  // the field again once it is at rest and scrolls by what is still missing, until it finds the block in place or a
-  // drag holds.
+  // the reveal's own scroll may not have shown yet). So after a reveal the check measures the field again once it is
+  // at rest and scrolls by what is still missing, until it finds the block in place, a drag holds, or the content
+  // stays where it was through MAX_REASKS_IN_PLACE more asks.
   useEffect(() => {
     if (!keyboardShown || !scrollRef) return;
     const timer = setInterval(() => {
