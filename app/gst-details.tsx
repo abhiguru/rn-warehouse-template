@@ -314,7 +314,7 @@ const makeStyles = (t: ThemeTokens) =>
     loading: { marginTop: space.xxl },
     errorBox: { marginHorizontal: layout.marginCompact, gap: space.md, alignItems: 'center' },
     staleNote: { ...typography.footnote, color: t.status.negative.text, marginHorizontal: layout.marginCompact },
-    fields: { marginHorizontal: layout.marginCompact, marginTop: space.lg, gap: space.md },
+    fields: { marginHorizontal: layout.marginCompact, marginTop: space.lg },
     stateScreen: {
       flex: 1,
       alignItems: 'center',

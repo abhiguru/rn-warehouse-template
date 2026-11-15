@@ -522,13 +522,15 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
               />
               {backendHasFeature('gstDocuments') ? (
                 // WH-151: the State is picked from the states and union territories (the server derives the code from the name).
-                <CustomerStatePicker
-                  value={fields.state}
-                  onChange={name => change('state', name)}
-                  error={errors.state}
-                  inputRef={node => (inputs.current.state = node)}
-                  scrollIntoView={handle => scrollRef.current?.scrollToFocusedInput(handle)}
-                />
+                <View style={styles.pickerSpace}>
+                  <CustomerStatePicker
+                    value={fields.state}
+                    onChange={name => change('state', name)}
+                    error={errors.state}
+                    inputRef={node => (inputs.current.state = node)}
+                    scrollIntoView={handle => scrollRef.current?.scrollToFocusedInput(handle)}
+                  />
+                </View>
               ) : (
                 <Input
                   label={tr('customers.form.state')}
@@ -695,7 +697,9 @@ const makeStyles = (t: ThemeTokens) => ({
   navTitle: { ...typography.headline, color: t.text.primary, flexShrink: 1, textAlign: 'center' as const },
   scroll: { flex: 1 },
   content: { paddingBottom: space.xl },
-  group: { paddingHorizontal: layout.marginCompact, gap: space.lg },
+  group: { paddingHorizontal: layout.marginCompact },
+  // ui/Input's own bottom margin sets the space between fields; the State picker is not an Input and keeps the same.
+  pickerSpace: { marginBottom: space.lg },
   state: { flex: 1, padding: layout.marginCompact, gap: space.md, justifyContent: 'center' as const, alignItems: 'stretch' as const },
   stateText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
 });

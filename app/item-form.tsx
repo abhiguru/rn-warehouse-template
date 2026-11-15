@@ -247,12 +247,14 @@ const ItemFormScreen: React.FC = () => {
               }}
             />
             {suggestions.length > 0 && (
-              <ChoiceChips
-                options={suggestions.map((word) => ({ value: word, label: word }))}
-                value={matchingPackaging(formData.packaging, groups)}
-                onChange={(word) => handleFieldChange('packaging', word)}
-                accessibilityLabel={tr('items.form.packagingSuggestions')}
-              />
+              <View style={styles.chipsSpace}>
+                <ChoiceChips
+                  options={suggestions.map((word) => ({ value: word, label: word }))}
+                  value={matchingPackaging(formData.packaging, groups)}
+                  onChange={(word) => handleFieldChange('packaging', word)}
+                  accessibilityLabel={tr('items.form.packagingSuggestions')}
+                />
+              </View>
             )}
             <Input
               label={tr('items.form.description')}
@@ -365,11 +367,13 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingBottom: space.xl,
     gap: space.lg,
   },
+  chipsSpace: {
+    marginBottom: space.lg,
+  },
   card: {
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
     padding: space.lg,
-    gap: space.lg,
     ...t.shadow[2],
   },
   switchRow: {
