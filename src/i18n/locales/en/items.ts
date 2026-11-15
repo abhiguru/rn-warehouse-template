@@ -51,6 +51,8 @@ export const items = {
     activate: 'Activate item',
     loadFailed: "Couldn't open this item. Check your connection and try again.",
     loadFailedTitle: "Couldn't open this item",
+    notFoundTitle: 'Item not found',
+    notFoundMessage: 'It may have been deleted.',
   },
   delete: {
     confirmTitle: 'Delete {{name}}?',

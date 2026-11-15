@@ -190,8 +190,8 @@ export default function ItemPage() {
 
       {!shown && notFound && (
         <ErrorStateView
-          title={tr('items.page.loadFailedTitle')}
-          message={tr('items.form.notFoundSentence')}
+          title={tr('items.page.notFoundTitle')}
+          message={tr('items.page.notFoundMessage')}
           secondaryActionLabel={tr('common.goBack')}
           onSecondaryAction={() => router.back()}
         />
