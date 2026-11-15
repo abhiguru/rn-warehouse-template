@@ -340,7 +340,7 @@ describe('what the save tells the administrator', () => {
 
 describe('leaving the edit sheet', () => {
   const closeButton = (screen: ReactTestRenderer) =>
-    screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Cancel')[0];
+    screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Close')[0];
   const lastAlertButtons = () => jest.mocked(showAlert).mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
 
   it('closes at once when nothing was changed', async () => {
