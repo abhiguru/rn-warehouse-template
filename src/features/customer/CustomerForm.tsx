@@ -72,18 +72,6 @@ const FIELD_ORDER: (keyof CustomerFormFields)[] = [
 /** Lower case with spaces collapsed, to tell "Acme  Foods" from "acme foods" no more. */
 const fold = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
 
-/** The fixed +91 before a mobile field: read out by the field's own label ("... after +91"), so hidden from the screen reader. */
-function PhonePrefix() {
-  const styles = useThemedStyles(makePrefixStyles);
-  return (
-    <Text style={styles.prefix} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      +91
-    </Text>
-  );
-}
-
-const makePrefixStyles = (t: ThemeTokens) => ({ prefix: { ...typography.body, color: t.text.secondary } });
-
 export function CustomerForm({ customerId }: { customerId?: string }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -449,6 +437,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 onChangeText={text => change('name', text)}
                 placeholder={tr('customers.form.customerNamePlaceholder')}
                 maxLength={80}
+                hardLimit
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.mobile?.focus()}
                 autoCapitalize="words"
@@ -458,7 +447,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
               <Input
                 label={tr('common.mobileNumber')}
                 required
-                leftIcon={<PhonePrefix />}
+                prefix="+91"
                 accessibilityLabel={tr('customers.form.mobileLabel')}
                 error={errors.mobile}
                 ref={node => {
@@ -471,6 +460,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="tel"
                 textContentType="telephoneNumber"
                 maxLength={11}
+                hardLimit
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.email?.focus()}
               />
@@ -489,6 +479,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="email"
                 textContentType="emailAddress"
                 maxLength={100}
+                hardLimit
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="next"
@@ -510,8 +501,8 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="street-address"
                 textContentType="fullStreetAddress"
                 maxLength={300}
+                hardLimit
                 multiline
-                numberOfLines={3}
               />
               <Input
                 label={tr('customers.form.city')}
@@ -522,6 +513,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 value={fields.city}
                 onChangeText={text => change('city', text)}
                 maxLength={25}
+                hardLimit
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.state?.focus()}
                 autoCapitalize="words"
@@ -547,6 +539,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                   value={fields.state}
                   onChangeText={text => change('state', text)}
                   maxLength={50}
+                  hardLimit
                   returnKeyType="next"
                   onSubmitEditing={() => inputs.current.pincode?.focus()}
                   autoCapitalize="words"
@@ -567,6 +560,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="postal-code"
                 textContentType="postalCode"
                 maxLength={6}
+                hardLimit
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.gst?.focus()}
               />
@@ -585,6 +579,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 onChangeText={text => change('gst', formatGST(text))}
                 placeholder={tr('customers.form.gstPlaceholder')}
                 maxLength={15}
+                hardLimit
                 autoCapitalize="characters"
                 autoCorrect={false}
                 returnKeyType="next"
@@ -601,6 +596,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 onChangeText={text => change('pan', formatPAN(text))}
                 placeholder={tr('customers.form.panPlaceholder')}
                 maxLength={10}
+                hardLimit
                 autoCapitalize="characters"
                 autoCorrect={false}
                 returnKeyType="next"
@@ -620,6 +616,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 onChangeText={text => change('contact_name', text)}
                 placeholder={tr('customers.form.contactNamePlaceholder')}
                 maxLength={100}
+                hardLimit
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.contact_mobile?.focus()}
                 autoCapitalize="words"
@@ -628,7 +625,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
               />
               <Input
                 label={tr('customers.form.contactMobile')}
-                leftIcon={<PhonePrefix />}
+                prefix="+91"
                 accessibilityLabel={tr('customers.form.labelAfterPrefix', { label: tr('customers.form.contactMobile'), prefix: '+91' })}
                 error={errors.contact_mobile}
                 ref={node => {
@@ -641,6 +638,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="tel"
                 textContentType="telephoneNumber"
                 maxLength={11}
+                hardLimit
                 returnKeyType="next"
                 onSubmitEditing={() => inputs.current.contact_email?.focus()}
               />
@@ -656,6 +654,7 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
                 autoComplete="email"
                 textContentType="emailAddress"
                 maxLength={100}
+                hardLimit
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="done"
