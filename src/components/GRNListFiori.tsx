@@ -882,7 +882,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           countText={hasMore ? translate('lists.section.countMore', { count: formatNumber(item.count) }) : formatNumber(item.count)}
           countLabel={hasMore ? translate('lists.section.moreThanGrns', { count: formatNumber(item.count) }) : formatCount(item.count, 'GRN')}
           style={styles.sectionHeader}
-          onRefresh={onRefresh}
         />
       );
     }
@@ -940,6 +939,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
       config={GRN_FILTERS}
       filters={filters}
       loading={loading}
+      onRefresh={onRefresh}
       busy={loading && !refreshing && data !== null}
       expand={{ expanded: open.all, onToggle: handleToggleAll, nounPlural: 'GRNs', disabled: !hasRows }}
     />

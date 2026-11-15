@@ -67,7 +67,6 @@ import { t as translate } from '@/i18n';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
-import { listRefreshAccessibility } from './listRefreshAccessibility';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -97,11 +96,10 @@ interface SectionHeaderProps {
   /** Offline: when the rows were loaded, shown under the heading (§14.9). */
   updatedAt?: number;
   /** The list's refresh, offered to screen readers on the heading. */
-  onRefresh?: () => void;
 }
 
 // Section header: footnote, capitals, text.secondary (style guide §13.6)
-const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt, onRefresh }) => {
+const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt }) => {
   const styles = useThemedStyles(makeStyles);
   return (
     <>
@@ -109,7 +107,6 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, updatedAt,
         style={styles.sectionHeader}
         accessible
         accessibilityRole="header"
-        {...(onRefresh ? listRefreshAccessibility(onRefresh) : null)}
         accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'invoice') })}
       >
         <Text style={styles.sectionTitle}>{title}</Text>
@@ -413,7 +410,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Invoice>; index: number }) => {
     if (item.type === 'header') {
-      return <SectionHeader title={item.title} count={item.count} updatedAt={index === 0 ? offlineUpdatedAt : undefined} onRefresh={handleRefresh} />;
+      return <SectionHeader title={item.title} count={item.count} updatedAt={index === 0 ? offlineUpdatedAt : undefined} />;
     }
 
     return (
@@ -426,7 +423,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         showPayment={showPayment}
       />
     );
-  }, [handleInvoicePress, canPrint, handlePrint, words, offlineUpdatedAt, showPayment, handleRefresh]);
+  }, [handleInvoicePress, canPrint, handlePrint, words, offlineUpdatedAt, showPayment]);
 
   const ListFooter = useMemo(() => {
     if (loadMoreFailed && !isLoadingMore) {
@@ -531,7 +528,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   return (
     <View style={styles.container}>
       {/* The header, search field and filter bar are shown in every state. */}
-      <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} />
+      <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} onRefresh={handleRefresh} />
       {content}
 
       {/* Print dialog and jobs sheet */}

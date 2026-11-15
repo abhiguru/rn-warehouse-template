@@ -97,20 +97,17 @@ interface SectionHeaderProps {
   more?: boolean;
   /** Offline: when the rows were loaded, shown under the heading (§14.9; owner, 2026-10-17). */
   updatedAt?: number;
-  /** The list's refresh, offered to screen readers on the heading. */
-  onRefresh?: () => void;
 }
 
 // Section header: the shared ui/SectionHeader (style guide §13.6; owner, 2026-10-17), with "20+" while more pages
 // remain to load, so the count is never read as the section's size.
-const OrderSectionHeader = React.memo<SectionHeaderProps>(({ title, count, more = false, updatedAt, onRefresh }) => (
+const OrderSectionHeader = React.memo<SectionHeaderProps>(({ title, count, more = false, updatedAt }) => (
   <>
     <SectionHeader
       title={title}
       count={count}
       countText={more ? translate('lists.section.countMore', { count: formatNumber(count) }) : formatNumber(count)}
       countLabel={more ? translate('lists.section.moreThan', { count: formatNumber(count) }) : formatCount(count, 'order')}
-      onRefresh={onRefresh}
     />
     {updatedAt !== undefined ? <LastUpdatedLine at={updatedAt} withDate testID="orders-last-updated" /> : null}
   </>
@@ -476,7 +473,6 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
           count={item.count}
           more={hasMore}
           updatedAt={index === 0 ? offlineUpdatedAt : undefined}
-          onRefresh={handleRefresh}
         />
       );
     }
@@ -488,7 +484,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         words={words}
       />
     );
-  }, [handleOrderPress, words, hasMore, offlineUpdatedAt, handleRefresh]);
+  }, [handleOrderPress, words, hasMore, offlineUpdatedAt]);
 
   // ============================================================================
   // LIST FOOTER
@@ -529,6 +525,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       config={ORDER_FILTERS}
       filters={filters}
       loading={isLoading}
+      onRefresh={handleRefresh}
     >
       {subHeader}
     </FilteredListHeader>

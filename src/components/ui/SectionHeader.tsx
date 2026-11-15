@@ -33,7 +33,6 @@ import {
   trackedText,
 } from '@/theme/tokens';
 import { localizeDigits, t as tr } from '@/i18n';
-import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
 
 /** Visual height of a text action; the touch area is padded to touchTarget. */
 const TEXT_BUTTON_HEIGHT = 28;
@@ -78,8 +77,6 @@ export interface SectionHeaderProps {
   grouped?: boolean;
   /** Test ID */
   testID?: string;
-  /** The list's refresh: offered to screen readers as a "Refresh" action on the heading (WH-220). */
-  onRefresh?: () => void;
 }
 
 // ============================================================================
@@ -96,7 +93,6 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   grouped = false,
   inset = true,
   testID,
-  onRefresh,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -119,7 +115,6 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         accessible
         accessibilityRole="header"
         accessibilityLabel={count !== undefined ? `${title}, ${countLabel ?? count}` : title}
-        {...(onRefresh ? listRefreshAccessibility(onRefresh) : null)}
       >
         <Text style={styles.title}>{title.toUpperCase()}</Text>
         {count !== undefined && (
