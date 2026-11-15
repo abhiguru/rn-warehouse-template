@@ -17,12 +17,13 @@
  * (add), so the Customers list is never on the stack twice (G-16).
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Button } from '@/components/ui/Button';
+import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { Input } from '@/components/ui/Input';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
@@ -93,7 +94,6 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
   const [saving, setSaving] = useState(false);
   // From the Save tap to the end of the save, validation and the duplicate search included: Back waits for it.
   const [working, setWorking] = useState(false);
-  const [keyboardShown, setKeyboardShown] = useState(false);
   const busy = useRef(false);
   const inputs = useRef<Partial<Record<keyof CustomerFormFields, { focus: () => void } | null>>>({});
   const scrollRef = useRef<KeyboardAwareScrollView>(null);
@@ -104,15 +104,6 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
     message: tr('customers.form.discardMessage'),
     blocked: working || saving,
   });
-
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardShown(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardShown(false));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
 
   // A different customer is a different form: nothing of the last one's errors stays.
   useEffect(() => {
@@ -672,14 +663,13 @@ export function CustomerForm({ customerId }: { customerId?: string }) {
             </View>
           </KeyboardAwareScrollView>
 
-          <View
+          <FormSaveBar
             testID="customer-save-bar"
-            style={[styles.saveBar, { paddingBottom: keyboardShown ? space.md : (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}
-          >
-            <Button size="fullWidth" onPress={() => void onSave()} loading={working || saving} disabled={working || saving}>
-              {tr(isCreate ? 'customers.list.addCustomer' : 'customers.form.saveCustomer')}
-            </Button>
-          </View>
+            label={tr(isCreate ? 'customers.list.addCustomer' : 'customers.form.saveCustomer')}
+            onPress={() => void onSave()}
+            loading={working || saving}
+            disabled={working || saving}
+          />
         </>
       )}
     </View>
@@ -709,12 +699,6 @@ const makeStyles = (t: ThemeTokens) => ({
   group: { paddingHorizontal: layout.marginCompact, gap: space.lg },
   state: { flex: 1, padding: layout.marginCompact, gap: space.md, justifyContent: 'center' as const, alignItems: 'stretch' as const },
   stateText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
-  saveBar: {
-    paddingTop: space.md,
-    paddingHorizontal: layout.marginCompact,
-    backgroundColor: t.surface.card,
-    ...t.shadow[3],
-  },
 });
 
 export default CustomerForm;
