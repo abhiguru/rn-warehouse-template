@@ -75,8 +75,7 @@ import {
   GRNItemData,
   GRNImageData,
 } from '@/store/slices/grnFormSlice';
-import { withoutKeptEmptyErrors } from '@/features/grn/utils/keptEmptyHeader';
-import { validateStep1, validateStep2, validateStep3, withoutStoredNumberError } from '@/features/grn/schemas/grnValidation';
+import { checkGrnForm } from '@/features/grn/utils/checkGrnForm';
 import { getNextGRNNumber, checkGrnExists } from '@/features/grn/services/grnFormService';
 import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
 import { currentGrnFormSession, nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
@@ -493,28 +492,11 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
    * Validate a specific step
    */
   const validateCurrentStep = useCallback(async (step: number): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
-    let result: { isValid: boolean; errors: Record<string, string> };
-
-    switch (step) {
-      case 1:
-        result = await validateStep1(header);
-        break;
-      case 2:
-        // validateStep2 expects { items: [...] } not just the array
-        result = await validateStep2({ items }, { keepWeight: true });
-        break;
-      case 3:
-        result = await validateStep3({ header, items });
-        break;
-      default:
-        result = { isValid: true, errors: {} };
-    }
-
-    // The number of a saved GRN is read-only and goes back as stored: only a number another GRN holds (below) can stop it.
-    if (!isCreateMode) result = withoutStoredNumberError(result);
-
-    // An old GRN saved without a sender or supervisor stays correctable: a field empty at load and still empty is not required.
-    if (!isCreateMode) result = withoutKeptEmptyErrors(result, header, { sender: loadedSenderEmpty, supervisor: loadedSupervisorEmpty });
+    // The shared check (stored number and kept-empty sender / supervisor filters in edit mode); see checkGrnForm.
+    let result: { isValid: boolean; errors: Record<string, string> } =
+      step >= 1 && step <= 3
+        ? await checkGrnForm(step as 1 | 2 | 3, { header, items }, { isCreateMode, loadedSenderEmpty, loadedSupervisorEmpty })
+        : { isValid: true, errors: {} };
 
     // A number another GRN holds keeps step 1 from passing until it is changed.
     if (step === 1 && takenNumberError) {

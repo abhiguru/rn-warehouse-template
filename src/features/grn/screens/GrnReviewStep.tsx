@@ -32,6 +32,8 @@ import {
   selectGRNInvoiced,
   selectGRNImported,
   selectGRNLoadedUpdatedAt,
+  selectGRNLoadedSenderEmpty,
+  selectGRNLoadedSupervisorEmpty,
   selectGRNRemovedRates,
   loadGRNData as loadGRNFormData,
   setFirstDispatchDate,
@@ -69,7 +71,7 @@ import { uploadGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '@/fea
 import { photosNotUploadedMessage } from '@/features/grn/utils/photoSaveReport';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import { abandonLocalPhotoUpload, releaseLocalPhotos } from '@/utils/localPhotoFiles';
-import { validateStep3, withoutStoredNumberError } from '@/features/grn/schemas/grnValidation';
+import { checkGrnForm } from '@/features/grn/utils/checkGrnForm';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
 import { ImageOverlay } from '@/components/ImageOverlay';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
@@ -199,6 +201,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const rateChanges = useAppSelector(selectGRNRateChanges);
   const removedRates = useAppSelector(selectGRNRemovedRates);
   // An invoiced GRN being edited: its rates are shown, sent back as they are, and cannot be set here.
+  const loadedSenderEmpty = useAppSelector(selectGRNLoadedSenderEmpty);
+  const loadedSupervisorEmpty = useAppSelector(selectGRNLoadedSupervisorEmpty);
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
   // WH-180: an imported GRN opens here only to set its rates; the details, photos and items steps stay closed.
   const grnImported = useAppSelector(selectGRNImported) && !isCreateMode;
@@ -456,10 +460,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
 
   const validateFormData = async (): Promise<boolean> => {
-    const checked = await validateStep3({ header, items });
-    // The number of a saved GRN is read-only and goes back as it was stored (owner decision D6): a stored number that
-    // fails today's format (older data) does not stop the edit.
-    const validation = isCreateMode ? checked : withoutStoredNumberError(checked);
+    // Same check as step Next (stored number, kept-empty sender / supervisor): an old GRN that passed Next must also save.
+    const validation = await checkGrnForm(3, { header, items }, { isCreateMode, loadedSenderEmpty, loadedSupervisorEmpty });
 
     if (!validation.isValid) {
       setLocalValidationErrors(validation.errors);
