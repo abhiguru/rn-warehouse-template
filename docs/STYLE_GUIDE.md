@@ -884,7 +884,7 @@ React Native Paper buttons and checked controls use Paper's `primary`, which is 
 
 ### 13.2 Text fields — `ui/Input.tsx`, `GhostTextInput.tsx`, `RemoteAutocompleteInput.tsx`, `form/*`, `FormFieldWrapper.tsx`
 
-Anatomy: label (`FormLabel`), required asterisk, field, optional left and right icons, clear button, helper or error text, optional character count.
+Anatomy: label (`FormLabel`), required asterisk, field, optional left and right icons, optional prefix (such as "+91", in `body` `text.secondary` before the value), clear button, helper or error text, optional character count. A field can stop typing at its length limit (hard cap) or allow it and show "too long" (soft limit). A multiline field (an address) is at least two lines high, with its text at the top.
 
 | Part | Token |
 |---|---|
