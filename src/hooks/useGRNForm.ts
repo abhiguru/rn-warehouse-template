@@ -67,12 +67,15 @@ import {
   selectGRNGrNoTyped,
   selectGRNFirstDispatchDate,
   selectGRNLoadedDate,
+  selectGRNLoadedSenderEmpty,
+  selectGRNLoadedSupervisorEmpty,
   setTakenNumberError,
   setGrNoTyped,
   GRNHeaderData,
   GRNItemData,
   GRNImageData,
 } from '@/store/slices/grnFormSlice';
+import { withoutKeptEmptyErrors } from '@/features/grn/utils/keptEmptyHeader';
 import { validateStep1, validateStep2, validateStep3, withoutStoredNumberError } from '@/features/grn/schemas/grnValidation';
 import { getNextGRNNumber, checkGrnExists } from '@/features/grn/services/grnFormService';
 import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
@@ -189,6 +192,9 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   // server refuses only a date that was changed, so a date that was already later when the GRN was opened is left alone.
   const firstDispatchDate = useAppSelector(selectGRNFirstDispatchDate);
   const loadedDate = useAppSelector(selectGRNLoadedDate);
+  // Edit only: a sender or supervisor that was empty when the GRN was opened may stay empty (WH-230).
+  const loadedSenderEmpty = useAppSelector(selectGRNLoadedSenderEmpty);
+  const loadedSupervisorEmpty = useAppSelector(selectGRNLoadedSupervisorEmpty);
 
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>(
@@ -507,6 +513,9 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // The number of a saved GRN is read-only and goes back as stored: only a number another GRN holds (below) can stop it.
     if (!isCreateMode) result = withoutStoredNumberError(result);
 
+    // An old GRN saved without a sender or supervisor stays correctable: a field empty at load and still empty is not required.
+    if (!isCreateMode) result = withoutKeptEmptyErrors(result, header, { sender: loadedSenderEmpty, supervisor: loadedSupervisorEmpty });
+
     // A number another GRN holds keeps step 1 from passing until it is changed.
     if (step === 1 && takenNumberError) {
       result = { isValid: false, errors: { ...result.errors, gr_no: takenNumberError } };
@@ -535,7 +544,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     return result;
-  }, [header, items, dispatch, takenNumberError, isCreateMode, firstDispatchDate, loadedDate]);
+  }, [header, items, dispatch, takenNumberError, isCreateMode, firstDispatchDate, loadedDate, loadedSenderEmpty, loadedSupervisorEmpty]);
 
   const clearFieldError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {

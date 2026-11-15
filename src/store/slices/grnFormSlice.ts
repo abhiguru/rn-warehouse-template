@@ -130,6 +130,10 @@ interface GRNFormState {
   firstDispatchDate: string | null;
   // The GRN's date as it was loaded: a date that was already after the first dispatch is refused only when it is changed.
   loadedDate: string | null;
+  // Whether the sender / the supervisor was empty when the GRN was loaded (older data): an edit that leaves it empty is
+  // not refused for it (WH-230); once a value is typed or chosen it is checked as on a new GRN.
+  loadedSenderEmpty: boolean;
+  loadedSupervisorEmpty: boolean;
 
   // Form data
   header: GRNHeaderData;
@@ -181,6 +185,8 @@ const createInitialState = (): GRNFormState => ({
   invoice: null,
   firstDispatchDate: null,
   loadedDate: null,
+  loadedSenderEmpty: false,
+  loadedSupervisorEmpty: false,
   header: {
     gr_no: '',
     registration: '',
@@ -544,6 +550,8 @@ const grnFormSlice = createSlice({
       state.invoice = action.payload.invoice ?? null;
       state.firstDispatchDate = action.payload.firstDispatchDate ?? null;
       state.loadedDate = action.payload.header.date ?? null;
+      state.loadedSenderEmpty = !action.payload.header.sender_name;
+      state.loadedSupervisorEmpty = !action.payload.header.supervisor_name && !action.payload.header.supervisor_id;
       state.grnRates = action.payload.grnRates ?? [];
       state.rateChanges = [];
       state.removedGrnRates = [];
@@ -658,6 +666,8 @@ export const selectGRNLoadedUpdatedAt = (state: { grnForm: GRNFormState }) => st
 export const selectGRNInvoice = (state: { grnForm: GRNFormState }) => state.grnForm.invoice ?? null;
 export const selectGRNFirstDispatchDate = (state: { grnForm: GRNFormState }) => state.grnForm.firstDispatchDate ?? null;
 export const selectGRNLoadedDate = (state: { grnForm: GRNFormState }) => state.grnForm.loadedDate ?? null;
+export const selectGRNLoadedSenderEmpty = (state: { grnForm: GRNFormState }) => state.grnForm.loadedSenderEmpty === true;
+export const selectGRNLoadedSupervisorEmpty = (state: { grnForm: GRNFormState }) => state.grnForm.loadedSupervisorEmpty === true;
 const EMPTY_RATES: GrnRate[] = [];
 const EMPTY_CHANGES: RateChange[] = [];
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;
