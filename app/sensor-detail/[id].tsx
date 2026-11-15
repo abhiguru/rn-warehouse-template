@@ -30,6 +30,7 @@ import {
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
+import { KeyValueCell } from '@/components/fiori/KeyValueCell';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
 import { ErrorStateView } from '@/components/ErrorBoundary';
@@ -157,25 +158,6 @@ const makeStyles = (t: ThemeTokens) =>
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: space.sm,
-    },
-    keyValueRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: space.md,
-      minHeight: layout.rowMinHeight,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: t.border.divider,
-    },
-    keyLabel: {
-      ...typography.subhead,
-      color: t.text.secondary,
-    },
-    keyValue: {
-      ...typography.body,
-      color: t.text.primary,
-      textAlign: 'right',
-      flexShrink: 1,
     },
     readingsRow: {
       flexDirection: 'row',
@@ -392,17 +374,6 @@ const makeStyles = (t: ThemeTokens) =>
   });
 
 type Styles = ReturnType<typeof makeStyles>;
-
-function KeyValue({ label, value, spokenValue, styles, accessory }: {
-  label: string; value: string; spokenValue?: string; styles: Styles; accessory?: React.ReactNode;
-}) {
-  return (
-    <View style={styles.keyValueRow} accessible accessibilityLabel={tr('sensors.labelValue', { label, value: spokenValue ?? value })}>
-      <Text style={styles.keyLabel}>{label}</Text>
-      {accessory ?? <Text style={styles.keyValue}>{value}</Text>}
-    </View>
-  );
-}
 
 const SensorDetailScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -706,24 +677,23 @@ const SensorDetailScreen: React.FC = () => {
           {lastKnown ? <Text style={styles.lastKnownText}>{lastKnown}</Text> : null}
 
           <View>
-            <KeyValue
-              label={tr('sensors.detail.connection')}
+            <KeyValueCell
+              keyLabel={tr('sensors.detail.connection')}
               value={connection.label}
-              styles={styles}
-              accessory={<StatusTag status={connection.kind} label={connection.label} />}
+              valueAccessory={<StatusTag status={connection.kind} label={connection.label} />}
+              showDivider
             />
-            <KeyValue
-              label={tr('sensors.detail.battery')}
+            <KeyValueCell
+              keyLabel={tr('sensors.detail.battery')}
               value={battery.label}
-              styles={styles}
-              accessory={<StatusTag status={battery.kind} label={battery.label} />}
+              valueAccessory={<StatusTag status={battery.kind} label={battery.label} />}
+              showDivider={!!lastReading}
             />
             {lastReading ? (
-              <KeyValue
-                label={tr('sensors.detail.lastReading')}
+              <KeyValueCell
+                keyLabel={tr('sensors.detail.lastReading')}
                 value={formatDateTime(lastReading)}
                 spokenValue={formatSpokenDateTime(lastReading)}
-                styles={styles}
               />
             ) : null}
           </View>
