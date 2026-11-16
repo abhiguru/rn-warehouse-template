@@ -7,6 +7,7 @@ import { act, create } from 'react-test-renderer';
 import { fillNewInvoice, groupLines, makeInvoiceStore, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { updateHeader } from '@/store/slices/invoiceFormSlice';
 import { wizardKeyboardLiftCases } from '@/tests/helpers/wizardKeyboardLift';
+import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
 import InvoiceFormStep1 from '../../../app/invoice-form/step1';
 
 let mockStore: InvoiceStore;
@@ -39,6 +40,7 @@ jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: ()
 jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocomplete: () => null }));
 jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: () => null }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
+jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
 
 describe('Invoice wizard, details step: the bottom bar and the keyboard', () => {
   wizardKeyboardLiftCases(async () => {
@@ -51,12 +53,16 @@ describe('Invoice wizard, details step: the bottom bar and the keyboard', () => 
   });
 
   it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
+    recordedRevealRefs.length = 0;
     mockStore = makeInvoiceStore();
     fillNewInvoice(mockStore, groupLines(1));
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<InvoiceFormStep1 />); });
     const scrolls = tree.root.findAll(n => (n.type as unknown) === 'KeyboardAwareScrollView' && typeof n.props.onScrollBeginDrag === 'function');
     expect(scrolls).toHaveLength(1);
+    // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
+    expect(recordedRevealRefs).toHaveLength(1);
+    expectRevealWired(scrolls[0], recordedRevealRefs[0]);
     await act(async () => { tree.unmount(); });
   });
 });

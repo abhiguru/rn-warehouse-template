@@ -26,6 +26,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
+import { SHEET_A11Y, SHEET_BACKDROP_A11Y } from '@/components/common/sheetA11y';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useRouter, Href } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -316,6 +317,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
         {...props}
+        {...SHEET_BACKDROP_A11Y}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
         opacity={1}
@@ -516,6 +518,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
 
   return (
     <BottomSheetModal
+      {...SHEET_A11Y}
       ref={bottomSheetRef}
       onDismiss={sheet.onDismissed}
       index={0}

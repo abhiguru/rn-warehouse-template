@@ -266,7 +266,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
       <KeyboardAwareScrollView
         ref={scrollRef}
-        onScrollBeginDrag={scrollRef.onScrollBeginDrag}
+        {...scrollRef.revealHandlers}
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}

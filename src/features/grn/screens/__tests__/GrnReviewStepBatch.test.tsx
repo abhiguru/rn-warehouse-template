@@ -204,6 +204,41 @@ describe('the server\'s refusals for the date and the number (migration 130)', (
   });
 });
 
+describe('the server\'s refusals for a missing sender or supervisor (WH-231)', () => {
+  it.each([
+    ['SENDER_REQUIRED', 'Sender name is required'],
+    ['SUPERVISOR_REQUIRED', 'Supervisor is required'],
+  ])('%s: the app\'s own sentence in the save-failed alert, and OK takes the person to step 1', async (reason, sentence) => {
+    (createGRN as jest.Mock).mockResolvedValueOnce({
+      success: false,
+      error: 'English from the server',
+      refusal: { reason, fields: {}, text: 'English from the server' },
+    });
+    const tree = await render();
+    await save(tree);
+    const [, message, buttons] = alerts().at(-1)!;
+    expect(message).toBe(sentence);
+    expect(buttons).toEqual([expect.objectContaining({ text: 'OK' })]);
+    mockDispatch.mockClear();
+    await act(async () => { buttons![0].onPress?.(); });
+    expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ payload: 1 }));
+  });
+
+  it('another refusal is unchanged: an unknown reason is worded as before and has no OK that goes to step 1', async () => {
+    (createGRN as jest.Mock).mockResolvedValueOnce({
+      success: false,
+      error: 'x',
+      refusal: { reason: 'SOMETHING_NEW', fields: {}, text: 'x' },
+    });
+    const tree = await render();
+    await save(tree);
+    const [, message, buttons] = alerts().at(-1)!;
+    expect(message).not.toBe('Sender name is required');
+    expect(message).not.toBe('Supervisor is required');
+    expect(buttons).toBeUndefined();
+  });
+});
+
 describe('an edit refused for the last photo (migration 130)', () => {
   it('says a GRN needs at least one photo', async () => {
     (updateGRN as jest.Mock).mockResolvedValueOnce({

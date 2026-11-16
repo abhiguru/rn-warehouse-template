@@ -151,7 +151,7 @@ type GrnReviewStepProps = {
 
 /** The folding sections of the step, top to bottom. */
 /** The server's refusals about the date and the number of a new GRN: the person fixes them on step 1. */
-const CREATE_STEP_REFUSALS: ReadonlySet<string> = new Set([REFUSAL.GRN_DATE_FUTURE, REFUSAL.GRN_NUMBER_SPACES]);
+const CREATE_STEP_REFUSALS: ReadonlySet<string> = new Set([REFUSAL.GRN_DATE_FUTURE, REFUSAL.GRN_NUMBER_SPACES, REFUSAL.SENDER_REQUIRED, REFUSAL.SUPERVISOR_REQUIRED]);
 
 /** The app's sentence for a refusal about the date or the number of a GRN; undefined for any other reason. */
 function refusalText(refusal: ServerRefusal): string | undefined {
@@ -160,6 +160,8 @@ function refusalText(refusal: ServerRefusal): string | undefined {
     return tr('grn.refusal.dateFuture', { date: today ? formatDate(today) : '' });
   }
   if (refusal.reason === REFUSAL.GRN_NUMBER_SPACES) return tr('grn.refusal.numberSpaces');
+  if (refusal.reason === REFUSAL.SENDER_REQUIRED) return tr('grn.validation.senderRequired');
+  if (refusal.reason === REFUSAL.SUPERVISOR_REQUIRED) return tr('grn.validation.supervisorRequired');
   return undefined;
 }
 
@@ -1019,6 +1021,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         return;
       case REFUSAL.GRN_DATE_FUTURE:
       case REFUSAL.GRN_NUMBER_SPACES:
+      case REFUSAL.SENDER_REQUIRED:
+      case REFUSAL.SUPERVISOR_REQUIRED:
         showAlert(saveFailedTitle(), refusalText(refusal) ?? serverText(refusal.text, connectionHint(), { write: true, form: true }), ok(goToDetailsStep));
         return;
       case REFUSAL.GRN_PHOTO_REQUIRED:

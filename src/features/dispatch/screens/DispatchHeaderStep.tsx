@@ -108,7 +108,7 @@ const makeStyles = (t: ThemeTokens) => ({
         backgroundColor: t.surface.fieldReadOnly,
         borderWidth: 0,
     },
-    // The number and the date, when the hint under them is drawn: the hint follows them closely, then the usual gap
+    // The number and the date, when the invoiced hint under them is drawn: the hint follows them closely, then the usual gap
     formGroupAboveHint: {
         marginBottom: space.sm,
     },
@@ -116,6 +116,12 @@ const makeStyles = (t: ThemeTokens) => ({
         ...typography.footnote,
         color: t.text.secondary,
         marginBottom: space.lg,
+    },
+    // The note under the number box, as in the GRN wizard: it follows the box closely, the field group adds the usual gap
+    numberNote: {
+        ...typography.footnote,
+        color: t.text.secondary,
+        marginTop: space.xs,
     },
     loadingInputContainer: {
         flexDirection: 'row' as const,
@@ -389,7 +395,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
             >
                 <KeyboardAwareScrollView
                     ref={scrollRef}
-                    onScrollBeginDrag={scrollRef.onScrollBeginDrag}
+                    {...scrollRef.revealHandlers}
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
@@ -403,11 +409,11 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {/* Compact Row: Dispatch Number & Date */}
                         <View style={styles.compactRow}>
                             {/* Dispatch Number */}
-                            <View style={[styles.formGroup, styles.halfField, (dateAndNumberLocked || numberNote) && styles.formGroupAboveHint]}>
+                            <View style={[styles.formGroup, styles.halfField, dateAndNumberLocked && styles.formGroupAboveHint]}>
                                 <Text style={styles.label}>
                                     {tr('common.dispatchNumber')}<Text style={styles.required}> *</Text>
                                 </Text>
-                                {/* The box and its error, the block the wizard bar keeps above itself: in a row beside the date this group can be stretched, so not the group's own View. */}
+                                {/* The box, its error and its note, the block the wizard bar keeps above itself: in a row beside the date this group can be stretched, so not the group's own View. */}
                                 <View nativeID={FIELD_BLOCK_ID}>
                                     {isCreateMode && isGeneratingNumber ? (
                                         <View
@@ -439,11 +445,16 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                         </View>
                                     )}
                                     <FieldError message={validationErrors.disp_no} styles={styles} color={t.status.negative.text} />
+                                    {numberNote ? (
+                                        <Text style={styles.numberNote} accessibilityLiveRegion="polite" testID="dispatch-header-number-note">
+                                            {numberNote}
+                                        </Text>
+                                    ) : null}
                                 </View>
                             </View>
 
                             {/* Date */}
-                            <View style={[styles.formGroup, styles.halfField, styles.dateField, (dateAndNumberLocked || numberNote) && styles.formGroupAboveHint]}>
+                            <View style={[styles.formGroup, styles.halfField, styles.dateField, dateAndNumberLocked && styles.formGroupAboveHint]}>
                                 <Text style={styles.label}>
                                     {tr('common.date')}<Text style={styles.required}> *</Text>
                                 </Text>
@@ -477,11 +488,6 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {dateAndNumberLocked ? (
                             <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="dispatch-header-invoiced-hint">
                                 {lockedReason}
-                            </Text>
-                        ) : null}
-                        {numberNote ? (
-                            <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="dispatch-header-number-note">
-                                {numberNote}
                             </Text>
                         ) : null}
 

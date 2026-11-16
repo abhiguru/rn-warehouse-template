@@ -220,7 +220,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       {/* The editor is the page's scroll container: the content above the cards goes in its header */}
       <InvoiceItemsEditor
         ref={editorRef}
-        onScrollBeginDrag={editorRef.onScrollBeginDrag}
+        {...editorRef.revealHandlers}
         items={items}
         oneTime={!!header.one_time_charge}
         itemOverrides={itemOverrides}

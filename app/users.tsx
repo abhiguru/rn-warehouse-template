@@ -35,6 +35,7 @@ import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import {
   fontWeight,
   iconSize,
@@ -106,6 +107,8 @@ export default function UsersScreen() {
   const { userProfile } = useAppSelector((state) => state.auth);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // While the keyboard is up the list area ends at its top (WH-239), so the no-match state is centred above it.
+  const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const isOffline = useIsOffline();
 
   const [state, setState] = useState<ListState>({
@@ -428,7 +431,7 @@ export default function UsersScreen() {
         }}
       />
 
-      <View style={styles.container} testID="users-screen">
+      <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]} testID="users-screen">
         <MasterListHeader
           listKey="users"
           search={state.filters.search_query ?? ''}

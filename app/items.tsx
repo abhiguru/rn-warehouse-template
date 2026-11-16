@@ -66,6 +66,7 @@ import { deleteItemFlow } from '@/features/items/deleteItemFlow';
 import { showActivatedToast, showDeactivatedToast } from '@/features/items/activationToast';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from '@/components/lists/ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { itemPagePath } from '@/features/item-pricing/contract';
 import { itemIdsWithoutRate } from '@/features/item-pricing/noRate';
 import { todayDay } from '@/features/item-pricing/rateText';
@@ -120,6 +121,8 @@ export default function ItemsScreen() {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // While the keyboard is up the list area ends at its top (WH-239), so the no-match state is centred above it.
+  const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const [state, setState] = useState<ListState>({
     data: [],
     loading: true,
@@ -594,7 +597,7 @@ export default function ItemsScreen() {
         }}
       />
 
-      <View style={styles.container} testID="items-screen">
+      <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]} testID="items-screen">
         <MasterListHeader
           listKey="items"
           search={state.filters.search ?? ''}

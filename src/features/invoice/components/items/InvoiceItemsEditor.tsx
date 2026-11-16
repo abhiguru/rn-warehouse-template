@@ -96,7 +96,7 @@ import {
 } from './itemsModel';
 import { makeItemsStyles } from './itemsStyles';
 import { useFieldWalk, useRefFactory } from './useFieldWalk';
-import type { KeyboardRevealTarget } from '@/hooks/useRevealFocusedField';
+import type { KeyboardRevealTarget, RevealScrollHandlers } from '@/hooks/useRevealFocusedField';
 
 export interface RestoredRates {
   temp_id: string;
@@ -134,6 +134,9 @@ interface Props {
   contentContainerStyle?: StyleProp<ViewStyle>;
   /** The person started dragging the list (useRevealScrollRef, for the wizard bar's reveal). */
   onScrollBeginDrag?: () => void;
+  /** A touch on the list, and typing in a field of it (useRevealScrollRef's revealHandlers, for the same reveal). */
+  onTouchStartCapture?: RevealScrollHandlers['onTouchStartCapture'];
+  onChangeCapture?: RevealScrollHandlers['onChangeCapture'];
 }
 
 interface FocusRecord {
@@ -179,7 +182,7 @@ const spokenItemOf = (group: InvoiceItemGroup): string => {
 };
 
 export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle, Props>(function InvoiceItemsEditor(
-  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle, onScrollBeginDrag },
+  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle, onScrollBeginDrag, onTouchStartCapture, onChangeCapture },
   ref
 ) {
   const styles = useThemedStyles(makeItemsStyles);
@@ -801,6 +804,11 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
   const setListRef = useCallback((list: unknown) => {
     listRef.current = list as typeof listRef.current;
   }, []);
+  // Spread on the list: FlashList passes them on to its ScrollView, though its types name no capture handlers.
+  const revealHandlers = useMemo(
+    () => ({ onScrollBeginDrag, onTouchStartCapture, onChangeCapture }),
+    [onScrollBeginDrag, onTouchStartCapture, onChangeCapture]
+  );
 
   return (
     <KeyboardAwareFlashList
@@ -811,7 +819,7 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
       getItemType={rowType}
       innerRef={setListRef}
       ref={keyboardListRef}
-      onScrollBeginDrag={onScrollBeginDrag}
+      {...revealHandlers}
       ListHeaderComponent={ListHeaderComponent ? <View style={styles.listHeader}>{ListHeaderComponent}</View> : null}
       ListEmptyComponent={
         <View style={styles.empty}>

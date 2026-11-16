@@ -12,6 +12,7 @@ import BottomSheet, {
   BottomSheetBackdropProps,
   BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
+import { SHEET_A11Y, SHEET_BACKDROP_A11Y } from './common/sheetA11y';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
@@ -137,6 +138,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
         {...props}
+        {...SHEET_BACKDROP_A11Y}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
         opacity={1}
@@ -163,6 +165,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
 
   return (
     <BottomSheet
+      {...SHEET_A11Y}
       ref={bottomSheetRef}
       index={0}
       enableDynamicSizing

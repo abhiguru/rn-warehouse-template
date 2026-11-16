@@ -3,10 +3,12 @@
  * the rule's pattern, and an empty box says what to do when the rule offered no number.
  */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
+import { StyleSheet, Text, TextInput } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { DispatchHeaderStep } from '../DispatchHeaderStep';
 import { setLanguage } from '@/i18n';
+import { space } from '@/theme/tokens';
+import { FIELD_BLOCK_ID } from '@/hooks/useRevealFocusedField';
 
 const mockForm: Record<string, unknown> = {};
 const reset = (over: Record<string, unknown> = {}) => {
@@ -103,4 +105,34 @@ it('says it in Gujarati too', async () => {
   reset({ numberReason: 'TYPE_IT' });
   await mount();
   expect(allText()).toContain('કોઈ જાવક નંબર સૂચવાયો નથી');
+});
+
+// WH-232: the note under the number box is part of the block the wizard bar keeps above itself.
+describe('the note is inside the number field\'s block', () => {
+  const blockOf = (start: { parent: unknown } | null) => {
+    let current = start as { parent: unknown; props: Record<string, unknown> } | null;
+    while (current) {
+      if (current.props?.nativeID === FIELD_BLOCK_ID && typeof current.props === 'object') return current;
+      current = current.parent as typeof current;
+    }
+    return null;
+  };
+
+  it.each([['TYPE_IT'], ['SERIES_FULL']])('with %s: the box and its note share the nearest block, and the note follows the box closely', async (numberReason) => {
+    reset({ numberReason });
+    await mount();
+    const noteBlock = blockOf(note());
+    expect(noteBlock).not.toBeNull();
+    expect(blockOf(box() as never)).toBe(noteBlock);
+    expect(StyleSheet.flatten(note().props.style).marginTop).toBe(space.xs);
+  });
+
+  it('the date field is not in that block', async () => {
+    reset({ numberReason: 'TYPE_IT' });
+    await mount();
+    const noteBlock = blockOf(note());
+    const dateText = tree!.root.findAllByType(Text).find(node => [node.props.children].flat(3).includes('Date'));
+    expect(dateText).toBeDefined();
+    expect(blockOf(dateText as never)).not.toBe(noteBlock);
+  });
 });

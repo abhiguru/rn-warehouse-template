@@ -504,7 +504,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       // The number does not follow the facility's numbering rule (migration 127): nothing was saved, and the screen words
       // it from the pattern and takes the person to the number. It comes before the number-taken check, so it is no lost answer.
       const formatRefusal = refusalOf(data);
-      if (formatRefusal && [REFUSAL.NUMBER_FORMAT, REFUSAL.GRN_DATE_FUTURE, REFUSAL.GRN_NUMBER_SPACES].some((reason) => reason === formatRefusal.reason)) {
+      if (formatRefusal && [REFUSAL.NUMBER_FORMAT, REFUSAL.GRN_DATE_FUTURE, REFUSAL.GRN_NUMBER_SPACES, REFUSAL.SENDER_REQUIRED, REFUSAL.SUPERVISOR_REQUIRED].some((reason) => reason === formatRefusal.reason)) {
         // The date in the future and a number with a space (migration 130) are refused the same way: nothing was saved.
         throw new ServerRefusalError(formatRefusal, serverText(data?.message ?? data?.error, t('grn.form.creationFailed'), { write: true, form: true }));
       }

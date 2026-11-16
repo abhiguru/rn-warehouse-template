@@ -45,7 +45,7 @@ export interface WizardBottomBarProps {
   /**
    * The step's KeyboardAwareScrollView (automatic scroll off) or KeyboardAwareFlashList: while the keyboard is up the
    * bar scrolls it so the focused field and the messages under it sit above the bar (useRevealFocusedField). Make it
-   * with useRevealScrollRef and put its onScrollBeginDrag on the scroll view.
+   * with useRevealScrollRef and spread its revealHandlers on the scroll view.
    */
   scrollRef?: RevealScrollRef;
 }

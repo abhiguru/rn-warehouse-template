@@ -8,6 +8,7 @@ import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { router } from 'expo-router';
 import { fillNewInvoice, groupLines, invoiceLine, makeInvoiceStore, openForEdit, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { updateDiscount, updateHeader } from '@/store/slices/invoiceFormSlice';
+import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
 import InvoiceFormStep3 from '../../../../../app/invoice-form/step3';
 import InvoiceEditStep3 from '../../../../../app/invoice-edit/[id]/step3';
 
@@ -28,6 +29,7 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
@@ -64,9 +66,13 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
   afterEach(async () => { jest.restoreAllMocks(); await act(async () => { tree.unmount(); }); });
 
   it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
+    recordedRevealRefs.length = 0;
     await open();
     const scrolls = tree.root.findAll((n) => (n.type as unknown) === 'KeyboardAwareScrollView' && typeof n.props.onScrollBeginDrag === 'function');
     expect(scrolls).toHaveLength(1);
+    // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
+    expect(recordedRevealRefs).toHaveLength(1);
+    expectRevealWired(scrolls[0], recordedRevealRefs[0]);
   });
 
   it('lets go of the focused input when the keyboard hides (useBlurOnKeyboardHide)', async () => {
