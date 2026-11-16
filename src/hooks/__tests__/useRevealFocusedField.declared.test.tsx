@@ -303,12 +303,30 @@ describe('the at-rest check stops (2f)', () => {
     expect(scroll).toHaveBeenCalledTimes(5);
     expect(scroll).toHaveBeenLastCalledWith(needed(bottomOf(block)));
     await tick(6000);
-    // WH-242: the count of asks carries over from the earlier trigger, so the later ones get no re-asks; a fix
-    // gives up to 3 more, and then this number changes on purpose. Today: the one ask for the message, 5 in all.
-    expect(scroll).toHaveBeenCalledTimes(5);
+    // WH-242: the reveal for the message gets its own count: its ask (5th call) plus 3 re-asks, 8 in all.
+    expect(scroll).toHaveBeenCalledTimes(8);
     const settled = scroll.mock.calls.length;
     await tick(6000);
     expect(scroll).toHaveBeenCalledTimes(settled);
+  });
+
+  it('WH-242: a later reveal from the same place gets its retries again after the check gave up once', async () => {
+    canScroll = false;
+    const input = makeInput(topFor(30, 10));
+    focused = input;
+    const block = wrap(input, 10, FIELD_BLOCK_ID);
+    await render();
+    await tick(6000);
+    expect(scroll).toHaveBeenCalledTimes(4);
+    // A second and a third message: each reveal is asked once and re-asked 3 times, however the earlier ones ended.
+    block.height += 24;
+    await tick(6000);
+    expect(scroll).toHaveBeenCalledTimes(8);
+    block.height += 24;
+    await tick(6000);
+    expect(scroll).toHaveBeenCalledTimes(12);
+    await tick(6000);
+    expect(scroll).toHaveBeenCalledTimes(12);
   });
 
   it('a message that appears after the block was found in place is revealed', async () => {
