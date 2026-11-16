@@ -364,9 +364,14 @@ it('takes the tap outside itself: the library\'s backdrop is told not to close t
   await open([]);
   const backdrop = tree!.root.findByType('Backdrop' as never);
   expect(backdrop.props.pressBehavior).toBe('none');
-  // The scrim is one screen-reader stop, named like the Cancel button.
+  // WH-238 (Design's ruling): the scrim is no screen-reader stop; the header's Cancel button is the one way out.
   expect(backdrop.props.accessible).toBe(false);
-  expect(node('catalog-scrim').props.accessibilityLabel).toBe('Cancel adding items');
+  const scrim = node('catalog-scrim').props;
+  expect(scrim.accessible).toBe(false);
+  expect(scrim.importantForAccessibility).toBe('no');
+  expect(scrim.accessibilityLabel).toBeUndefined();
+  expect(scrim.accessibilityRole).toBeUndefined();
+  expect(node('catalog-cancel').props.accessibilityLabel).toBe('Cancel adding items');
 });
 
 describe('Add waits for the server', () => {
