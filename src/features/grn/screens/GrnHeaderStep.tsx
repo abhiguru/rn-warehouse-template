@@ -13,6 +13,7 @@ import {
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { FIELD_BLOCK_ID, useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
@@ -91,6 +92,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // Bottom sheet refs
   const senderBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
   const customerBottomSheetRef = useRef<CustomerSearchBottomSheetRef>(null);
+  const scrollRef = useRevealScrollRef<KeyboardAwareScrollView>();
 
   // Input refs
   const registrationInputRef = useRef<GhostTextInputRef>(null);
@@ -263,12 +265,14 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
       />
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
+        onScrollBeginDrag={scrollRef.onScrollBeginDrag}
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
         enableOnAndroid
-        enableAutomaticScroll
-        extraScrollHeight={120}
+        // WizardBottomBar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no keyboard room.
+        enableAutomaticScroll={false}
         keyboardShouldPersistTaps="handled"
       >
         {hasDispatchedItems && (
@@ -292,55 +296,58 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
           <View style={styles.compactRow}>
             <View style={[styles.formField, styles.grNumberField]}>
               {renderLabel(tr('common.grnNumber'), true)}
-              {isCreateMode && isGeneratingNumber ? (
-                <View
-                  style={[styles.input, styles.loadingInputContainer]}
-                  accessibilityLabel={tr('grn.header.gettingNumber')}
-                  accessibilityState={{ busy: true }}
-                >
-                  <ActivityIndicator size="small" color={t.brand.tint} />
-                </View>
-              ) : (
-                <View
-                  style={[
-                    styles.input,
-                    styles.rowInput,
-                    !isCreateMode && styles.inputReadOnly,
-                    isCreateMode && focusedField === 'gr_no' && styles.inputFocused,
-                    validationErrors.gr_no ? styles.inputError : null,
-                  ]}
-                >
-                  <Icon name={isCreateMode ? 'package-down' : 'lock-outline'} size={iconSize.md} color={t.icon.secondary} />
-                  <TextInput
-                    style={styles.grNoTextInput}
-                    accessibilityLabel={tr('grn.header.receiptNumberLabel')}
-                    accessibilityHint={isCreateMode ? undefined : tr('grn.refusal.numberLocked')}
-                    value={header.gr_no}
-                    // The number of a saved GRN is read-only (owner decision D6): a wrong one is corrected by deleting the GRN and entering it again.
-                    editable={isCreateMode}
-                    onChangeText={(text) => {
-                      if (!isCreateMode) return;
-                      handleGrNoChange(normalizeDigits(text).toUpperCase());
-                    }}
-                    placeholder={numberBoxPlaceholder(numberHint, numberReason, tr('grn.header.numberPlaceholder'))}
-                    placeholderTextColor={t.text.placeholder}
-                    maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
-                    // A long number at a large text size wraps instead of scrolling; Enter still just leaves the box.
-                    multiline
-                    submitBehavior="blurAndSubmit"
-                    autoCapitalize="characters"
-                    onFocus={() => setFocusedField('gr_no')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-              )}
-              {renderError(validationErrors.gr_no)}
-              {numberNote ? (
-                <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="grn-header-number-note">
-                  {numberNote}
-                </Text>
-              ) : null}
-              {!isCreateMode ? <Text style={styles.lockHint}>{tr('grn.refusal.numberLocked')}</Text> : null}
+              {/* The box and the lines under it, the block the wizard bar keeps above itself: in a row beside the date this field can be stretched, so not the field's own View. */}
+              <View nativeID={FIELD_BLOCK_ID}>
+                {isCreateMode && isGeneratingNumber ? (
+                  <View
+                    style={[styles.input, styles.loadingInputContainer]}
+                    accessibilityLabel={tr('grn.header.gettingNumber')}
+                    accessibilityState={{ busy: true }}
+                  >
+                    <ActivityIndicator size="small" color={t.brand.tint} />
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.input,
+                      styles.rowInput,
+                      !isCreateMode && styles.inputReadOnly,
+                      isCreateMode && focusedField === 'gr_no' && styles.inputFocused,
+                      validationErrors.gr_no ? styles.inputError : null,
+                    ]}
+                  >
+                    <Icon name={isCreateMode ? 'package-down' : 'lock-outline'} size={iconSize.md} color={t.icon.secondary} />
+                    <TextInput
+                      style={styles.grNoTextInput}
+                      accessibilityLabel={tr('grn.header.receiptNumberLabel')}
+                      accessibilityHint={isCreateMode ? undefined : tr('grn.refusal.numberLocked')}
+                      value={header.gr_no}
+                      // The number of a saved GRN is read-only (owner decision D6): a wrong one is corrected by deleting the GRN and entering it again.
+                      editable={isCreateMode}
+                      onChangeText={(text) => {
+                        if (!isCreateMode) return;
+                        handleGrNoChange(normalizeDigits(text).toUpperCase());
+                      }}
+                      placeholder={numberBoxPlaceholder(numberHint, numberReason, tr('grn.header.numberPlaceholder'))}
+                      placeholderTextColor={t.text.placeholder}
+                      maxLength={DOCUMENT_NUMBER_MAX_LENGTH}
+                      // A long number at a large text size wraps instead of scrolling; Enter still just leaves the box.
+                      multiline
+                      submitBehavior="blurAndSubmit"
+                      autoCapitalize="characters"
+                      onFocus={() => setFocusedField('gr_no')}
+                      onBlur={() => setFocusedField(null)}
+                    />
+                  </View>
+                )}
+                {renderError(validationErrors.gr_no)}
+                {numberNote ? (
+                  <Text style={styles.lockHint} accessibilityLiveRegion="polite" testID="grn-header-number-note">
+                    {numberNote}
+                  </Text>
+                ) : null}
+                {!isCreateMode ? <Text style={styles.lockHint}>{tr('grn.refusal.numberLocked')}</Text> : null}
+              </View>
             </View>
 
             <View style={[styles.formField, styles.dateField]}>
@@ -395,7 +402,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
             tr('grn.header.supervisorHint')
           )}
 
-          <View style={[styles.formField, styles.lastField]}>
+          {/* Nothing shows under this field: the group ends at its box, the block the wizard bar keeps above itself. */}
+          <View style={[styles.formField, styles.lastField]} nativeID={FIELD_BLOCK_ID}>
             {renderLabel(tr('grn.header.vehicleRegistration'))}
             <GhostTextInput
               ref={registrationInputRef}
@@ -488,7 +496,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
               </View>
             </View>
 
-            <View style={[styles.formField, styles.lastField]}>
+            {/* The field with its count under it, the block the wizard bar keeps above itself (it ends at the count). */}
+            <View style={[styles.formField, styles.lastField]} nativeID={FIELD_BLOCK_ID}>
               {renderLabel(tr('common.notes'))}
               <TextInput
                 style={[styles.input, styles.textArea, focusedField === 'notes' && styles.inputFocused]}
@@ -513,6 +522,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         currentStep={STEP_NUMBERS.HEADER}
         totalSteps={GRN_STEP_COUNT}
         onNext={handleNext}
+        scrollRef={scrollRef}
       />
 
       <DatePickerModal

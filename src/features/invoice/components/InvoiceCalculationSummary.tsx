@@ -4,6 +4,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ConfirmInputDialog } from '@/components/ConfirmInputDialog';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { FIELD_BLOCK_ID } from '@/hooks/useRevealFocusedField';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
@@ -161,6 +162,10 @@ const makeStyles = (t: ThemeTokens) => ({
   reasonContainer: {
     paddingHorizontal: space.sm,
     paddingBottom: space.md,
+    gap: space.xs,
+  },
+  // A field's box with the lines under it, inside discountBlock or reasonContainer: their gap, so nothing moves.
+  fieldBlock: {
     gap: space.xs,
   },
   fieldLabel: {
@@ -484,27 +489,30 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
             </Pressable>
           </View>
         </View>
-        <View style={[styles.field, discountError ? styles.fieldError : null]}>
-          <Text style={styles.currencySymbol}>₹</Text>
-          <TextInput
-            ref={discountRef}
-            style={styles.discountInput}
-            accessibilityLabel={tr('invoice.summary.discountA11y')}
-            value={localizeDigits(discountText)}
-            onChangeText={handleDiscountChange}
-            editable={!locked}
-            onFocus={handleDiscountFocus}
-            onBlur={handleDiscountBlur}
-            selectTextOnFocus
-            placeholder={localizeDigits('0.00')}
-            // Android's number keyboard has the minus sign a surcharge needs; the iOS number pads do not.
-            keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
-            placeholderTextColor={t.text.placeholder}
-            testID="invoice-summary-discount"
-          />
-        </View>
-        <View style={styles.validationContainer}>
-          <InlineValidation message={discountError || ''} variant="error" visible={!!discountError} />
+        {/* The box and its error line: the block the wizard bar keeps above itself (the calculator link stays outside). */}
+        <View style={styles.fieldBlock} nativeID={FIELD_BLOCK_ID}>
+          <View style={[styles.field, discountError ? styles.fieldError : null]}>
+            <Text style={styles.currencySymbol}>₹</Text>
+            <TextInput
+              ref={discountRef}
+              style={styles.discountInput}
+              accessibilityLabel={tr('invoice.summary.discountA11y')}
+              value={localizeDigits(discountText)}
+              onChangeText={handleDiscountChange}
+              editable={!locked}
+              onFocus={handleDiscountFocus}
+              onBlur={handleDiscountBlur}
+              selectTextOnFocus
+              placeholder={localizeDigits('0.00')}
+              // Android's number keyboard has the minus sign a surcharge needs; the iOS number pads do not.
+              keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
+              placeholderTextColor={t.text.placeholder}
+              testID="invoice-summary-discount"
+            />
+          </View>
+          <View style={styles.validationContainer}>
+            <InlineValidation message={discountError || ''} variant="error" visible={!!discountError} />
+          </View>
         </View>
         <Pressable
           style={({ pressed }) => [styles.tertiary, pressed && styles.tertiaryPressed]}
@@ -526,22 +534,25 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
           <Text style={[styles.fieldLabel, discountReasonRed && styles.fieldLabelError]}>
             {reasonRequired ? tr('invoice.summary.discountReasonRequired') : tr('invoice.label.discountReason')}
           </Text>
-          <TextInput
-            ref={discountReasonRef}
-            style={[styles.reasonInput, reasonLocked ? styles.reasonReadOnly : discountReasonRed && styles.fieldError]}
-            accessibilityLabel={tr('invoice.label.discountReason')}
-            value={reasonLocked ? header.saved_discount_reason || '' : header.discount_reason || ''}
-            onChangeText={onDiscountReasonChange}
-            editable={!reasonLocked && !locked}
-            placeholder={reasonLocked ? undefined : tr('invoice.summary.discountReasonPlaceholder')}
-            placeholderTextColor={t.text.placeholder}
-            maxLength={500}
-            multiline
-            testID="invoice-summary-discount-reason"
-          />
-          {/* The visible line is the only place the reason is told (a hint on the field as well was read twice). */}
-          {reasonLocked && <Text style={styles.reasonHint}>{tr('invoice.summary.discountReasonLocked')}</Text>}
-          <InlineValidation message={tr('invoice.summary.reasonMissing')} variant="error" visible={discountReasonRed} />
+          {/* The field and the lines under it, not the container's bottom padding: the block the wizard bar keeps above itself. */}
+          <View style={styles.fieldBlock} nativeID={FIELD_BLOCK_ID}>
+            <TextInput
+              ref={discountReasonRef}
+              style={[styles.reasonInput, reasonLocked ? styles.reasonReadOnly : discountReasonRed && styles.fieldError]}
+              accessibilityLabel={tr('invoice.label.discountReason')}
+              value={reasonLocked ? header.saved_discount_reason || '' : header.discount_reason || ''}
+              onChangeText={onDiscountReasonChange}
+              editable={!reasonLocked && !locked}
+              placeholder={reasonLocked ? undefined : tr('invoice.summary.discountReasonPlaceholder')}
+              placeholderTextColor={t.text.placeholder}
+              maxLength={500}
+              multiline
+              testID="invoice-summary-discount-reason"
+            />
+            {/* The visible line is the only place the reason is told (a hint on the field as well was read twice). */}
+            {reasonLocked && <Text style={styles.reasonHint}>{tr('invoice.summary.discountReasonLocked')}</Text>}
+            <InlineValidation message={tr('invoice.summary.reasonMissing')} variant="error" visible={discountReasonRed} />
+          </View>
         </View>
       )}
 
@@ -551,20 +562,23 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
           <Text style={[styles.fieldLabel, zeroReasonRed && styles.fieldLabelError]}>
             {zeroChargeReasonRequired ? tr('invoice.summary.zeroChargeReasonRequired') : tr('invoice.label.zeroChargeReason')}
           </Text>
-          <TextInput
-            ref={zeroReasonRef}
-            style={[styles.reasonInput, zeroReasonRed && styles.fieldError]}
-            accessibilityLabel={tr('invoice.label.zeroChargeReason')}
-            value={header.zero_charge_reason || ''}
-            onChangeText={onZeroChargeReasonChange}
-            editable={!locked}
-            placeholder={tr('invoice.summary.zeroChargeReasonPlaceholder')}
-            placeholderTextColor={t.text.placeholder}
-            maxLength={500}
-            multiline
-            testID="invoice-summary-zero-reason"
-          />
-          <InlineValidation message={tr('invoice.summary.reasonMissing')} variant="error" visible={zeroReasonRed} />
+          {/* The field and its line, not the container's bottom padding: the block the wizard bar keeps above itself. */}
+          <View style={styles.fieldBlock} nativeID={FIELD_BLOCK_ID}>
+            <TextInput
+              ref={zeroReasonRef}
+              style={[styles.reasonInput, zeroReasonRed && styles.fieldError]}
+              accessibilityLabel={tr('invoice.label.zeroChargeReason')}
+              value={header.zero_charge_reason || ''}
+              onChangeText={onZeroChargeReasonChange}
+              editable={!locked}
+              placeholder={tr('invoice.summary.zeroChargeReasonPlaceholder')}
+              placeholderTextColor={t.text.placeholder}
+              maxLength={500}
+              multiline
+              testID="invoice-summary-zero-reason"
+            />
+            <InlineValidation message={tr('invoice.summary.reasonMissing')} variant="error" visible={zeroReasonRed} />
+          </View>
         </View>
       )}
 

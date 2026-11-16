@@ -96,6 +96,7 @@ import {
 } from './itemsModel';
 import { makeItemsStyles } from './itemsStyles';
 import { useFieldWalk, useRefFactory } from './useFieldWalk';
+import type { KeyboardRevealTarget } from '@/hooks/useRevealFocusedField';
 
 export interface RestoredRates {
   temp_id: string;
@@ -104,7 +105,8 @@ export interface RestoredRates {
   tax: number;
 }
 
-export interface InvoiceItemsEditorHandle {
+/** Also the list's keyboard-aware wrapper, for WizardBottomBar's scrollRef (useRevealFocusedField). */
+export interface InvoiceItemsEditorHandle extends KeyboardRevealTarget {
   /**
    * Next: counts the fields whose text is refused, shows their errors, announces the count and
    * focuses the first one (scrolling it in if the list has not drawn it). 0 means all is well.
@@ -130,6 +132,8 @@ interface Props {
   ListHeaderComponent?: React.ReactElement | null;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /** The person started dragging the list (useRevealScrollRef, for the wizard bar's reveal). */
+  onScrollBeginDrag?: () => void;
 }
 
 interface FocusRecord {
@@ -175,7 +179,7 @@ const spokenItemOf = (group: InvoiceItemGroup): string => {
 };
 
 export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle, Props>(function InvoiceItemsEditor(
-  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle },
+  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle, onScrollBeginDrag },
   ref
 ) {
   const styles = useThemedStyles(makeItemsStyles);
@@ -385,6 +389,8 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
     });
     Array.from(focusRecords.keys()).filter((key) => !present.has(key)).forEach((key) => focusRecords.delete(key));
   }, [plan, focusRecords]);
+  // The keyboard-aware wrapper around the list (WizardBottomBar scrolls through it).
+  const keyboardListRef = useRef<KeyboardRevealTarget>(null);
 
   const listRef = useRef<{ scrollToIndex: (params: { index: number; animated?: boolean; viewPosition?: number; viewOffset?: number }) => Promise<void> | void } | null>(null);
   // Where a stacked "(all lines)" field starts below the top of its row (set by the block while the fields are stacked,
@@ -693,6 +699,8 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
         }
         return wrong.length;
       },
+      scrollForExtraHeightOnAndroid: (extraHeight: number) => keyboardListRef.current?.scrollForExtraHeightOnAndroid(extraHeight),
+      getScrollResponder: () => keyboardListRef.current?.getScrollResponder?.(),
     }),
     []
   );
@@ -802,6 +810,8 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
       keyExtractor={rowKey}
       getItemType={rowType}
       innerRef={setListRef}
+      ref={keyboardListRef}
+      onScrollBeginDrag={onScrollBeginDrag}
       ListHeaderComponent={ListHeaderComponent ? <View style={styles.listHeader}>{ListHeaderComponent}</View> : null}
       ListEmptyComponent={
         <View style={styles.empty}>
@@ -813,8 +823,9 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
       style={listStyle}
       contentContainerStyle={listContentStyle}
       showsVerticalScrollIndicator
-      enableAutomaticScroll
-      extraScrollHeight={120}
+      // The wizard's bottom bar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no
+      // keyboard room.
+      enableAutomaticScroll={false}
       keyboardShouldPersistTaps="handled"
       // A drag closes the keyboard, which blurs the field (useBlurOnKeyboardHide): no focus stays on a view that scrolls away.
       keyboardDismissMode="on-drag"

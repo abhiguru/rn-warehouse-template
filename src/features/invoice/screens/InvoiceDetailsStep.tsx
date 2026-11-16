@@ -7,12 +7,13 @@
  * pressed, and go when the field changes.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, type Href } from 'expo-router';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { FIELD_BLOCK_ID, useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -55,6 +56,8 @@ const makeDetailsStyles = (t: ThemeTokens) => {
   return {
     ...base,
     scrollContent: { ...base.scrollContent, paddingBottom: space.giant },
+    // A field's box with the lines under it, inside its group: the group's own gap, so nothing moves.
+    fieldBlock: { gap: base.formGroup.gap },
     retryButton: {
       alignSelf: 'flex-start' as const,
       flexDirection: 'row' as const,
@@ -125,6 +128,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
     resetFormState,
   } = useInvoiceForm({ mode, step: STEP_NUMBERS.HEADER });
 
+  const scrollRef = useRevealScrollRef<KeyboardAwareScrollView>();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showGRNBottomSheet, setShowGRNBottomSheet] = useState(false);
   const [showNoItemsDialog, setShowNoItemsDialog] = useState(false);
@@ -332,11 +336,15 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
       />
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
+        onScrollBeginDrag={scrollRef.onScrollBeginDrag}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         enableOnAndroid
+        // WizardBottomBar keeps the focused field above itself (useRevealFocusedField): no automatic scroll, no keyboard room.
+        enableAutomaticScroll={false}
       >
         {/* Invoice date */}
         <View style={styles.formGroup}>
@@ -390,35 +398,38 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
           <Text style={[styles.label, !!invNoError && styles.labelError]}>
             {tr('common.invoiceNumber')} <Text style={styles.required}>*</Text>
           </Text>
-          <View style={[styles.field, styles.fieldRow, !!invNoError && styles.fieldError]}>
-            {/* The prefix is fixed text in front; only the digits are typed (WH-139). */}
-            {!!header.inv_prefix && (
-              <Text style={[styles.fieldValue, styles.numeric, styles.prefixText]} accessibilityLabel={header.inv_prefix} testID="invoice-number-prefix">
-                {header.inv_prefix}
-              </Text>
-            )}
-            <TextInput
-              style={[styles.fieldValue, styles.numeric]}
-              {...identifierInput(header.inv_no > 0 ? header.inv_no : '', handleInvoiceNumberChange)}
-              placeholder={isGettingNumber ? tr('invoice.form.generating') : tr('common.invoiceNumber')}
-              placeholderTextColor={t.text.placeholder}
-              keyboardType="number-pad"
-              returnKeyType="done"
-              maxLength={isEdit ? EDIT_NUMBER_DIGITS : INVOICE_NUMBER_DIGITS}
-              // Stays editable while the number is asked for: a typed number is kept and ends the wait.
-              editable={!isLoading}
-              // An emptied field of a new invoice that is left gets the suggestion again; any other is checked.
-              onBlur={() => { if (!suggestNumberIfEmpty()) void validateField('inv_no'); }}
-              accessibilityLabel={tr('common.invoiceNumber')}
-            />
-            {isGettingNumber && (
-              <View style={styles.fieldSpinner}>
-                <ActivityIndicator size="small" color={t.brand.tint} />
-              </View>
-            )}
+          {/* The box, its error and its help line: the block the wizard bar keeps above itself (Retry stays outside). */}
+          <View style={styles.fieldBlock} nativeID={FIELD_BLOCK_ID}>
+            <View style={[styles.field, styles.fieldRow, !!invNoError && styles.fieldError]}>
+              {/* The prefix is fixed text in front; only the digits are typed (WH-139). */}
+              {!!header.inv_prefix && (
+                <Text style={[styles.fieldValue, styles.numeric, styles.prefixText]} accessibilityLabel={header.inv_prefix} testID="invoice-number-prefix">
+                  {header.inv_prefix}
+                </Text>
+              )}
+              <TextInput
+                style={[styles.fieldValue, styles.numeric]}
+                {...identifierInput(header.inv_no > 0 ? header.inv_no : '', handleInvoiceNumberChange)}
+                placeholder={isGettingNumber ? tr('invoice.form.generating') : tr('common.invoiceNumber')}
+                placeholderTextColor={t.text.placeholder}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                maxLength={isEdit ? EDIT_NUMBER_DIGITS : INVOICE_NUMBER_DIGITS}
+                // Stays editable while the number is asked for: a typed number is kept and ends the wait.
+                editable={!isLoading}
+                // An emptied field of a new invoice that is left gets the suggestion again; any other is checked.
+                onBlur={() => { if (!suggestNumberIfEmpty()) void validateField('inv_no'); }}
+                accessibilityLabel={tr('common.invoiceNumber')}
+              />
+              {isGettingNumber && (
+                <View style={styles.fieldSpinner}>
+                  <ActivityIndicator size="small" color={t.brand.tint} />
+                </View>
+              )}
+            </View>
+            {renderError(invNoError)}
+            {!!numberHint && <Text style={styles.helperText}>{numberHint}</Text>}
           </View>
-          {renderError(invNoError)}
-          {!!numberHint && <Text style={styles.helperText}>{numberHint}</Text>}
           {nextNumberFailed && !isGettingNumber && !isEdit && (
             <Pressable
               style={({ pressed }) => [styles.retryButton, pressed && styles.fieldPressed]}
@@ -520,6 +531,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
       <WizardBottomBar
         currentStep={STEP_NUMBERS.HEADER}
         totalSteps={3}
+        scrollRef={scrollRef}
         onNext={handleNext}
         nextLabel={tr('common.next')}
         isLoading={isGettingNextNumber}

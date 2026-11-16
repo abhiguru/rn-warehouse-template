@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, Pressable, ActivityIndicator, Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
+import { useRevealFocusedField, type RevealScrollRef } from '@/hooks/useRevealFocusedField';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -40,6 +42,12 @@ export interface WizardBottomBarProps {
   addDisabled?: boolean;
   addAccessibilityLabel?: string;
   addTestID?: string;
+  /**
+   * The step's KeyboardAwareScrollView (automatic scroll off) or KeyboardAwareFlashList: while the keyboard is up the
+   * bar scrolls it so the focused field and the messages under it sit above the bar (useRevealFocusedField). Make it
+   * with useRevealScrollRef and put its onScrollBeginDrag on the scroll view.
+   */
+  scrollRef?: RevealScrollRef;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -115,7 +123,7 @@ const makeStyles = (t: ThemeTokens) => ({
 /**
  * Bottom bar of the GRN wizard: Back (secondary) and Next, or Create/Save on
  * the review step (primary). Sits on surface.card with shadow[3]. It adds the
- * bottom inset on iOS only: on Android the root stack already pads the screen by it. Render it below the step content, not over it.
+ * bottom inset on iOS only, and not while the keyboard is up (as FormSaveBar): on Android the root stack already pads the screen by it. While the keyboard is up it is lifted by the part the keyboard covers (useKeyboardCoverLift) and keeps the focused field of `scrollRef` above itself. Render it below the step content, not over it.
  */
 export default function WizardBottomBar({
   currentStep,
@@ -136,8 +144,12 @@ export default function WizardBottomBar({
   addDisabled = false,
   addAccessibilityLabel,
   addTestID,
+  scrollRef,
 }: WizardBottomBarProps) {
   const insets = useSafeAreaInsets();
+  // Lifted by the part of the bar the keyboard covers (WH-228), as FormSaveBar is.
+  const { ref: barRef, lift, keyboardShown, revision, onLayout: measureLift } = useKeyboardCoverLift();
+  useRevealFocusedField(barRef, scrollRef, keyboardShown, revision);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const { stacked } = useTableLayout();
@@ -244,7 +256,7 @@ export default function WizardBottomBar({
 
   // Stacked, Next comes first: the drawing, the reading order and the focus order agree.
   return (
-    <View style={[styles.container, stacked && styles.containerStacked, { paddingBottom: (Platform.OS === 'ios' ? insets.bottom : 0) + space.md }]}>
+    <View ref={barRef} onLayout={measureLift} style={[styles.container, stacked && styles.containerStacked, { marginBottom: lift, paddingBottom: (Platform.OS === 'ios' && !keyboardShown ? insets.bottom : 0) + space.md }]}>
       {stacked ? (
         <>
           {nextButton}

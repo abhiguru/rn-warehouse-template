@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { FIELD_BLOCK_ID } from '@/hooks/useRevealFocusedField';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
@@ -192,6 +193,7 @@ export function Input({
   const shouldShowClear = showClearButton && isFocused && hasValue && !isReadOnly && !isDisabled;
 
   return (
+    // The field with its message and count, ending at the last of them: the block the wizard bar keeps above itself.
     <View
       style={[
         styles.container,
@@ -199,6 +201,7 @@ export function Input({
         isDisabled && styles.containerDisabled,
         containerStyle,
       ]}
+      nativeID={FIELD_BLOCK_ID}
     >
       {/* Label */}
       {label && (

@@ -63,6 +63,12 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
   beforeEach(() => { jest.clearAllMocks(); mockRole = 'staff'; });
   afterEach(async () => { jest.restoreAllMocks(); await act(async () => { tree.unmount(); }); });
 
+  it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
+    await open();
+    const scrolls = tree.root.findAll((n) => (n.type as unknown) === 'KeyboardAwareScrollView' && typeof n.props.onScrollBeginDrag === 'function');
+    expect(scrolls).toHaveLength(1);
+  });
+
   it('lets go of the focused input when the keyboard hides (useBlurOnKeyboardHide)', async () => {
     const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation((() => ({ remove: jest.fn() })) as never);
     const focused = { blur: jest.fn() };

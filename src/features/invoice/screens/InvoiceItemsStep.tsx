@@ -19,6 +19,7 @@ import { useAppStore } from '@/store/hooks';
 import { useBlurOnKeyboardHide } from '@/hooks/useBlurOnKeyboardHide';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { InvoiceItemsEditor, type InvoiceItemsEditorHandle } from '@/features/invoice/components/items/InvoiceItemsEditor';
+import { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import { STEP_NUMBERS, getCompletedSteps, makeInvoiceWizardStyles } from '@/constants/invoiceSteps';
 import { t as tr } from '@/i18n';
@@ -44,7 +45,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
     resetFormState,
   } = useInvoiceForm({ mode, step: STEP_NUMBERS.ITEMS });
 
-  const editorRef = useRef<InvoiceItemsEditorHandle>(null);
+  const editorRef = useRevealScrollRef<InvoiceItemsEditorHandle>();
 
   // Dialog states for dark mode compliance
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; title: string; message: string }>({
@@ -169,6 +170,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       <WizardBottomBar
         currentStep={STEP_NUMBERS.ITEMS}
         totalSteps={3}
+        scrollRef={editorRef}
         onPrevious={handleBack}
         previousAccessibilityLabel={tr('invoice.items.backToDetails')}
         onNext={handleNext}
@@ -218,6 +220,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
       {/* The editor is the page's scroll container: the content above the cards goes in its header */}
       <InvoiceItemsEditor
         ref={editorRef}
+        onScrollBeginDrag={editorRef.onScrollBeginDrag}
         items={items}
         oneTime={!!header.one_time_charge}
         itemOverrides={itemOverrides}

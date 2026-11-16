@@ -7,7 +7,9 @@
  * the keyboard's top. It is measured again when the keyboard appears or changes height (`keyboardDidShow`,
  * `keyboardDidChangeFrame`), when the bar is laid out and when the window size changes, so a window that shrinks
  * after the keyboard appeared brings the lift back to 0. A bar mounted while the keyboard is already open is lifted
- * too. An event without coordinates changes nothing. Apply `lift` as the bar's `marginBottom`.
+ * too. An event without coordinates changes nothing. Apply `lift` as the bar's `marginBottom`. `revision` changes after
+ * every measurement taken while the keyboard is up, so a bar can act once its lifted place is drawn (WizardBottomBar
+ * then brings the focused field above itself).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dimensions, Keyboard, type LayoutChangeEvent } from 'react-native';
@@ -16,6 +18,7 @@ import type { ViewRef } from '@/types/nativeRefs';
 export function useKeyboardCoverLift() {
   const [keyboardShown, setKeyboardShown] = useState(false);
   const [lift, setLift] = useState(0);
+  const [revision, setRevision] = useState(0);
   const ref = useRef<ViewRef>(null);
   const liftRef = useRef(0);
   /** The keyboard's top edge in window coordinates; null while it is down. */
@@ -33,6 +36,7 @@ export function useKeyboardCoverLift() {
       if (keyboardTopRef.current === null) return;
       const unliftedBottom = y + height + liftRef.current;
       apply(Math.max(0, unliftedBottom - keyboardTopRef.current));
+      setRevision(previous => previous + 1);
     });
   }, [apply]);
 
@@ -65,7 +69,7 @@ export function useKeyboardCoverLift() {
 
   const onLayout = useCallback((_event: LayoutChangeEvent) => measure(), [measure]);
 
-  return { ref, lift, keyboardShown, onLayout };
+  return { ref, lift, keyboardShown, revision, onLayout };
 }
 
 export default useKeyboardCoverLift;

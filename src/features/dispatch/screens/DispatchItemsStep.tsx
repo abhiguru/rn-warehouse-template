@@ -25,6 +25,7 @@ import {
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { FIELD_BLOCK_ID, useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
@@ -103,7 +104,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     });
 
     // Refs
-    const scrollViewRef = useRef<any>(null);
+    const scrollViewRef = useRevealScrollRef<KeyboardAwareScrollView>();
     const quantityInputRef = useRef<TextInputRef>(null);
     // The three pickers and where each sits in the scroll content, so a tap on an incomplete line can bring the first missing one into view.
     const pickerRefs = useRef<Record<string, ViewRef | null>>({});
@@ -980,17 +981,15 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             >
                 <KeyboardAwareScrollView
                     ref={scrollViewRef}
+                    onScrollBeginDrag={scrollViewRef.onScrollBeginDrag}
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                     enableOnAndroid={true}
-                    enableAutomaticScroll={true}
-                    // The library scrolls the focused field to this far above the keyboard: about 88 pt, room for the
-                    // "Enter N bags or fewer" line under it. (250/350 pt put the field behind the header.)
-                    extraScrollHeight={space.lg}
-                    keyboardOpeningTime={0}
-                    extraHeight={72}
+                    // WizardBottomBar keeps the focused field and the "Enter N bags or fewer" line under it above
+                    // itself (useRevealFocusedField): no automatic scroll, no keyboard room.
+                    enableAutomaticScroll={false}
                 >
                     {/* A saved item is being corrected, in a new dispatch or an edited one: the
                         strip names it and holds the one control that gives the correction up */}
@@ -1162,8 +1161,8 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                         {renderError(validationErrors.grnItems_id)}
                     </View>
 
-                    {/* Quantity Input - after Lot selector */}
-                    <View style={styles.formGroup}>
+                    {/* Quantity Input - after Lot selector. The group ends at the error under the row: the block the wizard bar keeps above itself. */}
+                    <View style={styles.formGroup} nativeID={FIELD_BLOCK_ID}>
                         <Text style={[styles.label, quantityHasError && styles.labelError]}>
                             {tr('dispatch.items.packsToDispatch', { things: packNounCapital(currentItem.grnItems_packaging) })}<Text style={styles.required}> *</Text>
                         </Text>
@@ -1297,6 +1296,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             <WizardBottomBar
                 currentStep={DISPATCH_STEP_NUMBERS.ITEMS}
                 totalSteps={DISPATCH_STEP_COUNT}
+                scrollRef={scrollViewRef}
                 onPrevious={handleBack}
                 previousAccessibilityLabel={tr('dispatch.items.backToDetails')}
                 onNext={handleNext}

@@ -11,6 +11,7 @@ import { Text, View } from 'react-native';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
 import { formatIdentifier, localizeDigits } from '@/i18n';
 import { useTokens } from '@/hooks/useTheme';
+import { FIELD_BLOCK_ID } from '@/hooks/useRevealFocusedField';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import { columnInset, type LineColumn, type LineTable } from './lineColumns';
@@ -132,11 +133,12 @@ export const LineRow = React.memo(function LineRow({ item, groupKey, table, scro
       {errors.length > 0 ? <Text style={styles.error} accessibilityRole="alert">{String(errors[0])}</Text> : null}
     </>
   );
+  // The marked View is the block the wizard bar keeps above itself: the cells and, under them, the focused cell's own error.
   return last ? (
     <View style={styles.bottomGap}>
-      <View style={styles.bottom}>{body}</View>
+      <View style={styles.bottom} nativeID={FIELD_BLOCK_ID}>{body}</View>
     </View>
   ) : (
-    <View style={[styles.side, styles.rowDivider]}>{body}</View>
+    <View style={[styles.side, styles.rowDivider]} nativeID={FIELD_BLOCK_ID}>{body}</View>
   );
 });
