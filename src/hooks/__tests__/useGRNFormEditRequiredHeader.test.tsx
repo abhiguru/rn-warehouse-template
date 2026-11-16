@@ -1,8 +1,8 @@
 /**
- * WH-230: editing an old GRN saved without a Sender name or Supervisor. Real hook, real store, real load and save
- * (loadGRNData, updateGRN); only the network is faked. A field empty when the edit opened and still empty is not
- * required and is saved empty; a field that had a value and was cleared, a typed-then-cleared one, and a new GRN
- * are required as before.
+ * WH-248 (replaces WH-230's exemption): editing an old GRN saved without a Sender name or Supervisor. Real hook, real
+ * store, real load and save (loadGRNData, updateGRN); only the network is faked. Sender name and Supervisor are
+ * required on Edit GRN whatever they held when the edit opened: an empty one is refused at step 1 Next and in the
+ * whole-form check with the existing "is required" texts; once filled the GRN saves. A new GRN is required as before.
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
@@ -121,49 +121,53 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe('editing an old GRN with no sender and no supervisor', () => {
-  it('goes through Next and the whole-form check, and saves with both still empty', async () => {
+  it('is refused at step 1 Next and in the whole-form check, with both "is required" texts', async () => {
     const { form, unmount } = await openForEdit(oldRow());
     const { step1, step3 } = await wholeForm(form);
-    expect(step1.errors).toEqual({});
-    expect(step1.isValid).toBe(true);
-    expect(step3.errors).toEqual({});
-    expect(step3.isValid).toBe(true);
-    const body = await save();
-    expect(body).toBeDefined();
-    expect(body.p_sender_name).toBeNull();
-    expect(body.p_sender_id).toBeNull();
-    expect(body.p_supervisor_name).toBeNull();
-    expect(body.p_supervisor_id).toBeNull();
+    expect(step1.isValid).toBe(false);
+    expect(step1.errors.sender_name).toBe('Sender name is required');
+    expect(Object.values(step1.errors).join()).toMatch(/Supervisor is required/);
+    expect(step3.isValid).toBe(false);
     await unmount();
   });
 
-  it('with only the sender empty: the sender is not required, the supervisor it has is kept', async () => {
+  it('with only the sender empty: the sender is required, the supervisor it has is kept', async () => {
     const { form, unmount } = await openForEdit(oldRow({ supervisor_id: '99999999-2222-4333-8444-555555555555', supervisor_name: 'Ravi Example' }));
     const { step1, step3 } = await wholeForm(form);
+    expect(step1.isValid).toBe(false);
+    expect(step1.errors.sender_name).toBe('Sender name is required');
+    expect(Object.keys(step1.errors).join()).not.toMatch(/supervisor/);
+    expect(step3.isValid).toBe(false);
+    await unmount();
+  });
+
+  it('with only the supervisor empty: the supervisor is required, the sender it has is kept', async () => {
+    const { form, unmount } = await openForEdit(oldRow({ sender_id: '88888888-2222-4333-8444-555555555555', sender_name: 'Fictional Sender' }));
+    const { step1, step3 } = await wholeForm(form);
+    expect(step1.isValid).toBe(false);
+    expect(Object.keys(step1.errors).join()).toMatch(/supervisor/);
+    expect(Object.keys(step1.errors).join()).not.toMatch(/sender/);
+    expect(step3.isValid).toBe(false);
+    await unmount();
+  });
+
+  it('once both are filled, Next passes and the save sends them', async () => {
+    const { form, unmount } = await openForEdit(oldRow());
+    await act(async () => { mockStore.dispatch(updateHeader({ sender_name: 'Typed Sender', supervisor_id: '99999999-2222-4333-8444-555555555555', supervisor_name: 'Ravi Example' })); });
+    const { step1, step3 } = await wholeForm(form);
+    expect(step1.errors).toEqual({});
     expect(step1.isValid).toBe(true);
     expect(step3.isValid).toBe(true);
     const body = await save();
-    expect(body.p_sender_name).toBeNull();
+    expect(body.p_sender_name).toBe('Typed Sender');
     expect(body.p_supervisor_name).toBe('Ravi Example');
     await unmount();
   });
 
-  it('with only the supervisor empty: the supervisor is not required, the sender it has is kept', async () => {
-    const { form, unmount } = await openForEdit(oldRow({ sender_id: '88888888-2222-4333-8444-555555555555', sender_name: 'Fictional Sender' }));
-    const { step1, step3 } = await wholeForm(form);
-    expect(step1.isValid).toBe(true);
-    expect(step3.isValid).toBe(true);
-    const body = await save();
-    expect(body.p_sender_name).toBe('Fictional Sender');
-    expect(body.p_supervisor_name).toBeNull();
-    await unmount();
-  });
-
-  // WH-230 card: typing a sender and clearing it again is refused (a field is exempt only if empty at load and never changed).
   it('a sender typed and then cleared is required again, and so is a supervisor chosen and cleared', async () => {
     const { form, unmount } = await openForEdit(oldRow());
     await act(async () => { form().updateHeaderField('sender_name', 'Typed Sender'); });
-    expect((await form().validateCurrentStep(1)).isValid).toBe(true);
+    expect(Object.keys((await form().validateCurrentStep(1)).errors).join()).not.toMatch(/sender/);
     await act(async () => { form().updateHeaderField('sender_name', ''); });
     const cleared = await wholeForm(form);
     expect(cleared.step1.isValid).toBe(false);
