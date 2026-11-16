@@ -136,6 +136,8 @@ interface Props {
   onScrollBeginDrag?: () => void;
   /** A touch on the list, and typing in a field of it (useRevealScrollRef's revealHandlers, for the same reveal). */
   onTouchStartCapture?: RevealScrollHandlers['onTouchStartCapture'];
+  onTouchEndCapture?: RevealScrollHandlers['onTouchEndCapture'];
+  onTouchCancelCapture?: RevealScrollHandlers['onTouchCancelCapture'];
   onChangeCapture?: RevealScrollHandlers['onChangeCapture'];
 }
 
@@ -182,7 +184,7 @@ const spokenItemOf = (group: InvoiceItemGroup): string => {
 };
 
 export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle, Props>(function InvoiceItemsEditor(
-  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle, onScrollBeginDrag, onTouchStartCapture, onChangeCapture },
+  { items, oneTime = false, itemOverrides = EMPTY_MAP, onItemUpdate, onBulkEdit, onRestoreRates, ListHeaderComponent, style, contentContainerStyle, onScrollBeginDrag, onTouchStartCapture, onTouchEndCapture, onTouchCancelCapture, onChangeCapture },
   ref
 ) {
   const styles = useThemedStyles(makeItemsStyles);
@@ -806,8 +808,8 @@ export const InvoiceItemsEditor = React.memo(forwardRef<InvoiceItemsEditorHandle
   }, []);
   // Spread on the list: FlashList passes them on to its ScrollView, though its types name no capture handlers.
   const revealHandlers = useMemo(
-    () => ({ onScrollBeginDrag, onTouchStartCapture, onChangeCapture }),
-    [onScrollBeginDrag, onTouchStartCapture, onChangeCapture]
+    () => ({ onScrollBeginDrag, onTouchStartCapture, onTouchEndCapture, onTouchCancelCapture, onChangeCapture }),
+    [onScrollBeginDrag, onTouchStartCapture, onTouchEndCapture, onTouchCancelCapture, onChangeCapture]
   );
 
   return (
