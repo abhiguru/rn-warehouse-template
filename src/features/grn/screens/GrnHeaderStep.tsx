@@ -324,7 +324,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                     <Icon name={isCreateMode ? 'package-down' : 'lock-outline'} size={iconSize.md} color={t.icon.secondary} />
                     <TextInput
                       style={styles.grNoTextInput}
-                      accessibilityLabel={tr('grn.header.receiptNumberLabel')}
+                      accessibilityLabel={tr('common.grnNumber')}
                       accessibilityHint={isCreateMode ? undefined : tr('grn.refusal.numberLocked')}
                       value={header.gr_no}
                       // The number of a saved GRN is read-only (owner decision D6): a wrong one is corrected by deleting the GRN and entering it again.

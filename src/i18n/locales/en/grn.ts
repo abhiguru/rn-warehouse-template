@@ -52,7 +52,6 @@ export const grn = {
     invoicedLockedText: "The weight of items that are on an invoice can't change either. Delete or edit the invoice first.",
     basicInformation: 'BASIC INFORMATION',
     gettingNumber: 'Getting the next GRN number',
-    receiptNumberLabel: 'Receipt number',
     numberPlaceholder: 'GRN####',
     dateLabel: 'Date, {{date}}',
     dateHint: 'Opens the date picker',
