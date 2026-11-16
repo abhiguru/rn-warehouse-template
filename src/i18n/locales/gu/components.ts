@@ -6,7 +6,6 @@ export const components: Translation<typeof source> = {
   loading: 'લોડ થઈ રહ્યું છે',
   devDetails: 'વિગતો (ફક્ત ડેવલપમેન્ટ બિલ્ડમાં)',
   alert: {
-    closeDialog: 'સંદેશ બંધ કરો',
   },
   image: {
     loading: 'ફોટો લોડ થઈ રહ્યો છે',

@@ -3,7 +3,6 @@ export const components = {
   loading: 'Loading',
   devDetails: 'Details (development builds only)',
   alert: {
-    closeDialog: 'Close dialog',
   },
   image: {
     loading: 'Loading image',
