@@ -76,26 +76,19 @@ jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ Invoice
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 // Stand-ins that keep their props, so the test can read what they show and answer them.
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-// The header's X asks "Discard this invoice?"; this stand-in is that question answered with "Discard".
+// The real header and its Back-key wiring (WH-264: an edit asks only after a change), with a "Discard" control beside it
+// that is the X's question answered with "Discard" (it runs the step's cancel handler).
 jest.mock('@/components/InvoiceStepIndicator', () => {
   const { Pressable: Press, Text: Label } = jest.requireActual('react-native');
+  const actual = jest.requireActual('@/components/InvoiceStepIndicator');
   return {
-    invoiceSteps: () => [],
-    InvoiceStepIndicator: ({ onCancel, backOnFirstStep, isEditMode }: { onCancel: () => void; isEditMode?: boolean; backOnFirstStep?: { hasData: boolean; exitRoute: string; exitWith?: 'replace' | 'dismissTo' } }) => {
-      // The real header listens for the Back key on step 1 with this. With a change it asks (WH-264: an edit asks
-      // only after a change, and its question is the edit's), and "Discard changes" runs onCancel.
-      const { useFirstStepBack } = jest.requireActual('@/hooks/useFirstStepBack');
-      const askToDiscard = () => {
-        if (!isEditMode) { onCancel(); return; }
-        const { showAlert: ask } = jest.requireMock('@/utils/alert');
-        ask('Discard changes to this invoice?', 'Your changes to this invoice will be lost.', [
-          { text: 'Keep editing', style: 'cancel' },
-          { text: 'Discard changes', style: 'destructive', onPress: onCancel },
-        ]);
-      };
-      useFirstStepBack({ enabled: !!backOnFirstStep, hasData: !!backOnFirstStep?.hasData, askToDiscard, exitRoute: backOnFirstStep?.exitRoute ?? '/', exitWith: backOnFirstStep?.exitWith });
-      return <Press testID="discard" onPress={onCancel}><Label>Discard</Label></Press>;
-    },
+    invoiceSteps: actual.invoiceSteps,
+    InvoiceStepIndicator: (props: { onCancel: () => void }) => (
+      <>
+        <actual.InvoiceStepIndicator {...props} />
+        <Press testID="discard" onPress={props.onCancel}><Label>Discard</Label></Press>
+      </>
+    ),
   };
 });
 
@@ -422,5 +415,39 @@ describe('leaving an edit', () => {
 
     expect(pathname()).toBe('/invoice-details/inv-42');
     expect(stack()).toEqual(['(tabs)', 'invoice-details/[id]']);
+  });
+});
+
+// WH-264, through the real step header of steps 2 and 3 (InvoiceItemsStep, InvoiceReviewStep): the X of an edit asks
+// only when something was changed since it opened.
+describe('the X of an edit, steps 2 and 3', () => {
+  it.each([
+    ['step 2', 0],
+    ['step 3', 1],
+  ])('on %s closes with no question when nothing was changed', async (_step, more) => {
+    await openEdit();
+    await tap('Next');
+    if (more) await tap('Review');
+
+    await tap('Close invoice edit');
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(pathname()).toBe('/invoice-details/inv-42');
+  });
+
+  it.each([
+    ['step 2', 0],
+    ['step 3', 1],
+  ])('on %s asks once after a change, and stays until it is answered', async (_step, more) => {
+    await openEdit();
+    await act(async () => { mockStore.dispatch(updateDiscount(10)); });
+    await tap('Next');
+    if (more) await tap('Review');
+
+    await tap('Close invoice edit');
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Discard changes to this invoice?');
+    expect(pathname()).not.toBe('/invoice-details/inv-42');
   });
 });

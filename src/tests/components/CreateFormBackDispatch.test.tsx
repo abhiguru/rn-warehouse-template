@@ -310,6 +310,8 @@ describe('Step 1 of a dispatch that is being edited', () => {
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
 

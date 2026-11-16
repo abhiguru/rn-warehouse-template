@@ -13,6 +13,7 @@ import reducer, {
   setGrNoTyped,
   setSubmissionNonce,
   updateHeader,
+  updateItem,
   setTakenNumberError,
   updateHeaderImageProgress,
 } from '../grnFormSlice';
@@ -278,5 +279,49 @@ describe('grnForm changed since it was loaded', () => {
     const state = reducer(loaded(), addHeaderImage({ id: 'temp_1', fileName: 'new.webp', imageUrl: 'file:///cache/new.webp', uploadStatus: 'uploading' }));
     const before = changed(state);
     expect(changed(reducer(state, updateHeaderImageProgress({ imageId: 'temp_1', progress: 60 })))).toBe(before);
+  });
+});
+
+// WH-260, WH-263: every part of what a save would send counts as a change, and a repeated ask is not worked out again.
+describe('grnForm changed since it was loaded, field by field', () => {
+  const LINE = '55555555-2222-4333-8444-555555555555';
+  const line = (): GRNItemData => ({
+    grn_trl_id: LINE, item_table_id: 'master-1', item_name: 'Example Potatoes', packaging: 'Bag', qty: 100, stock: 100, weight: 10, rack: 'R1', package_mark: 'M1',
+    trl_images: [],
+  });
+  const loaded = () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    const header = reducer(undefined, resetForm()).header;
+    return reducer(undefined, loadGRNData({ grnId: 'g1', header: { ...header, gr_no: 'A0010', registration: 'GJ01XX0000' }, items: [line()] }));
+  };
+  const changed = (grnForm: ReturnType<typeof loaded>) => selectGRNFormChanged({ grnForm });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('is false right after the load', () => {
+    expect(changed(loaded())).toBe(false);
+  });
+
+  it.each([
+    ['the vehicle number', () => updateHeader({ registration: 'GJ01XX0001' })],
+    ['a line\'s item', () => updateItem({ grn_trl_id: LINE, item: { item_table_id: 'master-2' } })],
+    ['a line\'s packaging', () => updateItem({ grn_trl_id: LINE, item: { packaging: 'Crate' } })],
+    ['a line\'s quantity', () => updateItem({ grn_trl_id: LINE, item: { qty: 101 } })],
+    ['a line\'s weight', () => updateItem({ grn_trl_id: LINE, item: { weight: 11 } })],
+    ['a line\'s rack', () => updateItem({ grn_trl_id: LINE, item: { rack: 'R2' } })],
+    ['a line\'s mark', () => updateItem({ grn_trl_id: LINE, item: { package_mark: 'M2' } })],
+  ])('is true when %s was changed', (_name, action) => {
+    expect(changed(reducer(loaded(), action()))).toBe(true);
+  });
+
+  it('is not recounted when the same form is asked again, or when a field outside the signature moved', () => {
+    const state = reducer(loaded(), updateHeader({ registration: 'GJ01XX0001' }));
+    const stringify = jest.spyOn(JSON, 'stringify');
+    expect(changed(state)).toBe(true);
+    const first = stringify.mock.calls.length;
+    expect(first).toBeGreaterThan(0);
+
+    expect(changed({ ...state, isSaving: !state.isSaving } as typeof state)).toBe(true);
+    expect(changed(state)).toBe(true);
+    expect(stringify.mock.calls.length).toBe(first);
   });
 });

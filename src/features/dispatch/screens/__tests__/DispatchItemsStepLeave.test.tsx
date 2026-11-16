@@ -62,6 +62,7 @@ const mockForm = {
   // The bags the saved dispatch held per lot when it was read (an edited dispatch only)
   heldBags: {} as Record<string, number>,
   isCreateMode: true,
+  isChanged: false,
   addFormItems: jest.fn(),
   updateFormItem: jest.fn(),
   removeFormItem: jest.fn(),
@@ -151,6 +152,7 @@ beforeEach(() => {
   mockForm.items = [];
   mockForm.heldBags = {};
   mockForm.isCreateMode = true;
+  mockForm.isChanged = false;
   mockForm.navigateToStep.mockImplementation(async () => true);
   back = installHardwareBack();
   // The GRN of the saved line, with the lot as the line holds it.
@@ -787,5 +789,39 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
 
     await type(tree, '11');
     expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the available stock.');
+  });
+});
+
+// WH-264: the X of an edited dispatch asks to discard when the saved form was changed or when the item form on screen
+// holds a change that is not saved to the form yet; with neither, it asks nothing.
+describe('the X of an edited dispatch on the items step', () => {
+  const asksBeforeX = () => indicator(tree).props.backOnFirstStep.hasData;
+  beforeEach(() => {
+    mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
+    mockForm.heldBags = { [LOT]: 5 };
+    mockForm.isCreateMode = false;
+  });
+
+  it('asks when the saved form is unchanged but the bags of the line on screen were changed', async () => {
+    await mount(<DispatchItemsStep mode="edit" />);
+    await correct(tree, mockForm.items[0]);
+    await type(tree, '7');
+
+    expect(asksBeforeX()).toBe(true);
+  });
+
+  it('asks nothing when the saved form is unchanged and the line on screen is as saved', async () => {
+    await mount(<DispatchItemsStep mode="edit" />);
+    expect(asksBeforeX()).toBe(false);
+
+    await correct(tree, mockForm.items[0]);
+    expect(asksBeforeX()).toBe(false);
+  });
+
+  it('asks when the saved form was changed, whatever is on screen', async () => {
+    mockForm.isChanged = true;
+    await mount(<DispatchItemsStep mode="edit" />);
+
+    expect(asksBeforeX()).toBe(true);
   });
 });
