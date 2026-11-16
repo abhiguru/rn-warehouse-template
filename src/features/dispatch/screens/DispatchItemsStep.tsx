@@ -727,6 +727,14 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         resetEditState();
     };
 
+    // The item form on screen holds a change that is not in the saved form yet: a saved item whose bags were changed
+    // (the test of "Stop editing this item"), or a new item with anything in it.
+    const itemFormIsDirty = () => {
+        if (editingItemId === null) return Boolean(hasAnyData());
+        const original = savedItems.find((item) => item.unique_id === editingItemId);
+        return original ? currentItem.disp_quantity !== original.disp_quantity : false;
+    };
+
     // Get navigation routes
     const getNextRoute = () =>
         isCreateMode ? '/dispatch-form/step3' : `/dispatch-edit/${id}/step3`;
@@ -900,7 +908,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                         : tr('dispatch.wizard.discardChangesMessage')
                 }
                 // An edited dispatch asks before the X only when something was changed since it opened; Back here goes to the step before.
-                backOnFirstStep={isCreateMode ? undefined : { hasData: editChanged, enabled: false, exitRoute: '/(tabs)/dispatch' }}
+                backOnFirstStep={isCreateMode ? undefined : { hasData: editChanged || itemFormIsDirty(), enabled: false, exitRoute: '/(tabs)/dispatch' }}
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
                 isEditMode={!isCreateMode}

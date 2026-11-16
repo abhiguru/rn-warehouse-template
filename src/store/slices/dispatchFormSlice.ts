@@ -766,9 +766,12 @@ export const selectDispatchTakenNumberError = (state: { dispatchForm: DispatchFo
 export const selectDispatchFormValidationErrors = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.validationErrors;
 export const selectDispatchFormCurrentStep = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.current_step;
 /** The edit form differs from the dispatch as it was read (always false for a new dispatch). */
+const selectFormSignature = createSelector(
+  [(state: { dispatchForm: DispatchFormState }) => state.dispatchForm.header, (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.items],
+  (header, items) => formSignature(header, items)
+);
 export const selectDispatchFormChanged = (state: { dispatchForm: DispatchFormState }): boolean =>
-  state.dispatchForm.loadedSignature != null &&
-  formSignature(state.dispatchForm.header, state.dispatchForm.items) !== state.dispatchForm.loadedSignature;
+  state.dispatchForm.loadedSignature != null && selectFormSignature(state) !== state.dispatchForm.loadedSignature;
 export const selectDispatchFormId = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.dispatch_id;
 export const selectDispatchFormIsSaving = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.is_saving;
 /** The form is locked while the app asks the server what became of a save that got no answer. */
