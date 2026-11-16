@@ -81,10 +81,19 @@ jest.mock('@/components/InvoiceStepIndicator', () => {
   const { Pressable: Press, Text: Label } = jest.requireActual('react-native');
   return {
     invoiceSteps: () => [],
-    InvoiceStepIndicator: ({ onCancel, backOnFirstStep }: { onCancel: () => void; backOnFirstStep?: { hasData: boolean; exitRoute: string; exitWith?: 'replace' | 'dismissTo' } }) => {
-      // The real header listens for the Back key on step 1 of a new invoice with this.
+    InvoiceStepIndicator: ({ onCancel, backOnFirstStep, isEditMode }: { onCancel: () => void; isEditMode?: boolean; backOnFirstStep?: { hasData: boolean; exitRoute: string; exitWith?: 'replace' | 'dismissTo' } }) => {
+      // The real header listens for the Back key on step 1 with this. With a change it asks (WH-264: an edit asks
+      // only after a change, and its question is the edit's), and "Discard changes" runs onCancel.
       const { useFirstStepBack } = jest.requireActual('@/hooks/useFirstStepBack');
-      useFirstStepBack({ enabled: !!backOnFirstStep, hasData: !!backOnFirstStep?.hasData, askToDiscard: onCancel, exitRoute: backOnFirstStep?.exitRoute ?? '/', exitWith: backOnFirstStep?.exitWith });
+      const askToDiscard = () => {
+        if (!isEditMode) { onCancel(); return; }
+        const { showAlert: ask } = jest.requireMock('@/utils/alert');
+        ask('Discard changes to this invoice?', 'Your changes to this invoice will be lost.', [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Discard changes', style: 'destructive', onPress: onCancel },
+        ]);
+      };
+      useFirstStepBack({ enabled: !!backOnFirstStep, hasData: !!backOnFirstStep?.hasData, askToDiscard, exitRoute: backOnFirstStep?.exitRoute ?? '/', exitWith: backOnFirstStep?.exitWith });
       return <Press testID="discard" onPress={onCancel}><Label>Discard</Label></Press>;
     },
   };

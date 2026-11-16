@@ -68,7 +68,7 @@ describe('GRN step 1 field blocks', () => {
   it('GRN number: the block holds the box, its error and the number note, and no other field', async () => {
     reset({ numberReason: 'TYPE_IT', validationErrors: { gr_no: 'GRN number is required' } });
     await mount();
-    const block = blockOf(input('Receipt number'));
+    const block = blockOf(input('GRN number'));
     expect(block).not.toBeNull();
     expect(inputsIn(block!)).toBe(1);
     expect(wordsIn(block!)).toContain('GRN number is required');
@@ -77,7 +77,7 @@ describe('GRN step 1 field blocks', () => {
   it('GRN number: the number note is inside the block', async () => {
     reset({ numberReason: 'TYPE_IT' });
     await mount();
-    const block = blockOf(input('Receipt number'))!;
+    const block = blockOf(input('GRN number'))!;
     expect(block).not.toBeNull();
     expect(wordsIn(block).join(' ')).toContain('Type the GRN number.');
   });
@@ -85,7 +85,7 @@ describe('GRN step 1 field blocks', () => {
   it('GRN number: the "number locked" line of a saved GRN is inside the block', async () => {
     reset({ isCreateMode: false, header: { gr_no: 'GRN0001', date: '2026-09-30T00:00:00Z', registration: '', note: '', leon: false } });
     await mount();
-    const block = blockOf(input('Receipt number'))!;
+    const block = blockOf(input('GRN number'))!;
     expect(block).not.toBeNull();
     expect(wordsIn(block)).toContain(tr('grn.refusal.numberLocked'));
   });
@@ -110,7 +110,7 @@ describe('GRN step 1 field blocks', () => {
   it('the three blocks are three different views', async () => {
     await mount();
     await showOptional();
-    const blocks = [input('Receipt number'), input('Vehicle registration box'), input(tr('common.notes'))].map(blockOf);
+    const blocks = [input('GRN number'), input('Vehicle registration box'), input(tr('common.notes'))].map(blockOf);
     expect(blocks.every((b) => b !== null)).toBe(true);
     expect(new Set(blocks).size).toBe(3);
   });

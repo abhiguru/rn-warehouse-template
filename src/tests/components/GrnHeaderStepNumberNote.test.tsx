@@ -48,7 +48,7 @@ jest.mock('@/services/vehicle-suggestion-service', () => ({ getTopVehicleSuggest
 
 let tree: ReturnType<typeof create> | undefined;
 const mount = async () => { await act(async () => { tree = create(<GrnHeaderStep mode="create" />); }); return tree!; };
-const box = () => tree!.root.findAllByType(TextInput).find(input => input.props.accessibilityLabel === 'Receipt number');
+const box = () => tree!.root.findAllByType(TextInput).find(input => input.props.accessibilityLabel === 'GRN number');
 const note = () => tree!.root.findAll(node => node.props.testID === 'grn-header-number-note')[0];
 const allText = () => tree!.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
 

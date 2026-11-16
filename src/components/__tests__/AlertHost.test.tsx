@@ -24,6 +24,9 @@ function texts(tree: ReactTestRenderer) {
 function settle() {
   act(() => { jest.advanceTimersByTime(300); });
 }
+// The scrim has no label (WH-259): it is the full-screen button hidden from the screen reader.
+const findScrim = (tree: ReactTestRenderer) =>
+  tree.root.find(n => n.props.importantForAccessibility === 'no' && typeof n.props.onPress === 'function');
 function press(tree: ReactTestRenderer, label: string) {
   settle();
   const button = tree.root.find(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
@@ -74,7 +77,9 @@ describe('showAlert with AlertHost', () => {
       { text: 'Keep editing', style: 'cancel', onPress: onCancel },
       { text: 'Discard GRN', style: 'destructive' },
     ]));
-    press(tree, 'Close dialog');
+    settle();
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Close dialog')).toHaveLength(0);
+    act(() => findScrim(tree).props.onPress());
     act(() => { jest.runAllTimers(); });
     expect(onCancel).toHaveBeenCalledTimes(1);
     act(() => tree.unmount());
@@ -112,7 +117,7 @@ describe('a double press', () => {
       { text: 'Discard GRN', style: 'destructive' },
     ], { cancelable: true, onDismiss }));
     settle();
-    const scrim = tree.root.find(n => n.props.accessibilityLabel === 'Close dialog' && typeof n.props.onPress === 'function');
+    const scrim = findScrim(tree);
     act(() => { scrim.props.onPress(); scrim.props.onPress(); });
     act(() => { jest.runAllTimers(); });
     expect(onCancel).toHaveBeenCalledTimes(1);
