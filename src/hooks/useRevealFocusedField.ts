@@ -28,10 +28,11 @@
  * is still missing, until it finds the block in place, so the result is the same however the keyboard came up (a new
  * focus, or a keyboard that opens again on a field that kept the focus, where the reveals run while the scroll view
  * is still being resized and scrolled). Once in place it does nothing more, so a scroll by the step itself (to a
- * field with an error) is not undone. After a drag by the person only a focus change or a block that changed height
- * scrolls again. A tap of the person's on the page away from the focused field (opening a group) holds the same way,
- * until the person types in that field or taps it, another field takes the focus or the keyboard shows again: what
- * the person changed on the page is not undone (WH-243). A re-layout that moves nothing does not scroll. A scroll asked for is judged only from two later
+ * field with an error) is not undone. After a drag by the person, or a tap of the person's on the page away from the
+ * focused field (opening a group), the page is held as it is: what the person changed on the page is not undone
+ * (WH-243). The hold ends when the person types in the focused field or taps it (the field is brought back whole
+ * above the bar), another field takes the focus, the block changes height or the keyboard shows again. A drag that
+ * starts on the focused field holds again, since the drag begins after the touch. A re-layout that moves nothing does not scroll. A scroll asked for is judged only from two later
  * measurings that find the content at rest; found at rest still at the place it was asked from, the check asks again,
  * at most MAX_REASKS_IN_PLACE times, then takes it that the content cannot go further. A field outside the scroll view
  * (a sheet over the step) is left alone.
@@ -63,8 +64,8 @@ export interface RevealScrollHandlers {
  * The scroll ref a step gives both its scroll view and WizardBottomBar (useRevealScrollRef). The person's own changes
  * to the page are not undone by the reveal: after a drag (`userScrolled`) or a tap on the page away from the focused
  * field (`userTapped`), a moved bar, a field the page moved and the at-rest check scroll nothing. Typing in the focused
- * field or a tap on it asks for a reveal again (`revealAsked`) and ends a tap's hold, never a drag's; a focus change or
- * the keyboard showing again ends both.
+ * field or a tap on it asks for a reveal again (`revealAsked`) and ends both holds; a drag that starts on the field
+ * holds again (onScrollBeginDrag runs after the touch). A focus change or the keyboard showing again also ends both.
  */
 export interface RevealScrollRef<T extends KeyboardRevealTarget = KeyboardRevealTarget> extends RefObject<T | null> {
   userScrolled?: boolean;
@@ -99,6 +100,8 @@ export function useRevealScrollRef<T extends KeyboardRevealTarget>(): RevealScro
           const { pageX, pageY } = event.nativeEvent;
           const onField = !rect || (pageY >= rect.top && pageY <= rect.bottom && pageX >= rect.left && pageX <= rect.right);
           if (onField) {
+            // A drag that starts here sets userScrolled again in onScrollBeginDrag, which fires after this touch.
+            created.userScrolled = false;
             created.userTapped = false;
             created.revealAsked = true;
           } else {
@@ -108,6 +111,7 @@ export function useRevealScrollRef<T extends KeyboardRevealTarget>(): RevealScro
         // Typing: only a text field's change event carries `text` (a switch's carries `value`).
         onChangeCapture: (event) => {
           if (typeof event?.nativeEvent?.text !== 'string') return;
+          created.userScrolled = false;
           created.userTapped = false;
           created.revealAsked = true;
         },
