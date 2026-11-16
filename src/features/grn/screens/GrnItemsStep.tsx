@@ -30,6 +30,7 @@ import {
   selectGRNTempId,
   selectGRNInvoice,
   type GRNLineLocks,
+  selectGRNFormChanged,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import * as ImagePicker from 'expo-image-picker';
@@ -178,6 +179,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
   // Edit only (get_grn_edit_state, backend migration 121): the GRN's live invoice, and per saved line what locks it
   // (`items[].locks`). Both are absent on a server that does not have the function: the older rules then apply.
   const editInvoice = useAppSelector(selectGRNInvoice);
+  const editChanged = useAppSelector(selectGRNFormChanged);
 
   const [showItemsSummarySheet, setShowItemsSummarySheet] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
@@ -980,6 +982,9 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
             ? tr('grn.itemsStep.itemsWillBeLost', { count: savedItems.length || items.length })
             : undefined
         }
+        // An edited GRN asks before the X only when something was changed since it opened; the Back key here keeps its own
+        // job (the step before), so it is not given to the header.
+        backOnFirstStep={isCreateMode ? undefined : { hasData: editChanged, enabled: false, exitRoute: '/(tabs)/grn' }}
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
