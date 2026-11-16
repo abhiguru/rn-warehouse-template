@@ -6,6 +6,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { GrnHeaderStep } from '@/features/grn/screens/GrnHeaderStep';
 import { wizardKeyboardLiftCases } from '@/tests/helpers/wizardKeyboardLift';
+import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
 
 const mockForm = {
   header: { gr_no: 'A0010', date: '2026-09-30T00:00:00Z' },
@@ -36,6 +37,7 @@ jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: () => null
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/components/GhostTextInput', () => ({ GhostTextInput: require('react').forwardRef(() => null) }));
 jest.mock('@/services/vehicle-suggestion-service', () => ({ getTopVehicleSuggestion: jest.fn() }));
+jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
 
 describe('GRN wizard, details step: the bottom bar and the keyboard', () => {
   wizardKeyboardLiftCases(async () => {
@@ -45,10 +47,14 @@ describe('GRN wizard, details step: the bottom bar and the keyboard', () => {
   });
 
   it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
+    recordedRevealRefs.length = 0;
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<GrnHeaderStep mode="create" />); });
     const scrolls = tree.root.findAll(n => (n.type as unknown) === 'ScrollView' && typeof n.props.onScrollBeginDrag === 'function');
     expect(scrolls).toHaveLength(1);
+    // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
+    expect(recordedRevealRefs).toHaveLength(1);
+    expectRevealWired(scrolls[0], recordedRevealRefs[0]);
     await act(async () => { tree.unmount(); });
   });
 });

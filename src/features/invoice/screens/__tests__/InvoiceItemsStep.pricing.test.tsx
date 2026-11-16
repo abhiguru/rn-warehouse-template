@@ -8,6 +8,7 @@ import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { groupLines } from '@/tests/helpers/invoiceFixtures';
 import { openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
 import { InvoiceItemsStep } from '../InvoiceItemsStep';
 
 const mockNavigateToStep = jest.fn();
@@ -39,6 +40,7 @@ jest.mock('expo-router', () => ({
 jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ listenToKeyboardEvents: () => (component: unknown) => component }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
@@ -62,9 +64,14 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 it('the items list notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
+  recordedRevealRefs.length = 0;
   const tree = await render();
   const lists = tree.root.findAll((n) => typeof n.type === 'string' && typeof n.props.onScrollBeginDrag === 'function');
   expect(lists.length).toBeGreaterThan(0);
+  // WH-243: the list (the editor passes the step's handlers on to its FlashList) carries the step's own reveal handlers
+  expect(recordedRevealRefs).toHaveLength(1);
+  const flashList = tree.root.findByType('FlashList' as never);
+  expectRevealWired(flashList, recordedRevealRefs[0]);
   await act(async () => { tree.unmount(); });
 });
 

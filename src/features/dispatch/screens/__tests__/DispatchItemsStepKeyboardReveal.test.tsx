@@ -8,6 +8,7 @@ import { Keyboard, PixelRatio, StyleSheet, TextInput } from 'react-native';
 import { act, create, ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { space, typography } from '@/theme/tokens';
+import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
 import { DispatchItemsStep } from '../DispatchItemsStep';
 
 const CUSTOMER = '22222222-3333-4444-8555-666666666666';
@@ -37,16 +38,21 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
 const mockScrolls: number[] = [];
 jest.mock('react-native-keyboard-aware-scroll-view', () => {
   const React = require('react');
   return {
-    KeyboardAwareScrollView: React.forwardRef((props: { children?: unknown; onScrollBeginDrag?: () => void }, ref: unknown) => {
+    KeyboardAwareScrollView: React.forwardRef((props: { children?: unknown; onScrollBeginDrag?: () => void; onTouchStartCapture?: () => void; onChangeCapture?: () => void }, ref: unknown) => {
       React.useImperativeHandle(ref, () => ({
         scrollForExtraHeightOnAndroid: (by: number) => { mockScrolls.push(by); },
         scrollToPosition: jest.fn(),
       }));
-      return React.createElement('View', { onScrollBeginDrag: props.onScrollBeginDrag }, props.children);
+      return React.createElement('View', {
+        onScrollBeginDrag: props.onScrollBeginDrag,
+        onTouchStartCapture: props.onTouchStartCapture,
+        onChangeCapture: props.onChangeCapture,
+      }, props.children);
     }),
   };
 });
@@ -100,6 +106,7 @@ beforeEach(async () => {
       items: [{ id: 'lot-1', item_id: 'potato', item_name: 'Example Potatoes', quantity: 100, stock: 40, package_mark: 'M1', rack: 'R1', weight: 50 }],
     },
   } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>);
+  recordedRevealRefs.length = 0;
   await act(async () => { tree = create(<DispatchItemsStep mode="create" />); });
   const picker = tree.root.find((n) => (n.type as unknown) === 'GRNAutocompleteBottomSheet');
   await act(async () => { await picker.props.onSelect({ id: GRN, gr_no: 'G0311' }); });
@@ -149,4 +156,7 @@ it('Dispatch Items: a field already above the bar is not scrolled', async () => 
 it('Dispatch Items: notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', () => {
   const scrolls = tree.root.findAll((n) => (n.type as unknown) === 'View' && typeof n.props.onScrollBeginDrag === 'function');
   expect(scrolls).toHaveLength(1);
+  // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
+  expect(recordedRevealRefs).toHaveLength(1);
+  expectRevealWired(scrolls[0], recordedRevealRefs[0]);
 });

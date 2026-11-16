@@ -1,7 +1,8 @@
 /**
  * useRevealScrollRef.revealHandlers + useRevealFocusedField (WH-243): the reveal leaves alone what the person's own
  * tap changed on the page (opening a group above the focused field), until the person types in the field, taps it,
- * another field takes the focus or the keyboard shows again; a drag's hold is never lifted by typing. The real
+ * another field takes the focus or the keyboard shows again; a drag's hold ends the same way (typing in the field or
+ * a tap on it), and a drag that starts on the field holds again. The real
  * scroll ref hook is used; the view tree is faked (id, parentElement, getBoundingClientRect, measureInWindow,
  * measureLayout). Timers are fake.
  */
@@ -209,17 +210,63 @@ describe('WH-243: the reveal leaves alone what the person\'s own tap changed', (
     expect(scroll).toHaveBeenCalled();
   });
 
-  it('typing never lifts a drag\'s hold', async () => {
+  it('after a drag, typing a digit in the focused field brings it above the bar again', async () => {
     const { input, block } = inPlaceField();
     focused = input;
     await mount();
     await tick(450);
     scrollRef.onScrollBeginDrag();
+    movePage([input, block], MOVE);
+    await tick(3000);
+    expect(scroll).not.toHaveBeenCalled(); // the drag holds the page
+    expect(scrollRef.userScrolled).toBe(true);
     typeText('5');
+    expect(scrollRef.userScrolled).toBe(false);
+    await tick(3000);
+    expect(scroll).toHaveBeenCalled();
+    expect(block.top + block.height - scrolled + space.sm).toBeLessThanOrEqual(BAR_TOP);
+  });
+
+  it('after a drag, a tap on the focused field brings it above the bar again', async () => {
+    const { input, block } = inPlaceField();
+    focused = input;
+    await mount();
+    await tick(450);
+    scrollRef.onScrollBeginDrag();
+    movePage([input, block], MOVE);
+    await tick(450);
+    expect(scroll).not.toHaveBeenCalled();
+    touch(10, block.top - scrolled + 5); // on the block
+    expect(scrollRef.userScrolled).toBe(false);
+    await tick(3000);
+    expect(scroll).toHaveBeenCalled();
+    expect(block.top + block.height - scrolled + space.sm).toBeLessThanOrEqual(BAR_TOP);
+  });
+
+  it('a drag that starts on the focused field holds again (onScrollBeginDrag runs after the touch)', async () => {
+    const { input, block } = inPlaceField();
+    focused = input;
+    await mount();
+    await tick(450);
+    touch(10, block.top - scrolled + 5);
+    scrollRef.onScrollBeginDrag();
+    expect(scrollRef.userScrolled).toBe(true);
     movePage([input, block], MOVE);
     await tick(3000);
     expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it('a switch\'s change event (no text) does not lift a drag\'s hold', async () => {
+    const { input, block } = inPlaceField();
+    focused = input;
+    await mount();
+    await tick(450);
+    scrollRef.onScrollBeginDrag();
+    scrollRef.revealHandlers.onChangeCapture({ nativeEvent: { value: true } as never });
     expect(scrollRef.userScrolled).toBe(true);
+    movePage([input, block], MOVE);
+    await tick(3000);
+    expect(scroll).not.toHaveBeenCalled();
   });
 
   it('the focus moving to another field lifts the tap\'s hold', async () => {
