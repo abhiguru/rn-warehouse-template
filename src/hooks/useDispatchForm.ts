@@ -224,6 +224,10 @@ export interface UseDispatchFormReturn {
   images: DispatchImageData[];
   dispatchId: string | null;
   isGeneratingNumber: boolean;
+  /** The person typed in the number box (an offered number left alone is not typed). */
+  dispNoTyped: boolean;
+  /** The person picked the date (the date the form opened on is not picked). */
+  dateChosenByUser: boolean;
   /** The pattern of the facility's numbering ("I####"), null when not known (older backend) or the rule is free text. */
   numberHint: string | null;
   /** Why the box was left empty: the rule is typed by hand (TYPE_IT) or the series is used up (SERIES_FULL); else null. */
@@ -1240,6 +1244,8 @@ export function useDispatchForm({
     // The version the edit read, read when asked (the order preview carries it like the save does).
     getLoadedUpdatedAt: (): string | null => store.getState().dispatchForm.loadedUpdatedAt ?? null,
     isGeneratingNumber,
+    dispNoTyped,
+    dateChosenByUser: dispatchFormState.dateChosenByUser === true,
     numberHint: numberOffer?.hint ?? null,
     numberReason: numberOffer?.reason ?? null,
     isSaving: dispatchFormState.is_saving,

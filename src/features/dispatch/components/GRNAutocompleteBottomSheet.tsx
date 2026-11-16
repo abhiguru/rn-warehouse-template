@@ -923,8 +923,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
           <Pressable
             style={styles.backdrop}
             onPress={handleClose}
-            accessibilityRole="button"
-            accessibilityLabel={tr('common.close')}
+            accessible={false}
+            importantForAccessibility="no"
           />
 
           {/* Bottom Sheet Content */}

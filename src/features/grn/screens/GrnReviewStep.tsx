@@ -32,8 +32,6 @@ import {
   selectGRNInvoiced,
   selectGRNImported,
   selectGRNLoadedUpdatedAt,
-  selectGRNLoadedSenderEmpty,
-  selectGRNLoadedSupervisorEmpty,
   selectGRNRemovedRates,
   loadGRNData as loadGRNFormData,
   setFirstDispatchDate,
@@ -203,8 +201,6 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const rateChanges = useAppSelector(selectGRNRateChanges);
   const removedRates = useAppSelector(selectGRNRemovedRates);
   // An invoiced GRN being edited: its rates are shown, sent back as they are, and cannot be set here.
-  const loadedSenderEmpty = useAppSelector(selectGRNLoadedSenderEmpty);
-  const loadedSupervisorEmpty = useAppSelector(selectGRNLoadedSupervisorEmpty);
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
   // WH-180: an imported GRN opens here only to set its rates; the details, photos and items steps stay closed.
   const grnImported = useAppSelector(selectGRNImported) && !isCreateMode;
@@ -462,8 +458,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
 
   const validateFormData = async (): Promise<boolean> => {
-    // Same check as step Next (stored number, kept-empty sender / supervisor): an old GRN that passed Next must also save.
-    const validation = await checkGrnForm(3, { header, items }, { isCreateMode, loadedSenderEmpty, loadedSupervisorEmpty });
+    // Same check as step Next (the stored number): an old GRN that passed Next must also save.
+    const validation = await checkGrnForm(3, { header, items }, { isCreateMode });
 
     if (!validation.isValid) {
       setLocalValidationErrors(validation.errors);

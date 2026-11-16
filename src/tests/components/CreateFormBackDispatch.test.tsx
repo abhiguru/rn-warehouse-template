@@ -21,6 +21,11 @@ const emptyHeader = () => ({
 });
 const mockForm = {
   header: emptyHeader(),
+  items: [] as unknown[],
+  images: [] as unknown[],
+  // WH-255: the number counts once typed, the date once picked in the picker (not an offered number, not today's date).
+  dispNoTyped: false,
+  dateChosenByUser: false,
   validationErrors: {},
   isLoading: false,
   isGeneratingNumber: false,
@@ -71,6 +76,10 @@ let back: ReturnType<typeof installHardwareBack>;
 beforeEach(() => {
   jest.clearAllMocks();
   mockForm.header = emptyHeader();
+  mockForm.items = [];
+  mockForm.images = [];
+  mockForm.dispNoTyped = false;
+  mockForm.dateChosenByUser = false;
   mockForm.isCreateMode = true;
   resetSheetBack();
   back = installHardwareBack();
@@ -114,7 +123,10 @@ const ENTERED: [string, () => void][] = [
   ['a customer', () => { mockForm.header.customer_id = 'c1'; mockForm.header.customer_name = 'Example Traders'; }],
   ['a vehicle number', () => { mockForm.header.registration = 'GJ01XX0000'; }],
   ['a note', () => { mockForm.header.note = 'Call before loading'; }],
-  ['only a changed date', () => { mockForm.header.disp_date = '2020-01-01'; }],
+  ['only a typed Dispatch number', () => { mockForm.header.disp_no = 'I9'; mockForm.dispNoTyped = true; }],
+  ['only a picked date (today, picked in the picker)', () => { mockForm.dateChosenByUser = true; }],
+  ['only a line', () => { mockForm.items = [{ unique_id: 'a' }]; }],
+  ['only a photo', () => { mockForm.images = [{ id: 'temp_1' }]; }],
   ['only a changed supervisor', () => { mockForm.header.supervisor_id = 'u2'; mockForm.header.supervisor_name = 'Another Supervisor'; }],
 ];
 

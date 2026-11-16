@@ -67,10 +67,9 @@ import {
   selectGRNGrNoTyped,
   selectGRNFirstDispatchDate,
   selectGRNLoadedDate,
-  selectGRNLoadedSenderEmpty,
-  selectGRNLoadedSupervisorEmpty,
   setTakenNumberError,
   setGrNoTyped,
+  markDateChosen,
   GRNHeaderData,
   GRNItemData,
   GRNImageData,
@@ -191,9 +190,6 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   // server refuses only a date that was changed, so a date that was already later when the GRN was opened is left alone.
   const firstDispatchDate = useAppSelector(selectGRNFirstDispatchDate);
   const loadedDate = useAppSelector(selectGRNLoadedDate);
-  // Edit only: a sender or supervisor that was empty when the GRN was opened may stay empty (WH-230).
-  const loadedSenderEmpty = useAppSelector(selectGRNLoadedSenderEmpty);
-  const loadedSupervisorEmpty = useAppSelector(selectGRNLoadedSupervisorEmpty);
 
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>(
@@ -373,7 +369,10 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
 
   // Header actions
   const updateHeaderField = useCallback((field: keyof GRNHeaderData, value: unknown) => {
-    if (field === 'date') void askNumberForDate(value);
+    if (field === 'date') {
+      void askNumberForDate(value);
+      dispatch(markDateChosen());
+    }
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearValidationError(field));
     clearLocalErrors([field]);
@@ -492,10 +491,10 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
    * Validate a specific step
    */
   const validateCurrentStep = useCallback(async (step: number): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
-    // The shared check (stored number and kept-empty sender / supervisor filters in edit mode); see checkGrnForm.
+    // The shared check (the stored-number filter in edit mode); see checkGrnForm.
     let result: { isValid: boolean; errors: Record<string, string> } =
       step >= 1 && step <= 3
-        ? await checkGrnForm(step as 1 | 2 | 3, { header, items }, { isCreateMode, loadedSenderEmpty, loadedSupervisorEmpty })
+        ? await checkGrnForm(step as 1 | 2 | 3, { header, items }, { isCreateMode })
         : { isValid: true, errors: {} };
 
     // A number another GRN holds keeps step 1 from passing until it is changed.
@@ -526,7 +525,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     return result;
-  }, [header, items, dispatch, takenNumberError, isCreateMode, firstDispatchDate, loadedDate, loadedSenderEmpty, loadedSupervisorEmpty]);
+  }, [header, items, dispatch, takenNumberError, isCreateMode, firstDispatchDate, loadedDate]);
 
   const clearFieldError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {

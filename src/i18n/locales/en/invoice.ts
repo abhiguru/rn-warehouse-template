@@ -123,7 +123,6 @@ export const invoice = {
   // The sheet that lists the GRNs that can be invoiced
   grnPicker: {
     searchPlaceholder: 'Search GRN number or customer',
-    closeListA11y: 'Close GRN list',
     loading: 'Loading GRNs that can be invoiced…',
     loadingA11y: 'Loading GRNs',
     loadFailedTitle: "Couldn't load GRNs",

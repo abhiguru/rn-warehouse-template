@@ -1,8 +1,8 @@
 /**
- * WH-230 (rework 2): the Review step's Save for an old GRN with no Sender name or Supervisor. Real useGRNForm, real
+ * WH-248 (was WH-230's exemption): the Review step's Save for an old GRN with no Sender name or Supervisor is refused. Real useGRNForm, real
  * store, real grnFormService (loadGRNData, updateGRN) and the real GrnReviewStep; only supabase is faked (plus native
  * modules, navigation and the rate list). Step 1 and step 2 Next are the hook's validateCurrentStep, then Review's Save.
- * Guards the gap where Next passed but Save refused with "Check the GRN details".
+ * Step 1 Next and Save agree: both refuse an empty one; filled, the GRN saves.
  */
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -168,19 +168,30 @@ afterEach(async () => {
 });
 
 describe('Review step Save on an old GRN with no Sender name and no Supervisor', () => {
-  it('passes Next, Next, then Save shows no "Check the GRN details" and update_grn gets null sender and supervisor', async () => {
+  it('is refused at step 1 Next and at Save ("Check the GRN details"), and nothing is sent', async () => {
     await openForEdit(oldRow());
+    const { step1 } = await next();
+    expect(step1.isValid).toBe(false);
+    expect(step1.errors.sender_name).toBe('Sender name is required');
+    const { asked, body } = await saveOnReview();
+    expect(checkDetailsAlerts()).toHaveLength(1);
+    expect(checkDetailsAlerts()[0][1]).toMatch(/Sender name is required/);
+    expect(checkDetailsAlerts()[0][1]).toMatch(/Supervisor is required/);
+    expect(asked).toBe(false);
+    expect(body).toBeUndefined();
+  });
+
+  it('with both filled, Next passes and Save sends update_grn with them', async () => {
+    await openForEdit(oldRow());
+    await act(async () => { mockStore.dispatch(updateHeader({ sender_name: 'Typed Sender', supervisor_id: '99999999-2222-4333-8444-555555555555', supervisor_name: 'Ravi Example' })); });
     const { step1, step2 } = await next();
     expect(step1.isValid).toBe(true);
     expect(step2.isValid).toBe(true);
     const { asked, body } = await saveOnReview();
     expect(checkDetailsAlerts()).toHaveLength(0);
     expect(asked).toBe(true);
-    expect(body).toBeDefined();
-    expect(body.p_sender_name).toBeNull();
-    expect(body.p_sender_id).toBeNull();
-    expect(body.p_supervisor_name).toBeNull();
-    expect(body.p_supervisor_id).toBeNull();
+    expect(body.p_sender_name).toBe('Typed Sender');
+    expect(body.p_supervisor_name).toBe('Ravi Example');
   });
 
   it('a sender typed and then cleared is refused at Save, and nothing is sent', async () => {

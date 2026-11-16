@@ -140,6 +140,8 @@ export type InvoiceFormSliceState = InvoiceFormState & {
    * invoice read from the server for editing (its figures are the saved ones, not looked up).
    */
   lookedUp: Record<string, { charge: number; labour_rate: number; tax: number }>;
+  /** The person picked the invoice date in the date picker (the date the form opened on is not picked). */
+  dateChosen: boolean;
 };
 
 // Initial state. The steps are 1-based: a new form is on step 1.
@@ -163,6 +165,7 @@ const createInitialState = (formSession = 0): InvoiceFormSliceState => ({
   numberRequestId: 0,
   baseline: null,
   lookedUp: {},
+  dateChosen: false,
 });
 
 const invoiceFormSlice = createSlice({
@@ -662,6 +665,11 @@ const invoiceFormSlice = createSlice({
 
     // The invoice number requests. An answer counts only while its request is the
     // latest: typing a number, a reset or a newer request takes the place of it.
+    /** The person picked the date in the date picker. */
+    markDateChosen: (state) => {
+      state.dateChosen = true;
+    },
+
     numberRequested: (state, action: PayloadAction<number>) => {
       state.numberRequestId = action.payload;
       state.numberStatus = 'loading';
@@ -716,6 +724,7 @@ export const {
   applyFreeLines,
   restoreSavedGrn,
   resetForm,
+  markDateChosen,
   numberRequested,
   numberAnswered,
   numberCancelled,
@@ -727,6 +736,7 @@ export const {
 
 type SliceRoot = { invoiceForm: InvoiceFormSliceState };
 
+export const selectInvoiceDateChosen = (state: SliceRoot) => state.invoiceForm.dateChosen === true;
 export const selectInvoiceFormHeader = (state: SliceRoot) => state.invoiceForm.header;
 export const selectInvoiceFormItems = (state: SliceRoot) => state.invoiceForm.items;
 export const selectInvoiceFormEditedItems = (state: SliceRoot) => state.invoiceForm.editedItems;

@@ -246,8 +246,12 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     // Use the consolidated dispatch form hook - the dispatch number check lives in the hook
     const {
         header,
+        items,
+        images,
         validationErrors,
         isGeneratingNumber,
+        dispNoTyped,
+        dateChosenByUser,
         numberHint,
         numberReason,
         isCreateMode,
@@ -277,12 +281,14 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         setShowOptionalFields(!showOptionalFields);
     };
 
-    // What the user has put into a new dispatch. The number, and the date and supervisor while they are still what
-    // the form filled in (today, the signed-in user), are not counted; a date or supervisor the person changed is.
+    // What the person has typed or chosen on a new dispatch, in any field. The number counts once the person typed in
+    // the box (an offered number left alone does not), the date once the person picked one (today, put there by the
+    // form, does not), the supervisor once it is not the signed-in user the form filled in. Lines or photos count too.
     const { userProfile } = useAppSelector((state) => state.auth);
-    const dateChanged = !!header.disp_date && header.disp_date !== toLocalISODate(new Date());
     const supervisorChanged = !!header.supervisor_id && header.supervisor_id !== userProfile?.id;
-    const hasEnteredData = !!(header.customer_id || header.registration || header.note || dateChanged || supervisorChanged);
+    const hasEnteredData = !!(
+        dispNoTyped || dateChosenByUser || header.customer_id || header.registration || header.note || supervisorChanged || (items?.length ?? 0) > 0 || (images?.length ?? 0) > 0
+    );
 
     // The X in the step header asks before it calls this, so there is no second question here.
     const handleCancel = () => {

@@ -207,3 +207,42 @@ describe('the header these tests start from', () => {
     for (const key of Object.keys(defaults)) expect(header).toHaveProperty(key);
   });
 });
+
+// WH-255: what the X counts as entered on a new dispatch. The hook hands the step the two flags: the number counts once
+// the person typed in the box, the date once the person picked one (also the date already shown).
+describe('what the hook reports as entered on a new dispatch (WH-255)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    (checkDispatchExists as jest.Mock).mockResolvedValue({ exists: false });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('neither the offered number nor today\'s date is entered', async () => {
+    const { form, unmount } = await mount('create', makeStore());
+    expect(form().dispNoTyped).toBe(false);
+    expect(form().dateChosenByUser).toBe(false);
+    await unmount();
+  });
+
+  it('a typed number is entered, and nothing else is', async () => {
+    const { form, unmount } = await mount('create', makeStore());
+    await typeNumber(form, 'D');
+    expect(form().dispNoTyped).toBe(true);
+    expect(form().dateChosenByUser).toBe(false);
+    await unmount();
+  });
+
+  it('a picked date is entered, also the one already shown, and the number is not', async () => {
+    const store = makeStore();
+    const { form, unmount } = await mount('create', store);
+    await act(async () => { form().updateHeaderField('disp_date', store.getState().dispatchForm.header.disp_date); });
+    expect(form().dateChosenByUser).toBe(true);
+    expect(form().dispNoTyped).toBe(false);
+    await unmount();
+  });
+});

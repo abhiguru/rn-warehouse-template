@@ -116,6 +116,10 @@ interface GRNFormState {
   // form does not replace it with the next free number.
   grNoTyped: boolean;
 
+  // The date was picked by the person in the date picker (the date the form opened on is not picked): the X asks
+  // before closing a new GRN once it is true.
+  dateChosen: boolean;
+
   // The edit form as it was loaded (a signature of what a save would change): Back on the first step asks before
   // it throws away edits only when the form differs from this. Null for a new GRN.
   loadedSignature: string | null;
@@ -130,10 +134,6 @@ interface GRNFormState {
   firstDispatchDate: string | null;
   // The GRN's date as it was loaded: a date that was already after the first dispatch is refused only when it is changed.
   loadedDate: string | null;
-  // Whether the sender / the supervisor was empty when the GRN was loaded (older data): an edit that leaves it empty is
-  // not refused for it (WH-230); once a value is typed or chosen it is checked as on a new GRN.
-  loadedSenderEmpty: boolean;
-  loadedSupervisorEmpty: boolean;
 
   // Form data
   header: GRNHeaderData;
@@ -180,13 +180,12 @@ const createInitialState = (): GRNFormState => ({
   tempGrnId: null,
   submissionNonce: null,
   grNoTyped: false,
+  dateChosen: false,
   loadedSignature: null,
   loadedUpdatedAt: null,
   invoice: null,
   firstDispatchDate: null,
   loadedDate: null,
-  loadedSenderEmpty: false,
-  loadedSupervisorEmpty: false,
   header: {
     gr_no: '',
     registration: '',
@@ -323,14 +322,7 @@ const grnFormSlice = createSlice({
 
     // Header management
     updateHeader: (state, action: PayloadAction<Partial<GRNHeaderData>>) => {
-      // WH-230: a sender or supervisor that was empty at load stays exempt only until it is changed (even back to empty).
-      const next = action.payload;
-      if (next.sender_name !== undefined && next.sender_name !== state.header.sender_name) state.loadedSenderEmpty = false;
-      if (
-        (next.supervisor_name !== undefined && next.supervisor_name !== state.header.supervisor_name) ||
-        (next.supervisor_id !== undefined && next.supervisor_id !== state.header.supervisor_id)
-      ) state.loadedSupervisorEmpty = false;
-      state.header = { ...state.header, ...next };
+      state.header = { ...state.header, ...action.payload };
     },
 
     // Item management
@@ -528,6 +520,10 @@ const grnFormSlice = createSlice({
     setGrNoTyped: (state, action: PayloadAction<boolean>) => {
       state.grNoTyped = action.payload;
     },
+    /** The person picked the date in the date picker. */
+    markDateChosen: (state) => {
+      state.dateChosen = true;
+    },
 
     /** A refusal said the first dispatch is on another day than the form knew: the picker and the check follow it. */
     setFirstDispatchDate: (state, action: PayloadAction<string | null>) => {
@@ -557,8 +553,6 @@ const grnFormSlice = createSlice({
       state.invoice = action.payload.invoice ?? null;
       state.firstDispatchDate = action.payload.firstDispatchDate ?? null;
       state.loadedDate = action.payload.header.date ?? null;
-      state.loadedSenderEmpty = !action.payload.header.sender_name;
-      state.loadedSupervisorEmpty = !action.payload.header.supervisor_name && !action.payload.header.supervisor_id;
       state.grnRates = action.payload.grnRates ?? [];
       state.rateChanges = [];
       state.removedGrnRates = [];
@@ -644,6 +638,7 @@ export const {
   setTakenNumberError,
   setSubmissionNonce,
   setGrNoTyped,
+  markDateChosen,
   setFirstDispatchDate,
   setGrnRates,
   setRateChanges,
@@ -673,12 +668,11 @@ export const selectGRNLoadedUpdatedAt = (state: { grnForm: GRNFormState }) => st
 export const selectGRNInvoice = (state: { grnForm: GRNFormState }) => state.grnForm.invoice ?? null;
 export const selectGRNFirstDispatchDate = (state: { grnForm: GRNFormState }) => state.grnForm.firstDispatchDate ?? null;
 export const selectGRNLoadedDate = (state: { grnForm: GRNFormState }) => state.grnForm.loadedDate ?? null;
-export const selectGRNLoadedSenderEmpty = (state: { grnForm: GRNFormState }) => state.grnForm.loadedSenderEmpty === true;
-export const selectGRNLoadedSupervisorEmpty = (state: { grnForm: GRNFormState }) => state.grnForm.loadedSupervisorEmpty === true;
 const EMPTY_RATES: GrnRate[] = [];
 const EMPTY_CHANGES: RateChange[] = [];
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;
 export const selectGRNSubmissionNonce = (state: { grnForm: GRNFormState }) => state.grnForm.submissionNonce;
+export const selectGRNDateChosen = (state: { grnForm: GRNFormState }) => state.grnForm.dateChosen === true;
 export const selectGRNGrNoTyped = (state: { grnForm: GRNFormState }) => state.grnForm.grNoTyped === true;
 export const selectGRNTakenNumberError = (state: { grnForm: GRNFormState }) => state.grnForm.takenNumberError ?? null;
 export const selectGRNTempId = (state: { grnForm: GRNFormState }) => state.grnForm.tempGrnId;

@@ -5,6 +5,7 @@
 
 import { normalizeVehicle } from '@/utils/vehicleNumber';
 import * as yup from 'yup';
+import { ANY_UUID, anyUuidRule } from '@/utils/anyUuid';
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { t, type TranslationKey, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
@@ -60,7 +61,7 @@ export const step1Schema = yup.object().shape({
 
   customer_id: yup
     .string()
-    .uuid(m('dispatch.validation.customerInvalid'))
+    .matches(ANY_UUID, anyUuidRule(m('dispatch.validation.customerInvalid')))
     .required(m('dispatch.validation.customerRequired')),
 
   customer_name: yup
@@ -70,7 +71,7 @@ export const step1Schema = yup.object().shape({
 
   supervisor_id: yup
     .string()
-    .uuid(m('dispatch.validation.supervisorInvalid'))
+    .matches(ANY_UUID, anyUuidRule(m('dispatch.validation.supervisorInvalid')))
     .required(m('dispatch.validation.supervisorRequired')),
 
   supervisor_name: yup
@@ -95,7 +96,7 @@ export const dispatchItemSchema = yup.object().shape({
 
   grns_id: yup
     .string()
-    .uuid(m('dispatch.validation.grnInvalid'))
+    .matches(ANY_UUID, anyUuidRule(m('dispatch.validation.grnInvalid')))
     .required(m('dispatch.validation.grnIdRequired')),
 
   grns_date: yup
@@ -105,12 +106,12 @@ export const dispatchItemSchema = yup.object().shape({
   // GRN Item (lot) reference
   grnItems_id: yup
     .string()
-    .uuid(m('dispatch.validation.lotInvalid'))
+    .matches(ANY_UUID, anyUuidRule(m('dispatch.validation.lotInvalid')))
     .required(m('dispatch.validation.lotRequired')),
 
   grnItems_item_id: yup
     .string()
-    .uuid(m('dispatch.validation.itemInvalid'))
+    .matches(ANY_UUID, anyUuidRule(m('dispatch.validation.itemInvalid')))
     .required(m('dispatch.validation.itemRequired')),
 
   grnItems_item_name: yup

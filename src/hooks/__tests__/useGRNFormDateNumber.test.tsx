@@ -330,3 +330,42 @@ describe('the year of the number the form holds', () => {
     await unmount();
   });
 });
+
+// WH-257: what the X counts as entered on a new GRN. The number counts once typed (an offered number does not), the
+// date once picked (today's date put there by the form does not), even when the pick is the date already shown.
+describe('what counts as entered on a new GRN (WH-257)', () => {
+  it('neither the number nor the date is entered when the form opens', async () => {
+    const store = makeStore();
+    const { unmount } = await mount('create', store);
+    expect(store.getState().grnForm.grNoTyped).toBe(false);
+    expect(store.getState().grnForm.dateChosen).toBe(false);
+    await unmount();
+  });
+
+  it('a typed number is entered', async () => {
+    const store = makeStore();
+    const { form, unmount } = await mount('create', store);
+    await act(async () => { form().handleGrNoChange('A1'); });
+    expect(store.getState().grnForm.grNoTyped).toBe(true);
+    await unmount();
+  });
+
+  it('a picked date is entered, also the one already shown', async () => {
+    jest.mocked(numberForNewDate).mockResolvedValue('A0099');
+    const store = newForm();
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-03-30');
+    expect(store.getState().grnForm.dateChosen).toBe(true);
+    await unmount();
+  });
+
+  it('a reset form has neither', async () => {
+    const store = newForm(true);
+    const { form, unmount } = await mount('create', store);
+    await setDate(form, '2027-03-31');
+    await act(async () => { form().resetFormState(); });
+    expect(store.getState().grnForm.grNoTyped).toBe(false);
+    expect(store.getState().grnForm.dateChosen).toBe(false);
+    await unmount();
+  });
+});

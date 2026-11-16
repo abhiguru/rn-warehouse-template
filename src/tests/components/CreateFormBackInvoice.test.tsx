@@ -21,6 +21,8 @@ const emptyHeader = () => ({
 });
 const mockForm = {
   header: emptyHeader(),
+  // WH-257: the date counts once picked in the picker (today's date put there by the form does not).
+  dateChosen: false,
   items: [] as unknown[],
   itemOverrides: {},
   editedItems: {},
@@ -77,6 +79,7 @@ let back: ReturnType<typeof installHardwareBack>;
 beforeEach(() => {
   jest.clearAllMocks();
   mockForm.header = emptyHeader();
+  mockForm.dateChosen = false;
   mockForm.items = [];
   resetSheetBack();
   back = installHardwareBack();
@@ -124,7 +127,7 @@ describe('Back on step 1 of a new invoice', () => {
   it.each([
     ['a GRN was chosen', chooseGrn],
     ['an invoice number was typed', () => { mockForm.header.inv_no = 7301; mockForm.header.inv_no_typed = true; }],
-    ['only a changed date', () => { mockForm.header.inv_date = '2020-01-01'; }],
+    ['only a picked date (today, picked in the picker)', () => { mockForm.dateChosen = true; }],
   ])('asks "Discard this invoice?" and stays when %s', async (_what, enter) => {
     enter();
     const tree = await render();

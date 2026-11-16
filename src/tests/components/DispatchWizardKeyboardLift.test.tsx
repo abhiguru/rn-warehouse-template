@@ -27,7 +27,7 @@ const mockForm = {
 jest.mock('@/hooks/useDispatchForm', () => ({ useDispatchForm: () => mockForm }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => ({}), useFocusEffect: jest.fn() }));
 jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));
-jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: (props: { children: React.ReactNode; onScrollBeginDrag?: () => void; onTouchStartCapture?: () => void; onChangeCapture?: () => void }) => require('react').createElement('DragScroll', { onScrollBeginDrag: props.onScrollBeginDrag, onTouchStartCapture: props.onTouchStartCapture, onChangeCapture: props.onChangeCapture }, props.children) }));
+jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: (props: { children: React.ReactNode; onScrollBeginDrag?: () => void; onTouchStartCapture?: () => void; onTouchEndCapture?: () => void; onTouchCancelCapture?: () => void; onChangeCapture?: () => void }) => require('react').createElement('DragScroll', { onScrollBeginDrag: props.onScrollBeginDrag, onTouchStartCapture: props.onTouchStartCapture, onTouchEndCapture: props.onTouchEndCapture, onTouchCancelCapture: props.onTouchCancelCapture, onChangeCapture: props.onChangeCapture }, props.children) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/CustomerSearchBottomSheet', () => ({ CustomerSearchBottomSheet: () => null }));
 jest.mock('@/features/grn/components/SupervisorBottomSheet', () => ({ SupervisorBottomSheet: () => null }));

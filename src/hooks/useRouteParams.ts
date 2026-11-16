@@ -8,6 +8,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 import { t } from '@/i18n';
+import { isAnyUuid } from '@/utils/anyUuid';
 
 export interface RouteParamValidation<T> {
   /** The validated params (or null if invalid) */
@@ -21,12 +22,11 @@ export interface RouteParamValidation<T> {
 }
 
 /**
- * Validate that a value is a valid UUID v4
+ * Validate that a value is a UUID the database accepts (any version)
  */
 export function isValidUUID(value: unknown): value is string {
   if (typeof value !== 'string') return false;
-  const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidV4Regex.test(value);
+  return isAnyUuid(value);
 }
 
 /**

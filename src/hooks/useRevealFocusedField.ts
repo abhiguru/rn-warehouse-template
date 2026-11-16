@@ -31,8 +31,8 @@
  * field with an error) is not undone. After a drag by the person, or a tap of the person's on the page away from the
  * focused field (opening a group), the page is held as it is: what the person changed on the page is not undone
  * (WH-243). The hold ends when the person types in the focused field or taps it (the field is brought back whole
- * above the bar), another field takes the focus, the block changes height or the keyboard shows again. A drag that
- * starts on the focused field holds again, since the drag begins after the touch. A re-layout that moves nothing does not scroll. A scroll asked for is judged only from two later
+ * above the bar), another field takes the focus, the block changes height or the keyboard shows again. A touch on
+ * the focused field is judged at its end, not its start: a drag or a pan that starts on it never lifts a hold (WH-249). A re-layout that moves nothing does not scroll. A scroll asked for is judged only from two later
  * measurings that find the content at rest; found at rest still at the place it was asked from, the check asks again,
  * at most MAX_REASKS_IN_PLACE times, then takes it that the content cannot go further. A field outside the scroll view
  * (a sheet over the step) is left alone.
@@ -51,12 +51,14 @@ export interface KeyboardRevealTarget {
 
 /**
  * What the person does on the step's scroll view, as the reveal needs it: a drag (`onScrollBeginDrag`), a touch
- * (`onTouchStartCapture`) and typing (`onChangeCapture`: a TextInput's change event bubbles up to the scroll view, so
+ * (`onTouchStartCapture`, `onTouchEndCapture`, `onTouchCancelCapture`) and typing (`onChangeCapture`: a TextInput's change event bubbles up to the scroll view, so
  * no field needs a handler of its own). Spread them on the scroll view: `{...scrollRef.revealHandlers}`.
  */
 export interface RevealScrollHandlers {
   onScrollBeginDrag: () => void;
   onTouchStartCapture: (event: { nativeEvent: { pageX: number; pageY: number } }) => void;
+  onTouchEndCapture: () => void;
+  onTouchCancelCapture: () => void;
   onChangeCapture: (event: { nativeEvent?: { text?: unknown } }) => void;
 }
 
@@ -64,8 +66,10 @@ export interface RevealScrollHandlers {
  * The scroll ref a step gives both its scroll view and WizardBottomBar (useRevealScrollRef). The person's own changes
  * to the page are not undone by the reveal: after a drag (`userScrolled`) or a tap on the page away from the focused
  * field (`userTapped`), a moved bar, a field the page moved and the at-rest check scroll nothing. Typing in the focused
- * field or a tap on it asks for a reveal again (`revealAsked`) and ends both holds; a drag that starts on the field
- * holds again (onScrollBeginDrag runs after the touch). A focus change or the keyboard showing again also ends both.
+ * field, or a tap on it (a touch that starts and ends on it without becoming a drag or a pan), asks for a reveal
+ * again (`revealAsked`) and ends both holds. A touch that starts on the field changes nothing until it ends: a drag or
+ * a sideways swipe that starts there moves the page only as the finger moves it. A focus change or the keyboard
+ * showing again also ends both.
  */
 export interface RevealScrollRef<T extends KeyboardRevealTarget = KeyboardRevealTarget> extends RefObject<T | null> {
   userScrolled?: boolean;
@@ -81,7 +85,12 @@ export function useRevealScrollRef<T extends KeyboardRevealTarget>(): RevealScro
   revealHandlers: RevealScrollHandlers;
 } {
   const [ref] = useState(() => {
-    const onScrollBeginDrag = () => { created.userScrolled = true; };
+    // A touch that started on the focused field and has not ended, been taken over or turned into a drag yet.
+    let fieldTouch = false;
+    const onScrollBeginDrag = () => {
+      fieldTouch = false;
+      created.userScrolled = true;
+    };
     const created: RevealScrollRef<T> & { onScrollBeginDrag: () => void; revealHandlers: RevealScrollHandlers } = {
       current: null,
       userScrolled: false,
@@ -90,23 +99,32 @@ export function useRevealScrollRef<T extends KeyboardRevealTarget>(): RevealScro
       onScrollBeginDrag,
       revealHandlers: {
         onScrollBeginDrag,
-        // A touch with a field focused: on that field's block it asks for the field again; anywhere else on the page
-        // (a group head, a picker) it is the person's change, which the reveal leaves as it is. A touch on another
-        // field focuses it, and the focus change ends the hold.
+        // A touch with a field focused: on anywhere but that field's block (a group head, a picker) it is the person's
+        // change, which the reveal leaves as it is. On the field's block it is only noted: whether it is a tap is known
+        // at touch end, since a drag or a pan (a sideways swipe) that starts here must not lift any hold or ask for
+        // the field while the finger moves. A touch on another field focuses it, and the focus change ends the hold.
         onTouchStartCapture: (event) => {
+          fieldTouch = false;
           const input = currentlyFocused() as TreeNode | null;
           if (!input) return;
           const rect = fieldBlock(input).getBoundingClientRect?.();
           const { pageX, pageY } = event.nativeEvent;
           const onField = !rect || (pageY >= rect.top && pageY <= rect.bottom && pageX >= rect.left && pageX <= rect.right);
-          if (onField) {
-            // A drag that starts here sets userScrolled again in onScrollBeginDrag, which fires after this touch.
-            created.userScrolled = false;
-            created.userTapped = false;
-            created.revealAsked = true;
-          } else {
-            created.userTapped = true;
-          }
+          if (onField) fieldTouch = true;
+          else created.userTapped = true;
+        },
+        // The touch on the field ended where it was: a tap. It lifts both holds and asks for the field again. A drag
+        // clears the note in onScrollBeginDrag; a pan or a scroll that takes the touch over sends a cancel, not an end.
+        onTouchEndCapture: () => {
+          if (!fieldTouch) return;
+          fieldTouch = false;
+          created.userScrolled = false;
+          created.userTapped = false;
+          created.revealAsked = true;
+        },
+        // The touch was taken over (a scroll, a pan) or cancelled: it was not a tap, nothing is lifted.
+        onTouchCancelCapture: () => {
+          fieldTouch = false;
         },
         // Typing: only a text field's change event carries `text` (a switch's carries `value`).
         onChangeCapture: (event) => {

@@ -577,3 +577,28 @@ describe('an invoice that is being edited', () => {
     await unmount();
   });
 });
+
+// WH-257: what the X counts as entered on a new invoice. The date counts once the person picked it (today's date put
+// there by the form does not), even when the pick is the date already shown.
+describe('the date of a new invoice counts as entered only when picked (WH-257)', () => {
+  it('is not entered when the form opens', async () => {
+    const { form, unmount } = await mount();
+    expect(form().dateChosen).toBe(false);
+    await unmount();
+  });
+
+  it('is entered after the person picks a date, also the one already shown', async () => {
+    const { form, pickDate, unmount } = await mount();
+    await pickDate('2026-10-05');
+    expect(form().dateChosen).toBe(true);
+    await unmount();
+  });
+
+  it('is not entered again after the form is reset', async () => {
+    const { form, pickDate, unmount } = await mount();
+    await pickDate('2026-10-06');
+    await act(async () => { form().resetFormState(); });
+    expect(form().dateChosen).toBe(false);
+    await unmount();
+  });
+});
