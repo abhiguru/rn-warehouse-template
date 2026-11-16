@@ -984,7 +984,7 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
         }
         // An edited GRN asks before the X only when something was changed since it opened; the Back key here keeps its own
         // job (the step before), so it is not given to the header.
-        backOnFirstStep={isCreateMode ? undefined : { hasData: editChanged, enabled: false, exitRoute: '/(tabs)/grn' }}
+        backOnFirstStep={isCreateMode ? undefined : { hasData: editChanged || isItemDirty(currentItem, baseline.current), enabled: false, exitRoute: '/(tabs)/grn' }}
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
