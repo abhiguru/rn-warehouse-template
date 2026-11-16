@@ -33,6 +33,7 @@ import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
 import { printGRNRange, printFailureMessage } from '@/services/print-service';
@@ -542,6 +543,8 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   const styles = useThemedStyles(makeGRNListStyles);
   const t = useTokens();
   const isOffline = useIsOffline();
+  // While the keyboard is up the list area ends at its top (WH-261), so the no-match state is centred above it.
+  const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const isCustomerAccount = userProfile?.role === 'customer';
   const assignedCustomerIds = useMemo(
     () =>
@@ -1016,7 +1019,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]}>
       {header}
       {content}
 

@@ -62,6 +62,7 @@ const mockForm = {
   // The bags the saved dispatch held per lot when it was read (an edited dispatch only)
   heldBags: {} as Record<string, number>,
   isCreateMode: true,
+  isChanged: false,
   addFormItems: jest.fn(),
   updateFormItem: jest.fn(),
   removeFormItem: jest.fn(),
@@ -151,6 +152,7 @@ beforeEach(() => {
   mockForm.items = [];
   mockForm.heldBags = {};
   mockForm.isCreateMode = true;
+  mockForm.isChanged = false;
   mockForm.navigateToStep.mockImplementation(async () => true);
   back = installHardwareBack();
   // The GRN of the saved line, with the lot as the line holds it.
@@ -787,5 +789,98 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
 
     await type(tree, '11');
     expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the available stock.');
+  });
+});
+
+// WH-264: the X of an edited dispatch asks to discard when the saved form was changed or when the item form on screen
+// holds a change that is not saved to the form yet; with neither, it asks nothing.
+describe('the X of an edited dispatch on the items step', () => {
+  const asksBeforeX = () => indicator(tree).props.backOnFirstStep.hasData;
+  beforeEach(() => {
+    mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
+    mockForm.heldBags = { [LOT]: 5 };
+    mockForm.isCreateMode = false;
+  });
+
+  it('asks when the saved form is unchanged but the bags of the line on screen were changed', async () => {
+    await mount(<DispatchItemsStep mode="edit" />);
+    await correct(tree, mockForm.items[0]);
+    await type(tree, '7');
+
+    expect(asksBeforeX()).toBe(true);
+  });
+
+  it('asks nothing when the saved form is unchanged and the line on screen is as saved', async () => {
+    await mount(<DispatchItemsStep mode="edit" />);
+    expect(asksBeforeX()).toBe(false);
+
+    await correct(tree, mockForm.items[0]);
+    expect(asksBeforeX()).toBe(false);
+  });
+
+  it('asks when the saved form was changed, whatever is on screen', async () => {
+    mockForm.isChanged = true;
+    await mount(<DispatchItemsStep mode="edit" />);
+
+    expect(asksBeforeX()).toBe(true);
+  });
+});
+
+// WH-264, the lot as well as the bags: the X of an edited dispatch asks while the form on screen holds a change to a
+// saved line (its lot or its bags) or a new line with anything in it, and asks nothing once the line was confirmed.
+describe('the X of an edited dispatch, the line on screen', () => {
+  const lotOf = (id: string, stock: number) => ({ id, item_id: ITEM, item_name: 'Example Potatoes', quantity: 100, stock, package_mark: 'M1', rack: 'R1', weight: 50 });
+  const asksBeforeX = () => indicator(tree).props.backOnFirstStep.hasData;
+  const stopEditing = () => tree.root.findAll((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Stop editing this item');
+  const discardQuestionShown = () =>
+    tree.root.findAll((node) => (node.type as unknown) === 'ConfirmDialog' && node.props.title === 'Discard changes to this item?' && node.props.visible === true).length > 0;
+  const openSavedLine = async () => {
+    mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
+    mockForm.heldBags = { [LOT]: 5 };
+    mockForm.isCreateMode = false;
+    await mount(<DispatchItemsStep mode="edit" />);
+    await correct(tree, mockForm.items[0]);
+  };
+
+  it('another lot of the same item with the bags kept: the X asks, and so does "Stop editing this item"', async () => {
+    await openSavedLine();
+    expect(asksBeforeX()).toBe(false);
+
+    await press(tree, () => stub(tree, 'LotBottomSheet').props.onSelect(lotOf(OTHER_LOT, 40)));
+    expect(bags(tree).props.value).toBe('5');
+
+    expect(asksBeforeX()).toBe(true);
+    await press(tree, () => stopEditing()[0].props.onPress());
+    expect(discardQuestionShown()).toBe(true);
+  });
+
+  it('the saved line untouched: the X asks nothing, and "Stop editing this item" gives it up with no question', async () => {
+    await openSavedLine();
+
+    expect(asksBeforeX()).toBe(false);
+    await press(tree, () => stopEditing()[0].props.onPress());
+    expect(discardQuestionShown()).toBe(false);
+    expect(stopEditing()).toHaveLength(0);
+  });
+
+  it('a new line with something in it: the X asks', async () => {
+    mockForm.isCreateMode = false;
+    await mount(<DispatchItemsStep mode="edit" />);
+    expect(asksBeforeX()).toBe(false);
+
+    await press(tree, () => stub(tree, 'LotBottomSheet').props.onSelect(lotOf(OTHER_LOT, 40)));
+
+    expect(asksBeforeX()).toBe(true);
+  });
+
+  it('a line confirmed with the check mark is not asked about: the X goes back to what the saved form says', async () => {
+    await openSavedLine();
+    await type(tree, '7');
+    expect(asksBeforeX()).toBe(true);
+
+    await press(tree, () => tree.root.find((node) => node.props.testID === 'dispatch-items-add' && typeof node.props.onPress === 'function').props.onPress());
+
+    expect(mockForm.updateFormItem).toHaveBeenCalledTimes(1);
+    expect(asksBeforeX()).toBe(false);
   });
 });

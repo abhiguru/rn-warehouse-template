@@ -142,3 +142,80 @@ describe('a form that is asking the server what became of a request (owner rule 
     expect(slice.default(state, slice.resetForm()).checkingAnswer).toBe(false);
   });
 });
+
+// WH-264: an edited dispatch is "changed" when what a save would send differs from the form as it was read.
+describe('dispatch form changed since it was loaded (WH-264)', () => {
+  const load = () => require('../dispatchFormSlice') as Slice;
+  const header = {
+    disp_no: 'D0042', disp_date: '2026-10-01', registration: 'GJ01XX0000', customer_id: 'c1', customer_name: 'Example Traders',
+    supervisor_id: 's1', note: 'Call first',
+  };
+  const line = (unique_id: string, grnItems_id: string, disp_quantity: number) =>
+    ({ unique_id, grnItems_id, disp_quantity, original_disp_quantity: disp_quantity }) as never;
+  const loaded = () => {
+    const slice = load();
+    return slice.default(undefined, slice.loadDispatchData({ dispatchId: 'd1', header: header as never, items: [line('a', 'lot-1', 10), line('b', 'lot-2', 4)] }));
+  };
+  const changed = (state: ReturnType<typeof loaded>) => load().selectDispatchFormChanged({ dispatchForm: state });
+
+  it('is false right after the load, and for a form that was never loaded', () => {
+    const slice = load();
+    expect(changed(loaded())).toBe(false);
+    expect(changed(slice.default(undefined, slice.resetForm()))).toBe(false);
+  });
+
+  it.each([
+    ['the number', { disp_no: 'D0043' }],
+    ['the day', { disp_date: '2026-10-02' }],
+    ['the vehicle number', { registration: 'GJ01XX0001' }],
+    ['the customer', { customer_id: 'c2' }],
+    ['the supervisor', { supervisor_id: 's2' }],
+    ['the note', { note: 'Call second' }],
+  ])('is true when %s was changed, and false again when it is put back', (_name, update) => {
+    const slice = load();
+    const state = slice.default(loaded(), slice.updateHeader(update));
+    expect(changed(state)).toBe(true);
+    expect(changed(slice.default(state, slice.updateHeader(Object.fromEntries(Object.keys(update).map((k) => [k, (header as Record<string, unknown>)[k]])))))).toBe(false);
+  });
+
+  it('does not count what the form tidies: the vehicle in another case or edge spaces, the note\'s edge spaces, a day with a time', () => {
+    const slice = load();
+    const state = slice.default(loaded(), slice.updateHeader({ registration: ' gj01xx0000 ', note: '  Call first ', disp_date: '2026-10-01T00:00:00Z' }));
+    expect(changed(state)).toBe(false);
+  });
+
+  it('is true when a line\'s bags or lot changed, or a line was removed or added', () => {
+    const slice = load();
+    expect(changed(slice.default(loaded(), slice.updateItem({ uniqueId: 'a', updates: { disp_quantity: 11 } })))).toBe(true);
+    expect(changed(slice.default(loaded(), slice.updateItem({ uniqueId: 'a', updates: { grnItems_id: 'lot-3' } })))).toBe(true);
+    expect(changed(slice.default(loaded(), slice.removeItem('b')))).toBe(true);
+    expect(changed(slice.default(loaded(), slice.addItems([line('c', 'lot-3', 2)])))).toBe(true);
+  });
+
+  it('works the signature out once for the same header and lines, however often it is asked', () => {
+    // The signature normalises the vehicle number; counting those calls counts the signatures made.
+    const calls = jest.fn();
+    let slice!: Slice;
+    jest.isolateModules(() => {
+      jest.doMock('@/utils/vehicleNumber', () => {
+        const actual = jest.requireActual('@/utils/vehicleNumber');
+        return { ...actual, normalizeVehicle: (text: string) => { calls(); return actual.normalizeVehicle(text); } };
+      });
+      slice = require('../dispatchFormSlice');
+    });
+    const state = slice.default(
+      slice.default(undefined, slice.loadDispatchData({ dispatchId: 'd1', header: header as never, items: [line('a', 'lot-1', 10)] })),
+      slice.updateHeader({ note: 'Changed' })
+    );
+    calls.mockClear();
+
+    expect(slice.selectDispatchFormChanged({ dispatchForm: state })).toBe(true);
+    const afterFirst = calls.mock.calls.length;
+    expect(afterFirst).toBeGreaterThan(0);
+    // Another state object with the same header and lines (another field moved): no new signature.
+    expect(slice.selectDispatchFormChanged({ dispatchForm: { ...state, is_saving: true } })).toBe(true);
+    expect(slice.selectDispatchFormChanged({ dispatchForm: state })).toBe(true);
+    expect(calls.mock.calls.length).toBe(afterFirst);
+    jest.dontMock('@/utils/vehicleNumber');
+  });
+});

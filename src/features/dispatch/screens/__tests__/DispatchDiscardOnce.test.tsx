@@ -20,6 +20,7 @@ const mockForm = {
   isSaving: false,
   isLoading: false,
   isCreateMode: true,
+  isChanged: false,
   dispatchId: null,
   validationErrors: {},
   submitForm: jest.fn(),
@@ -83,6 +84,7 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
   mockForm.items = [];
   mockForm.isCreateMode = true;
+  mockForm.isChanged = false;
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -165,6 +167,7 @@ describe.each(STEPS)('The X on the %s step of a new dispatch', (_step, screen) =
 describe.each(STEPS)('The X on the %s step of a dispatch that is being edited', (_step, screen) => {
   it('asks once, about the changes, and "Discard changes" leaves the form', async () => {
     mockForm.isCreateMode = false;
+    mockForm.isChanged = true;
     mockForm.items = [line('a')];
     const tree = await render(screen('edit'));
 
@@ -179,6 +182,22 @@ describe.each(STEPS)('The X on the %s step of a dispatch that is being edited', 
     // The steps of an edit replace each other, so the dispatch's page is one step back (two backs left it, too).
     expect(router.back).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+// WH-264: an edit asks only when the form was changed since it opened.
+describe.each(STEPS)('The X on the %s step of a dispatch that is being edited, with nothing changed', (_step, screen) => {
+  it('closes with no question', async () => {
+    mockForm.isCreateMode = false;
+    mockForm.isChanged = false;
+    mockForm.items = [line('a')];
+    const tree = await render(screen('edit'));
+
+    await pressX(tree, 'Close dispatch edit');
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.back).toHaveBeenCalledTimes(1);
     await act(async () => { tree.unmount(); });
   });
 });

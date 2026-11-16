@@ -80,6 +80,10 @@ type DispatchItemsStepProps = {
     backGuard?: MutableRefObject<(() => void) | null>;
 };
 
+/** The form holds a change to a saved line: the lot or the bags, the two things a save sends for a line. */
+const savedLineChanged = (form: { grnItems_id?: unknown; disp_quantity?: number | null }, saved: { grnItems_id?: unknown; disp_quantity?: number | null }): boolean =>
+    form.grnItems_id !== saved.grnItems_id || form.disp_quantity !== saved.disp_quantity;
+
 export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
@@ -93,6 +97,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         heldBags = NO_HELD_BAGS,
         orderLots = NO_ORDER_LOTS,
         isCreateMode,
+        isChanged: editChanged,
         addFormItems,
         updateFormItem,
         removeFormItem,
@@ -643,7 +648,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             return;
         }
 
-        const hasChanges = currentItem.disp_quantity !== originalItem.disp_quantity;
+        const hasChanges = savedLineChanged(currentItem, originalItem);
 
         if (!hasChanges) {
             resetEditState();
@@ -724,6 +729,14 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const handleClearItemConfirm = () => {
         setShowClearItemDialog(false);
         resetEditState();
+    };
+
+    // The item form on screen holds a change that is not in the saved form yet: a saved item whose bags were changed
+    // (the test of "Stop editing this item"), or a new item with anything in it.
+    const itemFormIsDirty = () => {
+        if (editingItemId === null) return Boolean(hasAnyData());
+        const original = savedItems.find((item) => item.unique_id === editingItemId);
+        return original ? savedLineChanged(currentItem, original) : false;
     };
 
     // Get navigation routes
@@ -898,6 +911,8 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
                             : tr('dispatch.wizard.discardDetailsMessage')
                         : tr('dispatch.wizard.discardChangesMessage')
                 }
+                // An edited dispatch asks before the X only when something was changed since it opened; Back here goes to the step before.
+                backOnFirstStep={isCreateMode ? undefined : { hasData: editChanged || itemFormIsDirty(), enabled: false, exitRoute: '/(tabs)/dispatch' }}
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
                 isEditMode={!isCreateMode}

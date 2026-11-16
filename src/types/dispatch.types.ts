@@ -150,6 +150,8 @@ export interface DispatchFormState {
   invoicedNumber?: string | null;
   /** Edit only: the date and the number of the dispatch as they were read, to put back when the server says they are locked. */
   loadedDateNumber?: { disp_no: string; disp_date: string } | null;
+  /** Edit only: what a save would send, as read (see selectDispatchFormChanged); null in a new dispatch. */
+  loadedSignature?: string | null;
   /**
    * The message of a refusal of the dispatch date by the server (the date is in the future, or before a GRN, wave B D3).
    * Kept with the form so step 1 shows it when the person is taken there; it goes when the date changes or step 1 is checked.

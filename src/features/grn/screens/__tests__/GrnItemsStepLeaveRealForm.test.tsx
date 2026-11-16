@@ -276,3 +276,30 @@ describe.each([
     expect(router.push).not.toHaveBeenCalled();
   });
 });
+
+// WH-263: the X of an edited GRN asks to discard only when something was changed: in the saved form (nothing here,
+// the form was not loaded from the server) or in the item form on screen, which is not saved yet.
+describe('GRN items step with the real entry form, the X of an edit', () => {
+  const pressClose = (tree: ReactTestRenderer) =>
+    act(async () => { await control(tree, (label) => label === 'Close GRN edit').props.onPress(); });
+
+  it('asks to discard when the saved form is unchanged but the item on screen was changed', async () => {
+    const tree = await render('edit');
+    await reopenRowOne(tree);
+    await act(async () => { field(tree, 'Receipt item quantity').props.onChangeText('99'); });
+
+    await pressClose(tree);
+
+    expect(alerts()).toHaveLength(1);
+    expect(alerts()[0][0]).toBe('Discard changes to this GRN?');
+  });
+
+  it('asks nothing when neither the saved form nor the item on screen was changed', async () => {
+    const tree = await render('edit');
+    await reopenRowOne(tree);
+
+    await pressClose(tree);
+
+    expect(alerts()).toEqual([]);
+  });
+});

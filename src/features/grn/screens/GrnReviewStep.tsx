@@ -41,6 +41,7 @@ import {
   setSubmissionNonce,
   setGrNoTyped,
   setTakenNumberError,
+  selectGRNFormChanged,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
@@ -200,6 +201,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const grnRates = useAppSelector(selectGRNRates);
   const rateChanges = useAppSelector(selectGRNRateChanges);
   const removedRates = useAppSelector(selectGRNRemovedRates);
+  const editChanged = useAppSelector(selectGRNFormChanged);
   // An invoiced GRN being edited: its rates are shown, sent back as they are, and cannot be set here.
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
   // WH-180: an imported GRN opens here only to set its rates; the details, photos and items steps stay closed.
@@ -1324,6 +1326,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         completedSteps={getCompletedSteps(STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
         cancelMessage={tr(isCreateMode ? 'grn.review.discardCreateMessage' : 'grn.review.discardEditMessage', { count: items.length })}
+        // An edited GRN asks before the X only when something was changed since it opened; the Back key here keeps its own
+        // job (the step before), so it is not given to the header.
+        backOnFirstStep={isCreateMode ? undefined : { hasData: editChanged, enabled: false, exitRoute: '/(tabs)/grn' }}
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}

@@ -96,6 +96,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         isCheckingAnswer,
         isReloading,
         isCreateMode,
+        isChanged: editChanged,
         addImageToForm,
         updateImageUploadProgress: updateImageProgress,
         updateImageUploadStatus: updateImageStatus,
@@ -690,6 +691,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             : tr('dispatch.wizard.discardDetailsMessage')
                         : tr('dispatch.wizard.discardChangesMessage')
                 }
+                // An edited dispatch asks before the X only when something was changed since it opened; Back here goes to the step before.
+                backOnFirstStep={isCreateMode ? undefined : { hasData: editChanged, enabled: false, exitRoute: '/(tabs)/dispatch' }}
                 dispNo={header.disp_no}
                 // No step pills while locked
                 onStepPress={stepsLocked ? undefined : handleStepIndicatorPress}

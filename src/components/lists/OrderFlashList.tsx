@@ -71,6 +71,7 @@ import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 
 const logger = createLogger('OrderList');
 // ============================================================================
@@ -463,6 +464,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // Offline with no failed refresh: the first heading says when the cards were loaded. A failed refresh says it in
   // its strip instead.
   const isOffline = useIsOffline();
+  // While the keyboard is up the list area ends at its top (WH-261), so the no-match state is centred above it.
+  const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const offlineUpdatedAt = isOffline && !error ? refreshTimestamp : undefined;
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Order>; index: number }) => {
@@ -600,7 +603,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   }
 
   return (
-    <View style={styles.container}>
+    <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]}>
       {header}
       {content}
 

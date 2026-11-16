@@ -86,6 +86,7 @@ import {
   resetForm,
   loadFromOrder,
   selectHasFormData,
+  selectDispatchFormChanged,
   selectItemCount,
   selectIsReadyToSubmit,
 } from '@/store/slices/dispatchFormSlice';
@@ -249,6 +250,8 @@ export interface UseDispatchFormReturn {
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
   hasFormData: boolean;
+  /** An edit form differs from the dispatch as it was read (false in a new dispatch). */
+  isChanged: boolean;
   itemCount: number;
   isReadyToSubmit: boolean;
 
@@ -344,6 +347,7 @@ export function useDispatchForm({
   const images = dispatchFormState.images;
   const dispatchId = dispatchFormState.dispatch_id;
   const hasFormData = useAppSelector(selectHasFormData);
+  const isChanged = useAppSelector(selectDispatchFormChanged);
   const itemCount = useAppSelector(selectItemCount);
   const isReadyToSubmit = useAppSelector(selectIsReadyToSubmit);
 
@@ -1257,6 +1261,7 @@ export function useDispatchForm({
     validationErrors,
     isCreateMode,
     hasFormData,
+    isChanged,
     itemCount,
     isReadyToSubmit,
 

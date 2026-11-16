@@ -124,7 +124,7 @@ export function AlertHost() {
       onDismiss={finishClosing}
       statusBarTranslucent
     >
-      <DialogOverlay onScrimPress={cancel} scrimLabel={tr('components.alert.closeDialog')}>
+      <DialogOverlay onScrimPress={cancel}>
         <DialogCard accessibilityRole="alert">
           <DialogBody>
             <DialogHeading key={shown.id} title={shown.title} message={shown.message || undefined} />

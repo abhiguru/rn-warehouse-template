@@ -88,6 +88,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
     header,
     items,
     invoiceId,
+    isChanged: editChanged,
     isSaving,
     hasTypedRates,
     updateDiscountAmount,
@@ -506,6 +507,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         onCancel={handleCancel}
         // The close button is the one way out while the answer is lost, and it warns that the invoice may be saved.
         cancelTitle={lostAnswer ? tr('invoice.steps.lostLeaveTitle') : undefined}
+        // An edited invoice asks before the X only when something was changed since it opened; Back here goes to the step before.
+        backOnFirstStep={isEdit ? { hasData: editChanged, enabled: false, exitRoute: '/invoices' } : undefined}
         // The question's buttons then read "Keep waiting" / "Leave anyway" (see GenericStepIndicatorHeader).
         disabled={lostAnswer}
         leaveWarning={lostAnswer ? tr('errors.lostAnswer.leaveWarning') : undefined}

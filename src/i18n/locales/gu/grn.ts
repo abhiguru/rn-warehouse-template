@@ -53,7 +53,6 @@ export const grn: Translation<typeof source> = {
     invoicedLockedText: 'ઇન્વૉઇસમાં હોય તે આઇટમનું વજન પણ બદલી શકાતું નથી. પહેલાં ઇન્વૉઇસ કાઢી નાખો અથવા તેમાં ફેરફાર કરો.',
     basicInformation: 'મુખ્ય માહિતી',
     gettingNumber: 'આગળનો આવક પાવતી નંબર લાવી રહ્યા છીએ',
-    receiptNumberLabel: 'આવક પાવતી નંબર',
     numberPlaceholder: 'GRN####',
     dateLabel: 'તારીખ, {{date}}',
     dateHint: 'તારીખ પસંદ કરવાનું કૅલેન્ડર ખોલે છે',

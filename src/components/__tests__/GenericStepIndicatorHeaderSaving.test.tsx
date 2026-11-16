@@ -18,10 +18,11 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@/hooks/useFirstStepBack', () => ({ useFirstStepBack: jest.fn() }));
 
 const WARNING = 'It may have been saved. Check the list before entering it again.';
 
-function render(props: { disabled?: boolean; leaveWarning?: string }, handlers = { onCancel: jest.fn(), onStepPress: jest.fn() }) {
+function render(props: { disabled?: boolean; leaveWarning?: string; backOnFirstStep?: { hasData: boolean; enabled?: boolean; exitRoute: string } }, handlers = { onCancel: jest.fn(), onStepPress: jest.fn() }) {
   let tree!: ReactTestRenderer;
   act(() => {
     tree = create(
@@ -97,6 +98,25 @@ describe('the step header', () => {
     const { tree } = render({ leaveWarning: WARNING });
     act(() => close(tree).props.onPress());
     expect(lastQuestion()[1]).toBe('2 items and the GRN details will be lost.');
+    act(() => tree.unmount());
+  });
+});
+
+// WH-260, WH-263, WH-264: an edited form asks before the X only when something was changed since it opened.
+describe('the X of an edit form', () => {
+  it('leaves with no question when nothing was changed', () => {
+    const { tree, onCancel } = render({ backOnFirstStep: { hasData: false, enabled: false, exitRoute: '/(tabs)/grn' } });
+    act(() => close(tree).props.onPress());
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
+  it('asks once after a change, and leaves only on Discard', () => {
+    const { tree, onCancel } = render({ backOnFirstStep: { hasData: true, enabled: false, exitRoute: '/(tabs)/grn' } });
+    act(() => close(tree).props.onPress());
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
     act(() => tree.unmount());
   });
 });

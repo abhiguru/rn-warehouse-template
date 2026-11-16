@@ -16,6 +16,8 @@ import type {
 } from '@/types/dispatch.types';
 import { createEmptyDispatchHeader } from '@/types/dispatch.types';
 import { mergeOrderIntoDispatchItems, orderLotsOfItems } from '@/utils/orderToDispatchConverter';
+import { normalizeVehicle } from '@/utils/vehicleNumber';
+import { toCalendarDay } from '@/utils/formatters';
 
 const dispatchFormLogger = createLogger('DispatchFormSlice');
 
@@ -66,12 +68,29 @@ const createInitialState = (): DispatchFormState & { snapshot: DispatchFormSnaps
   loadedUpdatedAt: null,
   invoicedNumber: null,
   loadedDateNumber: null,
+  loadedSignature: null,
   dateRefusal: null,
   orderLots: null,
 
   // #18 Fix: Snapshot for optimistic update rollback
   snapshot: null,
 });
+
+/**
+ * What a save of the dispatch would send, as one string: the header fields the update sends (the date as the day, the
+ * vehicle as the save writes it) and the lines by lot and quantity. An edit form is "changed" when this differs from
+ * the one made when the dispatch was read.
+ */
+const formSignature = (header: DispatchHeaderData, items: DispatchItemData[]): string =>
+  JSON.stringify([
+    header.disp_no,
+    header.disp_date ? toCalendarDay(header.disp_date) : '',
+    normalizeVehicle(header.registration || '').toUpperCase(),
+    header.customer_id,
+    header.supervisor_id,
+    (header.note || '').trim(),
+    items.map((item) => [item.grnItems_id, item.disp_quantity]),
+  ]);
 
 /**
  * What a dispatch that was read gives to the form besides its header and its lines (shared by `loadDispatchData` and
@@ -96,6 +115,7 @@ function holdWhatWasRead(
   state.loadedUpdatedAt = updatedAt ?? null;
   state.invoicedNumber = invoicedNumber ?? null;
   state.loadedDateNumber = { disp_no: header.disp_no, disp_date: header.disp_date };
+  state.loadedSignature = formSignature(header, items);
   state.dateRefusal = null;
   state.orderLots = null;
 }
@@ -507,6 +527,7 @@ const dispatchFormSlice = createSlice({
       state.loadedUpdatedAt = null;
       state.invoicedNumber = null;
       state.loadedDateNumber = null;
+      state.loadedSignature = null;
       state.dateRefusal = null;
       state.orderLots = null;
     },
@@ -548,6 +569,7 @@ const dispatchFormSlice = createSlice({
       state.loadedUpdatedAt = null;
       state.invoicedNumber = null;
       state.loadedDateNumber = null;
+      state.loadedSignature = null;
       state.dateRefusal = null;
       state.orderLots = orderLots ?? orderLotsOfItems(items);
     },
@@ -743,6 +765,13 @@ export const selectDispatchDispNoTyped = (state: { dispatchForm: DispatchFormSta
 export const selectDispatchTakenNumberError = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.takenNumberError ?? null;
 export const selectDispatchFormValidationErrors = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.validationErrors;
 export const selectDispatchFormCurrentStep = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.current_step;
+/** The edit form differs from the dispatch as it was read (always false for a new dispatch). */
+const selectFormSignature = createSelector(
+  [(state: { dispatchForm: DispatchFormState }) => state.dispatchForm.header, (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.items],
+  (header, items) => formSignature(header, items)
+);
+export const selectDispatchFormChanged = (state: { dispatchForm: DispatchFormState }): boolean =>
+  state.dispatchForm.loadedSignature != null && selectFormSignature(state) !== state.dispatchForm.loadedSignature;
 export const selectDispatchFormId = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.dispatch_id;
 export const selectDispatchFormIsSaving = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.is_saving;
 /** The form is locked while the app asks the server what became of a save that got no answer. */

@@ -30,6 +30,7 @@ const mockForm = {
   isLoading: false,
   isGeneratingNumber: false,
   isCreateMode: true,
+  isChanged: false,
   updateHeaderField: jest.fn(),
   updateHeaderFields: jest.fn(),
   handleDispNoChange: jest.fn(),
@@ -81,6 +82,7 @@ beforeEach(() => {
   mockForm.dispNoTyped = false;
   mockForm.dateChosenByUser = false;
   mockForm.isCreateMode = true;
+  mockForm.isChanged = false;
   resetSheetBack();
   back = installHardwareBack();
 });
@@ -300,19 +302,46 @@ describe('Step 1 of a dispatch that is being edited', () => {
     mockForm.isCreateMode = false;
     mockForm.header.customer_id = 'c1';
   });
-
-  it('Back is left to the system: the edit flow is as it was', async () => {
+  // WH-264: an edited dispatch asks (X and Back alike) only when something was changed since it opened.
+  it('with nothing changed, Back is left to the system, which leaves at once with no question', async () => {
     const tree = await render(<DispatchEditStep1 />);
 
     expect(await pressBack()).toBe(false);
 
-    expect(back.count()).toBe(0);
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
 
+  it('with nothing changed, the X closes with no question', async () => {
+    const tree = await render(<DispatchEditStep1 />);
+
+    await pressX(tree, 'Close dispatch edit');
+
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+    expect(router.back).toHaveBeenCalledTimes(1);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('after a change, Back asks the same question as the X and leaves nothing yet', async () => {
+    mockForm.isChanged = true;
+    const tree = await render(<DispatchEditStep1 />);
+
+    expect(await pressBack()).toBe(true);
+
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    expect(question()).toMatchObject({ title: 'Discard changes to this dispatch?' });
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(mockForm.resetFormState).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+
   it('the X asks once, about the changes, and "Discard changes" goes back', async () => {
+    mockForm.isChanged = true;
     const tree = await render(<DispatchEditStep1 />);
 
     await pressX(tree, 'Close dispatch edit');

@@ -255,6 +255,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         numberHint,
         numberReason,
         isCreateMode,
+        isChanged: editChanged,
         invoicedNumber,
         updateHeaderField,
         updateHeaderFields,
@@ -384,8 +385,13 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         ? tr('dispatch.wizard.discardDetailsMessage')
                         : tr('dispatch.wizard.discardChangesMessage')
                 }
-                // New dispatch: the Android Back key asks the same question as the X once something was entered.
-                backOnFirstStep={isCreateMode ? { hasData: hasEnteredData, exitRoute: '/(tabs)/dispatch' } : undefined}
+                // New dispatch: the Android Back key asks the same question as the X once something was entered. An edited
+                // one asks (X and Back) only when something was changed since it opened; with nothing changed Back goes back as before.
+                backOnFirstStep={
+                    isCreateMode
+                        ? { hasData: hasEnteredData, exitRoute: '/(tabs)/dispatch' }
+                        : { hasData: editChanged, enabled: editChanged, exitRoute: '/(tabs)/dispatch' }
+                }
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
                 isEditMode={!isCreateMode}

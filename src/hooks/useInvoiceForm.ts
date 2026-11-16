@@ -186,6 +186,8 @@ export interface UseInvoiceFormReturn {
   isCreateMode: boolean;
   /** Edit only: whether the form differs from the saved invoice. Asked when needed (the Back key), not followed. */
   getIsChanged: () => boolean;
+  /** An edit form differs from the saved invoice (false in a new invoice); follows the form, for a screen to draw from. */
+  isChanged: boolean;
   /** Rates typed on the lines, a discount or a reason: all of it is lost when the lines are replaced. */
   hasLineEdits: boolean;
   /** Rates typed on the lines (or a group rate): the only part lost when the same GRN's lines are read again. */
@@ -332,6 +334,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
   const baseline = useAppSelector(selectInvoiceFormBaseline);
   // Not subscribed: step 1 stays mounted under step 2, and following the fingerprint would walk every line
   // (JSON.stringify) on each key typed on step 2. The Back key asks at press time.
+  const isChanged = useAppSelector(selectInvoiceFormChanged);
   const getIsChanged = useCallback(() => selectInvoiceFormChanged(store.getState()), [store]);
   const validationErrors = useAppSelector((state) => state.invoiceForm.validationErrors);
   const isLoading = useAppSelector((state) => state.invoiceForm.is_loading);
@@ -1170,6 +1173,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     validationErrors,
     isCreateMode,
     getIsChanged,
+    isChanged,
     hasLineEdits,
     hasTypedRates,
     dateChosen,
