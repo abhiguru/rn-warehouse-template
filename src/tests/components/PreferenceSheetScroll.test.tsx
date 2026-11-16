@@ -131,11 +131,29 @@ describe('PreferenceSheet with a long list (the states)', () => {
     expect(selected).toHaveLength(1);
     expect(textOf(selected[0])).toContain('Gujarat');
     expect(selected[0].props.accessibilityState).toMatchObject({ selected: true, checked: true });
-    const hidden = tree!.root.findAll(
-      n => n.props.accessible === false || n.props.importantForAccessibility === 'no-hide-descendants' || n.props.importantForAccessibility === 'no' || n.props.accessibilityElementsHidden === true,
-    );
-    expect(hidden).toEqual([]);
+    // The backdrop (the full-screen scrim, WH-267) is hidden from the screen reader on purpose; it is looked at below.
+    const isScrim = (n: ReactTestInstance) => { const s = flat(n.props.style); return s.position === 'absolute' && s.top === 0 && s.right === 0 && s.bottom === 0 && s.left === 0; };
+    const isHidden = (n: ReactTestInstance) =>
+      n.props.accessible === false || n.props.importantForAccessibility === 'no-hide-descendants' || n.props.importantForAccessibility === 'no' || n.props.accessibilityElementsHidden === true;
+    const hidden = tree!.root.findAll(n => isHidden(n) && !isScrim(n));
+    // Names only, so a failure prints a short list and not the tree.
+    expect(hidden.map(n => String(typeof n.type === 'string' ? n.type : n.type.displayName ?? n.type.name))).toEqual([]);
     expect(tree!.root.findAll(n => n.props.testID === 's' && n.props.accessibilityRole === 'radiogroup').length).toBeGreaterThan(0);
+  });
+
+  it('the backdrop is no screen-reader stop (WH-267), and tapping it still closes the sheet', async () => {
+    const onClose = jest.fn();
+    await render(<PreferenceSheet visible title="State" options={states} selected="" onSelect={jest.fn()} onClose={onClose} />);
+    const backdrops = tree!.root.findAll(n => {
+      const s = flat(n.props.style);
+      return typeof n.props.onPress === 'function' && s.position === 'absolute' && s.top === 0 && s.right === 0 && s.bottom === 0 && s.left === 0;
+    });
+    expect(backdrops).toHaveLength(1);
+    expect(backdrops[0].props.accessible).toBe(false);
+    expect(backdrops[0].props.importantForAccessibility).toBe('no');
+    expect(backdrops[0].props.accessibilityLabel).toBeUndefined();
+    await act(async () => backdrops[0].props.onPress());
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('the Close X closes the sheet (WH-219: it replaces Done)', async () => {
