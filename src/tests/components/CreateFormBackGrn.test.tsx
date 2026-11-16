@@ -30,6 +30,9 @@ const mockForm = {
   resetFormState: jest.fn(),
 };
 let mockItems: unknown[] = [];
+// WH-257: the number counts once typed, the date once picked in the picker (an offered number and today's date do not).
+let mockGrNoTyped = false;
+let mockDateChosen = false;
 // What the edit form was loaded as: null for a new GRN; any text that differs from the form's own signature for an
 // edit form that has been changed since.
 let mockLoadedSignature: string | null = null;
@@ -49,6 +52,8 @@ jest.mock('@/store/hooks', () => ({
         rateChanges: [],
         removedGrnRates: [],
         loadedSignature: mockLoadedSignature,
+        grNoTyped: mockGrNoTyped,
+        dateChosen: mockDateChosen,
       },
     }),
 }));
@@ -83,6 +88,8 @@ beforeEach(() => {
   mockForm.header = emptyHeader();
   mockForm.isCreateMode = true;
   mockItems = [];
+  mockGrNoTyped = false;
+  mockDateChosen = false;
   mockLoadedSignature = null;
   resetSheetBack();
   back = installHardwareBack();
@@ -118,7 +125,8 @@ const ENTERED: [string, () => void][] = [
   ['a sender typed by hand', () => { mockForm.header.sender_name = 'Fictional Sender'; }],
   ['a vehicle number', () => { mockForm.header.registration = 'GJ01XX0000'; }],
   ['a note', () => { mockForm.header.note = 'Bags are wet'; }],
-  ['only a changed date', () => { mockForm.header.date = '2020-01-01'; }],
+  ['only a typed GRN number', () => { mockForm.header.gr_no = 'A9'; mockGrNoTyped = true; }],
+  ['only a picked date (today, picked in the picker)', () => { mockDateChosen = true; }],
   ['only a changed supervisor', () => { mockForm.header.supervisor_id = 'u2'; mockForm.header.supervisor_name = 'Another Supervisor'; }],
   ['a photo', () => { mockForm.header.gr_images = [{ id: 'temp_1' }]; }],
   ['a line added on the items step', () => { mockItems = [{ grn_trl_id: 'item-1', qty: 10, stock: 10 }]; }],
