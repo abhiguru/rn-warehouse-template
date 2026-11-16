@@ -507,8 +507,8 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
         <Pressable
           style={styles.backdrop}
           onPress={handleClose}
-          accessibilityRole="button"
-          accessibilityLabel={tr('invoice.grnPicker.closeListA11y')}
+          accessible={false}
+          importantForAccessibility="no"
         />
 
         {/* Bottom Sheet Content */}
