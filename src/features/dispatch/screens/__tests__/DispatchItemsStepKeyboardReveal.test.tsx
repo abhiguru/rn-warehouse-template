@@ -43,7 +43,7 @@ const mockScrolls: number[] = [];
 jest.mock('react-native-keyboard-aware-scroll-view', () => {
   const React = require('react');
   return {
-    KeyboardAwareScrollView: React.forwardRef((props: { children?: unknown; onScrollBeginDrag?: () => void; onTouchStartCapture?: () => void; onChangeCapture?: () => void }, ref: unknown) => {
+    KeyboardAwareScrollView: React.forwardRef((props: { children?: unknown; onScrollBeginDrag?: () => void; onTouchStartCapture?: () => void; onTouchEndCapture?: () => void; onTouchCancelCapture?: () => void; onChangeCapture?: () => void }, ref: unknown) => {
       React.useImperativeHandle(ref, () => ({
         scrollForExtraHeightOnAndroid: (by: number) => { mockScrolls.push(by); },
         scrollToPosition: jest.fn(),
@@ -51,6 +51,8 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => {
       return React.createElement('View', {
         onScrollBeginDrag: props.onScrollBeginDrag,
         onTouchStartCapture: props.onTouchStartCapture,
+        onTouchEndCapture: props.onTouchEndCapture,
+        onTouchCancelCapture: props.onTouchCancelCapture,
         onChangeCapture: props.onChangeCapture,
       }, props.children);
     }),

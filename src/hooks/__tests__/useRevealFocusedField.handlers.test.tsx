@@ -70,6 +70,8 @@ function fieldWithBlock(top: number, below = 30) {
 }
 const movePage = (nodes: FakeNode[], by: number) => nodes.forEach((n) => { n.top += by; });
 const touch = (pageX: number, pageY: number) => scrollRef.revealHandlers.onTouchStartCapture({ nativeEvent: { pageX, pageY } });
+const touchEnd = () => scrollRef.revealHandlers.onTouchEndCapture();
+const touchCancel = () => scrollRef.revealHandlers.onTouchCancelCapture();
 const typeText = (text: unknown) => scrollRef.revealHandlers.onChangeCapture({ nativeEvent: { text } });
 
 let focused: FakeNode | null;
@@ -117,14 +119,66 @@ describe('revealHandlers (the flags the person\'s touches set)', () => {
     expect(scrollRef.userTapped).toBe(true);
   });
 
-  it('a touch on the focused field\'s block asks for a reveal and lifts a tap\'s hold', async () => {
+  it('a touch on the focused field\'s block asks for a reveal and lifts a tap\'s hold, at its end (WH-249)', async () => {
     const { input, block } = inPlaceField();
     focused = input;
     await mount();
     touch(10, block.top - 300);
     touch(10, block.top + 10);
+    expect(scrollRef.userTapped).toBe(true); // not yet: the touch has not ended
+    expect(scrollRef.revealAsked).toBe(false);
+    touchEnd();
     expect(scrollRef.userTapped).toBe(false);
     expect(scrollRef.revealAsked).toBe(true);
+  });
+
+  it('a touch end with no touch noted on the field changes nothing', async () => {
+    const { input, block } = inPlaceField();
+    focused = input;
+    await mount();
+    touch(10, block.top - 300); // off the field
+    touchEnd();
+    expect(scrollRef.userTapped).toBe(true);
+    expect(scrollRef.revealAsked).toBe(false);
+  });
+
+  it('a touch on the field, then a drag, then the end: no reveal, the drag\'s hold is kept (WH-249)', async () => {
+    const { input, block } = inPlaceField();
+    focused = input;
+    await mount();
+    touch(10, block.top + 10);
+    scrollRef.revealHandlers.onScrollBeginDrag();
+    touchEnd();
+    expect(scrollRef.userScrolled).toBe(true);
+    expect(scrollRef.revealAsked).toBe(false);
+  });
+
+  it('a touch on the field, then a touch cancel (a pan took it): nothing is lifted or asked (WH-249)', async () => {
+    const { input, block } = inPlaceField();
+    focused = input;
+    await mount();
+    touch(10, block.top - 300);
+    touch(10, block.top + 10);
+    touchCancel();
+    touchEnd(); // a stray end after the cancel is not a tap either
+    expect(scrollRef.userTapped).toBe(true);
+    expect(scrollRef.revealAsked).toBe(false);
+  });
+
+  it('a drag that starts on a partly hidden field, after 150 ms, does not scroll the page toward the field (WH-249)', async () => {
+    const { input, block } = inPlaceField();
+    focused = input;
+    await mount();
+    await tick(450);
+    scrollRef.onScrollBeginDrag();
+    movePage([input, block], MOVE); // the person's drag left the box partly behind the bar
+    await tick(450);
+    touch(10, block.top - scrolled + 5);
+    await tick(150); // the check that used to run before the drag was recognised
+    scrollRef.onScrollBeginDrag();
+    await tick(3000);
+    expect(scroll).not.toHaveBeenCalled();
+    expect(scrollRef.userScrolled).toBe(true);
   });
 
   it('a touch with no field focused changes nothing', async () => {
@@ -206,6 +260,7 @@ describe('WH-243: the reveal leaves alone what the person\'s own tap changed', (
     await tick(450);
     expect(scroll).not.toHaveBeenCalled();
     touch(10, block.top - scrolled + 5); // on the block
+    touchEnd();
     await tick(3000);
     expect(scroll).toHaveBeenCalled();
   });
@@ -237,6 +292,7 @@ describe('WH-243: the reveal leaves alone what the person\'s own tap changed', (
     await tick(450);
     expect(scroll).not.toHaveBeenCalled();
     touch(10, block.top - scrolled + 5); // on the block
+    touchEnd();
     expect(scrollRef.userScrolled).toBe(false);
     await tick(3000);
     expect(scroll).toHaveBeenCalled();

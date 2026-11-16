@@ -29,9 +29,9 @@ export function recordRevealRefs() {
   };
 }
 
-export const REVEAL_HANDLER_NAMES = ['onScrollBeginDrag', 'onTouchStartCapture', 'onChangeCapture'] as const;
+export const REVEAL_HANDLER_NAMES = ['onScrollBeginDrag', 'onTouchStartCapture', 'onTouchEndCapture', 'onTouchCancelCapture', 'onChangeCapture'] as const;
 
-/** `node` (a scroll view or list) carries the three handlers of `ref.revealHandlers`, by identity. */
+/** `node` (a scroll view or list) carries the five handlers (WH-249 added touch end and touch cancel) of `ref.revealHandlers`, by identity. */
 export function expectRevealWired(node: ReactTestInstance, ref: RecordedRevealRef) {
   for (const name of REVEAL_HANDLER_NAMES) {
     expect(typeof ref.revealHandlers[name]).toBe('function');
