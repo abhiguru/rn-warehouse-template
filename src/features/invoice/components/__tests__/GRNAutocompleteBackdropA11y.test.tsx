@@ -90,6 +90,6 @@ describe.each(sheets)('%s sheet', (_name, element) => {
 describe('the removed label key', () => {
   it('is gone from the English and Gujarati invoice texts', () => {
     expect(Object.keys(invoiceEn.grnPicker)).not.toContain('closeListA11y');
-    expect(Object.keys(invoiceGu.grnPicker)).not.toContain('closeListA11y');
+    expect(Object.keys(invoiceGu.grnPicker ?? {})).not.toContain('closeListA11y');
   });
 });
