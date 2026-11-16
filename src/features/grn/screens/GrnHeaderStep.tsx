@@ -262,7 +262,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         backOnFirstStep={
           isCreateMode
             ? { hasData: hasEnteredData, exitRoute: '/(tabs)/grn' }
-            : { hasData: true, enabled: editChanged, exitRoute: '/(tabs)/grn' }
+            : { hasData: editChanged, enabled: editChanged, exitRoute: '/(tabs)/grn' }
         }
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
