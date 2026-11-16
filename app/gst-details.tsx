@@ -22,7 +22,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
 import { GstUnconfirmedError, getGstDetails, setGstDetails, type GstDetails, type GstDetailsInput } from '@/services/gstService';
-import { stateNameOf } from '@/features/gst/indianStates';
+import { stateDisplayName, stateNameOf } from '@/features/gst/indianStates';
 import { invalidateGstSaved } from '@/features/gst/useGstSaved';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { showToast } from '@/utils/toast';
@@ -171,7 +171,7 @@ export default function GstDetailsScreen() {
     );
   }
 
-  const gstinState = draft && GSTIN_SHAPE.test(draft.gstin.trim().toUpperCase()) ? stateNameOf(draft.gstin.trim().slice(0, 2)) : '';
+  const gstinState = draft && GSTIN_SHAPE.test(draft.gstin.trim().toUpperCase()) ? stateDisplayName(stateNameOf(draft.gstin.trim().slice(0, 2))) : '';
 
   return (
     <View style={styles.screen}>
