@@ -116,6 +116,10 @@ interface GRNFormState {
   // form does not replace it with the next free number.
   grNoTyped: boolean;
 
+  // The date was picked by the person in the date picker (the date the form opened on is not picked): the X asks
+  // before closing a new GRN once it is true.
+  dateChosen: boolean;
+
   // The edit form as it was loaded (a signature of what a save would change): Back on the first step asks before
   // it throws away edits only when the form differs from this. Null for a new GRN.
   loadedSignature: string | null;
@@ -176,6 +180,7 @@ const createInitialState = (): GRNFormState => ({
   tempGrnId: null,
   submissionNonce: null,
   grNoTyped: false,
+  dateChosen: false,
   loadedSignature: null,
   loadedUpdatedAt: null,
   invoice: null,
@@ -515,6 +520,10 @@ const grnFormSlice = createSlice({
     setGrNoTyped: (state, action: PayloadAction<boolean>) => {
       state.grNoTyped = action.payload;
     },
+    /** The person picked the date in the date picker. */
+    markDateChosen: (state) => {
+      state.dateChosen = true;
+    },
 
     /** A refusal said the first dispatch is on another day than the form knew: the picker and the check follow it. */
     setFirstDispatchDate: (state, action: PayloadAction<string | null>) => {
@@ -629,6 +638,7 @@ export const {
   setTakenNumberError,
   setSubmissionNonce,
   setGrNoTyped,
+  markDateChosen,
   setFirstDispatchDate,
   setGrnRates,
   setRateChanges,
@@ -662,6 +672,7 @@ const EMPTY_RATES: GrnRate[] = [];
 const EMPTY_CHANGES: RateChange[] = [];
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;
 export const selectGRNSubmissionNonce = (state: { grnForm: GRNFormState }) => state.grnForm.submissionNonce;
+export const selectGRNDateChosen = (state: { grnForm: GRNFormState }) => state.grnForm.dateChosen === true;
 export const selectGRNGrNoTyped = (state: { grnForm: GRNFormState }) => state.grnForm.grNoTyped === true;
 export const selectGRNTakenNumberError = (state: { grnForm: GRNFormState }) => state.grnForm.takenNumberError ?? null;
 export const selectGRNTempId = (state: { grnForm: GRNFormState }) => state.grnForm.tempGrnId;

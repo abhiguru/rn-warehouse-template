@@ -25,6 +25,8 @@ import {
   selectGRNInvoice,
   selectGRNFirstDispatchDate,
   selectGRNLoadedDate,
+  selectGRNGrNoTyped,
+  selectGRNDateChosen,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
@@ -103,12 +105,15 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const hasLockInfo = !isCreateMode && items.some((item) => item.locks !== undefined);
   const hasInvoicedItems = !isCreateMode && items.some((item) => item.locks?.invoiced === true);
 
-  // What the user has put into a new GRN. The number, and the date and supervisor while they are still what the form
-  // filled in (today, the signed-in user), are not counted; a date or supervisor the person changed is.
-  const dateChanged = !!header.date && header.date !== toLocalISODate(new Date());
+  // What the user has put into a new GRN. The number counts once the person typed it (an offered number left alone does not),
+  // the date once the person picked it (today's, put there by the form, does not), the supervisor once it is not the
+  // signed-in user the form filled in.
+  const grNoTyped = useAppSelector(selectGRNGrNoTyped);
+  const dateChosen = useAppSelector(selectGRNDateChosen);
   const supervisorChanged = !!header.supervisor_id && header.supervisor_id !== userProfile?.id;
   const hasEnteredData = !!(
-    dateChanged ||
+    grNoTyped ||
+    dateChosen ||
     supervisorChanged ||
     header.customer_id ||
     header.sender_id ||

@@ -69,6 +69,7 @@ import {
   selectGRNLoadedDate,
   setTakenNumberError,
   setGrNoTyped,
+  markDateChosen,
   GRNHeaderData,
   GRNItemData,
   GRNImageData,
@@ -368,7 +369,10 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
 
   // Header actions
   const updateHeaderField = useCallback((field: keyof GRNHeaderData, value: unknown) => {
-    if (field === 'date') void askNumberForDate(value);
+    if (field === 'date') {
+      void askNumberForDate(value);
+      dispatch(markDateChosen());
+    }
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearValidationError(field));
     clearLocalErrors([field]);

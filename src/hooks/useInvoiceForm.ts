@@ -38,6 +38,8 @@ import {
   numberRequested,
   numberAnswered,
   numberCancelled,
+  markDateChosen,
+  selectInvoiceDateChosen,
   selectInvoiceFormHeader,
   selectInvoiceFormItems,
   selectInvoiceFormItemOverrides,
@@ -188,6 +190,8 @@ export interface UseInvoiceFormReturn {
   hasLineEdits: boolean;
   /** Rates typed on the lines (or a group rate): the only part lost when the same GRN's lines are read again. */
   hasTypedRates: boolean;
+  /** The person picked the invoice date in the date picker. */
+  dateChosen: boolean;
   /** Edit only: the GRN the invoice was saved with. */
   savedGrId: string | null;
   /** Edit only: the GRN the invoice was saved with, as the picker lists it. */
@@ -346,6 +350,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     );
   });
   // Reading the same GRN's lines again keeps the discount and the reasons; only typed rates go.
+  const dateChosen = useAppSelector(selectInvoiceDateChosen);
   const hasTypedRates = useAppSelector((state) => hasKeys(state.invoiceForm.editedItems) || hasKeys(state.invoiceForm.bulkPricing));
   const savedGrn = useMemo(
     () => (baseline ? { id: baseline.gr_id, gr_no: baseline.header.gr_no, customer_name: baseline.header.customer_name } : null),
@@ -533,6 +538,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
       dropNumberRequest();
       dispatch(numberCancelled());
     }
+    if ('inv_date' in updates) dispatch(markDateChosen());
     dispatch(updateHeader(changes));
     // A changed field no longer has its message.
     Object.keys(updates).forEach((field) => {
@@ -1166,6 +1172,7 @@ export function useInvoiceForm({ mode, step }: UseInvoiceFormOptions): UseInvoic
     getIsChanged,
     hasLineEdits,
     hasTypedRates,
+    dateChosen,
     savedGrId: baseline?.gr_id ?? null,
     savedGrn,
     reloadInvoice,
