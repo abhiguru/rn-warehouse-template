@@ -130,7 +130,6 @@ export const filters: Translation<typeof source> = {
     sortBy: 'આ મુજબ સૉર્ટ કરો',
     order: 'ક્રમ',
     sortOrder: 'સૉર્ટનો ક્રમ',
-    closeScrim: '{{title}}: {{action}}',
     closeHint: 'લાગુ કર્યા વગર બંધ કરે છે.',
   },
   page: {
