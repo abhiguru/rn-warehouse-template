@@ -44,6 +44,7 @@ import { MemoizedInvoiceItem } from '@/components/list-items';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -166,6 +167,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [loadedAt, setLoadedAt] = useState(() => Date.now());
   const isOffline = useIsOffline();
+  // While the keyboard is up the list area ends at its top (WH-261), so the no-match state is centred above it.
+  const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   /** The request the rows on screen answer, so a failed refresh of it keeps them and a failed new filter does not. */
   const shownRequest = useRef<string | null>(null);
 
@@ -526,7 +529,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]}>
       {/* The header, search field and filter bar are shown in every state. */}
       <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} onRefresh={handleRefresh} />
       {content}

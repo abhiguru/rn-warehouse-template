@@ -55,6 +55,7 @@ import { localizeDigits, t as translate } from '@/i18n';
 
 // State
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -173,6 +174,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   /** A customer account's history is capped: a lasting fact about the list, not an event. */
   const [historyLimited, setHistoryLimited] = useState(false);
   const isOffline = useIsOffline();
+  // While the keyboard is up the list area ends at its top (WH-261), so the no-match state is centred above it.
+  const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const reduceMotion = useReducedMotion();
   /** The request the rows on screen answer, so a failed refresh of it keeps them and a failed new filter does not. */
   const shownRequest = useRef<string | null>(null);
@@ -591,7 +594,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   }
 
   return (
-    <View style={styles.container}>
+    <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]}>
       {header}
       {content}
 
