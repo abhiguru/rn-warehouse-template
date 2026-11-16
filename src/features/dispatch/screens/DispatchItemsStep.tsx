@@ -80,6 +80,10 @@ type DispatchItemsStepProps = {
     backGuard?: MutableRefObject<(() => void) | null>;
 };
 
+/** The form holds a change to a saved line: the lot or the bags, the two things a save sends for a line. */
+const savedLineChanged = (form: { grnItems_id?: unknown; disp_quantity?: number | null }, saved: { grnItems_id?: unknown; disp_quantity?: number | null }): boolean =>
+    form.grnItems_id !== saved.grnItems_id || form.disp_quantity !== saved.disp_quantity;
+
 export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
@@ -644,7 +648,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
             return;
         }
 
-        const hasChanges = currentItem.disp_quantity !== originalItem.disp_quantity;
+        const hasChanges = savedLineChanged(currentItem, originalItem);
 
         if (!hasChanges) {
             resetEditState();
@@ -732,7 +736,7 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
     const itemFormIsDirty = () => {
         if (editingItemId === null) return Boolean(hasAnyData());
         const original = savedItems.find((item) => item.unique_id === editingItemId);
-        return original ? currentItem.disp_quantity !== original.disp_quantity : false;
+        return original ? savedLineChanged(currentItem, original) : false;
     };
 
     // Get navigation routes
