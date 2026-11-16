@@ -6,6 +6,7 @@
  */
 
 import * as yup from 'yup';
+import { ANY_UUID, anyUuidRule } from '@/utils/anyUuid';
 import { localizeDigits, t } from '@/i18n';
 
 // ============================================================================
@@ -41,7 +42,7 @@ const limit = (value: number): string => localizeDigits(String(value));
  * UUID validator with custom error message
  */
 export const uuidField = (fieldName: FieldName) =>
-  yup.string().uuid(() => t('validation.field.invalidSelection', { field: nameOf(fieldName) }));
+  yup.string().matches(ANY_UUID, anyUuidRule(() => t('validation.field.invalidSelection', { field: nameOf(fieldName) })));
 
 /**
  * Required UUID validator

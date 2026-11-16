@@ -1,4 +1,5 @@
 import * as yup from 'yup';
+import { ANY_UUID, anyUuidRule } from '@/utils/anyUuid';
 import { normalizeVehicle } from '@/utils/vehicleNumber';
 import { normalizeDigits, t, type TranslationKey } from '@/i18n';
 import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
@@ -44,7 +45,7 @@ export const step1Schema = yup.object().shape({
 
   customer_id: yup
     .string()
-    .uuid(msg('grn.validation.customerInvalid'))
+    .matches(ANY_UUID, anyUuidRule(msg('grn.validation.customerInvalid')))
     .required(msg('grn.validation.customerRequired')),
 
   customer_name: yup
@@ -54,7 +55,7 @@ export const step1Schema = yup.object().shape({
 
   supervisor_id: yup
     .string()
-    .uuid(msg('grn.validation.supervisorInvalid'))
+    .matches(ANY_UUID, anyUuidRule(msg('grn.validation.supervisorInvalid')))
     .required(msg('grn.validation.supervisorRequired')),
 
   supervisor_name: yup
@@ -196,7 +197,7 @@ export const isValidReceiptQuantity = (value: string): boolean =>
 export const itemSchema = yup.object().shape({
   item_table_id: yup
     .string()
-    .uuid(msg('grn.validation.itemInvalid'))
+    .matches(ANY_UUID, anyUuidRule(msg('grn.validation.itemInvalid')))
     .required(msg('grn.validation.itemSelectRequired')),
 
   item_name: yup

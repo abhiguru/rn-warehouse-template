@@ -1,4 +1,5 @@
 import * as yup from 'yup';
+import { ANY_UUID, anyUuidRule } from '@/utils/anyUuid';
 import { createStepValidator, type ValidationResult } from '@/utils/validationHelpers';
 import { t, type TranslationKey, type TranslationParams } from '@/i18n';
 import { isZeroChargeLine } from '@/utils/invoiceCalculations';
@@ -75,13 +76,13 @@ export const step1Schema = yup.object().shape({
 
   inv_no: invoiceNumberField(),
 
-  gr_id: yup.string().uuid(msg('invoice.validation.grnInvalid')).required(msg('invoice.validation.grnRequired')),
+  gr_id: yup.string().matches(ANY_UUID, anyUuidRule(msg('invoice.validation.grnInvalid'))).required(msg('invoice.validation.grnRequired')),
 
   gr_no: yup.string().required(msg('invoice.validation.grnNumberRequired')),
 
   customer_id: yup
     .string()
-    .uuid(msg('invoice.validation.customerInvalid'))
+    .matches(ANY_UUID, anyUuidRule(msg('invoice.validation.customerInvalid')))
     .required(msg('invoice.validation.customerRequired')),
 
   customer_name: yup
@@ -142,7 +143,7 @@ export const step2Schema = yup.object().shape({
     .of(
       yup.object().shape({
         temp_id: yup.string().required(),
-        disp_trl_id: yup.string().uuid().required(),
+        disp_trl_id: yup.string().matches(ANY_UUID, { excludeEmptyString: true }).required(),
         qty: yup.number().positive().required(),
         duration: itemPricingSchema.fields.duration,
         no_of_days: itemPricingSchema.fields.no_of_days,
