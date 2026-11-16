@@ -19,7 +19,6 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { useInvoiceForm, type InvoiceFormMode } from '@/hooks/useInvoiceForm';
 import { useBlurOnKeyboardHide } from '@/hooks/useBlurOnKeyboardHide';
-import { useBackHandler } from '@/hooks/useBackHandler';
 import { useAfterClosed } from '@/hooks/useAfterClosed';
 import { GRNAutocomplete } from '@/features/invoice/components/GRNAutocomplete';
 import type { InvoiceableGrn } from '@/types/invoice.types';
@@ -34,7 +33,6 @@ import {
 } from '@/constants/invoiceSteps';
 import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInput } from '@/i18n';
 import { formatFinancialYear } from '@/utils/formatters';
-import { showAlert } from '@/utils/alert';
 import { INVOICE_NUMBER_DIGITS } from '@/features/invoice/schemas/invoiceValidation';
 import {
   continueAutoAdvance,
@@ -76,28 +74,6 @@ export interface InvoiceStepProps {
   mode: InvoiceFormMode;
 }
 
-/**
- * The Android Back key on step 1 of an edit: with changes it asks what the
- * header's X asks, without it leaves at once. Drawn in an edit only, so that a
- * new invoice listens for Back once (the header does it there).
- */
-function EditBackKey({ getIsChanged, onLeave }: { getIsChanged: () => boolean; onLeave: () => void }) {
-  useBackHandler({
-    onBackPress: () => {
-      if (getIsChanged()) {
-        showAlert(tr('invoice.steps.discardEditTitle'), tr('invoice.steps.discardEditMessage'), [
-          { text: tr('common.keepEditing'), style: 'cancel' },
-          { text: tr('invoice.steps.discardChanges'), style: 'destructive', onPress: onLeave },
-        ]);
-      } else {
-        onLeave();
-      }
-      return true;
-    },
-  });
-  return null;
-}
-
 export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
   // Closing the keyboard lets go of the field it was for (its text is formatted and checked).
   useBlurOnKeyboardHide();
@@ -111,7 +87,7 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
     invoiceId,
     isLoading,
     isLoadingItems,
-    getIsChanged,
+    isChanged: editChanged,
     hasLineEdits,
     savedGrId,
     savedGrn,
@@ -322,15 +298,18 @@ export function InvoiceDetailsStep({ mode }: InvoiceStepProps) {
 
   return (
     <View style={styles.container}>
-      {isEdit && <EditBackKey getIsChanged={getIsChanged} onLeave={leaveEdit} />}
-
       <InvoiceStepIndicator
         steps={invoiceSteps()}
         currentStep={STEP_NUMBERS.HEADER}
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
-        // The Android Back key asks the same question as the X once something was entered.
-        backOnFirstStep={isEdit ? undefined : { hasData: hasEnteredData, exitRoute: invoiceFormExitRoute(), exitWith: 'dismissTo' }}
+        // The Android Back key asks the same question as the X once something was entered (a new invoice) or changed (an
+        // edited one, which leaves for the invoice's page at once with nothing changed).
+        backOnFirstStep={
+          isEdit
+            ? { hasData: editChanged, exitRoute: `/invoice-details/${invoiceId}`, exitWith: 'dismissTo' }
+            : { hasData: hasEnteredData, exitRoute: invoiceFormExitRoute(), exitWith: 'dismissTo' }
+        }
         onStepPress={handleStepPress}
         invoiceNo={header.inv_no > 0 ? `${header.inv_prefix ?? ''}${header.inv_no}` : undefined}
         isEditMode={isEdit}

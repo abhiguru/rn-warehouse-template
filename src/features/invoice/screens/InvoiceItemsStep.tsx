@@ -38,6 +38,7 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
     items,
     itemOverrides,
     invoiceId,
+    isChanged: editChanged,
     updateItemPricing,
     applyGroupPricing,
     applySavedRatesToLines,
@@ -157,13 +158,15 @@ export function InvoiceItemsStep({ mode }: InvoiceStepProps) {
         currentStep={STEP_NUMBERS.ITEMS}
         completedSteps={getCompletedSteps(STEP_NUMBERS.ITEMS)}
         onCancel={handleCancel}
+        // An edited invoice asks before the X only when something was changed since it opened; Back here goes to the step before.
+        backOnFirstStep={isEdit ? { hasData: editChanged, enabled: false, exitRoute: '/invoices' } : undefined}
         onStepPress={handleStepPress}
         invoiceNo={invoiceNo}
         isEditMode={isEdit}
       />
     ),
     // `language` is not read inside: the texts are, and they follow it.
-    [handleCancel, handleStepPress, invoiceNo, isEdit, language]
+    [handleCancel, handleStepPress, invoiceNo, isEdit, editChanged, language]
   );
   const bottomBar = useMemo(
     () => (
