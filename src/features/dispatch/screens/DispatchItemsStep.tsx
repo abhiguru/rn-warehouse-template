@@ -20,7 +20,6 @@ import {
   Keyboard,
   ActivityIndicator,
   AccessibilityInfo,
-  findNodeHandle,
 } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -488,8 +487,8 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         }
         scrollViewRef.current?.scrollToPosition(0, Math.max(0, (fieldTops.current[first] ?? 0) - space.lg), true);
         setTimeout(() => {
-            const node = findNodeHandle(pickerRefs.current[first] ?? null);
-            if (node) AccessibilityInfo.setAccessibilityFocus(node);
+            const node = pickerRefs.current[first];
+            if (node) AccessibilityInfo.sendAccessibilityEvent(node, 'focus');
         }, 300);
     };
 

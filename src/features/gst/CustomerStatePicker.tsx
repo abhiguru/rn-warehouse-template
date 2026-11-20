@@ -5,7 +5,7 @@
  * to choose one; nothing is changed until a state is chosen.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, findNodeHandle, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { SearchableBottomSheet } from '@/components/common/SearchableBottomSheet';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -70,8 +70,8 @@ interface Props {
    * (the box is a button, not a text input, so it cannot take keyboard focus).
    */
   inputRef?: (node: { focus: () => void } | null) => void;
-  /** Scrolls the form to the node with this native handle. */
-  scrollIntoView?: (handle: number) => void;
+  /** Scrolls the form to this node. */
+  scrollIntoView?: (node: ViewRef) => void;
 }
 
 export function CustomerStatePicker({ value, onChange, error, inputRef, scrollIntoView }: Props) {
@@ -86,10 +86,10 @@ export function CustomerStatePicker({ value, onChange, error, inputRef, scrollIn
     if (!inputRef) return undefined;
     inputRef({
       focus: () => {
-        const handle = boxRef.current ? findNodeHandle(boxRef.current) : null;
-        if (handle == null) return;
-        scrollRef.current?.(handle);
-        AccessibilityInfo.setAccessibilityFocus(handle);
+        const box = boxRef.current;
+        if (!box) return;
+        scrollRef.current?.(box);
+        AccessibilityInfo.sendAccessibilityEvent(box, 'focus');
       },
     });
     return () => inputRef(null);

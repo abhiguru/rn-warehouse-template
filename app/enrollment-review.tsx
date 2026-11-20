@@ -8,7 +8,7 @@
  * Approve and Reject never wait at the end of it.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -173,8 +173,7 @@ export default function EnrollmentReviewScreen() {
     revealPendingRef.current = false;
     scrollRef.current?.scrollTo({ y: Math.max(0, cardYRef.current - space.sm), animated: true });
     setTimeout(() => {
-      const node = roleLabelRef.current ? findNodeHandle(roleLabelRef.current) : null;
-      if (node) AccessibilityInfo.setAccessibilityFocus(node);
+      if (roleLabelRef.current) AccessibilityInfo.sendAccessibilityEvent(roleLabelRef.current, 'focus');
     }, 400);
   }, []);
 

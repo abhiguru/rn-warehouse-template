@@ -20,7 +20,7 @@
  *   </Modal>
  */
 import React, { useCallback, useRef } from 'react';
-import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -222,8 +222,7 @@ export function DialogHeading({ title, message, tone = 'default', icon, messageA
     if (focused.current) return;
     focused.current = true;
     try {
-      const node = titleRef.current ? findNodeHandle(titleRef.current) : null;
-      if (node) AccessibilityInfo.setAccessibilityFocus(node);
+      if (titleRef.current) AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
     } catch {
       // Not available on this platform: the dialog still works.
     }
