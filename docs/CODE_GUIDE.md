@@ -966,17 +966,18 @@ expresses them.
 
 Set `accessibilityRole`, `accessibilityLabel` (when the visible text is not enough) and
 `accessibilityState` on every pressable element, as STYLE_GUIDE §11.3 lists. Keep
-`accessibilityState` in step with the visual state. Do not set both `role` and
-`accessibilityRole` on one element.
+`accessibilityState` in step with the visual state. Use `accessibilityRole`; do not use
+React Native's `role` prop.
 
-**Why.** Screen readers read these props, not the look. React Native gives `role` precedence
-over `accessibilityRole`, so mixing them hides one.
+**Why.** Screen readers read these props, not the look. The app's own components already
+use a `role` prop for their look (`DialogButton`'s `primary`/`negative`), so React Native's
+`role` beside it would confuse a reader.
 
 ```tsx
 // Do
 <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled, busy: loading }} />
 // Don't
-<Pressable role="button" accessibilityRole="link" onPress={open}><Icon name="printer" /></Pressable>
+<Pressable onPress={open}><Icon name="printer" /></Pressable>
 ```
 
 **Enforced by:** review. **Source:** [S8](#sources); [STYLE_GUIDE.md §11.3](STYLE_GUIDE.md#113-screen-readers).
@@ -984,14 +985,19 @@ over `accessibilityRole`, so mixing them hides one.
 ### CG-52 A row reads as one element
 
 Group a row with `accessible` and one combined label; do not nest separately focusable
-pressables inside an accessible group.
+pressables inside an accessible group. A row's second action goes outside the grouped row,
+as its own button with its own label, the way swipe and menu actions do. Do not use
+`accessibilityActions` unless the screen design specifies them.
 
 **Why.** TalkBack and VoiceOver handle nested accessible elements differently; one may skip
 the inner control.
 
 ```tsx
 // Do
-<Pressable accessible accessibilityRole="button" accessibilityLabel={rowLabel} onPress={open}>{/* texts */}</Pressable>
+<View style={styles.rowLine}>
+  <Pressable accessible accessibilityRole="button" accessibilityLabel={rowLabel} onPress={open}>{/* texts */}</Pressable>
+  <Pressable accessibilityRole="button" accessibilityLabel={printLabel} onPress={print}><Icon name="printer" /></Pressable>
+</View>
 // Don't
 <View accessible><Pressable onPress={open} /><Pressable onPress={print} /></View>
 ```
@@ -1020,13 +1026,16 @@ AccessibilityInfo.setAccessibilityFocus(findNodeHandle(field)!);
 ### CG-54 Extend touch areas with `hitSlop`, not padding hacks
 
 When a control is drawn smaller than the touch size in STYLE_GUIDE §11.2, extend it with
-`hitSlop` so the layout does not change.
+`hitSlop` so the layout does not change. The extended area must not overlap a neighbouring
+target. On Android the touch area is cut off at the parent's edge, so the parent must leave
+room for it.
 
 **Why.** The touch area grows without moving anything on screen.
 
 ```tsx
-// Do
-<Pressable hitSlop={COMPACT_HIT_SLOP} accessibilityRole="button" accessibilityLabel={label} />
+// Do: src/components/ui/Input.tsx
+const CLEAR_HIT_SLOP = (touchTarget - iconSize.md) / 2;
+<Pressable hitSlop={CLEAR_HIT_SLOP} accessibilityRole="button" accessibilityLabel={label} />
 // Don't
 <Pressable style={{ margin: -12, padding: 12 }} />
 ```
@@ -1500,8 +1509,10 @@ checklist in [STYLE_GUIDE.md §18](STYLE_GUIDE.md#18-review-checklist)):
       CG-49).
 
 **Accessibility (mechanics)**
-- [ ] Pressables have role, label and state props as STYLE_GUIDE §11.3 lists; rows grouped;
-      changes announced; focus moved with `sendAccessibilityEvent` (CG-51 to CG-54).
+- [ ] Pressables have `accessibilityRole` (never React Native's `role` prop), a label and
+      state props as STYLE_GUIDE §11.3 lists; rows grouped, with a second action outside the
+      row; `hitSlop` overlaps no neighbour and fits inside its parent; changes announced;
+      focus moved with `sendAccessibilityEvent` (CG-51 to CG-54).
 
 **Text**
 - [ ] Every visible or spoken text through `t`, in both languages; no joined sentences;
