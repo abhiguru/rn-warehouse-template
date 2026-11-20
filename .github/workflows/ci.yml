@@ -97,7 +97,7 @@ jobs:
       # The ratchet: warnings may not grow. Lower the number when warnings are
       # fixed; keep it equal to release.yml (scripts/workflows.test.mjs checks).
       - name: Lint
-        run: npm run lint -- --max-warnings 7004
+        run: npm run lint -- --max-warnings 6987
 
       # CODE_GUIDE.md (WH-273): a pull request adds no lint warning in the files it changes.
       # Existing warnings elsewhere stay under the ratchet above until the code is touched.
