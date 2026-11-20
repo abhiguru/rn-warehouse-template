@@ -4,7 +4,7 @@
  * refused save, and the "How the total is calculated" dialog. A wrapper holds the discount as the form does.
  */
 import React, { useState } from 'react';
-import { AccessibilityInfo, Dimensions, findNodeHandle, StyleSheet, TextInput } from 'react-native';
+import { AccessibilityInfo, Dimensions, StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { getTokens, touchTarget } from '@/theme/tokens';
 import { roundMoney } from '@/utils/invoiceCalculations';
@@ -19,7 +19,6 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('react-native/Libraries/ReactNative/RendererProxy', () => ({ ...jest.requireActual('react-native/Libraries/ReactNative/RendererProxy'), findNodeHandle: jest.fn() }));
 
 // Base (storage + labour + tax) is ₹10,90,822.79.
 const line = { ...invoiceLine(), amount: 1000000.79, labour_amount: 60000, tax_amount: 30822, item_total: 1090822.79 };
@@ -358,8 +357,7 @@ describe('focus after a refused save (R3b-11)', () => {
   const focusedFields = () => focusMock().mock.contexts.map((input: { props: { testID?: string } }) => String(input.props.testID));
   beforeEach(() => {
     focusMock().mockClear();
-    jest.spyOn(AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => {});
-    jest.mocked(findNodeHandle).mockReturnValue(7);
+    jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -370,7 +368,8 @@ describe('focus after a refused save (R3b-11)', () => {
     await rerender(<Harness discount={100} reasonRequired showErrors focusRequest={1} />);
 
     expect(focusedFields()).toEqual(['invoice-summary-discount-reason']);
-    expect(AccessibilityInfo.setAccessibilityFocus).toHaveBeenCalledTimes(1);
+    expect(AccessibilityInfo.sendAccessibilityEvent).toHaveBeenCalledTimes(1);
+    expect(AccessibilityInfo.sendAccessibilityEvent).toHaveBeenCalledWith(expect.anything(), 'focus');
   });
 
   it('moves focus to the discount field first when its text was refused', async () => {

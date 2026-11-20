@@ -1,11 +1,6 @@
 import React from 'react';
 import { Alert, Platform } from 'react-native';
 import * as RN from 'react-native';
-const mockFindNodeHandle = jest.fn();
-jest.mock('react-native', () => {
-  const actual = jest.requireActual('react-native');
-  return new Proxy(actual, { get: (target, key) => (key === 'findNodeHandle' ? mockFindNodeHandle : target[key as keyof typeof target]) });
-});
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { AlertHost } from '../AlertHost';
 import { resetAlertQueueForTests, showAlert, whenAlertsClosed } from '@/utils/alert';
@@ -271,8 +266,7 @@ describe('AlertHost screen-reader focus (WH-219)', () => {
   });
 
   it('moves focus to the title of each queued alert, not only the first', async () => {
-    mockFindNodeHandle.mockReturnValue(7);
-    const setFocus = jest.spyOn(RN.AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
+    const setFocus = jest.spyOn(RN.AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => undefined);
     const user = setup();
     await render(<AlertHost />);
     await show('First', 'One', [{ text: 'OK' }]);
@@ -283,6 +277,7 @@ describe('AlertHost screen-reader focus (WH-219)', () => {
 
     await layoutTitle('First');
     expect(setFocus).toHaveBeenCalledTimes(1);
+    expect(setFocus).toHaveBeenLastCalledWith(expect.anything(), 'focus');
     // A layout of the same title again moves nothing.
     await layoutTitle('First');
     expect(setFocus).toHaveBeenCalledTimes(1);
