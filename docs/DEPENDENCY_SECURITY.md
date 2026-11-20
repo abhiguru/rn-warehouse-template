@@ -95,14 +95,14 @@ Wherever the sections below describe the zod repair, they are superseded by this
 
 ## node-forge 1.4.1 — 2026-10-27
 
-- **What moved.** `package.json` `overrides` pins `node-forge` to 1.4.1. Both consumers then (`@expo/cli` through `expo`, and
+- **What moved.** `package.json` `overrides` pinned `node-forge` to 1.4.1 on 2026-10-27; it now pins 1.4.3. Both consumers then (`@expo/cli` through `expo`, and
   `@expo/code-signing-certificates` through `expo-updates`, since removed from the app, WH-105) resolved the one copy. Today only `@expo/cli` through `expo` reaches `@expo/code-signing-certificates` and `node-forge` (`npm ls`). 1.4.1 was published on 2026-10-27 with fixes
   for about ten high advisories, so the audit would otherwise have listed them as `UNREPAIRED`.
 - **The local GHSA-86w9-cpqp-85rv repair is retired.** It copied upstream PR 1152, which was closed unmerged. 1.4.1 instead
   re-encodes the DigestInfo canonically and compares the bytes (`lib/rsa.js`), which rejects the same forgery and more.
   `scripts/security-backports.json` now declares node-forge `unaffected` from 1.4.1 (the same mechanism the zod entry used, since removed) and no
   longer patches it; the patch script refuses any other node-forge version. The regression test in
-  `scripts/security-backports.test.mjs` is unchanged and now runs against the installed, unpatched 1.4.1: a signature whose
+  `scripts/security-backports.test.mjs` is unchanged and now runs against the installed, unpatched copy (1.4.3 today): a signature whose
   DigestInfo carries an extra nested DigestAlgorithm element must fail `verify`.
 - **Accepted set now.** Three advisories, each repaired locally: braces (GHSA-vfj7-8cjw-p6xm, review by 2027-01-10), sprintf-js
   (GHSA-hp3w-g68c-fv3c, 2027-01-10) and zod (GHSA-mrhx-c7xc-m3w5, 2027-01-24; removed again, see the SDK 58 section). `npm run audit:dependencies` reports
