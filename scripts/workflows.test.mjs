@@ -494,3 +494,13 @@ for (const eventName of ['pull_request', 'push', 'schedule', 'workflow_dispatch'
     });
   }
 }
+
+// WH-273: a pull request adds no lint warning in the files it changes (docs/CODE_GUIDE.md).
+test('CI lints the files a pull request changes with no warnings allowed', () => {
+  const text = workflowText('ci.yml');
+  const step = text.slice(text.indexOf('- name: Lint changed files (no warnings)'), text.indexOf('- name: Type check\n'));
+  assert.ok(step.length > 0, 'ci.yml: the step "Lint changed files (no warnings)" comes before the type check');
+  assert.match(step, /if: github\.event_name == 'pull_request'/);
+  assert.match(step, /--max-warnings 0/);
+  assert.match(step, /BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+});
