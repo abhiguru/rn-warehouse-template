@@ -95,8 +95,8 @@ Wherever the sections below describe the zod repair, they are superseded by this
 
 ## node-forge 1.4.1 — 2026-10-27
 
-- **What moved.** `package.json` `overrides` pins `node-forge` to 1.4.1. Both consumers (`@expo/cli` through `expo`, and
-  `@expo/code-signing-certificates` through `expo-updates`) resolve the one copy. 1.4.1 was published on 2026-10-27 with fixes
+- **What moved.** `package.json` `overrides` pins `node-forge` to 1.4.1. Both consumers then (`@expo/cli` through `expo`, and
+  `@expo/code-signing-certificates` through `expo-updates`, since removed from the app, WH-105) resolved the one copy. Today only `@expo/cli` through `expo` reaches `@expo/code-signing-certificates` and `node-forge` (`npm ls`). 1.4.1 was published on 2026-10-27 with fixes
   for about ten high advisories, so the audit would otherwise have listed them as `UNREPAIRED`.
 - **The local GHSA-86w9-cpqp-85rv repair is retired.** It copied upstream PR 1152, which was closed unmerged. 1.4.1 instead
   re-encodes the DigestInfo canonically and compares the bytes (`lib/rsa.js`), which rejects the same forgery and more.
@@ -119,8 +119,8 @@ GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The other copies have 
 
 | Package | Advisory | Pulled in by | Fixed version |
 | ------- | -------- | ------------ | ------------- |
-| `node-forge` (history) | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | 1.4.1 (2026-10-27); no longer accepted, see the section above |
-| `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the node-forge row above, as dependents | | follow the row above |
+| `node-forge` (history) | GHSA-86w9-cpqp-85rv | `@expo/cli`; the 2026-10-27 finding also named `expo-updates` through `@expo/code-signing-certificates`, since removed from the app | 1.4.1 (2026-10-27); no longer accepted, see the section above |
+| `@expo/cli`, `expo`, `@expo/code-signing-certificates` (and `expo-updates` until WH-105) | the node-forge row above, as dependents | | follow the row above |
 
 - These are build and development tools: the Expo CLI (Metro, prebuild, export) and the code-signing of over-the-air updates
   (off in this template, see below). They run on the developer's machine, not in the app. On 2026-10-24 `npx expo export
