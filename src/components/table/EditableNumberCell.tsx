@@ -133,7 +133,7 @@ export function EditableNumberCell({
     (node: TextInputRef | null) => {
       input.current = node;
       if (typeof ref === 'function') ref(node);
-      else if (ref) (ref as React.MutableRefObject<TextInputRef | null>).current = node;
+      else if (ref) (ref as React.RefObject<TextInputRef | null>).current = node;
     },
     [ref]
   );

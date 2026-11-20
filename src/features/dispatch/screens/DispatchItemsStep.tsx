@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import type { MutableRefObject } from 'react';
+import type { RefObject } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View,
@@ -76,7 +76,7 @@ type DispatchItemsStepProps = {
      * step is mounted it puts its own way back here, the one the footer's Back
      * button takes, so the key asks "Go back to details?" as the button does.
      */
-    backGuard?: MutableRefObject<(() => void) | null>;
+    backGuard?: RefObject<(() => void) | null>;
 };
 
 /** The form holds a change to a saved line: the lot or the bags, the two things a save sends for a line. */

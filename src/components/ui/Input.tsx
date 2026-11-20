@@ -148,7 +148,7 @@ export function Input({
     (node: TextInputRef | null) => {
       inputRef.current = node;
       if (typeof callerRef === 'function') callerRef(node);
-      else if (callerRef) (callerRef as React.MutableRefObject<TextInputRef | null>).current = node;
+      else if (callerRef) (callerRef as React.RefObject<TextInputRef | null>).current = node;
     },
     [callerRef]
   );
