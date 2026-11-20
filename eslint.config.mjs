@@ -2,6 +2,9 @@ import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import reactHooks from 'eslint-plugin-react-hooks';
+import tanstackQuery from '@tanstack/eslint-plugin-query';
+import testingLibrary from 'eslint-plugin-testing-library';
+import jest from 'eslint-plugin-jest';
 
 
 // Style guide guard (docs/STYLE_GUIDE.md §2 and §16): UI code takes colours, type and
@@ -43,6 +46,53 @@ const THEME_IMPORT_RULES = {
     { group: ['@/theme/listColors', '@/theme/fioriColors', '@/hooks/useListColors', '@/constants/fioriDesignTokens', '@/components/common/overview-tab/FioriTokens'], message: 'Removed legacy colour module; use semantic tokens.' },
   ],
 };
+
+// docs/CODE_GUIDE.md "Proposed lint rules": the rules below come in at "warn" so main gets
+// no new errors; each names its CG rule. The existing style-guide guards above stay at "error".
+const CODE_GUIDE_FILES = ['app/**/*.{ts,tsx}', 'src/**/*.{ts,tsx}'];
+const CODE_GUIDE_IGNORES = ['**/__tests__/**', '**/*.test.{ts,tsx}', 'src/tests/**'];
+
+// Take a shared config and lower every rule to "warn", keeping its options.
+const asWarn = (config) => {
+  if (!config.rules) return config;
+  const rules = {};
+  for (const [name, entry] of Object.entries(config.rules)) {
+    const level = Array.isArray(entry) ? entry[0] : entry;
+    const off = level === 'off' || level === 0;
+    rules[name] = off ? entry : Array.isArray(entry) ? ['warn', ...entry.slice(1)] : 'warn';
+  }
+  return { ...config, rules };
+};
+
+// CG-17: no class components outside the three error boundaries. ESLint gives one rule one
+// severity per file, and no-restricted-syntax is already used at "error" for the style-guide
+// guards, so this small local rule carries the "warn".
+const CLASS_COMPONENT_BOUNDARIES = [
+  'src/components/ErrorBoundary.tsx',
+  'src/components/FeatureErrorBoundary.tsx',
+  'src/components/list/ListErrorBoundary.tsx',
+];
+const codeGuidePlugin = {
+  rules: {
+    'no-class-components': {
+      meta: { type: 'suggestion', schema: [], messages: { noClass: 'Write a function component with hooks; class components are only for error boundaries (CODE_GUIDE CG-17).' } },
+      create(context) {
+        const check = (node) => {
+          const sc = node.superClass;
+          if (!sc) return;
+          const name = sc.type === 'MemberExpression' ? sc.property.name : sc.name;
+          if (name === 'Component' || name === 'PureComponent') context.report({ node, messageId: 'noClass' });
+        };
+        return { ClassDeclaration: check, ClassExpression: check };
+      },
+    },
+  },
+};
+
+const CODE_GUIDE_TYPED_CONFIGS = [
+  ...tseslint.configs['flat/recommended-type-checked'],
+  ...tseslint.configs['flat/stylistic-type-checked'],
+].map((config) => asWarn({ ...config, files: CODE_GUIDE_FILES, ignores: CODE_GUIDE_IGNORES }));
 
 export default [
   js.configs.recommended,
@@ -123,6 +173,77 @@ export default [
     rules: {
       'no-restricted-syntax': ['error', ...THEME_SYNTAX_RULES],
       'no-restricted-imports': ['error', THEME_IMPORT_RULES],
+    },
+  },
+  // CODE_GUIDE (warn): typed linting. Test files are not in tsconfig.json, so they are skipped.
+  ...CODE_GUIDE_TYPED_CONFIGS,
+  {
+    files: CODE_GUIDE_FILES,
+    ignores: CODE_GUIDE_IGNORES,
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: { '@typescript-eslint': tseslint, 'code-guide': codeGuidePlugin },
+    rules: {
+      // CG-18, CG-19, CG-25, CG-26, CG-27, CG-28, CG-32: react-hooks recommended preset.
+      ...asWarn(reactHooks.configs.flat.recommended).rules,
+      '@typescript-eslint/no-non-null-assertion': 'warn', // CG-10
+      '@typescript-eslint/switch-exhaustiveness-check': 'warn', // CG-12
+      '@typescript-eslint/consistent-type-imports': 'warn', // CG-13
+      '@typescript-eslint/no-deprecated': 'warn', // CG-16, CG-47, CG-48, CG-53
+      // CG-65: no string-to-code evaluation.
+      'no-eval': 'warn',
+      'no-implied-eval': 'off', // core rule is replaced by the typed one below
+      '@typescript-eslint/no-implied-eval': 'warn',
+      'no-new-func': 'warn',
+      // CG-2, CG-3, CG-4, CG-47, CG-48: warn-level copy of the import guards. The core rule
+      // above stays at "error" for the style-guide guards, so the typescript-eslint version
+      // of the same rule carries the "warn".
+      '@typescript-eslint/no-restricted-imports': ['warn', {
+        paths: [
+          { name: 'react-native', importNames: ['findNodeHandle', 'requireNativeComponent', 'InteractionManager', 'ImageBackground'], message: 'Removed or deprecated in React Native 0.88 (CODE_GUIDE CG-47, CG-48).' },
+        ],
+        patterns: [
+          { group: ['../../*'], message: "Import across folders with the '@/' alias (CODE_GUIDE CG-2)." },
+          { group: ['@react-navigation/*'], message: 'Import navigation from expo-router (CODE_GUIDE CG-3).' },
+          { group: ['react-native/Libraries/*'], message: 'No deep imports from react-native/Libraries (CODE_GUIDE CG-4).' },
+        ],
+      }],
+    },
+  },
+  {
+    // CG-17: class components only in the three error boundaries.
+    files: CODE_GUIDE_FILES,
+    ignores: [...CODE_GUIDE_IGNORES, ...CLASS_COMPONENT_BOUNDARIES],
+    plugins: { 'code-guide': codeGuidePlugin },
+    rules: { 'code-guide/no-class-components': 'warn' },
+  },
+  {
+    // CG-35, CG-36, CG-37: TanStack Query recommended rules (exhaustive-deps,
+    // stable-query-client, no-rest-destructuring, no-unstable-deps and the rest of the preset).
+    files: CODE_GUIDE_FILES,
+    ignores: CODE_GUIDE_IGNORES,
+    plugins: { '@tanstack/query': tanstackQuery },
+    rules: asWarn({ rules: tanstackQuery.configs['flat/recommended'].reduce((all, c) => ({ ...all, ...c.rules }), {}) }).rules,
+  },
+  {
+    // CG-68, CG-69: Testing Library rules, test files only.
+    files: ['**/__tests__/**/*.{ts,tsx}', '**/*.test.{ts,tsx}', 'src/tests/**/*.{ts,tsx}'],
+    plugins: { 'testing-library': testingLibrary, jest },
+    rules: {
+      'testing-library/prefer-screen-queries': 'warn', // CG-68
+      'testing-library/prefer-find-by': 'warn', // CG-68
+      'testing-library/prefer-presence-queries': 'warn', // CG-68
+      'testing-library/no-wait-for-side-effects': 'warn', // CG-69
+      'testing-library/no-wait-for-multiple-assertions': 'warn', // CG-69
+      'testing-library/await-async-queries': 'warn', // CG-69
+      'testing-library/no-unnecessary-act': 'warn', // CG-69
+      'testing-library/no-manual-cleanup': 'warn', // CG-69
+      'jest/no-focused-tests': 'warn', // CG-72
+      'jest/no-disabled-tests': 'warn', // CG-72
     },
   },
   {

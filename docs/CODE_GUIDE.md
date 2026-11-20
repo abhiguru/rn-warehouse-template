@@ -1550,10 +1550,10 @@ CG rule. Type-aware rules need `parserOptions.projectService`.
 | `@typescript-eslint/switch-exhaustiveness-check` | CG-12 | typescript-eslint 8 | installed |
 | `@typescript-eslint/consistent-type-imports` | CG-13 | typescript-eslint 8 | installed |
 | `@typescript-eslint/no-deprecated` | CG-16, CG-47, CG-48, CG-53 | typescript-eslint 8 | installed |
-| `@tanstack/query/exhaustive-deps`, `stable-query-client`, `no-rest-destructuring`, `no-unstable-deps` | CG-35, CG-36, CG-37 | `@tanstack/eslint-plugin-query` | new package |
-| `react/no-array-index-key`, `react/no-unstable-nested-components`, `react/jsx-boolean-value` | CG-19, CG-22, CG-23 | `eslint-plugin-react` (these rules only) | new package |
-| `testing-library/prefer-screen-queries`, `prefer-find-by`, `prefer-presence-queries`, `no-wait-for-side-effects`, `no-wait-for-multiple-assertions`, `await-async-queries`, `no-unnecessary-act`, `no-manual-cleanup` (test files) | CG-68, CG-69 | `eslint-plugin-testing-library` | new package |
-| `jest/no-focused-tests`, `jest/no-disabled-tests` (test files) | CG-72 | `eslint-plugin-jest` | new package |
+| `@tanstack/query/exhaustive-deps`, `stable-query-client`, `no-rest-destructuring`, `no-unstable-deps` | CG-35, CG-36, CG-37 | `@tanstack/eslint-plugin-query` | new package (switched on) |
+| `react/no-array-index-key`, `react/no-unstable-nested-components`, `react/jsx-boolean-value` | CG-19, CG-22, CG-23 | `eslint-plugin-react` (these rules only) | new package (not switched on: its latest release, 7.37.5, does not declare ESLint 10 support) |
+| `testing-library/prefer-screen-queries`, `prefer-find-by`, `prefer-presence-queries`, `no-wait-for-side-effects`, `no-wait-for-multiple-assertions`, `await-async-queries`, `no-unnecessary-act`, `no-manual-cleanup` (test files) | CG-68, CG-69 | `eslint-plugin-testing-library` | new package (switched on) |
+| `jest/no-focused-tests`, `jest/no-disabled-tests` (test files) | CG-72 | `eslint-plugin-jest` | new package (switched on) |
 
 Not proposed: `eslint-plugin-react-perf` (noisy, conflicts with CG-32);
 `eslint-plugin-react-native` (overlaps the style-guide guards);
