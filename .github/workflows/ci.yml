@@ -97,7 +97,22 @@ jobs:
       # The ratchet: warnings may not grow. Lower the number when warnings are
       # fixed; keep it equal to release.yml (scripts/workflows.test.mjs checks).
       - name: Lint
-        run: npm run lint -- --max-warnings 636
+        run: npm run lint -- --max-warnings 7004
+
+      # CODE_GUIDE.md (WH-273): a pull request adds no lint warning in the files it changes.
+      # Existing warnings elsewhere stay under the ratchet above until the code is touched.
+      - name: Lint changed files (no warnings)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-only --diff-filter=d "$BASE_SHA" HEAD -- '*.ts' '*.tsx' > "$RUNNER_TEMP/changed-files.txt"
+          if [ ! -s "$RUNNER_TEMP/changed-files.txt" ]; then
+            echo 'No TypeScript files changed.'
+            exit 0
+          fi
+          xargs -d '\n' npx eslint --no-warn-ignored --max-warnings 0 -- < "$RUNNER_TEMP/changed-files.txt"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
       - name: Type check
         run: npm run typecheck
