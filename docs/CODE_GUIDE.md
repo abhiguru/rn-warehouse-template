@@ -1290,9 +1290,11 @@ comes up.
 sees and does.
 
 ```tsx
-// Do
-render(<SaveBar onSave={onSave} />);
-await userEvent.press(screen.getByRole('button', { name: 'Save' }));
+// Do (render, userEvent and fireEvent are async in v14: await them)
+it('saves', async () => {
+  await render(<SaveBar onSave={onSave} />);
+  await userEvent.press(screen.getByRole('button', { name: 'Save' }));
+});
 // Don't (in a new test)
 const tree = renderer.create(<SaveBar onSave={onSave} />);
 tree.root.findAll(n => typeof n.props.onPress === 'function')[0].props.onPress();
@@ -1309,7 +1311,7 @@ of Gujarati sets the language and resets it in `afterEach`.
 **Why.** Role queries also check that the element is accessible.
 
 ```tsx
-// Do
+// Do (after await render(...) in an async test)
 screen.getByRole('button', { name: 'Print' });
 // Don't
 screen.getByTestId('print-button'); // when a role and name exist
@@ -1329,9 +1331,13 @@ built-in matchers (`toBeOnTheScreen`, `toBeDisabled`). Do not wrap in `act` or c
 
 ```tsx
 // Do
-expect(await screen.findByText('Saved')).toBeOnTheScreen();
+it('shows Saved', async () => {
+  await render(<SaveBar onSave={onSave} />);
+  await userEvent.press(screen.getByRole('button', { name: 'Save' }));
+  expect(await screen.findByText('Saved')).toBeOnTheScreen();
+});
 // Don't
-await waitFor(() => { fireEvent.press(save); expect(screen.getByText('Saved')).toBeTruthy(); });
+await waitFor(async () => { await fireEvent.press(save); expect(screen.getByText('Saved')).toBeTruthy(); });
 ```
 
 **Enforced by:** `testing-library/prefer-find-by`, `testing-library/prefer-presence-queries`,
@@ -1342,8 +1348,8 @@ await waitFor(() => { fireEvent.press(save); expect(screen.getByText('Saved')).t
 
 ### CG-70 Prefer `userEvent` over `fireEvent` in new tests
 
-Await `userEvent.press`, `userEvent.type` and so on; use `fireEvent` only for events
-`userEvent` does not cover.
+Await `userEvent.press`, `userEvent.type` and so on; use `fireEvent` (also awaited) only for
+events `userEvent` does not cover.
 
 **Why.** `userEvent` runs the full press and typing sequence a real touch would.
 
@@ -1351,7 +1357,7 @@ Await `userEvent.press`, `userEvent.type` and so on; use `fireEvent` only for ev
 // Do
 await userEvent.type(screen.getByLabelText('Bags'), '12');
 // Don't
-fireEvent.changeText(input, '12');
+await fireEvent.changeText(input, '12');
 ```
 
 **Enforced by:** review. **Source:** [S16](#sources).
@@ -1380,7 +1386,7 @@ not with a snapshot of the whole tree.
 **Why.** A focused test silently skips the rest of the file; a snapshot passes whatever it
 shows after `-u`.
 
-```ts
+```tsx
 // Do
 expect(screen.getByText('12 bags')).toBeOnTheScreen();
 // Don't
