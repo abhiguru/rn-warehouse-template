@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useMemo, useRef } from 'react';
-import { View, Text, Pressable, FlatList, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, FlatList, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -20,11 +20,9 @@ import { t as tr } from '@/i18n';
 
 const LOG_PREFIX = '[GRNImagesTab]';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const GRID_PADDING = space.sm;
 const IMAGE_GAP = space.xs;
-const IMAGE_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 /** Visible circle of the remove button; its touch area is touchTarget. */
 const REMOVE_CIRCLE = 28;
 
@@ -93,8 +91,6 @@ const makeStyles = (t: ThemeTokens) => ({
   grid: { padding: GRID_PADDING },
   row: { gap: IMAGE_GAP, marginBottom: IMAGE_GAP },
   imageWrapper: {
-    width: IMAGE_SIZE,
-    height: IMAGE_SIZE,
     borderRadius: radius.card,
     overflow: 'hidden' as const,
     backgroundColor: t.surface.cardActive,
@@ -199,6 +195,8 @@ const ImageTile: React.FC<{
   styles: Styles;
   t: ThemeTokens;
 }> = ({ item, onPress, onDelete, styles, t }) => {
+  const { width } = useWindowDimensions();
+  const imageSize = useMemo(() => (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS, [width]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   // The load failed with a connection: the file is gone. With none the tile shows only the broken icon.
@@ -211,7 +209,7 @@ const ImageTile: React.FC<{
   const imageUri = useViaCurrentPath(item.image_url);
 
   return (
-    <View style={styles.imageWrapper}>
+    <View style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}>
       <Pressable
         onPress={onPress}
         accessibilityRole="imagebutton"

@@ -23,7 +23,7 @@ import {
   Modal,
   FlatList,
   Pressable,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -49,7 +49,6 @@ import type { GRNAutocompleteItem } from '@/types/dispatch.types';
 import { formatCount, formatDate, formatNumber, formatSpokenDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /** Fixed row height, used by getItemLayout. */
 const GRN_ROW_HEIGHT = 100;
@@ -79,7 +78,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.sheet,
     borderTopLeftRadius: radius.sheet,
     borderTopRightRadius: radius.sheet,
-    maxHeight: SCREEN_HEIGHT,
     flex: 1,
     ...t.shadow[4],
   },
@@ -662,6 +660,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   const router = useRouter();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const { height } = useWindowDimensions();
 
   // State - NO searchQuery state here! CustomKeyboard manages its own display state
   const [grnList, setGrnList] = useState<GRNAutocompleteItem[]>([]);
@@ -928,7 +927,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
           />
 
           {/* Bottom Sheet Content */}
-          <View style={[styles.sheetContainer, { paddingBottom: insets.bottom }]} accessibilityViewIsModal>
+          <View style={[styles.sheetContainer, { maxHeight: height, paddingBottom: insets.bottom }]} accessibilityViewIsModal>
             {/* Header with safe area padding */}
             <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
               <Text style={styles.headerTitle} accessibilityRole="header">{tr('dispatch.items.chooseGrn')}</Text>
