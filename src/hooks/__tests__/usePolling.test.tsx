@@ -3,7 +3,7 @@
  * one run on a genuine return, runNow joins a run in flight, late results are stale.
  */
 import React from 'react';
-import renderer, { act } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 import { NavigationContext } from 'expo-router/react-navigation';
 import { usePolling, type IsCurrent, type UsePollingResult } from '../usePolling';
@@ -75,15 +75,12 @@ function Poller({ run, enabled = true }: { run: (c: IsCurrent) => Promise<void>;
   return null;
 }
 
-function mount(run: (c: IsCurrent) => Promise<void>, route = makeRoute()) {
-  let tree!: renderer.ReactTestRenderer;
-  act(() => {
-    tree = renderer.create(
-      <NavigationContext.Provider value={route.navigation as never}>
-        <Poller run={run} />
-      </NavigationContext.Provider>
-    );
-  });
+async function mount(run: (c: IsCurrent) => Promise<void>, route = makeRoute()) {
+  const tree = await render(
+    <NavigationContext.Provider value={route.navigation as never}>
+      <Poller run={run} />
+    </NavigationContext.Provider>
+  );
   return { tree, route };
 }
 
@@ -91,7 +88,7 @@ const advance = (ms: number) => act(async () => { await jest.advanceTimersByTime
 
 test('an unresolved run spans many intervals and stays the only one in flight', async () => {
   const d = deferredRun();
-  const { tree } = mount(d.run);
+  const { tree } = await mount(d.run);
   expect(d.run).toHaveBeenCalledTimes(1);
   await advance(60_000);
   expect(d.run).toHaveBeenCalledTimes(1);
@@ -102,96 +99,96 @@ test('an unresolved run spans many intervals and stays the only one in flight', 
   expect(d.run).toHaveBeenCalledTimes(1);
   await advance(1);
   expect(d.run).toHaveBeenCalledTimes(2);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('a route mounted behind another one does not run, and runs once when it comes to the front', async () => {
   const d = deferredRun();
-  const { tree, route } = mount(d.run, makeRoute(false));
+  const { tree, route } = await mount(d.run, makeRoute(false));
   await advance(60_000);
   expect(d.run).not.toHaveBeenCalled();
 
-  act(() => route.focus());
+  await act(() => route.focus());
   expect(d.run).toHaveBeenCalledTimes(1);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('blur stops polling, a refocus runs exactly once, then the cadence resumes', async () => {
   const d = deferredRun();
-  const { tree, route } = mount(d.run);
+  const { tree, route } = await mount(d.run);
   await d.finishAll();
-  act(() => route.blur());
+  await act(() => route.blur());
   await advance(60_000);
   expect(d.run).toHaveBeenCalledTimes(1);
 
-  act(() => route.focus());
+  await act(() => route.focus());
   expect(d.run).toHaveBeenCalledTimes(2);
   await d.finishAll();
   await advance(9_000);
   expect(d.run).toHaveBeenCalledTimes(2);
   await advance(1_000);
   expect(d.run).toHaveBeenCalledTimes(3);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('a run in flight at blur is stale; the refocus run waits for it instead of overlapping', async () => {
   const d = deferredRun();
-  const { tree, route } = mount(d.run);
-  act(() => route.blur());
+  const { tree, route } = await mount(d.run);
+  await act(() => route.blur());
   expect(d.currents[0]()).toBe(false);
-  act(() => route.focus());
+  await act(() => route.focus());
   // still the first run on the wire: no overlap
   expect(d.run).toHaveBeenCalledTimes(1);
   await d.finishAll();
   expect(d.run).toHaveBeenCalledTimes(2);
   expect(d.currents[1]()).toBe(true);
   expect(d.maxInFlight).toBe(1);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('background stops polling; returning to the foreground runs exactly once', async () => {
   const d = deferredRun();
-  const { tree } = mount(d.run);
+  const { tree } = await mount(d.run);
   await d.finishAll();
-  setAppState('background');
+  await setAppState('background');
   await advance(60_000);
   expect(d.run).toHaveBeenCalledTimes(1);
-  setAppState('active');
+  await setAppState('active');
   expect(d.run).toHaveBeenCalledTimes(2);
   // re-renders do not run again
-  act(() => tree.update(
+  await tree.rerender(
     <NavigationContext.Provider value={makeRoute().navigation as never}>
       <Poller run={d.run} />
     </NavigationContext.Provider>
-  ));
+  );
   expect(d.run).toHaveBeenCalledTimes(2);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('runNow during a run joins it instead of starting a second call', async () => {
   const d = deferredRun();
-  const { tree } = mount(d.run);
+  const { tree } = await mount(d.run);
   let joined = false;
-  act(() => { void result.runNow().then(() => { joined = true; }); });
+  await act(() => { void result.runNow().then(() => { joined = true; }); });
   expect(d.run).toHaveBeenCalledTimes(1);
   await d.finishAll();
   expect(joined).toBe(true);
   // runNow when idle starts one run and restarts the cadence from its end
   await advance(5_000);
-  act(() => { void result.runNow(); });
+  await act(() => { void result.runNow(); });
   expect(d.run).toHaveBeenCalledTimes(2);
   await d.finishAll();
   await advance(9_999);
   expect(d.run).toHaveBeenCalledTimes(2);
   await advance(1);
   expect(d.run).toHaveBeenCalledTimes(3);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('unmount clears the timer and marks the run in flight stale', async () => {
   const d = deferredRun();
-  const { tree } = mount(d.run);
-  act(() => tree.unmount());
+  const { tree } = await mount(d.run);
+  await tree.unmount();
   expect(d.currents[0]()).toBe(false);
   await d.finishAll();
   await advance(60_000);
@@ -200,32 +197,30 @@ test('unmount clears the timer and marks the run in flight stale', async () => {
 
 test('outside a navigator the screen counts as focused', async () => {
   const d = deferredRun();
-  let tree!: renderer.ReactTestRenderer;
-  act(() => { tree = renderer.create(<Poller run={d.run} />); });
+  const tree = await render(<Poller run={d.run} />);
   expect(d.run).toHaveBeenCalledTimes(1);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('disabled polling makes no calls until enabled', async () => {
   const d = deferredRun();
-  let tree!: renderer.ReactTestRenderer;
-  act(() => { tree = renderer.create(<Poller run={d.run} enabled={false} />); });
+  const tree = await render(<Poller run={d.run} enabled={false} />);
   await advance(60_000);
   expect(d.run).not.toHaveBeenCalled();
-  act(() => tree.update(<Poller run={d.run} enabled />));
+  await tree.rerender(<Poller run={d.run} enabled />);
   expect(d.run).toHaveBeenCalledTimes(1);
-  act(() => tree.update(<Poller run={d.run} enabled={false} />));
+  await tree.rerender(<Poller run={d.run} enabled={false} />);
   expect(d.currents[0]()).toBe(false);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('refreshNow drops the run in flight and starts a fresh one that begins after the call', async () => {
   const d = deferredRun();
-  const { tree } = mount(d.run);
+  const { tree } = await mount(d.run);
   expect(d.run).toHaveBeenCalledTimes(1);
 
   let refreshed = false;
-  act(() => { void result.refreshNow().then(() => { refreshed = true; }); });
+  await act(() => { void result.refreshNow().then(() => { refreshed = true; }); });
   // The run sent earlier is stale; the fresh one only starts when it has ended.
   expect(d.currents[0]()).toBe(false);
   expect(d.run).toHaveBeenCalledTimes(1);
@@ -236,16 +231,16 @@ test('refreshNow drops the run in flight and starts a fresh one that begins afte
   await d.finishAll();
   expect(refreshed).toBe(true);
   expect(d.maxInFlight).toBe(1);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('refreshNow with nothing in flight starts one run', async () => {
   const d = deferredRun();
-  const { tree } = mount(d.run);
+  const { tree } = await mount(d.run);
   await d.finishAll();
   expect(d.run).toHaveBeenCalledTimes(1);
-  act(() => { void result.refreshNow(); });
+  await act(() => { void result.refreshNow(); });
   expect(d.run).toHaveBeenCalledTimes(2);
   await d.finishAll();
-  act(() => tree.unmount());
+  await tree.unmount();
 });

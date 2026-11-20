@@ -4,7 +4,7 @@
  * printing again, as the invoice screens do, and not the plain failure that invites a reprint.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render as renderScreen, screen, userEvent } from '@testing-library/react-native';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { printGRNRange } from '@/services/print-service';
 import { router } from 'expo-router';
@@ -59,7 +59,18 @@ jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
+// The stand-in draws the dialog's Print button: what the real PrintRangeDialog does on Print is onConfirm, then onDismiss.
+jest.mock('@/components/PrintRangeDialog', () => ({
+  PrintRangeDialog: (props: { onConfirm: (start: string, end: string) => Promise<void>; onDismiss: () => void }) =>
+    require('react').createElement(require('react-native').Pressable, {
+      accessibilityRole: 'button',
+      accessibilityLabel: 'Print',
+      onPress: async () => {
+        await props.onConfirm('A0010', 'A0010');
+        props.onDismiss();
+      },
+    }),
+}));
 jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), getNextGRNNumber: jest.fn() }));
 // The server is asked about a lost answer by this (utils/lostAnswer); none of these tests loses one.
 jest.mock('@/utils/lostAnswer', () => ({ checkSubmission: jest.fn() }));
@@ -82,11 +93,7 @@ async function render(mode: 'create' | 'edit', items = LINES) {
     isCreateMode: mode === 'create',
     resetFormState: jest.fn(),
   };
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnReviewStep mode={mode} />);
-  });
-  return tree;
+  return renderScreen(<GrnReviewStep mode={mode} />);
 }
 beforeEach(() => {
   jest.clearAllMocks();
@@ -95,13 +102,11 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-/** What the real PrintRangeDialog does on Print: onConfirm, then onDismiss. */
-const press = async (tree: ReactTestRenderer) => {
-  const dialog = tree.root.findByType('PrintRangeDialog' as never);
-  await act(async () => {
-    await dialog.props.onConfirm('A0010', 'A0010');
-    dialog.props.onDismiss();
-  });
+/** Press Print, then let what the dialog does after it (onConfirm, then onDismiss) finish. */
+const press = async () => {
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: 'Print' }));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 };
 
 describe('GRN review step printing', () => {
@@ -112,24 +117,23 @@ describe('GRN review step printing', () => {
     ] as const) {
       jest.clearAllMocks();
       jest.mocked(printGRNRange).mockResolvedValue(answer as never);
-      const tree = await render(mode);
+      const { unmount } = await render(mode);
 
-      await press(tree);
+      await press();
 
       expect(showAlert).toHaveBeenCalledTimes(1);
       expect(showAlert).toHaveBeenCalledWith(title, text);
       // Edit leaves the step exactly once; create stays on the step (the success dialog opens).
       expect(jest.mocked(router.replace).mock.calls).toEqual(mode === 'edit' ? [['/grn']] : []);
-      await act(async () => { tree.unmount(); });
+      await unmount();
     }
   });
 
   it('a printed job shows no alert', async () => {
     jest.mocked(printGRNRange).mockResolvedValue({ success: true } as never);
-    const tree = await render('edit');
-    await press(tree);
+    await render('edit');
+    await press();
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 });

@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, within } from '@testing-library/react-native';
 import { MemoizedOrderItem } from '../list-items/MemoizedOrderItem';
 import { CustomerOrderGroupCard } from '../list-items/CustomerOrderGroupCard';
 import { CustomerChoiceRows } from '../common/CustomerChoiceRows';
@@ -26,52 +26,45 @@ const order = {
   item_count: 3, quantity_sum: 120, updated_at: '2026-10-10T08:00:00Z',
 } as unknown as Order;
 
-const flat = (node: ReactTestInstance) => (StyleSheet.flatten(node.props.style) ?? {}) as Record<string, unknown>;
-const hostWithTestId = (tree: ReactTestRenderer, id: string) =>
-  tree.root.findAll(node => (node.type as unknown) === 'View' && node.props.testID === id)[0];
-const texts = (node: ReactTestInstance) =>
-  node.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
-const ancestors = (node: ReactTestInstance) => {
-  const list: ReactTestInstance[] = [];
-  for (let p = node.parent; p; p = p.parent) list.push(p);
+type Host = ReturnType<typeof screen.getByTestId>;
+const flat = (node: Host) => (StyleSheet.flatten(node.props.style) ?? {}) as Record<string, unknown>;
+const ancestors = (node: Host) => {
+  const list: Host[] = [];
+  for (let p = node.parent as Host | null; p; p = p.parent as Host | null) list.push(p);
   return list;
 };
 
-async function mount(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  return tree;
-}
-
-function expectTagsInTextColumn(tree: ReactTestRenderer, id: string, name: string, expectedTags: string[]) {
-  const tags = hostWithTestId(tree, id);
-  expect(tags).toBeDefined();
+function expectTagsInTextColumn(id: string, name: string, expectedTags: string[]) {
+  // The tag row has no role or text of its own: it is found by its test id.
+  const tags = screen.getByTestId(id);
   // A wrapping row, so two tags at a large text size go on two lines.
   expect(flat(tags)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
-  expect(texts(tags)).toEqual(expectedTags);
+  const shown = within(tags).getAllByText(/.+/);
+  expect(shown).toHaveLength(expectedTags.length);
+  expectedTags.forEach((tag, i) => expect(shown[i]).toHaveTextContent(tag));
   // Its nearest flex:1 ancestor (the text column) also holds the name; so the name keeps the full width.
   const column = ancestors(tags).find(node => flat(node).flex === 1);
   expect(column).toBeDefined();
-  expect(texts(column!)).toContain(name);
+  expect(within(column!).getByText(name)).toBeOnTheScreen();
 }
 
 it('Orders list card: the tags are under the name in the text column and wrap', async () => {
-  const tree = await mount(<MemoizedOrderItem order={order} onPress={jest.fn()} />);
+  await render(<MemoizedOrderItem order={order} onPress={jest.fn()} />);
   // An open order's status is no longer a tag (owner, 2026-10-17): the tag row holds Deactivated only.
-  expectTagsInTextColumn(tree, 'order-card-tags', 'Fictional Traders', ['Deactivated']);
+  expectTagsInTextColumn('order-card-tags', 'Fictional Traders', ['Deactivated']);
 });
 
 it('Queue card: the tags are under the counts in the text column and wrap', async () => {
-  const tree = await mount(<CustomerOrderGroupCard order={order} isExpanded={false} onToggleExpand={jest.fn()} />);
-  expectTagsInTextColumn(tree, 'queue-card-tags', 'Fictional Traders', ['Deactivated']);
+  await render(<CustomerOrderGroupCard order={order} isExpanded={false} onToggleExpand={jest.fn()} />);
+  expectTagsInTextColumn('queue-card-tags', 'Fictional Traders', ['Deactivated']);
 });
 
 it('Business chooser row: the tag is under the name in the text column and wraps', async () => {
-  const tree = await mount(
+  await render(
     <CustomerChoiceRows
       customers={[{ id: 'b1', name: 'Fictional Traders', detail: 'Fictional Town', tag: 'Deactivated' }]}
       onPick={jest.fn()} hint="hint" testIDPrefix="order-business-" unnamedLabel="Customer"
     />,
   );
-  expectTagsInTextColumn(tree, 'order-business-b1-tags', 'Fictional Traders', ['Deactivated']);
+  expectTagsInTextColumn('order-business-b1-tags', 'Fictional Traders', ['Deactivated']);
 });

@@ -4,11 +4,12 @@
  * (review finding P2F-UI-1). The list stays a plain ScrollView.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render as renderScreen, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { formatWeightEach } from '@/utils/formatters';
 import { updateGRN } from '@/features/grn/services/grnFormService';
 import { setLanguage } from '@/i18n/language';
+import { t } from '@/i18n';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const SAVED_PHOTO = 'aaaaaaaa-2222-4333-8444-555555555555';
@@ -56,14 +57,40 @@ jest.mock('@/utils/formatters', () => {
   return { ...actual, formatWeightEach: jest.fn(actual.formatWeightEach) };
 });
 
-// Children are stand-ins that keep their props, so the test can press their buttons.
+// Children are stand-ins that draw what the test needs: the bottom bar's primary button, an open confirm dialog (title,
+// message and its Confirm button, which calls the step's own onConfirm) and the success dialog.
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message?: string; onConfirm: () => unknown }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(
+          View,
+          { accessible: true, accessibilityRole: 'alert' },
+          createElement(Text, null, props.title),
+          createElement(Text, null, props.message),
+          createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Confirm', onPress: props.onConfirm })
+        )
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean }) =>
+    props.isVisible ? require('react').createElement(require('react-native').View, { accessible: true, accessibilityLabel: 'Success dialog' }) : null,
+}));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { nextLabel?: string; onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: props.nextLabel, onPress: props.onNext }),
+}));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() }, useRouter: () => ({ back: jest.fn() }), useFocusEffect: jest.fn(), useLocalSearchParams: () => ({}) }));
-jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+// An icon is drawn as an empty view that carries its name, so the test can tell which icons a line shows.
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({
+  __esModule: true,
+  default: (props: { name: string }) => require('react').createElement(require('react-native').View, { testID: `icon-${props.name}` }),
+}));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 import { showToast } from '@/utils/toast';
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
@@ -98,15 +125,15 @@ async function render(mode: 'create' | 'edit', items = LINES) {
     isCreateMode: mode === 'create',
     resetFormState: jest.fn(),
   };
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnReviewStep mode={mode} />);
-  });
-  return tree;
+  return renderScreen(<GrnReviewStep mode={mode} />);
 }
 /** The line weights formatted since the last clear: one per line drawn. */
 const linesDrawn = () => jest.mocked(formatWeightEach).mock.calls.map(([weight]) => weight).filter((weight) => WEIGHTS.has(weight as number));
-const visibleDialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never).filter((dialog) => dialog.props.visible);
+const openDialogs = () => screen.queryAllByRole('alert');
+/** The step's primary button (Create GRN / Save GRN): it asks the save question. */
+const pressNext = async (user: ReturnType<typeof userEvent.setup>, mode: 'create' | 'edit') => {
+  await user.press(screen.getByRole('button', { name: t(mode === 'create' ? 'grn.review.createGrn' : 'grn.review.saveGrn') }));
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -117,65 +144,62 @@ afterEach(() => jest.restoreAllMocks());
 
 describe('GRN review step lines', () => {
   it.each(['create', 'edit'] as const)('%s: opening the save dialog draws no line again', async (mode) => {
-    const tree = await render(mode);
+    const user = userEvent.setup({ delay: 0 });
+    await render(mode);
     // Every line was drawn, and once: a line formats its weight one time, for the tag and the label.
     expect(new Set(linesDrawn())).toEqual(WEIGHTS);
     expect(linesDrawn()).toHaveLength(LINES.length);
     jest.mocked(formatWeightEach).mockClear();
-    expect(visibleDialogs(tree)).toHaveLength(0);
+    expect(openDialogs()).toHaveLength(0);
 
-    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
+    await pressNext(user, mode);
 
-    expect(visibleDialogs(tree)).toHaveLength(1);
+    expect(await screen.findAllByRole('alert')).toHaveLength(1);
     expect(linesDrawn()).toEqual([]);
-    await act(async () => { tree.unmount(); });
   });
 
   it('draws only the line that changed', async () => {
-    const tree = await render('create');
+    const { rerender } = await render('create');
     jest.mocked(formatWeightEach).mockClear();
 
     const changed = LINES.map((item, n) => (n === 7 ? { ...item, qty: 99, stock: 99 } : item));
     mockForm = { ...mockForm, items: changed };
-    await act(async () => { tree.update(<GrnReviewStep mode="create" />); });
+    await rerender(<GrnReviewStep mode="create" />);
 
     expect(linesDrawn()).toEqual([LINES[7].weight]);
-    await act(async () => { tree.unmount(); });
   });
 });
 
 // A lot stores the weight of one package; the review says so and shows no total (owner's decision of 2026-10-14).
 describe('GRN review step weights', () => {
-  const texts = (tree: ReactTestRenderer) =>
-    tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => ([] as unknown[]).concat(node.props.children).join(''));
-  const cells = (tree: ReactTestRenderer) =>
-    tree.root
-      .findAll((node) => typeof node.type === 'string' && node.props.accessible === true && /^Item \d+, /.test(String(node.props.accessibilityLabel)))
-      .map((node) => node.props.accessibilityLabel as string);
-  const weightIcons = (tree: ReactTestRenderer) => tree.root.findAll((node) => (node.type as unknown) === 'Icon' && node.props.name === 'weight-kilogram');
+  // No query lists every text in reading order, so the texts are read from the rendered tree (container.queryAll).
+  const texts = () => screen.container.queryAll((node) => (node.type as unknown) === 'Text').map((node) => ([] as unknown[]).concat(node.props.children).join(''));
+  const cells = () => screen.getAllByLabelText(/^Item \d+, /).map((node) => node.props.accessibilityLabel as string);
+  const weightIcons = () => screen.queryAllByTestId('icon-weight-kilogram');
 
   it('words a line\'s weight "50 kg each" on its tag and aloud, and shows no total weight', async () => {
-    const tree = await render('create', [{ ...line(1), qty: 100, stock: 100, weight: 50 }]);
+    await render('create', [{ ...line(1), qty: 100, stock: 100, weight: 50 }]);
 
-    expect(texts(tree)).toContain('50 kg each');
-    expect(texts(tree)).not.toContain('50 kg');
-    expect(cells(tree)).toEqual(['Item 1, Fictional item 1, Bag, quantity 100, 50 kg each, rack R1, mark M1']);
+    expect(screen.getByText('50 kg each')).toBeOnTheScreen();
+    expect(screen.queryByText('50 kg')).not.toBeOnTheScreen();
+    expect(cells()).toEqual(['Item 1, Fictional item 1, Bag, quantity 100, 50 kg each, rack R1, mark M1']);
     // 100 bags at 50 kg: no "5,000 kg" and no total weight anywhere on the step.
-    expect(texts(tree).filter((text) => /kg/i.test(text))).toEqual(['50 kg each']);
-    expect(texts(tree).some((text) => /total weight/i.test(text))).toBe(false);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Total items', 'Total quantity']));
-    await act(async () => { tree.unmount(); });
+    expect(texts().filter((text) => /kg/i.test(text))).toEqual(['50 kg each']);
+    expect(texts().some((text) => /total weight/i.test(text))).toBe(false);
+    // The totals sit in the DETAILS section, which is closed when the step opens on ITEMS (so they are hidden).
+    expect(screen.getByText('Total items', { includeHiddenElements: true })).toBeOnTheScreen();
+    expect(screen.getByText('Total quantity', { includeHiddenElements: true })).toBeOnTheScreen();
   });
 
   it.each([[0], [null], [undefined]])('shows no weight tag, and says no weight, for a line with weight %p', async (weight) => {
-    const tree = await render('create', [{ ...line(1), qty: 100, stock: 100, weight: weight as unknown as number }]);
+    await render('create', [{ ...line(1), qty: 100, stock: 100, weight: weight as unknown as number }]);
 
-    expect(weightIcons(tree)).toHaveLength(0);
-    expect(texts(tree).filter((text) => /kg/i.test(text))).toEqual([]);
-    expect(cells(tree)).toEqual(['Item 1, Fictional item 1, Bag, quantity 100, rack R1, mark M1']);
+    expect(weightIcons()).toHaveLength(0);
+    expect(texts().filter((text) => /kg/i.test(text))).toEqual([]);
+    expect(cells()).toEqual(['Item 1, Fictional item 1, Bag, quantity 100, rack R1, mark M1']);
     // The line's other tags are still drawn.
-    expect(texts(tree)).toEqual(expect.arrayContaining(['R1', 'M1']));
-    await act(async () => { tree.unmount(); });
+    expect(screen.getByText('R1')).toBeOnTheScreen();
+    expect(screen.getByText('M1')).toBeOnTheScreen();
   });
 });
 
@@ -186,86 +210,87 @@ describe('GRN review step: save of an edit with lines the server did not change'
   const skipped = { grn_trl_item_id: LINES[0].grn_trl_id, item_name: 'Test Item Alpha', reason: 'Cannot update qty/stock - item has 3 units dispatched', current_qty: 7, current_stock: 7, dispatched_qty: 3 };
   afterEach(() => setLanguage('en'));
 
+  /** Opens the save question and answers it; the save runs as far as the server's answer is handled. */
   async function saveEdit(skippedStock: unknown[]) {
     (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: 'grn-1', message: 'ok', stats: { items_skipped_stock: skippedStock }, photos: NO_PHOTOS } });
-    const tree = await render('edit');
-    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
-    await act(async () => { await visibleDialogs(tree)[0].props.onConfirm(); });
-    return tree;
+    await render('edit');
+    await answerSaveQuestion();
+  }
+  async function answerSaveQuestion() {
+    const user = userEvent.setup({ delay: 0 });
+    await pressNext(user, 'edit');
+    await user.press(await screen.findByRole('button', { name: 'Confirm' }));
   }
   const toastText = () => String((showToast as jest.Mock).mock.calls.at(-1)?.[0]);
-  const successShown = (tree: ReactTestRenderer) => tree.root.findByType('DocumentSuccessDialog' as never).props.isVisible;
-  const photosDialogShown = (tree: ReactTestRenderer) => visibleDialogs(tree).some((dialog) => dialog.props.title === 'Photos not uploaded');
+  const successShown = () => screen.queryByLabelText('Success dialog') !== null;
+  const photosDialogShown = () => screen.queryByText('Photos not uploaded') !== null;
   const pressOk = async () => { await act(async () => { const asked = mockAsked[0]; asked.resolve(asked.ok); }); };
   beforeEach(() => { mockAsked.length = 0; (showToast as jest.Mock).mockClear(); });
 
   it('warns in its own dialog first, naming the item and its dispatched count, then shows the success dialog after OK', async () => {
-    const tree = await saveEdit([skipped]);
-    expect(mockAsked).toHaveLength(1);
+    await saveEdit([skipped]);
+    await waitFor(() => expect(mockAsked).toHaveLength(1));
     expect(mockAsked[0].title).toBe('Some quantities were not changed');
     const text = String(mockAsked[0].message);
     expect(text).toContain('Some quantities were not changed because those items are already dispatched');
     expect(text).toContain('• Test Item Alpha: 3 already dispatched');
     expect(text).not.toContain('Cannot update');
-    expect(successShown(tree)).toBe(false);
+    expect(successShown()).toBe(false);
     expect(showToast).not.toHaveBeenCalled();
     await pressOk();
-    expect(successShown(tree)).toBe(true);
+    expect(successShown()).toBe(true);
     expect(showToast).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('shows the success dialog also when the warning dialog is dismissed without its button', async () => {
-    const tree = await saveEdit([skipped]);
-    expect(successShown(tree)).toBe(false);
+    await saveEdit([skipped]);
+    await waitFor(() => expect(mockAsked).toHaveLength(1));
+    expect(successShown()).toBe(false);
     await act(async () => { mockAsked[0].resolve(mockAsked[0].dismissed); });
-    expect(successShown(tree)).toBe(true);
-    await act(async () => { tree.unmount(); });
+    expect(successShown()).toBe(true);
   });
 
   it('shows "Photos not uploaded" after the warning dialog, not the success dialog, when photos also failed', async () => {
     const failedPhoto = { kind: 'header', localUri: 'file:///x.jpg', error: 'Network request failed' };
     (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: 'grn-1', message: 'ok', stats: { items_skipped_stock: [skipped] }, photos: { uploadedCount: 0, failed: [failedPhoto], removalFailures: 0 } } });
-    const tree = await render('edit');
-    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
-    await act(async () => { await visibleDialogs(tree)[0].props.onConfirm(); });
-    expect(mockAsked).toHaveLength(1);
-    expect(photosDialogShown(tree)).toBe(false);
-    expect(successShown(tree)).toBe(false);
+    await render('edit');
+    await answerSaveQuestion();
+    await waitFor(() => expect(mockAsked).toHaveLength(1));
+    expect(photosDialogShown()).toBe(false);
+    expect(successShown()).toBe(false);
     await pressOk();
-    expect(photosDialogShown(tree)).toBe(true);
-    expect(successShown(tree)).toBe(false);
-    await act(async () => { tree.unmount(); });
+    expect(photosDialogShown()).toBe(true);
+    expect(successShown()).toBe(false);
   });
 
   it('shows just the item name when the entry has no numeric dispatched count', async () => {
-    const tree = await saveEdit([{ ...skipped, dispatched_qty: undefined }]);
+    await saveEdit([{ ...skipped, dispatched_qty: undefined }]);
+    await waitFor(() => expect(mockAsked).toHaveLength(1));
     expect(String(mockAsked[0].message)).toMatch(/dispatched:\n• Test Item Alpha$/);
-    await act(async () => { tree.unmount(); });
   });
 
   it('writes the count in Gujarati digits in Gujarati', async () => {
     setLanguage('gu');
-    const tree = await saveEdit([skipped]);
+    await saveEdit([skipped]);
+    await waitFor(() => expect(mockAsked).toHaveLength(1));
     const text = String(mockAsked[0].message);
     expect(text).toContain('Test Item Alpha');
     expect(text).toContain('૩');
     expect(text).not.toMatch(/3/);
-    await act(async () => { tree.unmount(); });
   });
 
   it('does not warn for a dispatched line whose quantity was not changed (the server lists every dispatched line)', async () => {
-    const tree = await saveEdit([{ ...skipped, current_qty: LINES[0].qty }]);
+    await saveEdit([{ ...skipped, current_qty: LINES[0].qty }]);
+    await waitFor(() => expect(showToast).toHaveBeenCalled());
     expect(mockAsked).toHaveLength(0);
     expect(toastText()).toBe('GRN A0010 saved.');
-    expect(successShown(tree)).toBe(true);
-    await act(async () => { tree.unmount(); });
+    expect(successShown()).toBe(true);
   });
 
   it('control: an empty skipped list gives the plain saved message', async () => {
-    const tree = await saveEdit([]);
+    await saveEdit([]);
+    await waitFor(() => expect(showToast).toHaveBeenCalled());
     expect(mockAsked).toHaveLength(0);
     expect(toastText()).toBe('GRN A0010 saved.');
-    await act(async () => { tree.unmount(); });
   });
 });

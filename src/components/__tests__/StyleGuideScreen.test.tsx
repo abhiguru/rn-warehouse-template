@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import StyleGuideScreen from '../../../app/style-guide';
 
@@ -18,42 +18,21 @@ jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { back:
 
 const MODES: Mode[] = ['light', 'dark'];
 
-function renderIn(brand: (typeof BRANDS)[number], mode: Mode) {
-  mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(
-<StyleGuideScreen />
-    );
-  });
-  return tree;
-}
-
-function allText(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(node => (node.type as unknown) === 'Text')
-    .map(node => [].concat(node.props.children).join(''));
-}
-
 describe('style guide gallery', () => {
   describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('%s %s', (brand, mode) => {
-    it('renders every section with the theme background and no failing contrast rows', () => {
-      const tree = renderIn(brand, mode);
-      const text = allText(tree);
+    it('renders every section with the theme background and no failing contrast rows', async () => {
+      mockState = { theme: { preference: mode, brand } };
+      await render(<StyleGuideScreen />);
       for (const section of ['Theme', 'Brand', 'Surfaces and text', 'Status', 'Typography', 'Spacing',
         'Shape and elevation', 'Buttons', 'Fields and selection', 'Selection', 'Tags, avatars and indicators',
         'Steps', 'Reports', 'Dialogs and alerts', 'States', 'Formats', 'Content']) {
-        expect(text.some(t => t.toUpperCase() === section.toUpperCase())).toBe(true);
+        // A section heading is drawn in capitals; match the whole text without regard to case.
+        const heading = new RegExp(`^${section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        expect(screen.getAllByText(heading)[0]).toBeOnTheScreen();
       }
-      expect(text).not.toContain('Fails');
+      expect(screen.queryByText('Fails')).not.toBeOnTheScreen();
 
-      const t = getTokens(brand, mode);
-      const screen = tree.root.findAll(node => {
-        const style = [].concat(node.props.style ?? []).filter(Boolean) as Array<{ backgroundColor?: string }>;
-        return style.some(s => s && s.backgroundColor === t.background.base);
-      });
-      expect(screen.length).toBeGreaterThan(0);
-      act(() => tree.unmount());
+      expect(screen.root).toHaveStyle({ backgroundColor: getTokens(brand, mode).background.base });
     });
   });
 });

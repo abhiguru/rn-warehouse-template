@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import { Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { SearchableBottomSheet } from '../SearchableBottomSheet';
 import { CustomerSearchBottomSheet, type CustomerSearchBottomSheetRef } from '../../CustomerSearchBottomSheet';
@@ -96,32 +96,28 @@ describe('SearchableBottomSheet (supervisor and customer pickers)', () => {
 
   it('does not listen for Back while it is closed, from its first render on', async () => {
     const formBack = addFormListener();
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(sheet(false)); });
+    await render(sheet(false));
 
     expect(back.count()).toBe(1);
     back.press();
     expect(formBack).toHaveBeenCalledTimes(1);
     expect(mockModal.dismiss).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('takes Back once it is opened, ahead of the form under it, and gives it back when closed', async () => {
     const formBack = addFormListener();
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(sheet(false)); });
+    const { rerender } = await render(sheet(false));
 
-    await act(async () => { tree.update(sheet(true)); });
+    await rerender(sheet(true));
     expect(back.count()).toBe(2);
     expect(back.press()).toBe(true);
     expect(mockModal.dismiss).toHaveBeenCalledTimes(1);
     expect(formBack).not.toHaveBeenCalled();
 
-    await act(async () => { tree.update(sheet(false)); });
+    await rerender(sheet(false));
     expect(back.count()).toBe(1);
     back.press();
     expect(formBack).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 });
 
@@ -129,11 +125,8 @@ describe('CustomerSearchBottomSheet (sender and customer pickers)', () => {
   it('listens for Back only between opening and closing, ahead of the form under it', async () => {
     const formBack = addFormListener();
     const ref = React.createRef<CustomerSearchBottomSheetRef>();
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<CustomerSearchBottomSheet ref={ref} onSelect={jest.fn()} />); });
-    const reportIndex = async (index: number) => {
-      await act(async () => { tree.root.findByType('BottomSheet' as unknown as React.ElementType).props.onChange(index); });
-    };
+    await render(<CustomerSearchBottomSheet ref={ref} onSelect={jest.fn()} />);
+    const reportIndex = (index: number) => fireEvent(screen.root!, 'change', index);
 
     // Closed: only the form listens.
     expect(back.count()).toBe(1);
@@ -149,6 +142,5 @@ describe('CustomerSearchBottomSheet (sender and customer pickers)', () => {
     expect(back.count()).toBe(1);
     back.press();
     expect(formBack).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 });

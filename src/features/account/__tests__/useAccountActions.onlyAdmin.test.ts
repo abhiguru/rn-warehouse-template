@@ -2,8 +2,8 @@
  * G-47: the only administrator is told before the two delete steps, not after typing
  * the mobile number. A lookup that fails opens the warning as before.
  */
-import { createElement } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import React from 'react';
+import { act, render as renderScreen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { useAccountActions } from '../useAccountActions';
 import { adminUserService } from '@/services/admin-user-service';
@@ -34,15 +34,12 @@ jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsers
 
 type Hook = ReturnType<typeof useAccountActions>;
 let hook: Hook;
-let tree: ReactTestRenderer | undefined;
 function Probe() {
   hook = useAccountActions();
   return null;
 }
 async function render() {
-  await act(async () => {
-    tree = create(createElement(Probe));
-  });
+  await renderScreen(React.createElement(Probe));
 }
 const lookup = (total: number, service = 0) =>
   jest.mocked(adminUserService.getUsersList).mockResolvedValue({
@@ -61,10 +58,6 @@ beforeEach(() => {
   resetCentralStateForTests();
   mockRole = 'admin';
   jest.clearAllMocks();
-});
-afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
 });
 
 describe('deleting your account as an administrator', () => {

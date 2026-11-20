@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { DispatchFormHeader } from '../DispatchFormHeader';
 
@@ -16,57 +16,43 @@ jest.mock('react-native-safe-area-context', () => ({
 
 const MODES: Mode[] = ['light', 'dark'];
 
-function flatStyle(style: unknown): Record<string, unknown> {
-  return Object.assign({}, ...([] as unknown[]).concat(style ?? []).flat(Infinity).filter(Boolean));
-}
-
 describe('DispatchFormHeader', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('%s %s', (brand, mode) => {
-    it('renders on surface.header with a header title and labelled cancel button', () => {
+    it('renders on surface.header with a header title and labelled cancel button', async () => {
+      const user = userEvent.setup({ delay: 0 });
       mockState = { theme: { preference: mode, brand } };
       const t = getTokens(brand, mode);
       const onCancel = jest.fn();
-      let tree!: ReactTestRenderer;
-      act(() => {
-        tree = create(
-          <DispatchFormHeader
-            title="Create dispatch"
-            onCancel={onCancel}
-            confirmCancel={false}
-            rightAction={{ icon: 'check', label: 'Save', onPress: jest.fn() }}
-          />
-        );
-      });
+      await render(
+        <DispatchFormHeader
+          title="Create dispatch"
+          onCancel={onCancel}
+          confirmCancel={false}
+          rightAction={{ icon: 'check', label: 'Save', onPress: jest.fn() }}
+        />
+      );
 
-      const container = tree.root.findAll(n => flatStyle(n.props.style).backgroundColor === t.surface.header);
-      expect(container.length).toBeGreaterThan(0);
+      expect(screen.root).toHaveStyle({ backgroundColor: t.surface.header });
+      expect(screen.getByRole('header', { name: 'Create dispatch' })).toBeOnTheScreen();
 
-      const title = tree.root.find(n => n.props.accessibilityRole === 'header');
-      expect([].concat(title.props.children).join('')).toBe('Create dispatch');
-
-      const cancel = tree.root.find(n => n.props.accessibilityLabel === 'Cancel dispatch' && typeof n.props.onPress === 'function');
-      act(() => cancel.props.onPress());
+      await user.press(screen.getByRole('button', { name: 'Cancel dispatch' }));
       expect(onCancel).toHaveBeenCalledTimes(1);
-      act(() => tree.unmount());
     });
   });
 
-  it('asks before discarding when confirmCancel is on', () => {
+  it('asks before discarding when confirmCancel is on', async () => {
+    const user = userEvent.setup({ delay: 0 });
     mockState = { theme: { preference: 'light', brand: 'orange' } };
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    let tree!: ReactTestRenderer;
-    act(() => {
-      tree = create(<DispatchFormHeader title="Create dispatch" onCancel={jest.fn()} />);
-    });
-    const cancel = tree.root.find(n => n.props.accessibilityLabel === 'Cancel dispatch' && typeof n.props.onPress === 'function');
-    act(() => cancel.props.onPress());
+    await render(<DispatchFormHeader title="Create dispatch" onCancel={jest.fn()} />);
+    await user.press(screen.getByRole('button', { name: 'Cancel dispatch' }));
     expect(alertSpy).toHaveBeenCalledWith(
       'Discard this dispatch?',
       expect.any(String),
       expect.arrayContaining([expect.objectContaining({ text: 'Discard dispatch' })]),
       expect.anything()
     );
-    alertSpy.mockRestore();
-    act(() => tree.unmount());
   });
 });

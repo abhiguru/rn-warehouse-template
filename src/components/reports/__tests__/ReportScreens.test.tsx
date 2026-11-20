@@ -6,7 +6,7 @@ import React from 'react';
 import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
 
 registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
-import { act, create, ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import ReportsScreen from '../../../../app/(tabs)/reports';
@@ -22,8 +22,6 @@ import SensorsScreen from '../../../../app/sensors';
 import { rowStatus } from '@/features/sensors/sensorStatus';
 import SensorDetailScreen from '../../../../app/sensor-detail/[id]';
 import type { SensorDevice } from '@/types/sensor.types';
-import { ReportEmptyState } from '@/components/reports';
-import { Button } from '@/components/ui/Button';
 import * as reporting from '@/services/reporting';
 import * as customerActivity from '@/services/reporting/customer-activity-service';
 import * as grnActivity from '@/services/reporting/grn-activity-service';
@@ -316,52 +314,59 @@ beforeAll(() => {
 beforeEach(forgetQueries);
 afterAll(() => restoreQueries());
 
-async function render(brand: Brand, mode: Mode, element: React.ReactElement) {
+async function show(brand: Brand, mode: Mode, element: React.ReactElement) {
   mockState = {
     theme: { preference: mode, brand },
     auth: { userProfile: { id: 'u1', name: 'Asha', role: 'admin' } },
     listFilters: { lists: {} },
     reportPrefs: { byScope: {} },
   };
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(element);
-  });
-  await act(async () => {
+  await render(element);
+  await settle();
+}
+
+const settle = () =>
+  act(async () => {
     await settleQueries();
   });
-  return tree;
+
+type JsonNode = { type: string; props: Record<string, any>; children: unknown[] | null };
+/** Every rendered host element, in order, from the screen's JSON: for what no query reaches (a background colour, an icon's colour). */
+function hostNodes(): JsonNode[] {
+  const out: JsonNode[] = [];
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    out.push(node as JsonNode);
+    ((node as JsonNode).children ?? []).forEach(walk);
+  };
+  walk(screen.toJSON());
+  return out;
 }
 
-function flat(node: ReactTestInstance) {
-  const style = typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style;
-  return (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
+function backgrounds(): unknown[] {
+  return hostNodes().map(node => (StyleSheet.flatten(node.props.style) ?? {}).backgroundColor);
 }
 
-function backgrounds(tree: ReactTestRenderer): unknown[] {
-  return tree.root.findAll(n => typeof n.type === 'string').map(n => flat(n).backgroundColor);
-}
+/** The colours of the icons of one name (icons are host elements named "Icon", with no role or text). */
+const iconColors = (name: string) => hostNodes().filter(node => node.type === 'Icon' && node.props.name === name).map(node => node.props.color);
 
-function texts(tree: ReactTestRenderer): string[] {
-  return tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
+/** Each text is on screen at least once (hidden or not, as the old tree walk saw it). */
+function expectTexts(...texts: (string | RegExp)[]) {
+  for (const text of texts) expect(screen.getAllByText(text, { includeHiddenElements: true })[0]).toBeOnTheScreen();
+}
+const hasText = (text: string) => screen.queryAllByText(text, { includeHiddenElements: true }).length > 0;
+/** Where a text sits among all the texts on screen, in order. */
+function textOrder(): string[] {
+  return screen.getAllByText(/./, { includeHiddenElements: true }).map(node => [node.props.children].flat().join(''));
 }
 
 /** The KPI tiles that are drawn as loading placeholders, by what they say to a screen reader. */
-function loadingTiles(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityState?.busy === true)
-    .map(n => String(n.props.accessibilityLabel))
-    .filter(label => label.endsWith(', loading'));
-}
-
-/** Presses the first control whose accessibility label starts with the text. */
-async function press(tree: ReactTestRenderer, label: string) {
-  const control = tree.root.findAll(
-    n => typeof n.props.onPress === 'function' && typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith(label)
-  )[0];
-  await act(async () => {
-    control.props.onPress();
-  });
+function loadingTiles(): string[] {
+  return screen
+    .queryAllByLabelText(/, loading$/, { includeHiddenElements: true })
+    .filter(node => node.props.accessibilityState?.busy === true)
+    .map(node => String(node.props.accessibilityLabel));
 }
 
 /** A request that stays unanswered until the test answers it. */
@@ -389,106 +394,83 @@ describe.each(THEMES)('report and sensor screens in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
   it('reports hub', async () => {
-    const tree = await render(brand, mode, <ReportsScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Reports', 'Stock summary', 'Operations dashboard']));
-    act(() => tree.unmount());
+    await show(brand, mode, <ReportsScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle]));
+    expectTexts('Reports', 'Stock summary', 'Operations dashboard');
   });
 
   it('operations dashboard', async () => {
-    const tree = await render(brand, mode, <OperationsDashboardScreen />);
+    await show(brand, mode, <OperationsDashboardScreen />);
     // The period is the filter bar's chip now, not a segmented control in brand.fill.
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.neutral.background]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Operations dashboard', 'GRNs', 'Total stock', 'Period averages', 'LATEST ACTIVITY (ANY DATE)', 'A0001']));
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.neutral.background]));
+    expectTexts('Operations dashboard', 'GRNs', 'Total stock', 'Period averages', 'LATEST ACTIVITY (ANY DATE)', 'A0001');
     // The answer's total_stock_weight (5,400.5 kg) is a total: no tile for it.
-    expect(texts(tree)).not.toContain('Total weight');
-    act(() => tree.unmount());
+    expect(hasText('Total weight')).toBe(false);
   });
 
   it('stock summary list', async () => {
-    const tree = await render(brand, mode, <StockSummaryScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    await show(brand, mode, <StockSummaryScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
     // The header's stock PDF of every customer, and the one customer's share button.
-    expect(tree.root.findAll(n => (n.type as unknown) === 'Icon' && n.props.name === 'file-pdf-box').map(n => n.props.color)).toEqual([t.brand.tint, t.brand.tint]);
+    expect(iconColors('file-pdf-box')).toEqual([t.brand.tint, t.brand.tint]);
     // On the shared report layer: no period, the sort chip, and one card per customer with its share button.
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Stock summary', 'All customers', 'Stock', 'Patel Traders', '2 items · 1 GRN', '300']));
-    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Share PDF for Patel Traders' && typeof n.props.onPress === 'function')).not.toHaveLength(0);
-    act(() => tree.unmount());
+    expectTexts('Stock summary', 'All customers', 'Stock', 'Patel Traders', '2 items · 1 GRN', '300');
+    expect(screen.getByRole('button', { name: 'Share PDF for Patel Traders' })).toBeOnTheScreen();
   });
 
   it('customer activity list', async () => {
-    const tree = await render(brand, mode, <CustomerActivityScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.surface.header]));
+    await show(brand, mode, <CustomerActivityScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.surface.header]));
     // ReportScaffold: the figures, then one ReportCustomerCard per customer with its city and stock.
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Customer activity', 'All customers', 'Customers', 'Stock', 'Patel Traders', '300', 'in stock']));
-    expect(texts(tree).some(text => text.startsWith('Rajkot · '))).toBe(true);
-    act(() => tree.unmount());
+    expectTexts('Customer activity', 'All customers', 'Customers', 'Stock', 'Patel Traders', '300', 'in stock', /^Rajkot · /);
   });
 
   it('stock aging list with status buckets', async () => {
-    const tree = await render(brand, mode, <StockAgingScreen />);
-    expect(backgrounds(tree)).toEqual(
-      expect.arrayContaining([t.background.base, t.surface.card, t.status.positive.element, t.status.negative.element])
-    );
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Stock aging', 'All customers', 'Stock age', '0–120 days', 'Over 364 days', 'Patel Traders', 'Average: 121–240 days']));
-    act(() => tree.unmount());
+    await show(brand, mode, <StockAgingScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.status.positive.element, t.status.negative.element]));
+    expectTexts('Stock aging', 'All customers', 'Stock age', '0–120 days', 'Over 364 days', 'Patel Traders', 'Average: 121–240 days');
   });
 
   it('item stock summary with low stock tag', async () => {
-    const tree = await render(brand, mode, <ItemStockSummaryScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.status.critical.background]));
+    await show(brand, mode, <ItemStockSummaryScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.status.critical.background]));
     // Packaging and GRN count are one fact line (FactLines) on the shared StockItemCard.
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Item stock summary', 'Potato', 'Low stock', '50 kg bag · 1 GRN']));
-    act(() => tree.unmount());
+    expectTexts('Item stock summary', 'Potato', 'Low stock', '50 kg bag · 1 GRN');
   });
 
   it('dispatch activity list', async () => {
-    const tree = await render(brand, mode, <DispatchActivityScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(texts(tree)).toEqual(
-      expect.arrayContaining(['Dispatch activity', 'All customers', 'Units dispatched', 'Fictional Traders', '3 dispatches'])
-    );
-    act(() => tree.unmount());
+    await show(brand, mode, <DispatchActivityScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expectTexts('Dispatch activity', 'All customers', 'Units dispatched', 'Fictional Traders', '3 dispatches');
   });
 
   it('GRN activity list', async () => {
-    const tree = await render(brand, mode, <GRNActivityScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['GRN activity', 'All customers', 'GRNs', 'Fictional Traders']));
-    act(() => tree.unmount());
+    await show(brand, mode, <GRNActivityScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expectTexts('GRN activity', 'All customers', 'GRNs', 'Fictional Traders');
   });
 
   it('invoice history list with its summary', async () => {
-    const tree = await render(brand, mode, <InvoiceHistoryScreen />);
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(texts(tree)).toEqual(
-      expect.arrayContaining(['Invoice history', 'All customers', 'Invoices', 'Amount', '₹4,500', 'Fictional Traders', '2 invoices · Latest 01/10/26'])
-    );
-    act(() => tree.unmount());
+    await show(brand, mode, <InvoiceHistoryScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expectTexts('Invoice history', 'All customers', 'Invoices', 'Amount', '₹4,500', 'Fictional Traders', '2 invoices · Latest 01/10/26');
   });
 
   it('sensors list with one status per sensor', async () => {
-    const tree = await render(brand, mode, <SensorsScreen />);
-    expect(backgrounds(tree)).toEqual(
-      expect.arrayContaining([t.background.base, t.surface.card, t.status.critical.background])
-    );
-    const all = texts(tree);
+    await show(brand, mode, <SensorsScreen />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.status.critical.background]));
     // The battery is low: the row's tag says so instead of a bare "Warning", the
     // strip over the list names it, and the figures count it.
-    expect(all).toEqual(expect.arrayContaining(['Temperature and humidity', 'Chamber 2 sensor', '−18.5°C', '85%', '1 low battery', 'Battery low']));
-    act(() => tree.unmount());
+    expectTexts('Temperature and humidity', 'Chamber 2 sensor', '−18.5°C', '85%', '1 low battery', 'Battery low');
   });
 
   it('sensor detail', async () => {
-    const tree = await render(brand, mode, <SensorDetailScreen />);
+    await show(brand, mode, <SensorDetailScreen />);
     await act(async () => {
       await Promise.resolve();
     });
-    const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['Chamber 2 sensor', 'Battery low', 'Online', 'Historical trend']));
-    expect(all).toContain('All readings, last 7 days');
-    expect(backgrounds(tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    act(() => tree.unmount());
+    expectTexts('Chamber 2 sensor', 'Battery low', 'Online', 'Historical trend', 'All readings, last 7 days');
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
   });
 });
 
@@ -498,21 +480,20 @@ const [BRAND] = BRANDS;
 // InvoiceHistoryFlow.test.tsx: opening a customer pushes a route there.
 describe('invoice history summary', () => {
   it('shows the totals above the customers, with the amount on each customer', async () => {
-    const tree = await render(BRAND, 'light', <InvoiceHistoryScreen />);
-    const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['Invoices', '2', 'Amount', '₹4,500']));
-    expect(loadingTiles(tree)).toEqual([]);
+    await show(BRAND, 'light', <InvoiceHistoryScreen />);
+    const all = textOrder();
+    expectTexts('Invoices', '2', 'Amount', '₹4,500');
+    expect(loadingTiles()).toEqual([]);
     // The summary comes before the customers (style guide 14.10).
     expect(all.indexOf('Amount')).toBeLessThan(all.indexOf('Fictional Traders'));
     expect(all.lastIndexOf('₹4,500')).toBeGreaterThan(all.indexOf('Fictional Traders'));
-    act(() => tree.unmount());
   });
 
   it('draws as many loading tiles as the customers level shows once loaded', async () => {
     const waiting = pending();
     jest.mocked(invoiceHistory.getAllInvoiceHistory).mockImplementationOnce(() => waiting.promise);
-    const tree = await render(BRAND, 'light', <InvoiceHistoryScreen />);
-    expect(loadingTiles(tree)).toHaveLength(2);
+    await show(BRAND, 'light', <InvoiceHistoryScreen />);
+    expect(loadingTiles()).toHaveLength(2);
     await act(async () => {
       waiting.answer({
         success: true,
@@ -520,8 +501,7 @@ describe('invoice history summary', () => {
       });
       await settleQueries();
     });
-    expect(loadingTiles(tree)).toEqual([]);
-    act(() => tree.unmount());
+    expect(loadingTiles()).toEqual([]);
   });
 });
 
@@ -542,39 +522,33 @@ describe('a report that could not be loaded', () => {
 
   it.each(FAILED)('%s: an error state with one "Try again", which shows the loading state', async (_name, Screen, request, emptyTitle) => {
     request.mockResolvedValueOnce(refused);
-    const tree = await render(BRAND, 'light', <Screen />);
+    await show(BRAND, 'light', <Screen />);
     expect(request).toHaveBeenCalledTimes(1);
 
-    // The shared empty state in its error tone, with the retry as its own action.
-    const states = tree.root.findAllByType(ReportEmptyState);
-    expect(states).toHaveLength(1);
-    expect(states[0].props).toMatchObject({ icon: 'alert-circle-outline', tone: 'error', actionLabel: 'Try again' });
-    const icon = tree.root.findAll(n => (n.type as unknown) === 'Icon' && n.props.name === 'alert-circle-outline')[0];
-    expect(icon.props.color).toBe(getTokens(BRAND, 'light').status.negative.text);
-    const retries = tree.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityRole === 'button' && /try|retry/i.test(String(n.props.accessibilityLabel)));
-    expect(new Set(retries.map(n => n.props.accessibilityLabel))).toEqual(new Set(['Try again']));
-    expect(tree.root.findAllByType(Button).filter(button => button.props.children === 'Try again')).toHaveLength(1);
+    // The shared empty state in its error tone (its icon in the negative text colour), with the retry as its own action.
+    expect(iconColors('alert-circle-outline')).toEqual([getTokens(BRAND, 'light').status.negative.text]);
+    expect(screen.getAllByRole('button', { name: /try|retry/i }).map(button => button.props.accessibilityLabel)).toEqual(['Try again']);
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
 
     // Try again: the request is sent once more, and until its answer the screen is loading,
     // not empty ("No GRNs in this period" would be a wrong answer).
     const second = pending();
     request.mockImplementationOnce(() => second.promise);
-    await act(async () => {
-      states[0].props.onAction();
-    });
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Try again' }));
     expect(request).toHaveBeenCalledTimes(2);
-    expect(tree.root.findAllByType(ReportEmptyState)).toHaveLength(0);
-    expect(loadingTiles(tree).length).toBeGreaterThan(0);
-    expect(texts(tree)).not.toContain(emptyTitle);
+    expect(iconColors('alert-circle-outline')).toEqual([]);
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
+    expect(loadingTiles().length).toBeGreaterThan(0);
+    expect(hasText(emptyTitle)).toBe(false);
 
     // A second refusal brings the error back.
     await act(async () => {
       second.answer(refused);
       await settleQueries();
     });
-    expect(tree.root.findAllByType(ReportEmptyState).map(state => state.props.tone)).toEqual(['error']);
-    expect(loadingTiles(tree)).toEqual([]);
-    act(() => tree.unmount());
+    expect(iconColors('alert-circle-outline')).toEqual([getTokens(BRAND, 'light').status.negative.text]);
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    expect(loadingTiles()).toEqual([]);
   });
 });
 

@@ -1,7 +1,7 @@
 /** Closing the keyboard blurs the input react-native says has the focus. */
 import React from 'react';
 import { Keyboard, TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { useBlurOnKeyboardHide } from '../useBlurOnKeyboardHide';
 
 function Probe() {
@@ -21,12 +21,11 @@ describe('useBlurOnKeyboardHide', () => {
     }) as never);
     const focused = { blur: jest.fn() };
     jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(focused as never);
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<Probe />); });
+    const { unmount } = await render(<Probe />);
     expect(focused.blur).not.toHaveBeenCalled();
-    act(() => handlers.keyboardDidHide());
+    await act(() => handlers.keyboardDidHide());
     expect(focused.blur).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
+    await unmount();
     expect(remove).toHaveBeenCalledTimes(1);
   });
 
@@ -37,7 +36,7 @@ describe('useBlurOnKeyboardHide', () => {
       return { remove: jest.fn() };
     }) as never);
     jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(null as never);
-    await act(async () => { create(<Probe />); });
-    expect(() => act(() => handlers.keyboardDidHide())).not.toThrow();
+    await render(<Probe />);
+    await act(() => handlers.keyboardDidHide());
   });
 });

@@ -4,8 +4,7 @@
  * "Not signed out"; the device in hand signs out here; an older backend leaves the section out.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { SignedInDevicesSection } from '../components/SignedInDevicesSection';
 import { listUserSessions, revokeSession } from '@/services/session-devices-service';
 import { logout } from '@/store/slices/authSlice';
@@ -29,23 +28,19 @@ const row = (id: string, over: Record<string, unknown> = {}) => ({
   last_refreshed_at: '2026-11-01T10:30:00Z', expires_at: '2026-12-01T10:30:00Z', is_current: false, ...over,
 });
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate', 'clearImmediate'] });
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.useRealTimers();
 });
 
-const texts = () => tree!.root.findAllByType(Text).map(n => [n.props.children].flat().join(''));
 const press = async (testID: string) => {
-  await act(async () => { tree!.root.find(n => n.props.testID === testID && typeof n.props.onPress === 'function').props.onPress(); });
+  await userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime }).press(screen.getByTestId(testID));
 };
 const open = async (onUnsupported?: () => void) => {
-  await act(async () => { tree = create(<SignedInDevicesSection userId="u1" onUnsupported={onUnsupported} />); });
+  await render(<SignedInDevicesSection userId="u1" onUnsupported={onUnsupported} />);
 };
 const confirmSignOut = async () => {
   const buttons = jest.mocked(showAlert).mock.calls.at(-1)![2] as { text: string; onPress?: () => void }[];
@@ -55,8 +50,12 @@ const confirmSignOut = async () => {
 it('lists each device: app and system, masked address, last used, and the tag on this device', async () => {
   jest.mocked(listUserSessions).mockResolvedValue({ success: true, sessions: [row('s1', { is_current: true }), row('s2', { user_agent: null, created_ip: null, last_refreshed_at: null })] });
   await open();
-  expect(texts()).toEqual(expect.arrayContaining(['WarehouseApp 1.2 · Android 15', 'This device', 'From 203.0.113.0/24', 'Last used 30 min ago', 'Unknown device']));
-  expect(texts().filter(t => t === 'Sign out this device')).toHaveLength(2);
+  expect(screen.getAllByText('WarehouseApp 1.2 · Android 15')).toHaveLength(1);
+  expect(screen.getByText('This device')).toBeOnTheScreen();
+  expect(screen.getByText('From 203.0.113.0/24')).toBeOnTheScreen();
+  expect(screen.getByText('Last used 30 min ago')).toBeOnTheScreen();
+  expect(screen.getByText('Unknown device')).toBeOnTheScreen();
+  expect(screen.getAllByText('Sign out this device')).toHaveLength(2);
 });
 
 it('asks before signing out, and sends nothing when the question is not confirmed', async () => {
@@ -117,15 +116,15 @@ it('is left out, and says so to the page, on a backend without the function', as
   const onUnsupported = jest.fn();
   await open(onUnsupported);
   expect(onUnsupported).toHaveBeenCalled();
-  expect(tree!.toJSON()).toBeNull();
+  expect(screen.toJSON()).toBeNull();
 });
 
 it('offers Retry when the list cannot be read', async () => {
   jest.mocked(listUserSessions).mockResolvedValueOnce({ success: false, message: "Couldn't load the signed-in devices." }).mockResolvedValueOnce({ success: true, sessions: [] });
   await open();
-  expect(texts()).toContain("Couldn't load the signed-in devices.");
-  await act(async () => { tree!.root.find(n => n.props.accessibilityLabel === 'Try again' && typeof n.props.onPress === 'function').props.onPress(); });
-  expect(texts()).toContain('No signed-in devices.');
+  expect(screen.getByText("Couldn't load the signed-in devices.")).toBeOnTheScreen();
+  await userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime }).press(screen.getByRole('button', { name: 'Try again' }));
+  expect(screen.getByText('No signed-in devices.')).toBeOnTheScreen();
 });
 
 it('reads the list again when the sign out got no answer, and says Device signed out if the session is gone', async () => {

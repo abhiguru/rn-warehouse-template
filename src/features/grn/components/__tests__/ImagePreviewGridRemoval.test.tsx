@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { Alert } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { ImagePreviewGrid } from '../ImagePreviewGrid';
 import { deleteGRNImage } from '../../services/imageUploadService';
 import type { GRNImageData } from '@/store/slices/grnFormSlice';
@@ -27,11 +27,9 @@ const savedPhoto: GRNImageData = {
 };
 
 /** Press the photo's remove button and confirm the "Remove photo?" question. */
-async function removeFirstPhoto(tree: ReactTestRenderer) {
+async function removeFirstPhoto() {
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  await act(async () => {
-    tree.root.findByProps({ testID: 'remove-image-0' }).props.onPress();
-  });
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Remove photo 1' }));
   const buttons = alert.mock.calls[0][2]!;
   await act(async () => {
     await buttons.find((button) => button.style === 'destructive')!.onPress!();
@@ -47,12 +45,9 @@ describe('ImagePreviewGrid photo removal', () => {
 
   it('only tells the form when removeFromServer is false', async () => {
     const onRemoveImage = jest.fn();
-    let tree!: ReactTestRenderer;
-    await act(async () => {
-      tree = create(<ImagePreviewGrid imageData={[savedPhoto]} onRemoveImage={onRemoveImage} removeFromServer={false} />);
-    });
+    await render(<ImagePreviewGrid imageData={[savedPhoto]} onRemoveImage={onRemoveImage} removeFromServer={false} />);
 
-    await removeFirstPhoto(tree);
+    await removeFirstPhoto();
 
     expect(deleteGRNImage).not.toHaveBeenCalled();
     expect(onRemoveImage).toHaveBeenCalledWith(savedPhoto.id);
@@ -60,12 +55,9 @@ describe('ImagePreviewGrid photo removal', () => {
 
   it('deletes a saved photo at once by default', async () => {
     const onRemoveImage = jest.fn();
-    let tree!: ReactTestRenderer;
-    await act(async () => {
-      tree = create(<ImagePreviewGrid imageData={[savedPhoto]} onRemoveImage={onRemoveImage} />);
-    });
+    await render(<ImagePreviewGrid imageData={[savedPhoto]} onRemoveImage={onRemoveImage} />);
 
-    await removeFirstPhoto(tree);
+    await removeFirstPhoto();
 
     expect(deleteGRNImage).toHaveBeenCalledWith(savedPhoto.id, savedPhoto.imageUrl);
     expect(onRemoveImage).toHaveBeenCalledWith(savedPhoto.id);

@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import RecentDispatchesSection from '../RecentDispatchesSection';
 
@@ -29,35 +29,41 @@ jest.mock('@/services/dispatch-service', () => ({
 
 const MODES: Mode[] = ['light', 'dark'];
 
-function texts(tree: ReactTestRenderer) {
-  return tree.root
-    .findAll(n => (n.type as unknown) === 'Text')
-    .map(n => ([] as unknown[]).concat(n.props.children).join(''));
+type Json = ReturnType<typeof screen.toJSON>;
+type JsonNode = Exclude<NonNullable<Json>, unknown[]>;
+
+/** Every element of the rendered tree (the dispatch cells are a string-typed stand-in, so only the tree shows them). */
+function elements(json: Json): JsonNode[] {
+  const out: JsonNode[] = [];
+  const walk = (node: unknown) => {
+    if (!node || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    out.push(node as JsonNode);
+    ((node as JsonNode).children ?? []).forEach(walk);
+  };
+  walk(json);
+  return out;
 }
 
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('%s %s', (brand, mode) => {
   it('renders a section header with a plain count and expands to the dispatch cells', async () => {
     const t = getTokens(brand, mode);
     mockState = { theme: { preference: mode, brand }, auth: { userProfile: { role: 'admin' } } };
-    let tree!: ReactTestRenderer;
-    await act(async () => {
-      tree = create(<RecentDispatchesSection customerId="c1" />);
-    });
+    const user = userEvent.setup({ delay: 0 });
+    await render(<RecentDispatchesSection customerId="c1" />);
 
-    expect(texts(tree)).toEqual(expect.arrayContaining(['RECENT DISPATCHES', '2', 'Show']));
-    const backgrounds = tree.root
-      .findAll(n => (n.type as unknown) === 'View')
+    expect(screen.getByText('RECENT DISPATCHES')).toBeOnTheScreen();
+    expect(screen.getByText('2')).toBeOnTheScreen();
+    expect(screen.getByText('Show')).toBeOnTheScreen();
+    const backgrounds = elements(screen.toJSON())
+      .filter(n => n.type === 'View')
       .map(v => StyleSheet.flatten(v.props.style)?.backgroundColor);
     // No brand-filled banner: the only brand fill is the plain count badge (guide §13.5).
     expect(backgrounds.filter(b => b === t.brand.fill)).toHaveLength(1);
-    expect(tree.root.findAll(n => (n.type as unknown) === 'MemoizedDispatchItem')).toHaveLength(0);
+    expect(elements(screen.toJSON()).filter(n => n.type === 'MemoizedDispatchItem')).toHaveLength(0);
 
-    const toggle = tree.root.find(
-      n => n.props.accessibilityLabel === 'Show recent dispatches, 2 dispatches' && typeof n.props.onPress === 'function'
-    );
-    act(() => toggle.props.onPress());
-    expect(tree.root.findAll(n => (n.type as unknown) === 'MemoizedDispatchItem')).toHaveLength(2);
-    expect(texts(tree)).toContain('Hide');
-    act(() => tree.unmount());
+    await user.press(screen.getByRole('button', { name: 'Show recent dispatches, 2 dispatches' }));
+    expect(elements(screen.toJSON()).filter(n => n.type === 'MemoizedDispatchItem')).toHaveLength(2);
+    expect(screen.getByText('Hide')).toBeOnTheScreen();
   });
 });

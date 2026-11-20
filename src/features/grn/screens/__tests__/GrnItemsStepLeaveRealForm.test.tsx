@@ -17,7 +17,7 @@
  */
 import React from 'react';
 import { Alert, ScrollView } from 'react-native';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore, type UnknownAction } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import { GrnItemsStep } from '@/features/grn/screens/GrnItemsStep';
@@ -110,67 +110,54 @@ const ROWS: GRNItemData[] = [
   { grn_trl_id: lineId(2), item_table_id: itemId(2), item_name: 'Fictional onion', packaging: 'Crate', qty: 12, stock: 12, weight: 25, rack: 'R2', package_mark: 'M2', trl_images: [] },
 ];
 
-const mounted: ReactTestRenderer[] = [];
-async function render(mode: 'create' | 'edit') {
+let user: ReturnType<typeof userEvent.setup>;
+async function mountStep(mode: 'create' | 'edit') {
   mockMode = mode;
   mockStore = makeStore();
   ROWS.forEach((item) => mockStore.dispatch(addItem(item)));
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnItemsStep mode={mode} />);
-  });
-  mounted.push(tree);
+  await render(<GrnItemsStep mode={mode} />);
   mockActions.length = 0;
-  return tree;
 }
 
-const isText = (node: ReactTestInstance) => (node.type as unknown) === 'Text';
-const textOf = (node: ReactTestInstance) => ([] as unknown[]).concat(node.props.children).join('');
-const texts = (tree: ReactTestRenderer) => tree.root.findAll(isText).map(textOf);
-/** The control a worker would tap: the first drawn node with this spoken name and a press handler. */
-const control = (tree: ReactTestRenderer, matches: (label: string) => boolean) => {
-  const found = tree.root.findAll(
-    (node) => typeof node.props.accessibilityLabel === 'string' && matches(node.props.accessibilityLabel) && typeof node.props.onPress === 'function',
-    { deep: false }
-  );
-  expect(found.length).toBeGreaterThan(0);
-  return found[0];
-};
-const field = (tree: ReactTestRenderer, label: string) =>
-  tree.root.find((node) => (node.type as unknown) === 'TextInput' && node.props.accessibilityLabel === label);
+/** The control a worker would tap: a button with this spoken name. */
+const control = (name: string | RegExp) => screen.getByRole('button', { name });
+const field = (label: string) => screen.getByLabelText(label);
 /** What the real form shows of its item. */
-const shown = (tree: ReactTestRenderer) => ({
-  quantity: field(tree, 'Receipt item quantity').props.value as string,
-  weight: field(tree, 'Weight each, in kilograms').props.value as string,
-  rackText: field(tree, 'Rack').props.value as string,
-  mark: field(tree, 'Mark').props.value as string,
-  chips: tree.root
-    .findAll((node) => typeof node.type === 'string' && node.props.accessibilityRole === 'radio' && node.props.accessibilityState?.selected === true)
-    .map((node) => node.props.accessibilityLabel as string),
+const shown = () => ({
+  quantity: (field('Receipt item quantity').props as { value: string }).value,
+  weight: (field('Weight each, in kilograms').props as { value: string }).value,
+  rackText: (field('Rack').props as { value: string }).value,
+  mark: (field('Mark').props as { value: string }).value,
+  chips: screen.queryAllByRole('radio', { selected: true }).map((node) => node.props.accessibilityLabel as string),
 });
 /** The rows of the saved-items sheet, top to bottom; none while the sheet is closed. */
-const savedRows = (tree: ReactTestRenderer) =>
-  tree.root.findAll((node) => node.props.accessibilityHint === 'Opens this item for editing' && typeof node.props.onPress === 'function', { deep: false });
-
-/** Saved row 1 put back into the form the way a worker does it: the strip's link, then a tap on the row. */
-async function reopenRowOne(tree: ReactTestRenderer) {
-  expect(savedRows(tree)).toHaveLength(0);
-  // The strip above the entry row opens the saved items a moment after the keyboard is put away.
-  await act(async () => { control(tree, (label) => label.endsWith('View 2 saved items')).props.onPress(); });
-  await act(async () => { jest.advanceTimersByTime(100); });
-  expect(savedRows(tree)).toHaveLength(2);
-  expect(texts(tree)).toContain('Saved items (2)');
-
-  await act(async () => { savedRows(tree)[0].props.onPress(); });
-
-  // The sheet has closed and the real form holds row 1.
-  expect(savedRows(tree)).toHaveLength(0);
-  expect(texts(tree)).toEqual(expect.arrayContaining(['Editing item', 'Item 1 · Fictional potato', '11 Bag']));
-  expect(shown(tree)).toEqual({ quantity: '11', weight: '50', rackText: 'ROW 3', mark: 'M1', chips: ['Floor F1', 'Chamber C4'] });
+const savedRows = () => screen.queryAllByHintText('Opens this item for editing');
+/** Replaces what a field holds, as a worker clears it and types. */
+async function enter(label: string, value: string) {
+  await user.clear(field(label));
+  await user.type(field(label), value);
 }
 
-const pressNext = (tree: ReactTestRenderer) =>
-  act(async () => { await control(tree, (label) => label === 'Review').props.onPress(); });
+/** Saved row 1 put back into the form the way a worker does it: the strip's link, then a tap on the row. */
+async function reopenRowOne() {
+  expect(savedRows()).toHaveLength(0);
+  // The strip above the entry row opens the saved items a moment after the keyboard is put away.
+  await user.press(control(/View 2 saved items$/));
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(savedRows()).toHaveLength(2);
+  expect(screen.getByText('Saved items (2)')).toBeOnTheScreen();
+
+  await user.press(savedRows()[0]);
+
+  // The sheet has closed and the real form holds row 1.
+  expect(savedRows()).toHaveLength(0);
+  expect(screen.getByText('Editing item')).toBeOnTheScreen();
+  expect(screen.getByText('Item 1 · Fictional potato')).toBeOnTheScreen();
+  expect(screen.getByText('11 Bag')).toBeOnTheScreen();
+  expect(shown()).toEqual({ quantity: '11', weight: '50', rackText: 'ROW 3', mark: 'M1', chips: ['Floor F1', 'Chamber C4'] });
+}
+
+const pressNext = () => user.press(control('Review'));
 
 const alerts = () => jest.mocked(Alert.alert).mock.calls;
 /** Presses a button of the dialog shown last. */
@@ -185,6 +172,7 @@ const sentToReview = () => mockActions.find((action) => action.type === reconcil
 
 beforeEach(() => {
   jest.useFakeTimers();
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   jest.clearAllMocks();
   mockActions.length = 0;
   jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -196,9 +184,6 @@ beforeEach(() => {
 afterEach(async () => {
   // A tree left mounted can log after the test run has ended.
   await act(async () => { jest.runOnlyPendingTimers(); });
-  for (const tree of mounted.splice(0)) {
-    await act(async () => { tree.unmount(); });
-  }
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
@@ -208,11 +193,11 @@ describe.each([
   ['edit', `/grn-edit/${GRN_ID}/step3`],
 ] as const)('GRN items step with the real entry form, %s', (mode, reviewRoute) => {
   it('a saved item that was reopened and not changed is not asked about: Next opens Review', async () => {
-    const tree = await render(mode);
+    await mountStep(mode);
     const before = mockStore.getState().grnForm.items;
-    await reopenRowOne(tree);
+    await reopenRowOne();
 
-    await pressNext(tree);
+    await pressNext();
 
     expect(alerts()).toEqual([]);
     expect(router.push).toHaveBeenCalledTimes(1);
@@ -224,14 +209,14 @@ describe.each([
   });
 
   it('Add item and the check mark stay pressable with an empty line; a tap says what is missing and stores nothing', async () => {
-    const tree = await render(mode);
+    await mountStep(mode);
     const before = mockStore.getState().grnForm.items;
 
     for (const label of ['Add item', 'Save receipt item']) {
-      const target = control(tree, (name) => name === label);
-      expect(target.props.disabled).not.toBe(true);
+      const target = control(label);
+      expect(target).toBeEnabled();
       alerts().length = 0;
-      await act(async () => { await target.props.onPress(); });
+      await user.press(target);
       expect(alerts().at(-1)?.[0]).toBe('Check the item details');
     }
     expect(mockStore.getState().grnForm.items).toEqual(before);
@@ -239,15 +224,15 @@ describe.each([
   });
 
   it('a different quantity typed into the Quantity field is asked about: Next goes nowhere', async () => {
-    const tree = await render(mode);
+    await mountStep(mode);
     const before = mockStore.getState().grnForm.items;
-    await reopenRowOne(tree);
+    await reopenRowOne();
 
-    await act(async () => { field(tree, 'Receipt item quantity').props.onChangeText('99'); });
-    expect(shown(tree).quantity).toBe('99');
-    expect(texts(tree)).toContain('99 Bag');
+    await enter('Receipt item quantity', '99');
+    expect(shown().quantity).toBe('99');
+    expect(screen.getByText('99 Bag')).toBeOnTheScreen();
 
-    await pressNext(tree);
+    await pressNext();
 
     expect(alerts()).toHaveLength(1);
     expect(alerts()[0][0]).toBe('Save changes to this item?');
@@ -260,13 +245,13 @@ describe.each([
 
   // Weight is a screen's width to the right of Item and Quantity: its error was marked out of view.
   it('a weight that is not a whole number: OK on the refusal scrolls the row to the Weight field', async () => {
-    const tree = await render(mode);
-    await reopenRowOne(tree);
-    await act(async () => { field(tree, 'Weight each, in kilograms').props.onChangeText('12.5'); });
-    await pressNext(tree);
+    await mountStep(mode);
+    await reopenRowOne();
+    await enter('Weight each, in kilograms', '12.5');
+    await pressNext();
     await answer('Save changes');
     expect(alerts().at(-1)?.slice(0, 2)).toEqual(['Check the item details', 'Fix the highlighted fields, then save the item.']);
-    expect(texts(tree)).toContain('Weight must be a whole number');
+    expect(screen.getByText('Weight must be a whole number')).toBeOnTheScreen();
     mockScrollTo.mockClear();
 
     await answer('OK');
@@ -280,25 +265,24 @@ describe.each([
 // WH-263: the X of an edited GRN asks to discard only when something was changed: in the saved form (nothing here,
 // the form was not loaded from the server) or in the item form on screen, which is not saved yet.
 describe('GRN items step with the real entry form, the X of an edit', () => {
-  const pressClose = (tree: ReactTestRenderer) =>
-    act(async () => { await control(tree, (label) => label === 'Close GRN edit').props.onPress(); });
+  const pressClose = () => user.press(control('Close GRN edit'));
 
   it('asks to discard when the saved form is unchanged but the item on screen was changed', async () => {
-    const tree = await render('edit');
-    await reopenRowOne(tree);
-    await act(async () => { field(tree, 'Receipt item quantity').props.onChangeText('99'); });
+    await mountStep('edit');
+    await reopenRowOne();
+    await enter('Receipt item quantity', '99');
 
-    await pressClose(tree);
+    await pressClose();
 
     expect(alerts()).toHaveLength(1);
     expect(alerts()[0][0]).toBe('Discard changes to this GRN?');
   });
 
   it('asks nothing when neither the saved form nor the item on screen was changed', async () => {
-    const tree = await render('edit');
-    await reopenRowOne(tree);
+    await mountStep('edit');
+    await reopenRowOne();
 
-    await pressClose(tree);
+    await pressClose();
 
     expect(alerts()).toEqual([]);
   });

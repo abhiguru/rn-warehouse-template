@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { AccessibilityInfo, StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import { FioriLinearProgress } from '@/components/FioriLinearProgress';
 
 jest.mock('@/store/hooks', () => ({
@@ -12,51 +12,48 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 
-const mounted: ReactTestRenderer[] = [];
-afterEach(async () => {
+afterEach(() => {
   jest.restoreAllMocks();
-  await act(async () => {
-    mounted.splice(0).forEach((tree) => tree.unmount());
-  });
 });
 
-async function render(reduceMotion: boolean) {
+async function renderBar(reduceMotion: boolean) {
   jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(reduceMotion);
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<FioriLinearProgress indeterminate />);
-  });
-  mounted.push(tree);
-  return tree;
+  await render(<FioriLinearProgress indeterminate />);
 }
 
-/** The indicator's width and left, as the style gives them. */
-function indicator(tree: ReactTestRenderer) {
-  const styles = tree.root
-    .findAll((node) => node.props.style !== undefined && StyleSheet.flatten(node.props.style)?.width !== undefined && StyleSheet.flatten(node.props.style)?.left !== undefined)
-    .map((node) => StyleSheet.flatten(node.props.style));
-  return styles[styles.length - 1];
+/**
+ * The indicator's width and left, as the style gives them. The bar has no role or text of its own: it is the
+ * progressbar's track's only child.
+ */
+function indicator() {
+  const bar = screen.getByRole('progressbar');
+  expect(bar).toBeBusy();
+  const track = bar.children[0] as typeof bar;
+  const style = StyleSheet.flatten((track.children[0] as typeof bar).props.style);
+  return { width: style?.width, left: style?.left };
 }
 
 const later = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 
 describe('FioriLinearProgress indeterminate', () => {
   it('sweeps when Reduce Motion is off: its width and position change as time passes', async () => {
-    const tree = await render(false);
-    const before = { ...indicator(tree) };
+    await renderBar(false);
+    const before = indicator();
     await later(500);
 
-    expect(indicator(tree).width).not.toBe(before.width);
-    expect(indicator(tree).left).not.toBe(before.left);
+    expect(indicator().width).not.toBe(before.width);
+    expect(indicator().left).not.toBe(before.left);
+    // Stop the loop before the test ends: a tick after that would update a tree nobody watches.
+    await screen.unmount();
   });
 
   it('is a still bar, half the track wide and centred, when Reduce Motion is on', async () => {
-    const tree = await render(true);
+    await renderBar(true);
 
-    expect(indicator(tree).width).toBe('50%');
-    expect(indicator(tree).left).toBe('25%');
+    expect(indicator().width).toBe('50%');
+    expect(indicator().left).toBe('25%');
     await later(500);
-    expect(indicator(tree).width).toBe('50%');
-    expect(indicator(tree).left).toBe('25%');
+    expect(indicator().width).toBe('50%');
+    expect(indicator().left).toBe('25%');
   });
 });

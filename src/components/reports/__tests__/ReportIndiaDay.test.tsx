@@ -16,10 +16,8 @@
  * one with the phone's calendar fails here too.
  */
 import React from 'react';
-import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
-import { KeyValueCell } from '@/components/fiori';
-import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { ReportDateHeading } from '@/components/reports/ReportDateHeading';
 import { StockItemCard, type StockGRNRowData } from '@/components/reports/StockItemCard';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
@@ -119,7 +117,6 @@ type Store = ReturnType<typeof makeStore>;
 
 jest.setTimeout(30_000);
 
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 let watch: PhoneZoneWatch;
 beforeAll(() => {
@@ -139,50 +136,45 @@ beforeEach(() => {
   watch = watchPhoneZone(ROW_TIMES);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   watch.restore();
   jest.useRealTimers();
 });
 
-const textOf = (node: ReactTestInstance): string =>
-  [node.props.children].flat().map(child => (typeof child === 'string' || typeof child === 'number' ? String(child) : child?.props ? textOf(child as ReactTestInstance) : '')).join('');
+type Drawn = NonNullable<typeof screen.root>;
+const textOf = (node: Drawn): string =>
+  [node.props.children].flat().map(child => (typeof child === 'string' || typeof child === 'number' ? String(child) : child?.props ? textOf(child as Drawn) : '')).join('');
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 async function open(Screen: React.ComponentType, params: Record<string, string> = {}) {
   mockParams = params;
   mockStore = makeStore();
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<Screen />);
-    await settleQueries();
-  });
-  mounted.push(tree);
+  await render(<Screen />);
+  await act(settleQueries);
 
-  const run = (callback: () => void) =>
-    act(async () => {
-      callback();
-      await settleQueries();
-    });
-  const controls = (start: string) =>
-    tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(start) && typeof node.props.onPress === 'function');
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(textOf);
+  const user = userEvent.setup({ delay: 0 });
+  const controls = (start: string) => {
+    const name = new RegExp(`^${escaped(start)}`);
+    return [...screen.queryAllByRole('button', { name }), ...screen.queryAllByRole('radio', { name })];
+  };
+  // Every drawn text, in the order drawn.
+  const texts = () => screen.queryAllByText(/./).map(textOf);
   return {
-    tree,
     texts,
     /** The spoken label of the first control whose label starts with `start`. */
     label: (start: string) => controls(start)[0]?.props.accessibilityLabel as string | undefined,
     /** Presses the first control whose label starts with `start`. */
-    press: (start: string) => {
+    press: async (start: string) => {
       if (controls(start).length === 0) throw new Error(`No control labelled "${start}…"`);
-      return run(() => controls(start)[0].props.onPress());
+      await user.press(controls(start)[0]);
+      await act(settleQueries);
     },
     /** The date headings and the cards' titles (those that match `card`), in the order drawn. */
     rows: (card: RegExp) =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && (node.props.accessibilityRole === 'header' || card.test(textOf(node))))
+      screen
+        .queryAllByText(/./)
+        .filter(node => node.props.accessibilityRole === 'header' || card.test(textOf(node)))
         .map(textOf)
         .filter(text => !['Invoice history', 'GRN activity', 'Sort by'].includes(text)),
-    /** Each customer row: its name and the facts under it. */
-    customers: () => Object.fromEntries(tree.root.findAllByType(ReportCustomerCard).map(card => [card.props.title as string, card.props.subtitle as unknown])),
   };
 }
 
@@ -244,33 +236,33 @@ describe('invoice history', () => {
   });
 
   it('heads each day as it is in India, and a card names the day its heading names', async () => {
-    const screen = await open(InvoiceHistoryScreen, GREEN);
-    expect(screen.rows(/^Invoice \d{4}\/\d{4}$/)).toEqual([
+    const report = await open(InvoiceHistoryScreen, GREEN);
+    expect(report.rows(/^Invoice \d{4}\/\d{4}$/)).toEqual([
       'Today', 'Invoice 2026/0012',
       'Yesterday', 'Invoice 2026/0011',
       '01/10/26', 'Invoice 2026/0001',
     ]);
     // The date a screen reader hears with the card (no heading is read with it).
-    expect(screen.label('Invoice 2026/0012,')).toContain('Invoice 2026/0012, 12 Oct 2026 · ');
-    expect(screen.label('Invoice 2026/0011,')).toContain('Invoice 2026/0011, 11 Oct 2026 · ');
-    expect(screen.label('Invoice 2026/0001,')).toContain('Invoice 2026/0001, 1 Oct 2026 · ');
+    expect(report.label('Invoice 2026/0012,')).toContain('Invoice 2026/0012, 12 Oct 2026 · ');
+    expect(report.label('Invoice 2026/0011,')).toContain('Invoice 2026/0011, 11 Oct 2026 · ');
+    expect(report.label('Invoice 2026/0001,')).toContain('Invoice 2026/0001, 1 Oct 2026 · ');
     expect(watch.reads).toEqual([]);
   });
 
   it('gives each card its own day, India\'s, when the cards are not in date order', async () => {
-    const screen = await open(InvoiceHistoryScreen, GREEN);
-    await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Amount');
-    await screen.press('Close');
-    expect(screen.rows(/^Invoice \d{4}\/\d{4}$/)).toEqual(['Invoice 2026/0011', 'Invoice 2026/0001', 'Invoice 2026/0012']);
-    const dates = screen.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
+    const report = await open(InvoiceHistoryScreen, GREEN);
+    await report.press('Sorted by Date, newest first. Change sort');
+    await report.press('Amount');
+    await report.press('Close');
+    expect(report.rows(/^Invoice \d{4}\/\d{4}$/)).toEqual(['Invoice 2026/0011', 'Invoice 2026/0001', 'Invoice 2026/0012']);
+    const dates = report.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
     expect(dates).toEqual(['11/10/26', '01/10/26', '12/10/26']);
     expect(watch.reads).toEqual([]);
   });
 
   it('names the day of a customer\'s latest invoice as it is in India', async () => {
-    const screen = await open(InvoiceHistoryScreen);
-    expect(screen.label('Green Valley Traders,')).toContain('3 invoices, Latest 01/10/26, ');
+    const report = await open(InvoiceHistoryScreen);
+    expect(report.label('Green Valley Traders,')).toContain('3 invoices, Latest 01/10/26, ');
     expect(watch.reads).toEqual([]);
   });
 });
@@ -320,28 +312,28 @@ describe('GRN activity', () => {
   });
 
   it('heads each day as it is in India, and a card names the day its heading names', async () => {
-    const screen = await open(GRNActivityScreen, GREEN);
-    expect(screen.rows(/^GRN A\d+$/)).toEqual(['Today', 'GRN A0012', 'Yesterday', 'GRN A0011', '01/10/26', 'GRN A0001']);
-    expect(screen.label('GRN A0012,')).toContain('GRN A0012, 12 Oct 2026, ');
-    expect(screen.label('GRN A0011,')).toContain('GRN A0011, 11 Oct 2026, ');
-    expect(screen.label('GRN A0001,')).toContain('GRN A0001, 1 Oct 2026, ');
+    const report = await open(GRNActivityScreen, GREEN);
+    expect(report.rows(/^GRN A\d+$/)).toEqual(['Today', 'GRN A0012', 'Yesterday', 'GRN A0011', '01/10/26', 'GRN A0001']);
+    expect(report.label('GRN A0012,')).toContain('GRN A0012, 12 Oct 2026, ');
+    expect(report.label('GRN A0011,')).toContain('GRN A0011, 11 Oct 2026, ');
+    expect(report.label('GRN A0001,')).toContain('GRN A0001, 1 Oct 2026, ');
     expect(watch.reads).toEqual([]);
   });
 
   it('gives each card its own day, India\'s, when the cards are not in date order', async () => {
-    const screen = await open(GRNActivityScreen, GREEN);
-    await screen.press('Sorted by Date, newest first. Change sort');
-    await screen.press('Units');
-    await screen.press('Close');
-    expect(screen.rows(/^GRN A\d+$/)).toEqual(['GRN A0011', 'GRN A0001', 'GRN A0012']);
-    const dates = screen.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
+    const report = await open(GRNActivityScreen, GREEN);
+    await report.press('Sorted by Date, newest first. Change sort');
+    await report.press('Units');
+    await report.press('Close');
+    expect(report.rows(/^GRN A\d+$/)).toEqual(['GRN A0011', 'GRN A0001', 'GRN A0012']);
+    const dates = report.texts().filter(text => /^\d{2}\/\d{2}\/\d{2}$/.test(text));
     expect(dates).toEqual(['11/10/26', '01/10/26', '12/10/26']);
     expect(watch.reads).toEqual([]);
   });
 
   it('shows a plain day of a customer row as the server sent it', async () => {
-    const screen = await open(GRNActivityScreen);
-    expect(screen.label('Green Valley Traders,')).toContain('Latest 12/10/26');
+    const report = await open(GRNActivityScreen);
+    expect(report.label('Green Valley Traders,')).toContain('Latest 12/10/26');
   });
 });
 
@@ -399,20 +391,20 @@ describe('customer activity', () => {
   });
 
   it('calls a customer active today when the last activity was today in India, and names India\'s day otherwise', async () => {
-    const screen = await open(CustomerActivityScreen);
-    expect(screen.customers()).toEqual({
-      'Riverbank Produce': ['Rajkot', 'Active today'],
-      'Green Valley Traders': ['Surat', 'Last active 11/10/26'],
-      'Sunrise Agro Foods': ['Anand', 'Last active 01/10/26'],
-    });
+    await open(CustomerActivityScreen);
+    const facts = (name: string) => within(screen.getByRole('button', { name: new RegExp(`^${name},`) })).queryAllByText(/./).map(textOf);
+    expect(facts('Riverbank Produce')).toContain('Rajkot · Active today');
+    expect(facts('Riverbank Produce').filter(text => text.includes('Last active'))).toEqual([]);
+    expect(facts('Green Valley Traders')).toContain('Surat · Last active 11/10/26');
+    expect(facts('Sunrise Agro Foods')).toContain('Anand · Last active 01/10/26');
     expect(watch.reads).toEqual([]);
   });
 
   it('dates a customer\'s latest GRN, dispatch and invoice by the day in India', async () => {
-    const screen = await open(CustomerActivityScreen, GREEN);
-    expect(screen.label('GRN A0012,')).toContain('GRN A0012, 12 Oct 2026, ');
-    expect(screen.label('Dispatch D0011,')).toContain('Dispatch D0011, 11 Oct 2026, ');
-    expect(screen.label('Invoice 2026-0001,')).toContain('Invoice 2026-0001, 1 Oct 2026, ');
+    const report = await open(CustomerActivityScreen, GREEN);
+    expect(report.label('GRN A0012,')).toContain('GRN A0012, 12 Oct 2026, ');
+    expect(report.label('Dispatch D0011,')).toContain('Dispatch D0011, 11 Oct 2026, ');
+    expect(report.label('Invoice 2026-0001,')).toContain('Invoice 2026-0001, 1 Oct 2026, ');
     expect(watch.reads).toEqual([]);
   });
 });
@@ -447,13 +439,13 @@ describe('stock aging', () => {
   });
 
   it('dates the receipt of a line and its last dispatch by the day in India', async () => {
-    const screen = await open(StockAgingScreen, GREEN);
-    await screen.press('Garlic · Bag, ');
-    expect(screen.label('GRN A0001')).toContain('received 1 Oct 2026, ');
-    expect(screen.texts()).toContain('Received 01/10/26');
-    await screen.press('GRN A0001');
-    const cells = Object.fromEntries(screen.tree.root.findAllByType(KeyValueCell).map(cell => [cell.props.keyLabel as string, cell.props.value as string]));
-    expect(cells['Last dispatch']).toBe('12/10/26');
+    const report = await open(StockAgingScreen, GREEN);
+    await report.press('Garlic · Bag, ');
+    expect(report.label('GRN A0001')).toContain('received 1 Oct 2026, ');
+    expect(report.texts()).toContain('Received 01/10/26');
+    await report.press('GRN A0001');
+    const cell = screen.getByText('Last dispatch').parent!;
+    expect(within(cell).queryAllByText(/./).map(textOf)).toEqual(['Last dispatch', '12/10/26']);
     expect(watch.reads).toEqual([]);
   });
 });
@@ -476,9 +468,10 @@ describe('operations dashboard', () => {
         ],
       },
     } as never);
-    const screen = await open(OperationsDashboardScreen);
-    const activity = screen.tree.root
-      .findAll(node => typeof node.type === 'string' && node.props.accessible === true && /^(GRN|Dispatch) /.test(String(node.props.accessibilityLabel)))
+    await open(OperationsDashboardScreen);
+    const activity = screen
+      .queryAllByLabelText(/^(GRN|Dispatch) /)
+      .filter(node => node.props.accessible === true)
       .map(node => node.props.accessibilityLabel as string);
     expect(activity).toEqual(['Dispatch D0011, Riverbank Produce, 2 min ago', 'GRN A0001, Green Valley Traders, 1 Oct 2026']);
     expect(watch.reads).toEqual([]);
@@ -490,16 +483,14 @@ describe('operations dashboard', () => {
 // ---------------------------------------------------------------------------
 
 describe('the GRNs of a stock item', () => {
-  it('are dated by the day in India when the server sends the time of receipt', () => {
+  it('are dated by the day in India when the server sends the time of receipt', async () => {
     const rows: StockGRNRowData[] = [
       // A customer's own list sends the time of receipt; the staff list sends a plain day.
       { key: 'a', grnId: 'g01', grNo: 'A0001', receivedDate: FIRST_OF_OCTOBER, stock: 60, total: 100 },
       { key: 'b', grnId: 'g02', grNo: 'A0002', receivedDate: '2026-09-02', emptiedDate: TODAY, stock: 0, total: 40 },
     ];
     mockStore = makeStore();
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(
+    await render(
         <StockItemCard
           name="Example Potatoes"
           packaging="50 kg bag"
@@ -512,12 +503,8 @@ describe('the GRNs of a stock item', () => {
           emptyGRNsText="No GRNs with this item in stock."
           onOpenGRN={jest.fn()}
         />
-      );
-    });
-    mounted.push(tree);
-    const labels = tree.root
-      .findAll(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('GRN A'))
-      .map(node => node.props.accessibilityLabel as string);
+    );
+    const labels = screen.getAllByRole('button', { name: /^GRN A/ }).map(node => node.props.accessibilityLabel as string);
     expect(labels).toHaveLength(2);
     expect(labels[0]).toContain('GRN A0001, Received 1 Oct 2026, ');
     expect(labels[1]).toContain('GRN A0002, Received 2 Sep 2026, Emptied 12 Oct 2026');
@@ -526,27 +513,25 @@ describe('the GRNs of a stock item', () => {
 });
 
 describe('the heading over a day', () => {
-  const heading = (date: string) => {
+  const heading = async (date: string) => {
     mockStore = makeStore();
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<ReportDateHeading date={date} />);
-    });
-    mounted.push(tree);
-    return textOf(tree.root.findByProps({ accessibilityRole: 'header' }));
+    const { unmount } = await render(<ReportDateHeading date={date} />);
+    const text = textOf(screen.getByRole('header'));
+    await unmount();
+    return text;
   };
 
-  it('says Today and Yesterday by the day it is in India, without reading the clock in the phone\'s zone', () => {
+  it('says Today and Yesterday by the day it is in India, without reading the clock in the phone\'s zone', async () => {
     // The clock itself is watched here: nothing else is drawn that reads it.
     watch.restore();
     watch = watchPhoneZone([NOW, ...ROW_TIMES]);
-    expect(heading('2026-10-12')).toBe('Today');
-    expect(heading('2026-10-11')).toBe('Yesterday');
-    expect(heading('2026-10-10')).toBe('10/10/26');
-    expect(heading(TODAY)).toBe('Today');
-    expect(heading(YESTERDAY)).toBe('Yesterday');
-    expect(heading(FIRST_OF_OCTOBER)).toBe('01/10/26');
-    expect(heading('2025-10-08')).toBe('08/10/25');
+    expect(await heading('2026-10-12')).toBe('Today');
+    expect(await heading('2026-10-11')).toBe('Yesterday');
+    expect(await heading('2026-10-10')).toBe('10/10/26');
+    expect(await heading(TODAY)).toBe('Today');
+    expect(await heading(YESTERDAY)).toBe('Yesterday');
+    expect(await heading(FIRST_OF_OCTOBER)).toBe('01/10/26');
+    expect(await heading('2025-10-08')).toBe('08/10/25');
     expect(watch.reads).toEqual([]);
   });
 });

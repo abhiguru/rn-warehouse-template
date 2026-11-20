@@ -4,8 +4,7 @@
  * one shows the "Deactivated" tag and cannot be picked on the GRN pickers, but can on the dispatch and order pickers.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { CustomerSearchBottomSheet, type CustomerSearchBottomSheetRef } from '../CustomerSearchBottomSheet';
 import { RecentCustomersService } from '@/services/recent-customers-service';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
@@ -33,7 +32,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
     __esModule: true,
     default: sheet,
     BottomSheetBackdrop: 'BottomSheetBackdrop',
-    BottomSheetTextInput: 'BottomSheetTextInput',
+    BottomSheetTextInput: require('react-native').TextInput,
     BottomSheetFlatList: ({ data, renderItem }: { data: unknown[]; renderItem: (p: { item: unknown }) => React.ReactNode }) =>
       ReactMock.createElement('BottomSheetFlatList', { data }, data.map((item, index) => ReactMock.createElement(ReactMock.Fragment, { key: index }, renderItem({ item })))),
   };
@@ -51,19 +50,16 @@ const rows = [
 ];
 
 const inIds = jest.fn();
-let tree: ReactTestRenderer;
 let selected: jest.Mock;
+const user = userEvent.setup({ delay: 0 });
 
 const mount = async (includeInactive: boolean) => {
   const ref = React.createRef<CustomerSearchBottomSheetRef>();
   selected = jest.fn();
-  await act(async () => {
-    tree = create(<CustomerSearchBottomSheet ref={ref} onSelect={selected} includeInactive={includeInactive} />);
-  });
+  await render(<CustomerSearchBottomSheet ref={ref} onSelect={selected} includeInactive={includeInactive} />);
   await act(async () => { ref.current?.open(); });
 };
-const entry = (name: string) => tree.root.findAll(n => typeof n.props.onPress === 'function' && String(n.props.accessibilityLabel ?? '').startsWith(name))[0];
-const texts = () => tree.root.findAllByType(Text).map(n => [n.props.children].flat().join(''));
+const pick = (name: string) => screen.getByRole('button', { name });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -72,8 +68,7 @@ beforeEach(() => {
   inIds.mockImplementation(() => Promise.resolve({ data: rows, error: null }));
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ from: () => ({ select: () => ({ in: inIds }) }) } as never);
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.useRealTimers();
 });
 
@@ -81,18 +76,17 @@ describe('GRN pickers (deactivated customers hidden)', () => {
   it('leaves out a deleted customer and shows a deactivated one tagged and not selectable', async () => {
     await mount(false);
     expect(inIds).toHaveBeenCalledWith('id', ['c-live', 'c-off', 'c-gone']);
-    expect(entry('Deleted Traders')).toBeUndefined();
-    expect(entry('Live Traders').props.disabled).toBe(false);
-    const off = entry('Deactivated Traders');
-    expect(off.props.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: /Deleted Traders/ })).not.toBeOnTheScreen();
+    expect(pick('Live Traders')).toBeEnabled();
+    const off = pick('Deactivated Traders, Deactivated');
+    expect(off).toBeDisabled();
     expect(off.props.accessibilityState).toEqual({ disabled: true });
-    expect(off.props.accessibilityLabel).toContain('Deactivated');
-    expect(texts()).toContain('Deactivated');
+    expect(screen.getByText('Deactivated')).toBeOnTheScreen();
   });
 
   it('does not select a deactivated recent customer, but selects a live one', async () => {
     await mount(false);
-    await act(async () => { entry('Live Traders').props.onPress(); });
+    await user.press(pick('Live Traders'));
     expect(selected).toHaveBeenCalledWith(expect.objectContaining({ id: 'c-live', name: 'Live Traders' }));
   });
 });
@@ -100,11 +94,10 @@ describe('GRN pickers (deactivated customers hidden)', () => {
 describe('dispatch and order pickers (includeInactive)', () => {
   it('keeps offering a deactivated customer, tagged, and still leaves out a deleted one', async () => {
     await mount(true);
-    expect(entry('Deleted Traders')).toBeUndefined();
-    const off = entry('Deactivated Traders');
-    expect(off.props.disabled).toBe(false);
-    expect(off.props.accessibilityLabel).toContain('Deactivated');
-    await act(async () => { off.props.onPress(); });
+    expect(screen.queryByRole('button', { name: /Deleted Traders/ })).not.toBeOnTheScreen();
+    const off = pick('Deactivated Traders, Deactivated');
+    expect(off).toBeEnabled();
+    await user.press(off);
     expect(selected).toHaveBeenCalledWith(expect.objectContaining({ id: 'c-off' }));
   });
 });
@@ -118,7 +111,7 @@ describe('when the current state cannot be read', () => {
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     await mount(false);
     for (const name of ['Live Traders', 'Deactivated Traders', 'Deleted Traders']) {
-      expect(entry(name).props.disabled).toBe(false);
+      expect(pick(name)).toBeEnabled();
     }
   });
 });

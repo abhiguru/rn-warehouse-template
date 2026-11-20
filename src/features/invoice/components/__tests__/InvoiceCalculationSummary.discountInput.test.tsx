@@ -2,8 +2,8 @@
  * Typing in the discount field of the invoice's summary.
  */
 import React from 'react';
-import { Platform, TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { Platform } from 'react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
 import { InvoiceCalculationSummary } from '../InvoiceCalculationSummary';
@@ -16,7 +16,11 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/fiori', () => ({ InlineValidation: 'InlineValidation' }));
+// A stand-in that draws the message of the error line while it is visible.
+jest.mock('@/components/fiori', () => ({
+  InlineValidation: ({ message, visible }: { message?: string; visible?: boolean }) =>
+    visible !== false && message ? require('react').createElement(require('react-native').Text, { accessibilityRole: 'alert' }, message) : null,
+}));
 
 const item: InvoiceItemData = {
   temp_id: 't1', disp_trl_id: 'd1', grn_item_id: 'gi', item_id: 'item', item_name: 'Fictional potatoes', qty: 100,
@@ -31,166 +35,155 @@ const header: InvoiceHeaderData = {
   labour: 200, tax_amount: 35, total: 335,
 };
 
-const inputLabelled = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === label)!;
-const shownErrors = (tree: ReactTestRenderer) =>
-  tree.root
-    .findAllByType('InlineValidation' as unknown as React.ElementType)
-    .filter((node) => node.props.visible !== false && node.props.message)
-    .map((node) => node.props.message);
-const type = async (tree: ReactTestRenderer, label: string, text: string) => {
-  await act(async () => { inputLabelled(tree, label).props.onChangeText(text); });
+const input = (label: string) => screen.getByLabelText(label);
+// The stand-in for InlineValidation draws the message as an alert while it is visible, so the test reads what the
+// person would be shown (a message that is hidden or empty is not drawn).
+const shownErrors = () => screen.queryAllByRole('alert').map((node) => node.props.children as string);
+// A whole value arrives in one change; typing it key by key would pass through other, valid numbers, and userEvent.paste
+// also leaves the field (the blur then formats "250." as "250.00").
+const type = async (label: string, text: string) => {
+  await fireEvent.changeText(input(label), text);
+};
+const leave = async (label: string) => {
+  await fireEvent(input(label), 'blur', {});
 };
 
 afterEach(() => {
   setLanguage('en');
+  jest.restoreAllMocks();
 });
 
 describe('the discount field', () => {
   const FIELD = 'Invoice discount';
   // Storage 500 + labour 200 + tax 35: the amount before discount is 735.
-  const render = async (onDiscountChange = jest.fn(), onDiscountErrorChange = jest.fn()) => {
-    let tree!: ReactTestRenderer;
-    await act(async () => {
-      tree = create(
-        <InvoiceCalculationSummary
-          header={header}
-          items={[item]}
-          onDiscountChange={onDiscountChange}
-          onDiscountErrorChange={onDiscountErrorChange}
-        />
-      );
-    });
-    return { tree, onDiscountChange, onDiscountErrorChange };
+  const show = async (onDiscountChange = jest.fn(), onDiscountErrorChange = jest.fn()) => {
+    await render(
+      <InvoiceCalculationSummary
+        header={header}
+        items={[item]}
+        onDiscountChange={onDiscountChange}
+        onDiscountErrorChange={onDiscountErrorChange}
+      />
+    );
+    return { onDiscountChange, onDiscountErrorChange };
   };
 
   it('refuses a discount above the invoice amount and says the save is blocked', async () => {
-    const { tree, onDiscountChange, onDiscountErrorChange } = await render();
+    const { onDiscountChange, onDiscountErrorChange } = await show();
 
-    await type(tree, FIELD, '5000');
+    await type(FIELD, '5000');
 
     expect(onDiscountChange).not.toHaveBeenCalled();
-    expect(shownErrors(tree)).toHaveLength(1);
-    expect(onDiscountErrorChange).toHaveBeenLastCalledWith(shownErrors(tree)[0]);
+    expect(shownErrors()).toHaveLength(1);
+    expect(onDiscountErrorChange).toHaveBeenLastCalledWith(shownErrors()[0]);
   });
 
   it('keeps refused text and its message once the field is left; the invoice keeps its discount', async () => {
-    const { tree, onDiscountChange, onDiscountErrorChange } = await render();
-    await type(tree, FIELD, '5000');
-    expect(inputLabelled(tree, FIELD).props.value).toBe('5000');
-    const message = shownErrors(tree)[0];
+    const { onDiscountChange, onDiscountErrorChange } = await show();
+    await type(FIELD, '5000');
+    expect(input(FIELD)).toHaveDisplayValue('5000');
+    const message = shownErrors()[0];
 
-    await act(async () => { inputLabelled(tree, FIELD).props.onBlur(); });
+    await leave(FIELD);
 
-    expect(inputLabelled(tree, FIELD).props.value).toBe('5000');
-    expect(shownErrors(tree)).toEqual([message]);
+    expect(input(FIELD)).toHaveDisplayValue('5000');
+    expect(shownErrors()).toEqual([message]);
     expect(onDiscountErrorChange).toHaveBeenLastCalledWith(message);
     expect(onDiscountChange).not.toHaveBeenCalled();
   });
 
   it('refuses a discount that takes the total to ₹0 under Discount, before any question', async () => {
-    const { tree, onDiscountChange, onDiscountErrorChange } = await render();
+    const { onDiscountChange, onDiscountErrorChange } = await show();
 
-    await type(tree, FIELD, '735');
+    await type(FIELD, '735');
 
     expect(onDiscountChange).not.toHaveBeenCalled();
-    expect(shownErrors(tree)).toEqual([t('invoice.summary.discountTotalZero')]);
+    expect(shownErrors()).toEqual([t('invoice.summary.discountTotalZero')]);
     expect(onDiscountErrorChange).toHaveBeenLastCalledWith(t('invoice.summary.discountTotalZero'));
   });
 
   it('shows a finished number with two decimals once the field is left', async () => {
-    const { tree } = await render();
-    await type(tree, FIELD, '12.5');
+    await show();
+    await type(FIELD, '12.5');
 
-    await act(async () => { inputLabelled(tree, FIELD).props.onBlur(); });
+    await leave(FIELD);
 
-    expect(inputLabelled(tree, FIELD).props.value).toBe('12.50');
-    expect(shownErrors(tree)).toEqual([]);
+    expect(input(FIELD)).toHaveDisplayValue('12.50');
+    expect(shownErrors()).toEqual([]);
   });
 
   it('does not read "1,500" as a discount of 1', async () => {
-    const { tree, onDiscountChange, onDiscountErrorChange } = await render();
+    const { onDiscountChange, onDiscountErrorChange } = await show();
 
-    await type(tree, FIELD, '1,500');
+    await type(FIELD, '1,500');
 
     expect(onDiscountChange).not.toHaveBeenCalled();
-    expect(shownErrors(tree)).toEqual([t('invoice.summary.discountNotNumber')]);
+    expect(shownErrors()).toEqual([t('invoice.summary.discountNotNumber')]);
     expect(onDiscountErrorChange).toHaveBeenLastCalledWith(t('invoice.summary.discountNotNumber'));
   });
 
   it('keeps a decimal and a surcharge as typed', async () => {
-    const { tree, onDiscountChange } = await render();
+    const { onDiscountChange } = await show();
 
-    await type(tree, FIELD, '250.');
-    expect(inputLabelled(tree, FIELD).props.value).toBe('250.');
-    await type(tree, FIELD, '250.5');
+    await type(FIELD, '250.');
+    expect(input(FIELD)).toHaveDisplayValue('250.');
+    await type(FIELD, '250.5');
     expect(onDiscountChange).toHaveBeenLastCalledWith(250.5);
-    await type(tree, FIELD, '-40');
+    await type(FIELD, '-40');
     expect(onDiscountChange).toHaveBeenLastCalledWith(-40);
   });
 
   it('opens a number keyboard that still has the minus sign on Android', async () => {
-    const original = Platform.OS;
-    Platform.OS = 'android';
-    try {
-      const { tree } = await render();
-      expect(inputLabelled(tree, FIELD).props.keyboardType).toBe('numeric');
-    } finally {
-      Platform.OS = original;
-    }
+    jest.replaceProperty(Platform, 'OS', 'android');
+    await show();
+    expect(input(FIELD)).toHaveProp('keyboardType', 'numeric');
   });
 });
 
 describe('the discount the invoice already has, when the amount before discount changes (D8)', () => {
   // Storage 500 + labour 200 + tax 35 = 735; a discount of 500 is allowed.
   const withDiscount: InvoiceHeaderData = { ...header, discount: 500 };
+  const element = (h: InvoiceHeaderData, onDiscountErrorChange: (message: string | null) => void, key?: string) => (
+    <InvoiceCalculationSummary key={key} header={h} items={[item]} onDiscountChange={jest.fn()} onDiscountErrorChange={onDiscountErrorChange} />
+  );
   const mount = async (onDiscountErrorChange = jest.fn()) => {
-    let tree!: ReactTestRenderer;
-    const element = (h: InvoiceHeaderData) => (
-      <InvoiceCalculationSummary header={h} items={[item]} onDiscountChange={jest.fn()} onDiscountErrorChange={onDiscountErrorChange} />
-    );
-    await act(async () => { tree = create(element(withDiscount)); });
-    return { tree, element, onDiscountErrorChange };
+    await render(element(withDiscount, onDiscountErrorChange));
+    return { onDiscountErrorChange };
   };
 
   it('shows the D8 sentence at once when lowering labour and tax takes the total to zero, and tells the form', async () => {
-    const { tree, element, onDiscountErrorChange } = await mount();
-    expect(shownErrors(tree)).toEqual([]);
+    const { onDiscountErrorChange } = await mount();
+    expect(shownErrors()).toEqual([]);
 
-    await act(async () => { tree.update(element({ ...withDiscount, labour: 0, tax_amount: 0 })); });
+    await screen.rerender(element({ ...withDiscount, labour: 0, tax_amount: 0 }, onDiscountErrorChange));
 
-    expect(shownErrors(tree)).toEqual([t('invoice.summary.discountTotalZero')]);
+    expect(shownErrors()).toEqual([t('invoice.summary.discountTotalZero')]);
     expect(onDiscountErrorChange).toHaveBeenLastCalledWith(t('invoice.summary.discountTotalZero'));
   });
 
   it('shows the D8 sentence at once when the summary opens with a discount equal to the amount', async () => {
-    const { tree, onDiscountErrorChange } = await mount();
-    act(() => tree.unmount());
-    let opened!: ReactTestRenderer;
-    await act(async () => {
-      opened = create(
-        <InvoiceCalculationSummary header={{ ...withDiscount, discount: 735 }} items={[item]} onDiscountChange={jest.fn()} onDiscountErrorChange={onDiscountErrorChange} />,
-      );
-    });
-    expect(shownErrors(opened)).toEqual([t('invoice.summary.discountTotalZero')]);
+    const { onDiscountErrorChange } = await mount();
+    // A new key draws the summary afresh, as if it were opened with this discount.
+    await screen.rerender(element({ ...withDiscount, discount: 735 }, onDiscountErrorChange, 'opened'));
+
+    expect(shownErrors()).toEqual([t('invoice.summary.discountTotalZero')]);
     expect(onDiscountErrorChange).toHaveBeenLastCalledWith(t('invoice.summary.discountTotalZero'));
-    act(() => opened.unmount());
   });
 
   it('clears the message when the amount goes back up', async () => {
-    const { tree, element, onDiscountErrorChange } = await mount();
-    await act(async () => { tree.update(element({ ...withDiscount, labour: 0, tax_amount: 0 })); });
-    await act(async () => { tree.update(element(withDiscount)); });
+    const { onDiscountErrorChange } = await mount();
+    await screen.rerender(element({ ...withDiscount, labour: 0, tax_amount: 0 }, onDiscountErrorChange));
+    await screen.rerender(element(withDiscount, onDiscountErrorChange));
 
-    expect(shownErrors(tree)).toEqual([]);
+    expect(shownErrors()).toEqual([]);
     expect(onDiscountErrorChange).toHaveBeenLastCalledWith(null);
   });
 
   it('says the discount is too large when the new amount is below it', async () => {
-    const { tree, element } = await mount();
-    await act(async () => { tree.update(element({ ...withDiscount, discount: 600, labour: 0, tax_amount: 0 })); });
+    const { onDiscountErrorChange } = await mount();
+    await screen.rerender(element({ ...withDiscount, discount: 600, labour: 0, tax_amount: 0 }, onDiscountErrorChange));
 
-    expect(shownErrors(tree)).toHaveLength(1);
-    expect(shownErrors(tree)[0]).not.toBe(t('invoice.summary.discountTotalZero'));
+    expect(shownErrors()).toHaveLength(1);
+    expect(shownErrors()[0]).not.toBe(t('invoice.summary.discountTotalZero'));
   });
 });

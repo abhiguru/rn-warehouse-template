@@ -2,24 +2,23 @@
  * "Show X after Y has closed": on iOS the next dialog waits for the first one's `onDismiss`, on Android it runs once
  * the first is hidden. When the dialog is not open, the next one runs at once.
  */
-import React from 'react';
 import { Platform } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { useAfterClosed } from '../useAfterClosed';
 
 type Api = ReturnType<typeof useAfterClosed>;
-let api: Api;
-let tree: ReactTestRenderer;
+let api: { current: Api };
+let setVisible: (visible: boolean) => Promise<void>;
 const original = Platform.OS;
 
-function Probe({ visible }: { visible: boolean }) {
-  api = useAfterClosed(visible);
-  return null;
-}
-const render = async (visible: boolean) => { await act(async () => { tree = create(<Probe visible={visible} />); }); };
-const setVisible = async (visible: boolean) => { await act(async () => { tree.update(<Probe visible={visible} />); }); };
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+const render = async (visible: boolean) => {
+  const { result, rerender } = await renderHook(({ visible: v }: { visible: boolean }) => useAfterClosed(v), {
+    initialProps: { visible },
+  });
+  api = result;
+  setVisible = async (v: boolean) => { await rerender({ visible: v }); };
+};
+afterEach(() => {
   Object.defineProperty(Platform, 'OS', { configurable: true, get: () => original });
 });
 const platform = (os: 'ios' | 'android') => Object.defineProperty(Platform, 'OS', { configurable: true, get: () => os });
@@ -31,12 +30,12 @@ describe('on iOS', () => {
     await render(true);
     const next = jest.fn();
 
-    await act(async () => { api.later(next); });
+    await act(async () => { api.current.later(next); });
     await setVisible(false);
     // Hidden, but still closing: a Modal opened now would be dropped.
     expect(next).not.toHaveBeenCalled();
 
-    await act(async () => { api.onDismissed(); });
+    await act(async () => { api.current.onDismissed(); });
     expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -45,9 +44,20 @@ describe('on iOS', () => {
     const next = jest.fn();
 
     // later() first, then the flag: the order every screen uses.
-    await act(async () => { api.later(next); tree.update(<Probe visible={false} />); });
+    await act(async () => { api.current.later(next); await setVisible(false); });
     expect(next).not.toHaveBeenCalled();
-    await act(async () => { api.onDismissed(); });
+    await act(async () => { api.current.onDismissed(); });
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('still waits when asked after the dialog was hidden but before it reported closed', async () => {
+    await render(true);
+    const next = jest.fn();
+    await setVisible(false);
+
+    await act(async () => { api.current.later(next); });
+    expect(next).not.toHaveBeenCalled();
+    await act(async () => { api.current.onDismissed(); });
     expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -55,7 +65,7 @@ describe('on iOS', () => {
     await render(false);
     const next = jest.fn();
 
-    await act(async () => { api.later(next); });
+    await act(async () => { api.current.later(next); });
 
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -63,10 +73,10 @@ describe('on iOS', () => {
   it('runs once only: a second dismissal does nothing', async () => {
     await render(true);
     const next = jest.fn();
-    await act(async () => { api.later(next); });
+    await act(async () => { api.current.later(next); });
     await setVisible(false);
 
-    await act(async () => { api.onDismissed(); api.onDismissed(); });
+    await act(async () => { api.current.onDismissed(); api.current.onDismissed(); });
 
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -79,7 +89,7 @@ describe('on Android', () => {
     await render(true);
     const next = jest.fn();
 
-    await act(async () => { api.later(next); });
+    await act(async () => { api.current.later(next); });
     expect(next).not.toHaveBeenCalled();
     await setVisible(false);
 
@@ -90,7 +100,7 @@ describe('on Android', () => {
     await render(false);
     const next = jest.fn();
 
-    await act(async () => { api.later(next); });
+    await act(async () => { api.current.later(next); });
 
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -99,7 +109,7 @@ describe('on Android', () => {
     await render(true);
     const first = jest.fn();
     const second = jest.fn();
-    await act(async () => { api.later(first); api.later(second); });
+    await act(async () => { api.current.later(first); api.current.later(second); });
 
     await setVisible(false);
 

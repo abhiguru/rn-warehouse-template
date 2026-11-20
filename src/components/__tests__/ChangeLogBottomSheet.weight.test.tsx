@@ -5,7 +5,7 @@
  * a lot without a weight shows no weight. Names and numbers are fictional.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import ChangeLogBottomSheet from '../ChangeLogBottomSheet';
 import { setLanguage } from '@/i18n';
 import type { ChangeLogEntry } from '@/types/order.types';
@@ -46,52 +46,57 @@ const entry = (id: string, details: ChangeLogEntry['change_details']): ChangeLog
     relative_time: '2 hours ago',
   }) as unknown as ChangeLogEntry;
 
-const mounted: ReactTestRenderer[] = [];
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   setLanguage('en');
 });
 
-function render(entries: ChangeLogEntry[]) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(<ChangeLogBottomSheet isVisible onClose={jest.fn()} customer={null} entries={entries} loading={false} />);
-  });
-  mounted.push(tree);
-  const texts = () =>
-    tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().filter(child => typeof child === 'string' || typeof child === 'number').join(''));
-  return {
-    texts,
-    /** The weight chips: the texts beside a scale icon. */
-    weightIcons: () => tree.root.findAll(node => (node.type as unknown) === 'Icon' && node.props.name === 'scale'),
-    /** Text drawn outside a Text (a `0` left by `weight && …`), which a phone refuses to draw. */
-    bareTexts: () =>
-      tree.root.findAll(node => (node.type as unknown) === 'View').flatMap(node => node.children.filter(child => typeof child === 'string')),
+type Json = { type: string; props: Record<string, unknown>; children: (Json | string)[] | null };
+
+/** Every host node of the rendered tree (the scale icon is a bare mocked host element with no role or text). */
+function allNodes(): Json[] {
+  const out: Json[] = [];
+  const walk = (node: Json | string | null | (Json | string)[]) => {
+    if (node === null || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    out.push(node);
+    node.children?.forEach(walk);
   };
+  walk(screen.toJSON() as unknown as Json | Json[] | null);
+  return out;
 }
 
+async function show(entries: ChangeLogEntry[]) {
+  await render(<ChangeLogBottomSheet isVisible onClose={jest.fn()} customer={null} entries={entries} loading={false} />);
+}
+/** The weight chips: the scale icons. */
+const weightIcons = () => allNodes().filter(node => node.type === 'Icon' && node.props.name === 'scale');
+/** Text drawn outside a Text (a `0` left by `weight && …`), which a phone refuses to draw. */
+const bareTexts = () => allNodes().filter(node => node.type === 'View').flatMap(node => (node.children ?? []).filter(child => typeof child === 'string'));
+
 describe('change history, the weight of a lot', () => {
-  it('an order line (item_details.weight) reads "50 kg each", beside its rack and mark', () => {
-    const { texts, weightIcons } = render([
+  it('an order line (item_details.weight) reads "50 kg each", beside its rack and mark', async () => {
+    await show([
       entry('a', { action: 'item_added', item_details: { item_name: 'Fictional Onions', grn_no: 'A0010', rack: 'B-14', package_mark: 'PT', weight: 50 } }),
     ]);
-    expect(texts()).toEqual(expect.arrayContaining(['B-14', '50 kg each', 'PT']));
-    expect(texts()).not.toContain('50 kg');
+    expect(screen.getByText('B-14')).toBeOnTheScreen();
+    expect(screen.getByText('50 kg each')).toBeOnTheScreen();
+    expect(screen.getByText('PT')).toBeOnTheScreen();
+    expect(screen.queryByText('50 kg')).not.toBeOnTheScreen();
     expect(weightIcons()).toHaveLength(1);
   });
 
-  it('a dispatch entry (grn_details.grn_item_weight) reads "1,250.5 kg each"', () => {
-    const { texts, weightIcons } = render([
+  it('a dispatch entry (grn_details.grn_item_weight) reads "1,250.5 kg each"', async () => {
+    await show([
       entry('b', { action: 'quantity_reduced_by_dispatch', grn_details: { grn_no: 'A0010', grn_item_rack: 'B-14', grn_item_weight: 1250.5, grn_item_package_mark: 'PT' } }),
     ]);
-    expect(texts()).toContain('1,250.5 kg each');
+    expect(screen.getByText('1,250.5 kg each')).toBeOnTheScreen();
     expect(weightIcons()).toHaveLength(1);
   });
 
-  it('reads "દરેક ૫૦ કિલો" in Gujarati', () => {
+  it('reads "દરેક ૫૦ કિલો" in Gujarati', async () => {
     setLanguage('gu');
-    const { texts } = render([entry('c', { action: 'item_added', item_details: { item_name: 'Fictional Onions', grn_no: 'A0010', weight: 50 } })]);
-    expect(texts()).toContain('દરેક ૫૦ કિલો');
+    await show([entry('c', { action: 'item_added', item_details: { item_name: 'Fictional Onions', grn_no: 'A0010', weight: 50 } })]);
+    expect(screen.getByText('દરેક ૫૦ કિલો')).toBeOnTheScreen();
   });
 
   it.each([
@@ -99,21 +104,22 @@ describe('change history, the weight of a lot', () => {
     ['none', {}],
     ['null', { weight: null }],
     ['0 from the GRN line', { grn_item_weight: 0 }],
-  ])('a lot with weight %s shows its rack and mark and no weight', (_name, weight) => {
-    const { texts, weightIcons, bareTexts } = render([
+  ])('a lot with weight %s shows its rack and mark and no weight', async (_name, weight) => {
+    await show([
       entry('d', { action: 'item_added', item_details: { item_name: 'Fictional Onions', grn_no: 'A0010', rack: 'B-14', package_mark: 'PT', ...weight } as never }),
     ]);
-    expect(texts()).toEqual(expect.arrayContaining(['B-14', 'PT']));
-    expect(texts().filter(text => /kg|each/.test(text))).toEqual([]);
+    expect(screen.getByText('B-14')).toBeOnTheScreen();
+    expect(screen.getByText('PT')).toBeOnTheScreen();
+    expect(screen.queryByText(/kg|each/)).not.toBeOnTheScreen();
     expect(weightIcons()).toEqual([]);
     expect(bareTexts()).toEqual([]);
   });
 
-  it('a lot with nothing but a zero weight draws no details row at all', () => {
-    const { texts, weightIcons, bareTexts } = render([
+  it('a lot with nothing but a zero weight draws no details row at all', async () => {
+    await show([
       entry('e', { action: 'quantity_reduced_by_dispatch', grn_details: { grn_no: 'A0010', grn_item_rack: '', grn_item_weight: 0, grn_item_package_mark: '' } }),
     ]);
-    expect(texts().filter(text => /kg|each/.test(text))).toEqual([]);
+    expect(screen.queryByText(/kg|each/)).not.toBeOnTheScreen();
     expect(weightIcons()).toEqual([]);
     expect(bareTexts()).toEqual([]);
   });

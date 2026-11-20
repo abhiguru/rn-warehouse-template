@@ -1,7 +1,6 @@
 /** The Rates table of the Review step: four columns at normal text; at large text labour and tax move under the item. */
 import React from 'react';
-import * as ReactNative from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { GrnRatesSection, rowA11y } from '../GrnRatesSection';
 import type { PricedRow } from '../grnRateModel';
 
@@ -21,25 +20,24 @@ const row: PricedRow = {
   rate: { source: 'item', weight_min: 0, weight_max: 50, unit_price: 3, labour_rate: 1.5, tax_percent: 5 },
 };
 
-function layoutAt(fontScale: number) {
+async function layoutAt(fontScale: number) {
   mockFontScale = fontScale;
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(
-      <GrnRatesSection rows={[row]} status="ready" offline={false} oneTime={false} day="2026-10-12" onChange={jest.fn()} onAdd={jest.fn()} onUndo={jest.fn()} onRetry={jest.fn()} />,
-    );
-  });
-  const texts = tree.root.findAllByType(ReactNative.Text).map(n => [n.props.children].flat(Infinity).join('').replace(/\u00a0/g, ' '));
-  act(() => tree.unmount());
+  const { unmount } = await render(
+    <GrnRatesSection rows={[row]} status="ready" offline={false} oneTime={false} day="2026-10-12" onChange={jest.fn()} onAdd={jest.fn()} onUndo={jest.fn()} onRetry={jest.fn()} />,
+  );
+  // Every Text in order: the test is about the whole layout, so there is no single query for it.
+  // includeHiddenElements: the old findAllByType saw hidden Text too.
+  const texts = screen.getAllByText(/[\s\S]*/, { includeHiddenElements: true }).map(n =>[n.props.children].flat(Infinity).join('').replace(/\u00a0/g, ' '));
+  await unmount();
   return texts;
 }
 
-it('is a table Item | Rent (₹) | Labour (₹) | Tax (%) at normal text, the figures in their cells', () => {
-  expect(layoutAt(1)).toEqual(['Item', 'Rent (₹)', 'Labour (₹)', 'Tax (%)', 'Fictional Gur', '12 kg each', 'Item rate', '3.00', '1.50', '5', 'Change']);
+it('is a table Item | Rent (₹) | Labour (₹) | Tax (%) at normal text, the figures in their cells', async () => {
+  expect(await layoutAt(1)).toEqual(['Item', 'Rent (₹)', 'Labour (₹)', 'Tax (%)', 'Fictional Gur', '12 kg each', 'Item rate', '3.00', '1.50', '5', 'Change']);
 });
 
-it('at large text keeps the Rent column and moves labour and tax under the item', () => {
-  expect(layoutAt(1.6)).toEqual(['Item', 'Rent (₹)', 'Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5%', 'Item rate', '3.00', 'Change']);
+it('at large text keeps the Rent column and moves labour and tax under the item', async () => {
+  expect(await layoutAt(1.6)).toEqual(['Item', 'Rent (₹)', 'Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5%', 'Item rate', '3.00', 'Change']);
 });
 
 describe('the screen reader text names the item\'s packaging', () => {

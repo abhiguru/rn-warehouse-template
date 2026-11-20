@@ -5,7 +5,7 @@
  * dispatch reads nothing and says how many bags are left.
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { setLanguage } from '@/i18n';
@@ -69,35 +69,40 @@ jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 const lines = () => [reviewLine(1, { grn: 'A101' }), reviewLine(2, { grn: 'A101' }), reviewLine(3, { grn: 'A102' })];
 const answer = (...lots: [string, number][]): Answer =>
   ({ success: true, data: { grn: {}, items: lots.map(([id, stock]) => ({ id, stock })) } }) as unknown as Answer;
+// Reads a test holds open are released in afterEach, so a failing test cannot leave Jest hanging.
+const held: (() => void)[] = [];
 const deferred = () => {
   let resolve!: (value: Answer) => void;
   const promise = new Promise<Answer>((done) => { resolve = done; });
+  held.push(() => resolve(answer()));
   return { promise, resolve };
 };
 
-let tree: ReactTestRenderer;
 const renderAs = async (mode: 'create' | 'edit') => {
   mockForm.isCreateMode = mode === 'create';
   mockForm.items = lines();
-  await act(async () => { tree = create(<DispatchReviewStep mode={mode} />); });
+  await render(<DispatchReviewStep mode={mode} />);
 };
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
+  held.splice(0).forEach((release) => release());
   setLanguage('en');
   jest.restoreAllMocks();
 });
 
-const textOf = (node: ReactTestInstance): string[] =>
-  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('').replace(/\u00A0/g, ' '));
-const all = () => textOf(tree.root);
-const count = (text: string) => all().filter((candidate) => candidate === text).length;
-const find = (id: string) => tree.root.findAll((n) => n.props.testID === id && typeof n.type === 'string');
-const itemsToggle = () => tree.root.find((n) => n.props.testID === 'dispatch-review-section-items' && typeof n.props.onPress === 'function');
+/** The text a Text element shows (a no-break space reads as a space). */
+const textOf = (element: ReturnType<typeof screen.getByText>): string =>
+  [element.props.children].flat().join('').replace(/\u00A0/g, ' ');
+// The absence checks look at hidden elements too (the old test read every node), so a tag cannot hide in a closed part.
+const hidden = { includeHiddenElements: true };
+const textsMatching = (pattern: RegExp) => screen.queryAllByText(pattern, hidden).map(textOf);
+const count = (text: string) => screen.queryAllByText(text, hidden).length;
+const stockError = () => screen.queryByTestId('dispatch-review-stock-error');
+const itemsToggle = (name: string) => screen.getByRole('button', { name });
 
 describe('an edited dispatch', () => {
   it('reads each distinct GRN once, all at the same time, and shows "Checking stock" until they answer', async () => {
@@ -110,8 +115,8 @@ describe('an edited dispatch', () => {
     expect(getGRNDetailByNumber).toHaveBeenCalledTimes(2);
     expect(jest.mocked(getGRNDetailByNumber).mock.calls.map(([number]) => number).sort()).toEqual(['A101', 'A102']);
     expect(count('Checking stock')).toBe(3);
-    expect(all().some((text) => /in stock|left/.test(text))).toBe(false);
-    expect(itemsToggle().props.accessibilityLabel).toBe('Items, 3');
+    expect(textsMatching(/in stock|left/)).toEqual([]);
+    expect(itemsToggle('Items, 3')).toBeOnTheScreen();
 
     await act(async () => { a.resolve(answer(['l1', 90], ['l2', 12])); });
     // One GRN answered, the other not: the whole table waits, so no half-checked figures.
@@ -119,8 +124,8 @@ describe('an edited dispatch', () => {
 
     await act(async () => { b.resolve(answer(['l3', 0])); });
     expect(count('Checking stock')).toBe(0);
-    expect(all().filter((text) => /in stock/.test(text))).toEqual(['90 in stock', '12 in stock', '0 in stock']);
-    expect(find('dispatch-review-stock-error')).toHaveLength(0);
+    expect(textsMatching(/in stock/)).toEqual(['90 in stock', '12 in stock', '0 in stock']);
+    expect(stockError()).not.toBeOnTheScreen();
   });
 
   it('asks for the lots with no stock too (includeZeroStock), so a line that took the last bags shows 0', async () => {
@@ -139,8 +144,8 @@ describe('an edited dispatch', () => {
     jest.mocked(getGRNDetailByNumber).mockImplementation(async (number) => (number === 'A101' ? answer(['l1', 90]) : answer(['l3', 5])));
     await renderAs('edit');
 
-    expect(all().filter((text) => /in stock/.test(text))).toEqual(['90 in stock', '40 in stock', '5 in stock']);
-    expect(find('dispatch-review-stock-error')).toHaveLength(0);
+    expect(textsMatching(/in stock/)).toEqual(['90 in stock', '40 in stock', '5 in stock']);
+    expect(stockError()).not.toBeOnTheScreen();
   });
 
   it('drops an answer that arrives after the lines changed', async () => {
@@ -154,16 +159,16 @@ describe('an edited dispatch', () => {
     // The lines become one line of another GRN.
     mockForm.items = [reviewLine(4, { grn: 'A103' })];
     jest.mocked(getGRNDetailByNumber).mockClear();
-    await act(async () => { tree.update(<DispatchReviewStep mode="edit" />); });
+    await screen.rerender(<DispatchReviewStep mode="edit" />);
     expect(jest.mocked(getGRNDetailByNumber).mock.calls.map(([number]) => number)).toEqual(['A103']);
 
     await act(async () => { fresh.resolve(answer(['l4', 25])); });
-    expect(all().filter((text) => /in stock/.test(text))).toEqual(['25 in stock']);
+    expect(textsMatching(/in stock/)).toEqual(['25 in stock']);
 
     // The first reads answer late, with figures for lots that are no longer there: nothing changes.
     await act(async () => { stale.resolve(answer(['l1', 777])); staleToo.resolve(answer(['l4', 777])); });
-    expect(all().filter((text) => /in stock/.test(text))).toEqual(['25 in stock']);
-    expect(all().some((text) => text.includes('777'))).toBe(false);
+    expect(textsMatching(/in stock/)).toEqual(['25 in stock']);
+    expect(textsMatching(/777/)).toEqual([]);
   });
 
   it('a failed read puts "Stock not checked" on ITEMS with a strip, and no figure on the lines', async () => {
@@ -172,14 +177,17 @@ describe('an edited dispatch', () => {
 
     expect(getGRNDetailByNumber).toHaveBeenCalledTimes(2);
     expect(count('Stock not checked')).toBe(1);
-    expect(itemsToggle().props.accessibilityLabel).toBe('Items, 3, Stock not checked');
-    expect(textOf(find('dispatch-review-stock-error')[0])).toEqual(["Couldn't check the stock of these lots. Check your connection and try again.", 'Try again']);
+    expect(itemsToggle('Items, 3, Stock not checked')).toBeOnTheScreen();
+    // No role or text query reaches the strip itself, so it is found by its testID and its texts are read inside it.
+    expect(within(screen.getByTestId('dispatch-review-stock-error')).getAllByText(/./).map(textOf)).toEqual(["Couldn't check the stock of these lots. Check your connection and try again.", 'Try again']);
     // The message is the shared strip: one element a screen reader announces as "Error: ..."
-    expect(tree.root.findAll((n) => typeof n.type === 'string' && n.props.accessibilityLabel === "Error: Couldn't check the stock of these lots. Check your connection and try again.")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Error: Couldn't check the stock of these lots. Check your connection and try again.", hidden)).toHaveLength(1);
     // Not the stored 40, not the half that was read: no stock tag at all.
-    expect(all().some((text) => /in stock|left|Checking stock/.test(text))).toBe(false);
+    expect(textsMatching(/in stock|left|Checking stock/)).toEqual([]);
     // Everything else on the lines is still there.
-    expect(all()).toEqual(expect.arrayContaining(['Fictional item 1', 'A101/100', 'R3']));
+    ['Fictional item 1', 'A101/100', 'R3'].forEach((text) => {
+      expect(count(text)).toBeGreaterThan(0);
+    });
   });
 
   it('a read that throws is a failed read', async () => {
@@ -187,10 +195,11 @@ describe('an edited dispatch', () => {
     await renderAs('edit');
 
     expect(count('Stock not checked')).toBe(1);
-    expect(find('dispatch-review-stock-retry')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
   });
 
   it('Try again reads every GRN again and, when they answer, the strip and the tag go', async () => {
+    const user = userEvent.setup({ delay: 0 });
     jest.mocked(getGRNDetailByNumber).mockImplementation(async () => ({ success: false } as Answer));
     await renderAs('edit');
     expect(getGRNDetailByNumber).toHaveBeenCalledTimes(2);
@@ -198,18 +207,16 @@ describe('an edited dispatch', () => {
 
     const retry = deferred();
     jest.mocked(getGRNDetailByNumber).mockImplementation(() => retry.promise);
-    const retryButton = tree.root.find((n) => n.props.testID === 'dispatch-review-stock-retry' && typeof n.props.onPress === 'function');
-    expect(retryButton.props.accessibilityLabel).toBe('Try again');
-    await act(async () => { retryButton.props.onPress(); });
+    await user.press(screen.getByRole('button', { name: 'Try again' }));
 
     // Both GRNs asked again; while they run the lines say "Checking stock" and the failure is gone.
     expect(getGRNDetailByNumber).toHaveBeenCalledTimes(4);
     expect(count('Checking stock')).toBe(3);
     expect(count('Stock not checked')).toBe(0);
-    expect(find('dispatch-review-stock-error')).toHaveLength(0);
+    expect(stockError()).not.toBeOnTheScreen();
 
     await act(async () => { retry.resolve(answer(['l1', 90], ['l2', 12], ['l3', 5])); });
-    expect(all().filter((text) => /in stock/.test(text))).toEqual(['90 in stock', '12 in stock', '5 in stock']);
+    expect(textsMatching(/in stock/)).toEqual(['90 in stock', '12 in stock', '5 in stock']);
     expect(count('Stock not checked')).toBe(0);
   });
 
@@ -229,8 +236,8 @@ describe('a new dispatch', () => {
 
     expect(getGRNDetailByNumber).not.toHaveBeenCalled();
     // Stock 40 at the start, 5 bags dispatched: 35 left, on each of the three lines.
-    expect(all().filter((text) => /left/.test(text))).toEqual(['35 left', '35 left', '35 left']);
+    expect(textsMatching(/left/)).toEqual(['35 left', '35 left', '35 left']);
     expect(count('Checking stock')).toBe(0);
-    expect(find('dispatch-review-stock-error')).toHaveLength(0);
+    expect(stockError()).not.toBeOnTheScreen();
   });
 });

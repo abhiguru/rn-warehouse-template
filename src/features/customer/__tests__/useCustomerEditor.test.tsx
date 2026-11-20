@@ -4,8 +4,7 @@
  * them in Redux and showed the previous customer's details.
  */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import CustomerEditRoute from '../../../../app/customer-edit/[id]';
 import { customerService } from '@/services/customer-service';
 import { showAlert } from '@/utils/alert';
@@ -42,19 +41,12 @@ jest.mock('@/services/customer-service', () => ({
 const c1 = { id: 'c1', name: '24 Seven Foods', mobile: '9999900302', active: true, created_at: '2026-01-01' };
 const c2 = { id: 'c2', name: 'Acme Foods', mobile: '9999900308', active: true, created_at: '2026-01-01' };
 
-const input = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === label);
-const valueOf = (tree: ReactTestRenderer, label: string) => input(tree, label)?.props.value;
+
 const NAME = 'Customer name, required';
+const MOBILE = 'Mobile number after plus 91, required';
 
 let params: { id: string };
-let tree: ReactTestRenderer | undefined;
-const mount = async () => {
-  await act(async () => {
-    tree = create(<CustomerEditRoute />);
-  });
-  return tree as ReactTestRenderer;
-};
+const mount = () => render(<CustomerEditRoute />);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -66,33 +58,29 @@ beforeEach(() => {
     data: id === 'c1' ? c1 : c2,
   })) as never);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 
 it('shows customer B, not customer A, when B is opened after A was left', async () => {
-  let screen = await mount();
-  expect(valueOf(screen, NAME)).toBe('24 Seven Foods');
-  expect(valueOf(screen, 'Mobile number after plus 91, required')).toBe('99999 00302');
-  await act(async () => { screen.unmount(); });
+  await mount();
+  expect(await screen.findByLabelText(NAME)).toHaveDisplayValue('24 Seven Foods');
+  expect(screen.getByLabelText(MOBILE)).toHaveDisplayValue('99999 00302');
+  await screen.unmount();
 
   params = { id: 'c2' };
-  screen = await mount();
+  await mount();
 
+  expect(await screen.findByLabelText(NAME)).toHaveDisplayValue('Acme Foods');
   expect(customerService.getCustomerById).toHaveBeenLastCalledWith('c2');
-  expect(valueOf(screen, NAME)).toBe('Acme Foods');
-  expect(valueOf(screen, 'Mobile number after plus 91, required')).toBe('99999 00308');
+  expect(screen.getByLabelText(MOBILE)).toHaveDisplayValue('99999 00308');
 });
 
 it('draws no fields until the load for this id has finished', async () => {
   let release: (value: unknown) => void = () => undefined;
   jest.mocked(customerService.getCustomerById).mockReturnValue(new Promise(resolve => { release = resolve; }) as never);
-  const screen = await mount();
-  expect(input(screen, NAME)).toBeUndefined();
-  expect(screen.root.findAll(node => node.props.accessibilityRole === 'progressbar').length).toBeGreaterThan(0);
-  await act(async () => { release({ success: true, message: '', data: c1 }); });
-  expect(valueOf(screen, NAME)).toBe('24 Seven Foods');
+  await mount();
+  expect(screen.queryByLabelText(NAME)).not.toBeOnTheScreen();
+  expect(screen.getByLabelText('Loading customer')).toHaveProp('accessibilityRole', 'progressbar');
+  release({ success: true, message: '', data: c1 });
+  expect(await screen.findByLabelText(NAME)).toHaveDisplayValue('24 Seven Foods');
 });
 
 it('ignores a late answer for the customer that was left', async () => {
@@ -102,23 +90,25 @@ it('ignores a late answer for the customer that was left', async () => {
       ? new Promise(resolve => { releaseC1 = resolve; })
       : Promise.resolve({ success: true, message: '', data: c2 })) as never);
 
-  const screen = await mount();
+  await mount();
   params = { id: 'c2' };
-  await act(async () => { screen.update(<CustomerEditRoute />); });
-  expect(valueOf(screen, NAME)).toBe('Acme Foods');
+  await screen.rerender(<CustomerEditRoute />);
+  expect(await screen.findByLabelText(NAME)).toHaveDisplayValue('Acme Foods');
 
-  await act(async () => { releaseC1({ success: true, message: '', data: c1 }); });
-  expect(valueOf(screen, NAME)).toBe('Acme Foods');
-  expect(valueOf(screen, 'Mobile number after plus 91, required')).toBe('99999 00308');
+  releaseC1({ success: true, message: '', data: c1 });
+  // Rendering again lets the late answer be handled and shown, if it were not dropped.
+  await screen.rerender(<CustomerEditRoute />);
+  expect(screen.getByLabelText(NAME)).toHaveDisplayValue('Acme Foods');
+  expect(screen.getByLabelText(MOBILE)).toHaveDisplayValue('99999 00308');
 });
 
 it('saves the values loaded for the route id onto that id', async () => {
+  const user = userEvent.setup({ delay: 0 });
   params = { id: 'c2' };
   jest.mocked(customerService.updateCustomer).mockResolvedValue({ success: true, message: '' } as never);
-  const screen = await mount();
-  await act(async () => { input(screen, NAME)?.props.onChangeText('Acme Foods X'); });
-  const save = screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === 'Save customer')[0];
-  await act(async () => { await save.props.onPress(); });
+  await mount();
+  await user.type(await screen.findByLabelText(NAME), ' X');
+  await user.press(screen.getByRole('button', { name: 'Save customer' }));
 
   expect(customerService.updateCustomer).toHaveBeenCalledTimes(1);
   expect(customerService.updateCustomer).toHaveBeenCalledWith(expect.objectContaining({ p_customer_id: 'c2', p_name: 'Acme Foods X' }));
@@ -126,44 +116,44 @@ it('saves the values loaded for the route id onto that id', async () => {
 });
 
 it('offers Try again when the customer cannot be loaded', async () => {
+  const user = userEvent.setup({ delay: 0 });
   jest.mocked(customerService.getCustomerById).mockResolvedValueOnce({ success: false, message: '', error: 'Network request failed' } as never);
-  const screen = await mount();
-  expect(input(screen, NAME)).toBeUndefined();
-  const retry = screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === 'Try again')[0];
-  await act(async () => { retry.props.onPress(); });
-  expect(valueOf(screen, NAME)).toBe('24 Seven Foods');
+  await mount();
+  const retry = await screen.findByRole('button', { name: 'Try again' });
+  expect(screen.queryByLabelText(NAME)).not.toBeOnTheScreen();
+  await user.press(retry);
+  expect(await screen.findByLabelText(NAME)).toHaveDisplayValue('24 Seven Foods');
 });
-
-const button = (screen: ReactTestRenderer, label: string) =>
-  screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label)[0];
 
 it('says the customer is gone, with Back and no Try again, when the load is refused as not found', async () => {
   jest.mocked(customerService.getCustomerById).mockResolvedValueOnce({ success: false, message: 'x', error: 'NOT_FOUND' } as never);
-  const screen = await mount();
-  expect(JSON.stringify(screen.toJSON())).toContain('Customer not found');
-  expect(button(screen, 'Try again')).toBeUndefined();
-  expect(button(screen, 'Back')).toBeDefined();
+  await mount();
+  expect(await screen.findByText('Customer not found')).toBeOnTheScreen();
+  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
+  expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(2);
 });
 
 it('after a save that timed out, a stale answer says the last save may have gone through', async () => {
+  const user = userEvent.setup({ delay: 0 });
   jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: true, message: '', data: { ...c1, updated_at: 't1' } } as never);
   jest.mocked(customerService.updateCustomer)
     .mockResolvedValueOnce({ success: false, message: 'timed out', error: 'Request timed out' } as never)
     .mockResolvedValueOnce({ success: false, message: '', code: 'STALE_CUSTOMER' } as never);
-  const screen = await mount();
-  await act(async () => { input(screen, NAME)?.props.onChangeText('24 Seven Foods X'); });
-  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
-  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  await mount();
+  await user.type(await screen.findByLabelText(NAME), ' X');
+  await user.press(screen.getByRole('button', { name: 'Save customer' }));
+  await user.press(screen.getByRole('button', { name: 'Save customer' }));
   const calls = jest.mocked(showAlert).mock.calls;
   expect(calls[calls.length - 1][1]).toBe('Your last save may have gone through. Reload to see this customer as it is now.');
 });
 
 it('a stale answer without an earlier timeout still says someone else changed the customer', async () => {
+  const user = userEvent.setup({ delay: 0 });
   jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: true, message: '', data: { ...c1, updated_at: 't1' } } as never);
   jest.mocked(customerService.updateCustomer).mockResolvedValueOnce({ success: false, message: '', code: 'STALE_CUSTOMER' } as never);
-  const screen = await mount();
-  await act(async () => { input(screen, NAME)?.props.onChangeText('24 Seven Foods X'); });
-  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  await mount();
+  await user.type(await screen.findByLabelText(NAME), ' X');
+  await user.press(screen.getByRole('button', { name: 'Save customer' }));
   const calls = jest.mocked(showAlert).mock.calls;
   expect(calls[calls.length - 1][1]).toBe('Someone else changed this customer. Reload to see their changes.');
 });

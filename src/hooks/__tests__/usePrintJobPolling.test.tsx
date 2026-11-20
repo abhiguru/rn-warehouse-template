@@ -5,7 +5,7 @@
  * is in the background, and a read that ends after the sheet closed changes nothing.
  */
 import React from 'react';
-import renderer, { act } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 import { usePrintJobPolling } from '../usePrintJobPolling';
 
@@ -71,15 +71,13 @@ function Host(props: HostProps) {
   return null;
 }
 function mount(props: HostProps) {
-  let tree!: renderer.ReactTestRenderer;
-  act(() => { tree = renderer.create(<Host {...props} />); });
-  return tree;
+  return render(<Host {...props} />);
 }
 
 test('slow reads never overlap across many intervals', async () => {
   const jobs = deferred('jobs');
   const status = deferred('status');
-  const tree = mount({ isActive: true, onFetchJobs: jobs.fn, onUpdateStatus: status.fn, hasActiveJob: true });
+  const tree = await mount({ isActive: true, onFetchJobs: jobs.fn, onUpdateStatus: status.fn, hasActiveJob: true });
   await advance(60_000);
   expect(status.fn).toHaveBeenCalledTimes(1);
   expect(jobs.fn).toHaveBeenCalledTimes(1);
@@ -87,13 +85,13 @@ test('slow reads never overlap across many intervals', async () => {
   expect(jobs.maxInFlight).toBe(1);
   await status.finishAll();
   await jobs.finishAll();
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('steady cadence: 5 s status and 10 s jobs while a job is active, 30 s and 60 s when idle', async () => {
   const jobs = immediate();
   const status = immediate();
-  const tree = mount({ isActive: true, onFetchJobs: jobs, onUpdateStatus: status, hasActiveJob: true });
+  const tree = await mount({ isActive: true, onFetchJobs: jobs, onUpdateStatus: status, hasActiveJob: true });
   await advance(0);
   jobs.mockClear();
   status.mockClear();
@@ -101,21 +99,21 @@ test('steady cadence: 5 s status and 10 s jobs while a job is active, 30 s and 6
   expect(status).toHaveBeenCalledTimes(12);
   expect(jobs).toHaveBeenCalledTimes(6);
 
-  act(() => tree.update(<Host isActive onFetchJobs={jobs} onUpdateStatus={status} hasActiveJob={false} />));
+  await tree.rerender(<Host isActive onFetchJobs={jobs} onUpdateStatus={status} hasActiveJob={false} />);
   await advance(10_000); // let the timers already waiting run out at the old cadence
   jobs.mockClear();
   status.mockClear();
   await advance(60_000);
   expect(status).toHaveBeenCalledTimes(2);
   expect(jobs).toHaveBeenCalledTimes(1);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('closing the sheet stops polling and drops the reads still in flight', async () => {
   const jobs = deferred('jobs');
   const status = deferred('status');
-  const tree = mount({ isActive: true, onFetchJobs: jobs.fn, onUpdateStatus: status.fn, hasActiveJob: true });
-  act(() => tree.update(<Host isActive={false} onFetchJobs={jobs.fn} onUpdateStatus={status.fn} hasActiveJob />));
+  const tree = await mount({ isActive: true, onFetchJobs: jobs.fn, onUpdateStatus: status.fn, hasActiveJob: true });
+  await tree.rerender(<Host isActive={false} onFetchJobs={jobs.fn} onUpdateStatus={status.fn} hasActiveJob />);
   await status.finishAll();
   await jobs.finishAll();
   expect(status.applied).toBe(0);
@@ -123,35 +121,35 @@ test('closing the sheet stops polling and drops the reads still in flight', asyn
   await advance(120_000);
   expect(status.fn).toHaveBeenCalledTimes(1);
   expect(jobs.fn).toHaveBeenCalledTimes(1);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('no reads in the background; one of each on return', async () => {
   const jobs = immediate();
   const status = immediate();
-  const tree = mount({ isActive: true, onFetchJobs: jobs, onUpdateStatus: status, hasActiveJob: true });
+  const tree = await mount({ isActive: true, onFetchJobs: jobs, onUpdateStatus: status, hasActiveJob: true });
   await advance(0);
-  act(() => appStateListeners.forEach(l => l('background')));
+  await act(() => appStateListeners.forEach(l => l('background')));
   jobs.mockClear();
   status.mockClear();
   await advance(120_000);
   expect(status).toHaveBeenCalledTimes(0);
   expect(jobs).toHaveBeenCalledTimes(0);
-  act(() => appStateListeners.forEach(l => l('active')));
+  await act(() => appStateListeners.forEach(l => l('active')));
   await advance(0);
   expect(status).toHaveBeenCalledTimes(1);
   expect(jobs).toHaveBeenCalledTimes(1);
-  act(() => tree.unmount());
+  await tree.unmount();
 });
 
 test('a manual refresh during a read joins it instead of sending another', async () => {
   const jobs = deferred('jobs');
   const status = deferred('status');
-  const tree = mount({ isActive: true, onFetchJobs: jobs.fn, onUpdateStatus: status.fn, hasActiveJob: true });
-  act(() => { api.fetchNow(); api.updateStatusNow(); });
+  const tree = await mount({ isActive: true, onFetchJobs: jobs.fn, onUpdateStatus: status.fn, hasActiveJob: true });
+  await act(() => { api.fetchNow(); api.updateStatusNow(); });
   expect(jobs.fn).toHaveBeenCalledTimes(1);
   expect(status.fn).toHaveBeenCalledTimes(1);
   await status.finishAll();
   await jobs.finishAll();
-  act(() => tree.unmount());
+  await tree.unmount();
 });

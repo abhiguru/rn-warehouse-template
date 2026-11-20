@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import type { MutableRefObject } from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { showAlert } from '@/utils/alert';
@@ -40,9 +40,8 @@ jest.mock('@/features/dispatch/screens', () => ({
 }));
 
 let back: ReturnType<typeof installHardwareBack>;
-let tree: ReactTestRenderer;
 const mount = async (element: React.ReactElement) => {
-  await act(async () => { tree = create(element); });
+  await render(element);
 };
 /** What the step does when it is mounted: puts its way back in the route's ref. */
 const register = (guard: (() => void) | null) => {
@@ -54,8 +53,7 @@ beforeEach(() => {
   mockStepProps = null;
   back = installHardwareBack();
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   back.restore();
 });
 
@@ -93,7 +91,7 @@ describe.each([
     back.press();
     // The step draws itself again and registers its way back anew; so does the route.
     register(second);
-    await act(async () => { tree.update(route); });
+    await screen.rerender(route);
 
     expect(back.press()).toBe(true);
 
@@ -107,7 +105,7 @@ describe.each([
     await mount(route);
     register(guard);
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
 
     expect(back.count()).toBe(0);
     expect(back.press()).toBe(false);

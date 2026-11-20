@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { View } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { AlertHost } from '@/components/AlertHost';
 import { showAlert, resetAlertQueueForTests } from '@/utils/alert';
@@ -51,13 +51,11 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: () => null }));
-// Stand-ins that keep their props, so the test can read what they show and answer them.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: 'InvoiceSuccessDialog' }));
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
+// The success and print dialogs are not part of this state: nothing of them is drawn.
+jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: () => null }));
+jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 
-const as = (name: string) => name as unknown as React.ElementType;
-let tree: ReactTestRenderer;
+
 let hardwareBack: ReturnType<typeof installHardwareBack>;
 
 const TITLE = 'Leave without an answer?';
@@ -68,17 +66,27 @@ const MODES = [
   ['edit', 'Save invoice', 'Close invoice edit', '/invoice-details/inv-42', InvoiceEditStep3],
 ] as const;
 
-const pressable = (label: string) =>
-  tree.root.find((node) => node.props?.accessibilityLabel === label && typeof node.props?.onPress === 'function');
-const confirm = () => tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)[0];
-const strip = () => tree.root.findAll((node) => node.props?.testID === 'invoice-lost-answer');
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+const button = (name: string) => screen.getByRole('button', { name });
+// The save question is the dialog with a Cancel button; the leave question has Keep waiting / Leave anyway instead.
+const confirmOpen = () => screen.queryByRole('button', { name: 'Cancel' }) !== null;
+const strip = () => screen.queryByTestId('invoice-lost-answer');
 /** The calls of showAlert that asked the "Leave without an answer?" question. */
 const leaveQuestions = () => jest.mocked(showAlert).mock.calls.filter((call) => call[0] === TITLE);
-/** Presses a button of the latest "Leave without an answer?" question, as the host does (its handler runs after the dialog closes). */
+// A dialog takes no press in its first 250 ms (a double tap on the dialog before it): the clock is moved past that.
+const settle = () => act(async () => { jest.advanceTimersByTime(300); });
+/** Presses a button of the "Leave without an answer?" question the real host draws. */
 const answer = async (text: string) => {
-  const calls = leaveQuestions();
-  const button = calls[calls.length - 1][2]?.find((candidate) => candidate.text === text);
-  await act(async () => { button?.onPress?.(); });
+  await settle();
+  await user().press(button(text));
+};
+/** The bottom button's own handler, called past its disabled state: what the screen's guard against a second save has to hold. */
+const pressPastDisabled = async (name: string) => {
+  // Testing Library shows host views only; the Pressable's own onPress is on the fiber above the button's view.
+  let fiber = button(name).unstable_fiber;
+  while (fiber && typeof fiber.memoizedProps?.onPress !== 'function') fiber = fiber.return;
+  const onPress = fiber?.memoizedProps.onPress as () => unknown;
+  await act(async () => { await onPress(); });
 };
 
 describe.each(MODES)('the %s Review step while the answer is lost', (mode, saveLabel, closeLabel, leaveTo, Step) => {
@@ -86,6 +94,7 @@ describe.each(MODES)('the %s Review step while the answer is lost', (mode, saveL
   let checkSignal: AbortSignal | undefined;
 
   beforeEach(async () => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     resetAlertQueueForTests();
     hardwareBack = installHardwareBack();
@@ -108,38 +117,44 @@ describe.each(MODES)('the %s Review step while the answer is lost', (mode, saveL
           signal?.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })));
         }) as never
     );
-    await act(async () => { tree = create(<View><AlertHost /><Step /></View>); });
+    await render(<View><AlertHost /><Step /></View>);
     // Save, answer the question: the answer is lost, so the question closes and the strip shows.
-    await act(async () => { pressable(saveLabel).props.onPress(); });
-    await act(async () => { void confirm().props.onConfirm(); });
+    await user().press(button(saveLabel));
+    expect(confirmOpen()).toBe(true);
+    await settle();
+    // The dialog's own button carries the same label as the bottom button; the dialog is drawn after the screen.
+    await user().press(screen.getAllByRole('button', { name: saveLabel }).at(-1)!);
+    expect(await screen.findByTestId('invoice-lost-answer')).toBeOnTheScreen();
   });
-  afterEach(async () => {
-    await act(async () => { tree.unmount(); });
+  afterEach(() => {
     hardwareBack.restore();
     resetAlertQueueForTests();
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   it('is locked: the strip shows, the question is closed and the bottom button says its busy label', () => {
-    expect(strip().length).toBeGreaterThan(0);
-    expect(tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)).toHaveLength(0);
-    expect(pressable(mode === 'edit' ? 'Saving invoice…' : 'Creating invoice…').props.disabled).toBe(true);
+    expect(strip()).toBeOnTheScreen();
+    expect(confirmOpen()).toBe(false);
+    expect(button(mode === 'edit' ? 'Saving invoice…' : 'Creating invoice…')).toBeDisabled();
     expect(send).toHaveBeenCalledTimes(1);
     expect(checkSubmission).toHaveBeenCalledTimes(1);
   });
 
   it('the X is usable and asks "Leave without an answer?" with Keep waiting and Leave anyway', async () => {
-    expect(pressable(closeLabel).props.disabled).toBeFalsy();
+    expect(button(closeLabel)).toBeEnabled();
 
-    await act(async () => { pressable(closeLabel).props.onPress(); });
+    await user().press(button(closeLabel));
 
     expect(leaveQuestions()).toHaveLength(1);
     const [, message, buttons] = leaveQuestions()[0];
     expect(message).toBe(MESSAGE);
-    expect(buttons?.map((button) => button.text)).toEqual(['Keep waiting', 'Leave anyway']);
+    expect(buttons?.map((candidate) => candidate.text)).toEqual(['Keep waiting', 'Leave anyway']);
     // The real host draws it.
-    const texts = tree.root.findAll((node) => (node.type as unknown) === require('react-native').Text).map((node) => node.props.children);
-    expect(texts).toEqual(expect.arrayContaining([TITLE, MESSAGE, 'Keep waiting', 'Leave anyway']));
+    expect(await screen.findByText(TITLE)).toBeOnTheScreen();
+    expect(screen.getByText(MESSAGE)).toBeOnTheScreen();
+    expect(screen.getByText('Keep waiting')).toBeOnTheScreen();
+    expect(screen.getByText('Leave anyway')).toBeOnTheScreen();
     expect(router.dismissTo).not.toHaveBeenCalled();
   });
 
@@ -150,28 +165,29 @@ describe.each(MODES)('the %s Review step while the answer is lost', (mode, saveL
     expect(taken).toBe(true);
     expect(leaveQuestions()).toHaveLength(1);
     expect(leaveQuestions()[0][1]).toBe(MESSAGE);
-    expect(leaveQuestions()[0][2]?.map((button) => button.text)).toEqual(['Keep waiting', 'Leave anyway']);
+    expect(leaveQuestions()[0][2]?.map((candidate) => candidate.text)).toEqual(['Keep waiting', 'Leave anyway']);
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
   });
 
   it('Keep waiting leaves the form locked and the check running', async () => {
-    await act(async () => { pressable(closeLabel).props.onPress(); });
+    await user().press(button(closeLabel));
     await answer('Keep waiting');
 
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(checkSignal?.aborted).toBe(false);
-    expect(strip().length).toBeGreaterThan(0);
+    expect(strip()).toBeOnTheScreen();
   });
 
   it('Leave anyway from the X ends the check, leaves the form and sends nothing more', async () => {
-    await act(async () => { pressable(closeLabel).props.onPress(); });
+    await user().press(button(closeLabel));
     await answer('Leave anyway');
 
     expect(checkSignal?.aborted).toBe(true);
     expect(router.dismissTo).toHaveBeenCalledWith(leaveTo);
     expect(send).toHaveBeenCalledTimes(1);
-    expect(strip()).toHaveLength(0);
+    // The aborted check clears the lock one step later.
+    await waitFor(() => expect(strip()).not.toBeOnTheScreen());
     // A new invoice's form is emptied; an edit's is left to its layout.
     if (mode === 'create') expect(mockStore.getState().invoiceForm.header.gr_id).toBe('');
   });
@@ -186,9 +202,9 @@ describe.each(MODES)('the %s Review step while the answer is lost', (mode, saveL
   });
 
   it('the Save button and the question cannot start a second save', async () => {
-    await act(async () => { pressable(mode === 'edit' ? 'Saving invoice…' : 'Creating invoice…').props.onPress?.(); });
+    await pressPastDisabled(mode === 'edit' ? 'Saving invoice…' : 'Creating invoice…');
 
-    expect(tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)).toHaveLength(0);
+    expect(confirmOpen()).toBe(false);
     expect(send).toHaveBeenCalledTimes(1);
   });
 });

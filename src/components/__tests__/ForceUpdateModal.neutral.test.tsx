@@ -5,8 +5,8 @@
  * (WH-146), (2) this page, (3) the store (ForceUpdateModal.test.tsx).
  */
 import React from 'react';
-import { Linking, Platform, Text } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { Linking, Platform } from 'react-native';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 
 const DOWNLOAD_PAGE = 'https://github.com/example-org/rn-warehouse-template/releases/latest';
@@ -15,6 +15,9 @@ const { ForceUpdateModal } = require('../ForceUpdateModal') as typeof import('..
 
 let mockConfig: { publicConfig: Record<string, unknown> | null };
 let mockServer: Record<string, unknown> | null;
+/** An element of the rendered tree, as the queries return it. */
+type HostElement = ReturnType<typeof screen.getByRole>;
+
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
@@ -27,9 +30,9 @@ jest.mock('@/config/operatorServer', () => ({
   lanAddressOf: (server: { lan?: string } | null | undefined) => server?.lan ?? null,
 }));
 
-let tree: ReactTestRenderer | undefined;
 let open: jest.SpyInstance;
 let canOpen: jest.SpyInstance;
+const user = userEvent.setup({ delay: 0 });
 
 beforeEach(() => {
   mockConfig = { publicConfig: { minimumVersion: '2.0.0', storeUrls: { ios: 'https://apps.apple.com/app/id1', android: 'https://play.example.test/app' } } };
@@ -42,59 +45,59 @@ beforeEach(() => {
   setLanguage('en');
 });
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   jest.restoreAllMocks();
 });
 
-async function render() {
-  await act(async () => {
-    tree = create(<ForceUpdateModal />);
-  });
-}
-const button = (): ReactTestInstance =>
-  tree!.root.find(node => node.props.accessibilityRole === 'button' && typeof node.props.onPress === 'function');
-const iconNames = () => tree!.root.findAll(node => node.type === ('Icon' as never)).map(node => node.props.name);
-const press = async () => {
-  await act(async () => {
-    await button().props.onPress();
-  });
+const button = () => screen.getByRole('button');
+/** The icons have no role or text: they are the mocked `Icon` elements, read from the rendered tree. */
+const iconNames = () => {
+  const names: string[] = [];
+  const walk = (node: HostElement) => {
+    if ((node.type as unknown) === 'Icon') names.push(node.props.name);
+    node.children.forEach(child => typeof child !== 'string' && walk(child));
+  };
+  walk(screen.root!);
+  return names;
+};
+const press = async (calls = 1) => {
+  await user.press(button());
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(calls));
 };
 
 describe('the neutral build (EXPO_PUBLIC_UPDATE_URL is set)', () => {
   it('Update app opens the download page, not a store, on Android and on iOS, even when the server names store addresses', async () => {
     for (const os of ['android', 'ios'] as const) {
       Platform.OS = os;
-      await render();
-      await press();
+      await render(<ForceUpdateModal />);
+      await press(os === 'android' ? 1 : 2);
       expect(open).toHaveBeenLastCalledWith(DOWNLOAD_PAGE);
-      act(() => tree?.unmount());
+      await screen.unmount();
     }
     expect(open).toHaveBeenCalledTimes(2);
   });
 
   it('opens it even when the phone says it cannot open that address (no canOpenURL gate)', async () => {
-    await render();
+    await render(<ForceUpdateModal />);
     await press();
     expect(open).toHaveBeenCalledWith(DOWNLOAD_PAGE);
   });
 
   it('reads "Opens the download page" with a download icon, in Gujarati too', async () => {
-    await render();
-    expect(button().props.accessibilityHint).toBe('Opens the download page');
+    await render(<ForceUpdateModal />);
+    expect(button()).toHaveProp('accessibilityHint', 'Opens the download page');
     expect(iconNames()).toContain('download');
     expect(iconNames()).not.toContain('google-play');
-    act(() => tree?.unmount());
+    await screen.unmount();
     setLanguage('gu');
-    await render();
-    expect(button().props.accessibilityHint).toBe('ડાઉનલોડ પેજ ખોલે છે');
+    await render(<ForceUpdateModal />);
+    expect(button()).toHaveProp('accessibilityHint', 'ડાઉનલોડ પેજ ખોલે છે');
   });
 
   it('a facility on its local network only comes first: its own page, its hint and its note; the download page is not opened', async () => {
     mockServer = { kind: 'local', lan: 'http://192.168.1.50:8000' };
-    await render();
-    expect(button().props.accessibilityHint).toBe("Opens your facility's download page");
-    expect(tree!.root.findAllByType(Text).map(node => [node.props.children].flat(Infinity).join(''))).toContain("Opens your facility's download page");
+    await render(<ForceUpdateModal />);
+    expect(button()).toHaveProp('accessibilityHint', "Opens your facility's download page");
+    expect(screen.getByText("Opens your facility's download page")).toBeOnTheScreen();
     await press();
     expect(open).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledWith('http://192.168.1.50:8000/app');
@@ -102,8 +105,8 @@ describe('the neutral build (EXPO_PUBLIC_UPDATE_URL is set)', () => {
 
   it('a local-only server that offers no warehouse network address falls through to the download page', async () => {
     mockServer = { kind: 'local' };
-    await render();
-    expect(button().props.accessibilityHint).toBe('Opens the download page');
+    await render(<ForceUpdateModal />);
+    expect(button()).toHaveProp('accessibilityHint', 'Opens the download page');
     await press();
     expect(open).toHaveBeenCalledWith(DOWNLOAD_PAGE);
   });

@@ -7,8 +7,7 @@
  */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 import { InvoiceLineItemsTab, type InvoiceLineItem } from '../InvoiceLineItemsTab';
 
@@ -22,26 +21,19 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => ({ width: 360, height: 780, scale: 3, fontScale: 1 }),
 }));
 
-const mounted: ReactTestRenderer[] = [];
-afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
-  setLanguage('en');
-});
+afterEach(() => setLanguage('en'));
 
-function render(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(<GestureHandlerRootView>{element}</GestureHandlerRootView>);
-  });
-  mounted.push(tree);
-  return {
-    texts: () => tree.root.findAllByType(Text).map(node => [node.props.children].flat().join('').replace(/\u00A0/g, ' ')),
-    /** Text drawn outside a Text (a `0` left by `weight && …`), which a phone refuses to draw. */
-    bareTexts: () =>
-      tree.root.findAll(node => (node.type as unknown) === 'View').flatMap(node => node.children.filter(child => typeof child === 'string')),
-  };
+function draw(element: React.ReactElement) {
+  return render(<GestureHandlerRootView>{element}</GestureHandlerRootView>);
 }
-const weightWords = (texts: string[]) => texts.filter(text => /kg|each|કિલો|દરેક/.test(text));
+const texts = () =>
+  screen
+    .queryAllByText(/[\s\S]*/, { includeHiddenElements: true })
+    .map(node => [node.props.children].flat().join('').replace(/\u00A0/g, ' '));
+/** Text drawn outside a Text (a `0` left by `weight && …`), which a phone refuses to draw. */
+const bareTexts = () =>
+  screen.container.queryAll(node => node.type === 'View').flatMap(node => node.children.filter(child => typeof child === 'string'));
+const weightWords = () => texts().filter(text => /kg|each|કિલો|દરેક/.test(text));
 
 /** One lot as the Items tab gets it: 4 bags of a lot of 100. */
 const lines = (weight: number | undefined, mark = ''): InvoiceLineItem[] => [
@@ -49,24 +41,26 @@ const lines = (weight: number | undefined, mark = ''): InvoiceLineItem[] => [
 ];
 
 describe('invoice details, the Items table', () => {
-  it('reads "50 kg each" under the item, the weight of one bag and not of the 4 dispatched or the 100 received', () => {
-    const { texts } = render(<InvoiceLineItemsTab items={lines(50)} />);
-    expect(weightWords(texts())).toEqual(['50 kg each']);
+  it('reads "50 kg each" under the item, the weight of one bag and not of the 4 dispatched or the 100 received', async () => {
+    await draw(<InvoiceLineItemsTab items={lines(50)} />);
+    expect(weightWords()).toEqual(['50 kg each']);
   });
 
-  it('puts the mark before the weight', () => {
-    expect(render(<InvoiceLineItemsTab items={lines(50, 'PT')} />).texts()).toContain('PT · 50 kg each');
+  it('puts the mark before the weight', async () => {
+    await draw(<InvoiceLineItemsTab items={lines(50, 'PT')} />);
+    expect(texts()).toContain('PT · 50 kg each');
   });
 
-  it('reads "દરેક ૫૦ કિલો" in Gujarati', () => {
+  it('reads "દરેક ૫૦ કિલો" in Gujarati', async () => {
     setLanguage('gu');
-    expect(render(<InvoiceLineItemsTab items={lines(50)} />).texts()).toContain('દરેક ૫૦ કિલો');
+    await draw(<InvoiceLineItemsTab items={lines(50)} />);
+    expect(texts()).toContain('દરેક ૫૦ કિલો');
   });
 
-  it.each([[0], [undefined]])('a lot with weight %s shows no weight', weight => {
-    const { texts, bareTexts } = render(<InvoiceLineItemsTab items={lines(weight)} />);
-    expect(texts()).toContain('Fictional Onions');
-    expect(weightWords(texts())).toEqual([]);
+  it.each([[0], [undefined]])('a lot with weight %s shows no weight', async weight => {
+    await draw(<InvoiceLineItemsTab items={lines(weight)} />);
+    expect(screen.getByText('Fictional Onions')).toBeOnTheScreen();
+    expect(weightWords()).toEqual([]);
     expect(bareTexts()).toEqual([]);
   });
 });

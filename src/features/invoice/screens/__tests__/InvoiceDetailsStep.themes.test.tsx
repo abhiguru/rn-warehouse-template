@@ -5,12 +5,13 @@
  * Next only (no Back on step 1).
  */
 import React from 'react';
-import { Keyboard, StyleSheet, Text, TextInput, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { Keyboard, StyleSheet, TextInput, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, space } from '@/theme/tokens';
 import { AA, contrastRatio } from '@/theme/tokens/contrast';
 import { fillNewInvoice, groupLines, makeInvoiceStore, openForEdit, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { updateHeader } from '@/store/slices/invoiceFormSlice';
+import { getNextInvoiceNumber } from '@/features/invoice/services/invoiceFormService';
 import InvoiceFormStep3 from '../../../../../app/invoice-form/step3';
 import InvoiceEditStep3 from '../../../../../app/invoice-edit/[id]/step3';
 import InvoiceFormStep1 from '../../../../../app/invoice-form/step1';
@@ -52,7 +53,17 @@ const flat = (style: unknown): Record<string, any> => (StyleSheet.flatten(typeof
 const MODES = [['create', 'step'], ['edit', 'step']] as const;
 const THEMES = BRANDS.flatMap((brand) => (['light', 'dark'] as const).map((mode) => [brand, mode] as const));
 
-let tree: ReactTestRenderer;
+
+type Host = NonNullable<typeof screen.root>;
+function hostNodes(match: (node: Host) => boolean): Host[] {
+  const found: Host[] = [];
+  const walk = (node: Host) => {
+    if (typeof node.type === 'string' && match(node)) found.push(node);
+    for (const child of node.children) if (typeof child !== 'string') walk(child as Host);
+  };
+  walk(screen.root as Host);
+  return found;
+}
 
 describe.each([['create', InvoiceFormStep1], ['edit', InvoiceEditStep1]] as const)('the %s Details step', (mode, Step) => {
   describe.each(THEMES)('%s %s', (brand, themeMode) => {
@@ -65,9 +76,10 @@ describe.each([['create', InvoiceFormStep1], ['edit', InvoiceEditStep1]] as cons
         fillNewInvoice(mockStore, groupLines(1));
         mockStore.dispatch(updateHeader({ inv_no: 42, inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no_typed: true }));
       }
-      await act(async () => { tree = create(<Step />); });
+      await render(<Step />);
 
-      const readOnly = tree.root.findAll((node) => typeof node.type === 'string' && flat(node.props.style).backgroundColor === t.surface.fieldReadOnly);
+      // The read-only fields are plain Views with no role, label or text of their own: found by their background.
+      const readOnly = hostNodes((node) => flat(node.props.style).backgroundColor === t.surface.fieldReadOnly);
       // Financial year, Customer and One-time charge.
       expect(readOnly).toHaveLength(3);
       // The guide's read-only field has no border (and never borrows the outline of a secondary button).
@@ -77,23 +89,21 @@ describe.each([['create', InvoiceFormStep1], ['edit', InvoiceEditStep1]] as cons
         expect(flat(node.props.style).borderColor).not.toBe(t.border.button);
       });
       expect(contrastRatio(t.text.primary, t.surface.fieldReadOnly)).toBeGreaterThanOrEqual(AA.text);
-      const customer = tree.root.findAllByType(Text).find((node) => node.props.children === 'Example Traders');
-      expect(flat(customer!.props.style).color).toBe(t.text.primary);
+      expect(screen.getByText('Example Traders')).toHaveStyle({ color: t.text.primary });
 
-      // The content has room under it for the bar, beyond the usual end padding.
-      const scroll = tree.root.find((node) => typeof node.type === 'string' && (node.type as unknown) === 'KeyboardAwareScrollView');
+      // The content has room under it for the bar, beyond the usual end padding. The scroll view is a string stand-in
+      // (a host named KeyboardAwareScrollView) with no role or text, so it is found by its name.
+      const [scroll] = hostNodes((node) => (node.type as unknown) === 'KeyboardAwareScrollView');
       expect(flat(scroll.props.contentContainerStyle).paddingBottom).toBeGreaterThan(space.xxl);
 
-      const labels = tree.root.findAll((node) => node.props.accessibilityRole === 'button' && typeof node.props.onPress === 'function').map((node) => node.props.accessibilityLabel);
-      expect(labels).toContain('Next');
-      expect(labels).not.toContain('Back');
-      await act(async () => { tree.unmount(); });
+      expect(screen.getByRole('button', { name: 'Next' })).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Back' })).not.toBeOnTheScreen();
     });
   });
 });
 
 describe('closing the keyboard', () => {
-  afterEach(async () => { jest.restoreAllMocks(); await act(async () => { tree.unmount(); }); });
+  afterEach(() => { jest.restoreAllMocks(); });
 
   it('lets go of the focused input when the keyboard hides (useBlurOnKeyboardHide)', async () => {
     const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation((() => ({ remove: jest.fn() })) as never);
@@ -101,8 +111,9 @@ describe('closing the keyboard', () => {
     jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(focused as never);
     mockTheme = { preference: 'light', brand: 'orange' };
     mockStore = makeInvoiceStore();
+    jest.mocked(getNextInvoiceNumber).mockResolvedValue({ success: true, data: { next_invoice_number: 1, prefix: '' } } as never);
     fillNewInvoice(mockStore, groupLines(1));
-    await act(async () => { tree = create(<InvoiceFormStep1 />); });
+    await render(<InvoiceFormStep1 />);
     expect(focused.blur).not.toHaveBeenCalled();
     await act(async () => { listen.mock.calls.filter(([name]) => name === 'keyboardDidHide').forEach(([, handler]) => (handler as () => void)()); });
     expect(focused.blur).toHaveBeenCalledTimes(1);

@@ -4,7 +4,7 @@
  * customer must not hide the next customer's GRNs.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import { GRN_ACTIVITY_CUSTOMER, type GRNRecordsRequest } from '../configs/reports/grnActivity';
@@ -41,20 +41,18 @@ type Filters = ReturnType<typeof useListFilters<GRNRecordsRequest>>;
 const KEY = GRN_ACTIVITY_CUSTOMER.listKey;
 
 /** Two customers' reports on screen at once, as a native stack keeps them. */
-function mountTwo() {
+async function mountTwo() {
   const shown: Record<string, Filters> = {};
   const Probe = ({ scope }: { scope?: string }) => {
     shown[scope ?? 'none'] = useListFilters(GRN_ACTIVITY_CUSTOMER, scope === undefined ? {} : { scope });
     return null;
   };
-  act(() => {
-    TestRenderer.create(
-      <>
-        <Probe scope="c1" />
-        <Probe scope="c2" />
-      </>
-    );
-  });
+  await render(
+    <>
+      <Probe scope="c1" />
+      <Probe scope="c2" />
+    </>
+  );
   return shown;
 }
 
@@ -63,9 +61,9 @@ beforeEach(() => {
 });
 
 describe('useListFilters with a scope', () => {
-  it('a search typed for one customer is not the other customer\'s', () => {
-    const shown = mountTwo();
-    act(() => {
+  it('a search typed for one customer is not the other customer\'s', async () => {
+    const shown = await mountTwo();
+    await act(() => {
       shown.c1.setSearch('E0014');
     });
     expect(shown.c1.search).toBe('E0014');
@@ -77,12 +75,12 @@ describe('useListFilters with a scope', () => {
     expect(mockStore.getState().listFilters.lists[KEY]).toEqual({ values: {}, searches: { c1: 'E0014' } });
   });
 
-  it('a choice is shared by every customer of the list', () => {
-    const shown = mountTwo();
-    act(() => {
+  it('a choice is shared by every customer of the list', async () => {
+    const shown = await mountTwo();
+    await act(() => {
       shown.c1.setSearch('E0014');
     });
-    act(() => {
+    await act(() => {
       shown.c1.setField('invoiced', 'not_invoiced');
     });
     expect(shown.c1.request.view.invoiced).toBe('not_invoiced');
@@ -92,9 +90,9 @@ describe('useListFilters with a scope', () => {
     expect(shown.c2.search).toBe('');
   });
 
-  it('apply writes the choices for all and the search for its own customer', () => {
-    const shown = mountTwo();
-    act(() => {
+  it('apply writes the choices for all and the search for its own customer', async () => {
+    const shown = await mountTwo();
+    await act(() => {
       shown.c2.apply({ invoiced: 'invoiced', search: 'A0006' });
     });
     expect(shown.c2.search).toBe('A0006');
@@ -102,29 +100,29 @@ describe('useListFilters with a scope', () => {
     expect(shown.c1.values.invoiced).toBe('invoiced');
   });
 
-  it('"search as text" is kept for its own customer only', () => {
-    const shown = mountTwo();
-    act(() => {
+  it('"search as text" is kept for its own customer only', async () => {
+    const shown = await mountTwo();
+    await act(() => {
       shown.c1.setSearch('A0006');
       shown.c2.setSearch('B0002');
     });
-    act(() => {
+    await act(() => {
       shown.c1.searchAsText();
     });
     expect(shown.c1.values.searchLiteral).toBe(true);
     expect(shown.c2.values.searchLiteral).toBeUndefined();
   });
 
-  it('Clear all forgets its own search and the shared choices, not the other customer\'s search', () => {
-    const shown = mountTwo();
-    act(() => {
+  it('Clear all forgets its own search and the shared choices, not the other customer\'s search', async () => {
+    const shown = await mountTwo();
+    await act(() => {
       shown.c1.setSearch('E0014');
       shown.c2.setSearch('A0006');
     });
-    act(() => {
+    await act(() => {
       shown.c1.setField('invoiced', 'not_invoiced');
     });
-    act(() => {
+    await act(() => {
       shown.c1.clear();
     });
     expect(shown.c1.search).toBe('');
@@ -133,28 +131,21 @@ describe('useListFilters with a scope', () => {
     expect(shown.c2.search).toBe('A0006');
   });
 
-  it('keeps recent searches per customer', () => {
-    const shown = mountTwo();
+  it('keeps recent searches per customer', async () => {
+    const shown = await mountTwo();
     expect(shown.c1.recentKey).toBe(`${KEY}:c1`);
     expect(shown.c2.recentKey).toBe(`${KEY}:c2`);
   });
 });
 
 describe('useListFilters without a scope', () => {
-  it('keeps the search with the list, as before', () => {
-    let filters!: Filters;
-    const Probe = () => {
-      filters = useListFilters(GRN_ACTIVITY_CUSTOMER);
-      return null;
-    };
-    act(() => {
-      TestRenderer.create(<Probe />);
+  it('keeps the search with the list, as before', async () => {
+    const { result } = await renderHook(() => useListFilters(GRN_ACTIVITY_CUSTOMER));
+    await act(() => {
+      result.current.setSearch('E0014');
     });
-    act(() => {
-      filters.setSearch('E0014');
-    });
-    expect(filters.search).toBe('E0014');
-    expect(filters.recentKey).toBe(KEY);
+    expect(result.current.search).toBe('E0014');
+    expect(result.current.recentKey).toBe(KEY);
     expect(mockStore.getState().listFilters.lists[KEY].values).toEqual({ search: 'E0014' });
   });
 });

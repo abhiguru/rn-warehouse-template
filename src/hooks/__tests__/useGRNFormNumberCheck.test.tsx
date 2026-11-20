@@ -3,8 +3,7 @@
  * check must never throw away the form: a taken number is reported on the
  * field, and nothing else changes.
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import grnFormReducer, { loadGRNData, addHeaderImage, updateHeader, type GRNHeaderData } from '@/store/slices/grnFormSlice';
@@ -74,17 +73,9 @@ function makeStore() {
 }
 
 async function mount(mode: GRNFormMode, store: ReturnType<typeof makeStore>, grnIdParam?: string) {
-  const latest: { current: UseGRNFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useGRNForm({ mode, grnIdParam });
-    return null;
-  };
-  let tree!: ReturnType<typeof create>;
   mockStore = store;
-  await act(async () => {
-    tree = create(<Harness />);
-  });
-  return { form: () => latest.current!, unmount: () => act(async () => { tree.unmount(); }) };
+  const { result, unmount } = await renderHook(() => useGRNForm({ mode, grnIdParam }));
+  return { form: (): UseGRNFormReturn => result.current, unmount };
 }
 
 /** Type a number and let the 750 ms debounce and the check finish. */

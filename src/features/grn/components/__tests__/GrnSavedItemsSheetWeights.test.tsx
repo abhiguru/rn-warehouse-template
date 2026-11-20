@@ -5,7 +5,7 @@
  * longer shown. Each saved line says what one package weighs: "50 kg each".
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, within } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 import ItemsSummaryBottomSheet, { type ItemFormData } from '../ItemsSummaryBottomSheet';
 import { SavedItemCard, type SavedItemCardData } from '../SavedItemCard';
@@ -43,126 +43,119 @@ const saved = (n: number, over: Partial<ItemFormData> = {}): ItemFormData => ({
   ...over,
 });
 
-const mounted: ReactTestRenderer[] = [];
-function mount(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  mounted.push(tree);
-  return tree;
-}
 const renderSheet = (items: ItemFormData[]) =>
-  mount(<ItemsSummaryBottomSheet isVisible onClose={jest.fn()} items={items} onRemoveItem={jest.fn()} onEditItem={jest.fn()} />);
+  render(<ItemsSummaryBottomSheet isVisible onClose={jest.fn()} items={items} onRemoveItem={jest.fn()} onEditItem={jest.fn()} />);
 
 afterEach(() => {
-  act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
   setLanguage('en');
 });
 
-const isText = (node: ReactTestInstance) => (node.type as unknown) === 'Text';
-const textOf = (node: ReactTestInstance) => ([] as unknown[]).concat(node.props.children).join('');
-const texts = (tree: ReactTestRenderer) => tree.root.findAll(isText).map(textOf);
-const hostParent = (node: ReactTestInstance) => {
-  let parent = node.parent;
-  while (parent && typeof parent.type !== 'string') parent = parent.parent;
-  return parent!;
+const textOf = (node: { props: { children?: unknown } }) => ([] as unknown[]).concat(node.props.children).join('');
+/** Every Text node, in order, hidden ones too (the absence checks must see every node). */
+const texts = () => screen.queryAllByText(/[\s\S]*/, { includeHiddenElements: true }).map(textOf);
+/** The icon glyphs on the screen. The mocked icon is a bare host 'Icon' that no query reaches, so this walks toJSON(). */
+const icons = () => {
+  const names: string[] = [];
+  const walk = (node: ReturnType<typeof screen.toJSON>) => {
+    if (!node) return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node.type === 'Icon') names.push(node.props.name as string);
+    node.children?.forEach((child) => typeof child !== 'string' && walk(child));
+  };
+  walk(screen.toJSON());
+  return names;
 };
-/** The badges of the totals row: each as its label and value. */
-const totals = (tree: ReactTestRenderer) => {
-  const quantityLabel = tree.root.findAll(isText).find((node) => /^(Total quantity:|કુલ નંગ:)$/.test(textOf(node)))!;
-  const row = hostParent(hostParent(quantityLabel));
-  return row.findAll((node) => typeof node.type === 'string' && hostParent(node) === row).map((badge) => badge.findAll(isText).map(textOf));
-};
-const icons = (tree: ReactTestRenderer) => tree.root.findAll((node) => (node.type as unknown) === 'Icon').map((node) => node.props.name as string);
 /** The neutral tags of a saved line that carry a weight. */
-const weightTags = (tree: ReactTestRenderer) => texts(tree).filter((text) => /kg|કિલો/.test(text));
-const cardLabels = (tree: ReactTestRenderer) =>
-  tree.root
-    .findAll((node) => typeof node.type === 'string' && node.props.accessible === true && typeof node.props.accessibilityLabel === 'string')
-    .map((node) => node.props.accessibilityLabel as string)
-    .filter((label) => /^(Item|આઇટમ) /.test(label));
+const weightTags = () => screen.queryAllByText(/kg|કિલો/, { includeHiddenElements: true }).map(textOf);
+const cardLabels = () => screen.queryAllByLabelText(/^(Item|આઇટમ) /).map((node) => node.props.accessibilityLabel as string);
+/** The badges of the totals row: only the quantity one exists, as its label then its value. */
+const expectOnlyTotal = (label: string, value: string) => {
+  expect(screen.queryAllByText(/^(Total |કુલ ).*:$/).map(textOf)).toEqual([label]);
+  expect(screen.getByText(label)).toBeOnTheScreen();
+  // The value sits beside its label in the same badge (the card's own quantity shows the same digits).
+  expect(within(screen.getByText(label).parent!).getByText(value)).toBeOnTheScreen();
+};
 
 describe('GRN saved-items sheet', () => {
   // Ten lines of 100 bags at 50 kg: the sheet used to say "Total weight: 50,000 kg".
   const TEN = Array.from({ length: 10 }, (_, n) => saved(n + 1));
 
-  it('shows the total quantity as its only total: no "Total weight"', () => {
-    const tree = renderSheet(TEN);
+  it('shows the total quantity as its only total: no "Total weight"', async () => {
+    await renderSheet(TEN);
 
-    expect(totals(tree)).toEqual([['Total quantity:', '1,000']]);
-    expect(texts(tree)).not.toContain('Total weight:');
-    expect(texts(tree)).not.toContain('50,000 kg');
-    expect(texts(tree).some((text) => /total weight/i.test(text))).toBe(false);
+    expectOnlyTotal('Total quantity:', '1,000');
+    expect(texts()).not.toContain('Total weight:');
+    expect(texts()).not.toContain('50,000 kg');
+    expect(texts().some((text) => /total weight/i.test(text))).toBe(false);
     // The weight badge's glyph went with it; a line's weight tag has its own.
-    expect(icons(tree)).not.toContain('weight');
+    expect(icons()).not.toContain('weight');
   });
 
-  it('shows no total for one line of 100 bags at 50 kg either', () => {
-    const tree = renderSheet([saved(1)]);
+  it('shows no total for one line of 100 bags at 50 kg either', async () => {
+    await renderSheet([saved(1)]);
 
-    expect(totals(tree)).toEqual([['Total quantity:', '100']]);
-    expect(texts(tree)).not.toContain('5,000 kg');
-    expect(weightTags(tree)).toEqual(['50 kg each']);
+    expectOnlyTotal('Total quantity:', '100');
+    expect(texts()).not.toContain('5,000 kg');
+    expect(weightTags()).toEqual(['50 kg each']);
   });
 
-  it('says what one package weighs on every saved line, on the tag and aloud', () => {
-    const tree = renderSheet([saved(1), saved(2, { qty: '40', weight: '25' })]);
+  it('says what one package weighs on every saved line, on the tag and aloud', async () => {
+    await renderSheet([saved(1), saved(2, { qty: '40', weight: '25' })]);
 
-    expect(weightTags(tree)).toEqual(['50 kg each', '25 kg each']);
-    expect(cardLabels(tree)).toEqual([
+    expect(weightTags()).toEqual(['50 kg each', '25 kg each']);
+    expect(cardLabels()).toEqual([
       'Item 1, Fictional item 1, Bag, quantity 100, 50 kg each',
       'Item 2, Fictional item 2, Bag, quantity 40, 25 kg each',
     ]);
   });
 
-  it.each([['0'], [''], ['abc']])('shows no weight tag, and says no weight, for a line saved with weight %p', (weight) => {
-    const tree = renderSheet([saved(1, { weight })]);
+  it.each([['0'], [''], ['abc']])('shows no weight tag, and says no weight, for a line saved with weight %p', async (weight) => {
+    await renderSheet([saved(1, { weight })]);
 
-    expect(weightTags(tree)).toEqual([]);
-    expect(icons(tree)).not.toContain('weight-kilogram');
-    expect(cardLabels(tree)).toEqual(['Item 1, Fictional item 1, Bag, quantity 100']);
-    expect(totals(tree)).toEqual([['Total quantity:', '100']]);
+    expect(weightTags()).toEqual([]);
+    expect(icons()).not.toContain('weight-kilogram');
+    expect(cardLabels()).toEqual(['Item 1, Fictional item 1, Bag, quantity 100']);
+    expectOnlyTotal('Total quantity:', '100');
   });
 
-  it('writes the weight as "દરેક ૫૦ કિલો" in Gujarati, and still has one total', () => {
+  it('writes the weight as "દરેક ૫૦ કિલો" in Gujarati, and still has one total', async () => {
     setLanguage('gu');
-    const tree = renderSheet([saved(1)]);
+    await renderSheet([saved(1)]);
 
-    expect(weightTags(tree)).toEqual(['દરેક ૫૦ કિલો']);
-    expect(totals(tree)).toEqual([['કુલ નંગ:', '૧૦૦']]);
-    expect(texts(tree)).not.toContain('કુલ વજન:');
+    expect(weightTags()).toEqual(['દરેક ૫૦ કિલો']);
+    expectOnlyTotal('કુલ નંગ:', '૧૦૦');
+    expect(texts()).not.toContain('કુલ વજન:');
   });
 });
 
 describe('SavedItemCard weight', () => {
   const card = (weight: SavedItemCardData['weight']) =>
-    mount(<SavedItemCard index={0} item={{ name: 'Potato', packaging: 'Bag', quantity: '100', weight, rack: 'B-14' }} />);
+    render(<SavedItemCard index={0} item={{ name: 'Potato', packaging: 'Bag', quantity: '100', weight, rack: 'B-14' }} />);
 
   it.each([
     [50, '50 kg each'],
     ['50', '50 kg each'],
     [1250.5, '1,250.5 kg each'],
-  ])('shows the weight %p as %p', (weight, shown) => {
-    const tree = card(weight);
+  ])('shows the weight %p as %p', async (weight, shown) => {
+    await card(weight);
 
-    expect(weightTags(tree)).toEqual([shown]);
-    expect(cardLabels(tree)).toEqual([`Item 1, Potato, Bag, quantity 100, ${shown}, rack B-14`]);
+    expect(weightTags()).toEqual([shown]);
+    expect(cardLabels()).toEqual([`Item 1, Potato, Bag, quantity 100, ${shown}, rack B-14`]);
   });
 
-  it.each([[0], ['0'], [undefined], [''], [-5]])('shows no weight tag for the weight %p', (weight) => {
-    const tree = card(weight);
+  it.each([[0], ['0'], [undefined], [''], [-5]])('shows no weight tag for the weight %p', async (weight) => {
+    await card(weight);
 
-    expect(weightTags(tree)).toEqual([]);
-    expect(icons(tree)).not.toContain('weight-kilogram');
-    expect(icons(tree)).toContain('view-grid-outline');
-    expect(cardLabels(tree)).toEqual(['Item 1, Potato, Bag, quantity 100, rack B-14']);
+    expect(weightTags()).toEqual([]);
+    expect(icons()).not.toContain('weight-kilogram');
+    expect(icons()).toContain('view-grid-outline');
+    expect(cardLabels()).toEqual(['Item 1, Potato, Bag, quantity 100, rack B-14']);
   });
 });
 
 describe('GRN saved-items sheet lock tags', () => {
   const renderLocked = (lineLocks: Map<string, 'invoiced' | 'dispatched' | 'quantity'>) =>
-    mount(
+    render(
       <ItemsSummaryBottomSheet
         isVisible
         onClose={jest.fn()}
@@ -173,15 +166,15 @@ describe('GRN saved-items sheet lock tags', () => {
       />
     );
 
-  it('tags a line as the review step does: invoiced, dispatched, or (an older server) quantity only', () => {
-    const tree = renderLocked(new Map([['line-1', 'invoiced'], ['line-2', 'dispatched'], ['line-3', 'quantity']]));
+  it('tags a line as the review step does: invoiced, dispatched, or (an older server) quantity only', async () => {
+    await renderLocked(new Map([['line-1', 'invoiced'], ['line-2', 'dispatched'], ['line-3', 'quantity']]));
 
-    expect(texts(tree).filter((text) => /locked/.test(text))).toEqual([
+    expect(texts().filter((text) => /locked/.test(text))).toEqual([
       'Quantity, item, packing and weight locked',
       'Quantity, item and packing locked',
       'Quantity locked',
     ]);
-    expect(cardLabels(tree)[0]).toContain('on an invoice, quantity, item, packing and weight locked');
-    expect(cardLabels(tree)[3]).not.toMatch(/locked/);
+    expect(cardLabels()[0]).toContain('on an invoice, quantity, item, packing and weight locked');
+    expect(cardLabels()[3]).not.toMatch(/locked/);
   });
 });

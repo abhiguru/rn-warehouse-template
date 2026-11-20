@@ -5,10 +5,8 @@
  */
 import React from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
-import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import ReportsScreen from '../../../../app/(tabs)/reports';
-import { ReportHubRow } from '../ReportHubRow';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 import { setLanguage } from '@/i18n';
 import reportPrefs, { type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
 import { BRANDS, getTokens, space, touchTarget, type Brand, type Mode } from '@/theme/tokens';
@@ -42,9 +40,7 @@ function signIn(role: string, prefs: { pinned?: string[]; recent?: string[] } = 
   };
 }
 
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 afterEach(() => {
-  act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
   setLanguage('en');
 });
 beforeEach(() => {
@@ -56,36 +52,37 @@ beforeEach(() => {
 
 // The scroll view's ref is the jest mock's instance, whose scrollTo is one shared jest.fn (react-native's jest preset).
 const mockScrollTo = ScrollView.prototype.scrollTo as unknown as jest.Mock;
-function render() {
-  let tree!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    tree = TestRenderer.create(<ReportsScreen />);
-  });
-  mounted.push(tree);
-  return tree;
-}
+type Host = ReturnType<typeof screen.getByTestId>;
+
 /** Draw the tab again from the store as it is now. */
-function rerender(tree: TestRenderer.ReactTestRenderer) {
-  act(() => tree.update(<ReportsScreen />));
+const rerender = () => screen.rerender(<ReportsScreen />);
+
+/** The element and every host element below it (the style-only cards and the mocked icons have no query). */
+function hostTree(root: Host): Host[] {
+  const found: Host[] = [];
+  const walk = (node: Host | string) => {
+    if (typeof node === 'string') return;
+    found.push(node);
+    node.children.forEach(walk);
+  };
+  walk(root);
+  return found;
 }
+const textOf = (node: Host) => node.children.filter((child): child is string => typeof child === 'string').join('');
+const allTexts = () => screen.getAllByText(/./).map(textOf);
 
 /** Each section's title and the titles of its rows, in screen order. */
-function sections(tree: TestRenderer.ReactTestRenderer): [string, string[]][] {
-  return tree.root
-    .findAll((node) => typeof node.type === 'string' && String(node.props.testID ?? '').startsWith('reports-hub-section-'))
-    .map((section) => [
-      section.findByType(SectionHeader).props.title as string,
-      section.findAllByType(ReportHubRow).map((row) => row.props.report.title as string),
-    ]);
+function sections(): [string, string[]][] {
+  return screen.queryAllByTestId(/^reports-hub-section-/).map((section) => [
+    within(section).getByRole('header').props.accessibilityLabel as string,
+    within(section)
+      .getAllByTestId(/^reports-hub-row-/)
+      .map((row) => textOf(within(row).getAllByText(/./)[0])),
+  ]);
 }
-function section(tree: TestRenderer.ReactTestRenderer, id: string): ReactTestInstance {
-  return tree.root.find((node) => typeof node.type === 'string' && node.props.testID === `reports-hub-section-${id}`);
-}
-/** The outermost pressable with this label, inside `within`. */
-function target(within: ReactTestInstance, label: string): ReactTestInstance {
-  return within.findAll((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-}
-const press = (node: ReactTestInstance) => act(() => node.props.onPress());
+const section = (id: string) => screen.getByTestId(`reports-hub-section-${id}`);
+/** The pressable with this label, inside `within`. */
+const target = (inside: Host, label: string | RegExp) => within(inside).getByRole('button', { name: label });
 const actions = () => mockDispatch.mock.calls.map(([action]) => action);
 
 const STOCK = ['Stock', ['Stock summary', 'Item stock summary', 'Stock aging']] as [string, string[]];
@@ -93,47 +90,45 @@ const MOVEMENT = ['Movement', ['Dispatch activity', 'GRN activity']] as [string,
 const FINANCIAL = ['Financial', ['Invoice history']] as [string, string[]];
 
 describe('sections', () => {
-  it('a staff account with nothing pinned or opened sees the plain category list', () => {
+  it('a staff account with nothing pinned or opened sees the plain category list', async () => {
     signIn('staff');
-    const tree = render();
-    expect(sections(tree)).toEqual([STOCK, MOVEMENT, FINANCIAL, ['Operations', ['Customer activity']]]);
+    await render(<ReportsScreen />);
+    expect(sections()).toEqual([STOCK, MOVEMENT, FINANCIAL, ['Operations', ['Customer activity']]]);
     // The headers are the shared SectionHeader: capitals on screen, the title for screen readers.
-    const headers = tree.root.findAll((node) => typeof node.type === 'string' && node.props.accessibilityRole === 'header' && node.props.accessible);
-    expect(headers.map((node) => node.props.accessibilityLabel)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
+    expect(screen.getAllByRole('header').map((node) => node.props.accessibilityLabel).filter(Boolean)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
     // The tab header stays: large title, subtitle and the profile button.
-    const text = tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [].concat(node.props.children).join(''));
-    expect(text).toEqual(expect.arrayContaining(['Reports', 'View operations and customer reports', 'STOCK', 'MOVEMENT']));
-    expect(target(tree.root, 'Profile and settings')).toBeDefined();
+    expect(allTexts()).toEqual(expect.arrayContaining(['Reports', 'View operations and customer reports', 'STOCK', 'MOVEMENT']));
+    expect(screen.getByRole('button', { name: 'Profile and settings' })).toBeOnTheScreen();
   });
 
-  it('names the facility the reports are of under the title, its company name first and its short name otherwise', () => {
+  it('names the facility the reports are of under the title, its company name first and its short name otherwise', async () => {
     signIn('staff');
-    const facility = (tree: TestRenderer.ReactTestRenderer) =>
-      tree.root.findAll((node) => (node.type as unknown) === 'Text' && String(node.props.accessibilityLabel ?? '').startsWith('Facility: '));
-    const tree = render();
-    const [line] = facility(tree);
-    expect(line.props.accessibilityLabel).toBe('Facility: Riverside Cold Storage');
-    expect([].concat(line.props.children).join('')).toBe('Riverside Cold Storage');
-    const text = tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [].concat(node.props.children).join(''));
+    await render(<ReportsScreen />);
+    const line = screen.getByLabelText(/^Facility: /);
+    expect(line).toHaveAccessibleName('Facility: Riverside Cold Storage');
+    expect(textOf(line)).toBe('Riverside Cold Storage');
+    const text = allTexts();
     expect(text.indexOf('Reports')).toBeLessThan(text.indexOf('Riverside Cold Storage'));
 
+    await screen.unmount();
     mockServer = { ...SERVER, companyName: '' };
-    expect(facility(render()).map((node) => node.props.accessibilityLabel)).toEqual(['Facility: Riverside']);
+    await render(<ReportsScreen />);
+    expect(screen.getAllByLabelText(/^Facility: /).map((node) => node.props.accessibilityLabel)).toEqual(['Facility: Riverside']);
   });
 
-  it('tells the stock reports apart: stock by customer, stock by item across customers, and stock age', () => {
+  it('tells the stock reports apart: stock by customer, stock by item across customers, and stock age', async () => {
     signIn('staff');
-    const tree = render();
-    const stock = section(tree, 'stock');
-    expect(target(stock, 'Stock summary. Stock by customer')).toBeDefined();
-    expect(target(stock, 'Item stock summary. Stock by item, across customers')).toBeDefined();
-    expect(target(stock, 'Stock aging. Analyse how long stock has been stored')).toBeDefined();
+    await render(<ReportsScreen />);
+    const stock = section('stock');
+    expect(target(stock, 'Stock summary. Stock by customer')).toBeOnTheScreen();
+    expect(target(stock, 'Item stock summary. Stock by item, across customers')).toBeOnTheScreen();
+    expect(target(stock, 'Stock aging. Analyse how long stock has been stored')).toBeOnTheScreen();
   });
 
-  it('shows the pinned reports first, in the order they were pinned, and keeps each in its category', () => {
+  it('shows the pinned reports first, in the order they were pinned, and keeps each in its category', async () => {
     signIn('staff', { pinned: ['invoice-history', 'stock-summary', 'grn-activity'] });
-    const tree = render();
-    expect(sections(tree)).toEqual([
+    await render(<ReportsScreen />);
+    expect(sections()).toEqual([
       ['Pinned', ['Invoice history', 'Stock summary', 'GRN activity']],
       STOCK,
       MOVEMENT,
@@ -142,33 +137,32 @@ describe('sections', () => {
     ]);
     // The star is filled for a pinned report wherever it is listed.
     for (const id of ['pinned', 'financial']) {
-      const star = target(section(tree, id), 'Unpin Invoice history');
-      expect(star.props.accessibilityState).toEqual({ selected: true });
+      expect(target(section(id), 'Unpin Invoice history')).toBeSelected();
     }
   });
 
-  it('shows up to three reports opened last, most recent first, none of them pinned', () => {
+  it('shows up to three reports opened last, most recent first, none of them pinned', async () => {
     signIn('staff', { pinned: ['grn-activity'], recent: ['grn-activity', 'stock-aging', 'invoice-history', 'stock-summary', 'dispatch-activity'] });
-    const tree = render();
-    expect(sections(tree).slice(0, 2)).toEqual([
+    await render(<ReportsScreen />);
+    expect(sections().slice(0, 2)).toEqual([
       ['Pinned', ['GRN activity']],
       ['Recent', ['Stock aging', 'Invoice history', 'Stock summary']],
     ]);
   });
 
-  it('skips a stored report the registry does not know or this role may not open, and fills up to three from the rest', () => {
+  it('skips a stored report the registry does not know or this role may not open, and fills up to three from the rest', async () => {
     signIn('staff', { pinned: ['old-report'], recent: ['old-report', 'operations-dashboard', 'stock-aging', 'invoice-history', 'stock-summary'] });
-    const tree = render();
-    expect(sections(tree).slice(0, 2)).toEqual([
+    await render(<ReportsScreen />);
+    expect(sections().slice(0, 2)).toEqual([
       ['Recent', ['Stock aging', 'Invoice history', 'Stock summary']],
       STOCK,
     ]);
   });
 
-  it('a customer account sees customer activity under Operations, and never the dashboard it once pinned or opened', () => {
+  it('a customer account sees customer activity under Operations, and never the dashboard it once pinned or opened', async () => {
     signIn('customer', { pinned: ['operations-dashboard', 'stock-summary'], recent: ['operations-dashboard', 'grn-activity'] });
-    const tree = render();
-    expect(sections(tree)).toEqual([
+    await render(<ReportsScreen />);
+    expect(sections()).toEqual([
       ['Pinned', ['Stock summary']],
       ['Recent', ['GRN activity']],
       STOCK,
@@ -178,17 +172,17 @@ describe('sections', () => {
     ]);
   });
 
-  it('staff are not offered the dashboard either: its gate is for administrators and supervisors', () => {
+  it('staff are not offered the dashboard either: its gate is for administrators and supervisors', async () => {
     signIn('staff', { pinned: ['operations-dashboard'], recent: ['operations-dashboard'] });
-    const tree = render();
-    expect(sections(tree).map(([title]) => title)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
-    expect(sections(tree)[3]).toEqual(['Operations', ['Customer activity']]);
+    await render(<ReportsScreen />);
+    expect(sections().map(([title]) => title)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
+    expect(sections()[3]).toEqual(['Operations', ['Customer activity']]);
   });
 
-  it.each(['admin', 'supervisor'])('%s sees the dashboard, also pinned', (role) => {
+  it.each(['admin', 'supervisor'])('%s sees the dashboard, also pinned', async (role) => {
     signIn(role, { pinned: ['operations-dashboard', 'stock-summary'], recent: ['operations-dashboard', 'grn-activity'] });
-    const tree = render();
-    expect(sections(tree)).toEqual([
+    await render(<ReportsScreen />);
+    expect(sections()).toEqual([
       ['Pinned', ['Operations dashboard', 'Stock summary']],
       ['Recent', ['GRN activity']],
       STOCK,
@@ -198,104 +192,102 @@ describe('sections', () => {
     ]);
   });
 
-  it('follows the language', () => {
+  it('follows the language', async () => {
     setLanguage('gu');
     signIn('staff', { pinned: ['grn-activity'] });
-    const tree = render();
-    expect(sections(tree).map(([title]) => title)).toEqual(['પિન કરેલા', 'સ્ટોક', 'આવક-જાવક', 'નાણાકીય', 'કામગીરી']);
-    expect(target(section(tree, 'movement'), 'આવકની કામગીરી અનપિન કરો')).toBeDefined();
-    expect(target(section(tree, 'stock'), 'સ્ટોકનો સારાંશ સૌથી ઉપર પિન કરો')).toBeDefined();
+    await render(<ReportsScreen />);
+    expect(sections().map(([title]) => title)).toEqual(['પિન કરેલા', 'સ્ટોક', 'આવક-જાવક', 'નાણાકીય', 'કામગીરી']);
+    expect(target(section('movement'), 'આવકની કામગીરી અનપિન કરો')).toBeOnTheScreen();
+    expect(target(section('stock'), 'સ્ટોકનો સારાંશ સૌથી ઉપર પિન કરો')).toBeOnTheScreen();
   });
 });
 
 describe('pressing', () => {
   const OPEN_GRN = 'GRN activity. Recent goods received with invoice status';
 
-  it('a row opens its report and notes it as opened, for this facility and account', () => {
+  it('a row opens its report and notes it as opened, for this facility and account', async () => {
+    const user = userEvent.setup({ delay: 0 });
     signIn('staff');
-    const tree = render();
-    press(target(section(tree, 'movement'), OPEN_GRN));
+    await render(<ReportsScreen />);
+    await user.press(target(section('movement'), OPEN_GRN));
     expect(mockPush).toHaveBeenCalledWith('/reports/grn-activity');
     expect(actions()).toEqual([
       { type: 'reportPrefs/noteReportOpened', payload: { scope: SCOPE, reportId: 'grn-activity', at: expect.any(Number) } },
     ]);
     // Next time the tab is drawn, the report is under Recent.
-    rerender(tree);
-    expect(sections(tree)[0]).toEqual(['Recent', ['GRN activity']]);
+    await rerender();
+    expect(sections()[0]).toEqual(['Recent', ['GRN activity']]);
   });
 
-  it('the star pins and unpins without opening the report, and says which it will do', () => {
+  it('the star pins and unpins without opening the report, and says which it will do', async () => {
+    const user = userEvent.setup({ delay: 0 });
     signIn('staff');
-    const tree = render();
-    const movement = () => section(tree, 'movement');
-    const star = target(movement(), 'Pin GRN activity to the top');
-    expect(star.props.accessibilityRole).toBe('button');
-    expect(star.props.accessibilityState).toEqual({ selected: false });
-    expect(star.findByType('Icon' as never).props.name).toBe('star-outline');
+    await render(<ReportsScreen />);
+    const star = target(section('movement'), 'Pin GRN activity to the top');
+    expect(star).not.toBeSelected();
+    expect(hostTree(star).find((node) => node.type === 'Icon')?.props.name).toBe('star-outline');
 
-    press(star);
+    await user.press(star);
     expect(actions()).toEqual([{ type: 'reportPrefs/toggleReportPin', payload: { scope: SCOPE, reportId: 'grn-activity', at: expect.any(Number) } }]);
     expect(mockPush).not.toHaveBeenCalled();
 
-    rerender(tree);
-    expect(sections(tree)[0]).toEqual(['Pinned', ['GRN activity']]);
-    const pinned = target(movement(), 'Unpin GRN activity');
-    expect(pinned.props.accessibilityState).toEqual({ selected: true });
-    expect(pinned.findByType('Icon' as never).props.name).toBe('star');
-    expect(target(movement(), 'Pin GRN activity to the top')).toBeUndefined();
+    await rerender();
+    expect(sections()[0]).toEqual(['Pinned', ['GRN activity']]);
+    const pinned = target(section('movement'), 'Unpin GRN activity');
+    expect(pinned).toBeSelected();
+    expect(hostTree(pinned).find((node) => node.type === 'Icon')?.props.name).toBe('star');
+    expect(within(section('movement')).queryByRole('button', { name: 'Pin GRN activity to the top' })).not.toBeOnTheScreen();
 
-    press(target(section(tree, 'pinned'), 'Unpin GRN activity'));
-    rerender(tree);
-    expect(sections(tree).map(([title]) => title)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
+    await user.press(target(section('pinned'), 'Unpin GRN activity'));
+    await rerender();
+    expect(sections().map(([title]) => title)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it('the star is its own target beside the row, not inside it, each at least the touch size', () => {
+  it('the star is its own target beside the row, not inside it, each at least the touch size', async () => {
     signIn('staff');
-    const tree = render();
-    const row = target(section(tree, 'movement'), OPEN_GRN);
-    const star = target(section(tree, 'movement'), 'Pin GRN activity to the top');
-    let ancestor: ReactTestInstance | null = star.parent;
-    while (ancestor) {
-      expect(ancestor).not.toBe(row);
-      ancestor = ancestor.parent;
-    }
-    expect(row.findAll((node) => node === star)).toEqual([]);
+    await render(<ReportsScreen />);
+    const row = target(section('movement'), OPEN_GRN);
+    const star = target(section('movement'), 'Pin GRN activity to the top');
+    // Neither target holds the other, so each has its own touch area.
+    expect(within(row).queryByRole('button', { name: 'Pin GRN activity to the top' })).not.toBeOnTheScreen();
+    expect(within(star).queryByRole('button', { name: OPEN_GRN })).not.toBeOnTheScreen();
     expect(StyleSheet.flatten(star.props.style)).toEqual(expect.objectContaining({ width: touchTarget, minHeight: touchTarget }));
-    expect(StyleSheet.flatten(row.props.style({ pressed: false })).minHeight).toBeGreaterThanOrEqual(touchTarget);
+    expect(StyleSheet.flatten(row.props.style).minHeight).toBeGreaterThanOrEqual(touchTarget);
     // 8 between the two targets.
-    const card = tree.root.findAllByType(ReportHubRow)[0].findAll((node) => typeof node.type === 'string')[0];
-    expect(StyleSheet.flatten(card.props.style).gap).toBe(space.sm);
+    expect(screen.getByTestId('reports-hub-row-grn-activity')).toHaveStyle({ gap: space.sm });
   });
 
-  it('with no facility chosen, shows the categories, opens reports and remembers nothing', () => {
+  it('with no facility chosen, shows the categories, opens reports and remembers nothing', async () => {
+    const user = userEvent.setup({ delay: 0 });
     mockServer = null;
     signIn('staff', { pinned: ['grn-activity'], recent: ['stock-aging'] });
-    const tree = render();
+    await render(<ReportsScreen />);
     // No facility to name: no facility line.
-    expect(tree.root.findAll((node) => String(node.props.accessibilityLabel ?? '').startsWith('Facility'))).toEqual([]);
-    expect(sections(tree)).toEqual([STOCK, MOVEMENT, FINANCIAL, ['Operations', ['Customer activity']]]);
-    press(target(section(tree, 'movement'), 'Pin GRN activity to the top'));
-    press(target(section(tree, 'movement'), OPEN_GRN));
+    expect(screen.queryByLabelText(/^Facility/)).not.toBeOnTheScreen();
+    expect(sections()).toEqual([STOCK, MOVEMENT, FINANCIAL, ['Operations', ['Customer activity']]]);
+    await user.press(target(section('movement'), 'Pin GRN activity to the top'));
+    await user.press(target(section('movement'), OPEN_GRN));
     expect(mockPush).toHaveBeenCalledWith('/reports/grn-activity');
     expect(mockDispatch).not.toHaveBeenCalled();
   });
 
-  it('opens a report once for a double tap, and again for a tap after the first has gone through', () => {
+  it('opens a report once for a double tap, and again for a tap after the first has gone through', async () => {
+    const user = userEvent.setup({ delay: 0 });
     const now = jest.spyOn(Date, 'now');
     try {
       signIn('staff');
-      const tree = render();
+      await render(<ReportsScreen />);
       now.mockReturnValue(1_000_000);
-      press(target(section(tree, 'movement'), OPEN_GRN));
+      await user.press(target(section('movement'), OPEN_GRN));
       now.mockReturnValue(1_000_250);
-      press(target(section(tree, 'movement'), OPEN_GRN));
+      await user.press(target(section('movement'), OPEN_GRN));
       // A second row hit by the same double tap opens nothing either.
-      press(section(tree, 'financial').findAll((node) => String(node.props.accessibilityLabel ?? '').startsWith('Invoice history. ') && typeof node.props.onPress === 'function')[0]);
+      await user.press(target(section('financial'), /^Invoice history\. /));
       expect(mockPush.mock.calls).toEqual([['/reports/grn-activity']]);
       // Back on the tab later: the next tap opens its report.
       now.mockReturnValue(1_000_700);
-      press(target(section(tree, 'movement'), OPEN_GRN));
+      await user.press(target(section('movement'), OPEN_GRN));
       expect(mockPush.mock.calls).toEqual([['/reports/grn-activity'], ['/reports/grn-activity']]);
     } finally {
       now.mockRestore();
@@ -304,54 +296,54 @@ describe('pressing', () => {
 });
 
 describe('scrolling to a new section', () => {
-  it('goes to the top once when Recent appears on a tab that is already drawn, not on a draw with the same sections', () => {
+  it('goes to the top once when Recent appears on a tab that is already drawn, not on a draw with the same sections', async () => {
+    const user = userEvent.setup({ delay: 0 });
     signIn('staff');
-    const tree = render();
-    expect(sections(tree).map(([title]) => title)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
+    await render(<ReportsScreen />);
+    expect(sections().map(([title]) => title)).toEqual(['Stock', 'Movement', 'Financial', 'Operations']);
     // Mounting is not a change.
     expect(mockScrollTo).not.toHaveBeenCalled();
 
     // A report is opened: Recent becomes the first section.
-    press(target(section(tree, 'movement'), 'GRN activity. Recent goods received with invoice status'));
-    rerender(tree);
-    expect(sections(tree)[0]).toEqual(['Recent', ['GRN activity']]);
+    await user.press(target(section('movement'), 'GRN activity. Recent goods received with invoice status'));
+    await rerender();
+    expect(sections()[0]).toEqual(['Recent', ['GRN activity']]);
     expect(mockScrollTo.mock.calls).toEqual([[{ y: 0 }]]);
 
     // Drawn again with the same sections (a re-focus, a theme change): no scroll.
-    rerender(tree);
-    rerender(tree);
+    await rerender();
+    await rerender();
     expect(mockScrollTo).toHaveBeenCalledTimes(1);
 
     // The first pin adds a Pinned section above Recent: a change, so one more scroll.
-    press(target(section(tree, 'stock'), 'Pin Stock aging to the top'));
-    rerender(tree);
-    expect(sections(tree)[0]).toEqual(['Pinned', ['Stock aging']]);
+    await user.press(target(section('stock'), 'Pin Stock aging to the top'));
+    await rerender();
+    expect(sections()[0]).toEqual(['Pinned', ['Stock aging']]);
     expect(mockScrollTo).toHaveBeenCalledTimes(2);
 
     // A second pin changes neither the number of sections nor the first one: no scroll.
-    press(target(section(tree, 'stock'), 'Pin Stock summary to the top'));
-    rerender(tree);
-    expect(sections(tree)[0]).toEqual(['Pinned', ['Stock aging', 'Stock summary']]);
+    await user.press(target(section('stock'), 'Pin Stock summary to the top'));
+    await rerender();
+    expect(sections()[0]).toEqual(['Pinned', ['Stock aging', 'Stock summary']]);
     expect(mockScrollTo).toHaveBeenCalledTimes(2);
   });
 });
 
 const MODES: Mode[] = ['light', 'dark'];
 describe.each(BRANDS.flatMap((brand) => MODES.map((mode) => [brand, mode] as const)))('in %s %s', (brand, mode) => {
-  it('draws the tab and its rows in the theme', () => {
+  it('draws the tab and its rows in the theme', async () => {
     const t = getTokens(brand, mode);
     signIn('admin', { pinned: ['grn-activity'] }, brand, mode);
-    const tree = render();
-    const background = (node: ReactTestInstance) => StyleSheet.flatten(node.props.style)?.backgroundColor;
-    expect(background(tree.root.findAllByType('View' as never)[0])).toBe(t.background.base);
-    const row = tree.root.findAllByType(ReportHubRow).find((node) => node.props.report.id === 'stock-summary')!;
-    const hostViews = row.findAll((node) => typeof node.type === 'string' && node.props.style !== undefined);
-    expect(hostViews.map(background)).toEqual(expect.arrayContaining([t.surface.card, t.brand.subtle]));
-    expect(row.findAllByType('Icon' as never).map((icon) => [icon.props.name, icon.props.color])).toEqual([
+    await render(<ReportsScreen />);
+    const background = (node: Host) => StyleSheet.flatten(node.props.style)?.backgroundColor;
+    expect(screen.root).toHaveStyle({ backgroundColor: t.background.base });
+    const row = hostTree(screen.getByTestId('reports-hub-row-stock-summary'));
+    expect(row.filter((node) => node.props.style !== undefined).map(background)).toEqual(expect.arrayContaining([t.surface.card, t.brand.subtle]));
+    expect(row.filter((node) => node.type === 'Icon').map((icon) => [icon.props.name, icon.props.color])).toEqual([
       ['warehouse', t.brand.tint],
       ['star-outline', t.icon.primary],
     ]);
-    const pinnedRow = tree.root.findAllByType(ReportHubRow).find((node) => node.props.report.id === 'grn-activity')!;
-    expect(pinnedRow.findAllByType('Icon' as never)[1].props).toEqual(expect.objectContaining({ name: 'star', color: t.brand.tint }));
+    const pinnedIcons = hostTree(screen.getAllByTestId('reports-hub-row-grn-activity')[0]).filter((node) => node.type === 'Icon');
+    expect(pinnedIcons[1].props).toEqual(expect.objectContaining({ name: 'star', color: t.brand.tint }));
   });
 });

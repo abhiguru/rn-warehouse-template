@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 import { BRANDS, fontWeight, getTokens, type Mode } from '@/theme/tokens';
 import { PERIOD_KEY } from '@/features/filters/configs/reports/shared';
@@ -27,56 +27,66 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn(), push: jes
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
 
-let tree: ReactTestRenderer | undefined;
 afterEach(() => {
-  if (tree) act(() => tree!.unmount());
-  tree = undefined;
   setLanguage('en');
 });
 
-function render(element: React.ReactElement, brand = 'orange', mode: Mode = 'light') {
+async function renderThemed(element: React.ReactElement, brand: string, mode: Mode) {
   mockState = { theme: { preference: mode, brand } };
-  act(() => {
-    tree = create(element);
-  });
-  return tree!;
+  await render(element);
 }
-const flat = (node: ReactTestInstance) => (StyleSheet.flatten(node.props.style) ?? {}) as Record<string, unknown>;
-const textNodes = (root: ReactTestRenderer) => root.root.findAll(node => (node.type as unknown) === 'Text');
-const textOf = (node: ReactTestInstance) => [node.props.children].flat().join('');
+
+/** Every host element of the rendered tree: nothing else finds a style-only container or the mocked icon. */
+type JsonElement = NonNullable<ReturnType<typeof screen.toJSON>>;
+function hostNodes(): JsonElement[] {
+  const found: JsonElement[] = [];
+  const walk = (node: JsonElement | JsonElement[] | string | null) => {
+    if (!node || typeof node === 'string') return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    found.push(node);
+    (node.children ?? []).forEach(walk);
+  };
+  walk(screen.toJSON());
+  return found;
+}
 
 describe.each(THEMES)('shared report parts in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('the no-customer state: the report title over one wording, on the theme background', () => {
-    const root = render(<ReportNoCustomer title="GRN activity" />, brand, mode);
-    const texts = textNodes(root).map(textOf);
-    expect(texts).toEqual(expect.arrayContaining(['GRN activity', 'No customer linked', 'No customer is linked to your account. Ask your facility to link one.']));
+  it('the no-customer state: the report title over one wording, on the theme background', async () => {
+    await renderThemed(<ReportNoCustomer title="GRN activity" />, brand, mode);
+    expect(screen.getByText('GRN activity')).toBeOnTheScreen();
+    expect(screen.getByText('No customer linked')).toBeOnTheScreen();
+    expect(screen.getByText('No customer is linked to your account. Ask your facility to link one.')).toBeOnTheScreen();
     // Nothing to retry: a customer can only be linked by the facility.
-    expect(root.root.findAll(node => node.props.accessibilityLabel === 'Try again' && typeof node.props.onPress === 'function')).toEqual([]);
-    const screen = root.root.findAll(node => typeof node.type === 'string' && flat(node).flex === 1 && flat(node).backgroundColor === t.background.base);
-    expect(screen.length).toBeGreaterThan(0);
-    expect(root.root.findAll(node => node.props.name === 'account-off-outline').length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText('Try again')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
+    const nodes = hostNodes();
+    const container = nodes.filter(node => {
+      const style = (StyleSheet.flatten(node.props.style as never) ?? {}) as Record<string, unknown>;
+      return style.flex === 1 && style.backgroundColor === t.background.base;
+    });
+    expect(container.length).toBeGreaterThan(0);
+    expect(nodes.filter(node => node.props.name === 'account-off-outline').length).toBeGreaterThan(0);
   });
 
-  it('the date heading: the day as a header, footnote semibold in the secondary text colour', () => {
-    const root = render(<ReportDateHeading date="2026-10-09" />, brand, mode);
-    const [heading] = textNodes(root);
-    expect(heading.props.accessibilityRole).toBe('header');
-    expect(textOf(heading)).toMatch(/09\/10\/26/);
-    expect(flat(heading).color).toBe(t.text.secondary);
-    expect(flat(heading).fontWeight).toBe(fontWeight.semibold);
-    expect(flat(heading).textTransform).toBe('uppercase');
+  it('the date heading: the day as a header, footnote semibold in the secondary text colour', async () => {
+    await renderThemed(<ReportDateHeading date="2026-10-09" />, brand, mode);
+    const heading = screen.getByRole('header');
+    expect(heading).toHaveTextContent(/09\/10\/26/);
+    expect(heading).toHaveStyle({ color: t.text.secondary, fontWeight: fontWeight.semibold, textTransform: 'uppercase' });
   });
 });
 
 describe('the no-customer state in Gujarati', () => {
-  it('uses the shared Gujarati wording', () => {
+  it('uses the shared Gujarati wording', async () => {
     setLanguage('gu');
-    const texts = textNodes(render(<ReportNoCustomer title="આવકની કામગીરી" />)).map(textOf);
-    expect(texts).toEqual(
-      expect.arrayContaining(['કોઈ વેપારી જોડાયેલ નથી', 'તમારા ખાતા સાથે કોઈ વેપારી જોડાયેલ નથી. તમારા કોલ્ડ સ્ટોરેજને વેપારી જોડવા કહો.'])
-    );
+    await render(<ReportNoCustomer title="આવકની કામગીરી" />);
+    expect(screen.getByText('કોઈ વેપારી જોડાયેલ નથી')).toBeOnTheScreen();
+    expect(screen.getByText('તમારા ખાતા સાથે કોઈ વેપારી જોડાયેલ નથી. તમારા કોલ્ડ સ્ટોરેજને વેપારી જોડવા કહો.')).toBeOnTheScreen();
   });
 });
 

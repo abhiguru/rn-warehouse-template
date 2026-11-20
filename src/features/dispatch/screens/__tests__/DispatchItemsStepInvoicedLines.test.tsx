@@ -3,7 +3,7 @@
  * opening it says why and changes nothing, while the other lines open as usual.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { showAlert } from '@/utils/alert';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import type { DispatchItemData } from '@/types/dispatch.types';
@@ -67,13 +67,21 @@ jest.mock('@/features/dispatch/components', () => ({
   GRNAutocompleteBottomSheet: 'GRNAutocompleteBottomSheet',
   GRNItemBottomSheet: 'GRNItemBottomSheet',
   LotBottomSheet: 'LotBottomSheet',
-  ItemsSummaryBottomSheet: 'ItemsSummaryBottomSheet',
+  // A stand-in with one button per saved line, each calling the step's own onEditItem with that line.
+  ItemsSummaryBottomSheet: ({ items, onEditItem }: { items: DispatchItemData[]; onEditItem: (item: DispatchItemData) => void }) => {
+    const { createElement } = jest.requireActual('react');
+    const { Pressable, Text } = jest.requireActual('react-native');
+    return items.map((item) =>
+      createElement(
+        Pressable,
+        { key: item.unique_id, accessibilityRole: 'button', accessibilityLabel: `Edit ${item.unique_id}`, onPress: () => onEditItem(item) },
+        createElement(Text, null, item.unique_id),
+      ),
+    );
+  },
 }));
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
-
-let tree: ReactTestRenderer;
-const sheet = () => tree.root.find((node) => (node.type as unknown) === 'ItemsSummaryBottomSheet');
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -86,22 +94,19 @@ beforeEach(async () => {
       items: [],
     },
   } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>);
-  await act(async () => { tree = create(<DispatchItemsStep mode="edit" />); });
+  await render(<DispatchItemsStep mode="edit" />);
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
-  jest.restoreAllMocks();
-});
+afterEach(() => jest.restoreAllMocks());
 
 it('a line on an invoice is read only: opening it says "This line can\'t be changed" and why, and loads nothing', async () => {
-  await act(async () => { await sheet().props.onEditItem(INVOICED); });
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Edit line-1' }));
 
   expect(showAlert).toHaveBeenCalledWith("This line can't be changed", 'On invoice INV7. Delete or edit the invoice first.');
   expect(getGRNDetailByNumber).not.toHaveBeenCalled();
 });
 
 it('the other line of the same dispatch opens for editing', async () => {
-  await act(async () => { await sheet().props.onEditItem(PLAIN); });
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Edit line-2' }));
 
   expect(showAlert).not.toHaveBeenCalled();
   expect(getGRNDetailByNumber).toHaveBeenCalledWith('G0311', true);

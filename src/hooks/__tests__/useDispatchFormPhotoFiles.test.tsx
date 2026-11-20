@@ -5,12 +5,12 @@
  * registry itself keeps a file an upload still holds.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import dispatchFormReducer, { addImage, loadDispatchData } from '@/store/slices/dispatchFormSlice';
 import { createEmptyDispatchHeader } from '@/types/dispatch.types';
 import { releaseLocalPhotos, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
-import { useDispatchForm, type UseDispatchFormReturn } from '../useDispatchForm';
+import { useDispatchForm } from '../useDispatchForm';
 
 // react-redux is not transformed for jest here, so the store is bound by hand.
 let mockStore: ReturnType<typeof makeStore>;
@@ -47,17 +47,9 @@ function makeStore() {
 }
 
 async function mount(store: ReturnType<typeof makeStore>, dispatchIdParam?: string) {
-  const latest: { current: UseDispatchFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useDispatchForm({ mode: 'edit', dispatchIdParam });
-    return null;
-  };
   mockStore = store;
-  let tree!: ReturnType<typeof create>;
-  await act(async () => {
-    tree = create(<Harness />);
-  });
-  return { form: () => latest.current!, unmount: () => act(async () => { tree.unmount(); }) };
+  const { result, unmount } = await renderHook(() => useDispatchForm({ mode: 'edit', dispatchIdParam }));
+  return { form: () => result.current, unmount };
 }
 
 const photos = [

@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { useOrderLiveUpdates, ORDER_REFRESH_INTERVAL_MS } from '../useOrderLiveUpdates';
 
 let mockFocused = true;
@@ -46,75 +46,74 @@ afterEach(() => {
 });
 
 type Options = Parameters<typeof useOrderLiveUpdates>[2];
-function render(refresh: () => void, enabled = true, options?: Options) {
+async function mount(refresh: () => void, enabled = true, options?: Options) {
   const Harness = () => { useOrderLiveUpdates(refresh, enabled, options); return null; };
-  let tree!: ReturnType<typeof create>;
-  act(() => { tree = create(<Harness />); });
-  return { rerender: () => act(() => { tree.update(<Harness />); }), unmount: () => act(() => { tree.unmount(); }) };
+  const view = await render(<Harness />);
+  return { rerender: () => view.rerender(<Harness />), unmount: () => view.unmount() };
 }
 
 it('reads only while the screen is shown and catches up once on its return', async () => {
   const refresh = jest.fn();
-  const view = render(refresh);
+  const view = await mount(refresh);
   expect(refresh).not.toHaveBeenCalled();
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
 
   mockFocused = false;
-  view.rerender();
+  await view.rerender();
   await advance(4 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
 
   mockFocused = true;
-  view.rerender();
+  await view.rerender();
   expect(refresh).toHaveBeenCalledTimes(2);
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(3);
-  view.unmount();
+  await view.unmount();
   await advance(4 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(3);
 });
 
 it('keeps the timer when the profile object is replaced for the same account', async () => {
   const refresh = jest.fn();
-  const view = render(refresh);
+  const view = await mount(refresh);
   await advance(INTERVAL / 2);
   mockProfile = { id: 'profile-fictional-1', name: 'Fictional Customer (renamed)' };
-  view.rerender();
+  await view.rerender();
   await advance(INTERVAL / 2);
   expect(refresh).toHaveBeenCalledTimes(1);
   // The timer keeps going across an account switch.
   mockProfile = { id: 'profile-fictional-2', name: 'Another Fictional Customer' };
-  view.rerender();
+  await view.rerender();
   await advance(INTERVAL - 1);
   expect(refresh).toHaveBeenCalledTimes(1);
   await advance(1);
   expect(refresh).toHaveBeenCalledTimes(2);
-  view.unmount();
+  await view.unmount();
 });
 
 it('leaves the catch-up to a list that refreshes on its own return, and to nobody when disabled', async () => {
   const listRefresh = jest.fn();
-  const list = render(listRefresh, true, { refreshOnFocus: false });
+  const list = await mount(listRefresh, true, { refreshOnFocus: false });
   mockFocused = false;
-  list.rerender();
+  await list.rerender();
   mockFocused = true;
-  list.rerender();
+  await list.rerender();
   expect(listRefresh).not.toHaveBeenCalled();
   await advance(INTERVAL);
   expect(listRefresh).toHaveBeenCalledTimes(1);
-  list.unmount();
+  await list.unmount();
 
   mockFocused = true;
   const disabledRefresh = jest.fn();
-  const disabled = render(disabledRefresh, false);
+  const disabled = await mount(disabledRefresh, false);
   mockFocused = false;
-  disabled.rerender();
+  await disabled.rerender();
   mockFocused = true;
-  disabled.rerender();
+  await disabled.rerender();
   await advance(4 * INTERVAL);
   expect(disabledRefresh).not.toHaveBeenCalled();
-  disabled.unmount();
+  await disabled.unmount();
 });
 
 describe.each([
@@ -123,69 +122,69 @@ describe.each([
 ])('back to the foreground or online while shown: %s', (_name, options) => {
   it('refreshes once after the app was in the background, reading nothing meanwhile', async () => {
     const refresh = jest.fn();
-    const view = render(refresh, true, options);
-    appState('background');
+    const view = await mount(refresh, true, options);
+    await appState('background');
     await advance(4 * INTERVAL);
     expect(refresh).not.toHaveBeenCalled();
-    appState('active');
+    await appState('active');
     expect(refresh).toHaveBeenCalledTimes(1);
     await advance(INTERVAL);
     expect(refresh).toHaveBeenCalledTimes(2);
-    view.unmount();
+    await view.unmount();
   });
 
   it('refreshes once after the device was offline, reading nothing meanwhile', async () => {
     const refresh = jest.fn();
-    const view = render(refresh, true, options);
+    const view = await mount(refresh, true, options);
     mockConnected = false;
-    view.rerender();
+    await view.rerender();
     await advance(4 * INTERVAL);
     expect(refresh).not.toHaveBeenCalled();
     mockConnected = true;
-    view.rerender();
+    await view.rerender();
     expect(refresh).toHaveBeenCalledTimes(1);
     // Rendering again while still online is no new return.
-    view.rerender();
+    await view.rerender();
     expect(refresh).toHaveBeenCalledTimes(1);
-    view.unmount();
+    await view.unmount();
   });
 
   it('neither refreshes nor reads for a background trip while another screen is shown', async () => {
     const refresh = jest.fn();
-    const view = render(refresh, true, options);
+    const view = await mount(refresh, true, options);
     mockFocused = false;
-    view.rerender();
-    appState('background');
-    appState('active');
+    await view.rerender();
+    await appState('background');
+    await appState('active');
     mockConnected = false;
-    view.rerender();
+    await view.rerender();
     mockConnected = true;
-    view.rerender();
+    await view.rerender();
     await advance(4 * INTERVAL);
     expect(refresh).not.toHaveBeenCalled();
-    view.unmount();
+    await view.unmount();
   });
 
   it('does nothing when disabled', async () => {
     const refresh = jest.fn();
-    const view = render(refresh, false, options);
-    appState('background');
-    appState('active');
+    const view = await mount(refresh, false, options);
+    await appState('background');
+    await appState('active');
     await advance(4 * INTERVAL);
     expect(refresh).not.toHaveBeenCalled();
-    view.unmount();
+    await view.unmount();
   });
 });
 
 it('treats the first move to the foreground of an app started in the background as no return', async () => {
   AppState.currentState = 'background';
   const refresh = jest.fn();
-  const view = render(refresh);
+  const view = await mount(refresh);
   await advance(4 * INTERVAL);
   expect(refresh).not.toHaveBeenCalled();
-  appState('active');
+  await appState('active');
   expect(refresh).not.toHaveBeenCalled();
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
-  view.unmount();
+  await view.unmount();
 });

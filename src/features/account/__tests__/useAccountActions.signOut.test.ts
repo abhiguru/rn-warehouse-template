@@ -2,8 +2,8 @@
  * G-40: Sign out is an ordinary action, not a dangerous one. The row has no red and
  * the confirm button is the brand-filled one; only Delete account stays dangerous.
  */
-import { createElement } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import React from 'react';
+import { act, render as renderScreen } from '@testing-library/react-native';
 import { useAccountActions } from '../useAccountActions';
 import { resetCentralStateForTests, setCentralState } from '@/config/centralState';
 import { setLanguage, t } from '@/i18n';
@@ -41,24 +41,17 @@ jest.mock('@/store/slices/authSlice', () => ({
 
 type Hook = ReturnType<typeof useAccountActions>;
 let hook: Hook;
-let tree: ReactTestRenderer | undefined;
 function Probe() {
   hook = useAccountActions();
   return null;
 }
 async function render() {
-  await act(async () => {
-    tree = create(createElement(Probe));
-  });
+  await renderScreen(React.createElement(Probe));
 }
 
 beforeEach(() => {
   setLanguage('en');
   resetCentralStateForTests();
-});
-afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
 });
 
 describe('Sign out is not drawn as dangerous', () => {
@@ -68,7 +61,7 @@ describe('Sign out is not drawn as dangerous', () => {
     const signOut = hook.actions[0];
     expect(signOut.id).toBe('signOut');
     expect(signOut.destructive).toBe(false);
-    act(() => hook.request('signOut'));
+    await act(() => hook.request('signOut'));
     expect(hook.dialog.variant).toBe('default');
     expect(hook.dialog.icon).toBe('logout');
   });
@@ -79,14 +72,14 @@ describe('Sign out is not drawn as dangerous', () => {
     await render();
     const phone = hook.actions.find(action => action.id === 'signOutPhone')!;
     expect(phone.destructive).toBe(false);
-    act(() => hook.request('signOutPhone'));
+    await act(() => hook.request('signOutPhone'));
     expect(hook.dialog.variant).toBe('default');
   });
 
   it('Delete account stays the dangerous one', async () => {
     mockCentralOn = false;
     await render();
-    act(() => hook.deletion.open());
+    await act(() => hook.deletion.open());
     expect(hook.deletion.dialog.variant).toBe('danger');
   });
 });
@@ -100,7 +93,7 @@ describe('Sign out without central login: the phone could not clear its storage'
     showAlert.mockClear();
     router.replace.mockClear();
     await render();
-    act(() => hook.request('signOut'));
+    await act(() => hook.request('signOut'));
     await act(async () => {
       hook.dialog.onConfirm();
     });

@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import {
   getFacilityCapabilities,
   hasCapability,
@@ -169,7 +169,6 @@ describe('verifySelectedOperator', () => {
 });
 
 describe('useFacilityCapabilities', () => {
-  let renderer: ReactTestRenderer | undefined;
   let seen: FacilityCapabilities[] = [];
   let sensors: boolean[] = [];
   function Probe() {
@@ -180,12 +179,7 @@ describe('useFacilityCapabilities', () => {
   beforeEach(async () => {
     seen = [];
     sensors = [];
-    await act(async () => {
-      renderer = create(React.createElement(Probe));
-    });
-  });
-  afterEach(async () => {
-    await act(async () => renderer?.unmount());
+    await render(React.createElement(Probe));
   });
 
   it('renders again when the capabilities are recorded', async () => {

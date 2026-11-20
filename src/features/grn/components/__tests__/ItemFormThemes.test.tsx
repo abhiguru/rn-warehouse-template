@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { SavedItemCard } from '../SavedItemCard';
 import { HorizontalItemForm, type ItemFormData } from '../HorizontalItemForm';
@@ -57,33 +57,38 @@ const item: ItemFormData = {
   errors: { qty: 'Enter a quantity.' },
 };
 
-function render(brand: Brand, mode: Mode, element: React.ReactElement) {
+async function renderThemed(brand: Brand, mode: Mode, element: React.ReactElement) {
   mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
+  await render(element);
 }
 
-/** Every colour used in a rendered tree, from host views and texts. */
-function colours(tree: ReactTestRenderer): string[] {
+type Json = ReturnType<typeof screen.toJSON>;
+/**
+ * Every colour used on the screen, from host views and texts. A colour is not a role, a label or a text, so the rendered
+ * tree (all host nodes) is walked; nothing in the queries reaches a style.
+ */
+function colours(): string[] {
   const out: string[] = [];
-  tree.root.findAll(node => typeof node.type === 'string').forEach(node => {
+  const walk = (node: NonNullable<Json> | string) => {
+    if (typeof node === 'string') return;
     const style = StyleSheet.flatten(node.props.style) as Record<string, unknown> | undefined;
-    if (!style) return;
-    for (const key of ['color', 'backgroundColor', 'borderColor']) {
-      if (typeof style[key] === 'string') out.push(style[key] as string);
+    if (style) {
+      for (const key of ['color', 'backgroundColor', 'borderColor']) {
+        if (typeof style[key] === 'string') out.push(style[key] as string);
+      }
     }
-  });
+    (node.children ?? []).forEach(walk);
+  };
+  const tree = screen.toJSON();
+  (Array.isArray(tree) ? tree : tree ? [tree] : []).forEach(walk);
   return out;
 }
 
 describe.each(THEMES)('GRN item form components in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('renders SavedItemCard with token colours and state tags', () => {
-    const tree = render(brand, mode, (
+  it('renders SavedItemCard with token colours and state tags', async () => {
+    await renderThemed(brand, mode, (
       <SavedItemCard
         index={0}
         item={{ name: 'Potatoes', packaging: '50 kg bag', quantity: '1200', weight: 1250.5, rack: 'F1/C4', packageMark: 'M1', images: [image] }}
@@ -91,18 +96,19 @@ describe.each(THEMES)('GRN item form components in %s %s', (brand, mode) => {
         lock="quantity"
       />
     ));
-    const used = colours(tree);
+    const used = colours();
     expect(used).toContain(t.surface.selected);
     expect(used).toContain(t.status.critical.text);
     expect(used).toContain(t.text.primary);
-    const texts = tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
-    expect(texts).toEqual(expect.arrayContaining(['1,200', '1,250.5 kg each', '1', 'Editing', 'Quantity locked']));
-    expect(texts).not.toContain('1,250.5 kg');
+    for (const text of ['1,200', '1,250.5 kg each', '1', 'Editing', 'Quantity locked']) {
+      expect(screen.getAllByText(text).length).toBeGreaterThan(0);
+    }
+    expect(screen.queryByText('1,250.5 kg')).not.toBeOnTheScreen();
   });
 
-  it('renders the item entry strip and its parts', () => {
+  it('renders the item entry strip and its parts', async () => {
     const noop = jest.fn();
-    const tree = render(brand, mode, (
+    await renderThemed(brand, mode, (
       <>
         <HorizontalItemForm
           currentItem={item}
@@ -125,14 +131,14 @@ describe.each(THEMES)('GRN item form components in %s %s', (brand, mode) => {
         <ImageUploadButton currentImages={['a']} />
       </>
     ));
-    const used = colours(tree);
+    const used = colours();
     expect(used).toContain(t.brand.fill);
     expect(used).toContain(t.surface.field);
     expect(used).toContain(t.status.negative.text);
     expect(used).toContain(t.brand.subtle);
     expect(used).toContain(t.surface.fieldReadOnly);
     expect(used).toContain(t.overlay.scrim);
-    const selected = tree.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityRole === 'radio' && n.props.accessibilityState?.selected);
+    const selected = screen.getAllByRole('radio', { selected: true });
     expect(selected.length).toBeGreaterThanOrEqual(4);
   });
 });

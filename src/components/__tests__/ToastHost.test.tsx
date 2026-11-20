@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { AccessibilityInfo, Keyboard, StyleSheet } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ToastHost } from '../ToastHost';
 import { showToast } from '@/utils/toast';
@@ -23,27 +23,39 @@ const metrics = {
   insets: { top: 47, left: 0, right: 0, bottom: BOTTOM_INSET },
 };
 
-let tree: ReactTestRenderer | null = null;
+
 let announce: jest.SpyInstance;
 
-function mount() {
-  act(() => {
-    tree = create(
-      <SafeAreaProvider initialMetrics={metrics}>
-        <ToastHost />
-      </SafeAreaProvider>
-    );
-  });
-  return tree!;
-}
+const mount = () =>
+  render(
+    <SafeAreaProvider initialMetrics={metrics}>
+      <ToastHost />
+    </SafeAreaProvider>
+  );
 
-function texts() {
-  return tree!.root
-    .findAll(n => (n.type as unknown) === 'Text')
-    .map(n => ([] as unknown[]).concat(n.props.children).join(''));
-}
+type Json = ReturnType<typeof screen.toJSON>;
+type JsonNode = Exclude<NonNullable<Json>, unknown[]>;
 
-const advance = (ms: number) => act(() => { jest.advanceTimersByTime(ms); });
+/** Every element of the rendered tree (the wrapper's touch rule and position are not queryable any other way). */
+function elements(): JsonNode[] {
+  const out: JsonNode[] = [];
+  const walk = (node: unknown) => {
+    if (!node || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    out.push(node as JsonNode);
+    ((node as JsonNode).children ?? []).forEach(walk);
+  };
+  walk(screen.toJSON());
+  return out;
+}
+const wrappers = () => elements().filter(n => n.props.pointerEvents === 'box-none');
+const bottom = () => StyleSheet.flatten(wrappers()[0].props.style).bottom;
+
+/** The text of every Text on screen, in order. */
+const texts = () => screen.queryAllByText(/./, { includeHiddenElements: true }).map(n => ([] as unknown[]).concat(n.props.children).join(''));
+
+const advance = (ms: number) => act(async () => { jest.advanceTimersByTime(ms); });
+const newUser = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -52,85 +64,82 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (tree) act(() => tree!.unmount());
-  tree = null;
   announce.mockRestore();
   jest.useRealTimers();
 });
 
 describe('showToast with ToastHost', () => {
-  it('shows nothing until a toast is asked for', () => {
-    mount();
+  it('shows nothing until a toast is asked for', async () => {
+    await mount();
     expect(texts()).toEqual([]);
-    expect(tree!.root.findAll(n => n.props.pointerEvents === 'box-none')).toEqual([]);
+    expect(wrappers()).toEqual([]);
   });
 
-  it('shows the message, reads it out, and keeps it for 4 seconds', () => {
-    mount();
-    act(() => showToast('Garlic saved.'));
+  it('shows the message, reads it out, and keeps it for 4 seconds', async () => {
+    await mount();
+    await act(() => showToast('Garlic saved.'));
 
     expect(texts()).toEqual(['Garlic saved.']);
     expect(announce).toHaveBeenCalledTimes(1);
     expect(announce).toHaveBeenCalledWith('Garlic saved.');
 
-    advance(3999);
+    await advance(3999);
     expect(texts()).toEqual(['Garlic saved.']);
 
-    advance(1 + motion.standard);
+    await advance(1 + motion.standard);
     expect(texts()).toEqual([]);
     expect(announce).toHaveBeenCalledTimes(1);
   });
 
-  it('replaces the toast shown with a newer one, which gets its own 4 seconds', () => {
-    mount();
-    act(() => showToast('A.'));
-    advance(3000);
-    act(() => showToast('B.'));
+  it('replaces the toast shown with a newer one, which gets its own 4 seconds', async () => {
+    await mount();
+    await act(() => showToast('A.'));
+    await advance(3000);
+    await act(() => showToast('B.'));
 
     expect(texts()).toEqual(['B.']);
     expect(announce).toHaveBeenLastCalledWith('B.');
     expect(announce).toHaveBeenCalledTimes(2);
 
     // A's time would have run out here; B stays.
-    advance(1500);
+    await advance(1500);
     expect(texts()).toEqual(['B.']);
 
-    advance(2500 + motion.standard);
+    await advance(2500 + motion.standard);
     expect(texts()).toEqual([]);
   });
 
-  it('takes a shorter duration when asked', () => {
-    mount();
-    act(() => showToast('Name saved.', { durationMs: 2000 }));
-    advance(1999);
+  it('takes a shorter duration when asked', async () => {
+    await mount();
+    await act(() => showToast('Name saved.', { durationMs: 2000 }));
+    await advance(1999);
     expect(texts()).toEqual(['Name saved.']);
-    advance(1 + motion.standard);
+    await advance(1 + motion.standard);
     expect(texts()).toEqual([]);
   });
 
-  it('sits above the bottom inset, lets touches beside it through, and is read once, by the announcement alone', () => {
-    mount();
-    act(() => showToast('Customer saved.'));
+  it('sits above the bottom inset, lets touches beside it through, and is read once, by the announcement alone', async () => {
+    await mount();
+    await act(() => showToast('Customer saved.'));
 
-    const wrapper = tree!.root.find(n => n.props.pointerEvents === 'box-none');
-    expect(StyleSheet.flatten(wrapper.props.style).bottom).toBe(BOTTOM_INSET + space.xl);
+    expect(wrappers()).toHaveLength(1);
+    expect(bottom()).toBe(BOTTOM_INSET + space.xl);
     // CR-30: a live region on top of the announcement would make TalkBack read it twice.
-    expect(tree!.root.findAll(n => n.props.accessibilityLiveRegion !== undefined)).toHaveLength(0);
+    expect(elements().filter(n => n.props.accessibilityLiveRegion !== undefined)).toHaveLength(0);
     expect(announce).toHaveBeenCalledTimes(1);
   });
 
-  it('rises above the keyboard while it is up, and comes back down when it hides', () => {
+  it('rises above the keyboard while it is up, and comes back down when it hides', async () => {
     const handlers: Record<string, (e?: unknown) => void> = {};
     const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, fn: (e?: unknown) => void) => {
       handlers[name] = fn;
       return { remove: jest.fn() };
     }) as unknown as typeof Keyboard.addListener);
-    mount();
-    act(() => showToast('Must include 12 kg', { durationMs: 2000 }));
-    const bottom = () => StyleSheet.flatten(tree!.root.find(n => n.props.pointerEvents === 'box-none').props.style).bottom;
-    act(() => handlers.keyboardDidShow({ endCoordinates: { height: 300 } }));
+    await mount();
+    await act(() => showToast('Must include 12 kg', { durationMs: 2000 }));
+    await act(() => handlers.keyboardDidShow({ endCoordinates: { height: 300 } }));
     expect(bottom()).toBe(300 + space.xl);
-    act(() => handlers.keyboardDidHide());
+    await act(() => handlers.keyboardDidHide());
     expect(bottom()).toBe(BOTTOM_INSET + space.xl);
     listen.mockRestore();
   });
@@ -141,46 +150,40 @@ describe('showToast with ToastHost', () => {
   });
 
   describe.each(BRANDS.flatMap(b => (['light', 'dark'] as Mode[]).map(m => [b, m] as const)))('%s %s', (brand, mode) => {
-    it('draws the inverse surface and text', () => {
+    it('draws the inverse surface and text', async () => {
       mockTheme = { preference: mode, brand };
       const t = getTokens(brand, mode);
-      mount();
-      act(() => showToast('Item saved.'));
+      await mount();
+      await act(() => showToast('Item saved.'));
 
-      const surfaces = tree!.root.findAll(n => {
-        const style = StyleSheet.flatten(n.props.style ?? {}) as { backgroundColor?: string };
-        return typeof n.type !== 'string' ? false : style.backgroundColor === t.surface.inverse;
-      });
+      const surfaces = elements().filter(n => (StyleSheet.flatten(n.props.style ?? {}) as { backgroundColor?: string }).backgroundColor === t.surface.inverse);
       expect(surfaces.length).toBeGreaterThan(0);
-      const text = tree!.root.find(n => (n.type as unknown) === 'Text');
-      expect(StyleSheet.flatten(text.props.style).color).toBe(t.text.inverse);
+      expect(screen.getByText('Item saved.')).toHaveStyle({ color: t.text.inverse });
     });
   });
 });
 
 describe('a toast with an action (WH-220)', () => {
-  const actionButton = () => tree!.root.findAll(n => n.props.testID === 'toast-action' && typeof n.props.onPress === 'function');
-
-  it('shows one button with the label; tapping it runs the action once and closes the toast', () => {
-    mount();
+  it('shows one button with the label; tapping it runs the action once and closes the toast', async () => {
+    const user = newUser();
+    await mount();
     const onPress = jest.fn();
-    act(() => showToast("Couldn't load.", { action: { label: 'Retry', onPress } }));
+    await act(() => showToast("Couldn't load.", { action: { label: 'Retry', onPress } }));
     expect(texts()).toEqual(["Couldn't load.", 'Retry']);
-    expect(actionButton()).toHaveLength(1);
-    expect(actionButton()[0].props.accessibilityRole).toBe('button');
-    expect(actionButton()[0].props.accessibilityLabel).toBe('Retry');
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeOnTheScreen();
 
-    act(() => actionButton()[0].props.onPress());
+    await user.press(screen.getByRole('button', { name: 'Retry' }));
     expect(onPress).toHaveBeenCalledTimes(1);
-    advance(motion.standard + 1);
+    await advance(motion.standard + 1);
     expect(texts()).toEqual([]);
-    advance(5000);
+    await advance(5000);
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('a toast without an action has no button', () => {
-    mount();
-    act(() => showToast('Garlic saved.'));
-    expect(actionButton()).toHaveLength(0);
+  it('a toast without an action has no button', async () => {
+    await mount();
+    await act(() => showToast('Garlic saved.'));
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 });

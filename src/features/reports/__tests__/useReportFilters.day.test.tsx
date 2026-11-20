@@ -5,7 +5,7 @@
  * not when it turns over in the clock zone of the phone.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 import { GRN_ACTIVITY_CUSTOMERS } from '@/features/filters/configs/reports/grnActivity';
 import type { FilterContext } from '@/features/filters/types';
 import { watchPhoneZone } from '@/tests/helpers/phoneZone';
@@ -59,85 +59,82 @@ type Request = ReturnType<typeof GRN_ACTIVITY_CUSTOMERS.toRequest>;
 /** The report choices of the account above on the facility the mock names (useReportPrefs). */
 const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
 
-function mount() {
+async function mount() {
   let request!: Request;
   const Probe = () => {
     request = useReportFilters(GRN_ACTIVITY_CUSTOMERS).request;
     return null;
   };
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Probe />);
-  });
+  const { rerender } = await render(<Probe />);
   return {
     request: () => request,
     /** The screen is drawn again, as it is when anything on it changes. */
-    draw: () => act(() => renderer.update(<Probe />)),
+    draw: () => rerender(<Probe />),
   };
 }
 
 afterEach(() => jest.useRealTimers());
 
 describe('the day a report\'s request is counted from', () => {
-  it('is India\'s: the request is made again when the day turns over there', () => {
+  it('is India\'s: the request is made again when the day turns over there', async () => {
     jest.useFakeTimers({ now: SUNDAY_NIGHT });
-    const report = mount();
+    const report = await mount();
     expect(report.request().period).toEqual({ from: '2026-06-14', to: '2026-10-11' });
     const first = report.request();
 
     // The same day: the same request object, so the report does not load again.
-    report.draw();
+    await report.draw();
     expect(report.request()).toBe(first);
 
     jest.setSystemTime(MONDAY_MORNING);
-    report.draw();
+    await report.draw();
     expect(report.request().period).toEqual({ from: '2026-06-15', to: '2026-10-12' });
   });
 
-  it('turns "Today" over at midnight in India, and keeps "Last 120 days" as the period nobody chose', () => {
+  it('turns "Today" over at midnight in India, and keeps "Last 120 days" as the period nobody chose', async () => {
     jest.useFakeTimers({ now: SUNDAY_NIGHT });
-    const report = mount();
+    const report = await mount();
     // Nobody chose a period: the default is unchanged.
     expect(report.request().period).toEqual({ from: '2026-06-14', to: '2026-10-11' });
 
     mockState.reportPrefs = { byScope: { [SCOPE]: { period: { preset: 'today' }, sort: {}, pinned: [], recent: [], lastCustomer: {}, usedAt: 1 } } };
     try {
-      report.draw();
+      await report.draw();
       expect(report.request().period).toEqual({ from: '2026-10-11', to: '2026-10-11' });
       jest.setSystemTime(MONDAY_MORNING);
-      report.draw();
+      await report.draw();
       expect(report.request().period).toEqual({ from: '2026-10-12', to: '2026-10-12' });
     } finally {
       mockState.reportPrefs = { byScope: {} };
     }
   });
 
-  it('is not the phone\'s: its own midnight makes the request again only where that is India\'s midnight too', () => {
+  it('is not the phone\'s: its own midnight makes the request again only where that is India\'s midnight too', async () => {
     // A minute to either side of midnight on this machine. In the suite that is India's midnight;
     // run in another zone, it falls inside one day in India and must change nothing.
     const midnight = new Date(2026, 9, 12).getTime();
     const before = new Date(midnight - 60_000);
     const after = new Date(midnight + 60_000);
     jest.useFakeTimers({ now: before });
-    const report = mount();
+    const report = await mount();
     const first = report.request();
 
     jest.setSystemTime(after);
-    report.draw();
+    await report.draw();
     const sameDayInIndia = indiaDay(before) === indiaDay(after);
     expect(report.request() === first).toBe(sameDayInIndia);
     expect(report.request().period.to).toBe(indiaDay(after));
   });
 
-  it('is read from the clock without the phone\'s calendar', () => {
+  it('is read from the clock without the phone\'s calendar', async () => {
     // The suite's zone is India's, so a key made from the phone's day would turn over at the same
     // moment here. It would have to read the clock with the phone's calendar to do so.
     jest.useFakeTimers({ now: SUNDAY_NIGHT });
     const watch = watchPhoneZone([SUNDAY_NIGHT, MONDAY_MORNING]);
     try {
-      const report = mount();
+      const report = await mount();
       jest.setSystemTime(MONDAY_MORNING);
-      report.draw();
+      await report.draw();
       expect(report.request().period).toEqual({ from: '2026-06-15', to: '2026-10-12' });
       expect(watch.reads).toEqual([]);
     } finally {

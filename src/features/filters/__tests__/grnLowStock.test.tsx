@@ -6,7 +6,7 @@
  * migration 98 does, and offers Low stock only then.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { GRN_FILTERS } from '../configs';
 import { grnLinesHidden } from '../configs/grn';
 import { describeValue, normalizeValues, visibleOptions } from '../filterModel';
@@ -33,10 +33,10 @@ const stock = GRN_FILTERS.fields.find(field => field.key === 'stock') as ChoiceF
 const staff = (pagesByReceipt?: boolean): FilterContext => ({ role: 'staff', isWarehouseRole: true, assignedCustomers: [], pagesByReceipt });
 const valuesOf = (ctx: FilterContext) => ['all', 'in_stock', 'low_stock', 'out_of_stock'].filter(value => visibleOptions(stock, ctx).some(option => option.value === value));
 
-beforeEach(() => {
+beforeEach(async () => {
   mockServer = { origin: 'https://one.example', instanceId: 'one' };
   mockProfile = { role: 'staff' };
-  act(() => resetFacilityGrnPaging());
+  await act(() => resetFacilityGrnPaging());
 });
 
 describe('the Stock filter', () => {
@@ -65,44 +65,44 @@ describe('the Stock filter', () => {
 });
 
 describe('what the app knows about the facility', () => {
-  const probe = () => {
+  const probe = async () => {
     const seen: (boolean | undefined)[] = [];
     const Probe = () => {
       seen.push(useFilterContext().pagesByReceipt);
       return null;
     };
-    act(() => { TestRenderer.create(<Probe />); });
+    await render(<Probe />);
     return seen;
   };
 
-  it('is unknown until an answer in receipts comes, then the filter context says so', () => {
+  it('is unknown until an answer in receipts comes, then the filter context says so', async () => {
     expect(facilityPagesGrnsByReceipt()).toBe(false);
-    const seen = probe();
+    const seen = await probe();
     expect(seen[seen.length - 1]).toBe(false);
 
-    act(() => noteGrnPagingUnit('receipt'));
+    await act(() => noteGrnPagingUnit('receipt'));
     expect(facilityPagesGrnsByReceipt()).toBe(true);
     expect(seen[seen.length - 1]).toBe(true);
 
-    act(() => noteGrnPagingUnit('line'));
+    await act(() => noteGrnPagingUnit('line'));
     expect(seen[seen.length - 1]).toBe(false);
   });
 
-  it('is kept per server and forgotten on a server switch', () => {
-    act(() => noteGrnPagingUnit('receipt'));
+  it('is kept per server and forgotten on a server switch', async () => {
+    await act(() => noteGrnPagingUnit('receipt'));
     expect(facilityPagesGrnsByReceipt()).toBe(true);
 
     mockServer = { origin: 'https://two.example', instanceId: 'two' };
     expect(facilityPagesGrnsByReceipt()).toBe(false);
-    act(() => noteGrnPagingUnit('line'));
+    await act(() => noteGrnPagingUnit('line'));
     // Back on the first server: what it answered before the switch is forgotten, not kept.
     mockServer = { origin: 'https://one.example', instanceId: 'one' };
     expect(facilityPagesGrnsByReceipt()).toBe(false);
   });
 
-  it('is not known with no active server', () => {
+  it('is not known with no active server', async () => {
     mockServer = null;
-    act(() => noteGrnPagingUnit('receipt'));
+    await act(() => noteGrnPagingUnit('receipt'));
     expect(facilityPagesGrnsByReceipt()).toBe(false);
   });
 });

@@ -5,7 +5,7 @@
  * to Gujarati and back, and check that each kind of label changed with it.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 import { ApplyFiltersButton } from '../components/ApplyFiltersButton';
 import { pickerText } from '../components/editors/OptionPicker';
@@ -131,14 +131,10 @@ describe('a language switch at run time', () => {
     }
   });
 
-  it('draws the button text in Gujarati', () => {
+  it('draws the button text in Gujarati', async () => {
     setLanguage('gu');
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(<ApplyFiltersButton result={{ count: 24, loading: false }} noun={['item', 'items']} onPress={jest.fn()} />);
-    });
-    expect(JSON.stringify(renderer.toJSON())).toContain('૨૪ આઇટમ બતાવો');
-    act(() => renderer.unmount());
+    await render(<ApplyFiltersButton result={{ count: 24, loading: false }} noun={['item', 'items']} onPress={jest.fn()} />);
+    expect(screen.getByText('૨૪ આઇટમ બતાવો')).toBeOnTheScreen();
   });
 
   it('changes what a chip says: ranges read "…થી … સુધી" after their values', () => {
@@ -195,7 +191,7 @@ describe('a language switch at run time', () => {
 });
 
 describe('the filter bar in Gujarati', () => {
-  function labels(values: FilterValues) {
+  async function labels(values: FilterValues) {
     const config = FILTER_CONFIGS['grn-list'];
     const filters = {
       ctx: staff,
@@ -213,28 +209,15 @@ describe('the filter bar in Gujarati', () => {
       setSort: jest.fn(),
       clear: jest.fn(),
     } as unknown as ReturnType<typeof useListFilters>;
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(<FilterBar config={config} filters={filters} onOpenAll={jest.fn()} />);
-    });
-    const found = renderer.root
-      .findAll(
-        node =>
-          typeof node.type !== 'string' &&
-          node.props.accessibilityRole === 'button' &&
-          typeof node.props.accessibilityLabel === 'string' &&
-          node.parent?.props.accessibilityLabel !== node.props.accessibilityLabel
-      )
-      .map(node => node.props.accessibilityLabel as string);
-    const text = JSON.stringify(renderer.toJSON());
-    act(() => renderer.unmount());
-    return { found, text };
+    await render(<FilterBar config={config} filters={filters} onOpenAll={jest.fn()} />);
+    // Every button, in tree order, by the name it is spoken with.
+    return screen.getAllByRole('button').map(node => node.props.accessibilityLabel as string);
   }
 
-  it('says every chip and its spoken label in Gujarati', () => {
+  it('says every chip and its spoken label in Gujarati', async () => {
     setLanguage('gu');
-    const bar = labels({ stock: 'in_stock', weight: { min: 10, max: 50 }, search: 'A0010થી A0012' });
-    expect(bar.found).toEqual([
+    const found = await labels({ stock: 'in_stock', weight: { min: 10, max: 50 }, search: 'A0010થી A0012' });
+    expect(found).toEqual([
       'ફિલ્ટર, ૨ લાગુ છે. સૉર્ટ અને ફિલ્ટર ખોલો',
       'આવક પાવતી નંબર મુજબ સૉર્ટ કરેલું, નંબર: ઉતરતા ક્રમમાં. સૉર્ટ બદલો',
       'સ્ટોક: સ્ટોકમાં છે. બદલો',
@@ -248,14 +231,14 @@ describe('the filter bar in Gujarati', () => {
       'બધા ફિલ્ટર અને શોધ સાફ કરો',
     ]);
     // The visible chip texts, and the badge count in Gujarati digits.
-    for (const visible of ['ફિલ્ટર', '"૨"', 'આવક નં.', 'સ્ટોકમાં છે', '૧૦થી ૫૦ કિલો સુધી', 'A0010થી A0012 સુધી', 'બધું સાફ કરો']) {
-      expect(bar.text).toContain(visible);
+    for (const visible of ['ફિલ્ટર', '૨', 'આવક નં.', 'સ્ટોકમાં છે', '૧૦થી ૫૦ કિલો સુધી', 'A0010થી A0012 સુધી', 'બધું સાફ કરો']) {
+      expect(screen.getAllByText(visible).length).toBeGreaterThan(0);
     }
   });
 
-  it('is unchanged in English', () => {
-    const bar = labels({ stock: 'in_stock', search: 'A0010 to A0012' });
-    expect(bar.found).toEqual([
+  it('is unchanged in English', async () => {
+    const found = await labels({ stock: 'in_stock', search: 'A0010 to A0012' });
+    expect(found).toEqual([
       'Filters, 2 applied. Open sort and filter',
       'Sorted by GRN number, highest number first. Change sort',
       'Stock: In stock. Change',

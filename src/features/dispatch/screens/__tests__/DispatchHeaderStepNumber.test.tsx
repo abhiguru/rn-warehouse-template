@@ -1,7 +1,6 @@
 /** The dispatch number box holds the 20 characters the column does (WS-8, backend migration 127), where it held 8. */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { DispatchHeaderStep } from '../DispatchHeaderStep';
 import { DOCUMENT_NUMBER_MAX_LENGTH } from '@/constants/documentNumber';
 
@@ -39,11 +38,8 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 
 it('lets a number of 20 characters be typed', async () => {
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<DispatchHeaderStep mode="create" />); });
-  const box = tree.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === 'Dispatch number');
-  expect(box).toBeDefined();
-  expect(box!.props.maxLength).toBe(DOCUMENT_NUMBER_MAX_LENGTH);
-  expect(box!.props.maxLength).toBe(20);
-  await act(async () => { tree.unmount(); });
+  await render(<DispatchHeaderStep mode="create" />);
+  const box = screen.getByLabelText('Dispatch number');
+  expect(box).toHaveProp('maxLength', DOCUMENT_NUMBER_MAX_LENGTH);
+  expect(box).toHaveProp('maxLength', 20);
 });

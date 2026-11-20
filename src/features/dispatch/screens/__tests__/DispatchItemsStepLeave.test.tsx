@@ -17,9 +17,9 @@
  * "Save this item?" question here, unlike the GRN step.
  */
 import React from 'react';
-import { Platform, StyleSheet, TextInput } from 'react-native';
+import { Platform } from 'react-native';
 import type { MutableRefObject } from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { getTokens, space } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
@@ -70,6 +70,16 @@ const mockForm = {
   resetFormState: jest.fn(),
 };
 
+/** The props the step gave to the stand-ins below (the ones that have nothing on screen to press), as drawn last. */
+const mockProps: {
+  indicator?: { onStepPress: (step: number) => unknown; backOnFirstStep: { hasData: boolean } };
+  swipe?: { onSwipeRight: () => unknown; onSwipeLeft: () => unknown };
+  grn?: { onSelect: (grn: { id: string; gr_no: string }) => unknown };
+  item?: { onSelect: (item: { item_id: string; item_name: string }) => unknown };
+  lot?: { onSelect: (lot: unknown) => unknown };
+  summary?: { onEditItem: (line: DispatchItemData) => unknown };
+} = {};
+
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
@@ -92,15 +102,55 @@ jest.mock('@/features/dispatch/screens', () => ({
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: mockInsetBottom, left: 0, right: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
-// Stand-ins that keep their props, so the test can press what they offer.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/SwipeableFormStep', () => ({ __esModule: true, default: 'SwipeableFormStep' }));
-jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: 'DispatchStepIndicator', dispatchSteps: () => [] }));
+// Stand-ins. The dialog shows its title, and its two buttons while it is visible, so the test reads and presses what a
+// person would see. The others keep the props the step gave them, so the test can call what they offer.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: ({ visible, title, confirmText, cancelText, onConfirm, onCancel }: {
+    visible: boolean; title: string; confirmText: string; cancelText: string; onConfirm: () => void; onCancel: () => void;
+  }) => {
+    if (!visible) return null;
+    const { createElement } = jest.requireActual('react');
+    const { Pressable, Text, View } = jest.requireActual('react-native');
+    return createElement(
+      View,
+      null,
+      createElement(Text, null, title),
+      createElement(Pressable, { accessibilityRole: 'button', onPress: onConfirm }, createElement(Text, null, confirmText)),
+      createElement(Pressable, { accessibilityRole: 'button', onPress: onCancel }, createElement(Text, null, cancelText)),
+    );
+  },
+}));
+jest.mock('@/components/SwipeableFormStep', () => ({
+  __esModule: true,
+  default: (props: { children: unknown; onSwipeRight: () => unknown; onSwipeLeft: () => unknown }) => {
+    mockProps.swipe = props;
+    return props.children;
+  },
+}));
+jest.mock('@/components/DispatchStepIndicator', () => ({
+  DispatchStepIndicator: (props: NonNullable<typeof mockProps.indicator>) => {
+    mockProps.indicator = props;
+    return null;
+  },
+  dispatchSteps: () => [],
+}));
 jest.mock('@/features/dispatch/components', () => ({
-  GRNAutocompleteBottomSheet: 'GRNAutocompleteBottomSheet',
-  GRNItemBottomSheet: 'GRNItemBottomSheet',
-  LotBottomSheet: 'LotBottomSheet',
-  ItemsSummaryBottomSheet: 'ItemsSummaryBottomSheet',
+  GRNAutocompleteBottomSheet: (props: NonNullable<typeof mockProps.grn>) => {
+    mockProps.grn = props;
+    return null;
+  },
+  GRNItemBottomSheet: (props: NonNullable<typeof mockProps.item>) => {
+    mockProps.item = props;
+    return null;
+  },
+  LotBottomSheet: (props: NonNullable<typeof mockProps.lot>) => {
+    mockProps.lot = props;
+    return null;
+  },
+  ItemsSummaryBottomSheet: (props: NonNullable<typeof mockProps.summary>) => {
+    mockProps.summary = props;
+    return null;
+  },
 }));
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
@@ -110,45 +160,37 @@ const DETAILS = 1;
 const REVIEW = 3;
 const tokens = getTokens('orange', 'light');
 
-const stub = (tree: ReactTestRenderer, name: string) => tree.root.find((node) => (node.type as unknown) === name);
-const indicator = (tree: ReactTestRenderer) => stub(tree, 'DispatchStepIndicator');
-const swipe = (tree: ReactTestRenderer) => stub(tree, 'SwipeableFormStep');
-const button = (tree: ReactTestRenderer, label: string) =>
-  tree.root.find((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label);
-const bags = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Bags to dispatch')!;
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
+const indicator = () => mockProps.indicator!;
+const swipe = () => mockProps.swipe!;
+const pressButton = (name: string) => userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name }));
+const bags = () => screen.getByLabelText('Bags to dispatch');
+const shows = (text: string | RegExp) => expect(screen.getByText(text)).toBeOnTheScreen();
+const hides = (text: string | RegExp) => expect(screen.queryByText(text)).not.toBeOnTheScreen();
 /** The "Go back to details?" question, as the step hands it to ConfirmDialog. */
-const backQuestion = (tree: ReactTestRenderer) =>
-  tree.root.find((node) => (node.type as unknown) === 'ConfirmDialog' && node.props.title === 'Go back to details?');
-/** The colour of the quantity field's label: the error colour while the field is marked. */
-const quantityLabelColor = (tree: ReactTestRenderer) =>
-  StyleSheet.flatten(
-    tree.root.find((node) => (node.type as unknown) === 'Text' && [node.props.children].flat()[0] === 'Bags to dispatch').props.style
-  ).color;
+const BACK_QUESTION = 'Go back to details?';
+/** The quantity field's label: in the error colour while the field is marked. */
+const quantityLabel = () => screen.getByText(/^Bags to dispatch/);
 
-const type = async (tree: ReactTestRenderer, text: string) => {
-  await act(async () => { bags(tree).props.onChangeText(text); });
+const type = async (text: string) => {
+  const user = userEvent.setup({ delay: 0 });
+  await user.clear(bags());
+  if (text) await user.paste(bags(), text);
 };
 /** Opens a saved line in the form, as "Edit" in the saved-items sheet does. */
-const correct = async (tree: ReactTestRenderer, line: DispatchItemData) => {
-  await act(async () => { await stub(tree, 'ItemsSummaryBottomSheet').props.onEditItem(line); });
-};
-const press = async (tree: ReactTestRenderer, how: () => unknown) => {
+const correct = (line: DispatchItemData) => call(() => mockProps.summary!.onEditItem(line));
+const call = async (how: () => unknown) => {
   await act(async () => { await how(); });
 };
 
-let tree: ReactTestRenderer;
 let back: ReturnType<typeof installHardwareBack>;
 const mount = async (element: React.ReactElement) => {
-  await act(async () => { tree = create(element); });
-  return tree;
+  await render(element);
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
+  Object.keys(mockProps).forEach((key) => delete mockProps[key as keyof typeof mockProps]);
   mockForm.items = [];
   mockForm.heldBags = {};
   mockForm.isCreateMode = true;
@@ -170,9 +212,8 @@ beforeEach(() => {
     } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>;
   });
 });
-afterEach(async () => {
-  // The step focuses the quantity field half a second after a line is opened.
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
+  // The step focuses the quantity field half a second after a line is opened; Testing Library unmounts the tree.
   back.restore();
   jest.restoreAllMocks();
 });
@@ -181,11 +222,11 @@ describe('the Review circle saves as Next does', () => {
   it('a correction from 5 to 7 bags is saved, then Review opens', async () => {
     mockForm.items = [saved()];
     await mount(<DispatchItemsStep mode="create" />);
-    await correct(tree, mockForm.items[0]);
-    expect(bags(tree).props.value).toBe('5');
-    await type(tree, '7');
+    await correct(mockForm.items[0]);
+    expect(bags()).toHaveDisplayValue('5');
+    await type('7');
 
-    await press(tree, () => indicator(tree).props.onStepPress(REVIEW));
+    await call(() => indicator().onStepPress(REVIEW));
 
     expect(mockForm.updateFormItem).toHaveBeenCalledTimes(1);
     expect(mockForm.updateFormItem).toHaveBeenCalledWith('line-1', expect.objectContaining({ unique_id: 'line-1', disp_quantity: 7 }));
@@ -201,10 +242,10 @@ describe('the Review circle saves as Next does', () => {
   it('a new item that is complete is added, then Review opens', async () => {
     await mount(<DispatchItemsStep mode="create" />);
     // Choosing a GRN puts its first lot with stock in the form.
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
-    await type(tree, '4');
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await type('4');
 
-    await press(tree, () => indicator(tree).props.onStepPress(REVIEW));
+    await call(() => indicator().onStepPress(REVIEW));
 
     expect(mockForm.addFormItems).toHaveBeenCalledTimes(1);
     expect(mockForm.addFormItems).toHaveBeenCalledWith([expect.objectContaining({ grnItems_id: LOT, disp_quantity: 4 })]);
@@ -215,7 +256,7 @@ describe('the Review circle saves as Next does', () => {
   it('with an empty form and no saved items it says "Add an item first" and stays', async () => {
     await mount(<DispatchItemsStep mode="create" />);
 
-    await press(tree, () => indicator(tree).props.onStepPress(REVIEW));
+    await call(() => indicator().onStepPress(REVIEW));
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Add an item first', 'Add at least one item before you continue.');
@@ -226,7 +267,7 @@ describe('the Review circle saves as Next does', () => {
     mockForm.items = [saved()];
     await mount(<DispatchItemsStep mode="create" />);
 
-    await press(tree, () => indicator(tree).props.onStepPress(REVIEW));
+    await call(() => indicator().onStepPress(REVIEW));
 
     expect(mockForm.navigateToStep).toHaveBeenCalledTimes(1);
     expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW);
@@ -238,32 +279,34 @@ describe('the Review circle saves as Next does', () => {
 
 describe('every way back asks "Go back to details?" as the footer\'s Back does', () => {
   const ways: [string, (guard: MutableRefObject<(() => void) | null>) => unknown][] = [
-    ['the footer\'s Back', () => button(tree, 'Back to dispatch details').props.onPress()],
-    ['the Details circle', () => indicator(tree).props.onStepPress(DETAILS)],
-    ['a swipe to the right', () => swipe(tree).props.onSwipeRight()],
-    ['the Back key\'s guard', (guard) => guard.current!()],
+    ['the footer\'s Back', () => pressButton('Back to dispatch details')],
+    ['the Details circle', () => call(() => indicator().onStepPress(DETAILS))],
+    ['a swipe to the right', () => call(() => swipe().onSwipeRight())],
+    ['the Back key\'s guard', (guard) => call(() => guard.current!())],
   ];
 
   it.each(ways)('%s, with saved items: the question, and step 1 only after "Go back"', async (_name, leave) => {
     mockForm.items = [saved()];
     const guard: MutableRefObject<(() => void) | null> = { current: null };
     await mount(<DispatchItemsStep mode="create" backGuard={guard} />);
-    expect(backQuestion(tree).props.visible).toBe(false);
+    hides(BACK_QUESTION);
 
-    await press(tree, () => leave(guard));
+    await leave(guard);
 
-    expect(backQuestion(tree).props).toMatchObject({ visible: true, title: 'Go back to details?', confirmText: 'Go back', cancelText: 'Stay' });
+    shows(BACK_QUESTION);
+    expect(screen.getByRole('button', { name: 'Go back' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Stay' })).toBeOnTheScreen();
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
 
     // "Stay" closes the question and goes nowhere.
-    await press(tree, () => backQuestion(tree).props.onCancel());
-    expect(backQuestion(tree).props.visible).toBe(false);
+    await pressButton('Stay');
+    hides(BACK_QUESTION);
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
 
     // Asked again, "Go back" goes to step 1.
-    await press(tree, () => leave(guard));
-    await press(tree, () => backQuestion(tree).props.onConfirm());
-    expect(backQuestion(tree).props.visible).toBe(false);
+    await leave(guard);
+    await pressButton('Go back');
+    hides(BACK_QUESTION);
     expect(mockForm.navigateToStep).toHaveBeenCalledTimes(1);
     expect(mockForm.navigateToStep).toHaveBeenCalledWith(DETAILS);
   });
@@ -272,9 +315,9 @@ describe('every way back asks "Go back to details?" as the footer\'s Back does',
     const guard: MutableRefObject<(() => void) | null> = { current: null };
     await mount(<DispatchItemsStep mode="create" backGuard={guard} />);
 
-    await press(tree, () => leave(guard));
+    await leave(guard);
 
-    expect(backQuestion(tree).props.visible).toBe(false);
+    hides(BACK_QUESTION);
     expect(mockForm.navigateToStep).toHaveBeenCalledTimes(1);
     expect(mockForm.navigateToStep).toHaveBeenCalledWith(DETAILS);
   });
@@ -282,12 +325,12 @@ describe('every way back asks "Go back to details?" as the footer\'s Back does',
   it('the guard follows the form: nothing saved, then a complete item typed', async () => {
     const guard: MutableRefObject<(() => void) | null> = { current: null };
     await mount(<DispatchItemsStep mode="create" backGuard={guard} />);
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
-    await type(tree, '4');
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await type('4');
 
-    await press(tree, () => guard.current!());
+    await call(() => guard.current!());
 
-    expect(backQuestion(tree).props.visible).toBe(true);
+    shows(BACK_QUESTION);
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
   });
 
@@ -296,7 +339,7 @@ describe('every way back asks "Go back to details?" as the footer\'s Back does',
     await mount(<DispatchItemsStep mode="create" backGuard={guard} />);
     expect(guard.current).toEqual(expect.any(Function));
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
 
     expect(guard.current).toBeNull();
   });
@@ -317,12 +360,12 @@ describe('the phone\'s Back key on the step itself', () => {
     await act(async () => { taken = back.press(); });
 
     expect(taken).toBe(true);
-    expect(backQuestion(tree).props.visible).toBe(true);
+    shows(BACK_QUESTION);
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
 
-    await press(tree, () => backQuestion(tree).props.onConfirm());
+    await pressButton('Go back');
     expect(mockForm.navigateToStep).toHaveBeenCalledTimes(1);
     expect(mockForm.navigateToStep).toHaveBeenCalledWith(DETAILS);
     // One listener for the route, however often the step drew itself.
@@ -332,9 +375,9 @@ describe('the phone\'s Back key on the step itself', () => {
 
 describe('Next stops on a correction that cannot be saved', () => {
   const ways: [string, () => unknown][] = [
-    ['the footer\'s Next', () => button(tree, 'Next, review dispatch').props.onPress()],
-    ['the Review circle', () => indicator(tree).props.onStepPress(REVIEW)],
-    ['a swipe to the left', () => swipe(tree).props.onSwipeLeft()],
+    ['the footer\'s Next', () => pressButton('Next, review dispatch')],
+    ['the Review circle', () => call(() => indicator().onStepPress(REVIEW))],
+    ['a swipe to the left', () => call(() => swipe().onSwipeLeft())],
   ];
 
   it.each(ways)('%s, with more bags than the lot holds: the alert, the field marked, and it stays', async (_name, goOn) => {
@@ -343,10 +386,10 @@ describe('Next stops on a correction that cannot be saved', () => {
     mockForm.heldBags = { [LOT]: 5 };
     mockForm.isCreateMode = false;
     await mount(<DispatchItemsStep mode="edit" />);
-    await correct(tree, mockForm.items[0]);
-    await type(tree, '11');
+    await correct(mockForm.items[0]);
+    await type('11');
 
-    await press(tree, goOn);
+    await goOn();
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
@@ -354,49 +397,49 @@ describe('Next stops on a correction that cannot be saved', () => {
     expect(mockForm.updateFormItem).not.toHaveBeenCalled();
     expect(mockForm.addFormItems).not.toHaveBeenCalled();
     // The field is marked and says why, once: the limit with its number.
-    expect(quantityLabelColor(tree)).toBe(tokens.status.negative.text);
-    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the original stock.');
-    expect(texts(tree)).not.toContain('Quantity cannot exceed available stock');
+    expect(quantityLabel()).toHaveStyle({ color: tokens.status.negative.text });
+    shows('Enter 10 bags or fewer. That is the original stock.');
+    hides('Quantity cannot exceed available stock');
     // What was typed stays in the form, still as a correction of the same line.
-    expect(bags(tree).props.value).toBe('11');
-    expect(texts(tree)).toContain('Editing item 1');
+    expect(bags()).toHaveDisplayValue('11');
+    shows('Editing item 1');
   });
 
   it('with the bags cleared: the alert, and the field is marked with the reason only now', async () => {
     mockForm.items = [saved()];
     await mount(<DispatchItemsStep mode="create" />);
-    await correct(tree, mockForm.items[0]);
-    await type(tree, '');
-    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
-    expect(texts(tree)).not.toContain('Quantity must be at least 1');
+    await correct(mockForm.items[0]);
+    await type('');
+    expect(quantityLabel()).not.toHaveStyle({ color: tokens.status.negative.text });
+    hides('Quantity must be at least 1');
 
-    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+    await pressButton('Next, review dispatch');
 
     expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
     expect(mockForm.updateFormItem).not.toHaveBeenCalled();
-    expect(quantityLabelColor(tree)).toBe(tokens.status.negative.text);
-    expect(texts(tree)).toContain('Quantity must be at least 1');
+    expect(quantityLabel()).toHaveStyle({ color: tokens.status.negative.text });
+    shows('Quantity must be at least 1');
   });
 
   // "12.5" counts as no bags, and the check of that 0 used to put "at least 1" in place of the reason shown.
   it('with "12.5" typed: the text stays in the field with the reason it was already given', async () => {
     mockForm.items = [saved()];
     await mount(<DispatchItemsStep mode="create" />);
-    await correct(tree, mockForm.items[0]);
-    await type(tree, '12.5');
-    expect(texts(tree)).toContain('Quantity must be a whole number');
+    await correct(mockForm.items[0]);
+    await type('12.5');
+    shows('Quantity must be a whole number');
 
-    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+    await pressButton('Next, review dispatch');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
     expect(mockForm.updateFormItem).not.toHaveBeenCalled();
-    expect(bags(tree).props.value).toBe('12.5');
-    expect(quantityLabelColor(tree)).toBe(tokens.status.negative.text);
-    expect(texts(tree)).toContain('Quantity must be a whole number');
-    expect(texts(tree)).not.toContain('Quantity must be at least 1');
+    expect(bags()).toHaveDisplayValue('12.5');
+    expect(quantityLabel()).toHaveStyle({ color: tokens.status.negative.text });
+    shows('Quantity must be a whole number');
+    hides('Quantity must be at least 1');
   });
 
   it('a corrected number of bags within the limit goes on after the stop', async () => {
@@ -404,13 +447,13 @@ describe('Next stops on a correction that cannot be saved', () => {
     mockForm.heldBags = { [LOT]: 5 };
     mockForm.isCreateMode = false;
     await mount(<DispatchItemsStep mode="edit" />);
-    await correct(tree, mockForm.items[0]);
-    await type(tree, '11');
-    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+    await correct(mockForm.items[0]);
+    await type('11');
+    await pressButton('Next, review dispatch');
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
 
-    await type(tree, '10');
-    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+    await type('10');
+    await pressButton('Next, review dispatch');
 
     expect(mockForm.updateFormItem).toHaveBeenCalledWith('line-1', expect.objectContaining({ disp_quantity: 10 }));
     expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW);
@@ -420,10 +463,10 @@ describe('Next stops on a correction that cannot be saved', () => {
     mockForm.items = [saved({ grnItems_id: OTHER_LOT })];
     await mount(<DispatchItemsStep mode="create" />);
     // A GRN and its lot are chosen, the bags are not typed yet.
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
-    expect(texts(tree)).toContain('Adding item 2');
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
+    shows('Adding item 2');
 
-    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+    await pressButton('Next, review dispatch');
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(mockForm.addFormItems).not.toHaveBeenCalled();
@@ -437,12 +480,9 @@ describe('Next stops on a correction that cannot be saved', () => {
 // a swipe left all stopped, "Clear this item" is not offered for a correction,
 // and the strip with "Stop editing this item" was drawn for an edited dispatch only.
 describe('a correction can be given up, in a new dispatch as in an edited one', () => {
-  const stopEditing = (step: ReactTestRenderer) =>
-    step.root.findAll((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Stop editing this item');
-  /** The "Discard changes to this item?" question, as the step hands it to ConfirmDialog. */
-  const discardQuestion = (step: ReactTestRenderer) =>
-    step.root.find((node) => (node.type as unknown) === 'ConfirmDialog' && node.props.title === 'Discard changes to this item?');
-  const next = () => button(tree, 'Next, review dispatch').props.onPress();
+  const stopEditing = () => screen.queryAllByRole('button', { name: 'Stop editing this item' });
+  const DISCARD_QUESTION = 'Discard changes to this item?';
+  const next = () => pressButton('Next, review dispatch');
 
   /** The step of a dispatch with one saved line: 5 bags of a lot that has 95 more in stock. */
   const withSavedLine = async (isCreateMode: boolean) => {
@@ -453,18 +493,19 @@ describe('a correction can be given up, in a new dispatch as in an edited one', 
   /** That line opened in the form. */
   const correcting = async (isCreateMode: boolean) => {
     await withSavedLine(isCreateMode);
-    await correct(tree, mockForm.items[0]);
+    await correct(mockForm.items[0]);
   };
   /** The form as it is for a new, second item: nothing chosen, nothing typed, nothing marked. */
   const expectNewItemForm = () => {
-    expect(stopEditing(tree)).toHaveLength(0);
-    expect(texts(tree)).toContain('Adding item 2');
-    expect(texts(tree)).not.toContain('Editing item 1');
-    expect(texts(tree)).toContain('Choose GRN');
-    expect(bags(tree).props.value).toBe('');
-    expect(bags(tree).props.editable).toBe(false);
-    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
-    expect(texts(tree).filter((text) => text.startsWith('Quantity must') || text.startsWith('Enter '))).toEqual([]);
+    expect(stopEditing()).toHaveLength(0);
+    shows('Adding item 2');
+    hides('Editing item 1');
+    shows('Choose GRN');
+    expect(bags()).toHaveDisplayValue('');
+    expect(bags()).toHaveProp('editable', false);
+    expect(quantityLabel()).not.toHaveStyle({ color: tokens.status.negative.text });
+    hides(/^Quantity must/);
+    hides(/^Enter /);
   };
 
   it.each([
@@ -473,12 +514,14 @@ describe('a correction can be given up, in a new dispatch as in an edited one', 
   ])('%s: the strip names the item being corrected and offers "Stop editing this item"', async (_name, isCreateMode) => {
     await withSavedLine(isCreateMode);
     // Not while the form holds a new item.
-    expect(stopEditing(tree)).toHaveLength(0);
+    expect(stopEditing()).toHaveLength(0);
 
-    await correct(tree, mockForm.items[0]);
+    await correct(mockForm.items[0]);
 
-    expect(stopEditing(tree)).toHaveLength(1);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Editing item 1', 'Editing item', 'Example Potatoes (GRN G0311)']));
+    expect(stopEditing()).toHaveLength(1);
+    shows('Editing item 1');
+    shows('Editing item');
+    shows('Example Potatoes (GRN G0311)');
   });
 
   it.each([
@@ -488,23 +531,25 @@ describe('a correction can be given up, in a new dispatch as in an edited one', 
     ['bags that are not a whole number', '12.5', 'Quantity must be a whole number'],
   ])('a new dispatch, %s: Next stops, the correction is given up, and Next opens Review', async (_what, typed, reason) => {
     await correcting(true);
-    await type(tree, typed);
+    await type(typed);
 
-    await press(tree, next);
+    await next();
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
-    expect(texts(tree)).toContain(reason);
-    expect(bags(tree).props.value).toBe(typed);
+    shows(reason);
+    expect(bags()).toHaveDisplayValue(typed);
 
     // The way out: it asks first, because the number of bags was changed.
-    expect(discardQuestion(tree).props.visible).toBe(false);
-    await press(tree, () => stopEditing(tree)[0].props.onPress());
-    expect(discardQuestion(tree).props).toMatchObject({ visible: true, confirmText: 'Discard changes', cancelText: 'Keep editing' });
-    expect(bags(tree).props.value).toBe(typed);
-    await press(tree, () => discardQuestion(tree).props.onConfirm());
+    hides(DISCARD_QUESTION);
+    await pressButton('Stop editing this item');
+    shows(DISCARD_QUESTION);
+    expect(screen.getByRole('button', { name: 'Discard changes' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Keep editing' })).toBeOnTheScreen();
+    expect(bags()).toHaveDisplayValue(typed);
+    await pressButton('Discard changes');
 
-    expect(discardQuestion(tree).props.visible).toBe(false);
+    hides(DISCARD_QUESTION);
     expectNewItemForm();
     // The saved line was not written to: it still holds its 5 bags.
     expect(mockForm.updateFormItem).not.toHaveBeenCalled();
@@ -512,7 +557,7 @@ describe('a correction can be given up, in a new dispatch as in an edited one', 
     expect(mockForm.addFormItems).not.toHaveBeenCalled();
     expect(mockForm.items).toEqual([saved()]);
 
-    await press(tree, next);
+    await next();
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(mockForm.navigateToStep).toHaveBeenCalledTimes(1);
     expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW);
@@ -522,36 +567,35 @@ describe('a correction can be given up, in a new dispatch as in an edited one', 
 
   it('a new dispatch: "Keep editing" leaves the correction in the form as typed', async () => {
     await correcting(true);
-    await type(tree, '96');
-    await press(tree, () => stopEditing(tree)[0].props.onPress());
+    await type('96');
+    await pressButton('Stop editing this item');
 
-    await press(tree, () => discardQuestion(tree).props.onCancel());
+    await pressButton('Keep editing');
 
-    expect(discardQuestion(tree).props.visible).toBe(false);
-    expect(stopEditing(tree)).toHaveLength(1);
-    expect(texts(tree)).toContain('Editing item 1');
-    expect(bags(tree).props.value).toBe('96');
+    hides(DISCARD_QUESTION);
+    expect(stopEditing()).toHaveLength(1);
+    shows('Editing item 1');
+    expect(bags()).toHaveDisplayValue('96');
   });
 
   it('a new dispatch: a correction with nothing changed is given up without a question', async () => {
     await correcting(true);
-    expect(bags(tree).props.value).toBe('5');
+    expect(bags()).toHaveDisplayValue('5');
 
-    await press(tree, () => stopEditing(tree)[0].props.onPress());
+    await pressButton('Stop editing this item');
 
-    expect(discardQuestion(tree).props.visible).toBe(false);
+    hides(DISCARD_QUESTION);
     expectNewItemForm();
     expect(mockForm.updateFormItem).not.toHaveBeenCalled();
   });
 });
 
 describe('the bottom bar is the shared WizardBottomBar (R1-08)', () => {
-  const barStyle = () => {
-    const next = button(tree, 'Next, review dispatch');
-    // The bar is the nearest ancestor that holds both buttons.
-    let bar = next.parent!;
-    while (bar.findAll((n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Back to dispatch details').length === 0) bar = bar.parent!;
-    return StyleSheet.flatten(bar.props.style) as { paddingBottom: number };
+  /** The bar is the nearest ancestor that holds both buttons. */
+  const bar = () => {
+    let node: ReturnType<typeof screen.getByRole> = screen.getByRole('button', { name: 'Next, review dispatch' }).parent!;
+    while (!within(node).queryByRole('button', { name: 'Back to dispatch details' })) node = node.parent!;
+    return node;
   };
   const setOS = (os: 'ios' | 'android') => jest.replaceProperty(Platform, 'OS', os);
   afterEach(() => { mockInsetBottom = 0; });
@@ -561,81 +605,83 @@ describe('the bottom bar is the shared WizardBottomBar (R1-08)', () => {
     mockInsetBottom = 34;
     await mount(<DispatchItemsStep mode="create" />);
     // The old bar here added the inset again: 34 + space.md.
-    expect(barStyle().paddingBottom).toBe(space.md);
+    expect(bar()).toHaveStyle({ paddingBottom: space.md });
   });
 
   it('iOS: adds the inset to space.md', async () => {
     setOS('ios');
     mockInsetBottom = 34;
     await mount(<DispatchItemsStep mode="create" />);
-    expect(barStyle().paddingBottom).toBe(34 + space.md);
+    expect(bar()).toHaveStyle({ paddingBottom: 34 + space.md });
   });
 
   it('keeps its spoken labels, and shows "Add item" and "Review" (Back is an icon)', async () => {
     await mount(<DispatchItemsStep mode="create" />);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Add item', 'Review']));
-    expect(texts(tree)).not.toContain('Next');
-    expect(button(tree, 'Back to dispatch details')).toBeTruthy();
-    expect(button(tree, 'Next, review dispatch')).toBeTruthy();
+    shows('Add item');
+    shows('Review');
+    hides('Next');
+    expect(screen.getByRole('button', { name: 'Back to dispatch details' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Next, review dispatch' })).toBeOnTheScreen();
   });
 
   it('keeps Add item and the check mark pressable with an empty line (owner decision D7)', async () => {
     await mount(<DispatchItemsStep mode="create" />);
-    expect(button(tree, 'Add item').props.disabled).toBeFalsy();
-    expect(button(tree, 'Save item').props.disabled).toBeFalsy();
+    expect(screen.getByRole('button', { name: 'Add item' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save item' })).toBeEnabled();
   });
 });
 
 // Review 2026-10-20 (M3): a new line the person filled in (a lot and bags) that cannot be saved is not dropped on the way
 // to Review. A line with no bags typed is still left behind (pinned above).
 describe('Next with a new line that cannot be saved', () => {
-  const next = () => button(tree, 'Next, review dispatch').props.onPress();
+  const next = () => pressButton('Next, review dispatch');
 
   it('more bags than the stock: the alert, the field marked, and it stays', async () => {
     mockForm.items = [saved({ grnItems_id: OTHER_LOT })];
     await mount(<DispatchItemsStep mode="create" />);
     // The GRN's first lot with stock is chosen: 95 bags in it. 120 is more.
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
-    await type(tree, '120');
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await type('120');
 
-    await press(tree, next);
+    await next();
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
     expect(mockForm.addFormItems).not.toHaveBeenCalled();
-    expect(quantityLabelColor(tree)).toBe(tokens.status.negative.text);
-    expect(texts(tree)).toContain('Enter 95 bags or fewer. That is the available stock.');
+    expect(quantityLabel()).toHaveStyle({ color: tokens.status.negative.text });
+    shows('Enter 95 bags or fewer. That is the available stock.');
     // What was typed stays in the form.
-    expect(bags(tree).props.value).toBe('120');
+    expect(bags()).toHaveDisplayValue('120');
   });
 
   it('with nothing saved yet the check of the line comes first, not "Add an item first" (review 2026-10-20, M3)', async () => {
     await mount(<DispatchItemsStep mode="create" />);
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
-    await type(tree, '120');
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await type('120');
 
-    await press(tree, next);
+    await next();
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
-    expect(texts(tree)).toContain('Enter 95 bags or fewer. That is the available stock.');
+    shows('Enter 95 bags or fewer. That is the available stock.');
   });
 
   it('after the number is brought within the stock, Next saves the line and goes on', async () => {
     mockForm.items = [saved({ grnItems_id: OTHER_LOT })];
     await mount(<DispatchItemsStep mode="create" />);
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
-    await type(tree, '120');
-    await press(tree, next);
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await type('120');
+    await next();
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
 
-    await type(tree, '90');
-    await press(tree, next);
+    await type('90');
+    await next();
 
     expect(mockForm.addFormItems).toHaveBeenCalledWith([expect.objectContaining({ grnItems_id: LOT, disp_quantity: 90 })]);
-    expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW);
+    // The step waits two animation frames after saving the line before it moves on.
+    await waitFor(() => expect(mockForm.navigateToStep).toHaveBeenCalledWith(REVIEW));
   });
 });
 
@@ -663,27 +709,27 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
       } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>;
     });
     await mount(<DispatchItemsStep mode="edit" />);
-    await correct(tree, mockForm.items[0]);
+    await correct(mockForm.items[0]);
   };
-  const chooseOtherGrn = () => press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN_B, gr_no: 'G0400' }));
-  const chooseLot = (lot: ReturnType<typeof lotOf>) => press(tree, () => stub(tree, 'LotBottomSheet').props.onSelect(lot));
-  const chooseItem = () => press(tree, () => stub(tree, 'GRNItemBottomSheet').props.onSelect({ item_id: ITEM, item_name: 'Example Potatoes' }));
+  const chooseOtherGrn = () => call(() => mockProps.grn!.onSelect({ id: GRN_B, gr_no: 'G0400' }));
+  const chooseLot = (lot: ReturnType<typeof lotOf>) => call(() => mockProps.lot!.onSelect(lot));
+  const chooseItem = () => call(() => mockProps.item!.onSelect({ item_id: ITEM, item_name: 'Example Potatoes' }));
 
   it('another GRN clears the line\'s item, lot and bags, so the old lot cannot be saved under the new GRN', async () => {
     await openLine();
-    expect(texts(tree)).toContain('G0311');
-    expect(bags(tree).props.value).toBe('5');
+    shows('G0311');
+    expect(bags()).toHaveDisplayValue('5');
 
     await chooseOtherGrn();
 
-    expect(texts(tree)).toContain('G0400');
-    expect(texts(tree)).toContain('Choose item');
-    expect(texts(tree)).toContain('Choose lot');
-    expect(texts(tree)).not.toContain('GRN qty 100 · 5 in stock');
-    expect(bags(tree).props.value).toBe('');
+    shows('G0400');
+    shows('Choose item');
+    shows('Choose lot');
+    hides('GRN qty 100 · 5 in stock');
+    expect(bags()).toHaveDisplayValue('');
 
     // Next does not save the line as it is: the lot of the old GRN would be saved under the new one.
-    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+    await pressButton('Next, review dispatch');
     expect(showAlert).toHaveBeenCalledWith('Check the item', 'Fix the fields marked in red, then try again.');
     expect(mockForm.updateFormItem).not.toHaveBeenCalled();
     expect(mockForm.navigateToStep).not.toHaveBeenCalled();
@@ -694,9 +740,9 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
     await chooseOtherGrn();
     await chooseItem();
     await chooseLot(lotB);
-    await type(tree, '12');
+    await type('12');
 
-    await press(tree, () => button(tree, 'Next, review dispatch').props.onPress());
+    await pressButton('Next, review dispatch');
 
     expect(mockForm.updateFormItem).toHaveBeenCalledTimes(1);
     expect(mockForm.updateFormItem).toHaveBeenCalledWith('line-1', expect.objectContaining({
@@ -712,10 +758,10 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
   it('the same GRN chosen again keeps the line as it is', async () => {
     await openLine();
 
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
 
-    expect(texts(tree)).toContain('GRN qty 100 · 5 in stock');
-    expect(bags(tree).props.value).toBe('5');
+    shows('GRN qty 100 · 5 in stock');
+    expect(bags()).toHaveDisplayValue('5');
   });
 
   it('another lot has none of the bags the line holds: its limit is its own stock', async () => {
@@ -723,13 +769,13 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
     await chooseLot(lotOf(OTHER_LOT, 10));
 
     // 12 is within 10 + 5 (the saved lot's 5 do not belong to this lot) but over the 10 this lot holds.
-    await type(tree, '12');
-    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the available stock.');
-    expect(quantityLabelColor(tree)).toBe(tokens.status.negative.text);
+    await type('12');
+    shows('Enter 10 bags or fewer. That is the available stock.');
+    expect(quantityLabel()).toHaveStyle({ color: tokens.status.negative.text });
 
-    await type(tree, '10');
-    expect(texts(tree)).not.toContain('Enter 10 bags or fewer. That is the available stock.');
-    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
+    await type('10');
+    hides('Enter 10 bags or fewer. That is the available stock.');
+    expect(quantityLabel()).not.toHaveStyle({ color: tokens.status.negative.text });
   });
 
   it('choosing the saved lot again gives the line its bags back', async () => {
@@ -737,10 +783,10 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
     await chooseLot(lotOf(OTHER_LOT, 10));
     await chooseLot(lotOf(LOT, 5));
 
-    await type(tree, '11');
-    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the original stock.');
-    await type(tree, '10');
-    expect(texts(tree)).not.toContain('Enter 10 bags or fewer. That is the original stock.');
+    await type('11');
+    shows('Enter 10 bags or fewer. That is the original stock.');
+    await type('10');
+    hides('Enter 10 bags or fewer. That is the original stock.');
   });
 
   // The bags are those the dispatch held when it was read, per lot: not what a line says after it was moved (A11).
@@ -751,16 +797,16 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
     mockForm.heldBags = { [LOT]: 5 };
     mockForm.isCreateMode = false;
     await mount(<DispatchItemsStep mode="edit" />);
-    await correct(tree, mockForm.items[0]);
+    await correct(mockForm.items[0]);
 
     await chooseLot(lotOf(LOT, 5));
 
     // 5 in stock and the 5 the dispatch held on this lot: 10 is the most (it was 5 when the held bags followed the line).
-    await type(tree, '11');
-    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the original stock.');
-    await type(tree, '10');
-    expect(texts(tree)).not.toContain('Enter 10 bags or fewer. That is the original stock.');
-    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
+    await type('11');
+    shows('Enter 10 bags or fewer. That is the original stock.');
+    await type('10');
+    hides('Enter 10 bags or fewer. That is the original stock.');
+    expect(quantityLabel()).not.toHaveStyle({ color: tokens.status.negative.text });
   });
 
   it('a new line on a lot the dispatch held (its own line was removed) may take those bags too', async () => {
@@ -768,14 +814,14 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
     mockForm.heldBags = { [LOT]: 5 };
     mockForm.isCreateMode = false;
     await mount(<DispatchItemsStep mode="edit" />);
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
     await chooseItem();
     await chooseLot(lotOf(LOT, 5));
 
-    await type(tree, '11');
-    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the original stock.');
-    await type(tree, '10');
-    expect(quantityLabelColor(tree)).not.toBe(tokens.status.negative.text);
+    await type('11');
+    shows('Enter 10 bags or fewer. That is the original stock.');
+    await type('10');
+    expect(quantityLabel()).not.toHaveStyle({ color: tokens.status.negative.text });
   });
 
   it('a lot the dispatch did not hold has only its own stock, in an edit as in a new dispatch', async () => {
@@ -783,19 +829,19 @@ describe('changing the GRN or the lot of a line of an edited dispatch', () => {
     mockForm.heldBags = { [LOT]: 5 };
     mockForm.isCreateMode = false;
     await mount(<DispatchItemsStep mode="edit" />);
-    await press(tree, () => stub(tree, 'GRNAutocompleteBottomSheet').props.onSelect({ id: GRN, gr_no: 'G0311' }));
+    await call(() => mockProps.grn!.onSelect({ id: GRN, gr_no: 'G0311' }));
     await chooseItem();
     await chooseLot(lotOf(OTHER_LOT, 10));
 
-    await type(tree, '11');
-    expect(texts(tree)).toContain('Enter 10 bags or fewer. That is the available stock.');
+    await type('11');
+    shows('Enter 10 bags or fewer. That is the available stock.');
   });
 });
 
 // WH-264: the X of an edited dispatch asks to discard when the saved form was changed or when the item form on screen
 // holds a change that is not saved to the form yet; with neither, it asks nothing.
 describe('the X of an edited dispatch on the items step', () => {
-  const asksBeforeX = () => indicator(tree).props.backOnFirstStep.hasData;
+  const asksBeforeX = () => indicator().backOnFirstStep.hasData;
   beforeEach(() => {
     mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
     mockForm.heldBags = { [LOT]: 5 };
@@ -804,8 +850,8 @@ describe('the X of an edited dispatch on the items step', () => {
 
   it('asks when the saved form is unchanged but the bags of the line on screen were changed', async () => {
     await mount(<DispatchItemsStep mode="edit" />);
-    await correct(tree, mockForm.items[0]);
-    await type(tree, '7');
+    await correct(mockForm.items[0]);
+    await type('7');
 
     expect(asksBeforeX()).toBe(true);
   });
@@ -814,7 +860,7 @@ describe('the X of an edited dispatch on the items step', () => {
     await mount(<DispatchItemsStep mode="edit" />);
     expect(asksBeforeX()).toBe(false);
 
-    await correct(tree, mockForm.items[0]);
+    await correct(mockForm.items[0]);
     expect(asksBeforeX()).toBe(false);
   });
 
@@ -830,27 +876,26 @@ describe('the X of an edited dispatch on the items step', () => {
 // saved line (its lot or its bags) or a new line with anything in it, and asks nothing once the line was confirmed.
 describe('the X of an edited dispatch, the line on screen', () => {
   const lotOf = (id: string, stock: number) => ({ id, item_id: ITEM, item_name: 'Example Potatoes', quantity: 100, stock, package_mark: 'M1', rack: 'R1', weight: 50 });
-  const asksBeforeX = () => indicator(tree).props.backOnFirstStep.hasData;
-  const stopEditing = () => tree.root.findAll((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Stop editing this item');
-  const discardQuestionShown = () =>
-    tree.root.findAll((node) => (node.type as unknown) === 'ConfirmDialog' && node.props.title === 'Discard changes to this item?' && node.props.visible === true).length > 0;
+  const asksBeforeX = () => indicator().backOnFirstStep.hasData;
+  const stopEditing = () => screen.queryAllByRole('button', { name: 'Stop editing this item' });
+  const discardQuestionShown = () => screen.queryByText('Discard changes to this item?') !== null;
   const openSavedLine = async () => {
     mockForm.items = [saved({ grnItems_stock: 5, original_disp_quantity: 5 })];
     mockForm.heldBags = { [LOT]: 5 };
     mockForm.isCreateMode = false;
     await mount(<DispatchItemsStep mode="edit" />);
-    await correct(tree, mockForm.items[0]);
+    await correct(mockForm.items[0]);
   };
 
   it('another lot of the same item with the bags kept: the X asks, and so does "Stop editing this item"', async () => {
     await openSavedLine();
     expect(asksBeforeX()).toBe(false);
 
-    await press(tree, () => stub(tree, 'LotBottomSheet').props.onSelect(lotOf(OTHER_LOT, 40)));
-    expect(bags(tree).props.value).toBe('5');
+    await call(() => mockProps.lot!.onSelect(lotOf(OTHER_LOT, 40)));
+    expect(bags()).toHaveDisplayValue('5');
 
     expect(asksBeforeX()).toBe(true);
-    await press(tree, () => stopEditing()[0].props.onPress());
+    await pressButton('Stop editing this item');
     expect(discardQuestionShown()).toBe(true);
   });
 
@@ -858,7 +903,7 @@ describe('the X of an edited dispatch, the line on screen', () => {
     await openSavedLine();
 
     expect(asksBeforeX()).toBe(false);
-    await press(tree, () => stopEditing()[0].props.onPress());
+    await pressButton('Stop editing this item');
     expect(discardQuestionShown()).toBe(false);
     expect(stopEditing()).toHaveLength(0);
   });
@@ -868,17 +913,17 @@ describe('the X of an edited dispatch, the line on screen', () => {
     await mount(<DispatchItemsStep mode="edit" />);
     expect(asksBeforeX()).toBe(false);
 
-    await press(tree, () => stub(tree, 'LotBottomSheet').props.onSelect(lotOf(OTHER_LOT, 40)));
+    await call(() => mockProps.lot!.onSelect(lotOf(OTHER_LOT, 40)));
 
     expect(asksBeforeX()).toBe(true);
   });
 
   it('a line confirmed with the check mark is not asked about: the X goes back to what the saved form says', async () => {
     await openSavedLine();
-    await type(tree, '7');
+    await type('7');
     expect(asksBeforeX()).toBe(true);
 
-    await press(tree, () => tree.root.find((node) => node.props.testID === 'dispatch-items-add' && typeof node.props.onPress === 'function').props.onPress());
+    await userEvent.setup({ delay: 0 }).press(screen.getByTestId('dispatch-items-add'));
 
     expect(mockForm.updateFormItem).toHaveBeenCalledTimes(1);
     expect(asksBeforeX()).toBe(false);

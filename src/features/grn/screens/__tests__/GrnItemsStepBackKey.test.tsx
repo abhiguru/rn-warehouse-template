@@ -8,7 +8,7 @@
  * the step is a stand-in that registers a guard, or none.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import GRNFormStep2 from '../../../../../app/grn-form/step2';
@@ -51,7 +51,6 @@ jest.mock('@/features/grn/screens/GrnItemsStep', () => ({
 }));
 
 let back: ReturnType<typeof installHardwareBack>;
-const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   jest.clearAllMocks();
   mockGuard = null;
@@ -60,19 +59,11 @@ beforeEach(() => {
   mockStepProps.length = 0;
   back = installHardwareBack();
 });
-afterEach(async () => {
-  for (const tree of mounted.splice(0)) {
-    await act(async () => { tree.unmount(); });
-  }
+afterEach(() => {
   back.restore();
 });
 
-async function mount(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  mounted.push(tree);
-  return tree;
-}
+const mount = (element: React.ReactElement) => render(element);
 
 /** Each route, the mode it gives the step, and where its Back key goes. */
 const ROUTES = [
@@ -126,11 +117,10 @@ describe.each(ROUTES)('the Back key on the items step of a %s', (_name, screen, 
 
   it('keeps one listener, and takes it off when the step is left', async () => {
     const tree = await mount(screen);
-    await act(async () => { tree.update(screen); });
+    await tree.rerender(screen);
     expect(back.count()).toBe(1);
 
-    await act(async () => { tree.unmount(); });
-    mounted.length = 0;
+    await tree.unmount();
 
     expect(back.count()).toBe(0);
     expect(back.press()).toBe(false);

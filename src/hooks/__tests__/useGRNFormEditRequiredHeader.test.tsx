@@ -4,8 +4,7 @@
  * required on Edit GRN whatever they held when the edit opened: an empty one is refused at step 1 Next and in the
  * whole-form check with the existing "is required" texts; once filled the GRN saves. A new GRN is required as before.
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import grnFormReducer, { loadGRNData as loadIntoForm, updateHeader } from '@/store/slices/grnFormSlice';
 import { loadGRNData, updateGRN } from '@/features/grn/services/grnFormService';
@@ -73,14 +72,8 @@ const oldRow = (over: Record<string, unknown> = {}) => ({
 const makeStore = () => configureStore({ reducer: { grnForm: grnFormReducer, auth: () => ({ userProfile: null }) } });
 
 async function mount(mode: GRNFormMode) {
-  const latest: { current: UseGRNFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useGRNForm({ mode, grnIdParam: mode === 'edit' ? GRN_ID : undefined });
-    return null;
-  };
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<Harness />); });
-  return { form: () => latest.current!, unmount: () => act(async () => { tree.unmount(); }) };
+  const { result, unmount } = await renderHook(() => useGRNForm({ mode, grnIdParam: mode === 'edit' ? GRN_ID : undefined }));
+  return { form: (): UseGRNFormReturn => result.current, unmount };
 }
 
 /** Opens the GRN the way the edit screen does: real load, then into the form. */

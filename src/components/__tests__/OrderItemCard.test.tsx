@@ -2,8 +2,7 @@ import React from 'react';
 import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
 
 registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
-import { Text } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import OrderItemCard from '../OrderItemCard';
 import type { OrderItem } from '@/types/order.types';
 import { getTokens, type Brand, type Mode } from '@/theme/tokens';
@@ -25,62 +24,91 @@ const item: OrderItem = {
   },
 };
 
-function deferred<T>() {
+// Promises a test holds open are released in afterEach, so a failing test cannot leave Jest hanging.
+const held: (() => void)[] = [];
+function deferred<T>(release: T) {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(settle => { resolve = settle; });
+  held.push(() => resolve(release));
   return { promise, resolve };
 }
 
-const texts = (tree: ReturnType<typeof create>) =>
-  tree.root.findAllByType(Text).map(node => node.props.children).flat().map(String);
-const byLabel = (tree: ReturnType<typeof create>, label: string) =>
-  tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = (tree: ReturnType<typeof create>, label: string) =>
-  byLabel(tree, label).props.onPress();
+type JsonNode = { type: string; props: Record<string, unknown>; children: (JsonNode | string)[] | null };
+
+const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+// The first match, as before: at quantity 1 the − button carries the same "Remove …" name as the trash button.
+const button = (name: string) => screen.getAllByRole('button', { name })[0];
+const press = (name: string) => user.press(button(name));
+/** The card's own handler, called past the disabled state: what the card's guard has to hold against. */
+const pressPastDisabled = async (name: string) => {
+  // Testing Library shows host views only; the Pressable's own onPress is on the fiber above the button's view.
+  let fiber = button(name).unstable_fiber;
+  while (fiber && typeof fiber.memoizedProps?.onPress !== 'function') fiber = fiber.return;
+  const onPress = fiber?.memoizedProps.onPress as () => void;
+  await act(async () => { onPress(); });
+};
+/** The state exactly as the card states it: the `disabled` key is there, true or false (not just missing). */
+const expectOff = (name: string, off: boolean) => {
+  const el = button(name);
+  if (off) expect(el).toBeDisabled(); else expect(el).toBeEnabled();
+  expect(el.props.accessibilityState.disabled).toBe(off);
+};
+const advance = (ms: number) => act(async () => { jest.advanceTimersByTime(ms); });
+const flush = () => act(async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve(); });
+const collect = (node: unknown, found: JsonNode[] = []): JsonNode[] => {
+  if (Array.isArray(node)) node.forEach(child => collect(child, found));
+  else if (node && typeof node === 'object') {
+    found.push(node as JsonNode);
+    collect((node as JsonNode).children, found);
+  }
+  return found;
+};
+const mountCard = (props: Partial<React.ComponentProps<typeof OrderItemCard>> = {}) =>
+  render(<OrderItemCard item={item} onQuantityChange={jest.fn()} onRemove={jest.fn()} {...props} />);
 
 beforeEach(() => jest.useFakeTimers());
-afterEach(() => jest.useRealTimers());
+afterEach(() => {
+  held.splice(0).forEach(release => release());
+  jest.useRealTimers();
+});
 
 it('shows SAVED only after the server confirms the quantity', async () => {
-  const save = deferred<boolean>();
+  const save = deferred<boolean>(true);
   const onQuantityChange = jest.fn(() => save.promise);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<OrderItemCard item={item} onQuantityChange={onQuantityChange} onRemove={jest.fn()} />); });
-  await act(async () => { press(tree, 'Increase Fictional Onions by 1'); });
-  await act(async () => { jest.advanceTimersByTime(2000); });
+  await mountCard({ onQuantityChange });
+  await press('Increase Fictional Onions by 1');
+  await advance(2000);
   expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4, 'order-1');
-  expect(texts(tree)).toContain('Saving…');
-  expect(texts(tree)).not.toContain('Saved');
+  expect(screen.getByText('Saving…')).toBeOnTheScreen();
+  expect(screen.queryByText('Saved')).not.toBeOnTheScreen();
   await act(async () => { save.resolve(true); await save.promise; });
-  expect(texts(tree)).toContain('Saved');
-  expect(texts(tree)).toContain('4');
-  await act(async () => { tree.unmount(); });
+  expect(screen.getByText('Saved')).toBeOnTheScreen();
+  expect(screen.getByText('4')).toBeOnTheScreen();
+  await screen.unmount();
 });
 
 it('reverts to the stored quantity when the server refuses the change', async () => {
   const onQuantityChange = jest.fn(() => Promise.resolve(false));
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<OrderItemCard item={item} onQuantityChange={onQuantityChange} onRemove={jest.fn()} />); });
-  await act(async () => { press(tree, 'Increase Fictional Onions by 1'); });
-  expect(texts(tree)).toContain('4');
-  await act(async () => { jest.advanceTimersByTime(2000); });
+  await mountCard({ onQuantityChange });
+  await press('Increase Fictional Onions by 1');
+  expect(screen.getByText('4')).toBeOnTheScreen();
+  await advance(2000);
   expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4, 'order-1');
-  expect(texts(tree)).toContain('3');
-  expect(texts(tree)).not.toContain('4');
-  expect(texts(tree)).not.toContain('Saved');
-  await act(async () => { tree.unmount(); });
+  expect(screen.getByText('3')).toBeOnTheScreen();
+  expect(screen.queryByText('4')).not.toBeOnTheScreen();
+  expect(screen.queryByText('Saved')).not.toBeOnTheScreen();
+  await screen.unmount();
 });
 
 it('names its own line when it removes it or saves a pending change on unmount', async () => {
   const onQuantityChange = jest.fn(() => Promise.resolve(true));
   const onRemove = jest.fn();
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<OrderItemCard item={item} onQuantityChange={onQuantityChange} onRemove={onRemove} />); });
-  await act(async () => { press(tree, 'Remove Fictional Onions from order'); });
+  await mountCard({ onQuantityChange, onRemove });
+  await press('Remove Fictional Onions from order');
   expect(onRemove).toHaveBeenCalledWith('line-1', expect.any(Function));
-  await act(async () => { press(tree, 'Increase Fictional Onions by 1'); });
+  await press('Increase Fictional Onions by 1');
   expect(onQuantityChange).not.toHaveBeenCalled();
-  await act(async () => { tree.unmount(); });
+  await screen.unmount();
   expect(onQuantityChange).toHaveBeenCalledWith('line-1', 4, 'order-1');
 });
 
@@ -89,137 +117,130 @@ describe('removing the line', () => {
   const REMOVE = 'Remove Fictional Onions from order';
   const DECREASE = 'Decrease Fictional Onions by 1';
   const INCREASE = 'Increase Fictional Onions by 1';
-  const flush = () => act(async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve(); });
-  const mount = async (onQuantityChange: jest.Mock, onRemove: jest.Mock) => {
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<OrderItemCard item={item} onQuantityChange={onQuantityChange} onRemove={onRemove} />); });
-    return tree;
-  };
 
   it('Cancel after quick − taps: nothing is sent while the question is open, then the quantity shown is saved, never an endless "Saving…"', async () => {
     const onQuantityChange = jest.fn(() => Promise.resolve(true));
-    const question = deferred<boolean>();
+    const question = deferred<boolean>(false);
     const onRemove = jest.fn(() => question.promise);
-    const tree = await mount(onQuantityChange, onRemove);
+    await mountCard({ onQuantityChange, onRemove });
 
     // 3 → 2 → 1, then the third tap asks whether to remove the line.
-    await act(async () => { press(tree, DECREASE); });
-    await act(async () => { press(tree, DECREASE); });
-    expect(texts(tree)).toContain('1');
-    await act(async () => { press(tree, REMOVE); });
+    await press(DECREASE);
+    await press(DECREASE);
+    expect(screen.getByText('1')).toBeOnTheScreen();
+    await press(REMOVE);
     expect(onRemove).toHaveBeenCalledWith('line-1', expect.any(Function));
-    expect(byLabel(tree, INCREASE).props.disabled).toBe(true);
+    expectOff(INCREASE, true);
 
     // The question stays open longer than the 2 s wait: the change waiting to be saved is held back.
-    await act(async () => { jest.advanceTimersByTime(2500); });
+    await advance(2500);
     expect(onQuantityChange).not.toHaveBeenCalled();
-    expect(texts(tree)).toContain('Saving…');
+    expect(screen.getByText('Saving…')).toBeOnTheScreen();
 
     // Cancel: the line stays, the buttons are on again, and the quantity the person stepped to is saved.
     await act(async () => { question.resolve(false); await question.promise; });
     await flush();
     expect(onQuantityChange).toHaveBeenCalledTimes(1);
     expect(onQuantityChange).toHaveBeenCalledWith('line-1', 1, 'order-1');
-    expect(byLabel(tree, INCREASE).props.disabled).toBe(false);
-    expect(texts(tree)).toContain('Saved');
-    expect(texts(tree)).not.toContain('Saving…');
-    await act(async () => { tree.unmount(); });
+    expectOff(INCREASE, false);
+    expect(screen.getByText('Saved')).toBeOnTheScreen();
+    expect(screen.queryByText('Saving…')).not.toBeOnTheScreen();
+    await screen.unmount();
   });
 
   it('Cancel within the 2 s wait changes nothing: the waiting change goes out at its time', async () => {
     const onQuantityChange = jest.fn(() => Promise.resolve(true));
     const onRemove = jest.fn(() => Promise.resolve(false));
-    const tree = await mount(onQuantityChange, onRemove);
-    await act(async () => { press(tree, DECREASE); });
-    await act(async () => { press(tree, DECREASE); });
-    await act(async () => { press(tree, REMOVE); });
+    await mountCard({ onQuantityChange, onRemove });
+    await press(DECREASE);
+    await press(DECREASE);
+    await press(REMOVE);
     await flush();
     expect(onQuantityChange).not.toHaveBeenCalled();
-    expect(byLabel(tree, INCREASE).props.disabled).toBe(false);
-    await act(async () => { jest.advanceTimersByTime(2000); });
+    expectOff(INCREASE, false);
+    await advance(2000);
     await flush();
     expect(onQuantityChange).toHaveBeenCalledTimes(1);
     expect(onQuantityChange).toHaveBeenCalledWith('line-1', 1, 'order-1');
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
   });
 
   it('after Cancel the removal flag is down: a change made then is saved when the screen is left within 2 s', async () => {
     const onQuantityChange = jest.fn(() => Promise.resolve(true));
     const onRemove = jest.fn(() => Promise.resolve(false));
-    const tree = await mount(onQuantityChange, onRemove);
-    await act(async () => { press(tree, DECREASE); });
-    await act(async () => { press(tree, DECREASE); });
-    await act(async () => { press(tree, REMOVE); });
+    await mountCard({ onQuantityChange, onRemove });
+    await press(DECREASE);
+    await press(DECREASE);
+    await press(REMOVE);
     await flush();
-    await act(async () => { press(tree, INCREASE); });
-    expect(texts(tree)).toContain('2');
+    await press(INCREASE);
+    expect(screen.getByText('2')).toBeOnTheScreen();
     expect(onQuantityChange).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     expect(onQuantityChange).toHaveBeenCalledWith('line-1', 2, 'order-1');
   });
 
   it('while the removal runs every button is off, a second tap asks nothing more, and no waiting change is sent', async () => {
     const onQuantityChange = jest.fn(() => Promise.resolve(true));
-    const running = deferred<boolean>();
+    const running = deferred<boolean>(false);
     const onRemove = jest.fn(() => running.promise);
-    const tree = await mount(onQuantityChange, onRemove);
-    await act(async () => { press(tree, INCREASE); });
-    await act(async () => { press(tree, REMOVE); });
-    expect(byLabel(tree, REMOVE).props.disabled).toBe(true);
-    expect(byLabel(tree, INCREASE).props.disabled).toBe(true);
-    expect(byLabel(tree, DECREASE).props.disabled).toBe(true);
+    await mountCard({ onQuantityChange, onRemove });
+    await press(INCREASE);
+    await press(REMOVE);
+    expectOff(REMOVE, true);
+    expectOff(INCREASE, true);
+    expectOff(DECREASE, true);
 
-    await act(async () => { press(tree, REMOVE); });
+    // A tap that gets past the disabled buttons (the card's own guard).
+    await pressPastDisabled(REMOVE);
     expect(onRemove).toHaveBeenCalledTimes(1);
 
-    await act(async () => { jest.advanceTimersByTime(3000); });
+    await advance(3000);
     await act(async () => { running.resolve(true); await running.promise; });
     await flush();
     // The line is gone: its card stays off until the next read takes it away, and the held change is never sent.
-    expect(byLabel(tree, REMOVE).props.disabled).toBe(true);
-    await act(async () => { tree.unmount(); });
+    expectOff(REMOVE, true);
+    await screen.unmount();
     expect(onQuantityChange).not.toHaveBeenCalled();
   });
 
   it('a removal that got no answer turns the buttons on, sends no waiting change and shows the stored quantity', async () => {
     const onQuantityChange = jest.fn(() => Promise.resolve(true));
     const onRemove = jest.fn(() => Promise.resolve('unknown' as const));
-    const tree = await mount(onQuantityChange, onRemove);
-    await act(async () => { press(tree, DECREASE); });
-    expect(texts(tree)).toContain('2');
-    await act(async () => { press(tree, REMOVE); });
+    await mountCard({ onQuantityChange, onRemove });
+    await press(DECREASE);
+    expect(screen.getByText('2')).toBeOnTheScreen();
+    await press(REMOVE);
     await flush();
-    expect(byLabel(tree, REMOVE).props.disabled).toBe(false);
-    expect(texts(tree)).toContain('3');
-    await act(async () => { jest.advanceTimersByTime(3000); });
+    expectOff(REMOVE, false);
+    expect(screen.getByText('3')).toBeOnTheScreen();
+    await advance(3000);
     await flush();
     expect(onQuantityChange).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     expect(onQuantityChange).not.toHaveBeenCalled();
   });
 
   it('a card whose removal answered "gone" gets its buttons back when its line comes back changed', async () => {
     const onRemove = jest.fn(() => Promise.resolve(true));
-    const tree = await mount(jest.fn(), onRemove);
-    await act(async () => { press(tree, REMOVE); });
+    const { rerender } = await mountCard({ onRemove });
+    await press(REMOVE);
     await flush();
-    expect(byLabel(tree, REMOVE).props.disabled).toBe(true);
-    await act(async () => {
-      tree.update(<OrderItemCard item={{ ...item, requested_quantity: item.requested_quantity + 1 }} onQuantityChange={jest.fn()} onRemove={onRemove} />);
-    });
-    expect(byLabel(tree, REMOVE).props.disabled).toBe(false);
-    await act(async () => { tree.unmount(); });
+    expectOff(REMOVE, true);
+    await rerender(<OrderItemCard item={{ ...item, requested_quantity: item.requested_quantity + 1 }} onQuantityChange={jest.fn()} onRemove={onRemove} />);
+    expectOff(REMOVE, false);
+    await screen.unmount();
   });
 
   it('a removal that fails turns the buttons on again', async () => {
     const onRemove = jest.fn(() => Promise.resolve(false));
-    const tree = await mount(jest.fn(), onRemove);
-    await act(async () => { press(tree, REMOVE); });
+    await mountCard({ onRemove });
+    await press(REMOVE);
     await flush();
-    expect(byLabel(tree, REMOVE).props.disabled).toBe(false);
-    await act(async () => { press(tree, REMOVE); });
+    expectOff(REMOVE, false);
+    await press(REMOVE);
     expect(onRemove).toHaveBeenCalledTimes(2);
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
   });
 });
 
@@ -231,16 +252,15 @@ it.each([
 ] as const)('renders on themed surfaces in %s %s', async (brand, mode) => {
   mockTheme = { preference: mode, brand };
   const tokens = getTokens(brand, mode);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<OrderItemCard item={{ ...item, grn_item: { ...item.grn_item!, weight: 1250.5, grn_date: '2026-10-09' } }} onQuantityChange={jest.fn()} onRemove={jest.fn()} />); });
-  const container = tree.root.findAll(node => node.props.style?.backgroundColor === tokens.surface.card);
-  expect(container.length).toBeGreaterThan(0);
-  expect(texts(tree)).toContain('1,250.5 kg each');
-  expect(texts(tree)).not.toContain('1,250.5 kg');
-  expect(texts(tree)).toContain(formatDate('2026-10-09'));
-  const remove = byLabel(tree, 'Remove Fictional Onions from order');
-  expect(remove.findByProps({ name: 'trash-can-outline' }).props.color).toBe(tokens.status.negative.text);
-  await act(async () => { tree.unmount(); });
+  await mountCard({ item: { ...item, grn_item: { ...item.grn_item!, weight: 1250.5, grn_date: '2026-10-09' } } });
+  // The card's own surface is the root view.
+  expect(screen.root).toHaveStyle({ backgroundColor: tokens.surface.card });
+  expect(screen.getByText('1,250.5 kg each')).toBeOnTheScreen();
+  expect(screen.queryByText('1,250.5 kg')).not.toBeOnTheScreen();
+  expect(screen.getByText(formatDate('2026-10-09'))).toBeOnTheScreen();
+  const remove = button('Remove Fictional Onions from order');
+  expect(remove.queryAll(node => node.props.name === 'trash-can-outline')[0].props.color).toBe(tokens.status.negative.text);
+  await screen.unmount();
   mockTheme = { preference: 'light', brand: 'orange' };
 });
 
@@ -249,37 +269,34 @@ it.each([
 describe('the weight of the lot', () => {
   const withWeight = (weight: number | null | undefined): OrderItem =>
     ({ ...item, grn_item: { ...item.grn_item!, package_mark: 'PT', weight } }) as OrderItem;
-  const weightIcons = (tree: ReturnType<typeof create>) => tree.root.findAll(node => node.props.name === 'weight-kilogram');
+  const weightIcons = () => screen.root!.queryAll(node => node.props.name === 'weight-kilogram');
   /** Text drawn outside a Text (a `0` left behind by `weight && …`), which a phone refuses to draw. */
-  const bareTexts = (tree: ReturnType<typeof create>) =>
-    tree.root.findAll(node => (node.type as unknown) === 'View').flatMap(node => node.children.filter(child => typeof child === 'string'));
-  const render = async (weight: number | null | undefined) => {
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<OrderItemCard item={withWeight(weight)} onQuantityChange={jest.fn()} onRemove={jest.fn()} />); });
-    return tree;
-  };
+  const bareTexts = () =>
+    collect(screen.toJSON()).filter(node => node.type === 'View').flatMap(node => (node.children ?? []).filter(child => typeof child === 'string'));
+  const mountWeight = (weight: number | null | undefined) => mountCard({ item: withWeight(weight) });
   afterEach(() => setLanguage('en'));
 
   it('reads "50 kg each" beside the mark, and "દરેક ૫૦ કિલો" in Gujarati', async () => {
-    const tree = await render(50);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['PT', '50 kg each']));
-    expect(texts(tree)).not.toContain('50 kg');
-    expect(weightIcons(tree)).toHaveLength(1);
-    await act(async () => { tree.unmount(); });
+    await mountWeight(50);
+    expect(screen.getByText('PT')).toBeOnTheScreen();
+    expect(screen.getByText('50 kg each')).toBeOnTheScreen();
+    expect(screen.queryByText('50 kg')).not.toBeOnTheScreen();
+    expect(weightIcons()).toHaveLength(1);
+    await screen.unmount();
 
     setLanguage('gu');
-    const gujarati = await render(50);
-    expect(texts(gujarati)).toContain('દરેક ૫૦ કિલો');
-    await act(async () => { gujarati.unmount(); });
+    await mountWeight(50);
+    expect(screen.getByText('દરેક ૫૦ કિલો')).toBeOnTheScreen();
+    await screen.unmount();
   });
 
   it.each([[0], [null], [undefined], [-5]])('shows no weight, no weight icon and no stray text for a lot with weight %s', async weight => {
-    const tree = await render(weight);
-    expect(texts(tree)).toContain('PT');
-    expect(texts(tree).filter(text => /kg|each/.test(text))).toEqual([]);
-    expect(weightIcons(tree)).toEqual([]);
-    expect(bareTexts(tree)).toEqual([]);
-    await act(async () => { tree.unmount(); });
+    await mountWeight(weight);
+    expect(screen.getByText('PT')).toBeOnTheScreen();
+    expect(screen.queryByText(/kg|each/)).not.toBeOnTheScreen();
+    expect(weightIcons()).toEqual([]);
+    expect(bareTexts()).toEqual([]);
+    await screen.unmount();
   });
 });
 
@@ -287,72 +304,67 @@ describe('the weight of the lot', () => {
 describe('a line above its stock', () => {
   const over: OrderItem = { ...item, requested_quantity: 12 };
   const noStock: OrderItem = { ...item, requested_quantity: 5, grn_item: { ...item.grn_item!, current_stock: 0 } };
-  const mount = async (line: OrderItem, onQuantityChange: jest.Mock, onRemove: jest.Mock = jest.fn()) => {
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<OrderItemCard item={line} onQuantityChange={onQuantityChange} onRemove={onRemove} />); });
-    return tree;
-  };
-  const warning = (tree: ReturnType<typeof create>) =>
-    tree.root.findAll(node => node.props.testID === 'order-line-over-stock' && typeof node.type === 'string');
+  const mount = (line: OrderItem, onQuantityChange: jest.Mock, onRemove: jest.Mock = jest.fn()) =>
+    mountCard({ item: line, onQuantityChange, onRemove });
 
   it('shows the warning with the stock, and turns + and +10 off', async () => {
-    const tree = await mount(over, jest.fn(() => Promise.resolve(true)));
-    expect(warning(tree)).toHaveLength(1);
-    expect(texts(tree)).toContain('Only 10 in stock. Lower it to 10 or less, or remove it.');
-    expect(byLabel(tree, 'Increase Fictional Onions by 1').props.disabled).toBe(true);
-    expect(byLabel(tree, 'Add 10 to Fictional Onions').props.disabled).toBe(true);
-    await act(async () => { tree.unmount(); });
+    await mount(over, jest.fn(() => Promise.resolve(true)));
+    expect(screen.getByTestId('order-line-over-stock')).toBeOnTheScreen();
+    expect(screen.getByText('Only 10 in stock. Lower it to 10 or less, or remove it.')).toBeOnTheScreen();
+    expectOff('Increase Fictional Onions by 1', true);
+    expectOff('Add 10 to Fictional Onions', true);
+    await screen.unmount();
   });
 
   it('with no stock left, the warning says to remove the line, not to lower it', async () => {
-    const tree = await mount(noStock, jest.fn(() => Promise.resolve(true)));
-    expect(warning(tree)).toHaveLength(1);
-    expect(texts(tree)).toContain('Out of stock. Remove it from the order.');
-    expect(texts(tree).some(text => text.includes('Lower it to'))).toBe(false);
-    await act(async () => { tree.unmount(); });
+    await mount(noStock, jest.fn(() => Promise.resolve(true)));
+    expect(screen.getByTestId('order-line-over-stock')).toBeOnTheScreen();
+    expect(screen.getByText('Out of stock. Remove it from the order.')).toBeOnTheScreen();
+    expect(screen.queryByText(/Lower it to/)).not.toBeOnTheScreen();
+    await screen.unmount();
   });
 
   it('with negative stock, the warning also says to remove the line', async () => {
     const negative: OrderItem = { ...noStock, grn_item: { ...noStock.grn_item!, current_stock: -2 } };
-    const tree = await mount(negative, jest.fn(() => Promise.resolve(true)));
-    expect(texts(tree)).toContain('Out of stock. Remove it from the order.');
-    await act(async () => { tree.unmount(); });
+    await mount(negative, jest.fn(() => Promise.resolve(true)));
+    expect(screen.getByText('Out of stock. Remove it from the order.')).toBeOnTheScreen();
+    await screen.unmount();
   });
 
   it('shows no warning, and leaves + on, for a line within its stock', async () => {
-    const tree = await mount(item, jest.fn(() => Promise.resolve(true)));
-    expect(warning(tree)).toHaveLength(0);
-    expect(texts(tree).some(text => text.includes('in stock. Lower it'))).toBe(false);
-    expect(byLabel(tree, 'Increase Fictional Onions by 1').props.disabled).toBe(false);
-    await act(async () => { tree.unmount(); });
+    await mount(item, jest.fn(() => Promise.resolve(true)));
+    expect(screen.queryByTestId('order-line-over-stock')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/in stock\. Lower it/)).not.toBeOnTheScreen();
+    expectOff('Increase Fictional Onions by 1', false);
+    await screen.unmount();
   });
 
   it('names what − and −10 do in their spoken labels: lower to the stock', async () => {
-    const tree = await mount(over, jest.fn(() => Promise.resolve(true)));
-    expect(byLabel(tree, 'Lower Fictional Onions to 10')).toBeDefined();
-    expect(byLabel(tree, 'Decrease Fictional Onions by 1')).toBeUndefined();
-    await act(async () => { tree.unmount(); });
+    await mount(over, jest.fn(() => Promise.resolve(true)));
+    expect(screen.getByRole('button', { name: 'Lower Fictional Onions to 10' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Decrease Fictional Onions by 1' })).not.toBeOnTheScreen();
+    await screen.unmount();
   });
 
   it('− lowers 12 to the stock 10 (not to 11), and that is what is saved', async () => {
     const onQuantityChange = jest.fn(() => Promise.resolve(true));
-    const tree = await mount(over, onQuantityChange);
-    await act(async () => { press(tree, 'Lower Fictional Onions to 10'); });
-    expect(texts(tree)).toContain('10');
-    expect(warning(tree)).toHaveLength(0);
-    await act(async () => { jest.advanceTimersByTime(2000); });
+    await mount(over, onQuantityChange);
+    await press('Lower Fictional Onions to 10');
+    expect(screen.getByText('10')).toBeOnTheScreen();
+    expect(screen.queryByTestId('order-line-over-stock')).not.toBeOnTheScreen();
+    await advance(2000);
     expect(onQuantityChange).toHaveBeenCalledWith('line-1', 10, 'order-1');
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
   });
 
   it('with no stock left, − asks to remove the line instead of lowering it', async () => {
     const onQuantityChange = jest.fn(() => Promise.resolve(true));
     const onRemove = jest.fn(() => new Promise<boolean>(() => undefined));
-    const tree = await mount(noStock, onQuantityChange, onRemove);
-    expect(byLabel(tree, 'Remove Fictional Onions from order')).toBeDefined();
-    await act(async () => { press(tree, 'Remove Fictional Onions from order'); });
+    await mount(noStock, onQuantityChange, onRemove);
+    expect(screen.getAllByRole('button', { name: 'Remove Fictional Onions from order' }).length).toBeGreaterThan(0);
+    await user.press(screen.getAllByRole('button', { name: 'Remove Fictional Onions from order' })[0]);
     expect(onRemove).toHaveBeenCalledWith('line-1', expect.any(Function));
     expect(onQuantityChange).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
   });
 });

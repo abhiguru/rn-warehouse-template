@@ -4,7 +4,7 @@
  * own word (the older props) is only placed into the English sentences.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
 import { ActionsSection } from '@/components/common/overview-tab';
@@ -29,36 +29,24 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
 jest.useFakeTimers();
 
-const mounted: ReactTestRenderer[] = [];
-afterEach(() => {
-  act(() => {
-    mounted.splice(0).forEach(tree => tree.unmount());
-    jest.runOnlyPendingTimers();
-  });
+const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+
+afterEach(async () => {
+  await jest.runOnlyPendingTimersAsync();
   setLanguage('en');
   jest.clearAllMocks();
 });
 
-function render(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  mounted.push(tree);
-  return tree;
+/** Draws the element again in the language just set (the first tree is taken away so the screen holds one). */
+async function renderAgain(element: React.ReactElement) {
+  await screen.unmount();
+  await render(element);
 }
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
-const labels = (tree: ReactTestRenderer) =>
-  tree.root.findAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string);
-const placeholders = (tree: ReactTestRenderer) =>
-  tree.root.findAll(node => typeof node.type === 'string' && typeof node.props.placeholder === 'string').map(node => node.props.placeholder as string);
 
 const STEPS = [{ label: 'One' }, { label: 'Two' }, { label: 'Three' }];
-const header = (props: Partial<React.ComponentProps<typeof GenericStepIndicatorHeader>>) =>
-  render(<GenericStepIndicatorHeader steps={STEPS} currentStep={1} completedSteps={[]} onCancel={jest.fn()} {...props} />);
-const closeButton = (tree: ReactTestRenderer) =>
-  tree.root.find(node => typeof node.type === 'string' && node.props.accessibilityRole === 'button' && node.props.accessibilityHint !== undefined && !/^Step|પગલું/.test(node.props.accessibilityLabel));
+const header = (props: Partial<React.ComponentProps<typeof GenericStepIndicatorHeader>>) => (
+  <GenericStepIndicatorHeader steps={STEPS} currentStep={1} completedSteps={[]} onCancel={jest.fn()} {...props} />
+);
 
 describe('GenericStepIndicatorHeader', () => {
   it.each([
@@ -67,128 +55,146 @@ describe('GenericStepIndicatorHeader', () => {
     ['dispatch', 'create', 'Close new dispatch', 'નવી જાવક બંધ કરો'],
     ['dispatch', 'edit', 'Close dispatch edit', 'જાવકનો ફેરફાર બંધ કરો'],
     ['invoice', 'create', 'Close new invoice', 'નવું ઇન્વૉઇસ બંધ કરો'],
-  ] as const)('names the close button for %s in %s mode in both languages', (entity, mode, english, gujarati) => {
-    expect(closeButton(header({ entity, mode })).props.accessibilityLabel).toBe(english);
+  ] as const)('names the close button for %s in %s mode in both languages', async (entity, mode, english, gujarati) => {
+    await render(header({ entity, mode }));
+    expect(screen.getByRole('button', { name: english })).toBeOnTheScreen();
     setLanguage('gu');
-    expect(closeButton(header({ entity, mode })).props.accessibilityLabel).toBe(gujarati);
+    await renderAgain(header({ entity, mode }));
+    expect(screen.getByRole('button', { name: gujarati })).toBeOnTheScreen();
   });
 
-  it('chooses by mode, not by the label on screen', () => {
+  it('chooses by mode, not by the label on screen', async () => {
     // The label reads "Edit" but the wizard creates: before, the word on screen decided.
-    expect(closeButton(header({ entity: 'grn', mode: 'create', entityName: 'Edit' })).props.accessibilityLabel).toBe('Close new GRN');
+    await render(header({ entity: 'grn', mode: 'create', entityName: 'Edit' }));
+    expect(screen.getByRole('button', { name: 'Close new GRN' })).toBeOnTheScreen();
     setLanguage('gu');
     // A Gujarati label never matched 'edit': edit mode must still say "cancel the changes".
-    expect(closeButton(header({ entity: 'dispatch', mode: 'edit', entityName: 'ફેરફાર' })).props.accessibilityLabel).toBe('જાવકનો ફેરફાર બંધ કરો');
+    await renderAgain(header({ entity: 'dispatch', mode: 'edit', entityName: 'ફેરફાર' }));
+    expect(screen.getByRole('button', { name: 'જાવકનો ફેરફાર બંધ કરો' })).toBeOnTheScreen();
   });
 
-  it('shows the name of the entity when no label is given, and the given label otherwise', () => {
-    expect(texts(header({ entity: 'invoice' }))).toContain('Invoice');
-    expect(texts(header({ entity: 'invoice', mode: 'edit', entityName: 'Edit invoice' }))).toContain('Edit invoice');
+  it('shows the name of the entity when no label is given, and the given label otherwise', async () => {
+    await render(header({ entity: 'invoice' }));
+    expect(screen.getByText('Invoice')).toBeOnTheScreen();
+    await renderAgain(header({ entity: 'invoice', mode: 'edit', entityName: 'Edit invoice' }));
+    expect(screen.getByText('Edit invoice')).toBeOnTheScreen();
     setLanguage('gu');
-    expect(texts(header({ entity: 'invoice' }))).toContain('ઇન્વૉઇસ');
+    await renderAgain(header({ entity: 'invoice' }));
+    expect(screen.getByText('ઇન્વૉઇસ')).toBeOnTheScreen();
   });
 
-  it('asks a whole-sentence discard question when the screen gives no title', () => {
+  it('asks a whole-sentence discard question when the screen gives no title', async () => {
     setLanguage('gu');
-    const tree = header({ entity: 'dispatch' });
-    const close = tree.root.find(node => node.props.accessibilityLabel === 'નવી જાવક બંધ કરો' && typeof node.props.onPress === 'function');
-    act(() => close.props.onPress());
+    await render(header({ entity: 'dispatch' }));
+    await user.press(screen.getByRole('button', { name: 'નવી જાવક બંધ કરો' }));
     expect((showAlert as jest.Mock).mock.calls[0][0]).toBe('આ જાવક છોડી દેવી છે?');
   });
 
-  it('still accepts a caller word alone, for English', () => {
-    expect(closeButton(header({ entityName: 'GRN' })).props.accessibilityLabel).toBe('Cancel GRN');
-    expect(closeButton(header({ entityName: 'Anything', mode: 'edit' })).props.accessibilityLabel).toBe('Cancel editing');
+  it('still accepts a caller word alone, for English', async () => {
+    await render(header({ entityName: 'GRN' }));
+    expect(screen.getByRole('button', { name: 'Cancel GRN' })).toBeOnTheScreen();
+    await renderAgain(header({ entityName: 'Anything', mode: 'edit' }));
+    expect(screen.getByRole('button', { name: 'Cancel editing' })).toBeOnTheScreen();
   });
 });
 
 describe('ActionsSection', () => {
-  const actions = (props: Partial<React.ComponentProps<typeof ActionsSection>>) =>
-    render(<ActionsSection entityNumber="311" entityId="g1" canEdit onDelete={jest.fn()} onPrint={jest.fn()} {...props} />);
+  const actions = (props: Partial<React.ComponentProps<typeof ActionsSection>>) => (
+    <ActionsSection entityNumber="311" entityId="g1" canEdit onDelete={jest.fn()} onPrint={jest.fn()} {...props} />
+  );
 
   it.each([
     ['grn', ['Print GRN', 'Delete GRN'], ['આવક પાવતી પ્રિન્ટ કરો', 'આવક પાવતી ડિલીટ કરો']],
     ['dispatch', ['Print Dispatch', 'Delete Dispatch'], ['જાવક પ્રિન્ટ કરો', 'જાવક ડિલીટ કરો']],
     ['invoice', ['Print Invoice', 'Delete Invoice'], ['ઇન્વૉઇસ પ્રિન્ટ કરો', 'ઇન્વૉઇસ ડિલીટ કરો']],
-  ] as const)('labels the buttons for %s in both languages', (entity, english, gujarati) => {
-    expect(texts(actions({ entity }))).toEqual(expect.arrayContaining([...english]));
+  ] as const)('labels the buttons for %s in both languages', async (entity, english, gujarati) => {
+    await render(actions({ entity }));
+    english.forEach(label => expect(screen.getByText(label)).toBeOnTheScreen());
     setLanguage('gu');
-    const shown = texts(actions({ entity }));
-    expect(shown).toEqual(expect.arrayContaining([...gujarati]));
-    expect(shown.join(' ')).not.toMatch(/Print|Edit|Delete/);
+    await renderAgain(actions({ entity }));
+    gujarati.forEach(label => expect(screen.getByText(label)).toBeOnTheScreen());
+    expect(screen.queryByText(/Print|Edit|Delete/)).not.toBeOnTheScreen();
   });
 
-  it('asks before deleting with the document number left as typed', () => {
+  it('asks before deleting with the document number left as typed', async () => {
     setLanguage('gu');
-    const tree = actions({ entity: 'invoice', entityNumber: '2555' });
-    const remove = tree.root.find(node => node.props.accessibilityLabel === 'ઇન્વૉઇસ ડિલીટ કરો' && typeof node.props.onPress === 'function');
-    act(() => remove.props.onPress());
+    await render(actions({ entity: 'invoice', entityNumber: '2555' }));
+    await user.press(screen.getByRole('button', { name: 'ઇન્વૉઇસ ડિલીટ કરો' }));
     const [title, , buttons] = (showAlert as jest.Mock).mock.calls[0];
     expect(title).toBe('ઇન્વૉઇસ 2555 ડિલીટ કરવું છે?');
     expect(buttons[1].text).toBe('ઇન્વૉઇસ ડિલીટ કરો');
   });
 
-  it('shows neither Edit nor Delete unless the caller says the role may', () => {
-    const shown = texts(render(<ActionsSection entity="grn" entityNumber="311" entityId="g1" onDelete={jest.fn()} onPrint={jest.fn()} />));
-    expect(shown).toContain('Print GRN');
-    expect(shown).not.toContain('Edit GRN');
-    expect(shown).not.toContain('Delete GRN');
+  it('shows neither Edit nor Delete unless the caller says the role may', async () => {
+    await render(<ActionsSection entity="grn" entityNumber="311" entityId="g1" onDelete={jest.fn()} onPrint={jest.fn()} />);
+    expect(screen.getByText('Print GRN')).toBeOnTheScreen();
+    expect(screen.queryByText('Edit GRN')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Delete GRN')).not.toBeOnTheScreen();
   });
 
   // WH-216: Edit is in the page header, so this section never draws it.
-  it('shows no Delete, and no Edit (it is in the header), to a role that may edit but not delete', () => {
-    const shown = texts(actions({ entity: 'grn', canEdit: true, canDelete: false }));
-    expect(shown).toContain('Print GRN');
-    expect(shown).not.toContain('Edit GRN');
-    expect(shown).not.toContain('Delete GRN');
+  it('shows no Delete, and no Edit (it is in the header), to a role that may edit but not delete', async () => {
+    await render(actions({ entity: 'grn', canEdit: true, canDelete: false }));
+    expect(screen.getByText('Print GRN')).toBeOnTheScreen();
+    expect(screen.queryByText('Edit GRN')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Delete GRN')).not.toBeOnTheScreen();
   });
 
-  it('still accepts a caller word alone, for English', () => {
-    expect(texts(actions({ entityType: 'GRN' }))).toEqual(expect.arrayContaining(['Print GRN', 'Delete GRN']));
+  it('still accepts a caller word alone, for English', async () => {
+    await render(actions({ entityType: 'GRN' }));
+    expect(screen.getByText('Print GRN')).toBeOnTheScreen();
+    expect(screen.getByText('Delete GRN')).toBeOnTheScreen();
   });
 });
 
 describe('PrintRangeDialog', () => {
-  const dialog = (props: Partial<React.ComponentProps<typeof PrintRangeDialog>>) =>
-    render(<PrintRangeDialog visible onDismiss={jest.fn()} onConfirm={jest.fn()} title="Print" defaultNumber="" {...props} />);
+  const dialog = (props: Partial<React.ComponentProps<typeof PrintRangeDialog>>) => (
+    <PrintRangeDialog visible onDismiss={jest.fn()} onConfirm={jest.fn()} title="Print" defaultNumber="" {...props} />
+  );
 
-  it('words the range texts for the document in both languages', () => {
-    const english = dialog({ entity: 'grn' });
-    expect(texts(english)).toEqual(expect.arrayContaining([
-      'Choose the range of GRN numbers to print.',
-      'Use the same number in both fields to print one GRN number.',
-    ]));
-    expect(placeholders(english)).toEqual(['Start GRN number', 'End GRN number']);
-    expect(labels(english)).toEqual(expect.arrayContaining(['From GRN number', 'To GRN number']));
+  it('words the range texts for the document in both languages', async () => {
+    await render(dialog({ entity: 'grn' }));
+    expect(screen.getByText('Choose the range of GRN numbers to print.')).toBeOnTheScreen();
+    expect(screen.getByText('Use the same number in both fields to print one GRN number.')).toBeOnTheScreen();
+    expect(screen.getAllByPlaceholderText(/./).map(node => node.props.placeholder)).toEqual(['Start GRN number', 'End GRN number']);
+    // The input also has accessibilityLabelledBy, which wins in the accessible name: the label itself is the prop.
+    expect(screen.getByPlaceholderText('Start GRN number')).toHaveProp('accessibilityLabel', 'From GRN number');
+    expect(screen.getByPlaceholderText('End GRN number')).toHaveProp('accessibilityLabel', 'To GRN number');
 
     setLanguage('gu');
-    const gujarati = dialog({ entity: 'grn' });
-    expect(texts(gujarati)).toEqual(expect.arrayContaining([
-      'પ્રિન્ટ કરવા માટે આવક પાવતી નંબરની રેન્જ પસંદ કરો.',
-      'એક જ આવક પાવતી પ્રિન્ટ કરવા બંને ખાનામાં એક જ નંબર લખો.',
-    ]));
-    expect(placeholders(gujarati)).toEqual(['શરૂઆતનો આવક પાવતી નંબર', 'છેલ્લો આવક પાવતી નંબર']);
+    await renderAgain(dialog({ entity: 'grn' }));
+    expect(screen.getByText('પ્રિન્ટ કરવા માટે આવક પાવતી નંબરની રેન્જ પસંદ કરો.')).toBeOnTheScreen();
+    expect(screen.getByText('એક જ આવક પાવતી પ્રિન્ટ કરવા બંને ખાનામાં એક જ નંબર લખો.')).toBeOnTheScreen();
+    expect(screen.getAllByPlaceholderText(/./).map(node => node.props.placeholder)).toEqual(['શરૂઆતનો આવક પાવતી નંબર', 'છેલ્લો આવક પાવતી નંબર']);
   });
 
-  it('gives the same English as the older label prop did', () => {
-    const byEntity = dialog({ entity: 'dispatch' });
-    const byLabel = dialog({ label: 'Dispatch number' });
-    expect(texts(byEntity)).toEqual(texts(byLabel));
-    expect(placeholders(byEntity)).toEqual(placeholders(byLabel));
-    expect(labels(byEntity)).toEqual(labels(byLabel));
+  it('gives the same English as the older label prop did', async () => {
+    await render(dialog({ entity: 'dispatch' }));
+    const byEntity = JSON.stringify(screen.toJSON());
+    await renderAgain(dialog({ label: 'Dispatch number' }));
+    // The whole rendered tree: it covers the texts, the placeholders and the labels the old test compared.
+    expect(JSON.stringify(screen.toJSON())).toBe(byEntity);
+    expect(screen.getAllByPlaceholderText(/./)).toHaveLength(2);
   });
 });
 
 describe('DocumentSuccessDialog', () => {
   const data = { documentNo: '42', customerName: 'Patel Traders', itemCount: 2 };
-  const success = (props: Partial<React.ComponentProps<typeof DocumentSuccessDialog>>) =>
-    render(<DocumentSuccessDialog isVisible documentData={data} onCreateAnother={jest.fn()} onViewList={jest.fn()} onSharePDF={jest.fn()} {...props} />);
+  const success = (props: Partial<React.ComponentProps<typeof DocumentSuccessDialog>>) => (
+    <DocumentSuccessDialog isVisible documentData={data} onCreateAnother={jest.fn()} onViewList={jest.fn()} onSharePDF={jest.fn()} {...props} />
+  );
 
-  it('takes entity, and gives the same texts as the older documentType', () => {
-    expect(texts(success({ entity: 'dispatch' }))).toEqual(texts(success({ documentType: 'Dispatch' })));
-    expect(texts(success({ entity: 'grn', isEditMode: true }))).toContain('GRN updated');
+  it('takes entity, and gives the same texts as the older documentType', async () => {
+    await render(success({ entity: 'dispatch' }));
+    const byEntity = JSON.stringify(screen.toJSON());
+    await renderAgain(success({ documentType: 'Dispatch' }));
+    expect(JSON.stringify(screen.toJSON())).toBe(byEntity);
+    await renderAgain(success({ entity: 'grn', isEditMode: true }));
+    expect(screen.getByText('GRN updated')).toBeOnTheScreen();
     setLanguage('gu');
-    expect(texts(success({ entity: 'grn', isEditMode: true }))).toContain('આવક પાવતી અપડેટ થઈ');
-    expect(texts(success({ entity: 'dispatch' }))).toContain('જાવક બની ગઈ');
+    await renderAgain(success({ entity: 'grn', isEditMode: true }));
+    expect(screen.getByText('આવક પાવતી અપડેટ થઈ')).toBeOnTheScreen();
+    await renderAgain(success({ entity: 'dispatch' }));
+    expect(screen.getByText('જાવક બની ગઈ')).toBeOnTheScreen();
   });
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { DispatchImagesTab } from '../dispatch-details/DispatchImagesTab';
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -15,61 +15,67 @@ jest.mock('@/store/hooks', () => ({
     sel({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 
-const addButtons = (tree: ReturnType<typeof create>) =>
-  tree.root.findAll(node => node.props.accessibilityLabel === 'Add dispatch photo' && typeof node.props.onPress === 'function');
+const user = userEvent.setup({ delay: 0 });
+const addButton = () => screen.queryByRole('button', { name: 'Add dispatch photo' });
+const deleteButtons = () => screen.queryAllByRole('button', { name: /^Delete dispatch photo/ });
 
 // testvm2 known issue 4: a submitted dispatch had no way to receive a photo.
 it('offers Add Photo on an empty or filled dispatch only when the screen allows uploads', async () => {
   const onUpload = jest.fn();
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<DispatchImagesTab images={[]} />); });
-  expect(addButtons(tree)).toHaveLength(0);
+  await render(<DispatchImagesTab images={[]} />);
+  expect(addButton()).not.toBeOnTheScreen();
 
-  await act(async () => { tree.update(<DispatchImagesTab images={[]} onUpload={onUpload} />); });
-  await act(async () => { addButtons(tree)[0].props.onPress(); });
+  await screen.rerender(<DispatchImagesTab images={[]} onUpload={onUpload} />);
+  await user.press(screen.getByRole('button', { name: 'Add dispatch photo' }));
   expect(onUpload).toHaveBeenCalledTimes(1);
 
   const images = [{ id: 'photo-1', image_url: 'https://example.invalid/photo-1.jpg' }];
-  await act(async () => { tree.update(<DispatchImagesTab images={images} onUpload={onUpload} isUploading />); });
-  const [inHeader] = addButtons(tree);
-  expect(inHeader.props.disabled).toBe(true);
-  await act(async () => { tree.unmount(); });
+  await screen.rerender(<DispatchImagesTab images={images} onUpload={onUpload} isUploading />);
+  expect(screen.getByRole('button', { name: 'Add dispatch photo' })).toBeDisabled();
 });
 
 it('says "Photo missing" on a tile whose file fails to load', async () => {
   const images = [{ id: 'photo-1', image_url: 'https://example.invalid/photo-1.jpg' }];
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<DispatchImagesTab images={images} />); });
-  const missing = () => tree.root.findAll(node => node.props.testID === 'photo-missing' && node.props.children === 'Photo missing');
-  expect(missing()).toHaveLength(0);
-  await act(async () => { tree.root.findByType('Image' as never).props.onError({}); });
-  expect(missing().length).toBeGreaterThan(0);
-  await act(async () => { tree.unmount(); });
+  await render(<DispatchImagesTab images={images} />);
+  expect(screen.queryByText('Photo missing')).not.toBeOnTheScreen();
+  // The photo itself has no role or text: it is the Image drawn inside the tile's button.
+  const findImage = (nodes: readonly unknown[]): unknown => {
+    for (const node of nodes) {
+      if (typeof node === 'string') continue;
+      const inst = node as { type: unknown; children: readonly unknown[] };
+      if (inst.type === 'Image') return inst;
+      const found = findImage(inst.children);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const image = findImage(screen.getByRole('imagebutton').children);
+  expect(image).toBeDefined();
+  await fireEvent(image as never, 'error', {});
+  expect(await screen.findByText('Photo missing')).toBeOnTheScreen();
 });
 
 it('offers a delete per photo, the only one included, only when the screen allows it; it waits while a delete or an upload runs', async () => {
   const onDelete = jest.fn();
   const one = [{ id: 'photo-1', image_url: 'https://example.invalid/photo-1.jpg' }];
   const two = [...one, { id: 'photo-2', image_url: 'https://example.invalid/photo-2.jpg' }];
-  const deleteButtons = (tree: ReturnType<typeof create>) =>
-    tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('Delete dispatch photo') && typeof node.props.onPress === 'function');
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<DispatchImagesTab images={two} />); });
-  expect(deleteButtons(tree)).toHaveLength(0);
+  await render(<DispatchImagesTab images={two} />);
+  expect(deleteButtons()).toHaveLength(0);
 
-  await act(async () => { tree.update(<DispatchImagesTab images={two} onDelete={onDelete} />); });
-  expect(deleteButtons(tree).map(n => n.props.accessibilityLabel)).toEqual(['Delete dispatch photo 1 of 2', 'Delete dispatch photo 2 of 2']);
-  await act(async () => { deleteButtons(tree)[1].props.onPress(); });
+  await screen.rerender(<DispatchImagesTab images={two} onDelete={onDelete} />);
+  expect(deleteButtons()).toHaveLength(2);
+  expect(deleteButtons()[0]).toHaveAccessibleName('Delete dispatch photo 1 of 2');
+  expect(deleteButtons()[1]).toHaveAccessibleName('Delete dispatch photo 2 of 2');
+  await user.press(deleteButtons()[1]);
   expect(onDelete).toHaveBeenCalledWith(two[1]);
 
   // The last photo can be deleted too.
-  await act(async () => { tree.update(<DispatchImagesTab images={one} onDelete={onDelete} />); });
-  expect(deleteButtons(tree)).toHaveLength(1);
-  expect(deleteButtons(tree)[0].props.disabled).toBe(false);
+  await screen.rerender(<DispatchImagesTab images={one} onDelete={onDelete} />);
+  expect(deleteButtons()).toHaveLength(1);
+  expect(deleteButtons()[0]).toBeEnabled();
 
-  await act(async () => { tree.update(<DispatchImagesTab images={one} onDelete={onDelete} isDeleting />); });
-  expect(deleteButtons(tree)[0].props.disabled).toBe(true);
-  await act(async () => { tree.update(<DispatchImagesTab images={one} onDelete={onDelete} isUploading />); });
-  expect(deleteButtons(tree)[0].props.disabled).toBe(true);
-  await act(async () => { tree.unmount(); });
+  await screen.rerender(<DispatchImagesTab images={one} onDelete={onDelete} isDeleting />);
+  expect(deleteButtons()[0]).toBeDisabled();
+  await screen.rerender(<DispatchImagesTab images={one} onDelete={onDelete} isUploading />);
+  expect(deleteButtons()[0]).toBeDisabled();
 });

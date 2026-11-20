@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { Platform } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { pressAlertButton } from '@/tests/helpers/alertMock';
 import { triggerError, triggerWarning } from '@/hooks/useHaptics';
@@ -37,9 +37,31 @@ jest.mock('@/hooks/useDispatchForm', () => ({
   }),
 }));
 
-// Children are stand-ins that keep their props, so the test can read and answer them.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
+// Children are stand-ins that draw what a person sees of an open dialog; the confirm keeps its props, so the test can
+// answer it where the real component answers through its button.
+interface MockConfirmProps {
+  visible: boolean;
+  title: string;
+  message?: string;
+  onConfirm: () => unknown;
+}
+let mockConfirmProps: MockConfirmProps | undefined;
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: MockConfirmProps) => {
+    const { Text, View } = require('react-native');
+    const { createElement } = require('react');
+    // The first one drawn is the confirm of Create.
+    mockConfirmProps = mockConfirmProps ?? props;
+    if (mockConfirmProps.title === props.title) mockConfirmProps = props;
+    return props.visible
+      ? createElement(View, { accessible: true, accessibilityRole: 'alert' }, createElement(Text, null, props.title), createElement(Text, null, props.message))
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean }) =>
+    props.isVisible ? require('react').createElement(require('react-native').View, { accessible: true, accessibilityLabel: 'Success dialog' }) : null,
+}));
 jest.mock('@/components/DispatchStepIndicator', () => ({
   DispatchStepIndicator: (props: object) => require('react').createElement('DispatchStepIndicator', props),
   dispatchSteps: () => [],
@@ -68,10 +90,10 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-let tree: ReactTestRenderer;
-const confirm = () => tree.root.findAllByType('ConfirmDialog' as never)[0];
-const success = () => tree.root.findByType('DocumentSuccessDialog' as never);
-const submitButton = () => tree.root.find((n) => n.props.testID === 'dispatch-review-submit' && typeof n.props.onPress === 'function');
+const CONFIRM_TITLE = 'Create dispatch I0042?';
+const confirmProps = () => mockConfirmProps!;
+const successDialog = () => screen.queryByLabelText('Success dialog');
+const submitButton = () => screen.getByRole('button', { name: 'Create dispatch' });
 const alerts = () => (require('@/utils/alert').showAlert as jest.Mock).mock.calls as [string, string, { text: string }[]][];
 const duplicateQuestions = () => alerts().filter(([title]) => title === 'Possible duplicate');
 
@@ -87,49 +109,49 @@ const duplicate = {
   windowMinutes: 30,
 };
 
-const render = async () => {
-  await act(async () => { tree = create(<DispatchReviewStep mode="create" />); });
+const show = async () => {
+  await render(<DispatchReviewStep mode="create" />);
 };
 /** Create, then the confirm's own button: the save starts. */
 const createAndConfirm = async () => {
-  await act(async () => { submitButton().props.onPress(); });
-  expect(confirm().props.visible).toBe(true);
-  await act(async () => { await confirm().props.onConfirm(); });
+  await userEvent.setup({ delay: 0 }).press(submitButton());
+  expect(await screen.findByText(CONFIRM_TITLE)).toBeOnTheScreen();
+  await act(async () => { await confirmProps().onConfirm(); });
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockConfirmProps = undefined;
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.replaceProperty(Platform, 'OS', 'android');
   mockCreateMode = true;
   mockChecking = false;
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
 describe('a direct dispatch that looks like one made a moment ago', () => {
   it('asks "Possible duplicate" with the earlier dispatch, after the confirm has closed, and saves nothing yet', async () => {
     mockSubmitForm.mockResolvedValue({ success: false, duplicate });
-    await render();
+    await show();
 
     await createAndConfirm();
 
     expect(mockSubmitForm).toHaveBeenCalledTimes(1);
-    expect(confirm().props.visible).toBe(false);
+    expect(screen.queryByText(CONFIRM_TITLE)).not.toBeOnTheScreen();
     expect(duplicateQuestions()).toHaveLength(1);
     const [, message, buttons] = duplicateQuestions()[0];
     expect(message).toBe(
       'Dispatch I0041 for Fictional Traders was created 4 minutes ago by Ravi Example with the same lots (A0010 · Potatoes · Jute bag) and vehicle GJ01AB1234. Save this as a new dispatch anyway?'
     );
     expect(buttons.map((button) => button.text)).toEqual(['Cancel', 'Save anyway']);
-    expect(success().props.isVisible).toBe(false);
+    expect(successDialog()).not.toBeOnTheScreen();
   });
 
   it('is a warning to the hand, not an error: a warning buzz, no error buzz', async () => {
     mockSubmitForm.mockResolvedValue({ success: false, duplicate });
-    await render();
+    await show();
 
     await createAndConfirm();
 
@@ -139,7 +161,7 @@ describe('a direct dispatch that looks like one made a moment ago', () => {
 
   it('a refusal that is not the warning is still an error buzz', async () => {
     mockSubmitForm.mockResolvedValue({ success: false, error: 'No stock left' });
-    await render();
+    await show();
 
     await createAndConfirm();
 
@@ -149,7 +171,7 @@ describe('a direct dispatch that looks like one made a moment ago', () => {
 
   it('the first save asked for the check: no override', async () => {
     mockSubmitForm.mockResolvedValue({ success: false, duplicate });
-    await render();
+    await show();
 
     await createAndConfirm();
 
@@ -161,14 +183,14 @@ describe('a direct dispatch that looks like one made a moment ago', () => {
     mockSubmitForm
       .mockResolvedValueOnce({ success: false, duplicate })
       .mockResolvedValueOnce({ success: true, dispatchId: '88888888-2222-4333-8444-555555555555', orderLinesLeft: null, failedPhotos: [] });
-    await render();
+    await show();
     await createAndConfirm();
 
     await act(async () => { pressAlertButton(require('@/utils/alert').showAlert, 'Save anyway'); });
 
     expect(mockSubmitForm).toHaveBeenCalledTimes(2);
     expect(mockSubmitForm.mock.calls[1][2]).toEqual({ warnDuplicate: false });
-    expect(success().props.isVisible).toBe(true);
+    expect(successDialog()).toBeOnTheScreen();
   });
 
   it('Save anyway sends nothing, so no answer can arrive, until the question\'s dialog has finished closing (iOS cannot open a Modal over one that is closing)', async () => {
@@ -180,17 +202,17 @@ describe('a direct dispatch that looks like one made a moment ago', () => {
       mockSubmitForm
         .mockResolvedValueOnce({ success: false, duplicate })
         .mockResolvedValueOnce({ success: true, dispatchId: '88888888-2222-4333-8444-555555555555', orderLinesLeft: null, failedPhotos: [] });
-      await render();
+      await show();
       await createAndConfirm();
 
       // The person answers; the Modal is still closing: nothing is sent, and no success dialog is open.
       await act(async () => { pressAlertButton(alertModule.showAlert, 'Save anyway'); });
       expect(mockSubmitForm).toHaveBeenCalledTimes(1);
-      expect(success().props.isVisible).toBe(false);
+      expect(successDialog()).not.toBeOnTheScreen();
 
       await act(async () => { closed(); });
       expect(mockSubmitForm).toHaveBeenCalledTimes(2);
-      expect(success().props.isVisible).toBe(true);
+      expect(successDialog()).toBeOnTheScreen();
     } finally {
       alertModule.whenAlertsClosed = original;
     }
@@ -198,18 +220,18 @@ describe('a direct dispatch that looks like one made a moment ago', () => {
 
   it('Cancel leaves the form as it was on Review: nothing is sent, and Create can be tried again', async () => {
     mockSubmitForm.mockResolvedValue({ success: false, duplicate });
-    await render();
+    await show();
     await createAndConfirm();
 
     await act(async () => { pressAlertButton(require('@/utils/alert').showAlert, 'Cancel'); });
 
     expect(mockSubmitForm).toHaveBeenCalledTimes(1);
-    expect(success().props.isVisible).toBe(false);
-    expect(confirm().props.visible).toBe(false);
-    expect(submitButton().props.disabled).toBeFalsy();
+    expect(successDialog()).not.toBeOnTheScreen();
+    expect(screen.queryByText(CONFIRM_TITLE)).not.toBeOnTheScreen();
+    expect(submitButton()).toBeEnabled();
     // A second Create asks the server again, with the warning on.
-    await act(async () => { submitButton().props.onPress(); });
-    expect(confirm().props.visible).toBe(true);
+    await userEvent.setup({ delay: 0 }).press(submitButton());
+    expect(await screen.findByText(CONFIRM_TITLE)).toBeOnTheScreen();
   });
 
   it('a refusal of the second send (Save anyway) is told like any refusal, and no second warning follows', async () => {
@@ -219,7 +241,7 @@ describe('a direct dispatch that looks like one made a moment ago', () => {
         onFailure('Could not save', 'No stock left');
         return { success: false, error: 'No stock left' };
       });
-    await render();
+    await show();
     await createAndConfirm();
 
     await act(async () => { pressAlertButton(require('@/utils/alert').showAlert, 'Save anyway'); });

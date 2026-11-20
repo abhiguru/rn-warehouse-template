@@ -3,7 +3,7 @@
  * scrolls only past a height limit (font scale 2.0). It used to be a fixed half of the screen.
  */
 import React from 'react';
-import { create, act } from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 
 const mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1' } } };
 jest.mock('@/store/hooks', () => ({
@@ -42,15 +42,11 @@ describe('role sheet sizing', () => {
     expect(roleSheetMaxContent(10, 24)).toBe(0);
   });
 
-  it('sizes to its content up to that limit instead of a fixed half of the screen', () => {
-    let tree!: ReturnType<typeof create>;
-    act(() => {
-      tree = create(<RolePickerBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} currentRole="staff" callerRole="admin" />);
-    });
+  it('sizes to its content up to that limit instead of a fixed half of the screen', async () => {
+    await render(<RolePickerBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} currentRole="staff" callerRole="admin" />);
     expect(sheetProps.snapPoints).toBeUndefined();
     expect(sheetProps.enableDynamicSizing).toBe(true);
     expect(typeof sheetProps.maxDynamicContentSize).toBe('number');
     expect(sheetProps.maxDynamicContentSize as number).toBeGreaterThan(400);
-    act(() => tree.unmount());
   });
 });

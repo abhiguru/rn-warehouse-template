@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render as rntlRender, screen } from '@testing-library/react-native';
 import { GuardedScreen, useRootRouteGuard } from '../RouteGuard';
 import { clearOperatorServer, saveOperatorServer } from '@/config/operatorServer';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
@@ -47,7 +47,6 @@ jest.mock('@/hooks/useTheme', () => ({
 const SIGNED_OUT = { userProfile: null, session: null, user: null };
 const profile = (role: string) => ({ userProfile: { id: 'profile-1', role }, session: null, user: null });
 
-let renderer: ReactTestRenderer | undefined;
 let mountCount = 0;
 
 function Screen() {
@@ -68,17 +67,13 @@ function Root({ restored, routeName }: { restored: boolean; routeName: string })
 
 async function render(routeName: string, segments: string[], restored = true) {
   mockSegments = segments;
-  await act(async () => {
-    renderer = create(<Root restored={restored} routeName={routeName} />);
-  });
+  await rntlRender(<Root restored={restored} routeName={routeName} />);
 }
 const rerender = async (routeName: string, restored = true) => {
-  await act(async () => {
-    renderer!.update(<Root restored={restored} routeName={routeName} />);
-  });
+  await screen.rerender(<Root restored={restored} routeName={routeName} />);
 };
-const showsContent = () => renderer!.root.findAllByType(Text).length === 1;
-const showsSpinner = () => renderer!.root.findAllByProps({ testID: 'route-guard-pending' }).length > 0;
+const showsContent = () => screen.queryByText('protected content') !== null;
+const showsSpinner = () => screen.queryByLabelText('Loading') !== null;
 
 beforeEach(() => {
   mockNavigationReady = true;
@@ -86,10 +81,6 @@ beforeEach(() => {
   mockReplace.mockReset();
   mockAuth = SIGNED_OUT;
   mountCount = 0;
-});
-afterEach(async () => {
-  if (renderer) await act(async () => renderer!.unmount());
-  renderer = undefined;
 });
 
 describe('signed out', () => {
@@ -145,7 +136,7 @@ describe('a root navigator that is not ready yet', () => {
     expect(showsSpinner()).toBe(true);
     expect(mountCount).toBe(0);
 
-    await act(async () => mockNavigationBecomesReady());
+    await act(() => mockNavigationBecomesReady());
     expect(mockReplace).toHaveBeenCalledTimes(1);
     expect(mockReplace).toHaveBeenCalledWith('/login');
     // The readiness listener is gone; what is left is the guard watching its own request.
@@ -157,17 +148,24 @@ describe('a root navigator that is not ready yet', () => {
     mockNavigationReady = false;
     await render('users', ['users']);
     expect(mockReplace).not.toHaveBeenCalled();
-    await act(async () => mockNavigationBecomesReady());
+    await act(() => mockNavigationBecomesReady());
     expect(mockReplace).toHaveBeenCalledWith('/');
   });
 
   it('a navigator that became ready between render and effect is noticed without an event', async () => {
     mockNavigationReady = false;
     mockSegments = ['customers'];
-    await act(async () => {
-      renderer = create(<Root restored routeName="customers" />);
+    // The sibling renders after the guard has rendered and before its effects run: the navigator is ready by then.
+    const BecomesReady = () => {
       mockNavigationReady = true;
-    });
+      return null;
+    };
+    await rntlRender(
+      <>
+        <Root restored routeName="customers" />
+        <BecomesReady />
+      </>
+    );
     expect(mockReplace).toHaveBeenCalledWith('/login');
   });
 });

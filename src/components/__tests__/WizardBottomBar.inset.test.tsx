@@ -169,3 +169,26 @@ describe('WizardBottomBar bottom inset while the keyboard is up (WH-228)', () =>
     expect(bar(tree).paddingBottom).toBe(space.md);
   });
 });
+
+describe('WizardBottomBar while busy', () => {
+  // The buttons are disabled then, but their handlers are called here directly: the guards are what hold.
+  it('does not call Next or Back while isLoading, past the disabled state', () => {
+    const onNext = jest.fn();
+    const onPrevious = jest.fn();
+    const tree = render('android', 1, { isLoading: true, loadingLabel: 'Working', onNext, onPrevious });
+    act(() => { button(tree, 'Working').props.onPress(); });
+    act(() => { button(tree, 'Back').props.onPress(); });
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrevious).not.toHaveBeenCalled();
+  });
+
+  it('calls Next and Back when it is not busy', () => {
+    const onNext = jest.fn();
+    const onPrevious = jest.fn();
+    const tree = render('android', 1, { onNext, onPrevious, nextLabel: 'Go' });
+    act(() => { button(tree, 'Go').props.onPress(); });
+    act(() => { button(tree, 'Back').props.onPress(); });
+    expect(onNext).toHaveBeenCalledTimes(1);
+    expect(onPrevious).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1,7 +1,7 @@
 /** WH-218 review fix: the sensor edit screen has a native header, so on iOS its keyboard view lifts by the header height. */
 import React from 'react';
-import { KeyboardAvoidingView, Platform } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Platform } from 'react-native';
+import { render, screen } from '@testing-library/react-native';
 import SensorEditScreen from '../../../app/sensor-edit/[id]';
 
 jest.mock('@/store/hooks', () => ({
@@ -31,6 +31,11 @@ jest.mock('@/features/sensors/useSensorQueries', () => ({
 }));
 jest.mock('@/features/sensors/sensorQueries', () => ({ invalidateSensorQueries: jest.fn() }));
 jest.mock('@/services/sensor-service', () => ({ updateDevice: jest.fn() }));
+// The real component drops keyboardVerticalOffset before the native view; this stand-in shows it to the test.
+jest.mock('react-native/Libraries/Components/Keyboard/KeyboardAvoidingView', () => {
+  const { View } = jest.requireActual('react-native');
+  return { __esModule: true, default: (props: object) => <View testID="keyboard-avoiding" {...props} /> };
+});
 
 const originalOS = Platform.OS;
 const setOS = (os: 'ios' | 'android') => { Object.defineProperty(Platform, 'OS', { configurable: true, get: () => os }); };
@@ -38,12 +43,8 @@ afterEach(() => setOS(originalOS as 'ios' | 'android'));
 
 async function offsetOn(os: 'ios' | 'android') {
   setOS(os);
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<SensorEditScreen />); });
-  const avoiding = tree.root.findByType(KeyboardAvoidingView);
-  const offset = avoiding.props.keyboardVerticalOffset;
-  await act(async () => { tree.unmount(); });
-  return offset;
+  await render(<SensorEditScreen />);
+  return screen.getByTestId('keyboard-avoiding').props.keyboardVerticalOffset;
 }
 
 it('lifts the form by the header height on iOS', async () => {

@@ -8,7 +8,7 @@
  * `returnToMyFacilities` reads the same navigator through the mounted guard.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render as rntlRender, screen } from '@testing-library/react-native';
 import { anythingBelow, centralScreensInTheWay, liveRootRoute, myFacilitiesBelow, ROUTER_ROOT, useRootRouteGuard } from '../RouteGuard';
 import { returnToMyFacilities } from '../myFacilities';
 import { resetCentralStateForTests, setCentralState } from '@/config/centralState';
@@ -59,12 +59,11 @@ function Root() {
   useRootRouteGuard(true);
   return null;
 }
-let renderer: ReactTestRenderer | undefined;
 const render = async () => {
-  await act(async () => { renderer = create(<Root />); });
+  await rntlRender(<Root />);
 };
 const rerender = async () => {
-  await act(async () => { renderer!.update(<Root />); });
+  await screen.rerender(<Root />);
 };
 
 beforeEach(() => {
@@ -77,10 +76,6 @@ beforeEach(() => {
   mockRootState = undefined;
   resetCentralStateForTests();
   setCentralState({ status: 'signedIn', user: USER });
-});
-afterEach(async () => {
-  if (renderer) await act(async () => renderer!.unmount());
-  renderer = undefined;
 });
 
 describe("expo-router's wrapper route", () => {
@@ -335,8 +330,7 @@ describe('returnToMyFacilities, which reads the navigator through the mounted gu
 
   it('after the guard has unmounted it no longer reads the navigator', async () => {
     await onWaitingScreen('login', 'pending-enrollment');
-    await act(async () => renderer!.unmount());
-    renderer = undefined;
+    await screen.unmount();
     returnToMyFacilities();
     expect(mockCalls).toEqual(['dismissTo /facilities']);
   });

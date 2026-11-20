@@ -1,13 +1,12 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import {
   MemoizedInvoiceItem,
   invoiceItemPropsAreEqual,
   type MemoizedInvoiceItemProps,
 } from '../list-items/MemoizedInvoiceItem';
 import type { Invoice } from '@/services/invoice-service';
-import { StatusTag } from '@/components/ui/StatusTag';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
@@ -77,126 +76,118 @@ it('re-renders when the customer name, GRN number, callback or print flag change
 });
 
 describe('a cancelled invoice', () => {
-  const render = (overrides: Partial<Invoice>) => {
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<MemoizedInvoiceItem {...props(overrides)} />); });
-    return tree;
-  };
-  const labelOf = (tree: ReactTestRenderer) => tree.root.findAll(n => n.props.accessibilityRole === 'button')[0].props.accessibilityLabel as string;
+  const label = () => screen.getByRole('button').props.accessibilityLabel as string;
 
-  it('shows a Cancelled tag and speaks it', () => {
-    const tree = render({ cancelled_at: '2026-10-05T10:00:00Z' });
-    expect(tree.root.findAllByType(StatusTag).map(tag => tag.props.label)).toContain('Cancelled');
-    expect(labelOf(tree)).toContain('Cancelled');
-    act(() => tree.unmount());
+  it('shows a Cancelled tag and speaks it', async () => {
+    await render(<MemoizedInvoiceItem {...props({ cancelled_at: '2026-10-05T10:00:00Z' })} />);
+    expect(screen.getByText('Cancelled')).toBeOnTheScreen();
+    expect(label()).toContain('Cancelled');
   });
 
-  it('shows no tag for a live invoice, and re-renders when it becomes cancelled', () => {
-    const tree = render({});
-    expect(tree.root.findAllByType(StatusTag).map(tag => tag.props.label)).not.toContain('Cancelled');
+  it('shows no tag for a live invoice, and re-renders when it becomes cancelled', async () => {
+    await render(<MemoizedInvoiceItem {...props({})} />);
+    expect(screen.queryByText('Cancelled')).not.toBeOnTheScreen();
+    expect(label()).not.toContain('Cancelled');
     expect(invoiceItemPropsAreEqual(props(), props({ cancelled_at: '2026-10-05T10:00:00Z' }))).toBe(false);
-    act(() => tree.unmount());
   });
 });
 
 describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const)))(
   'invoice cell in %s %s',
   (brand, mode) => {
-    it('renders the card on surface.card with the discount in positive text', () => {
+    it('renders the card on surface.card with the discount in positive text', async () => {
       mockState = { theme: { preference: mode, brand } };
       const t = getTokens(brand, mode);
-      let tree!: ReactTestRenderer;
-      act(() => {
-        tree = create(
-          <MemoizedInvoiceItem invoice={{ ...invoice, discount: 250, labour: 20 }} onPress={onPress} />
-        );
-      });
-      const texts = tree.root.findAll(n => (n.type as unknown) === 'Text');
-      const discount = texts.find(n => [].concat(n.props.children).join('') === '−₹250');
-      expect(discount).toBeDefined();
-      expect(StyleSheet.flatten(discount!.props.style).color).toBe(t.status.positive.text);
-      const total = texts.find(n => [].concat(n.props.children).join('') === '₹1,000.00');
-      expect(StyleSheet.flatten(total!.props.style).color).toBe(t.text.primary);
-      const pressable = tree.root.findAll(n => n.props.accessibilityRole === 'button')[0];
-      expect(pressable.props.accessibilityLabel).toContain('Invoice FXI0001');
-      act(() => tree.unmount());
+      await render(<MemoizedInvoiceItem invoice={{ ...invoice, discount: 250, labour: 20 }} onPress={onPress} />);
+      // The amounts bar is hidden from a screen reader (the card's label says it), but it is drawn.
+      const shown = { includeHiddenElements: true };
+      expect(screen.getByText('−₹250', shown)).toHaveStyle({ color: t.status.positive.text });
+      expect(screen.getByText('₹1,000.00', shown)).toHaveStyle({ color: t.text.primary });
+      expect(screen.getByRole('button').props.accessibilityLabel).toContain('Invoice FXI0001');
     });
   }
 );
 
 describe('the four places of the amounts bar (WH-59)', () => {
-  const mount = (over: Partial<Invoice> = {}) => {
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<MemoizedInvoiceItem invoice={{ ...invoice, ...over } as Invoice} onPress={onPress} />); });
-    return tree;
-  };
+  const element = (over: Partial<Invoice> = {}) => <MemoizedInvoiceItem invoice={{ ...invoice, ...over } as Invoice} onPress={onPress} />;
   const textOf = (node: { props: { children?: unknown } }) => [node.props.children].flat(Infinity).join('');
-  const texts = (tree: ReactTestRenderer) => tree.root.findAll(n => (n.type as unknown) === 'Text').map(textOf);
-  const label = (tree: ReactTestRenderer) => tree.root.findAll(n => n.props.accessibilityRole === 'button')[0].props.accessibilityLabel as string;
-  /** The bar's rows: each the list of [value, label] of its places. */
-  const rows = (tree: ReactTestRenderer) => {
+  // The amounts bar is hidden from a screen reader (the card's label says it), but it is drawn.
+  const shown = { includeHiddenElements: true };
+  const texts = () => screen.getAllByText(/./, shown).map(textOf);
+  const label = () => screen.getByRole('button').props.accessibilityLabel as string;
+  const PLACES = ['Before tax', 'Tax', 'Labour', 'Discount'];
+  /** The bar's places: each [value, label], in the order they are drawn. */
+  const rows = () => {
     const names = ['Before tax', 'Tax', 'Labour', 'Discount', 'Surcharge'];
-    const all = texts(tree);
-    const places = all.flatMap((text, i) => (names.includes(text) ? [[all[i - 1], text] as const] : []));
-    return places;
+    const all = texts();
+    return all.flatMap((text, i) => (names.includes(text) ? [[all[i - 1], text] as const] : []));
   };
   afterEach(() => { mockWidth = 392; mockFontScale = 1; });
 
-  it('has Before tax, Tax, Labour and Discount in that order, in whole rupees, with a dash for a place with nothing', () => {
-    const tree = mount({ total: 1050, tax_amount: 50, labour: 0, discount: 0 });
-    expect(rows(tree)).toEqual([['₹1,000', 'Before tax'], ['₹50', 'Tax'], ['–', 'Labour'], ['–', 'Discount']]);
+  it('has Before tax, Tax, Labour and Discount in that order, in whole rupees, with a dash for a place with nothing', async () => {
+    await render(element({ total: 1050, tax_amount: 50, labour: 0, discount: 0 }));
+    expect(rows()).toEqual([['₹1,000', 'Before tax'], ['₹50', 'Tax'], ['–', 'Labour'], ['–', 'Discount']]);
     // The total keeps its two decimals.
-    expect(texts(tree)).toContain('₹1,050.00');
-    act(() => tree.unmount());
+    expect(texts()).toContain('₹1,050.00');
   });
 
-  it('shows every place, in the same order, when everything has an amount', () => {
-    const tree = mount({ total: 1020, tax_amount: 50, labour: 20, discount: 250 });
-    expect(rows(tree).map(([, name]) => name)).toEqual(['Before tax', 'Tax', 'Labour', 'Discount']);
-    expect(rows(tree)[3]).toEqual(['−₹250', 'Discount']);
-    act(() => tree.unmount());
+  it('shows every place, in the same order, when everything has an amount', async () => {
+    await render(element({ total: 1020, tax_amount: 50, labour: 20, discount: 250 }));
+    expect(rows().map(([, name]) => name)).toEqual(['Before tax', 'Tax', 'Labour', 'Discount']);
+    expect(rows()[3]).toEqual(['−₹250', 'Discount']);
   });
 
-  it('a surcharge invoice says Surcharge with a plus in the last place, and has no Discount', () => {
-    const tree = mount({ total: 1100, tax_amount: 50, labour: 0, discount: -100 });
-    expect(rows(tree).map(([, name]) => name)).toEqual(['Before tax', 'Tax', 'Labour', 'Surcharge']);
-    expect(rows(tree)[3]).toEqual(['+₹100', 'Surcharge']);
-    act(() => tree.unmount());
+  it('a surcharge invoice says Surcharge with a plus in the last place, and has no Discount', async () => {
+    await render(element({ total: 1100, tax_amount: 50, labour: 0, discount: -100 }));
+    expect(rows().map(([, name]) => name)).toEqual(['Before tax', 'Tax', 'Labour', 'Surcharge']);
+    expect(rows()[3]).toEqual(['+₹100', 'Surcharge']);
   });
 
-  it('reads every amount aloud as the exact figure, and a place with nothing says nothing (no dash)', () => {
-    const tree = mount({ total: 1050, tax_amount: 50, labour: 0, discount: 0 });
-    const spoken = label(tree);
+  it('reads every amount aloud as the exact figure, and a place with nothing says nothing (no dash)', async () => {
+    await render(element({ total: 1050, tax_amount: 50, labour: 0, discount: 0 }));
+    const spoken = label();
     expect(spoken).toContain('Before tax ₹1,000.00');
     expect(spoken).toContain('Tax ₹50.00');
     expect(spoken).not.toContain('Labour');
     expect(spoken).not.toContain('Discount');
     expect(spoken).not.toContain('–');
-    act(() => tree.unmount());
   });
 
-  it('draws the date as day, short month and year', () => {
-    const tree = mount();
-    expect(texts(tree)).toContain('1 Oct 26');
-    act(() => tree.unmount());
+  it('draws the date as day, short month and year', async () => {
+    await render(element());
+    expect(screen.getByText('1 Oct 26')).toBeOnTheScreen();
   });
 
-  it('is four across at 392 dp and normal text, and 2 x 2 at a large text size, on every card alike', () => {
-    const rowsOf = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.type === 'string' && n.props.style && StyleSheet.flatten(n.props.style).flexDirection === 'row' && n.findAll(c => (c.type as unknown) === 'Text' && ['Before tax', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length > 0 && n.findAll(c => (c.type as unknown) === 'Text' && ['Before tax', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length < 5);
-    const placesIn = (node: ReactTestRenderer['root']) => node.findAll(c => (c.type as unknown) === 'Text' && ['Before tax', 'Tax', 'Labour', 'Discount'].includes(textOf(c))).length;
-    const one = mount();
-    const normal = rowsOf(one).filter(r => placesIn(r) === 4);
-    expect(normal.length).toBeGreaterThan(0);
-    act(() => one.unmount());
+  it('is four across at 392 dp and normal text, and 2 x 2 at a large text size, on every card alike', async () => {
+    // The rows are plain host views with no role or label, so they are found by walking the drawn tree:
+    // the row views (flexDirection row) that hold some of the four place names, and how many each holds.
+    type HostNode = NonNullable<typeof screen.root>;
+    const placeCountsOfRows = () => {
+      const counts: number[] = [];
+      const placesIn = (node: HostNode): number => {
+        let n = (node.type as unknown) === 'Text' && PLACES.includes(textOf(node)) ? 1 : 0;
+        for (const child of node.children) if (typeof child !== 'string') n += placesIn(child as HostNode);
+        return n;
+      };
+      const walk = (node: HostNode) => {
+        if (typeof node.type === 'string' && node.props.style && StyleSheet.flatten(node.props.style).flexDirection === 'row') {
+          const n = placesIn(node);
+          if (n > 0 && n < 5) counts.push(n);
+        }
+        for (const child of node.children) if (typeof child !== 'string') walk(child as HostNode);
+      };
+      walk(screen.root as HostNode);
+      return counts;
+    };
+    await render(element());
+    expect(placeCountsOfRows().filter(n => n === 4).length).toBeGreaterThan(0);
 
     mockFontScale = 2;
-    const large = mount({ total: 1020, tax_amount: 50, labour: 20, discount: 250 });
-    const empty = mount({ total: 1000, tax_amount: 0, labour: 0, discount: 0 });
-    for (const tree of [large, empty]) {
-      const bars = rowsOf(tree);
-      expect(bars.filter(r => placesIn(r) === 4)).toHaveLength(0);
-      expect(bars.filter(r => placesIn(r) === 2).length).toBe(2);
-    }
-    act(() => { large.unmount(); empty.unmount(); });
+    await screen.rerender(element({ total: 1020, tax_amount: 50, labour: 20, discount: 250 }));
+    expect(placeCountsOfRows().filter(n => n === 4)).toHaveLength(0);
+    expect(placeCountsOfRows().filter(n => n === 2)).toHaveLength(2);
+    await screen.rerender(element({ total: 1000, tax_amount: 0, labour: 0, discount: 0 }));
+    expect(placeCountsOfRows().filter(n => n === 4)).toHaveLength(0);
+    expect(placeCountsOfRows().filter(n => n === 2)).toHaveLength(2);
   });
 });

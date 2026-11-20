@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render as rtlRender, screen, userEvent } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import {
   SensorHistoryChart,
@@ -30,17 +30,29 @@ const READINGS: SensorHistoryReading[] = [
   { timestamp: '2026-10-03T04:00:00Z', temperature: null, humidity: null },
 ];
 
-function render(brand: Brand, mode: Mode, element: React.ReactElement) {
+async function render(brand: Brand, mode: Mode, element: React.ReactElement) {
   mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
+  await rtlRender(element);
 }
 
-function texts(tree: ReactTestRenderer): string[] {
-  return tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
+type Json = ReturnType<typeof screen.toJSON>;
+/** The props of every stand-in chart host (react-native-gifted-charts is mocked as a host named LineChart). */
+function lineCharts(): Record<string, any>[] {
+  const found: Record<string, any>[] = [];
+  const walk = (node: Json | string | null): void => {
+    if (!node || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if ((node.type as string) === 'LineChart') found.push(node.props);
+    node.children?.forEach(walk);
+  };
+  walk(screen.toJSON());
+  return found;
+}
+
+const openCard = () => screen.getByRole('button', { name: /^Historical trend/ });
+async function openTable(user: ReturnType<typeof userEvent.setup>) {
+  await user.press(openCard());
+  await user.press(screen.getByRole('radio', { name: 'Table of values' }));
 }
 
 describe('sensor formatting', () => {
@@ -62,8 +74,8 @@ describe('sensor formatting', () => {
 describe.each(THEMES)('SensorHistoryChart in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('draws series from the chart palette with divider axes, and shows a summary', () => {
-    const tree = render(brand, mode, (
+  it('draws series from the chart palette with divider axes, and shows a summary', async () => {
+    await render(brand, mode, (
       <SensorHistoryChart
         readings={READINGS}
         aggregationInterval="1 day"
@@ -74,58 +86,52 @@ describe.each(THEMES)('SensorHistoryChart in %s %s', (brand, mode) => {
         ]}
       />
     ));
-    const chart = tree.root.findAll(n => (n.type as unknown) === 'LineChart')[0];
-    expect(chart.props.color).toBe(t.chart[0]);
+    const chart = lineCharts()[0];
+    expect(chart.color).toBe(t.chart[0]);
     // Humidity has its own right-hand axis in percent (guide §13.11).
-    expect(chart.props.secondaryLineConfig.color).toBe(t.chart[1]);
-    expect(chart.props.secondaryYAxis.yAxisLabelSuffix).toBe('%');
-    expect(chart.props.xAxisColor).toBe(t.border.divider);
-    expect(chart.props.yAxisColor).toBe(t.border.divider);
-    expect(chart.props.rulesColor).toBe(t.border.divider);
-    expect(chart.props.showReferenceLine1).toBe(true);
-    expect(chart.props.referenceLine1Config.color).toBe(t.status.negative.element);
-    expect(chart.props.referenceLine1Config.labelText).toBe('Alarm 8°C');
-    expect(chart.props.referenceLine2Config.color).toBe(t.status.critical.element);
+    expect(chart.secondaryLineConfig.color).toBe(t.chart[1]);
+    expect(chart.secondaryYAxis.yAxisLabelSuffix).toBe('%');
+    expect(chart.xAxisColor).toBe(t.border.divider);
+    expect(chart.yAxisColor).toBe(t.border.divider);
+    expect(chart.rulesColor).toBe(t.border.divider);
+    expect(chart.showReferenceLine1).toBe(true);
+    expect(chart.referenceLine1Config.color).toBe(t.status.negative.element);
+    expect(chart.referenceLine1Config.labelText).toBe('Alarm 8°C');
+    expect(chart.referenceLine2Config.color).toBe(t.status.critical.element);
 
-    const all = texts(tree);
-    expect(all).toContain('Historical trend');
-    expect(all.some(s => s.startsWith('Temperature −18.5°C to 2.3°C'))).toBe(true);
-    act(() => tree.unmount());
+    expect(screen.getByText('Historical trend')).toBeOnTheScreen();
+    expect(screen.getAllByText(/^Temperature −18\.5°C to 2\.3°C/).length).toBeGreaterThan(0);
   });
 
-  it('opens a full-screen view with a values table', () => {
-    const tree = render(brand, mode, <SensorHistoryChart readings={READINGS} aggregationInterval="1 hour" periodDays={7} />);
-    const card = tree.root.findAll(n => n.props.accessibilityHint === 'Opens the full-screen chart and a table of values' && n.props.onPress)[0];
-    act(() => card.props.onPress());
-    const tableRadio = tree.root.findAll(n => n.props.accessibilityLabel === 'Table of values' && n.props.onPress)[0];
-    act(() => tableRadio.props.onPress());
-    const all = texts(tree);
-    expect(all).toEqual(expect.arrayContaining(['Date and time', 'Temperature', 'Humidity', '−18.5°C', '80%']));
-    act(() => tree.unmount());
+  it('opens a full-screen view with a values table', async () => {
+    const user = userEvent.setup({ delay: 0 });
+    await render(brand, mode, <SensorHistoryChart readings={READINGS} aggregationInterval="1 hour" periodDays={7} />);
+    expect(screen.getByHintText('Opens the full-screen chart and a table of values')).toBe(openCard());
+    await openTable(user);
+    for (const text of ['Date and time', 'Temperature', 'Humidity', '−18.5°C', '80%']) {
+      expect(screen.getAllByText(text).length).toBeGreaterThan(0);
+    }
   });
 
-  it('draws the values table with the shared DataTable: a spoken label for each reading, 30 rows drawn first, no heading that sorts', () => {
-    const tree = render(brand, mode, <SensorHistoryChart readings={READINGS} aggregationInterval="1 hour" periodDays={7} />);
-    act(() => tree.root.findAll(n => n.props.accessibilityHint === 'Opens the full-screen chart and a table of values' && n.props.onPress)[0].props.onPress());
-    act(() => tree.root.findAll(n => n.props.accessibilityLabel === 'Table of values' && n.props.onPress)[0].props.onPress());
-    const table = tree.root.findAll(n => n.props.testID === 'sensor-history-table' && n.props.initialNumToRender !== undefined)[0];
-    expect(table.props.initialNumToRender).toBe(30);
-    const rows = tree.root.findAll(n => typeof n.type === 'string' && String(n.props.testID).startsWith('sensor-history-row-'));
+  it('draws the values table with the shared DataTable: a spoken label for each reading, 30 rows drawn first, no heading that sorts', async () => {
+    const user = userEvent.setup({ delay: 0 });
+    await render(brand, mode, <SensorHistoryChart readings={READINGS} aggregationInterval="1 hour" periodDays={7} />);
+    await openTable(user);
+    expect(screen.getByTestId('sensor-history-table').props.initialNumToRender).toBe(30);
+    const rows = screen.getAllByTestId(/^sensor-history-row-/);
     expect(rows).toHaveLength(READINGS.length);
     // The last reading has no values: the row says so as the cells do, with the dash.
     expect(rows.map(row => String(row.props.accessibilityLabel).includes('−18.5°C'))).toEqual([true, false, false]);
     // Each row is read with its date in words, never as 01/10/26.
-    expect(String(rows[0].props.accessibilityLabel)).toContain('1 Oct 2026');
-    expect(rows.map(row => String(row.props.accessibilityLabel)).join('|')).not.toMatch(/\d\d\/\d\d\/\d\d/);
-    expect(texts(tree).filter(s => s === '—')).toHaveLength(2);
-    expect(tree.root.findAll(n => String(n.props.testID).startsWith('sensor-history-table-sort-'))).toHaveLength(0);
-    act(() => tree.unmount());
+    expect(rows[0]).toHaveAccessibleName(/1 Oct 2026/);
+    for (const row of rows) expect(row).not.toHaveAccessibleName(/\d\d\/\d\d\/\d\d/);
+    expect(screen.getAllByText('—')).toHaveLength(2);
+    expect(screen.queryAllByTestId(/^sensor-history-table-sort-/)).toHaveLength(0);
   });
 
-  it('shows an empty state without readings', () => {
-    const tree = render(brand, mode, <SensorHistoryChart readings={[]} aggregationInterval="1 day" periodDays={7} />);
-    expect(texts(tree)).toContain('No history for this period');
-    act(() => tree.unmount());
+  it('shows an empty state without readings', async () => {
+    await render(brand, mode, <SensorHistoryChart readings={[]} aggregationInterval="1 day" periodDays={7} />);
+    expect(screen.getByText('No history for this period')).toBeOnTheScreen();
   });
 });
 
@@ -158,22 +164,21 @@ describe('temperature axis and missing readings', () => {
     expect(domain.max).toBeGreaterThanOrEqual(-15);
   });
 
-  it('draws negative readings below the axis start and leaves a gap for a missing reading', () => {
-    const tree = render('orange', 'light', (
+  it('draws negative readings below the axis start and leaves a gap for a missing reading', async () => {
+    await render('orange', 'light', (
       <SensorHistoryChart readings={COLD_ROOM} aggregationInterval="1 day" periodDays={7} />
     ));
-    const chart = tree.root.findAll(n => (n.type as unknown) === 'LineChart')[0];
-    expect(chart.props.yAxisOffset).toBeLessThanOrEqual(-21.4);
-    expect(chart.props.yAxisOffset + chart.props.maxValue).toBeLessThan(0);
-    expect(chart.props.interpolateMissingValues).toBe(false);
-    expect(chart.props.data.map((p: { value?: number }) => p.value)).toEqual([-21.4, -18.2, undefined, -19.6]);
-    expect(chart.props.secondaryData[2].value).toBeUndefined();
+    const chart = lineCharts()[0];
+    expect(chart.yAxisOffset).toBeLessThanOrEqual(-21.4);
+    expect(chart.yAxisOffset + chart.maxValue).toBeLessThan(0);
+    expect(chart.interpolateMissingValues).toBe(false);
+    expect(chart.data.map((p: { value?: number }) => p.value)).toEqual([-21.4, -18.2, undefined, -19.6]);
+    expect(chart.secondaryData[2].value).toBeUndefined();
     // Humidity values are plotted in percent on the secondary axis, unscaled.
-    expect(chart.props.secondaryData[0].value).toBe(70);
-    expect(chart.props.secondaryYAxis.maxValue).toBeGreaterThanOrEqual(75);
-    expect(chart.props.formatYLabel('-20')).toBe('\u221220');
-    expect(chart.props.data[0].label).toBe('01/10/26');
-    act(() => tree.unmount());
+    expect(chart.secondaryData[0].value).toBe(70);
+    expect(chart.secondaryYAxis.maxValue).toBeGreaterThanOrEqual(75);
+    expect(chart.formatYLabel('-20')).toBe('\u221220');
+    expect(chart.data[0].label).toBe('01/10/26');
   });
 });
 
@@ -182,7 +187,6 @@ describe('a long period with the lowest and highest of each point', () => {
     { timestamp: '2026-10-01T00:00:00Z', temperature: 2, humidity: 80, temperature_min: -3, temperature_max: 9, humidity_min: 70, humidity_max: 90 },
     { timestamp: '2026-10-02T00:00:00Z', temperature: 3, humidity: 82, temperature_min: 0, temperature_max: 12, humidity_min: 71, humidity_max: 91 },
   ];
-  const charts = (tree: ReactTestRenderer) => tree.root.findAll(n => (n.type as unknown) === 'LineChart');
 
   it('puts the extremes on the temperature axis, not only the averages', () => {
     const domain = temperatureDomain(RANGED);
@@ -190,18 +194,18 @@ describe('a long period with the lowest and highest of each point', () => {
     expect(domain.max).toBeGreaterThanOrEqual(12);
   });
 
-  it('draws two thin dashed lines for them, and the legend says so', () => {
-    const tree = render('orange', 'light', <SensorHistoryChart readings={RANGED} aggregationInterval="1 day" periodDays={183} />);
-    const props = charts(tree)[0].props;
+  it('draws two thin dashed lines for them, and the legend says so', async () => {
+    await render('orange', 'light', <SensorHistoryChart readings={RANGED} aggregationInterval="1 day" periodDays={183} />);
+    const props = lineCharts()[0];
     expect(props.data2.map((p: { value?: number }) => p.value)).toEqual([-3, 0]);
     expect(props.data3.map((p: { value?: number }) => p.value)).toEqual([9, 12]);
     expect(props.strokeDashArray2).toBeDefined();
-    expect(texts(tree)).toContain('Lowest and highest temperature (dashed)');
+    expect(screen.getByText('Lowest and highest temperature (dashed)')).toBeOnTheScreen();
   });
 
-  it('draws none for an ordinary period', () => {
-    const tree = render('orange', 'light', <SensorHistoryChart readings={READINGS} aggregationInterval="1 day" periodDays={7} />);
-    expect(charts(tree)[0].props.data2).toBeUndefined();
-    expect(texts(tree)).not.toContain('Lowest and highest temperature (dashed)');
+  it('draws none for an ordinary period', async () => {
+    await render('orange', 'light', <SensorHistoryChart readings={READINGS} aggregationInterval="1 day" periodDays={7} />);
+    expect(lineCharts()[0].data2).toBeUndefined();
+    expect(screen.queryByText('Lowest and highest temperature (dashed)')).not.toBeOnTheScreen();
   });
 });

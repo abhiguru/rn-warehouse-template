@@ -3,7 +3,7 @@ import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
 
 registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { InvoiceSuccessDialog } from '../InvoiceSuccessDialog';
 
@@ -27,120 +27,117 @@ const invoice = {
   total: 123456.5,
 };
 
-function renderIn(
+async function renderIn(
   brand: (typeof BRANDS)[number],
   mode: Mode,
   isEditMode = false,
   invoiceData: React.ComponentProps<typeof InvoiceSuccessDialog>['invoiceData'] = invoice
 ) {
   mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(
-      <InvoiceSuccessDialog
-        isVisible
-        invoiceData={invoiceData}
-        onCreateAnother={jest.fn()}
-        onViewList={jest.fn()}
-        onPrint={jest.fn()}
-        onSharePDF={jest.fn()}
-        isEditMode={isEditMode}
-      />
-    );
-  });
-  return tree;
+  return render(
+    <InvoiceSuccessDialog
+      isVisible
+      invoiceData={invoiceData}
+      onCreateAnother={jest.fn()}
+      onViewList={jest.fn()}
+      onPrint={jest.fn()}
+      onSharePDF={jest.fn()}
+      isEditMode={isEditMode}
+    />
+  );
 }
 
-function allText(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(node => (node.type as unknown) === 'Text')
-    .map(node => [].concat(node.props.children).join(''));
+// The scrim and the sheet are plain Views with no role, label or text of their own, so their background colours can
+// only be found by walking the rendered tree.
+type Node = NonNullable<typeof screen.root>;
+function backgrounds(): (string | undefined)[] {
+  const found: (string | undefined)[] = [];
+  const walk = (node: Node) => {
+    if (typeof node.type === 'string' && node.type === 'View') found.push(StyleSheet.flatten(node.props.style)?.backgroundColor);
+    for (const child of node.children) if (typeof child !== 'string') walk(child as Node);
+  };
+  walk(screen.root as Node);
+  return found;
 }
 
 describe('InvoiceSuccessDialog', () => {
   describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('%s %s', (brand, mode) => {
-    it('renders on the sheet surface over the scrim with the formatted total', () => {
+    it('renders on the sheet surface over the scrim with the formatted total', async () => {
       const tokens = getTokens(brand, mode);
-      const tree = renderIn(brand, mode);
-      const views = tree.root.findAll(node => (node.type as unknown) === 'View');
-      const backgrounds = views.map(v => StyleSheet.flatten(v.props.style)?.backgroundColor);
-      expect(backgrounds).toContain(tokens.overlay.scrim);
-      expect(backgrounds).toContain(tokens.surface.sheet);
-      const text = allText(tree);
-      expect(text).toContain('Invoice saved');
-      expect(text).toContain('₹1,23,456.50');
-      expect(text).toContain('View invoices');
-      expect(text).toContain('Create another invoice');
+      await renderIn(brand, mode);
+      expect(backgrounds()).toContain(tokens.overlay.scrim);
+      expect(backgrounds()).toContain(tokens.surface.sheet);
+      expect(screen.getByText('Invoice saved')).toBeOnTheScreen();
+      expect(screen.getByText('₹1,23,456.50')).toBeOnTheScreen();
+      expect(screen.getByText('View invoices')).toBeOnTheScreen();
+      expect(screen.getByText('Create another invoice')).toBeOnTheScreen();
     });
   });
 
-  it('uses update wording in edit mode and hides the redundant "another" action', () => {
-    const text = allText(renderIn(SAMPLE_BRAND, 'dark', true));
-    expect(text).toContain('Invoice updated');
-    expect(text).toContain('View invoice');
-    expect(text).not.toContain('View invoices');
-    expect(text).not.toContain('Edit another invoice');
-    expect(text).not.toContain('Create another invoice');
+  it('uses update wording in edit mode and hides the redundant "another" action', async () => {
+    await renderIn(SAMPLE_BRAND, 'dark', true);
+    expect(screen.getByText('Invoice updated')).toBeOnTheScreen();
+    expect(screen.getByText('View invoice')).toBeOnTheScreen();
+    expect(screen.queryByText('View invoices')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Edit another invoice')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Create another invoice')).not.toBeOnTheScreen();
   });
 
   describe('a failure of the sharing', () => {
-    const renderWith = (shareError?: string | null) => {
+    const renderWith = async (shareError?: string | null) => {
       mockState = { theme: { preference: 'light', brand: 'orange' } };
-      let tree!: ReactTestRenderer;
-      act(() => {
-        tree = create(
-          <InvoiceSuccessDialog
-            isVisible
-            invoiceData={invoice}
-            onCreateAnother={jest.fn()}
-            onViewList={jest.fn()}
-            onSharePDF={jest.fn()}
-            shareError={shareError}
-          />
-        );
-      });
-      return tree;
+      return render(
+        <InvoiceSuccessDialog
+          isVisible
+          invoiceData={invoice}
+          onCreateAnother={jest.fn()}
+          onViewList={jest.fn()}
+          onSharePDF={jest.fn()}
+          shareError={shareError}
+        />
+      );
     };
 
-    it('is drawn inside the dialog, as an alert the screen reader announces', () => {
-      const tree = renderWith("Couldn't share the PDF. Try again.");
+    it('is drawn inside the dialog, as an alert the screen reader announces', async () => {
+      await renderWith("Couldn't share the PDF. Try again.");
 
-      const strip = tree.root.findByProps({ testID: 'invoice-share-error' });
-      expect(strip.props.accessibilityRole).toBe('alert');
-      expect(strip.props.accessibilityLiveRegion).toBe('polite');
-      expect(allText(tree)).toContain("Couldn't share the PDF. Try again.");
+      // The strip is a plain View (not an accessible element), so no role query reaches it: found by its testID.
+      const strip = screen.getByTestId('invoice-share-error');
+      expect(strip).toHaveProp('accessibilityRole', 'alert');
+      expect(strip).toHaveProp('accessibilityLiveRegion', 'polite');
+      expect(screen.getByText("Couldn't share the PDF. Try again.")).toBeOnTheScreen();
     });
 
-    it('leaves no strip when there is no failure', () => {
-      const tree = renderWith(null);
+    it('leaves no strip when there is no failure', async () => {
+      await renderWith(null);
 
-      expect(tree.root.findAllByProps({ testID: 'invoice-share-error' })).toHaveLength(0);
+      expect(screen.queryByTestId('invoice-share-error')).not.toBeOnTheScreen();
     });
   });
 
   describe('the total it shows', () => {
-    it('is the stored total, with a note when it differs from the estimate shown before saving', () => {
+    it('is the stored total, with a note when it differs from the estimate shown before saving', async () => {
       // The form estimated 735; the server counted 1.5 periods and stored 998.
-      const text = allText(renderIn('orange', 'light', false, { ...invoice, total: 998, estimated_total: 735 }));
+      await renderIn('orange', 'light', false, { ...invoice, total: 998, estimated_total: 735 });
 
-      expect(text).toContain('₹998.00');
-      expect(text).not.toContain('₹735.00');
-      expect(text).toContain('The total saved by the server differs from the estimate of ₹735.00 shown before saving.');
+      expect(screen.getByText('₹998.00')).toBeOnTheScreen();
+      expect(screen.queryByText('₹735.00')).not.toBeOnTheScreen();
+      expect(screen.getByText('The total saved by the server differs from the estimate of ₹735.00 shown before saving.')).toBeOnTheScreen();
     });
 
-    it('has no note when the stored total is the estimate', () => {
-      const text = allText(renderIn('orange', 'light', false, { ...invoice, total: 998, estimated_total: 998 }));
+    it('has no note when the stored total is the estimate', async () => {
+      await renderIn('orange', 'light', false, { ...invoice, total: 998, estimated_total: 998 });
 
-      expect(text).toContain('₹998.00');
-      expect(text.some((line) => line.includes('differs'))).toBe(false);
+      expect(screen.getByText('₹998.00')).toBeOnTheScreen();
+      expect(screen.queryByText(/differs/)).not.toBeOnTheScreen();
     });
 
-    it('is left out, not replaced by the estimate, when the stored total could not be read', () => {
-      const text = allText(renderIn('orange', 'light', false, { ...invoice, total: null, estimated_total: 735 }));
+    it('is left out, not replaced by the estimate, when the stored total could not be read', async () => {
+      await renderIn('orange', 'light', false, { ...invoice, total: null, estimated_total: 735 });
 
-      expect(text).toContain('The saved total could not be read. Open the invoice to see it.');
-      expect(text).not.toContain('₹735.00');
-      expect(text).not.toContain('₹0.00');
+      expect(screen.getByText('The saved total could not be read. Open the invoice to see it.')).toBeOnTheScreen();
+      expect(screen.queryByText('₹735.00')).not.toBeOnTheScreen();
+      expect(screen.queryByText('₹0.00')).not.toBeOnTheScreen();
     });
   });
 });

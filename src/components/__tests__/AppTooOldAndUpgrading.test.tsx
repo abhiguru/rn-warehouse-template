@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { Linking } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import { setLanguage, t } from '@/i18n';
@@ -27,17 +27,7 @@ jest.mock('react-native-safe-area-context', () => {
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
-const textOf = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
-const button = (tree: ReactTestRenderer, label: string) =>
-  tree.root.find(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label || (node.props.onPress && textInside(node) === label));
-const textInside = (node: { findAll: ReactTestRenderer['root']['findAll'] }) =>
-  node.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join('')).join('');
-
-let tree: ReactTestRenderer | undefined;
 afterEach(() => {
-  if (tree) act(() => tree!.unmount());
-  tree = undefined;
   mockState = {};
   resetUpgradeNotice();
   setLanguage('en');
@@ -47,38 +37,40 @@ afterEach(() => {
 describe('AppTooOldScreen', () => {
   const info = { minimum: '0.7.0', current: '0.6.0' };
 
-  it('says "Update the app" and names both versions', () => {
-    act(() => { tree = create(<AppTooOldScreen {...info} onClose={jest.fn()} />); });
-    const text = textOf(tree!);
-    expect(text).toContain('Update the app');
-    expect(text).toContain('This facility needs app version 0.7.0 or newer. You have 0.6.0.');
+  it('says "Update the app" and names both versions', async () => {
+    await render(<AppTooOldScreen {...info} onClose={jest.fn()} />);
+    expect(screen.getByText('Update the app')).toBeOnTheScreen();
+    expect(screen.getByText('This facility needs app version 0.7.0 or newer. You have 0.6.0.')).toBeOnTheScreen();
   });
 
-  it('with the facility\'s link, offers "Get the update" and opens that link', () => {
+  it('with the facility\'s link, offers "Get the update" and opens that link', async () => {
+    const user = userEvent.setup({ delay: 0 });
     const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
-    act(() => { tree = create(<AppTooOldScreen {...info} updateUrl="https://updates.example.test/app.apk" onClose={jest.fn()} />); });
-    act(() => { button(tree!, 'Get the update').props.onPress(); });
+    await render(<AppTooOldScreen {...info} updateUrl="https://updates.example.test/app.apk" onClose={jest.fn()} />);
+    await user.press(screen.getByRole('button', { name: 'Get the update' }));
     expect(open).toHaveBeenCalledWith('https://updates.example.test/app.apk');
-    expect(textOf(tree!)).not.toContain(t('components.appTooOld.noLink'));
+    expect(screen.queryByText(t('components.appTooOld.noLink'))).not.toBeOnTheScreen();
   });
 
-  it('without a link, shows the text only and says to ask the facility', () => {
-    act(() => { tree = create(<AppTooOldScreen {...info} onClose={jest.fn()} />); });
-    expect(textOf(tree!)).toContain('Ask the facility where to get the new version.');
-    expect(textOf(tree!).join('|')).not.toContain('Get the update');
+  it('without a link, shows the text only and says to ask the facility', async () => {
+    await render(<AppTooOldScreen {...info} onClose={jest.fn()} />);
+    expect(screen.getByText('Ask the facility where to get the new version.')).toBeOnTheScreen();
+    expect(screen.queryByText('Get the update')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Get the update' })).not.toBeOnTheScreen();
   });
 
-  it('Back leaves the screen', () => {
+  it('Back leaves the screen', async () => {
+    const user = userEvent.setup({ delay: 0 });
     const onClose = jest.fn();
-    act(() => { tree = create(<AppTooOldScreen {...info} onClose={onClose} />); });
-    act(() => { button(tree!, 'Back').props.onPress(); });
+    await render(<AppTooOldScreen {...info} onClose={onClose} />);
+    await user.press(screen.getByRole('button', { name: 'Back' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('is worded in Gujarati', () => {
+  it('is worded in Gujarati', async () => {
     setLanguage('gu');
-    act(() => { tree = create(<AppTooOldScreen {...info} onClose={jest.fn()} />); });
-    expect(textOf(tree!)).toContain('ઍપ અપડેટ કરો');
+    await render(<AppTooOldScreen {...info} onClose={jest.fn()} />);
+    expect(screen.getByText('ઍપ અપડેટ કરો')).toBeOnTheScreen();
   });
 });
 
@@ -90,20 +82,20 @@ describe('UpgradingBanner', () => {
       clone() { return { json: async () => ({ code: 'upgrading' }) }; },
     } as unknown as Response);
 
-  it('shows nothing while the server answers', () => {
-    act(() => { tree = create(<UpgradingBanner />); });
-    expect(tree!.toJSON()).toBeNull();
+  it('shows nothing while the server answers', async () => {
+    await render(<UpgradingBanner />);
+    expect(screen.toJSON()).toBeNull();
   });
 
   it('shows the message after the gateway\'s upgrading answer', async () => {
-    act(() => { tree = create(<UpgradingBanner />); });
+    await render(<UpgradingBanner />);
     await act(async () => { await upgradingAnswer(); });
-    expect(textOf(tree!)).toContain("The facility's server is being updated. Try again in a few minutes.");
+    expect(screen.getByText("The facility's server is being updated. Try again in a few minutes.")).toBeOnTheScreen();
   });
 
-  it('ignores a maintenanceMode flag in the facility\'s configuration: only the gateway\'s upgrading answer shows it (WH-28)', () => {
+  it('ignores a maintenanceMode flag in the facility\'s configuration: only the gateway\'s upgrading answer shows it (WH-28)', async () => {
     mockState = { config: { publicConfig: { maintenanceMode: true } } };
-    act(() => { tree = create(<UpgradingBanner />); });
-    expect(tree!.toJSON()).toBeNull();
+    await render(<UpgradingBanner />);
+    expect(screen.toJSON()).toBeNull();
   });
 });

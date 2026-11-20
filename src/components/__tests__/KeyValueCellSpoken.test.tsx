@@ -1,6 +1,6 @@
 /** KeyValueCell: a date value is written DD/MM/YY on screen and read in words ("9 Oct 2026") through `spokenValue`. */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { KeyValueCell, KeyValueGroup } from '../fiori/KeyValueCell';
 
 jest.mock('@/store/hooks', () => ({
@@ -9,27 +9,28 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
-let tree: ReactTestRenderer;
-afterEach(() => act(() => tree.unmount()));
-const mount = (element: React.ReactElement) => { act(() => { tree = create(element); }); };
-const labels = () => tree.root.findAll(n => typeof n.type === 'string' && typeof n.props.accessibilityLabel === 'string').map(n => n.props.accessibilityLabel);
-const shown = () => tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat(Infinity).join(''));
+/** The one thing a screen reader lands on for the cell: exactly one element carries a label, and it is this one. */
+const expectOnlyLabel = (label: string) => {
+  expect(screen.getAllByLabelText(/.+/)).toHaveLength(1);
+  expect(screen.getByLabelText(label)).toBeOnTheScreen();
+};
 
-it('reads spokenValue in the label and shows value', () => {
-  mount(<KeyValueCell keyLabel="Last dispatch" value="09/10/26" spokenValue="9 Oct 2026" />);
-  expect(labels()).toEqual(['Last dispatch, 9 Oct 2026']);
-  expect(shown()).toContain('09/10/26');
+it('reads spokenValue in the label and shows value', async () => {
+  await render(<KeyValueCell keyLabel="Last dispatch" value="09/10/26" spokenValue="9 Oct 2026" />);
+  expectOnlyLabel('Last dispatch, 9 Oct 2026');
+  expect(screen.getByText('09/10/26')).toBeOnTheScreen();
 });
 
-it('reads the value itself when there is no spokenValue, and a pressable cell too', () => {
-  mount(<KeyValueCell keyLabel="Mark" value="A1" />);
-  expect(labels()).toEqual(['Mark, A1']);
-  act(() => tree.unmount());
-  mount(<KeyValueCell keyLabel="Date" value="09/10/26" spokenValue="9 Oct 2026" actionable onPress={jest.fn()} />);
-  expect(labels()).toEqual(['Date, 9 Oct 2026']);
+it('reads the value itself when there is no spokenValue, and a pressable cell too', async () => {
+  await render(<KeyValueCell keyLabel="Mark" value="A1" />);
+  expectOnlyLabel('Mark, A1');
+  await screen.unmount();
+  await render(<KeyValueCell keyLabel="Date" value="09/10/26" spokenValue="9 Oct 2026" actionable onPress={jest.fn()} />);
+  expectOnlyLabel('Date, 9 Oct 2026');
+  expect(screen.getByRole('button', { name: 'Date, 9 Oct 2026' })).toBeOnTheScreen();
 });
 
-it('a group passes spokenValue through', () => {
-  mount(<KeyValueGroup items={[{ key: 'Date', value: '09/10/26', spokenValue: '9 Oct 2026' }]} />);
-  expect(labels()).toEqual(['Date, 9 Oct 2026']);
+it('a group passes spokenValue through', async () => {
+  await render(<KeyValueGroup items={[{ key: 'Date', value: '09/10/26', spokenValue: '9 Oct 2026' }]} />);
+  expectOnlyLabel('Date, 9 Oct 2026');
 });

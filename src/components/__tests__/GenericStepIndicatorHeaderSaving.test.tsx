@@ -4,7 +4,7 @@
  * is not known yet, so leaving may lose track of a GRN that was saved), and the circles stay disabled.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { showAlert } from '@/utils/alert';
 import { GenericStepIndicatorHeader } from '../GenericStepIndicatorHeader';
 
@@ -21,28 +21,24 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/hooks/useFirstStepBack', () => ({ useFirstStepBack: jest.fn() }));
 
 const WARNING = 'It may have been saved. Check the list before entering it again.';
+const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 
-function render(props: { disabled?: boolean; leaveWarning?: string; backOnFirstStep?: { hasData: boolean; enabled?: boolean; exitRoute: string } }, handlers = { onCancel: jest.fn(), onStepPress: jest.fn() }) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(
-      <GenericStepIndicatorHeader
-        steps={[{ label: 'Details' }, { label: 'Items' }, { label: 'Review' }] as never}
-        currentStep={3}
-        completedSteps={[1, 2]}
-        entity="grn"
-        cancelMessage="2 items and the GRN details will be lost."
-        {...handlers}
-        {...props}
-      />,
-    );
-  });
-  return { tree, ...handlers };
+async function renderHeader(props: { disabled?: boolean; leaveWarning?: string; backOnFirstStep?: { hasData: boolean; enabled?: boolean; exitRoute: string } }, handlers = { onCancel: jest.fn(), onStepPress: jest.fn() }) {
+  await render(
+    <GenericStepIndicatorHeader
+      steps={[{ label: 'Details' }, { label: 'Items' }, { label: 'Review' }] as never}
+      currentStep={3}
+      completedSteps={[1, 2]}
+      entity="grn"
+      cancelMessage="2 items and the GRN details will be lost."
+      {...handlers}
+      {...props}
+    />,
+  );
+  return handlers;
 }
-const close = (tree: ReactTestRenderer) =>
-  tree.root.find((node) => node.props.accessibilityLabel === 'Close new GRN' && typeof node.props.onPress === 'function');
-const circles = (tree: ReactTestRenderer) =>
-  tree.root.findAll((node) => node.props.accessibilityRole === 'button' && typeof node.props.hitSlop === 'object' && 'onPress' in node.props);
+const close = () => screen.getByRole('button', { name: 'Close new GRN' });
+const circles = () => screen.getAllByRole('button', { name: /^Step \d of 3/ });
 const lastQuestion = () => jest.mocked(showAlert).mock.calls.at(-1)!;
 
 beforeEach(() => {
@@ -52,71 +48,69 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 describe('the step header', () => {
-  it('asks "Discard this GRN?" with the form\'s message when nothing is running', () => {
-    const { tree } = render({});
-    act(() => close(tree).props.onPress());
+  it('asks "Discard this GRN?" with the form\'s message when nothing is running', async () => {
+    await renderHeader({});
+    await user.press(close());
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(lastQuestion()[1]).toBe('2 items and the GRN details will be lost.');
-    expect(close(tree).props.accessibilityState).toBeUndefined();
-    act(() => tree.unmount());
+    expect(close()).toBeEnabled();
+    expect(close().props.accessibilityState).toMatchObject({ disabled: false });
   });
 
-  it('while a save runs the X and the step circles do nothing, and the X is reported disabled', () => {
-    const { tree, onStepPress, onCancel } = render({ disabled: true });
+  it('while a save runs the X and the step circles do nothing, and the X is reported disabled', async () => {
+    const { onStepPress, onCancel } = await renderHeader({ disabled: true });
 
-    expect(close(tree).props.accessibilityState).toEqual({ disabled: true });
-    act(() => close(tree).props.onPress());
-    act(() => circles(tree)[0].props.onPress());
-    act(() => { jest.runAllTimers(); });
+    expect(close()).toBeDisabled();
+    circles().forEach(circle => expect(circle).toBeDisabled());
+    await user.press(close());
+    await user.press(circles()[0]);
+    await jest.runAllTimersAsync();
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(onStepPress).not.toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
-    act(() => tree.unmount());
   });
 
-  it('with a leave warning the X still asks, with that warning, and Leave anyway leaves; the circles stay disabled', () => {
-    const { tree, onStepPress, onCancel } = render({ disabled: true, leaveWarning: WARNING });
+  it('with a leave warning the X still asks, with that warning, and Leave anyway leaves; the circles stay disabled', async () => {
+    const { onStepPress, onCancel } = await renderHeader({ disabled: true, leaveWarning: WARNING });
 
-    expect(close(tree).props.accessibilityState).toBeUndefined();
-    act(() => close(tree).props.onPress());
+    expect(close()).toBeEnabled();
+    expect(close().props.accessibilityState).toMatchObject({ disabled: false });
+    await user.press(close());
     expect(showAlert).toHaveBeenCalledTimes(1);
     const [, message, buttons] = lastQuestion();
     expect(message).toBe(WARNING);
     // Nothing is being edited: the app waits for the server, so the buttons say that ("Leave anyway" leaves).
     expect(buttons!.map((button) => button.text)).toEqual(['Keep waiting', 'Leave anyway']);
-    act(() => buttons![1].onPress!());
+    buttons![1].onPress!();
     expect(onCancel).toHaveBeenCalledTimes(1);
 
-    act(() => circles(tree)[0].props.onPress());
-    act(() => { jest.runAllTimers(); });
+    circles().forEach(circle => expect(circle).toBeDisabled());
+    await user.press(circles()[0]);
+    await jest.runAllTimersAsync();
     expect(onStepPress).not.toHaveBeenCalled();
-    act(() => tree.unmount());
   });
 
-  it('a leave warning without a running save changes nothing: the X asks its own question', () => {
-    const { tree } = render({ leaveWarning: WARNING });
-    act(() => close(tree).props.onPress());
+  it('a leave warning without a running save changes nothing: the X asks its own question', async () => {
+    await renderHeader({ leaveWarning: WARNING });
+    await user.press(close());
     expect(lastQuestion()[1]).toBe('2 items and the GRN details will be lost.');
-    act(() => tree.unmount());
   });
 });
 
 // WH-260, WH-263, WH-264: an edited form asks before the X only when something was changed since it opened.
 describe('the X of an edit form', () => {
-  it('leaves with no question when nothing was changed', () => {
-    const { tree, onCancel } = render({ backOnFirstStep: { hasData: false, enabled: false, exitRoute: '/(tabs)/grn' } });
-    act(() => close(tree).props.onPress());
+  it('leaves with no question when nothing was changed', async () => {
+    const { onCancel } = await renderHeader({ backOnFirstStep: { hasData: false, enabled: false, exitRoute: '/(tabs)/grn' } });
+    await user.press(close());
     expect(showAlert).not.toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalledTimes(1);
-    act(() => tree.unmount());
   });
 
-  it('asks once after a change, and leaves only on Discard', () => {
-    const { tree, onCancel } = render({ backOnFirstStep: { hasData: true, enabled: false, exitRoute: '/(tabs)/grn' } });
-    act(() => close(tree).props.onPress());
+  it('asks once after a change, and leaves only on Discard', async () => {
+    const { onCancel } = await renderHeader({ backOnFirstStep: { hasData: true, enabled: false, exitRoute: '/(tabs)/grn' } });
+    await user.press(close());
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
-    act(() => tree.unmount());
   });
 });

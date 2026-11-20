@@ -14,9 +14,8 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
+import { act, fireEvent, render, userEvent, within, type RenderResult } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
-import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { invoicePaymentStatus } from '@/components/reports/invoicePaymentStatus';
@@ -262,8 +261,8 @@ type Store = ReturnType<typeof makeStore>;
 // one, which draws the screen for the first time, can take longer than Jest's 5 seconds.
 jest.setTimeout(30_000);
 
-// A mounted skeleton or query keeps timers alive: every tree is taken down after its test.
-const mounted: TestRenderer.ReactTestRenderer[] = [];
+
+const closers: (() => Promise<void>)[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -289,60 +288,81 @@ beforeEach(() => {
   sharePdf.mockResolvedValue({ success: true });
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   resetFacilityCapabilities();
   resetFacilityRelease();
   jest.useRealTimers();
   setLanguage('en');
 });
 
-const textOf = (node: ReactTestInstance): string =>
-  [node.props.children].flat().map(child => (typeof child === 'string' || typeof child === 'number' ? String(child) : child?.props ? textOf(child as ReactTestInstance) : '')).join('');
+/** Takes down every tree this test has opened (a restart, or a person leaving the screen). */
+const unmountAll = async () => {
+  for (const close of closers.splice(0)) await close();
+};
+type TestInstance = RenderResult['container'];
+
+/** Lets the promises behind a query answer run, and the screen draw them. */
+const settle = () => act(() => settleQueries());
+const textOf = (node: TestInstance): string => node.children.map(child => (typeof child === 'string' ? child : textOf(child))).join('');
+/** A pressable host (a Pressable's own element answers a tap through `onClick`). */
+const pressable = (node: TestInstance) => typeof node.props.onClick === 'function';
 
 /** `params`: the route's own, for a tree that stands for one entry of the stack. */
 async function open(store: Store, params?: Record<string, string>) {
   mockStore = store;
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(
-      params ? (
-        <ParamsContext.Provider value={params}>
-          <InvoiceHistoryScreen />
-        </ParamsContext.Provider>
-      ) : (
+  const user = userEvent.setup();
+  const view = await render(
+    params ? (
+      <ParamsContext.Provider value={params}>
         <InvoiceHistoryScreen />
-      )
-    );
-    await settleQueries();
-  });
-  mounted.push(tree);
+      </ParamsContext.Provider>
+    ) : (
+      <InvoiceHistoryScreen />
+    )
+  );
+  let isOpen = true;
+  const close = async () => {
+    if (!isOpen) return;
+    isOpen = false;
+    await view.unmount();
+  };
+  closers.push(close);
+  await settle();
+  const here = within(view.container);
 
-  const run = (callback: () => void) =>
-    act(async () => {
-      callback();
-      await settleQueries();
-    });
   const controls = (match: (label: string) => boolean) =>
-    tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string' && match(node.props.accessibilityLabel) && typeof node.props.onPress === 'function');
+    view.container.queryAll(node => typeof node.props.accessibilityLabel === 'string' && match(node.props.accessibilityLabel) && pressable(node));
   const control = (label: string) => {
     const found = controls(text => text === label);
     if (found.length === 0) throw new Error(`No control labelled "${label}"`);
     return found[0];
   };
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(textOf);
+  const texts = () => view.container.queryAll(node => node.type === 'Text').map(textOf);
+  const searchField = () => here.getByPlaceholderText(/./);
+  const pressNode = async (node: TestInstance) => {
+    await user.press(node);
+    await settle();
+  };
   return {
-    tree,
+    view,
+    here,
+    close,
     texts,
     control,
     controls,
-    press: (label: string) => run(() => control(label).props.onPress()),
+    pressNode,
+    press: (label: string) => pressNode(control(label)),
     has: (label: string) => controls(text => text === label).length > 0,
+    /** The list the screen draws its rows in (the FlashList stand-in keeps the list's props). */
+    list: () => view.container.queryAll(node => node.type === 'FlashList')[0],
     /** Customer names in the order the rows show them. */
-    customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
+    customers: () =>
+      here
+        .queryAllByRole('button', { name: /^.+, \d+ invoices?, Latest / })
+        .map(row => (row.props.accessibilityLabel as string).replace(/, \d+ invoices?, Latest .*$/, '')),
     /** Invoice cards and date headings in the order they are drawn. */
     invoiceRows: () =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && (node.props.accessibilityRole === 'header' || /^Invoice \d{4}\/\d{4}$/.test(textOf(node))))
+      view.container
+        .queryAll(node => node.type === 'Text' && (node.props.accessibilityRole === 'header' || /^Invoice \d{4}\/\d{4}$/.test(textOf(node))))
         .map(textOf)
         // Not the screen's title, nor the heading of the sort sheet while it is open.
         .filter(text => text !== 'Invoice history' && text !== 'Sort by'),
@@ -352,14 +372,13 @@ async function open(store: Store, params?: Record<string, string>) {
      * spoken summary, and the Total row. Undefined while it is shut.
      */
     monthTable: () => {
-      const host = (node: ReactTestInstance) => typeof node.type === 'string';
-      const table = tree.root.findAll(node => host(node) && node.props.testID === 'monthly-breakdown-table')[0];
+      const table = view.container.queryAll(node => node.props.testID === 'monthly-breakdown-table')[0];
       if (!table) return undefined;
-      const cellsOf = (view: ReactTestInstance) => view.findAll(node => (node.type as unknown) === 'Text').map(textOf);
-      const rowViews = table.findAll(node => host(node) && String(node.props.testID).startsWith('monthly-breakdown-row-'));
-      const headings = table.findAll(node => (node.type as unknown) === 'Text' && (StyleSheet.flatten(node.props.style) as Record<string, unknown>)?.color === LIGHT.table.headerText && (StyleSheet.flatten(node.props.style) as Record<string, unknown>)?.fontWeight === fontWeight.semibold);
-      const total = table.findAll(node => host(node) && node.props.testID === 'monthly-breakdown-total')[0];
-      const sortHeadings = table.findAll(node => host(node) && String(node.props.testID).startsWith('monthly-breakdown-table-sort-'));
+      const cellsOf = (part: TestInstance) => part.queryAll(node => node.type === 'Text').map(textOf);
+      const rowViews = table.queryAll(node => String(node.props.testID).startsWith('monthly-breakdown-row-'));
+      const headings = table.queryAll(node => node.type === 'Text' && (StyleSheet.flatten(node.props.style) as Record<string, unknown>)?.color === LIGHT.table.headerText && (StyleSheet.flatten(node.props.style) as Record<string, unknown>)?.fontWeight === fontWeight.semibold);
+      const total = table.queryAll(node => node.props.testID === 'monthly-breakdown-total')[0];
+      const sortHeadings = table.queryAll(node => String(node.props.testID).startsWith('monthly-breakdown-table-sort-'));
       return {
         headers: headings.map(textOf),
         rows: rowViews.map(cellsOf),
@@ -372,23 +391,29 @@ async function open(store: Store, params?: Record<string, string>) {
       };
     },
     /** A tap on a heading of the monthly table that sorts. */
-    sortMonths: (column: string) =>
-      run(() => tree.root.findAll(node => node.props.testID === `monthly-breakdown-table-sort-${column}` && typeof node.props.onPress === 'function')[0].props.onPress()),
+    sortMonths: (column: string) => pressNode(here.getByTestId(`monthly-breakdown-table-sort-${column}`)),
     search: async (text: string) => {
-      const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
-      await run(() => field.props.onChangeText(text));
+      await user.paste(searchField(), text);
+      await settle();
       // Submitting commits at once, without waiting for the field's 300 ms pause.
-      await run(() => tree.root.findAll(node => typeof node.props.onSubmitEditing === 'function')[0].props.onSubmitEditing());
+      await fireEvent(searchField(), 'submitEditing', { nativeEvent: { text } });
+      await settle();
     },
-    searchValue: () => tree.root.findAll(node => typeof node.props.onChangeText === 'function')[0].props.value as string,
-    refresh: () => run(() => tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh()),
+    searchValue: () => searchField().props.value as string,
+    refresh: async () => {
+      const list = view.container.queryAll(node => node.type === 'FlashList')[0];
+      await act(async () => {
+        list.props.refreshControl.props.onRefresh();
+        await settleQueries();
+      });
+    },
     bold: () =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
+      view.container
+        .queryAll(node => node.type === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
         .map(textOf),
     /** The figure tiles drawn as placeholders while the first answer is out. */
     loadingTiles: () =>
-      tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityState?.busy === true && String(node.props.accessibilityLabel).endsWith(', loading')).length,
+      view.container.queryAll(node => node.props.accessibilityState?.busy === true && String(node.props.accessibilityLabel).endsWith(', loading')).length,
   };
 }
 
@@ -430,7 +455,7 @@ describe('invoice history, every customer', () => {
 
   it('says what a search found nothing for, and its clear action brings the customers back', async () => {
     const screen = await open(makeStore());
-    expect(screen.tree.root.findByType('FlashList' as never).props.keyboardShouldPersistTaps).toBe('handled');
+    expect(screen.list().props.keyboardShouldPersistTaps).toBe('handled');
     await screen.search('zzzz');
     expect(screen.customers()).toEqual([]);
     expect(screen.texts()).toContain('No customers match "zzzz"');
@@ -492,7 +517,7 @@ describe('invoice history, every customer', () => {
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/invoice-history', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({ 'invoice-history': { id: 'c1', name: 'Riverbank Produce' } });
 
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    await unmountAll();
     forgetQueries();
     allHistory.mockClear();
     const stored = sanitizeReportPrefs(JSON.parse(JSON.stringify(store.getState().reportPrefs)));
@@ -608,12 +633,12 @@ describe('invoice history, one customer', () => {
   it('shows the month by month table above the invoices when asked, with its totals', async () => {
     mockParams = GREEN;
     const screen = await open(makeStore());
-    expect(screen.control('Monthly breakdown').props.accessibilityState).toEqual({ expanded: false });
+    expect(screen.control('Monthly breakdown')).toBeCollapsed();
     expect(screen.texts()).not.toContain('Oct 2026');
     expect(screen.monthTable()).toBeUndefined();
 
     await screen.press('Monthly breakdown');
-    expect(screen.control('Monthly breakdown').props.accessibilityState).toEqual({ expanded: true });
+    expect(screen.control('Monthly breakdown')).toBeExpanded();
     const all = screen.texts();
     expect(all).toEqual(expect.arrayContaining(['Month', 'Amount', 'Oct 2026', 'Sep 2026', '₹37,000', '₹2,000', 'Total', '₹39,000']));
     expect(all.indexOf('Total')).toBeLessThan(all.indexOf('Invoice 2026/0010'));
@@ -875,7 +900,7 @@ describe('invoice history, one customer', () => {
       return screen;
     };
     const scrolls = (screen: Awaited<ReturnType<typeof open>>) =>
-      screen.tree.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'monthly-breakdown-table')[0].findAll(node => node.props.horizontal === true).length;
+      screen.view.container.queryAll(node => typeof node.type === 'string' && node.props.testID === 'monthly-breakdown-table')[0].queryAll(node => node.props.horizontal === true).length;
 
     it('411 dp: the count goes under the month, Amount, Paid and Pending stay columns, and nothing scrolls sideways', async () => {
       const screen = await drawn({ width: 411, scale: 1 });
@@ -1029,7 +1054,7 @@ describe('invoice history, one customer', () => {
       expect(screen.monthTable()!.totals).toEqual(['Total', '3', '₹28,700.01', '₹7,200.01', '₹21,500.00']);
 
       // The same table without the paisa is in whole rupees again, as it was.
-      act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+      await unmountAll();
       forgetQueries();
       customerHistory.mockResolvedValue(answerPaise([wholeThenOnePaisa[0], wholeThenOnePaisa[1]] as never) as never);
       const whole = await open(makeStore());
@@ -1057,11 +1082,11 @@ describe('invoice history, one customer', () => {
 
     it('gives the amount columns room for "₹1,23,45,678.90", and leaves them as narrow as the headings allow for whole rupees', async () => {
       mockParams = GREEN;
-      const flat = (node: ReactTestInstance) => StyleSheet.flatten(node.props.style) as Record<string, unknown>;
+      const flat = (node: TestInstance) => StyleSheet.flatten(node.props.style) as Record<string, unknown>;
       // The width of a column is on its sort heading (the Pressable that holds the heading and its arrow).
       const amountWidths = (screen: Awaited<ReturnType<typeof open>>) =>
         ['amount', 'paid', 'pending'].map(column => {
-          const headings = screen.tree.root.findAll(node => typeof node.type === 'string' && node.props.testID === `monthly-breakdown-table-sort-${column}`);
+          const headings = screen.view.container.queryAll(node => typeof node.type === 'string' && node.props.testID === `monthly-breakdown-table-sort-${column}`);
           expect(headings).toHaveLength(1);
           return flat(headings[0]).width as number;
         });
@@ -1079,7 +1104,7 @@ describe('invoice history, one customer', () => {
       expect(amount).toBeGreaterThanOrEqual(textWidth('₹1,23,45,678.90'));
       expect(paid).toBeGreaterThanOrEqual(textWidth('₹1,23,45,678.90'));
       expect(pending).toBe(68);
-      act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+      await unmountAll();
 
       forgetQueries();
       customerHistory.mockResolvedValue(answerMonthly as never);
@@ -1124,7 +1149,7 @@ describe('invoice history, one customer', () => {
       await settleQueries();
     });
     expect(list.loadingTiles()).toBe(0);
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    await unmountAll();
 
     // Opened from a link: one customer from the first frame, so three tiles, not two then three.
     mockParams = GREEN;
@@ -1160,7 +1185,7 @@ describe('invoice history, one customer', () => {
     await screen.press('Last 420 days');
     expect(screen.texts()).toContain('No invoices in this period');
     expect(screen.texts()).not.toContain('Choose a longer period to see older invoices.');
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    await unmountAll();
 
     forgetQueries();
     customerHistory.mockResolvedValue({ success: false, message: 'The facility refused this report.' } as never);
@@ -1177,8 +1202,8 @@ const invoiceCard = (screen: Screen, number: string) => screen.controls(label =>
 const cardLabel = (screen: Screen, number: string) => invoiceCard(screen, number).props.accessibilityLabel as string;
 /** The figure tiles by their spoken label ("Paid (2): ₹19,000"). */
 const tiles = (screen: Screen) =>
-  screen.tree.root
-    .findAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string' && /^(Invoices|Paid \(\d+\)|Pending \(\d+\)|Amount): /.test(node.props.accessibilityLabel))
+  screen.view.container
+    .queryAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string' && /^(Invoices|Paid \(\d+\)|Pending \(\d+\)|Amount): /.test(node.props.accessibilityLabel))
     .map(node => node.props.accessibilityLabel as string);
 const rupees = (text: string) => Number(text.replace(/[₹,]/g, ''));
 
@@ -1367,12 +1392,12 @@ describe('invoice history shows the invoice total, on a server with or without b
         cards: customer.controls(label => label.startsWith('Invoice 2026/')).map(node => node.props.accessibilityLabel as string),
         table: customer.monthTable(),
       };
-      act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+      await unmountAll();
       forgetQueries();
       mockParams = {};
       const list = await open(makeStore());
       const everyCustomer = { texts: list.texts(), tiles: tiles(list), customers: list.customers(), rows: list.controls(label => label.includes(' invoices, ')).map(node => node.props.accessibilityLabel as string) };
-      act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+      await unmountAll();
       forgetQueries();
       return { oneCustomer, everyCustomer };
     };
@@ -1441,19 +1466,17 @@ const NO_AMOUNTS = answerPayments([UNPAID_ROW, PART_PAID_ROW, PAID_ROW], [2, 14,
 const PART_PAID_LINE = 'Paid: ₹4.00 · Pending: ₹10.00';
 const PAYMENT_ROWS = ['Today', 'Invoice 2026/0403', '05/10/26', 'Invoice 2026/0402', '20/09/26', 'Invoice 2026/0401'];
 /** Every text drawn inside `card`, in order (a text with a bold part is one text). */
-const textsIn = (card: ReactTestInstance) => {
-  const insideText = (node: ReactTestInstance) => {
+const textsIn = (card: TestInstance) => {
+  const insideText = (node: TestInstance) => {
     for (let up = node.parent; up && up !== card; up = up.parent) if ((up.type as unknown) === 'Text') return true;
     return false;
   };
-  return card.findAll(node => (node.type as unknown) === 'Text' && !insideText(node)).map(textOf);
+  return card.queryAll(node => (node.type as unknown) === 'Text' && !insideText(node)).map(textOf);
 };
 const cardTexts = (screen: Screen, number: string) => textsIn(invoiceCard(screen, number));
 /** How many parts with text a card holds, top to bottom: the cell, and under it the line of a part-paid invoice. */
 const cardParts = (screen: Screen, number: string) =>
-  invoiceCard(screen, number)
-    .findAll(node => typeof node.type === 'string')[0]
-    .children.filter(part => typeof part !== 'string' && part.findAll(node => (node.type as unknown) === 'Text').length > 0).length;
+  invoiceCard(screen, number).children.filter(part => typeof part !== 'string' && (part.type === 'Text' || part.queryAll(node => node.type === 'Text').length > 0)).length;
 
 describe('invoice history: Paid is the money received and Pending is what is still owed', () => {
   describe.each([
@@ -1522,7 +1545,7 @@ describe('invoice history: Paid is the money received and Pending is what is sti
       expect(cardLabel(screen, '2026/0402')).toBe('Invoice 2026/0402, 5 Oct 2026 · GRN A0402, ₹14.00, 1 item, Pending, Paid: ₹4.00, Pending: ₹10.00');
       // The line is the last thing in the card, below the cell with the amount and the tag: never cut short.
       const card = invoiceCard(screen, '2026/0402');
-      const line = card.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === PART_PAID_LINE)[0];
+      const line = card.queryAll(node => (node.type as unknown) === 'Text' && textOf(node) === PART_PAID_LINE)[0];
       expect(line.props.numberOfLines).toBeUndefined();
       expect(StyleSheet.flatten(line.props.style)).toMatchObject({ color: LIGHT.text.secondary, fontVariant: ['tabular-nums'] });
       // The card still opens the invoice.
@@ -1592,7 +1615,7 @@ describe('invoice history: Paid is the money received and Pending is what is sti
       await screen.press('Payment: Paid. Change');
       await screen.press('Pending');
       const pendingOnly = drawn();
-      act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+      await unmountAll();
       forgetQueries();
       return { all, paid, pendingOnly };
     };
@@ -1710,7 +1733,7 @@ describe('invoice history, a search across customers', () => {
   const ALL = ['2026/0010', '2026/0009', '2026/0100', '2026/0050'];
   /** The invoice numbers the list draws (a search marks the match in bold, so the card's text is split). */
   const invoices = (screen: Awaited<ReturnType<typeof open>>) =>
-    (screen.tree.root.findByType('FlashList' as never).props.data as { kind: string; invoice?: { invoice_number: string } }[])
+    (screen.list().props.data as { kind: string; invoice?: { invoice_number: string } }[])
       .filter(row => row.kind === 'invoice')
       .map(row => row.invoice?.invoice_number);
 
@@ -1725,8 +1748,7 @@ describe('invoice history, a search across customers', () => {
     expect(invoices(river)).toEqual(ALL);
     expect(invoices(green)).toEqual(['2026/0100']);
 
-    act(() => river.tree.unmount());
-    mounted.splice(mounted.indexOf(river.tree), 1);
+    await river.close();
     expect(green.searchValue()).toBe('a0100');
     expect(invoices(green)).toEqual(['2026/0100']);
   });
@@ -1738,17 +1760,10 @@ describe('invoice history, a search across customers', () => {
     await green.press('Paid');
     await green.search('a0100');
     expect(invoices(green)).toEqual(['2026/0100']);
-    act(() => green.tree.unmount());
-    mounted.splice(mounted.indexOf(green.tree), 1);
+    await green.close();
 
     const list = await open(store);
-    const row = list.tree.root.findAll(
-      node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('Green Valley Traders,') && typeof node.props.onPress === 'function'
-    )[0];
-    await act(async () => {
-      row.props.onPress();
-      await settleQueries();
-    });
+    await list.pressNode(list.controls(label => label.startsWith('Green Valley Traders,'))[0]);
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/invoice-history', params: GREEN });
 
     const again = await open(store, GREEN);
@@ -1779,14 +1794,14 @@ async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: R
   for (const field of ['customer_id', 'from', 'to', 'sort', 'status']) {
     if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
   }
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  expect(screen.control(label)).toBeBusy();
   expect(sharePdf).not.toHaveBeenCalled();
   await act(async () => {
     answer({ success: true, pdfUrl: PDF_URL });
     await settleQueries();
   });
   expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  expect(screen.control(label)).not.toBeBusy();
   expect(alert).not.toHaveBeenCalled();
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
@@ -1891,18 +1906,18 @@ describe('invoice history, the report PDF', () => {
 
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('invoice history in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
-  const flat = (node: ReactTestInstance) =>
+  const flat = (node: TestInstance) =>
     (StyleSheet.flatten(typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style) ?? {}) as Record<string, unknown>;
   const textNode = (screen: Awaited<ReturnType<typeof open>>, text: string) =>
-    screen.tree.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === text)[0];
+    screen.view.container.queryAll(node => (node.type as unknown) === 'Text' && node.props.children === text)[0];
 
   it('draws both levels, the status words and the table on theme tokens', async () => {
     const theme = { preference: mode, brand };
     const list = await open(makeStore(STAFF, undefined, theme));
-    expect(flat(list.tree.root.findAllByType('View' as never)[0]).backgroundColor).toBe(t.background.base);
+    expect(flat(list.view.container.queryAll(node => node.type === 'View')[0]).backgroundColor).toBe(t.background.base);
     // The row's own pressable (ReportCustomerCard itself also carries the label and onPress).
     expect(flat(list.controls(label => label.startsWith('Green Valley Traders,')).filter(node => node.props.style)[0]).backgroundColor).toBe(t.surface.card);
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    await unmountAll();
 
     mockParams = GREEN;
     const one = await open(makeStore(STAFF, undefined, theme));
@@ -1914,7 +1929,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     await one.press('Monthly breakdown');
     // The totals row: weight 600 over a separator (§13.7).
     expect(flat(textNode(one, '₹39,000')).fontWeight).toBe(fontWeight.semibold);
-    const totalsRow = one.tree.root.findAll(node => typeof node.type === 'string' && flat(node).borderTopColor === t.table.separator && flat(node).borderTopWidth === 1);
+    const totalsRow = one.view.container.queryAll(node => typeof node.type === 'string' && flat(node).borderTopColor === t.table.separator && flat(node).borderTopWidth === 1);
     expect(totalsRow.length).toBeGreaterThan(0);
   });
 
@@ -1924,10 +1939,10 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
     const card = invoiceCard(screen, '2026/0402');
     expect(flat(card).backgroundColor).toBe(t.surface.card);
-    const line = card.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === PART_PAID_LINE)[0];
+    const line = card.queryAll(node => (node.type as unknown) === 'Text' && textOf(node) === PART_PAID_LINE)[0];
     expect(flat(line).color).toBe(t.text.secondary);
     expect(flat(line).fontVariant).toEqual(['tabular-nums']);
-    const tag = card.findAll(node => (node.type as unknown) === 'Text' && node.props.children === 'Pending')[0];
+    const tag = card.queryAll(node => (node.type as unknown) === 'Text' && node.props.children === 'Pending')[0];
     expect(flat(tag).color).toBe(t.status.critical.text);
   });
 
@@ -1935,11 +1950,11 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     mockParams = GREEN;
     const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
     await screen.press('Monthly breakdown');
-    const table = screen.tree.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'monthly-breakdown-table')[0];
+    const table = screen.view.container.queryAll(node => typeof node.type === 'string' && node.props.testID === 'monthly-breakdown-table')[0];
 
     // The five heading texts of the table (not the KPI tile that is also called "Invoices"), on the headerText colour.
     const heading = (label: string) => {
-      const found = table.findAll(node => (node.type as unknown) === 'Text' && textOf(node) === label && flat(node).color === t.table.headerText);
+      const found = table.queryAll(node => (node.type as unknown) === 'Text' && textOf(node) === label && flat(node).color === t.table.headerText);
       expect(found).toHaveLength(1);
       return found[0];
     };
@@ -1949,8 +1964,8 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(flat(headings.Month).textAlign).not.toBe('right');
 
     // The three figure columns that sort have a heading button of at least the touch target, in the column's width; Invoices has none.
-    const button = (column: string) => table.findAll(node => typeof node.type === 'string' && node.props.testID === `monthly-breakdown-table-sort-${column}`)[0];
-    expect(table.findAll(node => typeof node.type === 'string' && String(node.props.testID).startsWith('monthly-breakdown-table-sort-')).map(node => node.props.testID)).toEqual([
+    const button = (column: string) => table.queryAll(node => typeof node.type === 'string' && node.props.testID === `monthly-breakdown-table-sort-${column}`)[0];
+    expect(table.queryAll(node => typeof node.type === 'string' && String(node.props.testID).startsWith('monthly-breakdown-table-sort-')).map(node => node.props.testID)).toEqual([
       'monthly-breakdown-table-sort-month',
       'monthly-breakdown-table-sort-amount',
       'monthly-breakdown-table-sort-paid',
@@ -1960,10 +1975,10 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(flat(button('amount')).width).toBe(68);
 
     // The count column is as wide as "Invoices" needs (56 at the default text size), in its heading and in every row.
-    const countCells = table.findAll(node => typeof node.type === 'string' && flat(node).width === 56);
+    const countCells = table.queryAll(node => typeof node.type === 'string' && flat(node).width === 56);
     expect(countCells.length).toBeGreaterThanOrEqual(1 + 2);
     // Fits the window: no part of the table scrolls sideways.
-    expect(table.findAll(node => node.props.horizontal === true).length).toBe(0);
+    expect(table.queryAll(node => node.props.horizontal === true).length).toBe(0);
   });
 });
 

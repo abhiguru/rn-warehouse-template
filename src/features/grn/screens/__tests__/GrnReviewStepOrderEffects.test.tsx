@@ -4,7 +4,7 @@
  * a server without the preview. A create never asks.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { previewUpdateGrn, type OrderEffect } from '@/services/orderEffects';
 import { updateGRN } from '@/features/grn/services/grnFormService';
@@ -50,9 +50,35 @@ jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: (
 // Children are stand-ins that keep their props, so the test can press their buttons.
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+// The dialogs draw what a person reads while they are open (title, message, order notes) and the bar draws its Next
+// button; each calls the real props.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message?: string; onConfirm: () => unknown }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(View, { accessible: true, accessibilityRole: 'alert' },
+        createElement(Text, null, props.title),
+        createElement(Text, null, props.message),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Confirm', onPress: props.onConfirm }))
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean; documentData: { orderNotes?: string[] } }) => {
+    const { Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.isVisible
+      ? createElement(View, { accessible: true, accessibilityLabel: 'Success dialog' },
+        ...(props.documentData.orderNotes ?? []).map((note) => createElement(Text, { key: note }, note)))
+      : null;
+  },
+}));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Wizard next', onPress: props.onNext }),
+}));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() }, useRouter: () => ({ back: jest.fn() }), useFocusEffect: jest.fn(), useLocalSearchParams: () => ({}) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
@@ -89,19 +115,17 @@ const effect = (over: Partial<OrderEffect>): OrderEffect => ({
   availableStock: 3, orderLinesLeft: 1, packaging: null, ...over,
 });
 
-async function render(mode: 'create' | 'edit') {
+async function show(mode: 'create' | 'edit') {
   mockForm = {
     header: mockHeader, items: LINES, grnId: mode === 'edit' ? GRN_ID : null, tempGrnId: mode === 'edit' ? null : 'temp_grn_fixture',
     isSaving: false, isCreateMode: mode === 'create', resetFormState: jest.fn(),
   };
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<GrnReviewStep mode={mode} />); });
-  return tree;
+  await render(<GrnReviewStep mode={mode} />);
 }
-const visibleDialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never).filter((dialog) => dialog.props.visible);
-const texts = (node: { findAll: ReactTestRenderer['root']['findAll'] }) =>
-  node.findAll((n) => (n.type as unknown) === 'Text').map((n) => ([] as unknown[]).concat(n.props.children).join('')).join('\n');
-const byTestId = (tree: ReactTestRenderer, id: string) => tree.root.findAll((n) => n.props.testID === id);
+const user = () => userEvent.setup({ delay: 0 });
+const pressNext = () => user().press(screen.getByRole('button', { name: 'Wizard next' }));
+// No role or text names the order-effects block, so the test id is the only way to the block itself.
+const effectsBlock = () => screen.queryByTestId('grn-review-order-effects');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -115,39 +139,38 @@ afterEach(() => jest.restoreAllMocks());
 describe('GRN edit', () => {
   it('names the order lines on the step and in the save question, asking the preview again when Save is tapped', async () => {
     jest.mocked(previewUpdateGrn).mockResolvedValue([effect({}), effect({ itemName: 'Garlic', change: 'removed', removed: true, newQuantity: 0, orderLinesLeft: 0 })]);
-    const tree = await render('edit');
+    await show('edit');
     expect(String(jest.mocked(previewUpdateGrn).mock.calls[0][0].p_grn_id)).toBe(GRN_ID);
-    expect(texts(byTestId(tree, 'grn-review-order-effects')[0])).toContain("Leading Space Traders' order: Onions (T31-G5) asks for 5 bags, but only 3 bags will be in stock.");
+    expect(within(effectsBlock()!).getByText("Leading Space Traders' order: Onions (T31-G5) asks for 5 bags, but only 3 bags will be in stock.", { exact: false })).toBeOnTheScreen();
 
     const calls = jest.mocked(previewUpdateGrn).mock.calls.length;
-    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
+    await pressNext();
     expect(jest.mocked(previewUpdateGrn).mock.calls.length).toBe(calls + 1);
-    const message = String(visibleDialogs(tree)[0].props.message);
-    expect(message).toContain('This also changes orders:');
-    expect(message).toContain("Garlic (T31-G5) is removed from Leading Space Traders' order. No line is left, so the order is removed.");
-    await act(async () => { tree.unmount(); });
+    const dialog = within(screen.getByRole('alert'));
+    expect(dialog.getByText('This also changes orders:', { exact: false })).toBeOnTheScreen();
+    expect(dialog.getByText("Garlic (T31-G5) is removed from Leading Space Traders' order. No line is left, so the order is removed.", { exact: false })).toBeOnTheScreen();
   });
 
   it('asks as before without a preview, and a create never asks the preview', async () => {
-    const edit = await render('edit');
-    expect(byTestId(edit, 'grn-review-order-effects')).toHaveLength(0);
-    await act(async () => { await edit.root.findByType('WizardBottomBar' as never).props.onNext(); });
-    expect(String(visibleDialogs(edit)[0].props.message)).not.toContain('orders');
-    await act(async () => { edit.unmount(); });
+    await show('edit');
+    expect(effectsBlock()).toBeNull();
+    await pressNext();
+    expect(within(screen.getByRole('alert')).queryByText(/orders/)).toBeNull();
+    await act(async () => { screen.unmount(); });
 
     jest.mocked(previewUpdateGrn).mockClear();
-    const create_ = await render('create');
-    await act(async () => { await create_.root.findByType('WizardBottomBar' as never).props.onNext(); });
+    await show('create');
+    await pressNext();
     expect(previewUpdateGrn).not.toHaveBeenCalled();
-    await act(async () => { create_.unmount(); });
   });
 
   it('repeats the order lines of the real save in the success dialog', async () => {
     (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: 'grn-1', message: 'ok', stats: {}, photos: { uploadedCount: 0, failed: [], removalFailures: 0 }, orderEffects: [effect({ change: 'reduced', oldQuantity: 5, newQuantity: 3 })] } });
-    const tree = await render('edit');
-    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
-    await act(async () => { await visibleDialogs(tree)[0].props.onConfirm(); });
-    expect(tree.root.findByType('DocumentSuccessDialog' as never).props.documentData.orderNotes).toEqual(["Leading Space Traders' order: Onions (T31-G5) 5 → 3 bags"]);
-    await act(async () => { tree.unmount(); });
+    await show('edit');
+    await pressNext();
+    await user().press(screen.getByRole('button', { name: 'Confirm' }));
+    const success = within(screen.getByLabelText('Success dialog'));
+    expect(success.getAllByText(/order:/)).toHaveLength(1);
+    expect(success.getByText("Leading Space Traders' order: Onions (T31-G5) 5 → 3 bags")).toBeOnTheScreen();
   });
 });

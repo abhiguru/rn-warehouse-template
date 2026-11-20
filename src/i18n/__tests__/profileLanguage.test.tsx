@@ -4,8 +4,7 @@
  * copied into the next account's profile; only a phone with no choice takes
  * the profile's language; a change in Settings while signed in is saved once.
  */
-import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { renderHook } from '@testing-library/react-native';
 import { useProfileLanguage } from '../useProfileLanguage';
 import { fetchProfileLanguage, saveProfileLanguage } from '../profileLanguage';
 
@@ -21,22 +20,13 @@ jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(() => Promise.resolve({ rpc: mockRpc })),
 }));
 
-function Probe() {
-  useProfileLanguage();
-  return null;
-}
+type Rendered = Awaited<ReturnType<typeof renderHook>>;
 
-async function render(): Promise<TestRenderer.ReactTestRenderer> {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    renderer = TestRenderer.create(<Probe />);
-  });
-  return renderer;
+async function render(): Promise<Rendered> {
+  return renderHook(() => useProfileLanguage());
 }
-async function update(renderer: TestRenderer.ReactTestRenderer): Promise<void> {
-  await act(async () => {
-    renderer.update(<Probe />);
-  });
+async function update(renderer: Rendered): Promise<void> {
+  await renderer.rerender({});
 }
 const calls = (name: string) => mockRpc.mock.calls.filter(([rpc]) => rpc === name);
 

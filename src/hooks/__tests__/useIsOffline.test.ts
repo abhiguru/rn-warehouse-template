@@ -1,5 +1,4 @@
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { ensureNetworkConnection, useIsOffline } from '../useNetworkStatus';
 import { bumpNetInfoGeneration } from '@/config/netInfoGeneration';
@@ -16,13 +15,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 const state = (isConnected: boolean | null, isInternetReachable: boolean | null) =>
   ({ type: 'wifi', isConnected, isInternetReachable, details: null }) as unknown as NetInfoState;
 let listener: (state: NetInfoState) => void;
-let offline: boolean;
-let tree: ReturnType<typeof create> | undefined;
 const unsubscribe = jest.fn();
-const Harness = () => {
-  offline = useIsOffline();
-  return null;
-};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -34,54 +27,51 @@ beforeEach(() => {
     return unsubscribe;
   });
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
-});
 
 async function mount() {
-  await act(async () => { tree = create(React.createElement(Harness)); });
+  const { result } = await renderHook(() => useIsOffline());
+  return result;
 }
 
 describe('useIsOffline', () => {
   it('is false while the facility answers its hello', async () => {
-    await mount();
+    const offline = await mount();
     await act(async () => { listener(state(true, true)); });
-    expect(offline).toBe(false);
+    expect(offline.current).toBe(false);
   });
 
   it('is true when the facility does not answer over the internet and no other path reaches it', async () => {
-    await mount();
+    const offline = await mount();
     await act(async () => { listener(state(true, false)); });
-    expect(offline).toBe(true);
+    expect(offline.current).toBe(true);
   });
 
   it('is false when the public probe fails but the warehouse network reaches the server', async () => {
     mockPath = 'lan';
-    await mount();
+    const offline = await mount();
     await act(async () => { listener(state(true, false)); });
-    expect(offline).toBe(false);
+    expect(offline.current).toBe(false);
   });
 
   it('is true when the warehouse network answers with the old keys of a key change: the server is not usable over it', async () => {
     mockPath = 'lan';
     mockFailure = 'old-configuration';
-    await mount();
+    const offline = await mount();
     await act(async () => { listener(state(true, false)); });
-    expect(offline).toBe(true);
+    expect(offline.current).toBe(true);
   });
 
   it('is true with no network at all, whatever path was in use', async () => {
     mockPath = 'lan';
-    await mount();
+    const offline = await mount();
     await act(async () => { listener(state(false, false)); });
-    expect(offline).toBe(true);
+    expect(offline.current).toBe(true);
   });
 
   it('is false while the first answer is awaited', async () => {
     jest.mocked(NetInfo.fetch).mockReturnValue(new Promise(() => {}));
-    await mount();
-    expect(offline).toBe(false);
+    const offline = await mount();
+    expect(offline.current).toBe(false);
   });
 });
 
@@ -113,12 +103,12 @@ describe('ensureNetworkConnection', () => {
 
 describe('after NetInfo is configured again', () => {
   it('the hook listens again and lets go of the listener that configure stopped', async () => {
-    await mount();
+    const offline = await mount();
     expect(NetInfo.addEventListener).toHaveBeenCalledTimes(1);
     await act(async () => { bumpNetInfoGeneration(); });
     expect(NetInfo.addEventListener).toHaveBeenCalledTimes(2);
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     await act(async () => { listener(state(true, false)); });
-    expect(offline).toBe(true);
+    expect(offline.current).toBe(true);
   });
 });

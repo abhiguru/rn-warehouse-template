@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { Platform } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { t } from '@/i18n';
 
@@ -38,17 +38,56 @@ jest.mock('@/hooks/useDispatchForm', () => ({
   }),
 }));
 
-// Children are stand-ins that keep their props, so the test can read and answer them.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
+// Children are stand-ins that draw what the step hands them (an open dialog's title, the step header's pills, X and
+// warning, the photo button) and the confirm keeps its props, so the test can answer it.
+interface MockDialogProps {
+  visible: boolean;
+  title: string;
+  message?: string;
+  onConfirm: () => unknown;
+}
+let mockDialogs: Record<string, MockDialogProps> = {};
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: MockDialogProps) => {
+    const { Text, View } = require('react-native');
+    const { createElement } = require('react');
+    mockDialogs[props.title] = props;
+    return props.visible
+      ? createElement(View, { accessible: true, accessibilityRole: 'alert' }, createElement(Text, null, props.title), createElement(Text, null, props.message))
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean }) =>
+    props.isVisible ? require('react').createElement(require('react-native').View, { accessible: true, accessibilityLabel: 'Success dialog' }) : null,
+}));
 jest.mock('@/components/DispatchStepIndicator', () => ({
-  DispatchStepIndicator: (props: object) => require('react').createElement('DispatchStepIndicator', props),
+  DispatchStepIndicator: (props: { onStepPress?: () => void; disabled?: boolean; leaveWarning?: string; cancelMessage?: string }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      props.onStepPress ? createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Step pills', onPress: props.onStepPress }) : null,
+      createElement(Pressable, {
+        accessibilityRole: 'button',
+        accessibilityLabel: 'Close',
+        accessibilityHint: props.cancelMessage,
+        accessibilityState: { disabled: props.disabled },
+      }),
+      props.leaveWarning === undefined ? null : createElement(Text, { testID: 'leave-warning' }, props.leaveWarning)
+    );
+  },
   dispatchSteps: () => [],
 }));
-jest.mock('@/features/dispatch/components/LostAnswerStrip', () => ({ LostAnswerStrip: 'LostAnswerStrip' }));
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
+jest.mock('@/features/dispatch/components/LostAnswerStrip', () => ({
+  LostAnswerStrip: (props: { kind: string }) => require('react').createElement(require('react-native').Text, null, `Checking (${props.kind})`),
+}));
+jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
-jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
+jest.mock('@/features/grn/components/ImageUploadButton', () => ({
+  ImageUploadButton: () => require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Add photos' }),
+}));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => ({}) }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0, top: 0 }) }));
@@ -69,24 +108,33 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-let tree: ReactTestRenderer;
-const dialogs = () => tree.root.findAllByType('ConfirmDialog' as never);
-const confirm = () => dialogs()[0];
-const success = () => tree.root.findByType('DocumentSuccessDialog' as never);
-const indicator = () => tree.root.findByType('DispatchStepIndicator' as never);
-const strips = () => tree.root.findAllByType('LostAnswerStrip' as never);
-/** The controls with this test id that can be pressed. */
-const byTestId = (id: string) => tree.root.findAll((node) => node.props.testID === id && typeof node.props.onPress === 'function');
-const submitButton = () => tree.root.find((n) => n.props.testID === 'dispatch-review-submit' && typeof n.props.onPress === 'function');
+const confirmTitle = () => (mockCreateMode ? 'Create dispatch I0042?' : 'Save changes to dispatch I0042?');
+const confirmProps = () => mockDialogs[confirmTitle()];
+const confirmOnScreen = () => screen.queryByText(confirmTitle());
+const successDialog = () => screen.queryByLabelText('Success dialog');
+const closeButton = () => screen.getByRole('button', { name: 'Close' });
+const stepPills = () => screen.queryByRole('button', { name: 'Step pills' });
+/** The edit links of the two cards: they carry the edit labels. */
+const editLinks = (name: string) => screen.queryAllByRole('button', { name });
+/** Create or Save; while the step is locked its label is the busy one ('Creating dispatch…'). */
+const submitButton = () => screen.getByRole('button', { name: /^(Creat|Sav)/ });
+/** The button's own handler, called past the disabled state: what the bar's loading guard has to hold against. */
+const pressPastDisabled = async () => {
+  // Testing Library shows host views only; the Pressable's own onPress is on the fiber above the button's view.
+  let fiber = submitButton().unstable_fiber;
+  while (fiber && typeof fiber.memoizedProps?.onPress !== 'function') fiber = fiber.return;
+  const onPress = fiber?.memoizedProps.onPress as () => unknown;
+  await act(async () => { await onPress(); });
+};
 const setPlatform = (os: 'ios' | 'android') => jest.replaceProperty(Platform, 'OS', os);
 
-const render = async (mode: 'create' | 'edit' = 'create') => {
+const show = async (mode: 'create' | 'edit' = 'create') => {
   mockCreateMode = mode === 'create';
-  await act(async () => { tree = create(<DispatchReviewStep mode={mode} />); });
+  await render(<DispatchReviewStep mode={mode} />);
 };
 /** Draws the step again with the lock as `mockChecking` now says. */
 const redraw = async (mode: 'create' | 'edit' = 'create') => {
-  await act(async () => { tree.update(<DispatchReviewStep mode={mode} />); });
+  await screen.rerender(<DispatchReviewStep mode={mode} />);
 };
 
 beforeEach(() => {
@@ -94,24 +142,25 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
   mockCreateMode = true;
   mockChecking = false;
+  mockDialogs = {};
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
 describe('a step that is not locked', () => {
   it('has the strip off, the step pills and edit links on, and the photo button', async () => {
-    await render();
+    await show();
 
-    expect(strips()).toHaveLength(0);
-    expect(typeof indicator().props.onStepPress).toBe('function');
-    expect(indicator().props.cancelMessage).not.toBe(t('errors.lostAnswer.leaveWarning'));
-    expect(indicator().props.disabled).toBe(false);
-    expect(indicator().props.leaveWarning).toBeUndefined();
-    expect(byTestId('dispatch-review-section-details-edit').length).toBeGreaterThan(0);
-    expect(byTestId('dispatch-review-section-items-edit').length).toBeGreaterThan(0);
-    expect(tree.root.findAllByType('ImageUploadButton' as never)).toHaveLength(1);
+    expect(screen.queryByText('Checking (save)')).not.toBeOnTheScreen();
+    expect(stepPills()).toBeOnTheScreen();
+    expect(screen.queryByHintText(t('errors.lostAnswer.leaveWarning'))).not.toBeOnTheScreen();
+    // Exactly `disabled: false`, not a missing key.
+    expect(closeButton().props.accessibilityState).toEqual({ disabled: false });
+    expect(screen.queryByTestId('leave-warning')).not.toBeOnTheScreen();
+    expect(editLinks('Edit dispatch details').length).toBeGreaterThan(0);
+    expect(editLinks('Edit items').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Add photos', includeHiddenElements: true })).toHaveLength(1);
   });
 });
 
@@ -119,75 +168,81 @@ describe('a step that is locked while the server is asked', () => {
   beforeEach(() => { mockChecking = true; });
 
   it('says why, with the strip', async () => {
-    await render();
+    await show();
 
-    expect(strips()).toHaveLength(1);
-    expect(strips()[0].props.kind).toBe('save');
+    // The strip says 'saved' (kind 'save'), not 'deleted'.
+    expect(screen.getByText('Checking (save)')).toBeOnTheScreen();
+    expect(screen.queryByText('Checking (delete)')).not.toBeOnTheScreen();
   });
 
   it('has no step pills, and the X warns that it may have been saved', async () => {
-    await render();
+    await show();
 
-    expect(indicator().props.onStepPress).toBeUndefined();
-    // The X still asks, with the warning, and its buttons read "Keep waiting" / "Leave anyway" (the header does that
+    expect(stepPills()).not.toBeOnTheScreen();
+    // The X still asks, with the warning, and its buttons read 'Keep waiting' / 'Leave anyway' (the header does that
     // when it is `disabled` and has a `leaveWarning`).
-    expect(indicator().props.disabled).toBe(true);
-    expect(indicator().props.leaveWarning).toBe(t('errors.lostAnswer.leaveWarning'));
+    expect(closeButton().props.accessibilityState).toEqual({ disabled: true });
+    expect(screen.getByTestId('leave-warning')).toHaveTextContent(t('errors.lostAnswer.leaveWarning'));
   });
 
   it('has no edit links and no photo changes', async () => {
-    await render();
+    await show();
 
-    expect(byTestId('dispatch-review-section-details-edit')).toHaveLength(0);
-    expect(byTestId('dispatch-review-section-items-edit')).toHaveLength(0);
-    expect(tree.root.findAllByType('ImageUploadButton' as never)).toHaveLength(0);
+    expect(editLinks('Edit dispatch details')).toHaveLength(0);
+    expect(editLinks('Edit items')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Add photos', includeHiddenElements: true })).not.toBeOnTheScreen();
   });
 
   it('does not open the confirm when Create is tapped', async () => {
-    await render();
+    await show();
 
-    await act(async () => { submitButton().props.onPress(); });
+    // The step is busy, so Create is disabled and a tap does not reach the handler at all.
+    expect(submitButton()).toBeDisabled();
+    await userEvent.setup({ delay: 0 }).press(submitButton());
+    await pressPastDisabled();
 
-    expect(confirm().props.visible).toBe(false);
+    expect(confirmOnScreen()).not.toBeOnTheScreen();
     expect(mockSubmitForm).not.toHaveBeenCalled();
   });
 
   it('the same for an edit: the strip and no Save', async () => {
-    await render('edit');
+    await show('edit');
 
-    expect(strips()).toHaveLength(1);
-    expect(byTestId('dispatch-review-section-details-edit')).toHaveLength(0);
-    await act(async () => { submitButton().props.onPress(); });
-    expect(confirm().props.visible).toBe(false);
+    expect(screen.getByText('Checking (save)')).toBeOnTheScreen();
+    expect(editLinks('Edit dispatch details')).toHaveLength(0);
+    expect(submitButton()).toBeDisabled();
+    await userEvent.setup({ delay: 0 }).press(submitButton());
+    await pressPastDisabled();
+    expect(confirmOnScreen()).not.toBeOnTheScreen();
   });
 });
 
 describe('the confirm that was busy when the answer was lost', () => {
   const start = async () => {
-    await act(async () => { submitButton().props.onPress(); });
-    expect(confirm().props.visible).toBe(true);
+    await userEvent.setup({ delay: 0 }).press(submitButton());
+    expect(await screen.findByText(confirmTitle())).toBeOnTheScreen();
   };
 
   it.each(['ios', 'android'] as const)('closes at once, and the success dialog opens when the answer comes (%s)', async (os) => {
     setPlatform(os);
     let answer!: (result: unknown) => void;
     mockSubmitForm.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
-    await render();
+    await show();
     await start();
-    await act(async () => { confirm().props.onConfirm(); });
-    expect(confirm().props.visible).toBe(true);
+    await act(async () => { confirmProps().onConfirm(); });
+    expect(confirmOnScreen()).toBeOnTheScreen();
 
     // No answer came: the form is locked, and the confirm (which has no X) is gone.
     mockChecking = true;
     await redraw();
-    expect(confirm().props.visible).toBe(false);
-    expect(success().props.isVisible).toBe(false);
+    expect(confirmOnScreen()).not.toBeOnTheScreen();
+    expect(successDialog()).not.toBeOnTheScreen();
 
     // The server says it was saved: the dialogs go on although the confirm closed long ago (no closing is awaited).
     mockChecking = false;
     await act(async () => { answer({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: null }); });
     await redraw();
-    expect(success().props.isVisible).toBe(true);
+    expect(successDialog()).toBeOnTheScreen();
   });
 
   it('shows the failure of the resent request once', async () => {
@@ -198,9 +253,9 @@ describe('the confirm that was busy when the answer was lost', () => {
       (_generateInvoice: boolean, onFailure: (title: string, message: string) => void) =>
         new Promise((resolve) => { answer = (result) => { onFailure('Could not save', 'No stock left'); resolve(result); }; })
     );
-    await render();
+    await show();
     await start();
-    await act(async () => { confirm().props.onConfirm(); });
+    await act(async () => { confirmProps().onConfirm(); });
     mockChecking = true;
     await redraw();
 
@@ -215,12 +270,12 @@ describe('the confirm that was busy when the answer was lost', () => {
     setPlatform('android');
     const { showAlert } = require('@/utils/alert');
     mockSubmitForm.mockResolvedValue({ success: false, aborted: true });
-    await render();
+    await show();
     await start();
 
-    await act(async () => { confirm().props.onConfirm(); });
+    await act(async () => { confirmProps().onConfirm(); });
 
     expect(showAlert).not.toHaveBeenCalled();
-    expect(success().props.isVisible).toBe(false);
+    expect(successDialog()).not.toBeOnTheScreen();
   });
 });

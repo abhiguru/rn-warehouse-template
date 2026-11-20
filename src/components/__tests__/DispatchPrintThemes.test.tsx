@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { DocumentSuccessDialog } from '@/components/DocumentSuccessDialog';
@@ -28,21 +28,28 @@ jest.mock('@/config/demoCapabilities', () => ({
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
 
-function renderIn(brand: string, mode: Mode, element: React.ReactElement) {
+async function renderIn(brand: string, mode: Mode, element: React.ReactElement) {
   mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
+  await render(element);
 }
 
+type Json = { type: string; props: Record<string, unknown>; children: (Json | string)[] | null };
+
 // The open row's accent bar (table.accent) is the one brand-coloured fill a table may draw.
-function backgrounds(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(node => typeof node.type === 'string' && node.props.testID !== 'table-open-bar')
-    .map(node => StyleSheet.flatten(node.props.style)?.backgroundColor)
-    .filter((c): c is string => typeof c === 'string');
+// A fill has no role or text: every host element of the rendered tree is read for its background.
+function backgrounds(): string[] {
+  const out: string[] = [];
+  const walk = (node: Json | string | null | (Json | string)[]) => {
+    if (node === null || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node.props.testID !== 'table-open-bar') {
+      const color = StyleSheet.flatten(node.props.style as never)?.backgroundColor;
+      if (typeof color === 'string') out.push(color);
+    }
+    node.children?.forEach(walk);
+  };
+  walk(screen.toJSON() as unknown as Json | Json[] | null);
+  return out;
 }
 
 const dispatchItem = {
@@ -59,8 +66,8 @@ const dispatchItem = {
 describe.each(THEMES)('%s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('renders PrintRangeDialog as a token dialog', () => {
-    const tree = renderIn(
+  it('renders PrintRangeDialog as a token dialog', async () => {
+    await renderIn(
       brand,
       mode,
       <PrintRangeDialog
@@ -73,14 +80,14 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
         onViewJobs={jest.fn()}
       />
     );
-    const bgs = backgrounds(tree);
+    const bgs = backgrounds();
     expect(bgs).toContain(t.overlay.scrim);
     expect(bgs).toContain(t.surface.sheet);
     expect(bgs).toContain(t.brand.fill);
   });
 
-  it('renders DocumentSuccessDialog with one primary action and a positive icon', () => {
-    const tree = renderIn(
+  it('renders DocumentSuccessDialog with one primary action and a positive icon', async () => {
+    await renderIn(
       brand,
       mode,
       <DocumentSuccessDialog
@@ -93,14 +100,14 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
         onSharePDF={jest.fn()}
       />
     );
-    const bgs = backgrounds(tree);
+    const bgs = backgrounds();
     expect(bgs.filter(c => c === t.brand.fill)).toHaveLength(1);
     expect(bgs).toContain(t.status.positive.background);
-    expect(tree.root.findByProps({ children: 'Dispatch created' })).toBeTruthy();
+    expect(screen.getByText('Dispatch created')).toBeOnTheScreen();
   });
 
-  it('renders GRN dispatch table', () => {
-    const table = renderIn(
+  it('renders GRN dispatch table', async () => {
+    await renderIn(
       brand,
       mode,
       <GRNDispatchesTab
@@ -110,7 +117,7 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
         }}
       />
     );
-    expect(backgrounds(table)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(backgrounds(table)).not.toContain(t.brand.fill);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds()).not.toContain(t.brand.fill);
   });
 });

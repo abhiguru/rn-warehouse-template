@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { LotBottomSheet } from '../LotBottomSheet';
 import { GRNItemBottomSheet } from '../GRNItemBottomSheet';
@@ -30,7 +30,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
   return {
     BottomSheetModal: React.forwardRef((props: any, ref: any) => {
       React.useImperativeHandle(ref, () => ({ present: jest.fn(), dismiss: jest.fn() }));
-      return React.createElement('BottomSheet', { backgroundStyle: props.backgroundStyle }, props.children);
+      return React.createElement('BottomSheet', { style: props.backgroundStyle }, props.children);
     }),
     BottomSheetBackdrop: () => null,
     BottomSheetFlatList: (props: any) =>
@@ -48,20 +48,18 @@ jest.mock('@gorhom/bottom-sheet', () => {
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
 
-function renderIn(brand: string, mode: Mode, element: React.ReactElement) {
+function setTheme(brand: string, mode: Mode) {
   mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
 }
 
-function backgrounds(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(node => typeof node.type === 'string')
-    .map(node => StyleSheet.flatten(node.props.style ?? node.props.backgroundStyle)?.backgroundColor)
-    .filter((c): c is string => typeof c === 'string');
+type Json = ReturnType<typeof screen.toJSON>;
+/** Every background colour drawn, the sheet's own included (the stand-in draws it as the style of a BottomSheet node). */
+function backgrounds(node: Json | Json[]): string[] {
+  if (!node) return [];
+  if (Array.isArray(node)) return node.flatMap(backgrounds);
+  const own = StyleSheet.flatten(node.props.style as never)?.backgroundColor;
+  const inside = (node.children ?? []).flatMap(child => (typeof child === 'string' ? [] : backgrounds(child)));
+  return typeof own === 'string' ? [own, ...inside] : inside;
 }
 
 const lot = (id: string, stock: number): GRNDetailItem =>
@@ -79,10 +77,9 @@ const lot = (id: string, stock: number): GRNDetailItem =>
 describe.each(THEMES)('%s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('renders LotBottomSheet with status words for unavailable lots', () => {
-    const tree = renderIn(
-      brand,
-      mode,
+  it('renders LotBottomSheet with status words for unavailable lots', async () => {
+    setTheme(brand, mode);
+    await render(
       <LotBottomSheet
         isVisible
         onClose={jest.fn()}
@@ -93,28 +90,25 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
         grnInfo={{ id: 'g1', gr_no: '311' }}
       />
     );
-    const bgs = backgrounds(tree);
+    expect(screen.root).toHaveStyle({ backgroundColor: t.surface.sheet });
+    const bgs = backgrounds(screen.toJSON());
     expect(bgs).toContain(t.surface.sheet);
     expect(bgs).toContain(t.surface.selected);
     expect(bgs).toContain(t.status.negative.background);
     expect(bgs).toContain(t.status.informative.background);
-    expect(tree.root.findByProps({ children: 'Out of stock' })).toBeTruthy();
-    expect(tree.root.findByProps({ children: 'Already added' })).toBeTruthy();
+    expect(screen.getByText('Out of stock')).toBeOnTheScreen();
+    expect(screen.getByText('Already added')).toBeOnTheScreen();
   });
 
-  it('renders GRNItemBottomSheet and its empty state', () => {
-    const tree = renderIn(
-      brand,
-      mode,
-      <GRNItemBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} items={[lot('a', 10)]} />
-    );
-    expect(backgrounds(tree)).toContain(t.surface.card);
+  it('renders GRNItemBottomSheet and its empty state', async () => {
+    setTheme(brand, mode);
+    await render(<GRNItemBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} items={[lot('a', 10)]} />);
+    expect(screen.root).toHaveStyle({ backgroundColor: t.surface.sheet });
+    expect(backgrounds(screen.toJSON())).toContain(t.surface.card);
+    // surface.card and surface.sheet are the same colour, so the sheet alone cannot show the card is drawn on it.
+    expect(screen.getByRole('button', { name: /Potatoes/ })).toHaveStyle({ backgroundColor: t.surface.card });
 
-    const empty = renderIn(
-      brand,
-      mode,
-      <GRNItemBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} items={[]} />
-    );
-    expect(empty.root.findByProps({ children: 'No items in stock' })).toBeTruthy();
+    await screen.rerender(<GRNItemBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} items={[]} />);
+    expect(screen.getByText('No items in stock')).toBeOnTheScreen();
   });
 });

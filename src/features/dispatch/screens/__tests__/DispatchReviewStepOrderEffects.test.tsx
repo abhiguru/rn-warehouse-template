@@ -4,7 +4,8 @@
  * success dialog of the real save.
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { Platform } from 'react-native';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { setLanguage } from '@/i18n';
@@ -35,8 +36,36 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 jest.mock('@/hooks/useDispatchForm', () => ({ useDispatchForm: () => mockForm }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
+// Dialog stand-ins draw what a person reads in an open dialog (its title and message, the order lines of the success
+// dialog); the confirm also keeps its props, so the test can answer it where the real component answers by its button.
+interface MockConfirmProps {
+  visible: boolean;
+  title: string;
+  message?: string;
+  onConfirm: () => unknown;
+}
+let mockConfirmProps: MockConfirmProps | undefined;
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: MockConfirmProps) => {
+    const { Text, View } = require('react-native');
+    const { createElement } = require('react');
+    // The first one drawn is the confirm of Create.
+    mockConfirmProps = mockConfirmProps ?? props;
+    if (mockConfirmProps.title === props.title) mockConfirmProps = props;
+    return props.visible
+      ? createElement(View, { accessible: true, accessibilityRole: 'alert' }, createElement(Text, null, props.title), createElement(Text, { testID: 'confirm-message' }, props.message))
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean; documentData?: { orderNotes?: string[] } }) => {
+    const { Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.isVisible
+      ? createElement(View, { accessible: true, accessibilityLabel: 'Success dialog' }, ...(props.documentData?.orderNotes ?? []).map((note) => createElement(Text, { key: note }, note)))
+      : null;
+  },
+}));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
@@ -75,66 +104,73 @@ const effect = (over: Partial<OrderEffect>): OrderEffect => ({
   availableStock: null, orderLinesLeft: 2, packaging: null, ...over,
 });
 
-let tree: ReactTestRenderer;
-const render = async (mode: 'create' | 'edit' = 'create') => {
+const show = async (mode: 'create' | 'edit' = 'create') => {
   mockForm.isCreateMode = mode === 'create';
-  await act(async () => { tree = create(<DispatchReviewStep mode={mode} />); });
+  await render(<DispatchReviewStep mode={mode} />);
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  mockConfirmProps = undefined;
   mockForm.images = [];
   jest.mocked(getGRNDetailByNumber).mockResolvedValue({ success: true, data: { grn: {}, items: [] } } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>);
   jest.mocked(previewCreateDispatch).mockResolvedValue(null);
   jest.mocked(previewUpdateDispatch).mockResolvedValue(null);
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   setLanguage('en');
+  jest.restoreAllMocks();
 });
 
-const byTestId = (id: string) => tree.root.findAll((n) => n.props.testID === id);
-const textOf = (node: ReactTestInstance): string => node.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join('')).join('\n');
-const dialog = () => tree.root.findAllByType('ConfirmDialog' as never)[0];
+// The notice is a plain strip with no role or label of its own.
+const orderEffects = () => screen.queryByTestId('dispatch-review-order-effects');
+const create = () => screen.getByRole('button', { name: 'Create dispatch' });
+const confirmTitle = 'Create dispatch I0042?';
 
 it('names each affected order line on the step and in the question, using the create preview', async () => {
   jest.mocked(previewCreateDispatch).mockResolvedValue([effect({}), effect({ itemName: 'Garlic', change: 'removed', removed: true, newQuantity: 0, orderLinesLeft: 0 })]);
-  await render('create');
+  await show('create');
 
-  expect(textOf(byTestId('dispatch-review-order-effects')[0])).toContain("Lakeview Spices' order: Onions (X0001) 20 → 15 bags");
-  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function')!.props.onPress(); });
+  expect(within(await screen.findByTestId('dispatch-review-order-effects')).getByText("Lakeview Spices' order: Onions (X0001) 20 → 15 bags", { exact: false, includeHiddenElements: true })).toBeOnTheScreen();
+  await userEvent.setup({ delay: 0 }).press(create());
+  expect(await screen.findByText(confirmTitle)).toBeOnTheScreen();
   expect(jest.mocked(previewCreateDispatch).mock.calls.length).toBeGreaterThanOrEqual(2);
-  const message = dialog().props.message as string;
-  expect(message).toContain('This also changes orders:');
-  expect(message).toContain("• Lakeview Spices' order: Onions (X0001) 20 → 15 bags");
-  expect(message).toContain('Garlic (X0001) is removed from Lakeview Spices\' order. No line is left, so the order is removed.');
+  const message = screen.getByTestId('confirm-message');
+  expect(message).toHaveTextContent(/This also changes orders:/);
+  expect(message).toHaveTextContent(/• Lakeview Spices' order: Onions \(X0001\) 20 → 15 bags/);
+  expect(message).toHaveTextContent(/Garlic \(X0001\) is removed from Lakeview Spices' order\. No line is left, so the order is removed\./);
 });
 
 it('uses the update preview for an edit, with the version the edit read', async () => {
   jest.mocked(previewUpdateDispatch).mockResolvedValue([effect({ change: 'exceeds_stock', availableStock: 3, newQuantity: 5, oldQuantity: 5 })]);
-  await render('edit');
+  await show('edit');
 
   expect(previewUpdateDispatch).toHaveBeenCalledWith('route-dispatch', expect.anything(), expect.anything(), 'v1');
-  expect(textOf(byTestId('dispatch-review-order-effects')[0])).toContain('asks for 5 bags, but only 3 bags will be in stock.');
+  expect(within(await screen.findByTestId('dispatch-review-order-effects')).getByText('asks for 5 bags, but only 3 bags will be in stock.', { exact: false, includeHiddenElements: true })).toBeOnTheScreen();
 });
 
 it('asks the question as before when the server has no preview, or no order changes', async () => {
-  await render('create');
-  expect(byTestId('dispatch-review-order-effects')).toHaveLength(0);
-  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function')!.props.onPress(); });
-  expect(dialog().props.message).not.toContain('orders');
-  expect(dialog().props.visible).toBe(true);
+  await show('create');
+  expect(orderEffects()).not.toBeOnTheScreen();
+  await userEvent.setup({ delay: 0 }).press(create());
+  expect(await screen.findByText(confirmTitle)).toBeOnTheScreen();
+  expect(screen.getByTestId('confirm-message')).not.toHaveTextContent('orders');
 
   jest.mocked(previewCreateDispatch).mockResolvedValue([]);
-  await act(async () => { tree.unmount(); });
-  await render('create');
-  expect(byTestId('dispatch-review-order-effects')).toHaveLength(0);
+  await screen.unmount();
+  mockConfirmProps = undefined;
+  await show('create');
+  expect(orderEffects()).not.toBeOnTheScreen();
 });
 
 it('repeats the order lines of the real save in the success dialog', async () => {
+  // On Android the success dialog opens as soon as the confirm is hidden.
+  jest.replaceProperty(Platform, 'OS', 'android');
   mockForm.submitForm.mockResolvedValue({ success: true, dispatchId: 'd9', orderEffects: [effect({})] });
-  await render('create');
-  await act(async () => { byTestId('dispatch-review-submit').find((n) => typeof n.props.onPress === 'function')!.props.onPress(); });
-  await act(async () => { await dialog().props.onConfirm(); });
-  const success = tree.root.findAllByType('DocumentSuccessDialog' as never)[0];
-  expect(success.props.documentData.orderNotes).toEqual(["Lakeview Spices' order: Onions (X0001) 20 → 15 bags"]);
+  await show('create');
+  await userEvent.setup({ delay: 0 }).press(create());
+  expect(await screen.findByText(confirmTitle)).toBeOnTheScreen();
+  await act(async () => { await mockConfirmProps!.onConfirm(); });
+  const notes = within(screen.getByLabelText('Success dialog')).getAllByText(/./);
+  expect(notes).toHaveLength(1);
+  expect(notes[0]).toHaveTextContent("Lakeview Spices' order: Onions (X0001) 20 → 15 bags", { exact: true });
 });

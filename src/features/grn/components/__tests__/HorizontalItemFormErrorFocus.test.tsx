@@ -12,7 +12,7 @@
  */
 import React from 'react';
 import { StyleSheet, TextInput } from 'react-native';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { getTokens } from '@/theme/tokens';
 import { HorizontalItemForm, type HorizontalItemFormRef, type ItemFormData } from '../HorizontalItemForm';
 
@@ -52,7 +52,6 @@ const FIELDS = [
   ['package_mark', 'Mark', 'Mark can be at most 60 characters'],
 ] as const;
 
-const mounted: ReactTestRenderer[] = [];
 const formElement = (item: ItemFormData, ref?: React.Ref<HorizontalItemFormRef>) => (
   <HorizontalItemForm
     ref={ref}
@@ -67,31 +66,20 @@ const formElement = (item: ItemFormData, ref?: React.Ref<HorizontalItemFormRef>)
     savedItemsCount={1}
   />
 );
-function renderForm(item: ItemFormData = ITEM, ref?: React.Ref<HorizontalItemFormRef>) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(formElement(item, ref));
-  });
-  mounted.push(tree);
-  return tree;
-}
+const renderForm = (item: ItemFormData = ITEM, ref?: React.Ref<HorizontalItemFormRef>) => render(formElement(item, ref));
 const withError = (field: string, message: string): ItemFormData => ({ ...ITEM, errors: { [field]: message } });
 
-const input = (tree: ReactTestRenderer, label: string) =>
-  tree.root.find((node) => (node.type as unknown) === 'TextInput' && node.props.accessibilityLabel === label);
-/** The drawn border of a field: of the input, or of the box around it (Weight has its unit inside the box). */
-const borderOf = (tree: ReactTestRenderer, label: string) => {
-  let node: ReactTestInstance | null = input(tree, label);
+const input = (label: string) => screen.getByLabelText(label);
+/** The drawn border of a field: of the input, or of the box around it (Weight has its unit inside the box). Walks parents: no query reaches a border. */
+const borderOf = (label: string) => {
+  let node: ReturnType<typeof screen.getByLabelText> | null = input(label);
   while (node) {
-    const style = typeof node.type === 'string' ? StyleSheet.flatten(node.props.style) : undefined;
+    const style = StyleSheet.flatten(node.props.style);
     if (typeof style?.borderWidth === 'number') return { color: style.borderColor, width: style.borderWidth };
     node = node.parent;
   }
   throw new Error(`no border around ${label}`);
 };
-const isText = (node: ReactTestInstance) => (node.type as unknown) === 'Text';
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll(isText).map((node) => ([] as unknown[]).concat(node.props.children).filter((c) => typeof c === 'string').join(''));
 
 const ERROR_BORDER = { color: t.status.negative.border, width: 2 };
 const FOCUS_BORDER = { color: t.border.fieldFocus, width: 2 };
@@ -109,11 +97,10 @@ beforeEach(() => {
   textInputMethod('blur').mockClear();
   textInputMethod('isFocused').mockReset();
 });
-afterEach(() => {
-  act(() => {
+afterEach(async () => {
+  await act(() => {
     jest.runOnlyPendingTimers();
   });
-  act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
   textInputMethod('isFocused').mockReset();
   jest.useRealTimers();
 });
@@ -124,62 +111,62 @@ it('draws the error border and the focus border in different colours, so the tes
 });
 
 describe.each(FIELDS)('the %s field', (field, label, message) => {
-  it('with an error: the red error border, with the cursor in it and without', () => {
-    const tree = renderForm(withError(field, message));
-    expect(texts(tree)).toContain(message);
-    expect(borderOf(tree, label)).toEqual(ERROR_BORDER);
+  it('with an error: the red error border, with the cursor in it and without', async () => {
+    await renderForm(withError(field, message));
+    expect(screen.getByText(message)).toBeOnTheScreen();
+    expect(borderOf(label)).toEqual(ERROR_BORDER);
 
-    act(() => input(tree, label).props.onFocus());
-    expect(borderOf(tree, label)).toEqual(ERROR_BORDER);
+    await fireEvent(input(label), 'focus', {});
+    expect(borderOf(label)).toEqual(ERROR_BORDER);
 
-    act(() => input(tree, label).props.onBlur());
-    expect(borderOf(tree, label)).toEqual(ERROR_BORDER);
+    await fireEvent(input(label), 'blur', {});
+    expect(borderOf(label)).toEqual(ERROR_BORDER);
   });
 
-  it('without an error: the focus border while it has the cursor; an error shown then turns it red, and fixing it turns it back', () => {
-    const tree = renderForm();
-    expect(borderOf(tree, label)).toEqual(PLAIN_BORDER);
+  it('without an error: the focus border while it has the cursor; an error shown then turns it red, and fixing it turns it back', async () => {
+    await renderForm();
+    expect(borderOf(label)).toEqual(PLAIN_BORDER);
 
-    act(() => input(tree, label).props.onFocus());
-    expect(borderOf(tree, label)).toEqual(FOCUS_BORDER);
+    await fireEvent(input(label), 'focus', {});
+    expect(borderOf(label)).toEqual(FOCUS_BORDER);
 
     // A refused save while the field has the cursor.
-    act(() => tree.update(formElement(withError(field, message))));
-    expect(borderOf(tree, label)).toEqual(ERROR_BORDER);
+    await screen.rerender(formElement(withError(field, message)));
+    expect(borderOf(label)).toEqual(ERROR_BORDER);
 
     // The worker types: the items step takes the error off.
-    act(() => tree.update(formElement(ITEM)));
-    expect(borderOf(tree, label)).toEqual(FOCUS_BORDER);
+    await screen.rerender(formElement(ITEM));
+    expect(borderOf(label)).toEqual(FOCUS_BORDER);
   });
 
-  it('focusField while the field still has the cursor: it lets go, then takes the cursor again after the dialog has gone', () => {
+  it('focusField while the field still has the cursor: it lets go, then takes the cursor again after the dialog has gone', async () => {
     const ref = React.createRef<HorizontalItemFormRef>();
-    renderForm(withError(field, message), ref);
+    await renderForm(withError(field, message), ref);
     textInputMethod('isFocused').mockImplementation(function (this: { props: { accessibilityLabel?: string } }) {
       return this.props.accessibilityLabel === label;
     });
 
-    act(() => ref.current!.focusField(field));
+    await act(() => ref.current!.focusField(field));
 
     expect(calledOn('blur')).toEqual([label]);
     expect(calledOn('focus')).toEqual([]);
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(249);
     });
     expect(calledOn('focus')).toEqual([]);
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(1);
     });
     expect(calledOn('focus')).toEqual([label]);
   });
 
-  it('focusField while another field or none has the cursor: no blur, and the field takes the cursor', () => {
+  it('focusField while another field or none has the cursor: no blur, and the field takes the cursor', async () => {
     const ref = React.createRef<HorizontalItemFormRef>();
-    renderForm(withError(field, message), ref);
+    await renderForm(withError(field, message), ref);
     textInputMethod('isFocused').mockReturnValue(false);
 
-    act(() => ref.current!.focusField(field));
-    act(() => {
+    await act(() => ref.current!.focusField(field));
+    await act(() => {
       jest.advanceTimersByTime(250);
     });
 

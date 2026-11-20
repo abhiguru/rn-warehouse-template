@@ -10,7 +10,7 @@
  * The role hook and the picker are the real ones; only the services are stand-ins.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import ReportsScreen from '../../../../app/(tabs)/reports';
 import OperationsDashboardScreen from '../../../../app/reports/operations-dashboard';
 import StockSummaryScreen from '../../../../app/reports/stock-summary';
@@ -126,29 +126,30 @@ const REPORTS: {
   { name: 'invoice history', Screen: InvoiceHistoryScreen, all: invoiceHistory.getAllInvoiceHistory as jest.Mock, one: invoiceHistory.getCustomerInvoiceHistory as jest.Mock, customerOf: (a) => (a as { customerId: string }).customerId },
 ];
 
-let tree: ReactTestRenderer | undefined;
 const signedIn = (userProfile: unknown) => ({
   theme: { preference: 'light', brand: 'orange' },
   auth: { userProfile },
   listFilters: { lists: {} },
   reportPrefs: { byScope: {} },
 });
+const settle = () =>
+  act(async () => {
+    await settleQueries();
+  });
 async function open(Screen: React.ComponentType, account: Account) {
   mockState = signedIn(ACCOUNTS[account]);
-  await act(async () => {
-    tree = create(<Screen />);
-    await settleQueries();
-  });
-  return tree!;
+  await render(<Screen />);
+  await settle();
 }
-const pickerRows = () => tree!.root.findAll((node) => typeof node.props.testID === 'string' && node.props.testID.startsWith('report-customer-') && typeof node.props.onPress === 'function');
+// One row of the customer picker. By test id: it is the one way to count rows whatever they are
+// called (the names-loading spinner has a test id of its own, so the pattern ends at the digit).
+const pickerRows = () => screen.queryAllByTestId(/^report-customer-c\d$/);
 const pick = async (customerId: string) => {
-  await act(async () => {
-    tree!.root.findAll((node) => node.props.testID === `report-customer-${customerId}` && typeof node.props.onPress === 'function')[0].props.onPress();
-    await settleQueries();
-  });
+  const user = userEvent.setup();
+  await user.press(screen.getByTestId(`report-customer-${customerId}`));
+  await settle();
 };
-const texts = () => tree!.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
+const showsText = (text: string) => screen.queryByText(text, { includeHiddenElements: true });
 
 // Reports on the shared layer read through the query client: answers are delivered at once,
 // and none is kept from one test to the next.
@@ -174,10 +175,6 @@ beforeEach(() => {
   jest.mocked(getAllGRNItems).mockResolvedValue(noItems);
   jest.mocked(getCustomerGRNItems).mockResolvedValue(noItems);
 });
-afterEach(async () => {
-  if (tree) await act(async () => tree!.unmount());
-  tree = undefined;
-});
 
 describe.each(REPORTS)('$name', ({ Screen, all, one, customerOf }) => {
   it.each(WAREHOUSE)('%s gets the all-customers request', async (account) => {
@@ -187,7 +184,7 @@ describe.each(REPORTS)('$name', ({ Screen, all, one, customerOf }) => {
     expect(one).not.toHaveBeenCalled();
     expect(pickerRows()).toHaveLength(0);
     // Not the "no customer linked" dead end that staff used to get.
-    expect(texts()).not.toContain('No customer linked');
+    expect(showsText('No customer linked')).not.toBeOnTheScreen();
   });
 
   it('a customer with one customer goes straight to that customer', async () => {
@@ -204,7 +201,9 @@ describe.each(REPORTS)('$name', ({ Screen, all, one, customerOf }) => {
     expect(all).not.toHaveBeenCalled();
     expect(one).not.toHaveBeenCalled();
     expect(pickerRows().map((row) => row.props.testID)).toEqual(['report-customer-c1', 'report-customer-c2']);
-    expect(texts()).toEqual(expect.arrayContaining(['Choose a customer', 'Fictional Traders', 'Example Agro']));
+    expect(showsText('Choose a customer')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Fictional Traders' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Example Agro' })).toBeOnTheScreen();
 
     await pick('c2');
     expect(all).not.toHaveBeenCalled();
@@ -219,9 +218,7 @@ describe('the picker for a profile as sign-in stores it (assigned ids, no names)
   const idsOnly = { id: 'p1', role: 'customer', assignedCustomerIds: ['c1', 'c2'] };
   const openSignedIn = async () => {
     mockState = signedIn(idsOnly);
-    await act(async () => {
-      tree = create(<StockSummaryScreen />);
-    });
+    await render(<StockSummaryScreen />);
   };
 
   it('reads the names of its own customers and shows them', async () => {
@@ -229,7 +226,7 @@ describe('the picker for a profile as sign-in stores it (assigned ids, no names)
     await openSignedIn();
     expect(mockCustomerNameQuery).toHaveBeenCalledWith('customers', 'id, name', 'id', ['c1', 'c2']);
     expect(pickerRows().map((row) => row.props.accessibilityLabel)).toEqual(['Fictional Traders', 'Example Agro']);
-    expect(texts()).not.toContain('Customer');
+    expect(showsText('Customer')).not.toBeOnTheScreen();
 
     await pick('c2');
     expect(jest.mocked(reporting.getCustomerStockSummary).mock.calls[0][0]).toBe('c2');
@@ -239,14 +236,13 @@ describe('the picker for a profile as sign-in stores it (assigned ids, no names)
     mockCustomerRows = new Error('offline');
     await openSignedIn();
     expect(pickerRows()).toHaveLength(0);
-    expect(texts()).toContain('Customer names could not be loaded');
+    expect(showsText('Customer names could not be loaded')).toBeOnTheScreen();
     expect(reporting.getCustomerStockSummary).not.toHaveBeenCalled();
 
     mockCustomerRows = [{ id: 'c1', name: 'Fictional Traders' }, { id: 'c2', name: 'Example Agro' }];
-    const retry = tree!.root.findAll((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Try again')[0];
-    await act(async () => {
-      retry.props.onPress();
-    });
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: 'Try again' }));
+    await settle();
     expect(pickerRows().map((row) => row.props.accessibilityLabel)).toEqual(['Fictional Traders', 'Example Agro']);
   });
 
@@ -259,10 +255,9 @@ describe('the picker for a profile as sign-in stores it (assigned ids, no names)
 
 describe('item-wise stock', () => {
   const expand = async () => {
-    const card = tree!.root.findAll((node) => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel ?? '').includes('Example Potatoes'))[0];
-    await act(async () => {
-      card.props.onPress();
-    });
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: /Example Potatoes/ }));
+    await settle();
   };
 
   it.each(WAREHOUSE)('%s lists every customer and drills down across customers', async (account) => {
@@ -313,8 +308,7 @@ describe('the arguments of stock aging and customer activity', () => {
   it('stock aging asks for today\'s stock: no argument for every customer, the id alone for one', async () => {
     await open(StockAgingScreen, 'staff');
     expect(jest.mocked(stockAging.getAllStockAging).mock.calls).toEqual([[]]);
-    act(() => tree!.unmount());
-    tree = undefined;
+    await screen.unmount();
     await open(StockAgingScreen, 'customer with one customer');
     expect(jest.mocked(stockAging.getCustomerStockAging).mock.calls).toEqual([[{ customerId: 'c1' }]]);
   });
@@ -324,8 +318,7 @@ describe('the arguments of stock aging and customer activity', () => {
     const [all] = jest.mocked(customerActivity.getAllCustomerActivity).mock.calls[0];
     expect(Object.keys(all ?? {}).sort()).toEqual(['fromDate', 'toDate']);
     expect(all?.fromDate).toMatch(DAY);
-    act(() => tree!.unmount());
-    tree = undefined;
+    await screen.unmount();
     await open(CustomerActivityScreen, 'customer with one customer');
     const [one] = jest.mocked(customerActivity.getCustomerActivityDetail).mock.calls[0];
     expect(Object.keys(one).sort()).toEqual(['customerId', 'fromDate', 'toDate']);
@@ -344,8 +337,15 @@ describe('operations dashboard', () => {
     await open(OperationsDashboardScreen, account);
     expect(jest.mocked(reporting.getOperationsDashboard).mock.calls.length > 0).toBe(sent);
     // Who is not offered it sees why, not a failed report; who is sees the refusal as an error.
-    expect(texts().includes('Administrators and supervisors only')).toBe(!sent);
-    expect(texts().includes("Couldn't load the operations dashboard")).toBe(sent);
+    const onlyNotice = showsText('Administrators and supervisors only');
+    const failure = showsText("Couldn't load the operations dashboard");
+    if (sent) {
+      expect(onlyNotice).not.toBeOnTheScreen();
+      expect(failure).toBeOnTheScreen();
+    } else {
+      expect(onlyNotice).toBeOnTheScreen();
+      expect(failure).not.toBeOnTheScreen();
+    }
   });
 });
 
@@ -361,10 +361,11 @@ describe('reports tab', () => {
     ['customer with two customers', false, 'View your inventory reports'],
   ] as [Account, boolean, string][])('%s: operations dashboard offered %s', async (account, offered, subtitle) => {
     await open(ReportsScreen, account);
-    const shown = texts();
-    expect(shown.includes(DASHBOARD_TITLE)).toBe(offered);
-    expect(shown).toContain(subtitle);
+    if (offered) expect(showsText(DASHBOARD_TITLE)).toBeOnTheScreen();
+    else expect(showsText(DASHBOARD_TITLE)).not.toBeOnTheScreen();
+    expect(showsText(subtitle)).toBeOnTheScreen();
     // The customer reports are offered to every role.
-    expect(shown).toEqual(expect.arrayContaining([STOCK_AGING_TITLE, STOCK_SUMMARY_TITLE]));
+    expect(showsText(STOCK_AGING_TITLE)).toBeOnTheScreen();
+    expect(showsText(STOCK_SUMMARY_TITLE)).toBeOnTheScreen();
   });
 });

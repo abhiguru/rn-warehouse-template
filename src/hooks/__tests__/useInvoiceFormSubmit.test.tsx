@@ -6,8 +6,7 @@
  * service (invoiceSaveRefusals.test.ts); this is the wiring: a refusal stops
  * the save, and an existing invoice is not asked.
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import invoiceFormReducer, { updateHeader, applyServerDurations, loadInvoiceEditData, resetForm, loadInvoiceFormData, updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { checkGrnStillInvoiceable, createInvoice, loadInvoiceData, updateInvoice } from '@/features/invoice/services/invoiceFormService';
@@ -72,14 +71,8 @@ async function mount(mode: InvoiceFormMode) {
   const store = makeStore();
   store.dispatch(loadInvoiceEditData({ invoiceId: INVOICE, grId: GRN, header: header as never, items: [line as never] }));
   mockStore = store;
-  const latest: { current: UseInvoiceFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useInvoiceForm({ mode, step: 3 });
-    return null;
-  };
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<Harness />); });
-  return { form: () => latest.current!, store, unmount: () => act(async () => { tree.unmount(); }) };
+  const { result: latest } = await renderHook((): UseInvoiceFormReturn => useInvoiceForm({ mode, step: 3 }));
+  return { form: () => latest.current!, store };
 }
 const submit = async (form: () => UseInvoiceFormReturn) => {
   let result!: Awaited<ReturnType<UseInvoiceFormReturn['submitForm']>>;
@@ -97,7 +90,7 @@ afterEach(() => jest.restoreAllMocks());
 describe('saving a new invoice', () => {
   it('does not send the save when the GRN can no longer be invoiced, and says why', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: false, message: 'This GRN has already been invoiced.' });
-    const { form, store, unmount } = await mount('create');
+    const { form, store } = await mount('create');
 
     const result = await submit(form);
 
@@ -107,30 +100,27 @@ describe('saving a new invoice', () => {
     expect(showAlert).toHaveBeenCalledWith(expect.any(String), 'This GRN has already been invoiced.');
     // The form is free again for another try.
     expect(store.getState().invoiceForm.is_saving).toBe(false);
-    await unmount();
   });
 
   it('sends the save once the GRN is confirmed, and returns the stored total', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 735 } } as never);
-    const { form, unmount } = await mount('create');
+    const { form } = await mount('create');
 
     const result = await submit(form);
 
     expect(jest.mocked(checkGrnStillInvoiceable).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(createInvoice).mock.invocationCallOrder[0]);
     expect(createInvoice).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ success: true, invoiceId: INVOICE, invoiceNo: 12, total: 735 });
-    await unmount();
   });
 
   it('does not ask the server anything when the form itself is not valid', async () => {
     jest.mocked(validateNewInvoice).mockResolvedValueOnce({ isValid: false, errors: { discount: 'Discount is too large' } });
-    const { form, unmount } = await mount('create');
+    const { form } = await mount('create');
 
     expect((await submit(form)).success).toBe(false);
     expect(checkGrnStillInvoiceable).not.toHaveBeenCalled();
     expect(createInvoice).not.toHaveBeenCalled();
-    await unmount();
   });
 });
 
@@ -140,7 +130,7 @@ describe('the request key of a save', () => {
     jest.mocked(createInvoice)
       .mockRejectedValueOnce(new Error('could not send'))
       .mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 735 } } as never);
-    const { form, unmount } = await mount('create');
+    const { form } = await mount('create');
 
     await submit(form);
     await submit(form);
@@ -150,13 +140,12 @@ describe('the request key of a save', () => {
     expect(keys).toHaveLength(3);
     expect(keys[1]).toBe(keys[0]);
     expect(keys[2]).not.toBe(keys[0]);
-    await unmount();
   });
 
   it('a changed form gets a new key', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockRejectedValue(new Error('could not send'));
-    const { form, store, unmount } = await mount('create');
+    const { form, store } = await mount('create');
 
     await submit(form);
     await act(async () => { store.dispatch(updateEditedItem({ temp_id: 't1', values: { charge: 0 } })); });
@@ -164,14 +153,13 @@ describe('the request key of a save', () => {
 
     const keys = jest.mocked(createInvoice).mock.calls.map(call => call[1]);
     expect(keys[1]).not.toBe(keys[0]);
-    await unmount();
   });
 });
 
 describe('saving an existing invoice', () => {
   it('is not asked whether its own GRN can be invoiced (it already holds it)', async () => {
     jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 735 } } as never);
-    const { form, unmount } = await mount('edit');
+    const { form } = await mount('edit');
 
     const result = await submit(form);
 
@@ -182,7 +170,6 @@ describe('saving an existing invoice', () => {
       expect.stringMatching(/^warehouse-invoice-update-/)
     );
     expect(result.success).toBe(true);
-    await unmount();
   });
 });
 
@@ -206,7 +193,7 @@ describe('the reason for a zero charge in the save', () => {
   const sentHeader = () => jest.mocked(createInvoice).mock.calls[0][0].header;
 
   it('is what the user wrote on the review step, with the line at a charge of 0', async () => {
-    const { form, store, unmount } = await mountNew();
+    const { form, store } = await mountNew();
     await act(async () => { store.dispatch(updateEditedItem({ temp_id: 't1', values: { charge: 0 } })); });
     await act(async () => { form().updateHeaderField('zero_charge_reason', 'Sample lot'); });
 
@@ -214,17 +201,15 @@ describe('the reason for a zero charge in the save', () => {
 
     expect(sentHeader().zero_charge_reason).toBe('Sample lot');
     expect(jest.mocked(createInvoice).mock.calls[0][0].items[0].charge).toBe(0);
-    await unmount();
   });
 
   it('is empty when nothing was written', async () => {
-    const { form, store, unmount } = await mountNew();
+    const { form, store } = await mountNew();
     await act(async () => { store.dispatch(updateEditedItem({ temp_id: 't1', values: { charge: 0 } })); });
 
     await submit(form);
 
     expect(sentHeader().zero_charge_reason ?? '').toBe('');
-    await unmount();
   });
 });
 
@@ -243,7 +228,7 @@ describe('a refusal for a changed record or a changed total', () => {
 
   it('STALE_RECORD on an edit: nothing is changed in the form, the screen is told it is stale', async () => {
     jest.mocked(updateInvoice).mockResolvedValue(refused('STALE_RECORD', { updated_at: '2026-10-20T10:00:00Z' }, 'The invoice was changed by someone else.'));
-    const { form, store, unmount } = await mount('edit');
+    const { form, store } = await mount('edit');
     const before = JSON.stringify(store.getState().invoiceForm.items);
     const onFailure = jest.fn();
 
@@ -255,19 +240,17 @@ describe('a refusal for a changed record or a changed total', () => {
     expect(onFailure.mock.calls[0][2]).toEqual({ stale: true });
     expect(JSON.stringify(store.getState().invoiceForm.items)).toBe(before);
     expect(store.getState().invoiceForm.is_saving).toBe(false);
-    await unmount();
   });
 
   it('STALE_RECORD on a new invoice is no stale record: it is an ordinary failure', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockResolvedValue(refused('STALE_RECORD', {}, 'Refused in English'));
-    const { form, unmount } = await mount('create');
+    const { form } = await mount('create');
     const onFailure = jest.fn();
 
     await act(async () => { await form().submitForm(onFailure); });
 
     expect(onFailure.mock.calls[0][2]).toBeUndefined();
-    await unmount();
   });
 
   it('TOTAL_CHANGED within 1 of what the form works out: the server durations go on the line, the typed figures stay, the new total is named', async () => {
@@ -275,7 +258,7 @@ describe('a refusal for a changed record or a changed total', () => {
     expect(serverTotal).not.toBe(header.total);
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockResolvedValue(refused('TOTAL_CHANGED', { current_total: serverTotal, expected_total: header.total, lines: serverLines }));
-    const { form, store, unmount } = await mount('create');
+    const { form, store } = await mount('create');
     const onFailure = jest.fn();
 
     let result!: Awaited<ReturnType<UseInvoiceFormReturn['submitForm']>>;
@@ -288,13 +271,12 @@ describe('a refusal for a changed record or a changed total', () => {
     expect(onFailure.mock.calls[0][1]).toMatch(/^The total is now ₹.*, not ₹735\.00\. Review the figures and save again\.$/);
     expect(result).toMatchObject({ success: false });
     expect(createInvoice).toHaveBeenCalledTimes(1);
-    await unmount();
   });
 
   it('TOTAL_CHANGED that the form cannot reach on a new invoice asks to reload the lines', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockResolvedValue(refused('TOTAL_CHANGED', { current_total: 99999, expected_total: header.total, lines: serverLines }));
-    const { form, unmount } = await mount('create');
+    const { form } = await mount('create');
     const onFailure = jest.fn();
 
     let result!: Awaited<ReturnType<UseInvoiceFormReturn['submitForm']>>;
@@ -303,30 +285,27 @@ describe('a refusal for a changed record or a changed total', () => {
     expect(result).toMatchObject({ success: false, reloadLines: true });
     expect(onFailure.mock.calls[0][2]).toEqual({ reloadLines: true, totalUnmatched: true });
     expect(onFailure.mock.calls[0][1]).toContain("Open the invoice again to see its figures.");
-    await unmount();
   });
 
   it('TOTAL_CHANGED that the form cannot reach on an edit says so and offers to open the invoice again', async () => {
     jest.mocked(updateInvoice).mockResolvedValue(refused('TOTAL_CHANGED', { current_total: 99999, expected_total: header.total, lines: serverLines }, 'The total is now 99999'));
-    const { form, unmount } = await mount('edit');
+    const { form } = await mount('edit');
     const onFailure = jest.fn();
 
     await act(async () => { await form().submitForm(onFailure); });
 
     expect(onFailure.mock.calls[0][2]).toEqual({ totalUnmatched: true });
     expect(onFailure.mock.calls[0][1]).toContain("The server's total is");
-    await unmount();
   });
 
   it('TOTAL_CHANGED without a total is no total refusal: an ordinary failure', async () => {
     jest.mocked(updateInvoice).mockResolvedValue(refused('TOTAL_CHANGED', {}, 'Refused in English'));
-    const { form, unmount } = await mount('edit');
+    const { form } = await mount('edit');
     const onFailure = jest.fn();
 
     await act(async () => { await form().submitForm(onFailure); });
 
     expect(onFailure.mock.calls[0][2]).toBeUndefined();
-    await unmount();
   });
 });
 
@@ -336,7 +315,7 @@ describe('"Open it again" after a stale record', () => {
       success: true,
       data: { header: { ...header, discount: 25, gr_id: GRN }, items: [{ ...line, qty: 60 }], updated_at: '2026-10-20T11:00:00Z' },
     } as never);
-    const { form, store, unmount } = await mount('edit');
+    const { form, store } = await mount('edit');
 
     let reloaded!: boolean;
     await act(async () => { reloaded = await form().reloadInvoice(); });
@@ -345,12 +324,11 @@ describe('"Open it again" after a stale record', () => {
     expect(loadInvoiceData).toHaveBeenCalledWith(INVOICE);
     expect(store.getState().invoiceForm.items[0].qty).toBe(60);
     expect(store.getState().invoiceForm.header.discount).toBe(25);
-    await unmount();
   });
 
   it('keeps the form and says so when the read fails', async () => {
     jest.mocked(loadInvoiceData).mockResolvedValue({ success: false, message: 'Request timeout' } as never);
-    const { form, store, unmount } = await mount('edit');
+    const { form, store } = await mount('edit');
 
     let reloaded!: boolean;
     await act(async () => { reloaded = await form().reloadInvoice(); });
@@ -358,16 +336,14 @@ describe('"Open it again" after a stale record', () => {
     expect(reloaded).toBe(false);
     expect(store.getState().invoiceForm.items[0].qty).toBe(100);
     expect(showAlert).toHaveBeenCalledTimes(1);
-    await unmount();
   });
 
   it('does nothing on a new invoice', async () => {
-    const { form, unmount } = await mount('create');
+    const { form } = await mount('create');
     let reloaded!: boolean;
     await act(async () => { reloaded = await form().reloadInvoice(); });
     expect(reloaded).toBe(false);
     expect(loadInvoiceData).not.toHaveBeenCalled();
-    await unmount();
   });
 });
 
@@ -379,7 +355,7 @@ describe('refusals for the date, the discount and changed rates', () => {
   it('INVOICE_DATE_FUTURE: the date field says today, and the screen goes to step 1', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockResolvedValue(refused('INVOICE_DATE_FUTURE', { date: '2026-11-05', today: '2026-10-31' }));
-    const { form, store, unmount } = await mount('create');
+    const { form, store } = await mount('create');
     const onFailure = jest.fn();
 
     await act(async () => { await form().submitForm(onFailure); });
@@ -387,13 +363,12 @@ describe('refusals for the date, the discount and changed rates', () => {
     expect(onFailure.mock.calls[0][1]).toBe("An invoice can't be dated in the future. Today is 31/10/26.");
     expect(onFailure.mock.calls[0][2]).toEqual({ dateRefused: true });
     expect(store.getState().invoiceForm.validationErrors.inv_date).toBe("An invoice can't be dated in the future. Today is 31/10/26.");
-    await unmount();
   });
 
   it('INVOICE_BEFORE_DISPATCH: the date field names the dispatch and its day', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(updateInvoice).mockResolvedValue(refused('INVOICE_BEFORE_DISPATCH', { invoice_date: '2026-06-05', dispatch_no: 'D17', dispatch_date: '2026-07-11' }));
-    const { form, store, unmount } = await mount('edit');
+    const { form, store } = await mount('edit');
     const onFailure = jest.fn();
 
     await act(async () => { await form().submitForm(onFailure); });
@@ -402,19 +377,17 @@ describe('refusals for the date, the discount and changed rates', () => {
     expect(onFailure.mock.calls[0][1]).toBe(message);
     expect(onFailure.mock.calls[0][2]).toEqual({ dateRefused: true });
     expect(store.getState().invoiceForm.validationErrors.inv_date).toBe(message);
-    await unmount();
   });
 
   it('DISCOUNT_TOTAL_ZERO: says a discount can not take the total to 0', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockResolvedValue(refused('DISCOUNT_TOTAL_ZERO', { discount: 735, total_before_discount: 735 }));
-    const { form, unmount } = await mount('create');
+    const { form } = await mount('create');
     const onFailure = jest.fn();
 
     await act(async () => { await form().submitForm(onFailure); });
 
     expect(onFailure.mock.calls[0][1]).toBe("A discount can't take the total to ₹0. To charge nothing, set the charge to 0 and give a reason.");
-    await unmount();
   });
 
   it('RATES_CHANGED: the named line gets the new figures, becomes the looked-up baseline, and the next save sends them', async () => {
@@ -422,9 +395,9 @@ describe('refusals for the date, the discount and changed rates', () => {
     jest.mocked(createInvoice).mockResolvedValueOnce(
       refused('RATES_CHANGED', { lines: [{ disp_trl_id: 'd1', fields: ['charge'], looked_up: { charge: 5, labour_rate: 2, tax: 5 }, current: { charge: 6, labour_rate: 2, tax: 5 } }] })
     );
-    const { form, store, unmount } = await mount('create');
+    const { form, store } = await mount('create');
     // The form was opened from a lookup: these are the looked-up figures.
-    act(() => { store.dispatch(loadInvoiceFormData({ header: header as never, items: [line as never], grId: GRN })); });
+    await act(() => { store.dispatch(loadInvoiceFormData({ header: header as never, items: [line as never], grId: GRN })); });
     const onFailure = jest.fn();
 
     await act(async () => { await form().submitForm(onFailure); });
@@ -437,7 +410,6 @@ describe('refusals for the date, the discount and changed rates', () => {
     jest.mocked(createInvoice).mockResolvedValueOnce({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 800 } } as never);
     await act(async () => { await form().submitForm(); });
     expect(jest.mocked(createInvoice).mock.calls[1][0].items[0]).toMatchObject({ charge: 6, looked_up: { charge: 6, labour_rate: 2, tax: 5 } });
-    await unmount();
   });
 });
 
@@ -445,8 +417,8 @@ describe('the looked-up figures the save sends (D12)', () => {
   it('sends looked_up for a looked-up line, and typed only for the fields the person typed', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 735 } } as never);
-    const { form, store, unmount } = await mount('create');
-    act(() => {
+    const { form, store } = await mount('create');
+    await act(() => {
       store.dispatch(loadInvoiceFormData({ header: header as never, items: [line as never], grId: GRN }));
       store.dispatch(updateEditedItem({ temp_id: 't1', values: { labour_rate: 3 } }));
     });
@@ -456,26 +428,24 @@ describe('the looked-up figures the save sends (D12)', () => {
     expect(jest.mocked(createInvoice).mock.calls[0][0].items[0]).toMatchObject({
       charge: 5, labour_rate: 3, tax: 5, looked_up: { charge: 5, labour_rate: 2, tax: 5 }, typed: ['labour_rate'],
     });
-    await unmount();
   });
 
   it('sends none for an invoice read from the server for editing', async () => {
     jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 735 } } as never);
-    const { form, unmount } = await mount('edit');
+    const { form } = await mount('edit');
 
     await submit(form);
 
     const sent = jest.mocked(updateInvoice).mock.calls[0][1].items[0];
     expect(sent).not.toHaveProperty('looked_up');
     expect(sent).not.toHaveProperty('typed');
-    await unmount();
   });
 });
 
 describe('the invoice date against the dispatches of the lines (App 15)', () => {
   it('refuses a date before the latest dispatch with the sentence under Invoice date, before anything is sent', async () => {
-    const { form, store, unmount } = await mount('create');
-    act(() => {
+    const { form, store } = await mount('create');
+    await act(() => {
       store.dispatch(loadInvoiceFormData({ header: header as never, items: [line as never], grId: GRN }));
       store.dispatch(updateHeader({ inv_date: '2026-09-01' }));
     });
@@ -486,19 +456,17 @@ describe('the invoice date against the dispatches of the lines (App 15)', () => 
     expect(createInvoice).not.toHaveBeenCalled();
     expect(onFailure.mock.calls[0][1]).toContain('The invoice date');
     expect(onFailure.mock.calls[0][1]).toContain('is before dispatch I0001 (01/10/26)');
-    await unmount();
   });
 
   it('allows the day of the dispatch itself', async () => {
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: true } as never);
     jest.mocked(createInvoice).mockResolvedValue({ success: true, data: { invoice_id: INVOICE, invoice_no: 12, total: 735 } } as never);
-    const { form, store, unmount } = await mount('create');
-    act(() => {
+    const { form, store } = await mount('create');
+    await act(() => {
       store.dispatch(loadInvoiceFormData({ header: header as never, items: [line as never], grId: GRN }));
       store.dispatch(updateHeader({ inv_date: '2026-10-01' }));
     });
 
     expect((await submit(form)).success).toBe(true);
-    await unmount();
   });
 });

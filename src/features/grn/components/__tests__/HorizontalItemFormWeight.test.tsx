@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 import { HorizontalItemForm, type HorizontalItemFormRef, type ItemFormData } from '../HorizontalItemForm';
 import { QuantityWeightFields } from '../item-form';
@@ -27,7 +27,15 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-image', () => ({ Image: 'Image' }));
-jest.mock('@/components/RemoteAutocompleteInput', () => ({ RemoteAutocompleteInput: 'RemoteAutocompleteInput' }));
+// A stand-in for the item search: one button that picks Onion through the real onSelect of the row.
+jest.mock('@/components/RemoteAutocompleteInput', () => {
+  const { Pressable } = require('react-native');
+  return {
+    RemoteAutocompleteInput: ({ onSelect }: { onSelect: (item: unknown) => void }) => (
+      <Pressable accessibilityRole="button" accessibilityLabel="Choose Onion" onPress={() => onSelect({ id: 'item-2', name: 'Onion', packaging: 'Crate' })} />
+    ),
+  };
+});
 jest.mock('@/services/item-search-service', () => ({ searchItems: jest.fn() }));
 
 // The row's ref is the jest mock's instance, whose scrollTo is one shared jest.fn (react-native's jest preset).
@@ -46,109 +54,101 @@ const ITEM: ItemFormData = {
   errors: {},
 };
 
-const mounted: ReactTestRenderer[] = [];
-function mount(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  mounted.push(tree);
-  return tree;
-}
 const onFieldChange = jest.fn();
-const renderForm = (item: ItemFormData = ITEM, ref?: React.Ref<HorizontalItemFormRef>) =>
-  mount(
-    <HorizontalItemForm
-      ref={ref}
-      currentItem={item}
-      onFieldChange={onFieldChange}
-      onImagePick={jest.fn()}
-      onImageRemove={jest.fn()}
-      onSaveItem={jest.fn()}
-      isValid
-      isEditing
-      editingItemNumber={1}
-      savedItemsCount={1}
-    />
-  );
+const formElement = (item: ItemFormData = ITEM, ref?: React.Ref<HorizontalItemFormRef>) => (
+  <HorizontalItemForm
+    ref={ref}
+    currentItem={item}
+    onFieldChange={onFieldChange}
+    onImagePick={jest.fn()}
+    onImageRemove={jest.fn()}
+    onSaveItem={jest.fn()}
+    isValid
+    isEditing
+    editingItemNumber={1}
+    savedItemsCount={1}
+  />
+);
+const renderForm = (item: ItemFormData = ITEM, ref?: React.Ref<HorizontalItemFormRef>) => render(formElement(item, ref));
 
 beforeEach(() => {
   jest.useFakeTimers();
   mockScrollTo.mockClear();
   onFieldChange.mockClear();
 });
-afterEach(() => {
-  act(() => {
+afterEach(async () => {
+  await act(() => {
     jest.runOnlyPendingTimers();
   });
-  act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
   jest.useRealTimers();
   setLanguage('en');
   mockFontScale = 1;
 });
 
-const isText = (node: ReactTestInstance) => (node.type as unknown) === 'Text';
-const textOf = (node: ReactTestInstance) => ([] as unknown[]).concat(node.props.children).filter((child) => typeof child === 'string').join('');
-const input = (tree: ReactTestRenderer, label: string) =>
-  tree.root.find((node) => (node.type as unknown) === 'TextInput' && node.props.accessibilityLabel === label);
-/** The field an input belongs to: the nearest view around it that has a width of its own. */
-const fieldOf = (node: ReactTestInstance) => {
+// A width and a minWidth are in the style of a view that has no role, so the field around an input is found by walking
+// up the rendered tree from the input (a host element's parent).
+type Host = ReturnType<typeof screen.getByLabelText>;
+const input = (label: string) => screen.getByLabelText(label);
+const ancestorWith = (node: Host, key: 'width' | 'minWidth') => {
   let parent = node.parent;
-  while (parent && !(typeof parent.type === 'string' && typeof StyleSheet.flatten(parent.props.style)?.width === 'number')) parent = parent.parent;
+  while (parent && typeof StyleSheet.flatten(parent.props.style)?.[key] !== 'number') parent = parent.parent;
   return parent!;
 };
-const widthOf = (node: ReactTestInstance) => StyleSheet.flatten(fieldOf(node).props.style).width;
+/** The field an input belongs to: the nearest view around it that has a width of its own. */
+const widthOf = (node: Host) => StyleSheet.flatten(ancestorWith(node, 'width').props.style).width;
 /** The label and the unit drawn in a field. */
-const fieldTexts = (node: ReactTestInstance) => fieldOf(node).findAll(isText).map(textOf).filter(Boolean);
-const focus = (tree: ReactTestRenderer, label: string) => act(() => input(tree, label).props.onFocus());
+const fieldTexts = (node: Host) =>
+  within(ancestorWith(node, 'width'))
+    .getAllByText(/./)
+    .map((text) => ([] as unknown[]).concat(text.props.children).filter((child) => typeof child === 'string').join(''))
+    .filter(Boolean);
+const focus = (label: string) => fireEvent(input(label), 'focus', {});
 const scrolledTo = () => mockScrollTo.mock.calls.map(([target]) => target);
 
 describe('GRN item form weight field', () => {
-  it('is labelled "Weight each", with kg after the value', () => {
-    const tree = renderForm();
-    const weight = input(tree, 'Weight each, in kilograms');
+  it('is labelled "Weight each", with kg after the value', async () => {
+    await renderForm();
+    const weight = input('Weight each, in kilograms');
 
     expect(fieldTexts(weight)).toEqual(['Weight each', 'kg']);
-    expect(weight.props.value).toBe('50');
-    expect(weight.props.placeholder).toBe('0');
+    expect(weight).toHaveDisplayValue('50');
+    expect(weight).toHaveProp('placeholder', '0');
     // No field of the row is still called plain "Weight".
-    expect(tree.root.findAll(isText).map(textOf)).not.toContain('Weight');
+    expect(screen.queryByText('Weight')).not.toBeOnTheScreen();
   });
 
-  it('has a width of its own, 112, 5 dp narrower than the quantity field (WH-56); the other fields keep theirs', () => {
-    const tree = renderForm();
+  it('has a width of its own, 112, 5 dp narrower than the quantity field (WH-56); the other fields keep theirs', async () => {
+    await renderForm();
 
-    expect(widthOf(input(tree, 'Weight each, in kilograms'))).toBe(112);
-    expect(widthOf(input(tree, 'Receipt item quantity'))).toBe(117);
+    expect(widthOf(input('Weight each, in kilograms'))).toBe(112);
+    expect(widthOf(input('Receipt item quantity'))).toBe(117);
     // The Rack column is as wide as its longest chip line: 196 is its least (minWidth).
-    let rackField = input(tree, 'Rack').parent;
-    while (rackField && !(typeof rackField.type === 'string' && typeof StyleSheet.flatten(rackField.props.style)?.minWidth === 'number')) rackField = rackField.parent;
-    expect(StyleSheet.flatten(rackField!.props.style).minWidth).toBe(196);
-    expect(widthOf(input(tree, 'Mark'))).toBe(270);
+    expect(StyleSheet.flatten(ancestorWith(input('Rack'), 'minWidth').props.style).minWidth).toBe(196);
+    expect(widthOf(input('Mark'))).toBe(270);
   });
 
-  it('grows with the text size, up to 2.0, and the row scrolls by the grown width (WH-56)', () => {
+  it('grows with the text size, up to 2.0, and the row scrolls by the grown width (WH-56)', async () => {
     mockFontScale = 2;
-    const tree = renderForm();
-    expect(widthOf(input(tree, 'Weight each, in kilograms'))).toBe(224);
-    expect(widthOf(input(tree, 'Receipt item quantity'))).toBe(117);
+    await renderForm();
+    expect(widthOf(input('Weight each, in kilograms'))).toBe(224);
+    expect(widthOf(input('Receipt item quantity'))).toBe(117);
 
-    focus(tree, 'Rack');
-    focus(tree, 'Mark');
+    await focus('Rack');
+    await focus('Mark');
 
     // 232 + 117 + 12 = 361 for Weight; Rack 361 + 224 + 12 = 597; Mark 597 + 196 + 12 = 805.
     expect(scrolledTo().map((target) => target.x)).toEqual([597, 805]);
 
-    act(() => tree.unmount());
+    // Mounted again at the larger text size (the row reads the size on every draw).
     mockFontScale = 3;
-    const larger = renderForm();
-    expect(widthOf(input(larger, 'Weight each, in kilograms'))).toBe(224);
+    await screen.rerender(formElement());
+    expect(widthOf(input('Weight each, in kilograms'))).toBe(224);
   });
 
-  it('stores what is typed in 0-9', () => {
-    const tree = renderForm();
+  it('stores what is typed in 0-9', async () => {
+    await renderForm();
 
-    act(() => input(tree, 'Weight each, in kilograms').props.onChangeText('૪૫'));
+    await fireEvent.changeText(input('Weight each, in kilograms'), '૪૫');
 
     expect(onFieldChange).toHaveBeenLastCalledWith('weight', '45');
   });
@@ -160,30 +160,30 @@ describe('GRN item form weight field', () => {
       ['Weight each, in kilograms', 361],
       ['Rack', 485],
       ['Mark', 693],
-    ])('%s scrolls the row to %d', (label, x) => {
-      const tree = renderForm();
+    ])('%s scrolls the row to %d', async (label, x) => {
+      await renderForm();
 
-      focus(tree, label);
+      await focus(label);
 
       expect(scrolledTo()).toEqual([{ x, animated: true }]);
     });
 
-    it('Rack and Mark are not scrolled to as if Weight were still 152 wide (525 and 733)', () => {
-      const tree = renderForm();
+    it('Rack and Mark are not scrolled to as if Weight were still 152 wide (525 and 733)', async () => {
+      await renderForm();
 
-      focus(tree, 'Rack');
-      focus(tree, 'Mark');
+      await focus('Rack');
+      await focus('Mark');
 
       expect(scrolledTo().map((target) => target.x)).toEqual([485, 693]);
       expect(scrolledTo().map((target) => target.x)).not.toContain(525);
       expect(scrolledTo().map((target) => target.x)).not.toContain(733);
     });
 
-    it('goes to Quantity after an item is chosen, as before', () => {
-      const tree = renderForm();
+    it('goes to Quantity after an item is chosen, as before', async () => {
+      await renderForm();
 
-      act(() => tree.root.findByType('RemoteAutocompleteInput' as never).props.onSelect({ id: 'item-2', name: 'Onion', packaging: 'Crate' }));
-      act(() => {
+      await userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime }).press(screen.getByRole('button', { name: 'Choose Onion' }));
+      await act(() => {
         jest.advanceTimersByTime(100);
       });
 
@@ -200,45 +200,45 @@ describe('GRN item form weight field', () => {
       ['weight', 361],
       ['rack', 485],
       ['package_mark', 693],
-    ] as const)('%s scrolls the row to %d, the place it has when it takes focus', (field, x) => {
+    ] as const)('%s scrolls the row to %d, the place it has when it takes focus', async (field, x) => {
       const ref = React.createRef<HorizontalItemFormRef>();
-      renderForm(ITEM, ref);
+      await renderForm(ITEM, ref);
 
-      act(() => ref.current!.revealField(field));
+      await act(() => ref.current!.revealField(field));
 
       expect(scrolledTo()).toEqual([{ x, animated: true }]);
     });
   });
 
-  it('says "દરેકનું વજન" in Gujarati, in the label and aloud', () => {
+  it('says "દરેકનું વજન" in Gujarati, in the label and aloud', async () => {
     setLanguage('gu');
-    const tree = renderForm();
-    const weight = input(tree, 'દરેકનું વજન, કિલોમાં');
+    await renderForm();
+    const weight = input('દરેકનું વજન, કિલોમાં');
 
     expect(fieldTexts(weight)).toEqual(['દરેકનું વજન', 'કિલો']);
-    expect(weight.props.value).toBe('૫૦');
+    expect(weight).toHaveDisplayValue('૫૦');
   });
 });
 
 // Mounted on no screen; kept in step with the row above.
 describe('QuantityWeightFields', () => {
   const renderFields = () =>
-    mount(<QuantityWeightFields qty="100" weight="50" onQtyChange={jest.fn()} onWeightChange={jest.fn()} />);
+    render(<QuantityWeightFields qty="100" weight="50" onQtyChange={jest.fn()} onWeightChange={jest.fn()} />);
 
-  it('labels the weight "Weight each", says so aloud, and gives it the wider field', () => {
-    const tree = renderFields();
-    const weight = input(tree, 'Weight each, in kilograms');
+  it('labels the weight "Weight each", says so aloud, and gives it the wider field', async () => {
+    await renderFields();
+    const weight = input('Weight each, in kilograms');
 
     expect(fieldTexts(weight)).toEqual(['Weight each', 'kg']);
     expect(widthOf(weight)).toBe(152);
-    expect(widthOf(input(tree, 'Receipt item quantity'))).toBe(117);
-    expect(tree.root.findAll(isText).map(textOf)).not.toContain('Weight');
+    expect(widthOf(input('Receipt item quantity'))).toBe(117);
+    expect(screen.queryByText('Weight')).not.toBeOnTheScreen();
   });
 
-  it('says "દરેકનું વજન" in Gujarati', () => {
+  it('says "દરેકનું વજન" in Gujarati', async () => {
     setLanguage('gu');
-    const tree = renderFields();
+    await renderFields();
 
-    expect(fieldTexts(input(tree, 'દરેકનું વજન, કિલોમાં'))).toEqual(['દરેકનું વજન', 'કિલો']);
+    expect(fieldTexts(input('દરેકનું વજન, કિલોમાં'))).toEqual(['દરેકનું વજન', 'કિલો']);
   });
 });

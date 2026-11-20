@@ -3,8 +3,7 @@
  * before the first await: the dialog's `loading` state is only seen after the next render, too late for a second press.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { TextInput } from 'react-native';
+import { fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -21,55 +20,65 @@ jest.mock('@/config/demoCapabilities', () => ({
 
 const onDismiss = jest.fn();
 
-let tree: ReactTestRenderer;
-let finishJob: () => void;
+let finishJob: (() => void) | undefined;
 const onConfirm = jest.fn(() => new Promise<void>((resolve) => { finishJob = resolve; }));
 
-async function render() {
-  await act(async () => {
-    tree = create(
-      <PrintRangeDialog visible onDismiss={onDismiss} onConfirm={onConfirm} title="Print invoices" defaultNumber="2555" entity="invoice" />
-    );
-  });
-}
-const printButton = () =>
-  tree.root.find((node) => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === 'Print' && typeof node.props.onPress === 'function');
+const renderDialog = () =>
+  render(<PrintRangeDialog visible onDismiss={onDismiss} onConfirm={onConfirm} title="Print invoices" defaultNumber="2555" entity="invoice" />);
+const printButton = () => screen.getByRole('button', { name: 'Print' });
+
+// A second press that arrives before React has drawn the first one again. fireEvent and userEvent wait for the held print
+// job (and a second one would overlap its act scope), so the second press is the screen reader's click on the button,
+// sent while the first press is still being handled.
+const secondPress = (button: ReturnType<typeof printButton>) => {
+  const target = {};
+  (button.props as { onClick: (event: unknown) => void }).onClick({ nativeEvent: {}, currentTarget: target, target, stopPropagation: () => undefined });
+};
 
 beforeEach(() => jest.clearAllMocks());
-afterEach(() => { act(() => tree?.unmount()); });
+afterEach(() => {
+  // Release a job still held, so a failing test does not leave it pending.
+  finishJob?.();
+  finishJob = undefined;
+});
 
 describe('PrintRangeDialog presses', () => {
   it('sends one job for two presses of Print before the dialog has drawn again', async () => {
-    await render();
-    const press = printButton().props.onPress;
+    await renderDialog();
+    const button = printButton();
 
-    await act(async () => { press(); press(); });
+    const first = fireEvent.press(button);
+    secondPress(button);
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    await act(async () => { finishJob(); });
+    finishJob?.();
+    await first;
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it('sends one job for Return in a field and then Print', async () => {
-    await render();
-    const press = printButton().props.onPress;
-    const submit = tree.root.findAllByType(TextInput)[1].props.onSubmitEditing;
+    await renderDialog();
 
-    await act(async () => { submit(); press(); });
+    const first = fireEvent(screen.getByPlaceholderText('End invoice number'), 'submitEditing');
+    secondPress(printButton());
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    await act(async () => { finishJob(); });
+    finishJob?.();
+    await first;
   });
 
   it('takes a new press once the first job is over', async () => {
-    await render();
-    await act(async () => { printButton().props.onPress(); });
-    await act(async () => { finishJob(); });
+    const user = userEvent.setup({ delay: 0 });
+    await renderDialog();
+    await user.press(printButton());
+    finishJob?.();
+    await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
     expect(onConfirm).toHaveBeenCalledTimes(1);
 
-    await act(async () => { printButton().props.onPress(); });
+    await user.press(await screen.findByRole('button', { name: 'Print' }));
 
     expect(onConfirm).toHaveBeenCalledTimes(2);
-    await act(async () => { finishJob(); });
   });
 });

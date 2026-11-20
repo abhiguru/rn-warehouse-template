@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
@@ -66,19 +66,39 @@ jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap((brand) => MODES.map((mode) => [brand, mode] as const));
 
-let tree: ReactTestRenderer;
+type El = ReturnType<typeof screen.getByText>;
 const renderIn = async (brand: string, mode: Mode, step: 'create' | 'edit') => {
   mockState = { theme: { preference: mode, brand } };
   mockForm.isCreateMode = step === 'create';
-  await act(async () => { tree = create(<DispatchReviewStep mode={step} />); });
+  await render(<DispatchReviewStep mode={step} />);
 };
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
-const styleOf = (node: ReactTestInstance) => StyleSheet.flatten(node.props.style) ?? {};
-const byTestId = (id: string) => tree.root.find((n) => n.props.testID === id && typeof n.type === 'string');
-const textNamed = (text: string) => tree.root.findAll((n) => (n.type as unknown) === 'Text' && [n.props.children].flat().join('') === text)[0];
+const styleOf = (node: El) => StyleSheet.flatten(node.props.style) ?? {};
+// The table card, the ITEMS block and the bottom bar button have no role or label that names them: found by testID.
+const byTestId = (id: string) => screen.getByTestId(id);
+const textNamed = (text: string) => screen.getAllByText(text, { includeHiddenElements: true })[0];
+/** The nearest element above `node` (itself included) that paints a background. */
+const surfaceOf = (node: El): El => {
+  let current: El = node;
+  while (styleOf(current).backgroundColor === undefined) current = current.parent!;
+  return current;
+};
+
+type Json = { type: string; props: Record<string, unknown>; children: (Json | string)[] | null };
+/** The test ids of every element that fills its background with `color`. Nothing else lists elements by style. */
+const filledWith = (color: string): unknown[] => {
+  const found: unknown[] = [];
+  const walk = (node: Json | string | null) => {
+    if (!node || typeof node === 'string') return;
+    if ((StyleSheet.flatten(node.props.style as never) as { backgroundColor?: string } | undefined)?.backgroundColor === color) found.push(node.props.testID);
+    node.children?.forEach(walk);
+  };
+  [screen.toJSON()].flat().forEach((node) => walk(node as Json | null));
+  return found;
+};
 
 describe.each(THEMES)('%s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
@@ -86,15 +106,13 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
   it('a new dispatch: the card is surface.card, the open ITEMS section table.insetFill, the total in text.primary', async () => {
     await renderIn(brand, mode, 'create');
 
-    expect(styleOf(byTestId('dispatch-review-table')).backgroundColor).toBe(t.surface.card);
-    expect(styleOf(byTestId('dispatch-review-table')).borderColor).toBe(t.table.outline);
+    expect(byTestId('dispatch-review-table')).toHaveStyle({ backgroundColor: t.surface.card, borderColor: t.table.outline });
     // ITEMS is the open section; its block is the section node that holds the body.
-    const itemsBlock = byTestId('dispatch-review-body-items').parent!.parent!;
-    expect(styleOf(itemsBlock).backgroundColor ?? styleOf(itemsBlock.parent!).backgroundColor).toBe(t.table.insetFill);
-    expect(styleOf(textNamed('Total')).color).toBe(t.text.primary);
+    expect(styleOf(surfaceOf(byTestId('dispatch-review-body-items'))).backgroundColor).toBe(t.table.insetFill);
+    expect(textNamed('Total')).toHaveStyle({ color: t.text.primary });
     // The weight and stock tags are neutral status tags.
-    expect(styleOf(textNamed('50 kg each')).color).toBe(t.status.neutral.text);
-    expect(styleOf(textNamed('35 left').parent!.parent!).backgroundColor ?? styleOf(textNamed('35 left').parent!).backgroundColor).toBe(t.status.neutral.background);
+    expect(textNamed('50 kg each')).toHaveStyle({ color: t.status.neutral.text });
+    expect(styleOf(surfaceOf(textNamed('35 left'))).backgroundColor).toBe(t.status.neutral.background);
   });
 
   it('an edit whose stock read failed: the strip is status.negative and Try again is brand.tint; the ITEMS tag is critical', async () => {
@@ -103,23 +121,19 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     await renderIn(brand, mode, 'edit');
 
     // The message strip is the shared InlineValidation: the View around the text
-    let stripNode: ReactTestInstance = textNamed("Couldn't check the stock of these lots. Check your connection and try again.");
-    while (styleOf(stripNode).backgroundColor === undefined) stripNode = stripNode.parent!;
-    const strip = styleOf(stripNode);
+    const message = textNamed("Couldn't check the stock of these lots. Check your connection and try again.");
+    const strip = styleOf(surfaceOf(message));
     expect(strip.backgroundColor).toBe(t.status.negative.background);
     expect(strip.borderColor).toBe(t.status.negative.border);
-    expect(styleOf(textNamed("Couldn't check the stock of these lots. Check your connection and try again.")).color).toBe(t.status.negative.text);
-    expect(styleOf(textNamed('Try again')).color).toBe(t.brand.tint);
+    expect(message).toHaveStyle({ color: t.status.negative.text });
+    expect(textNamed('Try again')).toHaveStyle({ color: t.brand.tint });
     // The "Stock not checked" tag sits in a critical status tag.
-    const tag = textNamed('Stock not checked');
-    expect(styleOf(tag).color).toBe(t.status.critical.text);
-    jest.restoreAllMocks();
+    expect(textNamed('Stock not checked')).toHaveStyle({ color: t.status.critical.text });
   });
 
   it('never fills a surface with brand.fill except the primary button of the bottom bar', async () => {
     await renderIn(brand, mode, 'create');
 
-    const fills = tree.root.findAll((n) => typeof n.type === 'string' && styleOf(n).backgroundColor === t.brand.fill);
-    expect(fills.map((n) => n.props.testID)).toEqual(['dispatch-review-submit']);
+    expect(filledWith(t.brand.fill)).toEqual(['dispatch-review-submit']);
   });
 });

@@ -2,8 +2,7 @@
  * useGrnRates: one read per mount, a new read (status loading) when the items or the context change, a
  * re-read on focus that keeps the rows shown, offline reads as an error, and a stale answer is dropped.
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { useGrnRates, type UseGrnRatesResult } from '../useGrnRates';
 import { listRatesOfItems } from '@/services/item-pricing-service';
 
@@ -16,15 +15,9 @@ jest.mock('expo-router', () => ({ useFocusEffect: (cb: () => void) => require('r
 const read = listRatesOfItems as jest.Mock;
 const rate = (id: string) => ({ id, item_id: 'gur' });
 let latest: UseGrnRatesResult;
-function Probe({ ids, ctx }: { ids: string[]; ctx: string }) {
-  latest = useGrnRates(ids, ctx);
-  return null;
-}
-const mount = async (ids: string[], ctx: string) => {
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<Probe ids={ids} ctx={ctx} />); });
-  return tree;
-};
+type Props = { ids: string[]; ctx: string };
+const mount = (ids: string[], ctx: string) =>
+  renderHook(({ ids: i, ctx: c }: Props) => (latest = useGrnRates(i, c)), { initialProps: { ids, ctx } });
 
 beforeEach(() => { jest.clearAllMocks(); mockOffline = false; read.mockResolvedValue([rate('a')]); });
 
@@ -37,10 +30,10 @@ it('reads once per mount (the dependsOn effect and the focus effect no longer bo
 });
 
 it('a changed context reads again, once, and shows loading until the new rows arrive', async () => {
-  const tree = await mount(['gur'], 'ctx1');
+  const { rerender } = await mount(['gur'], 'ctx1');
   let release!: (rows: unknown[]) => void;
   read.mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
-  await act(async () => { tree.update(<Probe ids={['gur']} ctx="ctx2" />); });
+  await rerender({ ids: ['gur'], ctx: 'ctx2' });
   expect(read).toHaveBeenCalledTimes(2);
   expect(latest.status).toBe('loading');
   await act(async () => { release([rate('b')]); });
@@ -49,10 +42,10 @@ it('a changed context reads again, once, and shows loading until the new rows ar
 });
 
 it('changed items read again once, whatever the order of the ids', async () => {
-  const tree = await mount(['gur', 'rice'], 'ctx');
-  await act(async () => { tree.update(<Probe ids={['rice', 'gur']} ctx="ctx" />); });
+  const { rerender } = await mount(['gur', 'rice'], 'ctx');
+  await rerender({ ids: ['rice', 'gur'], ctx: 'ctx' });
   expect(read).toHaveBeenCalledTimes(1);
-  await act(async () => { tree.update(<Probe ids={['rice', 'gur', 'wheat']} ctx="ctx" />); });
+  await rerender({ ids: ['rice', 'gur', 'wheat'], ctx: 'ctx' });
   expect(read).toHaveBeenCalledTimes(2);
 });
 

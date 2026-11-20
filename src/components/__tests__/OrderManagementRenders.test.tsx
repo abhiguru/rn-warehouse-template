@@ -5,8 +5,7 @@
  * reach the service with the card's own line.
  */
 import React from 'react';
-import { RefreshControl } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import OrderManagement from '../OrderManagement';
 import { OrderService } from '@/services/order-service';
 import { askAlert, showAlert } from '@/utils/alert';
@@ -105,14 +104,12 @@ beforeEach(() => {
 });
 
 async function open() {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" />); });
+  await render(<OrderManagement customerId="customer-fictional-1" />);
   expect(mockCards.props.size).toBe(LINES);
-  return renderer;
 }
 
 it('renders no card when a refresh starts or brings the same lines back, and one card for one changed line', async () => {
-  const renderer = await open();
+  await open();
   expect(mockCards.renders).toBe(LINES);
 
   // A refresh in flight: the refreshing flag changes, the lines do not.
@@ -134,12 +131,14 @@ it('renders no card when a refresh starts or brings the same lines back, and one
   await act(async () => { await mockLive.refresh?.(); });
   expect(mockCards.renders).toBe(1);
   expect(mockCards.props.get('line-3')?.item.requested_quantity).toBe(7);
-  await act(async () => { renderer.unmount(); });
+  await screen.unmount();
 });
 
 it('a timed refresh runs behind the lines with no spinner; pull-to-refresh shows it', async () => {
-  const renderer = await open();
-  const spinner = () => renderer.root.findByType(RefreshControl).props.refreshing as boolean;
+  await open();
+  // The list's own refresh control, as the scroll view carries it (the native control draws nothing to query).
+  const refreshControl = () => screen.root!.queryAll(node => 'refreshControl' in node.props)[0].props.refreshControl.props;
+  const spinner = () => refreshControl().refreshing as boolean;
   const hold = () => {
     let finish!: () => void;
     service.getOrderWithItems.mockImplementationOnce(() => new Promise(resolve => {
@@ -161,15 +160,15 @@ it('a timed refresh runs behind the lines with no spinner; pull-to-refresh shows
   // The pull: the spinner shows until the answer.
   const finishPull = hold();
   let pulled: Promise<void> | void;
-  await act(async () => { pulled = renderer.root.findByType(RefreshControl).props.onRefresh(); });
+  await act(async () => { pulled = refreshControl().onRefresh(); });
   expect(spinner()).toBe(true);
   await act(async () => { finishPull(); await pulled; });
   expect(spinner()).toBe(false);
-  await act(async () => { renderer.unmount(); });
+  await screen.unmount();
 });
 
 it('keeps one pair of card callbacks for every line and sends a change for the card\'s own line', async () => {
-  const renderer = await open();
+  await open();
   const first = mockCards.props.get('line-5')!;
   expect(mockCards.props.get('line-9')!.onQuantityChange).toBe(first.onQuantityChange);
   expect(mockCards.props.get('line-9')!.onRemove).toBe(first.onRemove);
@@ -187,5 +186,5 @@ it('keeps one pair of card callbacks for every line and sends a change for the c
   expect(title).toContain('Fictional Lot 5');
   expect(removed).toBe(true);
   expect(service.removeItemFromOrder).toHaveBeenCalledWith('line-5', 'order-fictional-1');
-  await act(async () => { renderer.unmount(); });
+  await screen.unmount();
 });

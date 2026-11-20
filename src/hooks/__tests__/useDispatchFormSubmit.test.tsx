@@ -10,7 +10,7 @@
  * - an edit goes by the dispatch of its route and refuses a form that holds another one (A2).
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import dispatchFormReducer, {
@@ -96,15 +96,9 @@ const fill = (store: ReturnType<typeof makeStore>, id = OWN_ID) =>
   store.dispatch(loadDispatchData({ dispatchId: id, header, items: [line] }));
 
 async function mount(mode: DispatchFormMode, store: ReturnType<typeof makeStore>, dispatchIdParam?: string) {
-  const latest: { current: UseDispatchFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useDispatchForm({ mode, dispatchIdParam });
-    return null;
-  };
   mockStore = store;
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<Harness />); });
-  return { form: () => latest.current!, unmount: () => act(async () => { tree.unmount(); }) };
+  const { result, unmount } = await renderHook(() => useDispatchForm({ mode, dispatchIdParam }));
+  return { form: () => result.current, unmount };
 }
 async function submit(form: () => UseDispatchFormReturn) {
   let result!: Awaited<ReturnType<UseDispatchFormReturn['submitForm']>>;
@@ -306,6 +300,25 @@ describe('an answer that was lost (owner rule D22)', () => {
     expect(store.getState().dispatchForm.header.disp_no).toBe('DD0100');
     expect(showAlert).toHaveBeenCalledWith('Dispatch saved', 'Dispatch DD0003 was saved before you left the form. Find it in the Dispatch list.');
     await unmount();
+  });
+
+  it('an answer that comes after the screen went tells the person the dispatch was saved, and marks the form that stands', async () => {
+    const store = makeStore();
+    fill(store);
+    const { form, unmount } = await mount('create', store);
+    let answer!: (result: Awaited<ReturnType<typeof createDispatch>>) => void;
+    create_.mockImplementation(() => new Promise<Awaited<ReturnType<typeof createDispatch>>>((resolve) => { answer = resolve; }));
+    let pending!: Promise<Awaited<ReturnType<UseDispatchFormReturn['submitForm']>>>;
+    await act(async () => { pending = form().submitForm(); });
+
+    await unmount();
+
+    let result!: Awaited<ReturnType<UseDispatchFormReturn['submitForm']>>;
+    await act(async () => { answer({ success: true, dispatch_id: 'late-2', failed_photos: [] }); result = await pending; });
+
+    expect(result).toEqual({ success: false, aborted: true });
+    expect(store.getState().dispatchForm.savedDispatchId).toBe('late-2');
+    expect(showAlert).toHaveBeenCalledWith('Dispatch saved', 'Dispatch DD0003 was saved before you left the form. Find it in the Dispatch list.');
   });
 
   it('a refusal that comes after the X is nobody\'s business: no alert, no flags', async () => {

@@ -10,17 +10,15 @@
  */
 import React from 'react';
 import { LayoutAnimation, StyleSheet } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
-import { KeyValueCell } from '@/components/fiori/KeyValueCell';
-import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { setLanguage } from '@/i18n';
 import { EXPAND_ANIMATION } from '@/components/reports/StockItemCard';
 import { getAllStockAging, getCustomerStockAging } from '@/services/reporting/stock-aging-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
 import { BRANDS, fontWeight, getTokens, type Brand, type Mode } from '@/theme/tokens';
-import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
+import { forgetQueries, makeQueryUpdatesImmediate } from '@/tests/helpers/reportQueries';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { showAlert } from '@/utils/alert';
@@ -181,12 +179,11 @@ function makeStore(auth: unknown = STAFF, reportPrefs?: ReportPrefsState, theme:
 }
 type Store = ReturnType<typeof makeStore>;
 
+
 // Each test is a run of several taps, sheets and answers: under a full parallel run the first
 // one, which draws the screen for the first time, can take longer than Jest's 5 seconds.
 jest.setTimeout(30_000);
 
-// A mounted skeleton or query keeps timers alive: every tree is taken down after its test.
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -207,47 +204,65 @@ beforeEach(() => {
   customerAging.mockResolvedValue(answerLines as never);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
   setLanguage('en');
 });
 
-const textOf = (node: TestRenderer.ReactTestInstance) => [node.props.children].flat().join('');
+type Host = ReturnType<typeof screen.getByTestId>;
+const ALL = { includeHiddenElements: true } as const;
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-async function open(store: Store) {
+/** The text a host element shows, nested text included. */
+const contentOf = (node: Host | string): string => (typeof node === 'string' ? node : node.children.map(contentOf).join(''));
+
+/** The element and every host element below it: styles and the stand-in list have no query. */
+function hostTree(root: Host | null): Host[] {
+  const found: Host[] = [];
+  const walk = (node: Host | string) => {
+    if (typeof node === 'string') return;
+    found.push(node);
+    node.children.forEach(walk);
+  };
+  if (root) walk(root);
+  return found;
+}
+
+/**
+ * Draws the screen once its first answer is on it (`ready` is a text it shows by then) and returns what the
+ * tests read and press. Controls are found by role and name; the few that have no role by their label.
+ */
+async function open(store: Store, ready: string | RegExp = /Last updated/) {
   mockStore = store;
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<StockAgingScreen />);
-    await settleQueries();
-  });
-  mounted.push(tree);
+  const user = userEvent.setup({ delay: 0 });
+  await render(<StockAgingScreen />);
+  await screen.findByText(ready, ALL);
 
-  const run = (callback: () => void) =>
-    act(async () => {
-      callback();
-      await settleQueries();
-    });
-  const controls = (match: (label: string) => boolean) =>
-    tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string' && match(node.props.accessibilityLabel) && typeof node.props.onPress === 'function');
+  const buttons = (match: string | RegExp) => {
+    const byRole = screen.queryAllByRole('button', { name: match, ...ALL });
+    return byRole.length > 0 ? byRole : screen.queryAllByLabelText(match, ALL);
+  };
   const control = (label: string) => {
-    const found = controls(text => text === label);
+    const found = buttons(label);
     if (found.length === 0) throw new Error(`No control labelled "${label}"`);
     return found[0];
   };
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(textOf);
+  const startingWith = (start: string) => new RegExp(`^${escapeRegExp(start)}`);
+  const texts = () => screen.queryAllByText(/./, ALL).map(contentOf);
+  const labels = () => screen.queryAllByLabelText(/./, ALL).map(node => node.props.accessibilityLabel as string);
   /** The item rows (buttons that open and close), with their state. */
-  const toggles = () => tree.root.findAll(node => typeof node.props.onPress === 'function' && typeof node.props.accessibilityState?.expanded === 'boolean');
+  const toggles = () => screen.queryAllByRole('button', ALL).filter(node => typeof node.props.accessibilityState?.expanded === 'boolean');
   return {
-    tree,
     texts,
+    labels,
     control,
-    press: (label: string) => run(() => control(label).props.onPress()),
-    pressStarting: (start: string, index = 0) => run(() => controls(text => text.startsWith(start))[index].props.onPress()),
-    has: (label: string) => controls(text => text === label).length > 0,
-    labels: () => tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string),
+    press: (label: string) => user.press(control(label)),
+    pressStarting: (start: string, index = 0) => user.press(buttons(startingWith(start))[index]),
+    has: (label: string) => buttons(label).length > 0,
     /** Customer names in the order the rows show them. */
-    customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
+    customers: () =>
+      screen
+        .queryAllByRole('button', { name: /, Average age /, ...ALL })
+        .map(card => String(card.props.accessibilityLabel).split(', Average age ')[0]),
     /** Item names in the order the rows show them. */
     // The card is read as "Name · Word, ..." (WH-41); the lists in the tests are the item names.
     items: () => toggles().map(node => String(node.props.accessibilityLabel)).filter(label => !label.startsWith('GRN ')).map(label => label.split(',')[0].replace(/ · [^·]+$/, '')),
@@ -255,17 +270,19 @@ async function open(store: Store) {
     lines: () => toggles().map(node => [String(node.props.accessibilityLabel), node.props.accessibilityState.expanded] as const).filter(([label]) => label.startsWith('GRN ')).map(([label, expanded]) => `${label.split(',')[0]}${expanded ? ' (open)' : ''}`),
     status: () => texts().find(text => text.includes('Last updated')),
     search: async (text: string) => {
-      const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
-      await run(() => field.props.onChangeText(text));
+      const field = screen.getByPlaceholderText(/^Search /);
+      await user.clear(field);
+      await user.type(field, text);
       // Submitting commits at once, without waiting for the field's 300 ms pause.
-      await run(() => tree.root.findAll(node => typeof node.props.onSubmitEditing === 'function')[0].props.onSubmitEditing());
+      await user.type(field, '', { submitEditing: true });
     },
-    searchValue: () => tree.root.findAll(node => typeof node.props.onChangeText === 'function')[0].props.value as string,
-    refresh: () => run(() => tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh()),
-    bold: () =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
-        .map(textOf),
+    searchValue: () => screen.getByPlaceholderText(/^Search /).props.value as string,
+    // The stand-in list is no scroll view that can be pulled, so its pull to refresh is called as the list would.
+    refresh: () =>
+      act(async () => {
+        hostTree(screen.root).find(node => node.type === 'FlashList')!.props.refreshControl.props.onRefresh();
+      }),
+    bold: () => hostTree(screen.root).filter(node => node.type === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold).map(contentOf),
   };
 }
 
@@ -279,112 +296,111 @@ const openGreenValley = () => {
 
 describe('stock aging, every customer', () => {
   it('asks once with no period, oldest average first, and its oldest-stock figure is the bar\'s over-364 bucket', async () => {
-    const screen = await open(makeStore());
+    const view = await open(makeStore());
     // Today's stock: no dates, and no arguments at all.
     expect(allAging.mock.calls).toEqual([[]]);
     expect(customerAging).not.toHaveBeenCalled();
-    expect(screen.customers()).toEqual(DEFAULT_ORDER);
+    expect(view.customers()).toEqual(DEFAULT_ORDER);
     // No range in the status line.
-    expect(screen.status()).toBe('Last updated 10:00 am');
-    expect(screen.has('Sorted by Average age, highest first. Change sort')).toBe(true);
-    expect(screen.labels().filter(label => label.startsWith('Period'))).toEqual([]);
+    expect(view.status()).toBe('Last updated 10:00 am');
+    expect(view.has('Sorted by Average age, highest first. Change sort')).toBe(true);
+    expect(view.labels().filter(label => label.startsWith('Period'))).toEqual([]);
 
     // The server counts stock lines (lots): total_items (14) and by_bucket['364+'].item_count (4), named
     // as lots in the bucket's own words; not the RPC's items_over_365_days (9), which counts from 365.
     // An item on two old lots counts twice here, so the tiles do not say "Items" (a customer's screen does).
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Stock lots: 14', 'Average age: 160 days', 'Lots over 364 days: 4']));
-    expect(screen.labels()).not.toContain('Lots over 364 days: 9');
-    expect(screen.labels()).not.toContain('Items: 14');
-    expect(screen.labels()).not.toContain('Items over 364 days: 4');
+    expect(view.labels()).toEqual(expect.arrayContaining(['Stock lots: 14', 'Average age: 160 days', 'Lots over 364 days: 4']));
+    expect(view.labels()).not.toContain('Lots over 364 days: 9');
+    expect(view.labels()).not.toContain('Items: 14');
+    expect(view.labels()).not.toContain('Items over 364 days: 4');
     // The note about counting by item name belongs to a customer's item cards, not to lots.
-    expect(screen.texts()).not.toContain('Items are counted by item name.');
-    expect(screen.labels()).not.toContain('Over 364 days: 4');
-    expect(screen.labels().filter(label => label.startsWith('Over 1 year'))).toEqual([]);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Stock age', '0–120 days', '121–240 days', '241–364 days', 'Over 364 days']));
+    expect(view.texts()).not.toContain('Items are counted by item name.');
+    expect(view.labels()).not.toContain('Over 364 days: 4');
+    expect(view.labels().filter(label => label.startsWith('Over 1 year'))).toEqual([]);
+    expect(view.texts()).toEqual(expect.arrayContaining(['Stock age', '0–120 days', '121–240 days', '241–364 days', 'Over 364 days']));
   });
 
   it('orders the rows by the field chosen in the sort sheet, and the other direction reverses them', async () => {
-    const screen = await open(makeStore());
-    await screen.press('Sorted by Average age, highest first. Change sort');
-    await screen.press('Stock');
-    expect(screen.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
-    await screen.press('Lowest first');
-    expect(screen.customers()).toEqual(['Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods', 'Green Valley Traders']);
+    const view = await open(makeStore());
+    await view.press('Sorted by Average age, highest first. Change sort');
+    await view.press('Stock');
+    expect(view.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
+    await view.press('Lowest first');
+    expect(view.customers()).toEqual(['Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods', 'Green Valley Traders']);
     // The field changed and the direction was kept: A to Z.
-    await screen.press('Customer');
-    expect(screen.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods']);
-    await screen.press('Close');
-    expect(screen.has('Sorted by Customer, A to Z. Change sort')).toBe(true);
+    await view.press('Customer');
+    expect(view.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods']);
+    await view.press('Close');
+    expect(view.has('Sorted by Customer, A to Z. Change sort')).toBe(true);
     // Sorting is done on the rows already read: nothing more is asked.
     expect(allAging).toHaveBeenCalledTimes(1);
   });
 
   it('narrows to the customers a search finds, in bold, and Clear all brings the rest back with the sort kept', async () => {
-    const screen = await open(makeStore());
-    await screen.press('Sorted by Average age, highest first. Change sort');
-    await screen.press('Stock');
-    await screen.press('Close');
+    const view = await open(makeStore());
+    await view.press('Sorted by Average age, highest first. Change sort');
+    await view.press('Stock');
+    await view.press('Close');
 
-    await screen.search('produce');
-    expect(screen.customers()).toEqual(['Riverbank Produce', 'Hillside Produce Co']);
-    expect(screen.bold()).toEqual(['Produce', 'Produce']);
-    expect(screen.status()).toBe('Showing 2 of 4 · Last updated 10:00 am');
+    await view.search('produce');
+    expect(view.customers()).toEqual(['Riverbank Produce', 'Hillside Produce Co']);
+    expect(view.bold()).toEqual(['Produce', 'Produce']);
+    expect(view.status()).toBe('Showing 2 of 4 · Last updated 10:00 am');
     // The figures are the whole stock's, not what the search leaves.
-    expect(screen.labels()).toContain('Lots over 364 days: 4');
+    expect(view.labels()).toContain('Lots over 364 days: 4');
 
-    await screen.press('Clear all filters and the search');
-    expect(screen.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
-    expect(screen.searchValue()).toBe('');
-    expect(screen.bold()).toEqual([]);
-    expect(screen.has('Sorted by Stock, highest first. Change sort')).toBe(true);
+    await view.press('Clear all filters and the search');
+    expect(view.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
+    expect(view.searchValue()).toBe('');
+    expect(view.bold()).toEqual([]);
+    expect(view.has('Sorted by Stock, highest first. Change sort')).toBe(true);
     expect(allAging).toHaveBeenCalledTimes(1);
   });
 
   it('gives each customer its average age alone, on up to two lines: no "over 1 year" count', async () => {
-    const screen = await open(makeStore());
-    const cards = screen.tree.root.findAllByType(ReportCustomerCard);
+    const view = await open(makeStore());
     // Average ages 400, 200, 130 and 50 days; Riverbank has 2 lines over 365 days and Sunrise 1.
-    expect(cards.map(card => card.props.subtitle)).toEqual(['Average age 400 days', 'Average age 200 days', 'Average age 130 days', 'Average age 50 days']);
-    expect(cards.map(card => card.props.subtitleLines)).toEqual([2, 2, 2, 2]);
-    expect(screen.texts().filter(text => /over 1 year/i.test(text))).toEqual([]);
-    expect(screen.labels().filter(label => /over 1 year/i.test(label))).toEqual([]);
+    const subtitles = screen.getAllByText(/^Average age /);
+    expect(subtitles.map(contentOf)).toEqual(['Average age 400 days', 'Average age 200 days', 'Average age 130 days', 'Average age 50 days']);
     // The drawn subtitle may wrap to a second line rather than be cut.
-    const subtitle = cards[0].findAll(node => (node.type as unknown) === 'Text' && [node.props.children].flat().join('') === 'Average age 400 days');
-    expect(subtitle).toHaveLength(1);
-    expect(subtitle[0].props.numberOfLines).toBe(2);
-    expect(screen.has('Riverbank Produce, Average age 400 days, 80 units, Average: Over 364 days')).toBe(true);
+    subtitles.forEach(subtitle => expect(subtitle).toHaveProp('numberOfLines', 2));
+    expect(view.texts().filter(text => /over 1 year/i.test(text))).toEqual([]);
+    expect(view.labels().filter(label => /over 1 year/i.test(label))).toEqual([]);
+    expect(view.has('Riverbank Produce, Average age 400 days, 80 units, Average: Over 364 days')).toBe(true);
   });
 
   it('tags each customer with the bucket of its average age, saying it is the average', async () => {
-    const screen = await open(makeStore());
-    const tags = screen.tree.root.findAllByType(ReportCustomerCard).map(card => card.props.status);
+    await open(makeStore());
+    const tokens = getTokens('orange', 'light');
     // Average ages 400, 200, 130 and 50 days.
-    expect(tags).toEqual([
-      { status: 'negative', label: 'Average: Over 364 days' },
-      { status: 'informative', label: 'Average: 121–240 days' },
-      { status: 'informative', label: 'Average: 121–240 days' },
-      { status: 'positive', label: 'Average: 0–120 days' },
+    const tags = screen.getAllByLabelText(/^Average: /);
+    expect(tags.map(contentOf)).toEqual(['Average: Over 364 days', 'Average: 121–240 days', 'Average: 121–240 days', 'Average: 0–120 days']);
+    expect(tags.map(tag => StyleSheet.flatten(tag.props.style)?.backgroundColor)).toEqual([
+      tokens.status.negative.background,
+      tokens.status.informative.background,
+      tokens.status.informative.background,
+      tokens.status.positive.background,
     ]);
   });
 
   it('opens a customer as a route and remembers it; after a restart the sort and that customer are back', async () => {
     const store = makeStore();
-    const screen = await open(store);
-    await screen.press('Sorted by Average age, highest first. Change sort');
-    await screen.press('Customer');
-    await screen.press('A to Z');
-    await screen.press('Close');
+    const view = await open(store);
+    await view.press('Sorted by Average age, highest first. Change sort');
+    await view.press('Customer');
+    await view.press('A to Z');
+    await view.press('Close');
     const byName = ['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods'];
-    expect(screen.customers()).toEqual(byName);
-    expect(screen.texts()).not.toContain('Last opened');
+    expect(view.customers()).toEqual(byName);
+    expect(view.texts()).not.toContain('Last opened');
 
-    await screen.pressStarting('Riverbank Produce, ');
+    await view.pressStarting('Riverbank Produce, ');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/stock-aging', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({ 'stock-aging': { id: 'c1', name: 'Riverbank Produce' } });
 
     // A restart: the screen is gone, the answers in memory are gone, and only the
     // persisted choices come back, read as the app reads them from the phone.
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    await screen.unmount();
     forgetQueries();
     allAging.mockClear();
     const stored = sanitizeReportPrefs(JSON.parse(JSON.stringify(store.getState().reportPrefs)));
@@ -399,151 +415,155 @@ describe('stock aging, every customer', () => {
   });
 
   it('keeps the rows when a refresh fails, and says they are not current', async () => {
-    const screen = await open(makeStore());
+    const view = await open(makeStore());
     allAging.mockResolvedValueOnce({ success: false, message: 'Could not reach the facility' } as never);
-    await screen.refresh();
+    await view.refresh();
     expect(allAging).toHaveBeenCalledTimes(2);
-    expect(screen.customers()).toEqual(DEFAULT_ORDER);
+    expect(view.customers()).toEqual(DEFAULT_ORDER);
     // The service's own words for a failure are not shown; the screen's are (useReportQuery).
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load stock aging. Check your connection and try again."]));
+    expect(view.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load stock aging. Check your connection and try again."]));
   });
 
   it('says what failed and why when the report could not be read', async () => {
     allAging.mockResolvedValue({ success: false, message: 'The facility refused this report.' } as never);
-    const screen = await open(makeStore());
+    const view = await open(makeStore(), 'Try again');
     // Not an access refusal: the screen's own words, not the service's.
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load stock aging", "Couldn't load stock aging. Check your connection and try again.", 'Try again']));
-    expect(screen.texts()).not.toContain('The facility refused this report.');
+    expect(view.texts()).toEqual(expect.arrayContaining(["Couldn't load stock aging", "Couldn't load stock aging. Check your connection and try again.", 'Try again']));
+    expect(view.texts()).not.toContain('The facility refused this report.');
   });
 });
 
 describe('stock aging, one customer', () => {
   it('asks for the customer alone, oldest item first, with the figures of the whole stock', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
+    const view = await open(makeStore());
     expect(customerAging.mock.calls).toEqual([[{ customerId: 'c2' }]]);
     expect(allAging).not.toHaveBeenCalled();
-    expect(screen.items()).toEqual(ITEMS_BY_AGE);
-    expect(screen.status()).toBe('Last updated 10:00 am');
+    expect(view.items()).toEqual(ITEMS_BY_AGE);
+    expect(view.status()).toBe('Last updated 10:00 am');
     // The server's total_items says 6, which counts stock lines (Garlic and Turmeric are on two
     // lines each). The tile counts what the cards below show: 4 items.
     // "Items over 364 days" counts the items with a lot in that bucket: Garlic alone (its 400-day
     // line). The server's by_bucket['364+'].item_count (1) counts lines and happens to agree here;
     // items_over_365_days says 7. The test below has an item with two such lots.
-    expect(screen.items()).toHaveLength(4);
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 4', 'Items over 364 days: 1']));
-    expect(screen.labels()).not.toContain('Items: 6');
+    expect(view.items()).toHaveLength(4);
+    expect(view.labels()).toEqual(expect.arrayContaining(['Items: 4', 'Items over 364 days: 1']));
+    expect(view.labels()).not.toContain('Items: 6');
     // A customer's items are grouped by name (there is no stable item id): the screen says so, once.
-    expect(screen.texts().filter(text => text === 'Items are counted by item name.')).toHaveLength(1);
-    expect(screen.labels().filter(label => label.startsWith('Stock lots') || label.startsWith('Lots over'))).toEqual([]);
+    expect(view.texts().filter(text => text === 'Items are counted by item name.')).toHaveLength(1);
+    expect(view.labels().filter(label => label.startsWith('Stock lots') || label.startsWith('Lots over'))).toEqual([]);
     // The tag on an item gives its oldest line's age, and says so.
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Oldest 400 days', 'Oldest 300 days', 'Oldest 150 days', 'Oldest 30 days']));
+    expect(view.texts()).toEqual(expect.arrayContaining(['Oldest 400 days', 'Oldest 300 days', 'Oldest 150 days', 'Oldest 30 days']));
   });
 
   it('orders the items by age, stock or name, and the other direction reverses them', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
-    await screen.press('Sorted by Age, highest first. Change sort');
-    await screen.press('Stock');
-    expect(screen.items()).toEqual(['Cumin', 'Red chilli', 'Garlic', 'Turmeric']);
-    await screen.press('Item');
+    const view = await open(makeStore());
+    await view.press('Sorted by Age, highest first. Change sort');
+    await view.press('Stock');
+    expect(view.items()).toEqual(['Cumin', 'Red chilli', 'Garlic', 'Turmeric']);
+    await view.press('Item');
     // The direction was kept: Z to A.
-    expect(screen.items()).toEqual(['Turmeric', 'Red chilli', 'Garlic', 'Cumin']);
-    await screen.press('A to Z');
-    expect(screen.items()).toEqual(['Cumin', 'Garlic', 'Red chilli', 'Turmeric']);
-    await screen.press('Age');
-    expect(screen.items()).toEqual(['Red chilli', 'Cumin', 'Turmeric', 'Garlic']);
-    await screen.press('Close');
+    expect(view.items()).toEqual(['Turmeric', 'Red chilli', 'Garlic', 'Cumin']);
+    await view.press('A to Z');
+    expect(view.items()).toEqual(['Cumin', 'Garlic', 'Red chilli', 'Turmeric']);
+    await view.press('Age');
+    expect(view.items()).toEqual(['Red chilli', 'Cumin', 'Turmeric', 'Garlic']);
+    await view.press('Close');
     expect(customerAging).toHaveBeenCalledTimes(1);
   });
 
   it('narrows to the lines of one age bucket, and Clear all brings the rest back with the sort kept', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
-    await screen.press('Sorted by Age, highest first. Change sort');
-    await screen.press('Stock');
-    await screen.press('Close');
+    const view = await open(makeStore());
+    await view.press('Sorted by Age, highest first. Change sort');
+    await view.press('Stock');
+    await view.press('Close');
 
-    await screen.press('Filter by stock age');
-    await screen.press('0–120 days');
+    await view.press('Filter by stock age');
+    await view.press('0–120 days');
     // Garlic keeps only its 90-day line (20 units), Red chilli its one line.
-    expect(screen.items()).toEqual(['Red chilli', 'Garlic']);
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Garlic · Bag, 1 GRN, 20 units, oldest 90 days']));
-    expect(screen.status()).toBe('Showing 2 of 4 · Last updated 10:00 am');
-    expect(screen.has('Stock age: 0–120 days. Change')).toBe(true);
+    expect(view.items()).toEqual(['Red chilli', 'Garlic']);
+    expect(view.labels()).toEqual(expect.arrayContaining(['Garlic · Bag, 1 GRN, 20 units, oldest 90 days']));
+    expect(view.status()).toBe('Showing 2 of 4 · Last updated 10:00 am');
+    expect(view.has('Stock age: 0–120 days. Change')).toBe(true);
 
-    await screen.press('Clear all filters and the search');
-    expect(screen.items()).toEqual(['Cumin', 'Red chilli', 'Garlic', 'Turmeric']);
-    expect(screen.has('Sorted by Stock, highest first. Change sort')).toBe(true);
+    await view.press('Clear all filters and the search');
+    expect(view.items()).toEqual(['Cumin', 'Red chilli', 'Garlic', 'Turmeric']);
+    expect(view.has('Sorted by Stock, highest first. Change sort')).toBe(true);
     expect(customerAging).toHaveBeenCalledTimes(1);
   });
 
   it('searches the item names and the GRN numbers, and names a GRN found inside a closed item', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
-    await screen.search('garlic');
-    expect(screen.items()).toEqual(['Garlic']);
-    expect(screen.labels()).toContain('Garlic · Bag, 2 GRNs, 50 units, oldest 400 days');
+    const view = await open(makeStore());
+    await view.search('garlic');
+    expect(view.items()).toEqual(['Garlic']);
+    expect(view.labels()).toContain('Garlic · Bag, 2 GRNs, 50 units, oldest 400 days');
 
-    await screen.search('a0011');
-    expect(screen.items()).toEqual(['Garlic']);
-    expect(screen.labels()).toContain('Garlic · Bag, 1 GRN, 20 units, oldest 90 days, GRN A0011');
-    expect(screen.bold()).toEqual(['A0011']);
+    await view.search('a0011');
+    expect(view.items()).toEqual(['Garlic']);
+    expect(view.labels()).toContain('Garlic · Bag, 1 GRN, 20 units, oldest 90 days, GRN A0011');
+    expect(view.bold()).toEqual(['A0011']);
 
-    await screen.search('a0030');
-    expect(screen.items()).toEqual(['Turmeric']);
-    expect(screen.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
+    await view.search('a0030');
+    expect(view.items()).toEqual(['Turmeric']);
+    expect(view.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
   });
 
   it('opens an item and each of its lines on its own, two lines of one GRN included, and a line opens its GRN', async () => {
     const animate = jest.spyOn(LayoutAnimation, 'configureNext');
     openGreenValley();
-    const screen = await open(makeStore());
-    expect(screen.lines()).toEqual([]);
+    const view = await open(makeStore());
+    expect(view.lines()).toEqual([]);
 
-    await screen.pressStarting('Turmeric, ');
-    expect(screen.lines()).toEqual(['GRN A0030 · Rack R1', 'GRN A0030 · Rack R2']);
+    await view.pressStarting('Turmeric, ');
+    expect(view.lines()).toEqual(['GRN A0030 · Rack R1', 'GRN A0030 · Rack R2']);
     expect(animate).toHaveBeenLastCalledWith(EXPAND_ANIMATION);
 
     // Only the line pressed opens, though both are on GRN A0030.
-    await screen.pressStarting('GRN A0030 · Rack R2, ');
-    expect(screen.lines()).toEqual(['GRN A0030 · Rack R1', 'GRN A0030 · Rack R2 (open)']);
-    expect(screen.texts().filter(text => text === 'View GRN A0030')).toHaveLength(1);
+    await view.pressStarting('GRN A0030 · Rack R2, ');
+    expect(view.lines()).toEqual(['GRN A0030 · Rack R1', 'GRN A0030 · Rack R2 (open)']);
+    expect(view.texts().filter(text => text === 'View GRN A0030')).toHaveLength(1);
     // The details are key-value cells, which stack at large text.
-    const cells = screen.tree.root.findAllByType(KeyValueCell).map(cell => [cell.props.keyLabel, cell.props.value]);
-    expect(cells).toEqual([
-      ['Received quantity', '25'],
-      ['Package mark', '—'],
-      ['Dispatched', '10 in 2 dispatches'],
-      ['Last dispatch', '01/09/26'],
-      ['Average time between dispatches', '12 days'],
+    const detailKeys = ['Received quantity', 'Package mark', 'Dispatched', 'Last dispatch', 'Average time between dispatches'];
+    const detailValues = ['25', '—', '10 in 2 dispatches', '01/09/26', '12 days'];
+    const shown = view.texts();
+    expect(shown.slice(shown.indexOf('Received quantity')).filter(text => [...detailKeys, ...detailValues].includes(text))).toEqual([
+      'Received quantity', '25', 'Package mark', '—', 'Dispatched', '10 in 2 dispatches', 'Last dispatch', '01/09/26', 'Average time between dispatches', '12 days',
     ]);
     // A screen reader is given the date in words.
-    expect(screen.tree.root.findAllByType(KeyValueCell).find(cell => cell.props.keyLabel === 'Last dispatch')!.props.spokenValue).toBe('1 Sep 2026');
+    expect(view.labels().filter(label => detailKeys.some(key => label.startsWith(`${key}, `)))).toEqual([
+      'Received quantity, 25',
+      'Package mark, —',
+      'Dispatched, 10 in 2 dispatches',
+      'Last dispatch, 1 Sep 2026',
+      'Average time between dispatches, 12 days',
+    ]);
 
-    await screen.pressStarting('GRN A0030 · Rack R1, ');
-    expect(screen.lines()).toEqual(['GRN A0030 · Rack R1 (open)', 'GRN A0030 · Rack R2 (open)']);
-    await screen.pressStarting('GRN A0030 · Rack R2, ');
-    expect(screen.lines()).toEqual(['GRN A0030 · Rack R1 (open)', 'GRN A0030 · Rack R2']);
+    await view.pressStarting('GRN A0030 · Rack R1, ');
+    expect(view.lines()).toEqual(['GRN A0030 · Rack R1 (open)', 'GRN A0030 · Rack R2 (open)']);
+    await view.pressStarting('GRN A0030 · Rack R2, ');
+    expect(view.lines()).toEqual(['GRN A0030 · Rack R1 (open)', 'GRN A0030 · Rack R2']);
 
-    await screen.pressStarting('View GRN A0030');
+    await view.pressStarting('View GRN A0030');
     expect(mockRouterPush).toHaveBeenCalledWith('/grn-details/g3');
 
     // Another item opens without touching this one's lines.
-    await screen.pressStarting('Garlic · Bag, ');
-    expect(screen.lines()).toEqual(['GRN A0010', 'GRN A0011', 'GRN A0030 · Rack R1 (open)', 'GRN A0030 · Rack R2']);
+    await view.pressStarting('Garlic · Bag, ');
+    expect(view.lines()).toEqual(['GRN A0010', 'GRN A0011', 'GRN A0030 · Rack R1 (open)', 'GRN A0030 · Rack R2']);
     animate.mockRestore();
   });
 
   it('asks nothing for a customer account whose route names a customer it is not assigned', async () => {
     mockParams = { customerId: 'c9', customerName: 'Riverbank Produce' };
     const account = { userProfile: { id: 'user-a', role: 'customer', assignedCustomerIds: ['c1'], assignedCustomers: [{ id: 'c1', name: 'Green Valley Traders', active: true }] } };
-    const screen = await open(makeStore(account));
+    const view = await open(makeStore(account), 'No customer linked');
     expect(allAging).not.toHaveBeenCalled();
     expect(customerAging).not.toHaveBeenCalled();
-    expect(screen.texts()).toContain('No customer linked');
-    expect(screen.texts()).not.toContain('Riverbank Produce');
-    expect(screen.has('Try again')).toBe(false);
+    expect(view.texts()).toContain('No customer linked');
+    expect(view.texts()).not.toContain('Riverbank Produce');
+    expect(view.has('Try again')).toBe(false);
   });
 });
 
@@ -565,71 +585,69 @@ describe('stock aging, units and the Items tile', () => {
 
   it('every customer: a customer with a stock of one says "1 unit", one with more says "units"', async () => {
     allAging.mockResolvedValue({ ...answerCustomers, data: { ...answerCustomers.data, by_customer: [customer('c5', 'Single Bag Traders', 50, 1, 0), CUSTOMERS[1]] } } as never);
-    const screen = await open(makeStore());
-    const cards = screen.tree.root.findAllByType(ReportCustomerCard);
-    expect(cards.map(card => [card.props.title, card.props.valueLabel])).toEqual([
-      ['Green Valley Traders', 'units'],
-      ['Single Bag Traders', 'unit'],
-    ]);
-    expect(screen.labels()).toEqual(
+    const view = await open(makeStore());
+    expect(view.customers()).toEqual(['Green Valley Traders', 'Single Bag Traders']);
+    // The word under each figure, in the order of the cards.
+    expect(view.texts().filter(text => text === 'unit' || text === 'units')).toEqual(['units', 'unit']);
+    expect(view.labels()).toEqual(
       expect.arrayContaining(['Single Bag Traders, Average age 50 days, 1 unit, Average: 0–120 days', 'Green Valley Traders, Average age 50 days, 300 units, Average: 0–120 days'])
     );
-    expect(screen.labels().filter(label => label.includes(' 1 units'))).toEqual([]);
+    expect(view.labels().filter(label => label.includes(' 1 units'))).toEqual([]);
   });
 
   it('one customer: the card, the stock label under the figure and the lot line say "1 unit"', async () => {
     openGreenValley();
     customerAging.mockResolvedValue(SEED as never);
-    const screen = await open(makeStore());
-    expect(screen.items()).toEqual(['Seed Item 02', 'Seed Item 01']);
-    expect(screen.labels()).toEqual(
+    const view = await open(makeStore());
+    expect(view.items()).toEqual(['Seed Item 02', 'Seed Item 01']);
+    expect(view.labels()).toEqual(
       expect.arrayContaining(['Seed Item 01 · Bag, 1 GRN, 1 unit, oldest 11 days', 'Seed Item 02 · Bag, 1 GRN, 2 units, oldest 40 days'])
     );
     // The word under each figure, in the order of the cards.
-    expect(screen.texts().filter(text => text === 'unit' || text === 'units')).toEqual(['units', 'unit']);
+    expect(view.texts().filter(text => text === 'unit' || text === 'units')).toEqual(['units', 'unit']);
 
-    await screen.pressStarting('Seed Item 01 · Bag, ');
-    await screen.pressStarting('Seed Item 02 · Bag, ');
+    await view.pressStarting('Seed Item 01 · Bag, ');
+    await view.pressStarting('Seed Item 02 · Bag, ');
     // (A pressable repeats its label on the wrappers React draws around it: each is listed once.)
-    const lots = [...new Set(screen.labels().filter(label => label.startsWith('GRN A000')))];
+    const lots = [...new Set(view.labels().filter(label => label.startsWith('GRN A000')))];
     expect(lots.sort()).toEqual(['GRN A0001, received 7 Sep 2025, 11 days in storage, 1 unit', 'GRN A0002, received 7 Sep 2025, 40 days in storage, 2 units']);
-    expect(screen.labels().filter(label => label.endsWith(', 1 units'))).toEqual([]);
+    expect(view.labels().filter(label => label.endsWith(', 1 units'))).toEqual([]);
   });
 
   it('one customer in Gujarati: the noun does not change, and is written once', async () => {
     setLanguage('gu');
     openGreenValley();
     customerAging.mockResolvedValue(SEED as never);
-    const screen = await open(makeStore());
-    expect(screen.labels()).toEqual(
+    const view = await open(makeStore(), /Seed Item 01/);
+    expect(view.labels()).toEqual(
       expect.arrayContaining([
         'Seed Item 01 · Bag, ૧ આવક પાવતી, ૧ નંગ, સૌથી જૂનો માલ ૧૧ દિવસથી',
         'Seed Item 02 · Bag, ૧ આવક પાવતી, ૨ નંગ, સૌથી જૂનો માલ ૪૦ દિવસથી',
       ])
     );
-    expect(screen.texts().filter(text => text === 'નંગ')).toEqual(['નંગ', 'નંગ']);
-    await screen.pressStarting('Seed Item 01 · Bag, ');
-    expect([...new Set(screen.labels().filter(label => label.startsWith('આવક પાવતી A0001')))]).toEqual(['આવક પાવતી A0001, આવક તા. ૭ સપ્ટે ૨૦૨૫, ૧૧ દિવસથી પડ્યો છે, ૧ નંગ']);
+    expect(view.texts().filter(text => text === 'નંગ')).toEqual(['નંગ', 'નંગ']);
+    await view.pressStarting('Seed Item 01 · Bag, ');
+    expect([...new Set(view.labels().filter(label => label.startsWith('આવક પાવતી A0001')))]).toEqual(['આવક પાવતી A0001, આવક તા. ૭ સપ્ટે ૨૦૨૫, ૧૧ દિવસથી પડ્યો છે, ૧ નંગ']);
   });
 
   it('one customer: the Items tile counts the item cards, whatever the search or the filter leaves', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
+    const view = await open(makeStore());
     // 6 stock lines on 4 items: Garlic and Turmeric are each on two lines.
     expect(answerLines.data.items).toHaveLength(6);
-    expect(screen.items()).toHaveLength(4);
-    expect(screen.labels()).toContain('Items: 4');
+    expect(view.items()).toHaveLength(4);
+    expect(view.labels()).toContain('Items: 4');
 
-    await screen.search('garlic');
-    expect(screen.items()).toEqual(['Garlic']);
-    expect(screen.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
-    expect(screen.labels()).toContain('Items: 4');
+    await view.search('garlic');
+    expect(view.items()).toEqual(['Garlic']);
+    expect(view.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
+    expect(view.labels()).toContain('Items: 4');
 
-    await screen.press('Clear all filters and the search');
-    await screen.press('Filter by stock age');
-    await screen.press('0–120 days');
-    expect(screen.items()).toEqual(['Garlic', 'Red chilli']);
-    expect(screen.labels()).toContain('Items: 4');
+    await view.press('Clear all filters and the search');
+    await view.press('Filter by stock age');
+    await view.press('0–120 days');
+    expect(view.items()).toEqual(['Garlic', 'Red chilli']);
+    expect(view.labels()).toContain('Items: 4');
   });
 
   it('one customer: "Items over 364 days" counts items, so an item with two lots over 364 days counts once, whatever the search or the filter leaves', async () => {
@@ -648,55 +666,55 @@ describe('stock aging, units and the Items tile', () => {
       ...answerLines,
       data: { ...answerLines.data, by_bucket: { ...answerLines.data.by_bucket, '364+': { item_count: 2, total_quantity: 55, total_weight: 0, percentage: 12 } }, items: lots },
     } as never);
-    const screen = await open(makeStore());
-    expect(screen.items()).toEqual(['Garlic', 'Turmeric', 'Cumin', 'Red chilli']);
+    const view = await open(makeStore());
+    expect(view.items()).toEqual(['Garlic', 'Turmeric', 'Cumin', 'Red chilli']);
     // A broken screen shows the server's 2 (lines).
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Items: 4', 'Items over 364 days: 1']));
-    expect(screen.labels()).not.toContain('Items over 364 days: 2');
+    expect(view.labels()).toEqual(expect.arrayContaining(['Items: 4', 'Items over 364 days: 1']));
+    expect(view.labels()).not.toContain('Items over 364 days: 2');
 
     // A search that hides Garlic: the tile is the whole stock's, not what is left (a broken one would say 0).
-    await screen.search('cumin');
-    expect(screen.items()).toEqual(['Cumin']);
-    expect(screen.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
-    expect(screen.labels()).toContain('Items over 364 days: 1');
+    await view.search('cumin');
+    expect(view.items()).toEqual(['Cumin']);
+    expect(view.status()).toBe('Showing 1 of 4 · Last updated 10:00 am');
+    expect(view.labels()).toContain('Items over 364 days: 1');
 
     // So is the stock age filter: 121–240 days leaves Cumin only.
-    await screen.press('Clear all filters and the search');
-    await screen.press('Filter by stock age');
-    await screen.press('121–240 days');
-    expect(screen.items()).toEqual(['Cumin']);
-    expect(screen.labels()).toContain('Items over 364 days: 1');
+    await view.press('Clear all filters and the search');
+    await view.press('Filter by stock age');
+    await view.press('121–240 days');
+    expect(view.items()).toEqual(['Cumin']);
+    expect(view.labels()).toContain('Items over 364 days: 1');
   });
 
   it('every customer: the lots tile is still the server\'s figure, as the list has customers and no items to count', async () => {
-    const screen = await open(makeStore());
-    expect(screen.customers()).toHaveLength(4);
-    expect(screen.labels()).toContain('Stock lots: 14');
+    const view = await open(makeStore());
+    expect(view.customers()).toHaveLength(4);
+    expect(view.labels()).toContain('Stock lots: 14');
   });
 });
 
 const MODES: Mode[] = ['light', 'dark'];
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('stock aging in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
-  const backgrounds = (tree: TestRenderer.ReactTestRenderer) =>
-    tree.root.findAll(node => typeof node.type === 'string').map(node => {
+  const backgrounds = () =>
+    hostTree(screen.root).map(node => {
       const style = typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style;
       return StyleSheet.flatten(style)?.backgroundColor;
     });
 
   it('every customer: rows, bar and figures on theme tokens', async () => {
-    const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
-    expect(backgrounds(screen.tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.status.positive.element, t.status.negative.element]));
-    expect(screen.customers()).toEqual(DEFAULT_ORDER);
+    const view = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.status.positive.element, t.status.negative.element]));
+    expect(view.customers()).toEqual(DEFAULT_ORDER);
   });
 
   it('one customer: an open item and an open line on theme tokens', async () => {
     openGreenValley();
-    const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
-    await screen.pressStarting('Garlic · Bag, ');
-    await screen.pressStarting('GRN A0010, ');
-    expect(backgrounds(screen.tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.negative.background]));
-    expect(screen.lines()).toEqual(['GRN A0010 (open)', 'GRN A0011']);
+    const view = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
+    await view.pressStarting('Garlic · Bag, ');
+    await view.pressStarting('GRN A0010, ');
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.negative.background]));
+    expect(view.lines()).toEqual(['GRN A0010 (open)', 'GRN A0011']);
   });
 });
 
@@ -714,53 +732,50 @@ const NEEDS_UPDATE = "This facility's server needs an update before reports can 
  * 403 is said in an alert and the action stays; a server without report PDFs
  * is said once and the action goes.
  */
-async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
+async function sharesThePdf(view: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
   let answer!: (result: ReportPdfResult) => void;
   makePdf.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
-  await screen.press(label);
-  expect(makePdf.mock.calls).toEqual([[request]]);
+  await view.press(label);
+  await waitFor(() => expect(makePdf.mock.calls).toEqual([[request]]));
   for (const field of ['customer_id', 'from', 'to', 'sort']) {
     if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
   }
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  await waitFor(() => expect(view.control(label)).toBeBusy());
   expect(sharePdf).not.toHaveBeenCalled();
-  await act(async () => {
-    answer({ success: true, pdfUrl: PDF_URL });
-    await settleQueries();
-  });
-  expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  answer({ success: true, pdfUrl: PDF_URL });
+  await waitFor(() => expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]));
+  await waitFor(() => expect(view.control(label)).not.toBeBusy());
   expect(alert).not.toHaveBeenCalled();
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
-  await screen.press(label);
-  expect(alert.mock.calls).toEqual([["Couldn't create the PDF", NOT_AVAILABLE]]);
+  await view.press(label);
+  await waitFor(() => expect(alert.mock.calls).toEqual([["Couldn't create the PDF", NOT_AVAILABLE]]));
   expect(sharePdf).toHaveBeenCalledTimes(1);
-  expect(screen.has(label)).toBe(true);
+  expect(view.has(label)).toBe(true);
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: NEEDS_UPDATE });
-  await screen.press(label);
-  expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]);
-  expect(screen.has(label)).toBe(false);
+  await view.press(label);
+  await waitFor(() => expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]));
+  await waitFor(() => expect(view.has(label)).toBe(false));
 }
 
 describe('stock aging, the report PDF', () => {
   it('every customer: shares the sort on screen as the PDF names it, with no customer and no dates', async () => {
-    const screen = await open(makeStore());
-    await screen.press('Sorted by Average age, highest first. Change sort');
-    await screen.press('Customer');
-    await screen.press('Close');
-    expect(screen.has('Sorted by Customer, Z to A. Change sort')).toBe(true);
-    await sharesThePdf(screen, { report: 'stock-aging', sort: { field: 'customer', order: 'desc' } }, 'Stock_aging_All_customers.pdf');
+    const view = await open(makeStore());
+    await view.press('Sorted by Average age, highest first. Change sort');
+    await view.press('Customer');
+    await view.press('Close');
+    expect(view.has('Sorted by Customer, Z to A. Change sort')).toBe(true);
+    await sharesThePdf(view, { report: 'stock-aging', sort: { field: 'customer', order: 'desc' } }, 'Stock_aging_All_customers.pdf');
   });
 
   it('one customer: shares that customer and the sort on screen, with no dates', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
+    const view = await open(makeStore());
     // The screen's "Age" is the PDF's age column.
-    expect(screen.has('Sorted by Age, highest first. Change sort')).toBe(true);
+    expect(view.has('Sorted by Age, highest first. Change sort')).toBe(true);
     await sharesThePdf(
-      screen,
+      view,
       { report: 'stock-aging', customer_id: 'c2', sort: { field: 'age', order: 'desc' } },
       'Stock_aging_Green_Valley_Traders.pdf'
     );
@@ -772,47 +787,46 @@ describe('stock aging, the report PDF of what the screen shows', () => {
   const answerDialog = (text: string) =>
     act(async () => {
       pressAlertButton(alert, text);
-      await settleQueries();
     });
 
   it('one customer: sends the Stock age choice as the bucket, and none for All', async () => {
     openGreenValley();
     makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
-    const screen = await open(makeStore());
-    await screen.press('Share PDF');
+    const view = await open(makeStore());
+    await view.press('Share PDF');
     expect(makePdf.mock.calls).toEqual([[BASE]]);
 
-    await screen.press('Filter by stock age');
-    await screen.press('Over 364 days');
+    await view.press('Filter by stock age');
+    await view.press('Over 364 days');
     makePdf.mockClear();
-    await screen.press('Share PDF');
+    await view.press('Share PDF');
     // A broken screen sends no bucket, and the PDF lists the stock of every age.
     expect(makePdf.mock.calls).toEqual([[{ ...BASE, bucket: 'over-364' }]]);
 
-    await screen.press('Stock age: Over 364 days. Change');
-    await screen.press('0–120 days');
+    await view.press('Stock age: Over 364 days. Change');
+    await view.press('0–120 days');
     makePdf.mockClear();
-    await screen.press('Share PDF');
+    await view.press('Share PDF');
     expect(makePdf.mock.calls).toEqual([[{ ...BASE, bucket: '0-120' }]]);
-    expect(sharePdf).toHaveBeenLastCalledWith(PDF_URL, 'Stock_aging_Green_Valley_Traders.pdf');
+    await waitFor(() => expect(sharePdf).toHaveBeenLastCalledWith(PDF_URL, 'Stock_aging_Green_Valley_Traders.pdf'));
     expect(alert).not.toHaveBeenCalled();
   });
 
   it('one customer with a search and a stock age: asks first to share without the search, then sends the bucket only', async () => {
     openGreenValley();
     makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
-    const screen = await open(makeStore());
-    await screen.press('Filter by stock age');
-    await screen.press('0–120 days');
-    await screen.search('garlic');
-    expect(screen.items()).toEqual(['Garlic']);
-    await screen.press('Share PDF');
+    const view = await open(makeStore());
+    await view.press('Filter by stock age');
+    await view.press('0–120 days');
+    await view.search('garlic');
+    expect(view.items()).toEqual(['Garlic']);
+    await view.press('Share PDF');
     // The PDF keeps the stock age, so it is not called all the stock (review Step 3 M1).
     expect(alertTexts(alert)).toEqual([
       ['Share without the search?', 'The PDF will list every row your other choices keep, not only the 1 matching "garlic".'],
     ]);
     expect(makePdf).not.toHaveBeenCalled();
     await answerDialog('Share without the search');
-    expect(makePdf.mock.calls).toEqual([[{ ...BASE, bucket: '0-120' }]]);
+    await waitFor(() => expect(makePdf.mock.calls).toEqual([[{ ...BASE, bucket: '0-120' }]]));
   });
 });

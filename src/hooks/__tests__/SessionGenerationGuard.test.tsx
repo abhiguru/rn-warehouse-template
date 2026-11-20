@@ -1,5 +1,4 @@
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { useSessionGenerationGuard } from '../useSessionGenerationGuard';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { getStoredToken } from '@/config/supabaseConfig';
@@ -7,11 +6,7 @@ import { getStoredToken } from '@/config/supabaseConfig';
 jest.mock('@/config/supabaseConfig', () => ({ getStoredToken: jest.fn() }));
 
 type Stored = Awaited<ReturnType<typeof getStoredToken>>;
-
-function Guard({ hasProfile, onGone }: { hasProfile: boolean; onGone: () => void }) {
-  useSessionGenerationGuard(hasProfile, onGone);
-  return null;
-}
+type Props = { hasProfile: boolean; onGone: () => void };
 
 const flush = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
@@ -22,19 +17,15 @@ const deferred = () => {
   return { promise, resolve };
 };
 
-let renderer: ReturnType<typeof create> | undefined;
-const mount = async (hasProfile: boolean, onGone: () => void) => {
-  await act(async () => { renderer = create(<Guard hasProfile={hasProfile} onGone={onGone} />); });
-};
+const mount = (hasProfile: boolean, onGone: () => void) =>
+  renderHook(({ hasProfile: profile, onGone: gone }: Props) => useSessionGenerationGuard(profile, gone), {
+    initialProps: { hasProfile, onGone },
+  });
 const sessionChanged = async () => {
   await act(async () => { advanceSessionGeneration(); await flush(); });
 };
 
 beforeEach(() => { jest.clearAllMocks(); });
-afterEach(async () => {
-  if (renderer) await act(async () => { renderer!.unmount(); });
-  renderer = undefined;
-});
 
 it('ends the session once when a change leaves no credentials behind a mounted profile', async () => {
   jest.mocked(getStoredToken).mockResolvedValue({ isValid: false });
@@ -87,10 +78,9 @@ it('does not fire after the guarded screen unmounts', async () => {
   const read = deferred();
   jest.mocked(getStoredToken).mockReturnValue(read.promise);
   const onGone = jest.fn();
-  await mount(true, onGone);
+  const { unmount } = await mount(true, onGone);
   await sessionChanged();
-  await act(async () => { renderer!.unmount(); });
-  renderer = undefined;
+  await unmount();
   await act(async () => { read.resolve({ isValid: false }); await flush(); });
   expect(onGone).not.toHaveBeenCalled();
 });
@@ -98,13 +88,13 @@ it('does not fire after the guarded screen unmounts', async () => {
 it('re-arms when a new profile mounts after the previous teardown', async () => {
   jest.mocked(getStoredToken).mockResolvedValue({ isValid: false });
   const onGone = jest.fn();
-  await mount(true, onGone);
+  const { rerender } = await mount(true, onGone);
   await sessionChanged();
   expect(onGone).toHaveBeenCalledTimes(1);
-  await act(async () => { renderer!.update(<Guard hasProfile={false} onGone={onGone} />); });
+  await rerender({ hasProfile: false, onGone });
   await sessionChanged();
   expect(onGone).toHaveBeenCalledTimes(1);
-  await act(async () => { renderer!.update(<Guard hasProfile onGone={onGone} />); });
+  await rerender({ hasProfile: true, onGone });
   await sessionChanged();
   expect(onGone).toHaveBeenCalledTimes(2);
 });

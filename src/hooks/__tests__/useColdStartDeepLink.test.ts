@@ -1,6 +1,5 @@
-import React from 'react';
 import { Linking } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
 import { parseDeepLinkUrl, useColdStartDeepLink } from '../useColdStartDeepLink';
@@ -46,6 +45,10 @@ describe('parseDeepLinkUrl', () => {
         'warehousemanager://expo-development-client/?url=http%3A%2F%2Flocalhost%3A18081'
       )
     ).toBeNull();
+  });
+
+  it.each(['?url=x', '#frag'])('ignores the development-client bootstrap URL with %s straight after the name', (tail) => {
+    expect(parseDeepLinkUrl(`warehousemanager://expo-development-client${tail}`)).toBeNull();
   });
 
   it('continues to parse application deep links', () => {
@@ -152,15 +155,16 @@ describe('parseDeepLinkUrl', () => {
   });
 });
 
+const mountHook = async () => {
+  const mounted = await renderHook(() => useColdStartDeepLink(true));
+  await act(async () => { await Promise.resolve(); });
+  return mounted;
+};
+
 describe('useColdStartDeepLink warm links', () => {
   const replace = jest.fn();
-  let renderer: ReactTestRenderer | undefined;
   let urlListener: ((event: { url: string }) => void) | undefined;
 
-  function Harness() {
-    useColdStartDeepLink(true);
-    return null;
-  }
 
   beforeEach(() => {
     replace.mockReset();
@@ -183,18 +187,11 @@ describe('useColdStartDeepLink warm links', () => {
   });
 
   afterEach(() => {
-    if (renderer) {
-      act(() => renderer?.unmount());
-      renderer = undefined;
-    }
     jest.restoreAllMocks();
   });
 
   it('navigates a running authenticated app when a warm link arrives', async () => {
-    await act(async () => {
-      renderer = create(React.createElement(Harness));
-      await Promise.resolve();
-    });
+    await mountHook();
 
     expect(urlListener).toBeDefined();
 
@@ -209,10 +206,7 @@ describe('useColdStartDeepLink warm links', () => {
     // expo-router has pushed the report: the path is shown, with the link's query as its params.
     (usePathname as jest.Mock).mockReturnValue('/reports/stock-aging');
     (useGlobalSearchParams as jest.Mock).mockReturnValue({ customerId: 'customer-17' });
-    await act(async () => {
-      renderer = create(React.createElement(Harness));
-      await Promise.resolve();
-    });
+    await mountHook();
 
     await act(async () => {
       urlListener?.({ url: 'warehousemanager://reports/stock-aging?customerId=customer-17' });
@@ -226,10 +220,7 @@ describe('useColdStartDeepLink warm links', () => {
     ['a `?` inside the fragment', 'warehousemanager://reports/stock-aging#totals?customerId=customer-17'],
   ])('does not open again a link with %s that expo-router has already opened (A26)', async (_name, url) => {
     (usePathname as jest.Mock).mockReturnValue('/reports/stock-aging');
-    await act(async () => {
-      renderer = create(React.createElement(Harness));
-      await Promise.resolve();
-    });
+    await mountHook();
 
     await act(async () => {
       urlListener?.({ url });
@@ -241,10 +232,7 @@ describe('useColdStartDeepLink warm links', () => {
   it('opens a link to the screen shown with another query (another customer)', async () => {
     (usePathname as jest.Mock).mockReturnValue('/reports/stock-aging');
     (useGlobalSearchParams as jest.Mock).mockReturnValue({ customerId: 'customer-5' });
-    await act(async () => {
-      renderer = create(React.createElement(Harness));
-      await Promise.resolve();
-    });
+    await mountHook();
 
     await act(async () => {
       urlListener?.({ url: 'warehousemanager://reports/stock-aging?customerId=customer-17' });
@@ -254,10 +242,7 @@ describe('useColdStartDeepLink warm links', () => {
   });
 
   it('still opens a link with a query whose path is not the one shown', async () => {
-    await act(async () => {
-      renderer = create(React.createElement(Harness));
-      await Promise.resolve();
-    });
+    await mountHook();
 
     await act(async () => {
       urlListener?.({ url: 'warehousemanager://reports/stock-aging?customerId=customer-17' });
@@ -271,10 +256,7 @@ describe('useColdStartDeepLink warm links', () => {
     async (path) => {
       (usePathname as jest.Mock).mockReturnValue(path);
       (useAppSelector as jest.Mock).mockReturnValue({ userProfile: null, isLoading: false });
-      await act(async () => {
-        renderer = create(React.createElement(Harness));
-        await Promise.resolve();
-      });
+      await mountHook();
 
       await act(async () => {
         urlListener?.({ url: 'warehousemanager://login' });
@@ -288,13 +270,8 @@ describe('useColdStartDeepLink warm links', () => {
 
 describe('useColdStartDeepLink cold-start links', () => {
   const replace = jest.fn();
-  let renderer: ReactTestRenderer | undefined;
   const LINK = 'warehousemanager://reports/stock-aging?customerId=customer-17';
 
-  function Harness() {
-    useColdStartDeepLink(true);
-    return null;
-  }
 
   beforeEach(() => {
     replace.mockReset();
@@ -308,10 +285,6 @@ describe('useColdStartDeepLink cold-start links', () => {
   });
 
   afterEach(() => {
-    if (renderer) {
-      act(() => renderer?.unmount());
-      renderer = undefined;
-    }
     jest.restoreAllMocks();
   });
 
@@ -319,15 +292,10 @@ describe('useColdStartDeepLink cold-start links', () => {
   async function startThenSignIn(shownPath: string, link = LINK) {
     jest.spyOn(Linking, 'getInitialURL').mockResolvedValue(link);
     (usePathname as jest.Mock).mockReturnValue(shownPath);
-    await act(async () => {
-      renderer = create(React.createElement(Harness));
-      await Promise.resolve();
-    });
+    const { rerender } = await mountHook();
     (useAppSelector as jest.Mock).mockReturnValue({ userProfile: { id: 'admin-user' }, isLoading: false });
-    await act(async () => {
-      renderer?.update(React.createElement(Harness));
-      await Promise.resolve();
-    });
+    await rerender({});
+    await act(async () => { await Promise.resolve(); });
   }
 
   it('does not open again a link with a query that expo-router has already opened (A26)', async () => {

@@ -4,7 +4,7 @@
  * field, and nothing else changes.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import dispatchFormReducer, { loadDispatchData, updateHeader } from '@/store/slices/dispatchFormSlice';
@@ -70,17 +70,9 @@ function makeStore() {
 }
 
 async function mount(mode: DispatchFormMode, store: ReturnType<typeof makeStore>, dispatchIdParam?: string) {
-  const latest: { current: UseDispatchFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useDispatchForm({ mode, dispatchIdParam });
-    return null;
-  };
   mockStore = store;
-  let tree!: ReturnType<typeof create>;
-  await act(async () => {
-    tree = create(<Harness />);
-  });
-  return { form: () => latest.current!, unmount: () => act(async () => { tree.unmount(); }) };
+  const { result, unmount } = await renderHook(() => useDispatchForm({ mode, dispatchIdParam }));
+  return { form: () => result.current, unmount };
 }
 
 /** Type a number and let the 750 ms debounce and the check finish. */
@@ -153,6 +145,19 @@ describe('dispatch number check', () => {
     await act(async () => { validation = await form().validateCurrentStep(1); });
     expect(validation.isValid).toBe(false);
     expect(validation.errors.disp_no).toMatch(/DD0005/);
+    await unmount();
+  });
+
+  it('drops the answer for a number that was changed while the check was out', async () => {
+    let answer!: (value: { exists: boolean; dispatchId: string; dispNo: string }) => void;
+    (checkDispatchExists as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }));
+    const { form, unmount } = await openEdit();
+
+    await typeNumber(form, 'DD0005');
+    await act(async () => { form().handleDispNoChange('DD0006'); });
+    await act(async () => { answer({ exists: true, dispatchId: OTHER_ID, dispNo: 'DD0005' }); });
+
+    expect(form().validationErrors.disp_no).toBeUndefined();
     await unmount();
   });
 

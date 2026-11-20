@@ -1,6 +1,6 @@
 /** The item chooser counts an item's lots in its packaging: boxes for a Box item, bags otherwise. Names are fictional. */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { GRNItemBottomSheet } from '../GRNItemBottomSheet';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 
@@ -29,22 +29,12 @@ const lot = (id: string, packaging: string, stock: number): GRNDetailItem =>
 it.each([
   ['Box', '105 boxes available'],
   ['Bag', '105 bags available'],
-])('says how many %s lots are available in the packaging word', (packaging, expected) => {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(<GRNItemBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} items={[lot('l1', packaging, 100), lot('l2', packaging, 5)]} />);
-  });
-  const texts = tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
-  expect(texts).toContain(expected);
-  act(() => tree.unmount());
+])('says how many %s lots are available in the packaging word', async (packaging, expected) => {
+  await render(<GRNItemBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} items={[lot('l1', packaging, 100), lot('l2', packaging, 5)]} />);
+  expect(screen.getByText(expected)).toBeOnTheScreen();
 });
 
-it('counts the stock of an item whose lots differ in packaging as units', () => {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(<GRNItemBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} items={[lot('l1', 'Box', 100), lot('l2', 'Bag', 5)]} />);
-  });
-  const texts = tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
-  expect(texts).toContain('105 units available');
-  act(() => tree.unmount());
+it('counts the stock of an item whose lots differ in packaging as units', async () => {
+  await render(<GRNItemBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} items={[lot('l1', 'Box', 100), lot('l2', 'Bag', 5)]} />);
+  expect(screen.getByText('105 units available')).toBeOnTheScreen();
 });

@@ -4,13 +4,13 @@
  * Only the services, the router and the sharing sheet are stand-ins.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { generateStatementPDF } from '@/services/pdf-service';
 import { getCustomerStatement } from '@/services/reporting/statement-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer from '@/store/slices/reportPrefsSlice';
-import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
+import { forgetQueries, makeQueryUpdatesImmediate } from '@/tests/helpers/reportQueries';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import StatementScreen from '../../../../app/reports/statement';
 
@@ -81,7 +81,7 @@ const STATEMENT = {
 };
 
 jest.setTimeout(30_000);
-const mounted: TestRenderer.ReactTestRenderer[] = [];
+
 let restoreQueries: () => void;
 beforeAll(() => { restoreQueries = makeQueryUpdatesImmediate(); });
 afterAll(() => restoreQueries());
@@ -93,29 +93,41 @@ beforeEach(() => {
   jest.mocked(generateStatementPDF).mockResolvedValue({ success: true, pdfUrl: 'https://warehouse.example.test/s.pdf' } as never);
   jest.mocked(downloadAndSharePDF).mockResolvedValue({ success: true } as never);
 });
-afterEach(() => { act(() => mounted.splice(0).forEach(tree => tree.unmount())); });
 
-const shareButtons = (tree: TestRenderer.ReactTestRenderer) =>
-  tree.root.findAll(node => node.props.accessibilityLabel === 'Share PDF' && typeof node.props.onPress === 'function');
+/** The `name` prop of every host element: nothing else finds the mocked icons by their glyph. */
+type JsonNode = NonNullable<ReturnType<typeof screen.toJSON>> | string;
+function iconNames(): unknown[] {
+  const names: unknown[] = [];
+  const walk = (node: JsonNode | JsonNode[] | null) => {
+    if (!node || typeof node === 'string') return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (node.props.name !== undefined) names.push(node.props.name);
+    (node.children ?? []).forEach(walk);
+  };
+  walk(screen.toJSON());
+  return names;
+}
 
 it('offers the shared Share PDF in the header once the figures are on screen, and shares the statement PDF', async () => {
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => { tree = TestRenderer.create(<StatementScreen />); await settleQueries(); });
-  mounted.push(tree);
-  expect(shareButtons(tree).length).toBeGreaterThan(0);
-  expect(tree.root.findAll(node => node.props.name === 'file-pdf-box').length).toBeGreaterThan(0);
+  await render(<StatementScreen />);
+  const share = await screen.findByRole('button', { name: 'Share PDF' });
+  expect(share).toBeOnTheScreen();
+  expect(iconNames()).toContain('file-pdf-box');
   // The old action's own icon is gone.
-  expect(tree.root.findAll(node => node.props.name === 'share-variant')).toEqual([]);
+  expect(iconNames()).not.toContain('share-variant');
 
-  await act(async () => { shareButtons(tree)[0].props.onPress(); await settleQueries(); });
-  expect(generateStatementPDF).toHaveBeenCalledWith('c2');
-  expect(downloadAndSharePDF).toHaveBeenCalledWith('https://warehouse.example.test/s.pdf', 'Statement Green Valley Traders.pdf');
+  await userEvent.setup({ delay: 0 }).press(share);
+  await waitFor(() => expect(generateStatementPDF).toHaveBeenCalledWith('c2'));
+  await waitFor(() => expect(downloadAndSharePDF).toHaveBeenCalledWith('https://warehouse.example.test/s.pdf', 'Statement Green Valley Traders.pdf'));
 });
 
 it('offers no Share PDF while the figures have not come', async () => {
   jest.mocked(getCustomerStatement).mockReturnValue(new Promise(() => undefined) as never);
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => { tree = TestRenderer.create(<StatementScreen />); await settleQueries(); });
-  mounted.push(tree);
-  expect(shareButtons(tree)).toEqual([]);
+  await render(<StatementScreen />);
+  await waitFor(() => expect(getCustomerStatement).toHaveBeenCalled());
+  expect(screen.queryByLabelText('Share PDF')).not.toBeOnTheScreen();
+  expect(screen.queryByRole('button', { name: 'Share PDF' })).not.toBeOnTheScreen();
 });

@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Platform } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { generateDispatchPDF } from '@/services/pdf-service';
@@ -36,13 +36,29 @@ jest.mock('@/hooks/useDispatchForm', () => ({
   }),
 }));
 
-// Children are stand-ins that keep their props, so the test can read and press them.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/DispatchStepIndicator', () => ({
-  DispatchStepIndicator: (props: object) => require('react').createElement('DispatchStepIndicator', props),
-  dispatchSteps: () => [],
+// Dialogs are stand-ins that draw only what the test presses: the dialog (named by its title) with its confirm button,
+// and the success dialog with its Share PDF button. Neither draws anything while it is not visible.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; confirmText?: string; onConfirm: () => void }) => {
+    const { View, Pressable } = require('react-native');
+    return props.visible ? (
+      <View accessible role="alertdialog" accessibilityLabel={props.title}>
+        <Pressable role="button" accessibilityLabel={props.confirmText} onPress={props.onConfirm} />
+      </View>
+    ) : null;
+  },
 }));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean; onSharePDF: () => void }) => {
+    const { View, Pressable } = require('react-native');
+    return props.isVisible ? (
+      <View accessible role="alertdialog" accessibilityLabel="Dispatch created">
+        <Pressable role="button" accessibilityLabel="Share PDF" onPress={props.onSharePDF} />
+      </View>
+    ) : null;
+  },
+}));
+jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
 jest.mock('@/features/dispatch/components/LostAnswerStrip', () => ({ LostAnswerStrip: 'LostAnswerStrip' }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
@@ -67,21 +83,19 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-const submitButton = (tree: ReactTestRenderer) =>
-  tree.root.find((n) => n.props.testID === 'dispatch-review-submit' && typeof n.props.onPress === 'function');
-
 /** Create the dispatch for real (Create, confirm), then press Share PDF on the success dialog. */
 const createAndShare = async (dispNo: string) => {
   mockDispNo = dispNo;
   mockSubmitForm.mockResolvedValue({ success: true, dispatchId: '88888888-2222-4333-8444-555555555555', orderLinesLeft: null, failedPhotos: [] });
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<DispatchReviewStep mode="create" />); });
-  await act(async () => { submitButton(tree).props.onPress(); });
-  await act(async () => { await tree.root.findAllByType('ConfirmDialog' as never)[0].props.onConfirm(); });
-  const success = tree.root.findByType('DocumentSuccessDialog' as never);
-  expect(success.props.isVisible).toBe(true);
-  await act(async () => { await success.props.onSharePDF(); });
-  await act(async () => { tree.unmount(); });
+  const sharedBefore = jest.mocked(downloadAndSharePDF).mock.calls.length;
+  const user = userEvent.setup({ delay: 0 });
+  await render(<DispatchReviewStep mode="create" />);
+  await user.press(screen.getByRole('button', { name: 'Create dispatch' }));
+  const confirm = await screen.findByRole('alertdialog', { name: /^Create dispatch/ });
+  await user.press(within(confirm).getByRole('button', { name: 'Create dispatch' }));
+  await user.press(await screen.findByRole('button', { name: 'Share PDF' }));
+  await waitFor(() => expect(jest.mocked(downloadAndSharePDF).mock.calls.length).toBe(sharedBefore + 1));
+  await screen.unmount();
 };
 
 beforeEach(() => {

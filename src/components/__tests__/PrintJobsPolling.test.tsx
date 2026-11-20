@@ -4,7 +4,7 @@
  * job batch, no reads while closed, and a pull to refresh that joins reads in flight.
  */
 import React, { createRef } from 'react';
-import renderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getPrintJobs, getPrinterStatus, type PrintJob } from '@/services/print-service';
 import PrintJobsBottomSheet, { type PrintJobsBottomSheetRef } from '../PrintJobsBottomSheet';
@@ -85,88 +85,101 @@ const advance = (ms: number) => act(async () => { await jest.advanceTimersByTime
 
 async function openSheet() {
   const ref = createRef<PrintJobsBottomSheetRef>();
-  let tree!: renderer.ReactTestRenderer;
-  act(() => { tree = renderer.create(<PrintJobsBottomSheet ref={ref} />); });
-  act(() => ref.current!.open());
+  await render(<PrintJobsBottomSheet ref={ref} />);
+  await act(async () => { ref.current!.open(); });
   await advance(0);
-  return { tree, ref };
+  return { ref };
 }
 
-const texts = (tree: renderer.ReactTestRenderer) =>
-  tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join(''));
+// The list is the FlatList behind the sheet: it has no role or name, only the pull-to-refresh control it was given.
+type Host = ReturnType<typeof screen.getByRole>;
+const findRefreshList = (node: Host): Host | undefined => {
+  if (node.props.refreshControl) return node;
+  for (const child of node.children) {
+    if (typeof child === 'string') continue;
+    const found = findRefreshList(child as Host);
+    if (found) return found;
+  }
+  return undefined;
+};
 
 // The in-progress tab also asks for jobs the printer did not confirm ('unknown'), so a batch is 3 reads.
 test('while a job prints: 12 status reads and 6 job batches (30 requests) a minute on the in-progress tab', async () => {
   latest = job('j1', 'printing');
   queued = [job('j2', 'queued')];
-  const { tree } = await openSheet();
+  await openSheet();
   await advance(10_000);
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(12);
   expect(jobReads()).toBe(18);
   expect(getJobs).toHaveBeenCalledTimes(30);
-  act(() => tree.unmount());
 });
 
 test('while a job prints: 36 requests a minute on the finished tab (4 reads per batch: completed, failed, cancelled, unconfirmed)', async () => {
+  const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   latest = job('j1', 'printing');
   queued = [];
-  const { tree } = await openSheet();
-  const finished = tree.root.find(n => n.props.accessibilityRole === 'tab' && typeof n.props.onPress === 'function' && n.props.accessibilityState?.selected === false);
-  act(() => finished.props.onPress());
+  await openSheet();
+  await user.press(screen.getByRole('tab', { selected: false }));
   await advance(10_000);
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(12);
   expect(jobReads()).toBe(24);
-  act(() => tree.unmount());
 });
 
 test('idle printer: 2 status reads and 1 job batch (5 requests) a minute', async () => {
   latest = job('j1', 'completed');
   queued = [];
-  const { tree } = await openSheet();
+  await openSheet();
   await advance(60_000);
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(2);
   expect(jobReads()).toBe(3);
-  act(() => tree.unmount());
 });
 
 test('slow reads never overlap, and a pull to refresh joins them', async () => {
   latest = job('j1', 'printing');
   queued = [job('j2', 'queued')];
-  const { tree } = await openSheet();
+  await openSheet();
   // the first reads land and show the list; every later read hangs
   deferAll = true;
   getJobs.mockClear();
   await advance(60_000);
   expect(statusReads()).toBe(1);
   expect(jobReads()).toBe(3);
-  const list = tree.root.findAll(n => typeof n.props.onRefresh === 'function' && 'refreshing' in n.props)[0];
-  act(() => { void list.props.onRefresh(); });
+  const list = findRefreshList(screen.getByTestId('sheet'))!;
+  expect(list).toBeDefined();
+  // The pull gesture cannot be played in a test: call the refresh control's own handler, whose promise is held until the
+  // reads are released below.
+  let refresh!: Promise<void>;
+  await act(async () => {
+    refresh = (list.props.refreshControl as { props: { onRefresh: () => Promise<void> } }).props.onRefresh();
+  });
   await advance(0);
   expect(statusReads()).toBe(1);
   expect(jobReads()).toBe(3);
   deferAll = false;
   await act(async () => { pending.splice(0).forEach(done => done()); });
-  act(() => tree.unmount());
+  await act(async () => { await refresh; });
+  // the refresh joined the reads in flight: it started none of its own
+  expect(statusReads()).toBe(1);
+  expect(jobReads()).toBe(3);
 });
 
 test('closing the sheet stops reads and a late answer does not change it', async () => {
   latest = job('j1', 'printing');
   queued = [job('j2', 'queued')];
   deferAll = true;
-  const { tree, ref } = await openSheet();
-  const before = texts(tree);
-  act(() => ref.current!.close());
+  const { ref } = await openSheet();
+  const before = screen.toJSON();
+  await act(async () => { ref.current!.close(); });
   await act(async () => { pending.splice(0).forEach(done => done()); });
   // the printing status never reached the closed sheet
-  expect(texts(tree)).toEqual(before);
+  expect(screen.toJSON()).toEqual(before);
   getJobs.mockClear();
   await advance(120_000);
   expect(getJobs).toHaveBeenCalledTimes(0);
-  act(() => tree.unmount());
 });

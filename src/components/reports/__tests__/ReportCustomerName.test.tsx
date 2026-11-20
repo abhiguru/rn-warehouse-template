@@ -11,9 +11,9 @@
  * function), the share sheet, the alert and the router are stand-ins.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import type { TestInstance } from 'test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
-import { ReportHeader } from '@/components/reports/ReportHeader';
 import { forgetCustomerNames, trustedCustomerName } from '@/features/reports/customerNames';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
 import { generateReportPDF } from '@/services/pdf-service';
@@ -185,7 +185,6 @@ const storedLastOpened = (customer: { id: string; name: string }): ReportPrefsSt
 
 jest.setTimeout(30_000);
 
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -220,73 +219,74 @@ beforeEach(() => {
   makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
   sharePdf.mockResolvedValue({ success: true });
 });
+/** Answers a test held back: a test that fails before letting them arrive must not leave them open. */
+const held: (() => void)[] = [];
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+  held.splice(0).forEach(release => release());
   jest.useRealTimers();
 });
 
-/** Hold the facility's names back; the returned function lets them arrive. */
+/**
+ * Hold the facility's names back; the returned function lets them arrive. Call it, then wait
+ * for what it changes in the same step (`nameArrives(); await waitFor(...)`).
+ */
 function holdNames() {
   const waiting: (() => void)[] = [];
   mockAnswer = ids => new Promise<NameAnswer>(resolve => { waiting.push(() => resolve(mockTable(ids))); });
-  return () =>
-    act(async () => {
-      waiting.splice(0).forEach(answer => answer());
-      await settleQueries();
-    });
+  const release = () => waiting.splice(0).forEach(answer => answer());
+  held.push(release);
+  return release;
 }
 
+const textOf = (node: TestInstance) => [node.props.children].flat().join('');
+/** Every word the screen draws, in order. */
+const texts = () => screen.container.queryAll(node => node.type === 'Text').map(textOf);
+/** The line under the report's title: the customer's name, or nothing. */
+const subtitle = (): string | undefined => {
+  const title = screen.getAllByRole('header')[0];
+  const next = title.parent!.children.find((child): child is TestInstance => typeof child !== 'string' && child !== title && child.type === 'Text');
+  return next ? textOf(next) : undefined;
+};
+const shown = (name: string) => waitFor(() => expect(subtitle()).toBe(name));
+
+/** Open a report screen and let it settle on what it asked for first. */
 async function open(Screen: React.ComponentType, store: Store) {
   mockStore = store;
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<Screen />);
-    await settleQueries();
-  });
-  mounted.push(tree);
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-  const press = (label: string) =>
-    act(async () => {
-      const found = tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-      if (found.length === 0) throw new Error(`No control labelled "${label}"`);
-      found[0].props.onPress();
-      await settleQueries();
-    });
-  return {
-    texts,
-    press,
-    /** The line under the report's title: the customer's name, or nothing. */
-    subtitle: () => tree.root.findAllByType(ReportHeader)[0].props.subtitle as string | undefined,
-    close: () => act(() => mounted.splice(mounted.indexOf(tree), 1).forEach(shown => shown.unmount())),
-  };
+  await render(<Screen />);
+  return userEvent.setup();
+}
+/** Tap a control by its label and wait for the screen to finish what that started. */
+async function press(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.press(screen.getByRole('button', { name: label }));
 }
 /** The file names the share sheet was given, oldest first. */
 const sharedAs = () => sharePdf.mock.calls.map(([, filename]) => filename);
 /** Every word the screens drew and every file name shared, to show what never appeared. */
-const everythingShown = (...screens: { texts: () => string[] }[]) => [...screens.flatMap(screen => screen.texts()), ...sharedAs()].join('\n');
+const everythingShown = () => [...texts(), ...sharedAs()].join('\n');
+const loaded = async (text: string) => expect(await screen.findByText(text)).toBeOnTheScreen();
 
 describe('GRN activity opened by a link that pairs a customer with another name', () => {
   it("a warehouse role: no name until the facility has answered, then the facility's, on screen and in the PDF's file name", async () => {
     const nameArrives = holdNames();
     mockParams = LINK;
     const store = makeStore();
-    const screen = await open(GRNActivityScreen, store);
+    const user = await open(GRNActivityScreen, store);
 
     // The customer's figures are there, asked for by the id; only the name waits.
+    await loaded('GRN A0010');
     expect(getCustomerGRNActivity).toHaveBeenCalledWith(expect.objectContaining({ customerId: 'c1' }));
-    expect(screen.texts()).toContain('GRN A0010');
     expect(mockNameQuery.mock.calls).toEqual([['customers', 'id, name', 'id', ['c1']]]);
-    expect(screen.subtitle()).toBeUndefined();
+    expect(subtitle()).toBeUndefined();
     // Shared now, the file is named by the id, not by the link.
-    await screen.press('Share PDF');
-    expect(sharedAs()).toEqual(['GRN_activity_c1_2026_06_15_to_2026_10_12.pdf']);
+    await press(user, 'Share PDF');
+    await waitFor(() => expect(sharedAs()).toEqual(['GRN_activity_c1_2026_06_15_to_2026_10_12.pdf']));
 
-    await nameArrives();
-    expect(screen.subtitle()).toBe('Riverbank Produce');
-    await screen.press('Share PDF');
-    expect(sharedAs()[1]).toBe('GRN_activity_Riverbank_Produce_2026_06_15_to_2026_10_12.pdf');
+    nameArrives();
+    await shown('Riverbank Produce');
+    await press(user, 'Share PDF');
+    await waitFor(() => expect(sharedAs()[1]).toBe('GRN_activity_Riverbank_Produce_2026_06_15_to_2026_10_12.pdf'));
 
-    expect(everythingShown(screen)).not.toContain('Other');
+    expect(everythingShown()).not.toContain('Other');
     // A link is not what "Last opened" remembers.
     expect(lastOpened(store)).toEqual({});
     expect(mockNameQuery).toHaveBeenCalledTimes(1);
@@ -295,17 +295,17 @@ describe('GRN activity opened by a link that pairs a customer with another name'
   it('a customer account assigned that customer: the same', async () => {
     const nameArrives = holdNames();
     mockParams = LINK;
-    const screen = await open(GRNActivityScreen, makeStore(CUSTOMER_ACCOUNT));
+    const user = await open(GRNActivityScreen, makeStore(CUSTOMER_ACCOUNT));
+    await loaded('GRN A0010');
     expect(getCustomerGRNActivity).toHaveBeenCalledWith(expect.objectContaining({ customerId: 'c1' }));
     expect(getAllGRNActivity).not.toHaveBeenCalled();
-    expect(screen.texts()).toContain('GRN A0010');
-    expect(screen.subtitle()).toBeUndefined();
+    expect(subtitle()).toBeUndefined();
 
-    await nameArrives();
-    expect(screen.subtitle()).toBe('Riverbank Produce');
-    await screen.press('Share PDF');
-    expect(sharedAs()).toEqual(['GRN_activity_Riverbank_Produce_2026_06_15_to_2026_10_12.pdf']);
-    expect(everythingShown(screen)).not.toContain('Other');
+    nameArrives();
+    await shown('Riverbank Produce');
+    await press(user, 'Share PDF');
+    await waitFor(() => expect(sharedAs()).toEqual(['GRN_activity_Riverbank_Produce_2026_06_15_to_2026_10_12.pdf']));
+    expect(everythingShown()).not.toContain('Other');
   });
 
   it("the PDF's file is named as the function names the customer, even before the screen has the name", async () => {
@@ -316,23 +316,24 @@ describe('GRN activity opened by a link that pairs a customer with another name'
       pdfUrl: PDF_URL,
       document: { type: 'report', report: 'grn-activity', customer: 'Riverbank Produce', rows_count: 1, rows_total: 1, truncated: false, sort: { field: 'date', order: 'desc' } },
     });
-    const screen = await open(GRNActivityScreen, makeStore());
-    expect(screen.subtitle()).toBeUndefined();
-    await screen.press('Share PDF');
-    expect(sharedAs()).toEqual(['GRN_activity_Riverbank_Produce_2026_06_15_to_2026_10_12.pdf']);
+    const user = await open(GRNActivityScreen, makeStore());
+    await loaded('GRN A0010');
+    expect(subtitle()).toBeUndefined();
+    await press(user, 'Share PDF');
+    await waitFor(() => expect(sharedAs()).toEqual(['GRN_activity_Riverbank_Produce_2026_06_15_to_2026_10_12.pdf']));
   });
 
   it('the facility cannot be asked for the name: the report is shown without one, and can still be shared', async () => {
     mockAnswer = () => Promise.reject(new Error('Network request failed'));
     mockParams = LINK;
-    const screen = await open(GRNActivityScreen, makeStore());
+    const user = await open(GRNActivityScreen, makeStore());
+    await loaded('GRN A0010');
     expect(mockNameQuery).toHaveBeenCalledTimes(1);
-    expect(screen.subtitle()).toBeUndefined();
-    expect(screen.texts()).toContain('GRN A0010');
-    expect(screen.texts()).not.toContain("Couldn't load GRN activity. Check your connection and try again.");
-    await screen.press('Share PDF');
-    expect(sharedAs()).toEqual(['GRN_activity_c1_2026_06_15_to_2026_10_12.pdf']);
-    expect(everythingShown(screen)).not.toContain('Other');
+    expect(subtitle()).toBeUndefined();
+    expect(screen.queryByText("Couldn't load GRN activity. Check your connection and try again.")).not.toBeOnTheScreen();
+    await press(user, 'Share PDF');
+    await waitFor(() => expect(sharedAs()).toEqual(['GRN_activity_c1_2026_06_15_to_2026_10_12.pdf']));
+    expect(everythingShown()).not.toContain('Other');
   });
 });
 
@@ -348,14 +349,14 @@ describe('every report with a customer, opened by that link', () => {
   ] as [string, React.ComponentType][])("%s: nothing under the title until the facility has answered, then the facility's name, never the link's", async (_report, Screen) => {
     const nameArrives = holdNames();
     mockParams = LINK;
-    const screen = await open(Screen, makeStore());
-    expect(mockNameQuery.mock.calls).toEqual([['customers', 'id, name', 'id', ['c1']]]);
-    expect(screen.subtitle()).toBeUndefined();
-    expect(screen.texts().join('\n')).not.toContain('Other');
+    await open(Screen, makeStore());
+    await waitFor(() => expect(mockNameQuery.mock.calls).toEqual([['customers', 'id, name', 'id', ['c1']]]));
+    expect(subtitle()).toBeUndefined();
+    expect(texts().join('\n')).not.toContain('Other');
 
-    await nameArrives();
-    expect(screen.subtitle()).toBe('Riverbank Produce');
-    expect(screen.texts().join('\n')).not.toContain('Other');
+    nameArrives();
+    await shown('Riverbank Produce');
+    expect(texts().join('\n')).not.toContain('Other');
     expect(mockNameQuery).toHaveBeenCalledTimes(1);
   });
 });
@@ -363,38 +364,42 @@ describe('every report with a customer, opened by that link', () => {
 describe('GRN activity opened from its customers list', () => {
   it("a row tap: the report shows the row's name at once without asking the facility, and \"Last opened\" keeps that name", async () => {
     const store = makeStore();
-    const list = await open(GRNActivityScreen, store);
-    await list.press('Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 units');
-    expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
+    const user = await open(GRNActivityScreen, store);
+    await loaded('Riverbank Produce');
+    await press(user, 'Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 units');
+    await waitFor(() => expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } }));
+    await screen.unmount();
 
     // The route the tap pushed opens the customer. The facility's names are held back: none is needed.
     holdNames();
     mockParams = mockPush.mock.calls[0][0].params;
-    const report = await open(GRNActivityScreen, store);
-    expect(report.subtitle()).toBe('Riverbank Produce');
+    await open(GRNActivityScreen, store);
+    await shown('Riverbank Produce');
     expect(mockNameQuery).not.toHaveBeenCalled();
   });
 
   it('"Last opened" kept by an earlier version with a link\'s name: shown as kept, not taken for the facility\'s, and put right when opened', async () => {
     const store = makeStore(STAFF, storedLastOpened({ id: 'c1', name: 'Other Company' }));
-    const list = await open(GRNActivityScreen, store);
+    const user = await open(GRNActivityScreen, store);
     // The row says what the phone kept, as it did before.
-    expect(list.texts()).toEqual(expect.arrayContaining(['Last opened', 'Other Company']));
+    expect(await screen.findByText('Last opened')).toBeOnTheScreen();
+    expect(screen.getByText('Other Company')).toBeOnTheScreen();
 
-    await list.press('Last opened: Other Company');
+    await press(user, 'Last opened: Other Company');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Other Company' } });
     expect(trustedCustomerName('c1')).toBe('');
-    await list.close();
+    await screen.unmount();
 
     // The report it opens asks the facility, shows the facility's name, and stores that one.
     const nameArrives = holdNames();
     mockParams = mockPush.mock.calls[0][0].params;
-    const report = await open(GRNActivityScreen, store);
-    expect(report.subtitle()).toBeUndefined();
-    await nameArrives();
-    expect(report.subtitle()).toBe('Riverbank Produce');
-    expect(report.texts()).not.toContain('Other Company');
-    expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
+    await open(GRNActivityScreen, store);
+    await loaded('GRN A0010');
+    expect(subtitle()).toBeUndefined();
+    nameArrives();
+    await shown('Riverbank Produce');
+    expect(screen.queryByText('Other Company')).not.toBeOnTheScreen();
+    await waitFor(() => expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } }));
   });
 });
 
@@ -404,34 +409,33 @@ describe('customer activity opened by a link that pairs a customer with another 
     mockAnswer = () => Promise.reject(new Error('Network request failed'));
     mockParams = LINK;
     const store = makeStore();
-    const screen = await open(CustomerActivityScreen, store);
+    const user = await open(CustomerActivityScreen, store);
+    await shown('Riverbank Produce');
     expect(getCustomerActivityDetail).toHaveBeenCalledWith(expect.objectContaining({ customerId: 'c1' }));
-    expect(screen.subtitle()).toBe('Riverbank Produce');
 
-    await screen.press('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
+    await press(user, 'GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
-    expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } });
+    await waitFor(() => expect(lastOpened(store)).toEqual({ 'grn-activity': { id: 'c1', name: 'Riverbank Produce' } }));
     // The report the card opens has the name at once.
     expect(trustedCustomerName('c1')).toBe('Riverbank Produce');
 
-    await screen.press('Share PDF');
-    expect(sharedAs()).toEqual(['Customer_activity_Riverbank_Produce_2026_06_15_to_2026_10_12.pdf']);
-    expect(everythingShown(screen)).not.toContain('Other');
+    await press(user, 'Share PDF');
+    await waitFor(() => expect(sharedAs()).toEqual(['Customer_activity_Riverbank_Produce_2026_06_15_to_2026_10_12.pdf']));
+    expect(everythingShown()).not.toContain('Other');
   });
 
   it('shows no name while its answer is out, not the link\'s', async () => {
     holdNames();
-    let answer!: (value: unknown) => void;
+    let answer: ((value: unknown) => void) | undefined;
+    held.push(() => answer?.({ success: false, message: 'test over' }));
     jest.mocked(getCustomerActivityDetail).mockImplementation(() => new Promise(resolve => { answer = resolve as (value: unknown) => void; }) as never);
     mockParams = LINK;
-    const screen = await open(CustomerActivityScreen, makeStore());
-    expect(screen.subtitle()).toBeUndefined();
-    expect(screen.texts()).not.toContain('Other Company');
+    await open(CustomerActivityScreen, makeStore());
+    await waitFor(() => expect(getCustomerActivityDetail).toHaveBeenCalled());
+    expect(subtitle()).toBeUndefined();
+    expect(texts()).not.toContain('Other Company');
 
-    await act(async () => {
-      answer({ success: true, message: '', data: DETAIL });
-      await settleQueries();
-    });
-    expect(screen.subtitle()).toBe('Riverbank Produce');
+    answer?.({ success: true, message: '', data: DETAIL });
+    await shown('Riverbank Produce');
   });
 });

@@ -7,7 +7,7 @@
  * without a weight shows no weight.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { setLanguage } from '@/i18n';
@@ -60,16 +60,14 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-const texts = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join('').replace(/\u00A0/g, ' '));
-const labels = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAll((node) => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string').map((node) => node.props.accessibilityLabel as string);
+// The absence checks look at hidden elements too (the old test read every node), so a weight cannot hide in a closed part.
+const hidden = { includeHiddenElements: true };
+const textsMatching = (pattern: RegExp) => screen.queryAllByText(pattern, hidden);
+const labelsMatching = (pattern: RegExp) => screen.queryAllByLabelText(pattern, hidden);
 
-let tree: ReactTestRenderer;
-const render = async (mode: 'create' | 'edit' = 'create') => {
+const show = async (mode: 'create' | 'edit' = 'create') => {
   mockForm.isCreateMode = mode === 'create';
-  await act(async () => { tree = create(<DispatchReviewStep mode={mode} />); });
-  return tree;
+  await render(<DispatchReviewStep mode={mode} />);
 };
 
 beforeEach(() => {
@@ -81,52 +79,57 @@ beforeEach(() => {
     data: { grn: {}, items: [{ id: 'l1', stock: 40 }] },
   } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>);
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   setLanguage('en');
 });
 
 describe.each([['a new dispatch', 'create'], ['an edited dispatch', 'edit']] as const)('the review of %s', (_name, mode) => {
   it('shows the weight of one bag without opening anything, once, and never a total', async () => {
-    await render(mode);
+    await show(mode);
 
     // ITEMS is open when the step opens: the weight is a tag of the line.
-    expect(texts(tree).filter((text) => text === '50 kg each')).toHaveLength(1);
-    expect(texts(tree)).not.toContain('Total weight');
-    expect(texts(tree)).not.toContain('Unit weight');
-    expect(texts(tree)).not.toContain('50 kg');
-    expect(texts(tree).some((text) => /250|total weight|unit weight/i.test(text))).toBe(false);
-    expect(labels(tree).some((label) => /250|total weight|unit weight/i.test(label))).toBe(false);
-    // The details and the table's total row keep their bags.
-    expect(texts(tree)).toEqual(expect.arrayContaining(['I0042', 'GJ01AB1234', 'Asha', 'Total quantity', 'Total']));
+    expect(screen.getAllByText('50 kg each')).toHaveLength(1);
+    expect(textsMatching(/^Total weight$/)).toHaveLength(0);
+    expect(textsMatching(/^Unit weight$/)).toHaveLength(0);
+    expect(textsMatching(/^50 kg$/)).toHaveLength(0);
+    expect(textsMatching(/250|total weight|unit weight/i)).toHaveLength(0);
+    expect(labelsMatching(/250|total weight|unit weight/i)).toHaveLength(0);
+    // The details and the table's total row keep their bags (the details are a closed section: hidden, but there).
+    ['I0042', 'GJ01AB1234', 'Asha', 'Total quantity', 'Total'].forEach((text) => {
+      expect(screen.getAllByText(text, hidden).length).toBeGreaterThan(0);
+    });
     // The line's spoken label has the weight of one bag.
-    expect(labels(tree).some((label) => label.includes('Fictional item 1') && label.includes('50 kg each'))).toBe(true);
+    expect(labelsMatching(/^(?=.*Fictional item 1)(?=.*50 kg each)/)).not.toHaveLength(0);
   });
 
   it.each([[0], [null]])('a lot with no weight (%s) shows no weight tag', async (weight) => {
     mockForm.items = [reviewLine(1, { weight })];
-    await render(mode);
+    await show(mode);
 
-    expect(texts(tree).some((text) => /kg|weight/i.test(text))).toBe(false);
-    expect(labels(tree).some((label) => /kg each|weight/i.test(label))).toBe(false);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Fictional item 1', 'R1']));
+    expect(textsMatching(/kg|weight/i)).toHaveLength(0);
+    expect(labelsMatching(/kg each|weight/i)).toHaveLength(0);
+    ['Fictional item 1', 'R1'].forEach((text) => {
+      expect(screen.getAllByText(text).length).toBeGreaterThan(0);
+    });
   });
 });
 
 it('two items of 5 bags: the total counts 10 bags and still no weight', async () => {
   mockForm.items = [reviewLine(1, { weight: 50 }), reviewLine(2, { weight: 20 })];
-  await render('create');
+  await show('create');
 
-  expect(texts(tree)).toEqual(expect.arrayContaining(['Fictional item 1', 'Fictional item 2', '20 kg each', '50 kg each']));
-  expect(tree.root.findByProps({ testID: 'dispatch-review-items-total' }).props.accessibilityLabel).toContain('10 bags');
-  expect(texts(tree).some((text) => /350|total weight/i.test(text))).toBe(false);
+  ['Fictional item 1', 'Fictional item 2', '20 kg each', '50 kg each'].forEach((text) => {
+    expect(screen.getAllByText(text).length).toBeGreaterThan(0);
+  });
+  expect(screen.getByLabelText(/^Total: .*10 bags/)).toBeOnTheScreen();
+  expect(textsMatching(/350|total weight/i)).toHaveLength(0);
 });
 
 it('in Gujarati the weight of one bag reads દરેક ૫૦ કિલો, with no કુલ વજન', async () => {
   setLanguage('gu');
-  await render('create');
+  await show('create');
 
-  expect(texts(tree).filter((text) => text.includes('દરેક ૫૦ કિલો'))).toHaveLength(1);
-  expect(texts(tree)).not.toContain('કુલ વજન');
-  expect(texts(tree)).not.toContain('એક નંગનું વજન');
+  expect(textsMatching(/દરેક ૫૦ કિલો/)).toHaveLength(1);
+  expect(textsMatching(/^કુલ વજન$/)).toHaveLength(0);
+  expect(textsMatching(/^એક નંગનું વજન$/)).toHaveLength(0);
 });

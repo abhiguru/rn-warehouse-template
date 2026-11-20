@@ -1,6 +1,5 @@
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import BackendTooOldScreen from '../BackendTooOldScreen';
 import { setLanguage, t } from '@/i18n';
 
@@ -13,13 +12,11 @@ jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView
 
 afterEach(() => setLanguage('en'));
 
-it('says the facility\'s server needs an update, in both languages, and Back leaves', () => {
+it('says the facility\'s server needs an update, in both languages, and Back leaves', async () => {
   const onClose = jest.fn();
-  let tree!: ReturnType<typeof create>;
-  act(() => { tree = create(<BackendTooOldScreen onClose={onClose} />); });
-  const texts = () => tree.root.findAllByType(Text).map(n => [n.props.children].flat().join(''));
-  expect(texts()).toContain("This facility's server needs an update");
-  act(() => { tree.root.find(n => n.props.accessibilityLabel === 'Back' && typeof n.props.onPress === 'function').props.onPress(); });
+  await render(<BackendTooOldScreen onClose={onClose} />);
+  expect(screen.getByText("This facility's server needs an update")).toBeOnTheScreen();
+  await userEvent.press(screen.getByRole('button', { name: 'Back' }));
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(t('components.backendTooOld.title', undefined, 'gu')).toBe('આ કોલ્ડ સ્ટોરેજના સર્વરને અપડેટ કરવાની જરૂર છે');
 });

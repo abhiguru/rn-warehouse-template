@@ -7,8 +7,7 @@
  * Months after this one are not drawn at all (SR-11).
  */
 import React from 'react';
-import { Modal } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import type { MonthlyTrendPoint } from '@/types/report.types';
 import { StockTrendChart, chartAxis, trendStockLevels, visibleTrend } from '../StockTrendChart';
 
@@ -36,20 +35,38 @@ const point = (month: string, stock: number): MonthlyTrendPoint => ({
 });
 const TRENDS = [point('2026-08', 120), point('2026-09', 180), point('2026-10', 150)];
 
-function openFullScreen() {
-  let tree!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    tree = TestRenderer.create(<StockTrendChart trends={TRENDS} />);
-  });
-  const modal = () => tree.root.findByType(Modal);
-  expect(modal().props.visible).toBe(false);
-  const card = tree.root.find(
-    node => typeof node.type !== 'string' && typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('Stock level trend. ') && typeof node.props.onPress === 'function'
-  );
-  act(() => card.props.onPress());
-  const opened = modal().props;
-  act(() => tree.unmount());
-  return opened;
+type Json = ReturnType<typeof screen.toJSON>;
+/** The props of every host element of one type (the chart and the Modal are stand-in hosts). */
+function hostProps(type: string): Record<string, any>[] {
+  const found: Record<string, any>[] = [];
+  const walk = (node: Json | string | null): void => {
+    if (!node || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if ((node.type as string) === type) found.push(node.props);
+    node.children?.forEach(walk);
+  };
+  walk(screen.toJSON());
+  return found;
+}
+const lineCharts = () => hostProps('LineChart');
+const HIDDEN = { includeHiddenElements: true } as const;
+const card = () => screen.getByRole('button', { name: /^Stock level trend\. / });
+/** Every text on the screen now. Read before the card is pressed, it is what the card itself draws. */
+const allTexts = () => screen.queryAllByText(/./, HIDDEN).map(node => [node.props.children].flat().join(''));
+const tableRadio = () => screen.getByRole('radio', { name: 'Table of values' });
+/** Each text or spoken label is somewhere on the screen. */
+const showsTexts = (...texts: string[]) => texts.forEach(text => expect(screen.getAllByText(text, HIDDEN).length).toBeGreaterThan(0));
+const showsLabels = (...labels: string[]) => labels.forEach(label => expect(screen.getAllByLabelText(label, HIDDEN).length).toBeGreaterThan(0));
+
+async function openFullScreen() {
+  const user = userEvent.setup({ delay: 0 });
+  await render(<StockTrendChart trends={TRENDS} />);
+  // Closed: the full screen is not drawn (the Modal renders nothing while it is not visible).
+  expect(screen.queryByRole('radio', { name: 'Table of values' })).not.toBeOnTheScreen();
+  await user.press(card());
+  // The full screen is drawn: its Table of values switch is there.
+  expect(tableRadio()).toBeOnTheScreen();
+  return hostProps('Modal')[0];
 }
 
 afterEach(() => {
@@ -57,16 +74,16 @@ afterEach(() => {
 });
 
 describe('stock trend, full screen', () => {
-  it('slides in when motion is not reduced', () => {
+  it('slides in when motion is not reduced', async () => {
     mockReduceMotion = false;
-    const modal = openFullScreen();
+    const modal = await openFullScreen();
     expect(modal.visible).toBe(true);
     expect(modal.animationType).toBe('slide');
   });
 
-  it('fades in when Reduce Motion is on', () => {
+  it('fades in when Reduce Motion is on', async () => {
     mockReduceMotion = true;
-    const modal = openFullScreen();
+    const modal = await openFullScreen();
     expect(modal.visible).toBe(true);
     expect(modal.animationType).toBe('fade');
   });
@@ -81,55 +98,46 @@ describe('stock trend, figures', () => {
   beforeEach(() => onThe(new Date(2026, 10, 15, 10, 0)));
   afterEach(() => jest.useRealTimers());
 
-  function render(trends: MonthlyTrendPoint[]) {
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<StockTrendChart trends={trends} />);
-    });
-    const texts = tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-    const chart = { props: { ...tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0].props } };
-    // The latest and highest figures are on the full screen.
-    const card = tree.root.find(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Stock level trend. '));
-    act(() => card.props.onPress());
-    const labels = tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string);
-    act(() => tree.unmount());
-    return { texts, labels, chart };
+  /** Draws the card, then opens the full screen (the latest and highest figures are on it). */
+  async function draw(trends: MonthlyTrendPoint[]) {
+    const user = userEvent.setup({ delay: 0 });
+    await render(<StockTrendChart trends={trends} />);
+    const chart = { ...lineCharts()[0] };
+    const onCard = allTexts();
+    await user.press(card());
+    return { chart, onCard };
   }
 
-  it('says "Highest 0" when every month was 0, and keeps the axis its own scale', () => {
-    const { texts, labels, chart } = render([point('2026-08', 0), point('2026-09', 0), point('2026-10', 0)]);
-    expect(texts).toContain('Stock went from 0 in Aug 2026 to 0 in Oct 2026. Highest 0.');
-    expect(labels).toContain('Highest 0');
-    expect(labels).not.toContain('Highest 1');
+  it('says "Highest 0" when every month was 0, and keeps the axis its own scale', async () => {
+    const { chart, onCard } = await draw([point('2026-08', 0), point('2026-09', 0), point('2026-10', 0)]);
+    expect(onCard).toContain('Stock went from 0 in Aug 2026 to 0 in Oct 2026. Highest 0.');
+    showsLabels('Highest 0');
+    expect(screen.queryAllByLabelText('Highest 1', HIDDEN)).toEqual([]);
     // The axis still has a scale to draw a flat line on: its smallest step, 100, three times.
-    expect(chart.props.maxValue).toBe(300);
-    expect(chart.props.stepValue).toBe(100);
-    expect(chart.props.noOfSections).toBe(3);
+    expect(chart.maxValue).toBe(300);
+    expect(chart.stepValue).toBe(100);
+    expect(chart.noOfSections).toBe(3);
   });
 
-  it('gives the highest month as it was, and names the axis in units (a trend has no one packaging word)', () => {
-    const { texts, labels, chart } = render(TRENDS);
-    expect(texts).toContain('units');
-    expect(texts).not.toContain('bags');
-    expect(labels).toContain('Highest 180');
+  it('gives the highest month as it was, and names the axis in units (a trend has no one packaging word)', async () => {
+    const { chart, onCard } = await draw(TRENDS);
+    expect(onCard).toContain('units');
+    expect(onCard).not.toContain('bags');
+    showsLabels('Highest 180');
     // At least a fifth above the highest point (216), so its label is not cut at the top.
-    expect(chart.props.maxValue).toBe(300);
+    expect(chart.maxValue).toBe(300);
   });
 
-  it('gives the full-screen chart its own axis of five steps, and both charts room for the larger axis number', () => {
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<StockTrendChart trends={[point('2026-08', 949), point('2026-09', 4460)]} />);
-    });
-    const card = tree.root.find(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Stock level trend. '));
-    act(() => card.props.onPress());
-    const [compact, full] = tree.root.findAll(node => (node.type as unknown) === 'LineChart').map(node => node.props);
+  it('gives the full-screen chart its own axis of five steps, and both charts room for the larger axis number', async () => {
+    const user = userEvent.setup({ delay: 0 });
+    await render(<StockTrendChart trends={[point('2026-08', 949), point('2026-09', 4460)]} />);
+    await user.press(card());
+    const [compact, full] = lineCharts();
     expect([compact.maxValue, compact.stepValue, compact.noOfSections]).toEqual([6000, 2000, 3]);
     expect([full.maxValue, full.stepValue, full.noOfSections]).toEqual([10000, 2000, 5]);
     // "10,000" is the longer axis number: both charts are as wide for it.
     expect(compact.yAxisLabelWidth).toBe(full.yAxisLabelWidth);
     expect(compact.yAxisLabelWidth).toBeGreaterThanOrEqual('10,000'.length * 8);
-    act(() => tree.unmount());
   });
 });
 
@@ -164,126 +172,118 @@ describe('chartAxis', () => {
 describe('stock trend, the month in progress', () => {
   afterEach(() => jest.useRealTimers());
 
-  /** The card, then the full screen as a table: every figure the trend shows or says. */
-  function draw(trends: MonthlyTrendPoint[], currentStock?: number) {
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<StockTrendChart trends={trends} currentStock={currentStock} />);
-    });
-    const texts = tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-    const chart = tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0].props;
+  /** The card, then the full screen as a table: every figure the trend shows or says is then on the screen. */
+  async function draw(trends: MonthlyTrendPoint[], currentStock?: number) {
+    const user = userEvent.setup({ delay: 0 });
+    await render(<StockTrendChart trends={trends} currentStock={currentStock} />);
+    const chart = lineCharts()[0];
     const line = (chart.data as { value: number }[]).map(dot => dot.value);
     const maxValue = chart.maxValue as number;
-    const card = tree.root.find(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Stock level trend. '));
-    const cardLabel = card.props.accessibilityLabel as string;
-    act(() => card.props.onPress());
-    const asTable = tree.root.findAll(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Table of values' && typeof node.props.onPress === 'function')[0];
-    act(() => asTable.props.onPress());
-    const labels = tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string);
-    // The table and the figures under it, as they are written.
-    const tableTexts = tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-    act(() => tree.unmount());
-    return { texts, labels, line, maxValue, cardLabel, tableTexts };
+    const onCard = allTexts();
+    await user.press(card());
+    await user.press(tableRadio());
+    return { line, maxValue, onCard };
   }
+  /** Nothing on the screen, as a text or a spoken label, matches. */
+  const nowhere = (words: RegExp) => {
+    expect(screen.queryAllByText(words, HIDDEN)).toEqual([]);
+    expect(screen.queryAllByLabelText(words, HIDDEN)).toEqual([]);
+  };
 
   // As a phone showed it on 12/10/26: the Stock tile said 4,460, the server's figure for October
   // was 4,360, and the highest month end was 4,444, so "Highest" stood below the tile.
   const TO_OCTOBER = [point('2026-08', 949), point('2026-09', 4444), point('2026-10', 4360)];
   const STOCK_NOW = 4460;
 
-  it('draws the month in progress at the stock now: the line, the summary, Latest, Highest and the table all end at the tile\'s figure', () => {
+  it('draws the month in progress at the stock now: the line, the summary, Latest, Highest and the table all end at the tile\'s figure', async () => {
     onThe(new Date(2026, 9, 12, 10, 0));
-    const { texts, labels, line, maxValue, cardLabel, tableTexts } = draw(TO_OCTOBER, STOCK_NOW);
+    const { line, maxValue, onCard } = await draw(TO_OCTOBER, STOCK_NOW);
     expect(line).toEqual([949, 4444, 4460]);
     expect(maxValue).toBe(6000);
     // September is over and has a month end; October has none yet: its figure is the stock as of today.
     const summary = 'Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,460 as of 12/10/26. Highest 4,460.';
-    expect(texts).toContain(summary);
-    expect(cardLabel).toBe(`Stock level trend. ${summary}`);
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,460', 'Highest 4,460', 'Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460']));
+    expect(onCard).toContain(summary);
+    expect(card()).toHaveAccessibleName(`Stock level trend. ${summary}`);
+    showsLabels('Latest 4,460', 'Highest 4,460', 'Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460');
     // The column says "Stock at month end": October's row says it is not one, and the note under the table too.
-    expect(tableTexts).toEqual(expect.arrayContaining(['Stock at month end', 'as of 12/10/26', 'Oct 2026: as of 12/10/26']));
-    expect(labels).not.toContain('Oct 2026, 4,460');
+    showsTexts('Stock at month end', 'as of 12/10/26', 'Oct 2026: as of 12/10/26');
+    expect(screen.queryAllByLabelText('Oct 2026, 4,460', HIDDEN)).toEqual([]);
     // The server's other figure for the stock now is nowhere: not on the card, not in the table.
-    expect([...texts, ...labels].filter(words => words.includes('4,360'))).toEqual([]);
-    expect(labels).not.toContain('Highest 4,444');
+    nowhere(/4,360/);
+    expect(screen.queryAllByLabelText('Highest 4,444', HIDDEN)).toEqual([]);
   });
 
-  it('draws the table view with the shared DataTable: a heading row of two columns, a row for each point in time order, nothing that sorts', () => {
+  it('draws the table view with the shared DataTable: a heading row of two columns, a row for each point in time order, nothing that sorts', async () => {
+    const user = userEvent.setup({ delay: 0 });
     onThe(new Date(2026, 9, 12, 10, 0));
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<StockTrendChart trends={TO_OCTOBER} currentStock={STOCK_NOW} />);
-    });
-    act(() => tree.root.find(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Stock level trend. ')).props.onPress());
-    act(() => tree.root.findAll(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Table of values' && typeof node.props.onPress === 'function')[0].props.onPress());
-    const host = (id: string | ((value: string) => boolean)) =>
-      tree.root.findAll(node => typeof node.type === 'string' && typeof node.props.testID === 'string' && (typeof id === 'string' ? node.props.testID === id : id(node.props.testID)));
-    expect(host('stock-trend-table')).toHaveLength(1);
-    const rows = host(id => id.startsWith('stock-trend-row-'));
+    await render(<StockTrendChart trends={TO_OCTOBER} currentStock={STOCK_NOW} />);
+    await user.press(card());
+    await user.press(tableRadio());
+    expect(screen.getAllByTestId('stock-trend-table', HIDDEN)).toHaveLength(1);
+    const rows = screen.getAllByTestId(/^stock-trend-row-/, HIDDEN);
     expect(rows.map(row => row.props.testID)).toEqual(['stock-trend-row-2026-08', 'stock-trend-row-2026-09', 'stock-trend-row-2026-10']);
-    expect(rows.map(row => row.props.accessibilityLabel)).toEqual(['Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460']);
+    ['Aug 2026, 949', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460'].forEach((name, index) => expect(rows[index]).toHaveAccessibleName(name));
     // The month and the stock columns, and no heading that sorts.
-    expect(host(id => id.startsWith('stock-trend-table-sort-'))).toHaveLength(0);
-    act(() => tree.unmount());
+    expect(screen.queryAllByTestId(/^stock-trend-table-sort-/, HIDDEN)).toHaveLength(0);
   });
 
-  it('keeps the months that are over as the server sent them: a stock now below them leaves Highest a month end', () => {
+  it('keeps the months that are over as the server sent them: a stock now below them leaves Highest a month end', async () => {
     onThe(new Date(2026, 9, 12, 10, 0));
-    const { texts, labels, line } = draw(TO_OCTOBER, 4300);
+    const { line, onCard } = await draw(TO_OCTOBER, 4300);
     expect(line).toEqual([949, 4444, 4300]);
-    expect(texts).toContain('Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,300 as of 12/10/26. Highest 4,444.');
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,300', 'Highest 4,444', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,300']));
+    expect(onCard).toContain('Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,300 as of 12/10/26. Highest 4,444.');
+    showsLabels('Latest 4,300', 'Highest 4,444', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,300');
   });
 
-  it('changes nothing in a period that ended before this month: its last month has a month end', () => {
+  it('changes nothing in a period that ended before this month: its last month has a month end', async () => {
     onThe(new Date(2026, 9, 12, 10, 0));
-    const { texts, labels, line, tableTexts } = draw([point('2026-07', 949), point('2026-08', 4444), point('2026-09', 4360)], STOCK_NOW);
+    const { line, onCard } = await draw([point('2026-07', 949), point('2026-08', 4444), point('2026-09', 4360)], STOCK_NOW);
     expect(line).toEqual([949, 4444, 4360]);
-    expect(texts).toContain('Stock went from 949 in Jul 2026 to 4,360 in Sep 2026. Highest 4,444.');
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,360', 'Highest 4,444', 'Sep 2026, 4,360']));
+    expect(onCard).toContain('Stock went from 949 in Jul 2026 to 4,360 in Sep 2026. Highest 4,444.');
+    showsLabels('Latest 4,360', 'Highest 4,444', 'Sep 2026, 4,360');
     // Every month has a month end: nothing says "as of".
-    expect([...texts, ...labels, ...tableTexts].filter(words => words.includes('as of'))).toEqual([]);
+    nowhere(/as of/);
   });
 
-  it('keeps the server\'s figure when the screen gives no stock now, still named as of today', () => {
+  it('keeps the server\'s figure when the screen gives no stock now, still named as of today', async () => {
     onThe(new Date(2026, 9, 12, 10, 0));
-    const { texts, labels, line } = draw(TO_OCTOBER);
+    const { line, onCard } = await draw(TO_OCTOBER);
     expect(line).toEqual([949, 4444, 4360]);
-    expect(texts).toContain('Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,360 as of 12/10/26. Highest 4,444.');
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,360', 'Highest 4,444', 'Oct 2026, as of 12 Oct 2026, 4,360']));
+    expect(onCard).toContain('Stock went from 949 in Aug 2026 to 4,444 at the end of Sep 2026, and 4,360 as of 12/10/26. Highest 4,444.');
+    showsLabels('Latest 4,360', 'Highest 4,444', 'Oct 2026, as of 12 Oct 2026, 4,360');
   });
 
-  it('a period inside this month has one point, the stock now', () => {
+  it('a period inside this month has one point, the stock now', async () => {
     onThe(new Date(2026, 9, 12, 10, 0));
-    const { texts, labels, line, cardLabel } = draw([point('2026-10', 4360)], STOCK_NOW);
+    const { line, onCard } = await draw([point('2026-10', 4360)], STOCK_NOW);
     expect(line).toEqual([4460]);
     // Not "Stock at the end of Oct 2026": October has not ended.
-    expect(texts).toContain('Stock as of 12/10/26: 4,460.');
-    expect(texts).not.toContain('Stock at the end of Oct 2026: 4,460.');
-    expect(cardLabel).toBe('Stock level trend. Stock as of 12/10/26: 4,460.');
-    expect(labels).toEqual(expect.arrayContaining(['Latest 4,460', 'Highest 4,460', 'Oct 2026, as of 12 Oct 2026, 4,460']));
+    expect(onCard).toContain('Stock as of 12/10/26: 4,460.');
+    expect(screen.queryAllByText('Stock at the end of Oct 2026: 4,460.', HIDDEN)).toEqual([]);
+    expect(card()).toHaveAccessibleName('Stock level trend. Stock as of 12/10/26: 4,460.');
+    showsLabels('Latest 4,460', 'Highest 4,460', 'Oct 2026, as of 12 Oct 2026, 4,460');
   });
 
-  it('draws no month after this one: a financial year to March shows September and October, not today\'s stock again for the months to come', () => {
+  it('draws no month after this one: a financial year to March shows September and October, not today\'s stock again for the months to come', async () => {
     onThe(new Date(2026, 9, 12, 10, 0));
     const year = [point('2026-09', 4444), point('2026-10', 4360), point('2026-11', 4360), point('2027-03', 4360)];
-    const { texts, labels, line, tableTexts } = draw(year, STOCK_NOW);
+    const { line, onCard } = await draw(year, STOCK_NOW);
     expect(line).toEqual([4444, 4460]);
-    expect(texts).toContain('Stock was 4,444 at the end of Sep 2026, and 4,460 as of 12/10/26.');
-    expect(labels).toEqual(expect.arrayContaining(['Period 2 months', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460']));
-    expect([...texts, ...labels, ...tableTexts].filter(words => /Nov 2026|Mar 2027/.test(words))).toEqual([]);
+    expect(onCard).toContain('Stock was 4,444 at the end of Sep 2026, and 4,460 as of 12/10/26.');
+    showsLabels('Period 2 months', 'Sep 2026, 4,444', 'Oct 2026, as of 12 Oct 2026, 4,460');
+    nowhere(/Nov 2026|Mar 2027/);
   });
 
-  it('takes the month from the calendar in India, whatever the zone of the phone', () => {
+  it('takes the month from the calendar in India, whatever the zone of the phone', async () => {
     // 20:00 UTC on 30/09/26 is 01:30 on 01/10/26 in India: September is over, October is in progress.
     onThe(new Date('2026-09-30T20:00:00Z'));
-    expect(draw(TO_OCTOBER, STOCK_NOW).line).toEqual([949, 4444, 4460]);
+    expect((await draw(TO_OCTOBER, STOCK_NOW)).line).toEqual([949, 4444, 4460]);
+    await screen.unmount();
     jest.useRealTimers();
     // 18:00 UTC on 30/09/26 is 23:30 that day in India: September is still in progress, and October,
     // which has not begun there, is not drawn.
     onThe(new Date('2026-09-30T18:00:00Z'));
-    expect(draw(TO_OCTOBER, STOCK_NOW).line).toEqual([949, 4460]);
+    expect((await draw(TO_OCTOBER, STOCK_NOW)).line).toEqual([949, 4460]);
   });
 
   it('visibleTrend: drops the months after this one, and points at this month when the period has it', () => {

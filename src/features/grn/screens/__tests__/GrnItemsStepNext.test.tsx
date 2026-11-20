@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { Alert } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore, type UnknownAction } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import { GrnItemsStep } from '@/features/grn/screens/GrnItemsStep';
@@ -42,12 +42,52 @@ jest.mock('@/hooks', () => ({
     };
   },
 }));
+// Children are stand-ins that draw what the step hands them (the item form's fields and Save, the saved lines with
+// their Edit and Remove, the bar's Next) and call the real props, so the test taps them.
 jest.mock('@/features/grn/components/HorizontalItemForm', () => ({
-  HorizontalItemForm: require('react').forwardRef((props: object, _ref: unknown) =>
-    require('react').createElement('HorizontalItemForm', props)),
+  HorizontalItemForm: require('react').forwardRef((props: {
+    currentItem: Record<string, unknown>;
+    onFieldChange: (field: string, value: string) => void;
+    onSaveItem: () => unknown;
+  }, _ref: unknown) => {
+    const { Pressable, TextInput, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      ['item_table_id', 'item_name', 'qty', 'rack'].map((field) =>
+        createElement(TextInput, {
+          key: field,
+          accessibilityLabel: field,
+          value: String(props.currentItem[field] ?? ''),
+          onChangeText: (value: string) => props.onFieldChange(field, value),
+        })),
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Save line', onPress: props.onSaveItem })
+    );
+  }),
 }));
-jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({ __esModule: true, default: 'ItemsSummaryBottomSheet' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({
+  __esModule: true,
+  default: (props: { items: { grn_trl_id: string }[]; onEditItem: (item: unknown) => void; onRemoveItem: (id: string) => void }) => {
+    const { Pressable, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      props.items.map((item) => createElement(
+        View,
+        { key: item.grn_trl_id },
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: `Edit ${item.grn_trl_id}`, onPress: () => props.onEditItem(item) }),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: `Remove ${item.grn_trl_id}`, onPress: () => props.onRemoveItem(item.grn_trl_id) })
+      ))
+    );
+  },
+}));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Next', onPress: props.onNext }),
+}));
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: () => null }));
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() },
@@ -86,23 +126,23 @@ const ITEM_ACTIONS: string[] = [addItem.type, updateItem.type, reconcileItems.ty
 const itemActions = () => mockActions.filter((action) => ITEM_ACTIONS.includes(action.type));
 const storedItems = () => mockStore.getState().grnForm.items;
 
-async function render(mode: 'create' | 'edit', lines: GRNItemData[]) {
+const user = userEvent.setup({ delay: 0 });
+
+async function show(mode: 'create' | 'edit', lines: GRNItemData[]) {
   mockMode = mode;
   mockStore = makeStore();
   lines.forEach((item) => mockStore.dispatch(addItem(item)));
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnItemsStep mode={mode} />);
-  });
+  await render(<GrnItemsStep mode={mode} />);
   mockActions.length = 0;
-  return tree;
 }
-const pressNext = (tree: ReactTestRenderer) =>
-  act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
-const form = (tree: ReactTestRenderer) => tree.root.findByType('HorizontalItemForm' as never);
-const sheet = (tree: ReactTestRenderer) => tree.root.findByType('ItemsSummaryBottomSheet' as never);
-const set = (tree: ReactTestRenderer, field: string, value: string) =>
-  act(() => form(tree).props.onFieldChange(field, value));
+const pressNext = () => user.press(screen.getByRole('button', { name: 'Next' }));
+const press = (name: string) => user.press(screen.getByRole('button', { name }));
+/** Replaces what is in the field of the item form with `value` (pasted, so spaces at the ends arrive as typed). */
+const set = async (field: string, value: string) => {
+  const input = screen.getByLabelText(field);
+  await user.clear(input);
+  await user.paste(input, value);
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -118,18 +158,17 @@ describe('GRN items step, Next', () => {
   it.each(['create', 'edit'] as const)('%s: 500 unchanged lines are stored with one action and keep their objects', async (mode) => {
     // In an edit, every seventh line has dispatches (its stock is below its quantity).
     const lines = Array.from({ length: 500 }, (_, n) => line(n, mode === 'edit' && n % 7 === 0 ? { stock: 3 } : {}));
-    const tree = await render(mode, lines);
+    await show(mode, lines);
     const before = storedItems();
     expect(before).toHaveLength(500);
 
-    await pressNext(tree);
+    await pressNext();
 
     expect(itemActions()).toHaveLength(1);
     expect(itemActions()[0].type).toBe(reconcileItems.type);
     expect(storedItems()).toBe(before);
     storedItems().forEach((item, index) => expect(item).toBe(before[index]));
     expect(router.push).toHaveBeenCalledWith(mode === 'edit' ? `/grn-edit/${GRN_ID}/step3` : '/grn-form/step3');
-    await act(async () => { tree.unmount(); });
   });
 
   it('edit: an edited, a deleted and a new line give the same lines as before, with the stock rules', async () => {
@@ -139,23 +178,23 @@ describe('GRN items step, Next', () => {
       line(3),
       line(4, { trl_images: [{ id: 'img-1', fileName: 'a.webp', imageUrl: 'https://example.test/a.webp', uploadStatus: 'completed' }] }),
     ];
-    const tree = await render('edit', lines);
+    await show('edit', lines);
 
     // Edit line 1 (quantity 11 → 15) and save it.
-    await act(async () => { sheet(tree).props.onEditItem(sheet(tree).props.items[0]); });
-    set(tree, 'qty', '15');
-    await act(async () => { await form(tree).props.onSaveItem(); });
+    await press(`Edit ${lineId(1)}`);
+    await set('qty', '15');
+    await press('Save line');
     // Delete line 3.
-    await act(async () => { sheet(tree).props.onRemoveItem(lineId(3)); });
+    await press(`Remove ${lineId(3)}`);
     // Type a new line and go on without saving it.
-    set(tree, 'item_table_id', NEW_ITEM_ID);
-    set(tree, 'item_name', 'Fictional garlic');
-    set(tree, 'qty', '7');
-    set(tree, 'rack', ' R9 ');
+    await set('item_table_id', NEW_ITEM_ID);
+    await set('item_name', 'Fictional garlic');
+    await set('qty', '7');
+    await set('rack', ' R9 ');
     const beforeNext = storedItems();
     mockActions.length = 0;
 
-    await pressNext(tree);
+    await pressNext();
     // "Save this item first?" is asked for the typed line; the answer "Save item" goes on with it.
     const save = jest.mocked(Alert.alert).mock.calls.at(-1)?.[2]?.find((button) => button.text === 'Save item');
     expect(save).toBeDefined();
@@ -176,17 +215,15 @@ describe('GRN items step, Next', () => {
     // "Save item" stores the typed line as the checkmark does, then Next stores the step's lines in one action.
     expect(itemActions().map((action) => action.type)).toEqual([addItem.type, reconcileItems.type]);
     expect(router.push).toHaveBeenCalledWith(`/grn-edit/${GRN_ID}/step3`);
-    await act(async () => { tree.unmount(); });
   });
 
   it('still stops a GRN without lines, and stores nothing', async () => {
-    const tree = await render('create', []);
+    await show('create', []);
 
-    await pressNext(tree);
+    await pressNext();
 
     expect(itemActions()).toHaveLength(0);
     expect(router.push).not.toHaveBeenCalled();
     expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe('Add an item');
-    await act(async () => { tree.unmount(); });
   });
 });

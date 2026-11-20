@@ -2,7 +2,7 @@
  * Order list rows, the order summary bar, quick-add chips and the customer search sheet render in all four themes with token colours.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { MemoizedOrderItem } from '../list-items/MemoizedOrderItem';
 import CustomerOrderSummary from '../CustomerOrderSummary';
@@ -60,56 +60,63 @@ const openOrder = {
 
 async function renderIn(element: React.ReactElement, brand: Brand, mode: Mode) {
   mockState = { ...mockState, theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  return tree;
+  await render(element);
 }
 
-const allText = (tree: ReactTestRenderer) =>
-  tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
-
-const styleList = (style: unknown) => [style].flat(4).filter(Boolean) as Array<Record<string, unknown>>;
-const hasStyle = (tree: ReactTestRenderer, key: string, value: string) =>
-  tree.root.findAll(node => styleList(node.props.style).some(s => s[key] === value)).length > 0;
+type HostNode = NonNullable<typeof screen.root>;
+/**
+ * Icons are drawn as a bare 'Icon' host with no role or text (the vector-icons mock), so they can only be
+ * found by walking the rendered tree.
+ */
+const iconsNamed = (name: string): HostNode[] => {
+  const found: HostNode[] = [];
+  const walk = (node: HostNode) => {
+    if ((node.type as unknown) === 'Icon' && node.props.name === name) found.push(node);
+    for (const child of node.children) if (typeof child !== 'string') walk(child as HostNode);
+  };
+  walk(screen.root as HostNode);
+  return found;
+};
 
 describe.each(THEMES)('order components in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
   it('order row shows a positive Dispatched tag with its icon', async () => {
-    const tree = await renderIn(<MemoizedOrderItem order={dispatchedOrder} onPress={jest.fn()} />, brand, mode);
-    expect(allText(tree)).toContain('Dispatched');
-    expect(hasStyle(tree, 'backgroundColor', t.status.positive.background)).toBe(true);
-    expect(tree.root.findAll(node => node.props.name === 'check-circle' && node.props.color === t.status.positive.text).length).toBe(1);
-    expect(hasStyle(tree, 'backgroundColor', t.surface.card)).toBe(true);
-    await act(async () => tree.unmount());
+    await renderIn(<MemoizedOrderItem order={dispatchedOrder} onPress={jest.fn()} />, brand, mode);
+    expect(screen.getByText('Dispatched')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Dispatched')).toHaveStyle({ backgroundColor: t.status.positive.background });
+    const icons = iconsNamed('check-circle');
+    expect(icons).toHaveLength(1);
+    expect(icons[0].props.color).toBe(t.status.positive.text);
+    expect(screen.getByRole('button')).toHaveStyle({ backgroundColor: t.surface.card });
   });
 
   it('summary bar names its numbers and sits on a card surface', async () => {
-    const tree = await renderIn(<CustomerOrderSummary order={openOrder} />, brand, mode);
-    const text = allText(tree);
-    expect(text).toContain('1 item');
-    expect(text).toContain('1 unit');
-    expect(hasStyle(tree, 'backgroundColor', t.surface.card)).toBe(true);
-    await act(async () => tree.unmount());
+    await renderIn(<CustomerOrderSummary order={openOrder} />, brand, mode);
+    expect(screen.getByText('1 item')).toBeOnTheScreen();
+    expect(screen.getByText('1 unit')).toBeOnTheScreen();
+    expect(screen.root).toHaveStyle({ backgroundColor: t.surface.card });
   });
 
   it('quick-add chips use brand.subtle with brand.tint text and mark the selection', async () => {
-    const tree = await renderIn(
+    await renderIn(
       <RecentItemsQuickAdd customerId="fictional-customer" onItemSelected={jest.fn()} selectedItemName="Onions"
         allItems={[{ id: 'i-1', name: 'Onions' }, { id: 'i-2', name: 'Potatoes' }]} />,
       brand, mode,
     );
-    expect(hasStyle(tree, 'backgroundColor', t.brand.subtle)).toBe(true);
-    expect(hasStyle(tree, 'color', t.brand.tint)).toBe(true);
-    expect(tree.root.findAll(node => node.props.name === 'check').length).toBe(1);
-    await act(async () => tree.unmount());
+    // The chip that is not selected has the plain subtle fill; the selected one the stronger fill and the check.
+    expect(screen.getByRole('button', { name: /Potatoes/ })).toHaveStyle({ backgroundColor: t.brand.subtle });
+    expect(screen.getByRole('button', { name: /Onions/ })).toHaveStyle({ backgroundColor: t.brand.subtleStrong });
+    expect(screen.getByText('Potatoes · Bag')).toHaveStyle({ color: t.brand.tint });
+    expect(screen.getByRole('button', { name: /Onions/, selected: true })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: /Potatoes/, selected: false })).toBeOnTheScreen();
+    expect(iconsNamed('check')).toHaveLength(1);
   });
 
   it('customer search sheet uses the sheet surface and a labelled close button', async () => {
-    const tree = await renderIn(<CustomerSearchBottomSheet onSelect={jest.fn()} />, brand, mode);
-    expect(hasStyle(tree, 'backgroundColor', t.surface.sheet)).toBe(true);
-    expect(allText(tree)).toContain('Select customer');
-    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Close').length).toBeGreaterThan(0);
-    await act(async () => tree.unmount());
+    await renderIn(<CustomerSearchBottomSheet onSelect={jest.fn()} />, brand, mode);
+    expect(screen.getByTestId('sheet')).toHaveStyle({ backgroundColor: t.surface.sheet });
+    expect(screen.getByText('Select customer')).toBeOnTheScreen();
+    expect(screen.getAllByLabelText('Close').length).toBeGreaterThan(0);
   });
 });

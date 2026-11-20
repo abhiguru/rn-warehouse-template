@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { DispatchHeroHeader } from '@/components/dispatch-details/DispatchHeroHeader';
 import { DispatchGRNsTab } from '@/components/dispatch-details/DispatchGRNsTab';
@@ -26,21 +26,31 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
 
-function renderIn(brand: string, mode: Mode, element: React.ReactElement) {
+// One tree is on screen at a time: the one before is taken down when the next is drawn.
+let current: { unmount: () => Promise<void> | void } | undefined;
+async function renderIn(brand: string, mode: Mode, element: React.ReactElement) {
+  await current?.unmount();
   mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
+  current = await render(element);
 }
 
+type Json = { type: string; props: Record<string, unknown>; children: (Json | string)[] | null };
+
 // The open row's accent bar (table.accent) is the one brand-coloured fill a table may draw.
-function backgrounds(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(node => typeof node.type === 'string' && node.props.testID !== 'table-open-bar')
-    .map(node => StyleSheet.flatten(node.props.style)?.backgroundColor)
-    .filter((c): c is string => typeof c === 'string');
+// A fill has no role or text: every host element of the rendered tree is read for its background.
+function backgrounds(): string[] {
+  const out: string[] = [];
+  const walk = (node: Json | string | null | (Json | string)[]) => {
+    if (node === null || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node.props.testID !== 'table-open-bar') {
+      const color = StyleSheet.flatten(node.props.style as never)?.backgroundColor;
+      if (typeof color === 'string') out.push(color);
+    }
+    node.children?.forEach(walk);
+  };
+  walk(screen.toJSON() as unknown as Json | Json[] | null);
+  return out;
 }
 
 const item = {
@@ -55,43 +65,46 @@ const item = {
   package_mark: 'PM',
 };
 
+afterEach(() => {
+  current = undefined;
+});
+
 describe.each(THEMES)('%s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('renders DispatchHeroHeader on surface.card with the number as header', () => {
-    const tree = renderIn(
+  it('renders DispatchHeroHeader on surface.card with the number as header', async () => {
+    await renderIn(
       brand,
       mode,
       <DispatchHeroHeader disp_no="D42" date="2026-10-09" total_items={2} total_quantity={7} customer_name="Patel" />
     );
-    const bgs = backgrounds(tree);
+    const bgs = backgrounds();
     expect(bgs).toContain(t.surface.card);
     expect(bgs).not.toContain(t.brand.fill);
-    expect(tree.root.findByProps({ accessibilityRole: 'header' }).props.children).toBe('D42');
+    expect(screen.getByRole('header')).toHaveTextContent('D42');
   });
 
-  it('renders the three tables as token cards on background.base, with the link in brand.tint', () => {
-    const items = renderIn(brand, mode, <DispatchItemsTab items={[item]} onViewGRN={jest.fn()} />);
-    expect(backgrounds(items)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(backgrounds(items)).not.toContain(t.brand.fill);
-    const grnNumber = items.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === '311/10')[0];
-    expect(StyleSheet.flatten(grnNumber.props.style).color).toBe(t.brand.tint);
+  it('renders the three tables as token cards on background.base, with the link in brand.tint', async () => {
+    await renderIn(brand, mode, <DispatchItemsTab items={[item]} onViewGRN={jest.fn()} />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds()).not.toContain(t.brand.fill);
+    expect(StyleSheet.flatten(screen.getByText('311/10', { includeHiddenElements: true }).props.style).color).toBe(t.brand.tint);
 
-    const grns = renderIn(brand, mode, <DispatchGRNsTab items={[item]} onViewGRN={jest.fn()} />);
-    expect(backgrounds(grns)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(backgrounds(grns)).not.toContain(t.brand.fill);
+    await renderIn(brand, mode, <DispatchGRNsTab items={[item]} onViewGRN={jest.fn()} />);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds()).not.toContain(t.brand.fill);
 
-    const invoices = renderIn(
+    await renderIn(
       brand,
       mode,
       <DispatchInvoicesTab
         invoices={{ detailed: true, count: 1, total: 1906, rows: [{ key: 'v1', invoice_id: 'v1', invoice_no: 42, invoice_date: '2026-10-09', total: 1906 }] }}
       />
     );
-    expect(backgrounds(invoices)).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
-    expect(backgrounds(invoices)).not.toContain(t.brand.fill);
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card]));
+    expect(backgrounds()).not.toContain(t.brand.fill);
 
-    const empty = renderIn(brand, mode, <DispatchGRNsTab items={[]} />);
-    expect(empty.root.findByProps({ children: 'No GRNs for this dispatch' })).toBeTruthy();
+    await renderIn(brand, mode, <DispatchGRNsTab items={[]} />);
+    expect(screen.getByText('No GRNs for this dispatch')).toBeOnTheScreen();
   });
 });

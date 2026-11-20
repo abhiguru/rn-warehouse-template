@@ -12,7 +12,7 @@
  */
 import React from 'react';
 import { Keyboard, PixelRatio, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, type RenderResult } from '@testing-library/react-native';
 import { space } from '@/theme/tokens';
 import { useKeyboardCoverLift } from '../useKeyboardCoverLift';
 import { FIELD_BLOCK_ID, useRevealFocusedField, type KeyboardRevealTarget } from '../useRevealFocusedField';
@@ -38,13 +38,13 @@ const scrollRef: { current: KeyboardRevealTarget; userScrolled: boolean; onScrol
 };
 let barTop: number;
 const barRef = { current: { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, barTop, 1080, 100) } };
-let tree: ReactTestRenderer | undefined;
+let tree: RenderResult | undefined;
 
 function Harness() {
   useRevealFocusedField(barRef as never, scrollRef, true, 1);
   return null;
 }
-const mount = async () => { await act(async () => { tree = create(<Harness />); }); };
+const mount = async () => { tree = await render(<Harness />); };
 const tick = (ms = 150) => act(async () => { jest.advanceTimersByTime(ms); });
 
 function node(top: number, height: number, id?: string): FakeNode {
@@ -73,7 +73,6 @@ beforeEach(() => {
   jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1);
 });
 afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
   tree = undefined;
   jest.clearAllTimers();
   jest.useRealTimers();
@@ -185,7 +184,7 @@ describe('a bar that lifts after the check found the block in place (the real us
     const block = node(input.top, BOX_HEIGHT + 30, FIELD_BLOCK_ID);
     input.parentElement = block;
     focused = input;
-    await act(async () => { tree = create(<BarHarness />); });
+    tree = await render(<BarHarness />);
     // The keyboard shows, its top edge below the bar: no lift, and the block (bottom 1010 + space.sm) fits.
     await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 1300 } }); });
     expect(currentLift).toBe(0);

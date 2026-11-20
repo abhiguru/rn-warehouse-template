@@ -9,7 +9,7 @@
  * login, and never promises to erase the phone's preferences.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render as renderScreen, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { signOutPhoneWithMessages, useAccountActions } from '../useAccountActions';
 import { leaveFacility } from '@/store/operatorSwitch';
@@ -66,27 +66,24 @@ jest.mock('@/store/slices/authSlice', () => ({
 
 type Hook = ReturnType<typeof useAccountActions>;
 let hook: Hook;
-let tree: ReactTestRenderer | undefined;
 function Probe() {
   hook = useAccountActions();
   return null;
 }
 async function render() {
-  await act(async () => {
-    tree = create(<Probe />);
-  });
+  await renderScreen(<Probe />);
 }
 const alerts = () => jest.mocked(showAlert).mock.calls;
 const ids = () => hook.actions.map(action => action.id);
 async function confirmAction(id: Hook['actions'][number]['id']) {
-  act(() => hook.request(id));
+  await act(() => hook.request(id));
   expect(hook.dialog.visible).toBe(true);
   await act(async () => hook.dialog.onConfirm());
 }
 async function deleteWith(number: string) {
-  act(() => hook.deletion.open());
-  act(() => hook.deletion.dialog.onConfirm()); // warning → number
-  act(() => hook.deletion.dialog.field!.onChangeText(number));
+  await act(() => hook.deletion.open());
+  await act(() => hook.deletion.dialog.onConfirm()); // warning → number
+  await act(() => hook.deletion.dialog.field!.onChangeText(number));
   await act(async () => hook.deletion.dialog.onConfirm());
 }
 
@@ -102,8 +99,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   setLanguage('en');
-  if (tree) act(() => tree!.unmount());
-  tree = undefined;
 });
 
 describe('without central login', () => {
@@ -116,7 +111,7 @@ describe('without central login', () => {
     expect(hook.mode).toBe('legacy');
     expect(ids()).toEqual(['signOut']);
     expect(hook.actions[0]).toMatchObject({ label: 'Sign out', subtitle: 'Sign out of this facility on this phone.', destructive: false });
-    act(() => hook.request('signOut'));
+    await act(() => hook.request('signOut'));
     expect(hook.dialog).toMatchObject({
       visible: true,
       title: 'Sign out?',
@@ -142,7 +137,7 @@ describe('without central login', () => {
 
   it('does not offer the central actions', async () => {
     await render();
-    act(() => hook.request('signOutPhone'));
+    await act(() => hook.request('signOutPhone'));
     expect(hook.dialog.visible).toBe(false);
   });
 });
@@ -167,7 +162,7 @@ describe('central login, signed in to the association', () => {
 
   it('"Leave this facility" asks, then leaves through the facility cleanup only; no screen is pushed', async () => {
     await render();
-    act(() => hook.request('leaveFacility'));
+    await act(() => hook.request('leaveFacility'));
     expect(hook.dialog).toMatchObject({
       visible: true,
       title: 'Leave North Cold Store?',
@@ -209,14 +204,14 @@ describe('central login, signed in to the association', () => {
     let finish!: (value: 'left') => void;
     jest.mocked(leaveFacility).mockReturnValue(new Promise(resolve => { finish = resolve; }));
     await render();
-    act(() => hook.request('leaveFacility'));
+    await act(() => hook.request('leaveFacility'));
     expect(hook.dialog.busy).toBe(false);
-    act(() => { hook.dialog.onConfirm(); });
+    await act(() => { hook.dialog.onConfirm(); });
     expect(hook.dialog.busy).toBe(true);
-    act(() => hook.dialog.onCancel());
+    await act(() => hook.dialog.onCancel());
     expect(hook.dialog.visible).toBe(true);
     // A second tap while it runs does not start a second leave.
-    act(() => { hook.dialog.onConfirm(); });
+    await act(() => { hook.dialog.onConfirm(); });
     expect(leaveFacility).toHaveBeenCalledTimes(1);
     await act(async () => finish('left'));
     expect(hook.dialog.busy).toBe(false);
@@ -230,9 +225,9 @@ describe('central login, signed in to the association', () => {
     jest.mocked(leaveFacility).mockReturnValue(new Promise(() => {}));
     jest.mocked(signOutEverywhere).mockReturnValue(new Promise(() => {}));
     await render();
-    act(() => hook.request(id));
+    await act(() => hook.request(id));
     const confirm = hook.dialog.onConfirm;
-    act(() => {
+    await act(() => {
       confirm();
       confirm();
     });
@@ -241,7 +236,7 @@ describe('central login, signed in to the association', () => {
 
   it('"Sign out of this phone" ends the association sign-in and the facility', async () => {
     await render();
-    act(() => hook.request('signOutPhone'));
+    await act(() => hook.request('signOutPhone'));
     expect(hook.dialog).toMatchObject({
       title: 'Sign out of this phone?',
       message:
@@ -289,7 +284,7 @@ describe('central login without the association sign-in', () => {
     await render();
     expect(hook.mode).toBe('centralSignedOut');
     expect(ids()).toEqual(['signOut']);
-    act(() => hook.request('signOut'));
+    await act(() => hook.request('signOut'));
     expect(hook.dialog.message).toBe("You'll need your mobile number and a one-time code to sign in again.");
     await act(async () => hook.dialog.onConfirm());
     expect(leaveFacility).toHaveBeenCalledWith(mockDispatch);
@@ -314,7 +309,7 @@ describe('deleting the account', () => {
     await render();
     expect(hook.deletion.label).toBe('Delete my account at North Cold Store');
     expect(hook.deletion.subtitle).toBe('Removes your profile and sign-in here. Records, your association sign-in and other facilities stay.');
-    act(() => hook.deletion.open());
+    await act(() => hook.deletion.open());
     const warning = hook.deletion.dialog;
     expect(warning.visible).toBe(true);
     expect(warning.field).toBeUndefined();
@@ -322,7 +317,7 @@ describe('deleting the account', () => {
     expect(warning.message.match(/North Cold Store/g)).toHaveLength(2);
     expect(warning.message).toContain('Your association sign-in and your other facilities stay');
     expect(warning.message).toContain('Appearance, language and report preferences on this phone stay.');
-    act(() => warning.onConfirm());
+    await act(() => warning.onConfirm());
     const confirm = hook.deletion.dialog;
     expect(confirm.title).toBe('Confirm deletion at North Cold Store');
     expect(confirm.message).toContain('North Cold Store');
@@ -336,13 +331,12 @@ describe('deleting the account', () => {
       for (const language of ['en', 'gu'] as const) {
         setLanguage(language);
         await render();
-        act(() => hook.deletion.open());
+        await act(() => hook.deletion.open());
         const texts = [hook.deletion.label, hook.deletion.subtitle, hook.deletion.dialog.title, hook.deletion.dialog.message];
-        act(() => hook.deletion.dialog.onConfirm());
+        await act(() => hook.deletion.dialog.onConfirm());
         texts.push(hook.deletion.dialog.title, hook.deletion.dialog.message);
         expect(texts.join(' ')).not.toMatch(/erase|permanent|કાયમી/i);
-        act(() => tree!.unmount());
-        tree = undefined;
+        await screen.unmount();
       }
     }
   });
@@ -350,10 +344,10 @@ describe('deleting the account', () => {
   it('central login, in Gujarati: both steps name the facility and the association sign-in', async () => {
     setLanguage('gu');
     await render();
-    act(() => hook.deletion.open());
+    await act(() => hook.deletion.open());
     expect(hook.deletion.dialog.message).toContain('North Cold Store');
     expect(hook.deletion.dialog.message).toContain('ઍસોસિએશનનું તમારું લૉગિન');
-    act(() => hook.deletion.dialog.onConfirm());
+    await act(() => hook.deletion.dialog.onConfirm());
     expect(hook.deletion.dialog.title).toContain('North Cold Store');
     expect(hook.deletion.dialog.message).toContain('ઍસોસિએશનનું તમારું લૉગિન');
   });
@@ -366,7 +360,7 @@ describe('deleting the account', () => {
     expect(hook.deletion.dialog.field?.value).toBe('9000000002');
     expect(deleteFacilityAccount).not.toHaveBeenCalled();
     // Typing again clears the error.
-    act(() => hook.deletion.dialog.field!.onChangeText('90000'));
+    await act(() => hook.deletion.dialog.field!.onChangeText('90000'));
     expect(hook.deletion.dialog.field?.error).toBeNull();
   });
 
@@ -383,7 +377,7 @@ describe('deleting the account', () => {
     await render();
     expect(hook.deletion.available).toBe(false);
     // Nothing can open it or delete through it.
-    act(() => hook.deletion.open());
+    await act(() => hook.deletion.open());
     expect(hook.deletion.dialog.visible).toBe(false);
     await act(async () => hook.deletion.deleteAccount());
     expect(deleteFacilityAccount).not.toHaveBeenCalled();
@@ -402,11 +396,11 @@ describe('deleting the account', () => {
     let finishLegacy!: () => void;
     if (!central) mockDispatch.mockImplementationOnce(() => ({ unwrap: () => new Promise<void>(resolve => { finishLegacy = resolve; }) }));
     await render();
-    act(() => hook.deletion.open());
-    act(() => hook.deletion.dialog.onConfirm()); // warning → number
-    act(() => hook.deletion.dialog.field!.onChangeText('9000000001'));
+    await act(() => hook.deletion.open());
+    await act(() => hook.deletion.dialog.onConfirm()); // warning → number
+    await act(() => hook.deletion.dialog.field!.onChangeText('9000000001'));
     const confirm = hook.deletion.dialog.onConfirm;
-    act(() => {
+    await act(() => {
       confirm();
       confirm();
     });
@@ -429,11 +423,11 @@ describe('deleting the account', () => {
     await render();
     expect(hook.deletion.label).toBe('Delete my account');
     expect(hook.deletion.subtitle).toBe('Removes your profile and sign-in. Records are kept.');
-    act(() => hook.deletion.open());
+    await act(() => hook.deletion.open());
     expect(hook.deletion.dialog.title).toBe('Delete your account?');
     expect(hook.deletion.dialog.message).toContain('Appearance, language and report preferences on this phone stay.');
     expect(hook.deletion.dialog.message).not.toContain('App preferences');
-    act(() => hook.deletion.dialog.onCancel());
+    await act(() => hook.deletion.dialog.onCancel());
     expect(hook.deletion.dialog.visible).toBe(false);
     await deleteWith('9000000001');
     expect(deleteAccount).toHaveBeenCalledTimes(1);

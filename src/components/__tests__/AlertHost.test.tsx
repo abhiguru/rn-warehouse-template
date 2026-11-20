@@ -1,12 +1,12 @@
 import React from 'react';
-import { Alert, Modal, Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import * as RN from 'react-native';
 const mockFindNodeHandle = jest.fn();
 jest.mock('react-native', () => {
   const actual = jest.requireActual('react-native');
   return new Proxy(actual, { get: (target, key) => (key === 'findNodeHandle' ? mockFindNodeHandle : target[key as keyof typeof target]) });
 });
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { AlertHost } from '../AlertHost';
 import { resetAlertQueueForTests, showAlert, whenAlertsClosed } from '@/utils/alert';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
@@ -17,20 +17,58 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (sel: (s: unknown) => unknown) => sel({ theme: mockTheme }),
 }));
 
-function texts(tree: ReactTestRenderer) {
-  return tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
+const everything = { includeHiddenElements: true } as const;
+
+function setup() {
+  return userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 }
 // A dialog takes no press in its first 250 ms (a double tap on the dialog before it): the clock is moved past that.
 function settle() {
-  act(() => { jest.advanceTimersByTime(300); });
+  jest.advanceTimersByTime(300);
 }
-// The scrim has no label (WH-259): it is the full-screen button hidden from the screen reader.
-const findScrim = (tree: ReactTestRenderer) =>
-  tree.root.find(n => n.props.importantForAccessibility === 'no' && typeof n.props.onPress === 'function');
-function press(tree: ReactTestRenderer, label: string) {
+// Neither the scrim nor the card has a role a query can reach (a View with a role is not an accessible element, and
+// the scrim is hidden from the screen reader on purpose, WH-259), so they are found by walking the rendered tree.
+type Node = NonNullable<typeof screen.root>;
+function findHost(match: (props: Record<string, unknown>) => boolean): Node {
+  const walk = (node: Node): Node | undefined => {
+    if (typeof node.type === 'string' && match(node.props as Record<string, unknown>)) return node;
+    for (const child of node.children) {
+      if (typeof child === 'string') continue;
+      const found = walk(child as Node);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const found = walk(screen.root as Node);
+  if (!found) throw new Error('not on the screen');
+  return found;
+}
+const findScrim = () => findHost(p => p.importantForAccessibility === 'no');
+const findCard = () => findHost(p => p.accessibilityRole === 'alert');
+const findModal = () => findHost(p => typeof p.onDismiss === 'function');
+// A dialog is on the screen once showAlert has been called and the host has drawn it.
+async function show(...args: Parameters<typeof showAlert>) {
+  await act(() => { showAlert(...args); });
+  await screen.findByText(args[0], everything);
+}
+// Two presses reach the element in one go, before React has drawn the closed dialog (a double tap): a Pressable answers
+// its host's click with its onPress. userEvent and fireEvent each wait for a draw between presses, so neither can do it.
+async function doublePress(node: Node) {
+  const click = node.props.onClick as (event: unknown) => void;
+  await act(() => { click({}); click({}); });
+}
+// A dialog that waits behind another one is not drawn yet.
+async function queue(...args: Parameters<typeof showAlert>) {
+  await act(() => { showAlert(...args); });
+}
+async function press(user: ReturnType<typeof setup>, label: string) {
   settle();
-  const button = tree.root.find(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
-  act(() => button.props.onPress());
+  await user.press(screen.getByRole('button', { name: label, ...everything }));
+}
+// The Modal tells the host it has finished closing (iOS). Its host is gone from the tree by then (a closed Modal draws
+// nothing), so the event goes to the Modal element taken while it was open.
+async function modalDismissed(modal: Node) {
+  await act(() => { (modal.props as { onDismiss: () => void }).onDismiss(); });
 }
 
 describe('showAlert with AlertHost', () => {
@@ -45,100 +83,98 @@ describe('showAlert with AlertHost', () => {
   });
 
   describe.each(BRANDS.flatMap(b => (['light', 'dark'] as Mode[]).map(m => [b, m] as const)))('%s %s', (brand, mode) => {
-    it('renders the dialog with token colours and runs the pressed handler', () => {
+    it('renders the dialog with token colours and runs the pressed handler', async () => {
       mockTheme = { preference: mode, brand };
       const t = getTokens(brand, mode);
       const onDelete = jest.fn();
-      let tree!: ReactTestRenderer;
-      act(() => { tree = create(<AlertHost />); });
-      act(() => showAlert('Delete GRN 311?', 'Its items will be removed from stock.', [
+      const user = setup();
+      await render(<AlertHost />);
+      await show('Delete GRN 311?', 'Its items will be removed from stock.', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete GRN', style: 'destructive', onPress: onDelete },
-      ]));
-      expect(texts(tree)).toEqual(expect.arrayContaining(['Delete GRN 311?', 'Cancel', 'Delete GRN']));
-      const flat = tree.root.findAll(n => {
-        const s = [].concat(n.props.style ?? []).flat(3).filter(Boolean) as Array<{ backgroundColor?: string }>;
-        return s.some(x => x && x.backgroundColor === t.surface.sheet);
-      });
-      expect(flat.length).toBeGreaterThan(0);
-      press(tree, 'Delete GRN');
-      act(() => { jest.runAllTimers(); });
+      ]);
+      expect(await screen.findByText('Delete GRN 311?')).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Delete GRN' })).toBeOnTheScreen();
+      expect(findCard()).toHaveStyle({ backgroundColor: t.surface.sheet });
+      await press(user, 'Delete GRN');
+      await act(async () => { await jest.runAllTimersAsync(); });
       expect(onDelete).toHaveBeenCalledTimes(1);
-      expect(texts(tree)).not.toContain('Delete GRN 311?');
-      act(() => tree.unmount());
+      expect(screen.queryByText('Delete GRN 311?', everything)).not.toBeOnTheScreen();
     });
   });
 
-  it('cancels with the cancel button handler on scrim press', () => {
+  it('cancels with the cancel button handler on scrim press', async () => {
     const onCancel = jest.fn();
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />); });
-    act(() => showAlert('Discard this GRN?', undefined, [
+    const user = setup();
+    await render(<AlertHost />);
+    await show('Discard this GRN?', undefined, [
       { text: 'Keep editing', style: 'cancel', onPress: onCancel },
       { text: 'Discard GRN', style: 'destructive' },
-    ]));
+    ]);
     settle();
-    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Close dialog')).toHaveLength(0);
-    act(() => findScrim(tree).props.onPress());
-    act(() => { jest.runAllTimers(); });
+    expect(screen.queryByLabelText('Close dialog', everything)).not.toBeOnTheScreen();
+    await user.press(findScrim());
+    await act(async () => { await jest.runAllTimersAsync(); });
     expect(onCancel).toHaveBeenCalledTimes(1);
-    act(() => tree.unmount());
   });
 });
 
 // Review 2026-10-20 (contract item 10, and I7): a second press of a dialog that is closing runs nothing.
 describe('a double press', () => {
   beforeEach(() => { jest.useFakeTimers(); resetAlertQueueForTests(); });
-  afterEach(() => { jest.useRealTimers(); resetAlertQueueForTests(); });
+  afterEach(async () => {
+    jest.useRealTimers();
+    await act(() => { resetAlertQueueForTests(); }); });
 
-  it('runs the pressed button handler once when the same dialog is pressed twice before it is gone', () => {
+  it('runs the pressed button handler once when the same dialog is pressed twice before it is gone', async () => {
     const onDelete = jest.fn();
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />); });
-    act(() => showAlert('Delete invoice 7?', 'It will be removed.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: onDelete },
-    ]));
-    settle();
-    const button = tree.root.find(n => n.props.accessibilityLabel === 'Delete' && typeof n.props.onPress === 'function');
-    act(() => { button.props.onPress(); button.props.onPress(); });
-    act(() => { jest.runAllTimers(); });
-    expect(onDelete).toHaveBeenCalledTimes(1);
-    act(() => tree.unmount());
-  });
-
-  it('runs the cancel handler and onDismiss once when the scrim is pressed twice', () => {
-    const onCancel = jest.fn();
-    const onDismiss = jest.fn();
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />); });
-    act(() => showAlert('Discard this GRN?', undefined, [
-      { text: 'Keep editing', style: 'cancel', onPress: onCancel },
-      { text: 'Discard GRN', style: 'destructive' },
-    ], { cancelable: true, onDismiss }));
-    settle();
-    const scrim = findScrim(tree);
-    act(() => { scrim.props.onPress(); scrim.props.onPress(); });
-    act(() => { jest.runAllTimers(); });
-    expect(onCancel).toHaveBeenCalledTimes(1);
-    expect(onDismiss).toHaveBeenCalledTimes(1);
-    act(() => tree.unmount());
-  });
-
-  it('shows a question that was tapped twice once: the dialog is gone after one press and the handler ran once', () => {
-    const onDelete = jest.fn();
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />); });
-    const ask = () => showAlert('Delete invoice 7?', 'It will be removed.', [
+    const user = setup();
+    await render(<AlertHost />);
+    await show('Delete invoice 7?', 'It will be removed.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: onDelete },
     ]);
-    act(() => { ask(); ask(); });
-    press(tree, 'Delete');
-    act(() => { jest.runAllTimers(); });
+    settle();
+    const button = screen.getByRole('button', { name: 'Delete' });
+    // both presses reach the button before React draws the closed dialog (a double tap)
+    await doublePress(button);
+    await act(async () => { await jest.runAllTimersAsync(); });
     expect(onDelete).toHaveBeenCalledTimes(1);
-    expect(texts(tree)).not.toContain('Delete invoice 7?');
-    act(() => tree.unmount());
+  });
+
+  it('runs the cancel handler and onDismiss once when the scrim is pressed twice', async () => {
+    const onCancel = jest.fn();
+    const onDismiss = jest.fn();
+    const user = setup();
+    await render(<AlertHost />);
+    await show('Discard this GRN?', undefined, [
+      { text: 'Keep editing', style: 'cancel', onPress: onCancel },
+      { text: 'Discard GRN', style: 'destructive' },
+    ], { cancelable: true, onDismiss });
+    settle();
+    const scrim = findScrim();
+    await doublePress(scrim);
+    await act(async () => { await jest.runAllTimersAsync(); });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a question that was tapped twice once: the dialog is gone after one press and the handler ran once', async () => {
+    const onDelete = jest.fn();
+    const user = setup();
+    await render(<AlertHost />);
+    const args: Parameters<typeof showAlert> = [
+      'Delete invoice 7?', 'It will be removed.',
+      [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: onDelete }],
+    ];
+    // both calls happen in one go, before the host has drawn the first dialog
+    await act(() => { showAlert(...args); showAlert(...args); });
+    await screen.findByText(args[0], everything);
+    await press(user, 'Delete');
+    await act(async () => { await jest.runAllTimersAsync(); });
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Delete invoice 7?', everything)).not.toBeOnTheScreen();
   });
 });
 
@@ -147,14 +183,14 @@ describe('a double press', () => {
 // own (whenAlertsClosed) when its last dialog has finished closing: Modal.onDismiss on iOS, at once on Android.
 describe('whenAlertsClosed', () => {
   beforeEach(() => jest.useFakeTimers());
-  afterEach(() => {
+  afterEach(async () => {
     jest.useRealTimers();
-    resetAlertQueueForTests();
+    await act(() => { resetAlertQueueForTests(); });
   });
   const settled = async (promise: Promise<void>) => {
     let done = false;
     void promise.then(() => { done = true; });
-    await act(async () => { await Promise.resolve(); });
+    await jest.advanceTimersByTimeAsync(0);
     return done;
   };
 
@@ -164,67 +200,66 @@ describe('whenAlertsClosed', () => {
 
   it('iOS: waits for the Modal of the last dialog to finish closing', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />); });
-    act(() => showAlert('Possible duplicate', 'Save this anyway?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Save anyway' }]));
+    const user = setup();
+    await render(<AlertHost />);
+    await show('Possible duplicate', 'Save this anyway?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Save anyway' }]);
     expect(await settled(whenAlertsClosed())).toBe(false);
 
-    press(tree, 'Save anyway');
+    const modal = findModal();
+    await press(user, 'Save anyway');
     const waiting = whenAlertsClosed();
     // The dialog was answered and left the queue, but its Modal has not said it finished closing.
     expect(await settled(waiting)).toBe(false);
 
-    act(() => { tree.root.findByType(Modal).props.onDismiss(); });
+    await modalDismissed(modal);
     expect(await settled(waiting)).toBe(true);
     expect(await settled(whenAlertsClosed())).toBe(true);
-    act(() => tree.unmount());
   });
 
   it('iOS: goes on after a while if the Modal never says so', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />); });
-    act(() => showAlert('Title', 'Message', [{ text: 'OK' }]));
-    press(tree, 'OK');
+    const user = setup();
+    await render(<AlertHost />);
+    await show('Title', 'Message', [{ text: 'OK' }]);
+    await press(user, 'OK');
     const waiting = whenAlertsClosed();
     expect(await settled(waiting)).toBe(false);
 
-    act(() => { jest.advanceTimersByTime(1600); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
 
     expect(await settled(waiting)).toBe(true);
-    act(() => tree.unmount());
   });
 
   it('iOS: a dialog that follows another in the queue keeps the host open: only the last one closes it', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />); });
-    act(() => { showAlert('First', 'One', [{ text: 'OK' }]); showAlert('Second', 'Two', [{ text: 'Done' }]); });
-    press(tree, 'OK');
+    const user = setup();
+    await render(<AlertHost />);
+    await show('First', 'One', [{ text: 'OK' }]);
+    await queue('Second', 'Two', [{ text: 'Done' }]);
+    await press(user, 'OK');
     // The second dialog is shown in the same Modal: still waiting, and not "closing" yet.
-    expect(texts(tree)).toContain('Second');
+    expect(screen.getByText('Second', everything)).toBeOnTheScreen();
     expect(await settled(whenAlertsClosed())).toBe(false);
 
-    press(tree, 'Done');
+    const lastModal = findModal();
+    await press(user, 'Done');
     const waiting = whenAlertsClosed();
     expect(await settled(waiting)).toBe(false);
-    act(() => { tree.root.findByType(Modal).props.onDismiss(); });
+    await modalDismissed(lastModal);
     expect(await settled(waiting)).toBe(true);
-    act(() => tree.unmount());
   });
 
   it('Android: ready as soon as the last dialog is answered', async () => {
     jest.replaceProperty(Platform, 'OS', 'android');
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />); });
-    act(() => showAlert('Title', 'Message', [{ text: 'OK' }]));
+    const user = setup();
+    await render(<AlertHost />);
+    await show('Title', 'Message', [{ text: 'OK' }]);
     const waiting = whenAlertsClosed();
     expect(await settled(waiting)).toBe(false);
 
-    press(tree, 'OK');
+    await press(user, 'OK');
 
     expect(await settled(waiting)).toBe(true);
-    act(() => tree.unmount());
   });
 });
 
@@ -235,26 +270,25 @@ describe('AlertHost screen-reader focus (WH-219)', () => {
     jest.restoreAllMocks();
   });
 
-  it('moves focus to the title of each queued alert, not only the first', () => {
+  it('moves focus to the title of each queued alert, not only the first', async () => {
     mockFindNodeHandle.mockReturnValue(7);
     const setFocus = jest.spyOn(RN.AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
-    let tree!: ReactTestRenderer;
-    act(() => { tree = create(<AlertHost />, { createNodeMock: () => ({}) }); });
-    act(() => { showAlert('First', 'One', [{ text: 'OK' }]); showAlert('Second', 'Two', [{ text: 'Done' }]); });
-    const layoutTitle = (title: string) => {
-      const node = tree.root.find(n => (n.type as unknown) === 'Text' && n.props.accessibilityRole === 'header' && [].concat(n.props.children).join('') === title);
-      act(() => node.props.onLayout());
+    const user = setup();
+    await render(<AlertHost />);
+    await show('First', 'One', [{ text: 'OK' }]);
+    await queue('Second', 'Two', [{ text: 'Done' }]);
+    const layoutTitle = async (title: string) => {
+      await fireEvent(await screen.findByRole('header', { name: title }), 'layout');
     };
 
-    layoutTitle('First');
+    await layoutTitle('First');
     expect(setFocus).toHaveBeenCalledTimes(1);
     // A layout of the same title again moves nothing.
-    layoutTitle('First');
+    await layoutTitle('First');
     expect(setFocus).toHaveBeenCalledTimes(1);
 
-    press(tree, 'OK');
-    layoutTitle('Second');
+    await press(user, 'OK');
+    await layoutTitle('Second');
     expect(setFocus).toHaveBeenCalledTimes(2);
-    act(() => tree.unmount());
   });
 });

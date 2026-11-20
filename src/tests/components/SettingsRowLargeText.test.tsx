@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { Dimensions } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { SettingsRow } from '@/features/settings/components/SettingsList';
 
 jest.mock('@/store/hooks', () => ({
@@ -12,42 +12,34 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange', language: 'en' } }),
 }));
 
-let tree: ReactTestRenderer | undefined;
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   // Jest's default window font scale is 2.
   Dimensions.set({ window: { width: 750, height: 1334, scale: 2, fontScale: 2 } });
 });
 
 async function renderAt(fontScale: number) {
   Dimensions.set({ window: { width: 360, height: 800, scale: 3, fontScale } });
-  await act(async () => {
-    tree = create(<SettingsRow label="Language on this phone" value="Phone language" onPress={() => {}} />);
-  });
-  return tree!.root;
+  await render(<SettingsRow label="Language on this phone" value="Phone language" onPress={() => {}} />);
 }
 
 describe('SettingsRow value at large text', () => {
   it('at 2.0 the value is stacked under the label and not cut to one line', async () => {
-    const root = await renderAt(2);
-    const stacked = root.findAll(node => node.props.testID === 'settings-row-value-stacked');
-    expect(stacked.length).toBeGreaterThan(0);
-    expect(stacked[0].props.children).toBe('Phone language');
-    expect(stacked[0].props.numberOfLines).toBeUndefined();
+    await renderAt(2);
+    const stacked = screen.getByTestId('settings-row-value-stacked');
+    expect(stacked).toHaveTextContent('Phone language');
+    expect(stacked).not.toHaveProp('numberOfLines');
     // Drawn once: no second copy in the right column.
-    expect(root.findAll(node => node.props.children === 'Phone language' && node.props.numberOfLines === 1)).toHaveLength(0);
+    expect(screen.getAllByText('Phone language')).toHaveLength(1);
   });
 
   it('at 1.0 the value stays in the right column on one line', async () => {
-    const root = await renderAt(1);
-    expect(root.findAll(node => node.props.testID === 'settings-row-value-stacked')).toHaveLength(0);
-    const right = root.findAll(node => node.props.children === 'Phone language' && node.props.numberOfLines === 1);
-    expect(right.length).toBeGreaterThan(0);
+    await renderAt(1);
+    expect(screen.queryByTestId('settings-row-value-stacked')).not.toBeOnTheScreen();
+    expect(screen.getByText('Phone language')).toHaveProp('numberOfLines', 1);
   });
 
   it('at 1.3 (the owner\'s size) the layout is unchanged', async () => {
-    const root = await renderAt(1.3);
-    expect(root.findAll(node => node.props.testID === 'settings-row-value-stacked')).toHaveLength(0);
+    await renderAt(1.3);
+    expect(screen.queryByTestId('settings-row-value-stacked')).not.toBeOnTheScreen();
   });
 });

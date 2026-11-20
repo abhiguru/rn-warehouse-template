@@ -1,6 +1,6 @@
 import React from 'react';
 import { BackHandler } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { NavigationContext } from 'expo-router/react-navigation';
 import { useMarkLeavingOnBack } from '../useMarkLeavingOnBack';
 
@@ -40,56 +40,51 @@ describe('useMarkLeavingOnBack', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
-  const mount = (route: ReturnType<typeof makeRoute>, onLeaving: () => void) => {
-    let tree!: ReturnType<typeof create>;
-    act(() => {
-      tree = create(
-        <NavigationContext.Provider value={route.navigation as never}>
-          <Probe onLeaving={onLeaving} />
-        </NavigationContext.Provider>
-      );
-    });
-    return tree;
-  };
+  const mount = (route: ReturnType<typeof makeRoute>, onLeaving: () => void) =>
+    render(
+      <NavigationContext.Provider value={route.navigation as never}>
+        <Probe onLeaving={onLeaving} />
+      </NavigationContext.Provider>
+    );
 
-  it('reports the hardware Back key when it leaves the screen, and lets Back go on', () => {
+  it('reports the hardware Back key when it leaves the screen, and lets Back go on', async () => {
     const onLeaving = jest.fn();
-    const tree = mount(makeRoute(), onLeaving);
+    const { unmount } = await mount(makeRoute(), onLeaving);
 
     expect(onLeaving).not.toHaveBeenCalled();
     expect(press()).toBe(false);
     expect(onLeaving).toHaveBeenCalledTimes(1);
 
-    act(() => tree.unmount());
+    await unmount();
     expect(handlers).toHaveLength(0);
   });
 
-  it('does not mark the screen when it is the only route and Back leaves the app instead', () => {
+  it('does not mark the screen when it is the only route and Back leaves the app instead', async () => {
     const onLeaving = jest.fn();
-    mount(makeRoute({ canGoBack: false }), onLeaving);
+    await mount(makeRoute({ canGoBack: false }), onLeaving);
 
     expect(press()).toBe(false);
     expect(onLeaving).not.toHaveBeenCalled();
   });
 
-  it('listens only while the screen is focused', () => {
+  it('listens only while the screen is focused', async () => {
     const onLeaving = jest.fn();
     const route = makeRoute({ focused: false });
-    mount(route, onLeaving);
+    await mount(route, onLeaving);
     expect(handlers).toHaveLength(0);
 
-    act(() => route.focus());
+    await act(() => route.focus());
     expect(handlers).toHaveLength(1);
     press();
     expect(onLeaving).toHaveBeenCalledTimes(1);
 
-    act(() => route.blur());
+    await act(() => route.blur());
     expect(handlers).toHaveLength(0);
   });
 
-  it('a handler added later that takes the press keeps this one from marking the screen', () => {
+  it('a handler added later that takes the press keeps this one from marking the screen', async () => {
     const onLeaving = jest.fn();
-    mount(makeRoute(), onLeaving);
+    await mount(makeRoute(), onLeaving);
     // A dialog or sheet opened over the screen listens after it and takes the press.
     const takes = () => true;
     handlers.push(takes);

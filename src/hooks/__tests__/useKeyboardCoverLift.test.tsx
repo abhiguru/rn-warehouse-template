@@ -4,13 +4,13 @@
  */
 import React from 'react';
 import { Dimensions, Keyboard, View } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { useKeyboardCoverLift } from '../useKeyboardCoverLift';
 
 let lastLift = 0;
 let lastShown = false;
+let barRef: ReturnType<typeof useKeyboardCoverLift>['ref'];
 let bottomOf: () => number;
-let tree: ReactTestRenderer | undefined;
 let listeners: Record<string, (event?: unknown) => void>;
 let keyboardRemoves: jest.Mock[];
 let dimensionHandlers: Array<() => void>;
@@ -18,6 +18,7 @@ let dimensionRemove: jest.Mock;
 
 function Bar() {
   const { ref, lift, keyboardShown, onLayout } = useKeyboardCoverLift();
+  barRef = ref;
   lastLift = lift;
   lastShown = keyboardShown;
   return <View ref={ref} testID="bar" onLayout={onLayout} />;
@@ -26,15 +27,16 @@ function Bar() {
 // The jest View keeps its methods on a shared prototype: give this bar its own measureInWindow. The bar sits at
 // bottom `bottomOf() - lift`, as a margin-lifted bar does.
 const attachMeasure = () => {
-  const node = tree!.root.find(n => n.props.testID === 'bar' && n.instance != null) as unknown as { instance: { measureInWindow: unknown } };
-  node.instance.measureInWindow = (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, bottomOf() - lastLift - 100, 1080, 100);
+  const node = barRef.current as unknown as { measureInWindow: unknown };
+  node.measureInWindow = (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, bottomOf() - lastLift - 100, 1080, 100);
 };
 const mount = async () => {
-  await act(async () => { tree = create(<Bar />); });
+  const view = await render(<Bar />);
   attachMeasure();
+  return view;
 };
 const show = (screenY = 1350) => ({ endCoordinates: { screenY, height: 800 } });
-const layout = () => act(async () => { tree!.root.find(n => n.props.testID === 'bar' && n.instance != null).props.onLayout({ nativeEvent: {} }); });
+const layout = () => fireEvent(screen.getByTestId('bar'), 'layout', { nativeEvent: {} });
 
 beforeEach(() => {
   lastLift = 0;
@@ -56,9 +58,7 @@ beforeEach(() => {
     return { remove: dimensionRemove };
   }) as never);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
@@ -115,7 +115,7 @@ describe('useKeyboardCoverLift', () => {
   it('lifts a bar that mounts while the keyboard is already open', async () => {
     jest.spyOn(Keyboard, 'isVisible').mockReturnValue(true);
     jest.spyOn(Keyboard, 'metrics').mockReturnValue({ screenX: 0, screenY: 1350, width: 1080, height: 800 });
-    await act(async () => { tree = create(<Bar />); });
+    await render(<Bar />);
     attachMeasure();
     expect(lastShown).toBe(true);
     await layout(); // the first layout measures it
@@ -134,10 +134,9 @@ describe('useKeyboardCoverLift', () => {
   });
 
   it('removes its keyboard and window listeners when it unmounts', async () => {
-    await mount();
+    const { unmount } = await mount();
     expect(keyboardRemoves).toHaveLength(3);
-    await act(async () => { tree!.unmount(); });
-    tree = undefined;
+    await unmount();
     keyboardRemoves.forEach(remove => expect(remove).toHaveBeenCalledTimes(1));
     expect(dimensionRemove).toHaveBeenCalledTimes(1);
   });

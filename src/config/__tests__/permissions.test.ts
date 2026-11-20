@@ -5,7 +5,7 @@
  * always fails or hides one from the owner.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 import { canWrite, getRolePermissions, hasFullAccess, hasPermission } from '../permissions';
 import { usePermissions, type UsePermissionsResult } from '@/hooks/usePermissions';
 
@@ -39,16 +39,14 @@ describe.each(TABLE)('role %s', (role, canCreate, canRead, canUpdate, canDelete,
     expect(hasFullAccess(role)).toBe(full);
   });
 
-  it('gives the screens the same answers through usePermissions', () => {
+  it('gives the screens the same answers through usePermissions', async () => {
     mockRole = role;
     let result!: UsePermissionsResult;
     const Probe = () => {
       result = usePermissions();
       return null;
     };
-    act(() => {
-      create(React.createElement(Probe));
-    });
+    await render(React.createElement(Probe));
 
     expect([result.canCreate, result.canRead, result.canUpdate, result.canDelete]).toEqual([canCreate, canRead, canUpdate, canDelete]);
     expect(result.canWrite).toBe(write);

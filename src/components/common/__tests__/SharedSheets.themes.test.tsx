@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { StyleSheet, Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import ChangeLogBottomSheet from '../../ChangeLogBottomSheet';
 import { RolePickerBottomSheet } from '../../RolePickerBottomSheet';
@@ -89,62 +89,71 @@ const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)
 
 function renderIn(brand: Brand, mode: Mode, element: React.ReactElement) {
   mockState = { ...mockState, theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
+  return render(element);
 }
 
-function hasStyle(tree: ReactTestRenderer, key: string, value: unknown) {
-  return tree.root.findAll(node => {
-    const props = node.props as Record<string, unknown>;
+type HostNode = { type: string; props: Record<string, unknown>; children: Array<HostNode | string> | null };
+type HostEntry = { node: HostNode; parent: HostNode | null };
+
+/** Every host element of the screen with its parent: the sheet mocks are host tags with no role or text to query by. */
+function hostEntries(): HostEntry[] {
+  const out: HostEntry[] = [];
+  const walk = (node: HostNode, parent: HostNode | null) => {
+    out.push({ node, parent });
+    for (const child of node.children ?? []) if (typeof child !== 'string') walk(child, node);
+  };
+  const json = screen.toJSON() as HostNode | HostNode[] | null;
+  for (const root of ([] as Array<HostNode | null>).concat(json)) if (root) walk(root, null);
+  return out;
+}
+
+function hasStyle(key: string, value: unknown) {
+  return hostEntries().some(({ node }) => {
+    const props = node.props;
     const styles = [props.style, props.backgroundStyle, props.handleIndicatorStyle]
       .flatMap(s => [].concat((s as never) ?? []))
       .flat(3)
       .filter(Boolean) as Array<Record<string, unknown>>;
     return styles.some(s => s && s[key] === value);
-  }).length > 0;
+  });
 }
 
 describe.each(THEMES)('shared sheets in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('change log sheet uses the sheet surface and grab handle tokens', () => {
-    const tree = renderIn(brand, mode,
+  it('change log sheet uses the sheet surface and grab handle tokens', async () => {
+    await renderIn(brand, mode,
       <ChangeLogBottomSheet isVisible onClose={jest.fn()} customer={null} entries={[]} loading={false} />);
-    expect(hasStyle(tree, 'backgroundColor', t.surface.sheet)).toBe(true);
-    expect(hasStyle(tree, 'backgroundColor', t.border.separator)).toBe(true);
-    act(() => tree.unmount());
+    expect(hasStyle('backgroundColor', t.surface.sheet)).toBe(true);
+    expect(hasStyle('backgroundColor', t.border.separator)).toBe(true);
   });
 
-  it('role picker marks the current role and uses tokens', () => {
-    const tree = renderIn(brand, mode,
+  it('role picker marks the current role and uses tokens', async () => {
+    await renderIn(brand, mode,
       <RolePickerBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} currentRole="staff" callerRole="supervisor" />);
-    expect(hasStyle(tree, 'backgroundColor', t.surface.sheet)).toBe(true);
-    const radios = tree.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.type !== 'string');
-    expect(radios.some(r => r.props.accessibilityState?.checked)).toBe(true);
-    act(() => tree.unmount());
+    expect(hasStyle('backgroundColor', t.surface.sheet)).toBe(true);
+    expect(screen.getAllByRole('radio', { checked: true }).length).toBeGreaterThan(0);
   });
 
   // Style guide 3.8: each role has its own palette colour (admin 0, supervisor 5, staff 8, customer 6), and the icon
   // colour follows the mode only through `avatarColorsAt`. The expectations here are the theme's tokens, read by index.
-  it('role picker draws each role icon on its own avatar background, in the literal text token of the mode', () => {
-    const tree = renderIn(brand, mode,
+  it('role picker draws each role icon on its own avatar background, in the literal text token of the mode', async () => {
+    await renderIn(brand, mode,
       <RolePickerBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} currentRole="staff" callerRole="admin" />);
     // The icons that sit in a circle of the avatar palette are the roles' (the close button's has none).
-    const circleOf = (icon: { parent: { props: { style?: unknown } } | null }) =>
-      (StyleSheet.flatten(icon.parent?.props.style as never) as { backgroundColor?: string } | undefined)?.backgroundColor;
-    const icons = tree.root.findAll(n => (n.type as unknown) === 'Icon' && t.avatar.includes(circleOf(n as never) as string));
-    expect(icons.map(icon => circleOf(icon as never))).toEqual([0, 5, 8, 6].map(index => t.avatar[index % t.avatar.length]));
-    expect(new Set(icons.map(icon => circleOf(icon as never))).size).toBeGreaterThan(1);
+    const circleOf = (parent: HostNode | null) =>
+      (StyleSheet.flatten(parent?.props.style as never) as { backgroundColor?: string } | undefined)?.backgroundColor;
+    const icons = hostEntries()
+      .filter(({ node, parent }) => node.type === 'Icon' && t.avatar.includes(circleOf(parent) as string))
+      .map(({ node, parent }) => ({ node, circle: circleOf(parent) }));
+    expect(icons.map(icon => icon.circle)).toEqual([0, 5, 8, 6].map(index => t.avatar[index % t.avatar.length]));
+    expect(new Set(icons.map(icon => icon.circle)).size).toBeGreaterThan(1);
     const text = mode === 'light' ? t.text.primary : t.overlay.onImage;
-    for (const icon of icons) expect(icon.props.color).toBe(text);
-    act(() => tree.unmount());
+    for (const icon of icons) expect(icon.node.props.color).toBe(text);
   });
 
-  it('items summary sheet shows the empty state on the sheet surface', () => {
-    const tree = renderIn(brand, mode,
+  it('items summary sheet shows the empty state on the sheet surface', async () => {
+    await renderIn(brand, mode,
       <ItemsSummaryBottomSheet<{ id: string }>
         isVisible
         onClose={jest.fn()}
@@ -155,13 +164,12 @@ describe.each(THEMES)('shared sheets in %s %s', (brand, mode) => {
         getTotals={() => []}
         onDeleteItem={jest.fn()}
       />);
-    expect(hasStyle(tree, 'backgroundColor', t.surface.sheet)).toBe(true);
-    expect(hasStyle(tree, 'backgroundColor', t.overlay.scrim)).toBe(true);
-    act(() => tree.unmount());
+    expect(hasStyle('backgroundColor', t.surface.sheet)).toBe(true);
+    expect(hasStyle('backgroundColor', t.overlay.scrim)).toBe(true);
   });
 
-  it('searchable sheet keeps the search field and uses field tokens', () => {
-    const tree = renderIn(brand, mode,
+  it('searchable sheet keeps the search field and uses field tokens', async () => {
+    await renderIn(brand, mode,
       <SearchableBottomSheet<{ id: string }>
         isVisible
         onClose={jest.fn()}
@@ -171,12 +179,11 @@ describe.each(THEMES)('shared sheets in %s %s', (brand, mode) => {
         renderItem={i => <Text>{i.id}</Text>}
         keyExtractor={i => i.id}
       />);
-    expect(hasStyle(tree, 'borderColor', t.border.field)).toBe(true);
-    act(() => tree.unmount());
+    expect(hasStyle('borderColor', t.border.field)).toBe(true);
   });
 
-  it('detail tabs underline the selected tab in brand tint', () => {
-    const tree = renderIn(brand, mode,
+  it('detail tabs underline the selected tab in brand tint', async () => {
+    await renderIn(brand, mode,
       <GenericDetailTabNavigator
         tabs={[
           { key: 'overview', label: 'Overview', icon: TAB_ICONS.overview },
@@ -185,13 +192,12 @@ describe.each(THEMES)('shared sheets in %s %s', (brand, mode) => {
         activeTab="overview"
         onTabChange={jest.fn()}
       />);
-    expect(hasStyle(tree, 'backgroundColor', t.surface.header)).toBe(true);
-    expect(hasStyle(tree, 'backgroundColor', t.brand.tint)).toBe(true);
-    const tabs = tree.root.findAll(n => n.props.accessibilityRole === 'tab' && typeof n.type !== 'string');
-    expect(tabs.some(tab => tab.props.accessibilityState?.selected)).toBe(true);
+    expect(hasStyle('backgroundColor', t.surface.header)).toBe(true);
+    expect(hasStyle('backgroundColor', t.brand.tint)).toBe(true);
+    expect(screen.getByRole('tab', { name: 'Overview', selected: true })).toBeOnTheScreen();
     // The badge is announced with the tab's own name, not as "3 items" for every tab.
-    expect([...new Set(tabs.map(tab => tab.props.accessibilityLabel))]).toEqual(['Overview', 'Items, 3']);
-    act(() => tree.unmount());
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getByRole('tab', { name: 'Items, 3', selected: false })).toBeOnTheScreen();
   });
 });
 
@@ -213,26 +219,22 @@ describe('items summary sheet wording', () => {
         onEditItem={jest.fn()}
         {...props}
       />);
-  const spoken = (tree: ReactTestRenderer, prop: 'accessibilityLabel' | 'accessibilityHint') =>
-    tree.root.findAll(n => typeof n.type === 'string' && typeof n.props[prop] === 'string').map(n => n.props[prop] as string);
 
-  it('uses whole sentences for a list of items in both languages', () => {
-    const english = sheet();
-    expect(spoken(english, 'accessibilityLabel')).toContain('Close');
-    expect(spoken(english, 'accessibilityHint')).toContain('Opens this item for editing');
-    act(() => english.unmount());
+  it('uses whole sentences for a list of items in both languages', async () => {
+    const english = await sheet();
+    expect(screen.getAllByLabelText('Close').length).toBeGreaterThan(0);
+    expect(screen.getAllByHintText('Opens this item for editing').length).toBeGreaterThan(0);
+    await english.unmount();
 
     setLanguage('gu');
-    const gujarati = sheet();
-    expect(spoken(gujarati, 'accessibilityLabel')).toContain('બંધ કરો');
-    expect(spoken(gujarati, 'accessibilityHint')).toContain('ફેરફાર માટે આ આઇટમ ખોલે છે');
-    act(() => gujarati.unmount());
+    await sheet();
+    expect(screen.getAllByLabelText('બંધ કરો').length).toBeGreaterThan(0);
+    expect(screen.getAllByHintText('ફેરફાર માટે આ આઇટમ ખોલે છે').length).toBeGreaterThan(0);
   });
 
-  it("still places a caller's own word into the English sentences", () => {
-    const tree = sheet({ title: 'Saved lots', entityName: 'lot' });
-    expect(spoken(tree, 'accessibilityLabel')).toContain('Close');
-    expect(spoken(tree, 'accessibilityHint')).toContain('Opens this lot for editing');
-    act(() => tree.unmount());
+  it("still places a caller's own word into the English sentences", async () => {
+    await sheet({ title: 'Saved lots', entityName: 'lot' });
+    expect(screen.getAllByLabelText('Close').length).toBeGreaterThan(0);
+    expect(screen.getAllByHintText('Opens this lot for editing').length).toBeGreaterThan(0);
   });
 });

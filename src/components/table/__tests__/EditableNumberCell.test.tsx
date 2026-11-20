@@ -3,9 +3,8 @@
  * (so a vertical swipe over a column of cells scrolls the page, P2a-7); a tap focuses the cell.
  */
 import React from 'react';
-import { TextInput } from 'react-native';
 import type { TextInputRef } from '@/types/nativeRefs';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { EditableNumberCell } from '../EditableNumberCell';
 
 jest.mock('@/store/hooks', () => ({
@@ -13,80 +12,85 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 
-async function render(props: Partial<React.ComponentProps<typeof EditableNumberCell>> = {}) {
-  let tree!: ReactTestRenderer;
+const LABEL = 'Charge, dispatch I0001';
+
+async function renderCell(props: Partial<React.ComponentProps<typeof EditableNumberCell>> = {}) {
+  const user = userEvent.setup({ delay: 0 });
   const ref = React.createRef<TextInputRef>();
-  await act(async () => {
-    tree = create(<EditableNumberCell ref={ref} value="5.00" onChangeText={() => {}} label="Charge, dispatch I0001" width={92} testID="cell" {...props} />);
-  });
-  const input = () => tree.root.findByType(TextInput);
-  const tap = () => tree.root.find((node) => node.props.testID === 'cell-tap' && typeof node.props.onPress === 'function');
-  // The view around the input decides whether it takes touches (Android's text input ignores its own pointerEvents).
-  const touch = () => tree.root.find((node) => node.props.testID === 'cell-touch' && node.props.pointerEvents !== undefined);
-  return { tree, ref, input, tap, touch };
+  const element = (extra: Partial<React.ComponentProps<typeof EditableNumberCell>> = {}) => (
+    <EditableNumberCell ref={ref} value="5.00" onChangeText={() => {}} label={LABEL} width={92} testID="cell" {...props} {...extra} />
+  );
+  await render(element());
+  const input = () => screen.getByLabelText(LABEL);
+  // The cell around the input is the Pressable; the view between decides whether the input takes touches
+  // (Android's text input ignores its own pointerEvents). Neither has a role or a text, so they are found by testID.
+  const tap = () => screen.getByTestId('cell-tap');
+  const touch = () => screen.getByTestId('cell-touch');
+  const rerender = async (value: string) => {
+    await screen.rerender(<EditableNumberCell value={value} onChangeText={() => {}} label={LABEL} width={92} testID="cell" />);
+  };
+  return { user, ref, input, tap, touch, rerender };
 }
 
 describe('a cell without the focus', () => {
   it('lets touches through to the list: the view around the input takes none, and the cell around it is a Pressable', async () => {
-    const { input, tap, touch } = await render();
-    expect(touch().props.pointerEvents).toBe('none');
+    const { input, tap, touch } = await renderCell();
+    expect(touch()).toHaveProp('pointerEvents', 'none');
     // Not on the input itself: Android's native text input would take the touch anyway.
     expect(input().props.pointerEvents).toBeUndefined();
-    expect(tap()).toBeDefined();
+    expect(tap()).toBeOnTheScreen();
   });
 
   it('is focused by a tap on the Pressable, after the start callback; the wrapper never takes touches, focused or not', async () => {
     const onStart = jest.fn();
-    const { input, tap, ref, touch } = await render({ onStart });
+    const { user, input, tap, ref, touch } = await renderCell({ onStart });
     const focus = jest.fn();
-    Object.assign(input().instance as object, { focus, isFocused: () => false, setSelection: jest.fn() });
-    await act(async () => { tap().props.onPress(); });
+    Object.assign(ref.current as object, { focus, isFocused: () => false, setSelection: jest.fn() });
+    await user.press(tap());
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledTimes(1);
     expect(onStart.mock.invocationCallOrder[0]).toBeLessThan(focus.mock.invocationCallOrder[0]);
-    // the caller's ref got the same input
-    expect(ref.current).toBe(input().instance);
-    expect(touch().props.pointerEvents).toBe('none');
-    await act(async () => { input().props.onFocus({}); });
-    expect(touch().props.pointerEvents).toBe('none');
-    await act(async () => { input().props.onBlur({}); });
-    expect(touch().props.pointerEvents).toBe('none');
+    // the caller's ref got the same input: the focus put on it is the one the tap called
+    expect(ref.current).toHaveProperty('focus', focus);
+    expect(touch()).toHaveProp('pointerEvents', 'none');
+    await fireEvent(input(), 'focus', {});
+    expect(touch()).toHaveProp('pointerEvents', 'none');
+    await fireEvent(input(), 'blur', {});
+    expect(touch()).toHaveProp('pointerEvents', 'none');
   });
 
   it('selects all its text on a second tap instead of focusing again', async () => {
-    const { input, tap } = await render({ value: '12.5' });
+    const { user, input, tap, ref } = await renderCell({ value: '12.5' });
     const focus = jest.fn();
     const setSelection = jest.fn();
     let focused = false;
-    Object.assign(input().instance as object, { focus, setSelection, isFocused: () => focused });
-    await act(async () => { tap().props.onPress(); });
+    Object.assign(ref.current as object, { focus, setSelection, isFocused: () => focused });
+    await user.press(tap());
     expect(focus).toHaveBeenCalledTimes(1);
     expect(setSelection).not.toHaveBeenCalled();
     focused = true;
-    await act(async () => { input().props.onFocus({}); });
-    await act(async () => { tap().props.onPress(); });
+    await fireEvent(input(), 'focus', {});
+    await user.press(tap());
     expect(focus).toHaveBeenCalledTimes(1);
     expect(setSelection).toHaveBeenCalledWith(0, 4);
     // what is typed counts, not the value it started from
-    await act(async () => { input().props.onChangeText('125'); });
-    await act(async () => { tap().props.onPress(); });
+    await fireEvent.changeText(input(), '125');
+    await user.press(tap());
     expect(setSelection).toHaveBeenLastCalledWith(0, 3);
   });
 
   it('tells the caller when it is pressed and let go', async () => {
     const onHold = jest.fn();
-    const { tap } = await render({ onHold });
-    await act(async () => { tap().props.onPressIn(); });
-    expect(onHold).toHaveBeenLastCalledWith(true);
-    await act(async () => { tap().props.onPressOut(); });
-    expect(onHold).toHaveBeenLastCalledWith(false);
+    const { user, tap } = await renderCell({ onHold });
+    await user.press(tap());
+    expect(onHold.mock.calls).toEqual([[true], [false]]);
   });
 
   it('keeps its spoken label, the error in the hint and its key rules', async () => {
-    const { input } = await render({ error: 'Enter a charge from 0 to 999999.', returnKeyType: 'done' });
+    const { input } = await renderCell({ error: 'Enter a charge from 0 to 999999.', returnKeyType: 'done' });
+    expect(input()).toHaveAccessibleName(LABEL);
+    expect(input()).toHaveProp('accessibilityHint', 'Enter a charge from 0 to 999999.');
     expect(input().props).toMatchObject({
-      accessibilityLabel: 'Charge, dispatch I0001',
-      accessibilityHint: 'Enter a charge from 0 to 999999.',
       returnKeyType: 'done',
       keyboardType: 'decimal-pad',
       selectTextOnFocus: true,
@@ -94,43 +98,43 @@ describe('a cell without the focus', () => {
   });
 
   it('takes no tap when it is not editable', async () => {
-    const { tap } = await render({ editable: false });
-    expect(tap().props.disabled).toBe(true);
+    const onStart = jest.fn();
+    const { user, tap, ref } = await renderCell({ editable: false, onStart });
+    const focus = jest.fn();
+    Object.assign(ref.current as object, { focus, isFocused: () => false });
+    expect(tap()).toBeDisabled();
+    await user.press(tap());
+    expect(onStart).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
   });
 });
 
 describe('a cell with the focus keeps its own text (phone P2: "5" showed "5.00")', () => {
-  const rerenderWith = async (tree: ReactTestRenderer, value: string) => {
-    await act(async () => {
-      tree.update(<EditableNumberCell value={value} onChangeText={() => {}} label="Charge, dispatch I0001" width={92} testID="cell" />);
-    });
-  };
-
   it('shows what is typed while a new value arrives, and the value again after the blur', async () => {
     const onChangeText = jest.fn();
-    const { tree, input } = await render({ onChangeText });
-    await act(async () => { input().props.onFocus({}); });
-    expect(input().props.value).toBe('5.00');
-    await act(async () => { input().props.onChangeText('5'); });
-    expect(input().props.value).toBe('5');
+    const { user, input, rerender } = await renderCell({ onChangeText });
+    await fireEvent(input(), 'focus', {});
+    expect(input()).toHaveDisplayValue('5.00');
+    await fireEvent.changeText(input(), '5');
+    expect(input()).toHaveDisplayValue('5');
     expect(onChangeText).toHaveBeenLastCalledWith('5');
     // the form reformats the stored value on the key: the field does not follow it
-    await rerenderWith(tree, '5.00');
-    expect(input().props.value).toBe('5');
-    await act(async () => { input().props.onChangeText('5.'); });
-    await rerenderWith(tree, '');
-    expect(input().props.value).toBe('5.');
-    await act(async () => { input().props.onBlur({}); });
-    expect(input().props.value).toBe('');
-    await rerenderWith(tree, '7.00');
-    expect(input().props.value).toBe('7.00');
+    await rerender('5.00');
+    expect(input()).toHaveDisplayValue('5');
+    await fireEvent.changeText(input(), '5.');
+    await rerender('');
+    expect(input()).toHaveDisplayValue('5.');
+    await fireEvent(input(), 'blur', {});
+    expect(input()).toHaveDisplayValue('');
+    await rerender('7.00');
+    expect(input()).toHaveDisplayValue('7.00');
   });
 
   it('lets go of the native focus when it unmounts focused (a recycled row carries no ring)', async () => {
-    const { tree, input } = await render();
+    const { ref } = await renderCell();
     const blur = jest.fn();
-    Object.assign(input().instance as object, { blur, isFocused: () => true });
-    await act(async () => { tree.unmount(); });
+    Object.assign(ref.current as object, { blur, isFocused: () => true });
+    await screen.unmount();
     expect(blur).toHaveBeenCalledTimes(1);
   });
 });

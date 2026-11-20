@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { PixelRatio, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render as renderUi } from '@testing-library/react-native';
 import { space } from '@/theme/tokens';
 import { FIELD_BLOCK_ID, useRevealFocusedField, type KeyboardRevealTarget } from '../useRevealFocusedField';
 
@@ -39,17 +39,16 @@ const scrollRef: { current: KeyboardRevealTarget; userScrolled: boolean; onScrol
   onScrollBeginDrag: () => { scrollRef.userScrolled = true; },
 };
 const barRef = { current: { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, BAR_TOP, 1080, 100) } };
-let tree: ReactTestRenderer | undefined;
+let rerenderHarness: ((ui: React.ReactElement) => Promise<void>) | undefined;
 
 function Harness({ keyboardShown }: { keyboardShown: boolean }) {
   useRevealFocusedField(barRef as never, scrollRef, keyboardShown, 1);
   return null;
 }
 const render = async (keyboardShown = true) => {
-  await act(async () => {
-    if (tree) tree.update(<Harness keyboardShown={keyboardShown} />);
-    else tree = create(<Harness keyboardShown={keyboardShown} />);
-  });
+  const ui = <Harness keyboardShown={keyboardShown} />;
+  if (rerenderHarness) await rerenderHarness(ui);
+  else ({ rerender: rerenderHarness } = await renderUi(ui));
 };
 const tick = (ms = 150) => act(async () => { jest.advanceTimersByTime(ms); });
 
@@ -84,9 +83,8 @@ beforeEach(() => {
   jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockImplementation((() => focused) as never);
   jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
+  rerenderHarness = undefined;
   jest.clearAllTimers();
   jest.useRealTimers();
   jest.restoreAllMocks();

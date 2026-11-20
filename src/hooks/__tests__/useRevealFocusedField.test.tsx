@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { PixelRatio, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, type RenderResult } from '@testing-library/react-native';
 import { space, typography } from '@/theme/tokens';
 import { FIELD_BLOCK_ID, roomUnderFocusedField, useRevealFocusedField, type KeyboardRevealTarget } from '../useRevealFocusedField';
 
@@ -21,17 +21,15 @@ const scrollRef: { current: KeyboardRevealTarget; userScrolled: boolean; onScrol
   onScrollBeginDrag: () => { scrollRef.userScrolled = true; },
 };
 const barRef = { current: { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, barTop, 1080, 100) } };
-let tree: ReactTestRenderer | undefined;
+let tree: RenderResult | undefined;
 
 function Harness({ keyboardShown, revision }: Props) {
   useRevealFocusedField(barRef as never, scrollRef, keyboardShown, revision);
   return null;
 }
-const render = async (props: Props) => {
-  await act(async () => {
-    if (tree) tree.update(<Harness {...props} />);
-    else tree = create(<Harness {...props} />);
-  });
+const mount = async (props: Props) => {
+  if (tree) await tree.rerender(<Harness {...props} />);
+  else tree = await render(<Harness {...props} />);
 };
 /** What a field's own measureInWindow answers: the current `focus` place (read when asked, so it can move). */
 const makeInput = () => ({
@@ -51,7 +49,6 @@ beforeEach(() => {
   jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1);
 });
 afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
   tree = undefined;
   jest.clearAllTimers();
   jest.useRealTimers();
@@ -61,7 +58,7 @@ afterEach(async () => {
 describe('useRevealFocusedField, how far it scrolls', () => {
   it('scrolls by exactly field bottom + one message line + space.sm minus the bar top', async () => {
     focus = { top: 1150, height: 60 }; // bottom 1210, needs 1210 + room
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(scroll).toHaveBeenCalledWith(Math.ceil(1210 + room() - 1200));
     expect(room()).toBe(roomUnderFocusedField());
@@ -70,28 +67,28 @@ describe('useRevealFocusedField, how far it scrolls', () => {
   it('counts the message line at the current font scale', async () => {
     jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1.5);
     focus = { top: 1150, height: 60 };
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).toHaveBeenCalledWith(Math.ceil(1210 + space.xs + typography.footnote.lineHeight * 1.5 + space.sm - 1200));
   });
 
   it('does not scroll when the field and its line already end above the bar', async () => {
     focus = { top: 1000, height: 60 };
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).not.toHaveBeenCalled();
   });
 
   it('does not scroll when the field ends exactly at the limit', async () => {
     focus = { top: 1200 - room() - 60, height: 60 };
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).not.toHaveBeenCalled();
   });
 
   it('does nothing while the keyboard is down, or with no focused field', async () => {
     focus = { top: 1190, height: 60 };
-    await render({ keyboardShown: false, revision: 1 });
+    await mount({ keyboardShown: false, revision: 1 });
     expect(scroll).not.toHaveBeenCalled();
     focused = null;
-    await render({ keyboardShown: true, revision: 2 });
+    await mount({ keyboardShown: true, revision: 2 });
     expect(scroll).not.toHaveBeenCalled();
   });
 });
@@ -99,7 +96,7 @@ describe('useRevealFocusedField, how far it scrolls', () => {
 describe('useRevealFocusedField, a focus change while the keyboard stays up', () => {
   it('reveals the newly focused field within one check', async () => {
     focus = { top: 1000, height: 60 };
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).not.toHaveBeenCalled();
     // Another field takes the focus without any keyboard event.
     focus = { top: 1170, height: 60 };
@@ -110,7 +107,7 @@ describe('useRevealFocusedField, a focus change while the keyboard stays up', ()
   });
 
   it('does not scroll again while the same field keeps the focus', async () => {
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     await act(async () => { jest.advanceTimersByTime(1500); });
     expect(scroll).not.toHaveBeenCalled();
   });
@@ -134,10 +131,10 @@ describe('useRevealFocusedField, its 150 ms check leaves no timer behind', () =>
   });
 
   it('runs every 150 ms while the keyboard is up, stops when it closes', async () => {
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(started).toHaveLength(1);
     expect(cleared).not.toContain(started[0]);
-    await render({ keyboardShown: false, revision: 1 });
+    await mount({ keyboardShown: false, revision: 1 });
     expect(cleared).toContain(started[0]);
     expect(started).toHaveLength(1);
     focused = makeInput();
@@ -147,15 +144,15 @@ describe('useRevealFocusedField, its 150 ms check leaves no timer behind', () =>
   });
 
   it('stops when the component unmounts', async () => {
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(started).toHaveLength(1);
-    await act(async () => { tree!.unmount(); });
+    await tree!.unmount();
     tree = undefined;
     expect(cleared).toContain(started[0]);
   });
 
   it('never starts without a scroll view', async () => {
-    await act(async () => { tree = create(<NoScroll />); });
+    tree = await render(<NoScroll />);
     expect(started).toHaveLength(0);
   });
 });
@@ -191,29 +188,29 @@ const useTreeInput = () => {
 describe('useRevealFocusedField, a re-layout and a drag', () => {
   it('a re-layout that moves nothing does not scroll again', async () => {
     focus = { top: 1150, height: 60 };
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).toHaveBeenCalledTimes(1);
-    await render({ keyboardShown: true, revision: 2 });
-    await render({ keyboardShown: true, revision: 3 });
+    await mount({ keyboardShown: true, revision: 2 });
+    await mount({ keyboardShown: true, revision: 3 });
     expect(scroll).toHaveBeenCalledTimes(1);
   });
 
   it('a bar that really moved scrolls again', async () => {
     focus = { top: 1150, height: 60 };
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     barTop = 1100;
-    await render({ keyboardShown: true, revision: 2 });
+    await mount({ keyboardShown: true, revision: 2 });
     expect(scroll).toHaveBeenCalledTimes(2);
     expect(scroll).toHaveBeenLastCalledWith(Math.ceil(1210 + room() - 1100));
   });
 
   it('a drag, then a bar move, does not scroll back', async () => {
     focus = { top: 1150, height: 60 };
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).toHaveBeenCalledTimes(1);
     scrollRef.onScrollBeginDrag();
     barTop = 1100;
-    await render({ keyboardShown: true, revision: 2 });
+    await mount({ keyboardShown: true, revision: 2 });
     expect(scroll).toHaveBeenCalledTimes(1);
   });
 });
@@ -223,7 +220,7 @@ describe('useRevealFocusedField, a block that grows while the keyboard is up', (
     focus = { top: 1000, height: 60 };
     useTreeInput();
     placeTree(null);
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).not.toHaveBeenCalled();
     focus = { top: 1000, height: 200 }; // typed until it wrapped: bottom 1200
     placeTree(null);
@@ -236,7 +233,7 @@ describe('useRevealFocusedField, a block that grows while the keyboard is up', (
     focus = { top: 1100, height: 60 }; // bottom 1160, fits with no message
     useTreeInput();
     placeTree(null);
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).not.toHaveBeenCalled();
     placeTree(30); // bottom 1194, + space.sm passes the bar
     await act(async () => { jest.advanceTimersByTime(150); });
@@ -248,7 +245,7 @@ describe('useRevealFocusedField, a block that grows while the keyboard is up', (
     focus = { top: 1100, height: 60 };
     useTreeInput();
     placeTree(20);
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     expect(scroll).not.toHaveBeenCalled();
     placeTree(40);
     await act(async () => { jest.advanceTimersByTime(150); });
@@ -260,7 +257,7 @@ describe('useRevealFocusedField, a block that grows while the keyboard is up', (
     focus = { top: 1100, height: 60 };
     useTreeInput();
     placeTree(20);
-    await render({ keyboardShown: true, revision: 1 });
+    await mount({ keyboardShown: true, revision: 1 });
     await act(async () => { jest.advanceTimersByTime(1500); });
     expect(scroll).not.toHaveBeenCalled();
   });

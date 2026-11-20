@@ -4,14 +4,20 @@
  * rates saved with the GRN, and the re-read when the server refuses them.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { ScrollView, StyleSheet } from 'react-native';
+import { act, configure, fireEvent, render as renderScreen, screen, userEvent, within } from '@testing-library/react-native';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN, updateGRN } from '@/features/grn/services/grnFormService';
 import { setGrnRates, setRateChanges, setRemovedGrnRates } from '@/store/slices/grnFormSlice';
 import { contextKey } from '@/features/grn/rates/grnRateModel';
 import { askAlert, showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
+
+// A closed section keeps its body (display none) and hides its title from the screen reader; the rows and headings
+// these tests read are drawn there too.
+beforeAll(() => configure({ defaultIncludeHiddenElements: true }));
+afterAll(() => configure({ defaultIncludeHiddenElements: false }));
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const mockDispatch = jest.fn();
@@ -50,20 +56,56 @@ jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: (props: Re
 const mockUseStandardRate = jest.fn();
 jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: (...args: unknown[]) => { mockUseStandardRate(...args); return { rate: null, status: 'ready' }; } }));
 
+// Children are stand-ins that draw what the test needs: the bottom bar's two buttons, the step header's step 1 pill, an
+// open confirm dialog (title, message and its Confirm button, which calls the step's own onConfirm).
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message?: string; onConfirm: () => unknown }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(
+          View,
+          { accessible: true, accessibilityRole: 'alert' },
+          createElement(Text, null, props.title),
+          createElement(Text, null, props.message),
+          createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Confirm', onPress: props.onConfirm })
+        )
+      : null;
+  },
+}));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { nextLabel?: string; onNext: () => unknown; onPrevious?: () => unknown }) => {
+    const { Pressable, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Previous', onPress: props.onPrevious }),
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: props.nextLabel, onPress: props.onNext })
+    );
+  },
+}));
 let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => mockParams, useFocusEffect: jest.fn() }));
 let backOptions: { enabled?: boolean; onBackPress?: () => boolean } = {};
 jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: (options: typeof backOptions) => { backOptions = options; } }));
-jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+// An icon is drawn as an empty view that carries its name and size, so the test can tell which icons a heading shows.
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({
+  __esModule: true,
+  default: (props: { name: string; size?: number }) =>
+    require('react').createElement(require('react-native').View, { testID: `icon-${props.name}`, style: { width: props.size, height: props.size } }),
+}));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 import { showToast } from '@/utils/toast';
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
-jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
+jest.mock('@/components/GRNStepIndicator', () => ({
+  GRNStepIndicator: (props: { onStepPress?: (step: number) => void }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Step 1', onPress: () => props.onStepPress?.(1) }),
+}));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
 jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), getNextGRNNumber: jest.fn() }));
@@ -84,35 +126,54 @@ const stored = (item: string, min: number, max: number, rent: number, customer: 
 });
 const CTX = { customerId: 'cust-a', day: '2026-10-12', priceType: 'monthly' as const };
 
+let user: ReturnType<typeof userEvent.setup>;
+let currentMode: 'create' | 'edit' = 'create';
 async function render(mode: 'create' | 'edit') {
+  currentMode = mode;
   mockForm = {
     header: mockHeader, items: mockItems, grnId: mode === 'edit' ? GRN_ID : null, tempGrnId: mode === 'edit' ? null : 'temp_grn_fixture',
     isSaving: false, isCreateMode: mode === 'create', resetFormState: jest.fn(),
   };
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<GrnReviewStep mode={mode} />); });
-  return tree;
+  return renderScreen(<GrnReviewStep mode={mode} />);
 }
-const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const one = (tree: ReactTestRenderer, type: string) => tree.root.findByType(type as never);
-/** react-test-renderer types `type` as an ElementType, but host components are named by a string. */
-const isHost = (n: ReactTestInstance, name: string) => (n.type as unknown) === name;
-const byId = (tree: ReactTestRenderer, id: string) => tree.root.findAll(n => n.props.testID === id && typeof n.props.onPress === 'function');
+/** Lets what a press started (the save's async steps, an answered askAlert) finish. */
+const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const hasText = (text: string | RegExp) => screen.queryAllByText(text).length > 0;
+/** The texts under an element, in reading order, with a no-break space read as a space. */
+const textsIn = (element: ReturnType<typeof screen.getByTestId>) =>
+  within(element).queryAllByText(/[\s\S]*/).map((node) => [node.props.children].flat(Infinity).join('').replace(/\u00a0/g, ' '));
+const ROW_NAMES = [{ item: 'Fictional Gur', weight: '12 kg' }, { item: 'Fictional Rice', weight: '30 kg' }];
+type RowAction = 'changeFor' | 'addFor' | 'undoFor' | 'removeFor' | 'restoreFor';
+/** A row's action button, by the name a screen reader says for it. */
+const action = (kind: RowAction, index: number) => screen.queryByRole('button', { name: t(`grn.rates.${kind}`, ROW_NAMES[index]) });
+const actionPress = async (kind: RowAction, index: number) => {
+  await user.press(screen.getByRole('button', { name: t(`grn.rates.${kind}`, ROW_NAMES[index]) }));
+  await settle();
+};
+const row = (index: number) => screen.getByTestId(`grn-rate-row-${index}`);
 /**
  * The texts of one Rates table row, in reading order: the item, the line under it (weight, band, and at jest's
  * large text labour and tax), the tags, the rent cells (the struck rent under the rent), the actions.
  */
-const rowTexts = (tree: ReactTestRenderer, index: number) =>
-  tree.root.find(n => n.props.testID === `grn-rate-row-${index}` && isHost(n, 'View')).findAllByType(Text).map(n => [n.props.children].flat(Infinity).join('').replace(/\u00a0/g, ' '));
-/** What a screen reader says for a row's facts. */
-const rowA11y = (tree: ReactTestRenderer, index: number) =>
-  tree.root.find(n => n.props.testID === `grn-rate-row-${index}` && isHost(n, 'View')).findAll(n => isHost(n, 'View') && typeof n.props.accessibilityLabel === 'string' && n.props.accessible === true)[0].props.accessibilityLabel;
-const rowCount = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.props.testID === 'string' && /^grn-rate-row-\d+$/.test(n.props.testID) && isHost(n, 'View')).length;
-const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
-const press = async (tree: ReactTestRenderer) => { await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); }); };
+const rowTexts = (index: number) => textsIn(row(index));
+/** What a screen reader says for a row's facts: the label of the row's first labelled element. */
+const rowA11y = (index: number) => within(row(index)).getAllByLabelText(/.+/)[0].props.accessibilityLabel;
+const rowCount = () => screen.queryAllByTestId(/^grn-rate-row-\d+$/).length;
+const press = async () => {
+  await user.press(screen.getByRole('button', { name: t(currentMode === 'create' ? 'grn.review.createGrn' : 'grn.review.saveGrn') }));
+  await settle();
+};
+/** The save question is open: its title is on a visible dialog. */
+const questionShown = (title: string) => within(screen.getByRole('alert')).queryByText(title) !== null;
+const noDialogOpen = () => screen.queryAllByRole('alert').length === 0;
+const confirm = async () => {
+  await user.press(screen.getByRole('button', { name: 'Confirm' }));
+  await settle();
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
+  user = userEvent.setup({ delay: 0 });
   mockGrnRates = [];
   mockChanges = [];
   mockRemoved = [];
@@ -131,112 +192,112 @@ afterEach(() => jest.restoreAllMocks());
 
 describe('the rows', () => {
   it('shows the rate and its source for a line that has one, and No rate with Add rate for one that has none', async () => {
-    const tree = await render('create');
-    expect(texts(tree)).toContain('RATES');
+    await render('create');
+    expect(hasText('RATES')).toBe(true);
     // The rent is the row's main value; the weight is the same tag as on the Items card; band, labour and tax follow.
-    expect(rowTexts(tree, 0)).toEqual(['Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5%', 'Customer rate', '3.50', 'Change']);
-    expect(rowA11y(tree, 0)).toBe('Fictional Gur, 12 kg, ₹3.50 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Customer rate');
+    expect(rowTexts(0)).toEqual(['Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5%', 'Customer rate', '3.50', 'Change']);
+    expect(rowA11y(0)).toBe('Fictional Gur, 12 kg, ₹3.50 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Customer rate');
     // No rate stands where the rent would be.
-    expect(rowTexts(tree, 1)).toEqual(['Fictional Rice', '30 kg each', 'No rate', '—', 'Add rate']);
-    expect(rowA11y(tree, 1)).toBe('Fictional Rice, 30 kg, No rate');
-    expect(byId(tree, 'grn-rate-change-0').length).toBeGreaterThan(0);
-    expect(byId(tree, 'grn-rate-add-0')).toHaveLength(0);
-    expect(byId(tree, 'grn-rate-add-1').length).toBeGreaterThan(0);
-    expect(byId(tree, 'grn-rate-change-1')).toHaveLength(0);
+    expect(rowTexts(1)).toEqual(['Fictional Rice', '30 kg each', 'No rate', '—', 'Add rate']);
+    expect(rowA11y(1)).toBe('Fictional Rice, 30 kg, No rate');
+    expect(action('changeFor', 0)).toBeOnTheScreen();
+    expect(action('addFor', 0)).not.toBeOnTheScreen();
+    expect(action('addFor', 1)).toBeOnTheScreen();
+    expect(action('changeFor', 1)).not.toBeOnTheScreen();
   });
 
   it('says Item rate when the default is used, and one row for two lines of the same item and weight', async () => {
     mockRates = [stored('gur', 0, 50, 3)];
     mockItems = [line(1, 'gur', 'Fictional Gur', 12), line(2, 'gur', 'Fictional Gur', 12)];
-    const tree = await render('create');
-    expect(rowCount(tree)).toBe(1);
-    expect(rowTexts(tree, 0)).toContain('Item rate');
+    await render('create');
+    expect(rowCount()).toBe(1);
+    expect(rowTexts(0)).toContain('Item rate');
   });
 
   it('a pending change shows its figures with the date, "Changed · This customer" and Undo change', async () => {
     mockChanges = [{ item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, scope: 'customer', to: null, ctx: contextKey(CTX), price_type: 'monthly' }];
-    const tree = await render('create');
+    await render('create');
     // The new rent, with the customer's rent it replaces struck through under it.
-    expect(rowTexts(tree, 0)).toEqual([
+    expect(rowTexts(0)).toEqual([
       'Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5% · From 12/10/26', 'Changed · This customer', '4.00', '3.50',
       'Undo change', 'Change',
     ]);
-    expect(tree.root.find(n => n.props.testID === 'grn-rate-was-0' && n.type === Text).props.style).toEqual(expect.objectContaining({ textDecorationLine: 'line-through' }));
-    expect(rowA11y(tree, 0)).toBe('Fictional Gur, 12 kg, ₹4.00 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Changed · This customer, From 12 Oct 2026, was ₹3.50');
-    await act(async () => { byId(tree, 'grn-rate-undo-0')[0].props.onPress(); });
+    expect(screen.getByTestId('grn-rate-was-0')).toHaveStyle({ textDecorationLine: 'line-through' });
+    expect(rowA11y(0)).toBe('Fictional Gur, 12 kg, ₹4.00 per bag, per month, 0–50 kg, labour ₹1.50 per bag, tax 5%, Changed · This customer, From 12 Oct 2026, was ₹3.50');
+    await actionPress('undoFor', 0);
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([]));
   });
 
   it('edit mode: the rates for this GRN only that the form was seeded with price the row, tagged This GRN only', async () => {
     mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.25, labour_rate: 1, tax_percent: 5 }];
-    const tree = await render('edit');
+    await render('edit');
     // Rice has no stored rate, so nothing is struck through.
-    expect(rowTexts(tree, 1)).toEqual(['Fictional Rice', '30 kg each · Labour ₹1.00 · Tax 5%', 'This GRN only', '2.25', 'Undo change', 'Change']);
-    expect(texts(tree)).not.toContain('No rate');
-    await press(tree);
-    expect(dialogs(tree).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.visible).toBe(true);
+    expect(rowTexts(1)).toEqual(['Fictional Rice', '30 kg each · Labour ₹1.00 · Tax 5%', 'This GRN only', '2.25', 'Undo change', 'Change']);
+    expect(hasText('No rate')).toBe(false);
+    await press();
+    expect(questionShown('Save changes to GRN A0010?')).toBe(true);
   });
 
   it('while the rates load or fail, it says so, and Try again reads them again', async () => {
     mockStatus = 'loading';
-    let tree = await render('create');
-    expect(texts(tree)).toContain('Loading rates');
-    act(() => tree.unmount());
+    const { unmount } = await render('create');
+    expect(hasText('Loading rates')).toBe(true);
+    await unmount();
     mockStatus = 'error';
-    tree = await render('create');
-    expect(texts(tree)).toContain("Couldn't load the rates");
-    await act(async () => { byId(tree, 'grn-rates-retry')[0].props.onPress(); });
+    await render('create');
+    expect(hasText("Couldn't load the rates")).toBe(true);
+    await user.press(screen.getByRole('button', { name: 'Try again' }));
     expect(mockRefresh).toHaveBeenCalled();
   });
 });
 
 describe('Create is blocked without a rate', () => {
   it('says rates are missing, shows no question and sends nothing', async () => {
-    const tree = await render('create');
-    await press(tree);
+    await render('create');
+    await press();
     expect(showAlert).toHaveBeenCalledWith('Add the missing rates', 'Add the missing rates before saving.');
-    expect(dialogs(tree).every(d => d.props.visible === false)).toBe(true);
+    expect(noDialogOpen()).toBe(true);
     expect(createGRN).not.toHaveBeenCalled();
   });
 
   it('saving an edit is blocked the same way', async () => {
-    const tree = await render('edit');
-    await press(tree);
+    await render('edit');
+    await press();
     expect(showAlert).toHaveBeenCalledWith('Add the missing rates', 'Add the missing rates before saving.');
     expect(updateGRN).not.toHaveBeenCalled();
   });
 
   it('is blocked while the rates are not loaded', async () => {
     mockStatus = 'error';
-    const tree = await render('create');
-    await press(tree);
+    await render('create');
+    await press();
     expect(showAlert).toHaveBeenCalledWith("The rates couldn't be loaded", "The rates couldn't be loaded. Check your connection and try again before saving.");
     expect(createGRN).not.toHaveBeenCalled();
   });
 
   it('goes on to the question once every row has a rate', async () => {
     mockRates = [...mockRates, stored('rice', 0, 100, 2)];
-    const tree = await render('create');
-    await press(tree);
+    await render('create');
+    await press();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.visible).toBe(true);
+    expect(questionShown('Create GRN A0010?')).toBe(true);
   });
 
   it('an administrator saving a GRN dated before the items\' first rates is not stopped: the first rate covers the day (D16)', async () => {
     mockRates = [{ ...stored('gur', 0, 50, 3), effective_from: '2026-12-01' }, { ...stored('rice', 0, 100, 2), effective_from: '2026-12-01' }];
-    const tree = await render('create');
-    expect(texts(tree)).not.toContain('No rate');
-    await press(tree);
+    await render('create');
+    expect(hasText('No rate')).toBe(false);
+    await press();
     expect(showAlert).not.toHaveBeenCalledWith('Add the missing rates', expect.anything());
-    expect(dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.visible).toBe(true);
+    expect(questionShown('Create GRN A0010?')).toBe(true);
   });
 });
 
 describe('Add rate and the sheet', () => {
   it('Add rate opens the sheet for that row; saving puts the rate in the form, which then prices the row', async () => {
-    const tree = await render('create');
-    await act(async () => { byId(tree, 'grn-rate-add-1')[0].props.onPress(); });
+    await render('create');
+    await actionPress('addFor', 1);
     expect(sheetProps.visible).toBe(true);
     expect(sheetProps.row).toMatchObject({ item_id: 'rice', weight: 30, rate: null });
     expect(sheetProps.input.ctx).toEqual(CTX);
@@ -248,8 +309,8 @@ describe('Add rate and the sheet', () => {
   });
 
   it('a change of the customer or everyone is kept under the pending changes', async () => {
-    const tree = await render('create');
-    await act(async () => { byId(tree, 'grn-rate-change-0')[0].props.onPress(); });
+    await render('create');
+    await actionPress('changeFor', 0);
     expect(sheetProps.row).toMatchObject({ item_id: 'gur', rate: { source: 'customer' } });
     await act(async () => { sheetProps.onSave({ scope: 'customer', weight_min: 0, weight_max: 50, unit_price: 4, labour_rate: 1.5, tax_percent: 5, to: '2026-10-31' }); });
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([
@@ -263,18 +324,18 @@ describe('saving the rates with the GRN', () => {
     mockRates = [...mockRates, stored('rice', 0, 100, 2)];
     mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 }];
     (createGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
-    const tree = await render('create');
-    await press(tree);
-    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.onConfirm(); });
+    const { unmount } = await render('create');
+    await press();
+    await confirm();
     expect((createGRN as jest.Mock).mock.calls[0][0].rates).toEqual([
       { scope: 'grn', item_id: 'rice', weight_min: 21, weight_max: 40, unit_price: 2.5, labour_rate: 1, tax_percent: 5 },
     ]);
-    act(() => tree.unmount());
+    await unmount();
 
     (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
-    const edit = await render('edit');
-    await press(edit);
-    await act(async () => { await dialogs(edit).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.onConfirm(); });
+    await render('edit');
+    await press();
+    await confirm();
     expect((updateGRN as jest.Mock).mock.calls[0][1].rates).toHaveLength(1);
   });
 
@@ -286,9 +347,9 @@ describe('saving the rates with the GRN', () => {
   ])('%s: reads the rates again and shows the reason', async (code, data, text) => {
     mockRates = [...mockRates, stored('rice', 0, 100, 2)];
     (createGRN as jest.Mock).mockResolvedValue({ success: false, error: 'server text', rateError: { code, data } });
-    const tree = await render('create');
-    await press(tree);
-    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.onConfirm(); });
+    await render('create');
+    await press();
+    await confirm();
     expect(mockRefresh).toHaveBeenCalled();
     expect(showAlert).toHaveBeenCalledWith('Check the rates', text);
   });
@@ -303,10 +364,10 @@ describe('staff set no rates on a GRN (owner, 2026-10-16)', () => {
   });
 
   it('shows no Rates block, no rate sheet and reads no rates', async () => {
-    const tree = await render('create');
-    expect(texts(tree)).not.toContain('RATES');
-    expect(tree.root.findAll(n => n.props.testID === 'grn-rates-section')).toHaveLength(0);
-    expect(rowCount(tree)).toBe(0);
+    await render('create');
+    expect(hasText('RATES')).toBe(false);
+    expect(screen.queryAllByTestId('grn-rates-section')).toHaveLength(0);
+    expect(rowCount()).toBe(0);
     expect(sheetProps).toEqual({});
     expect(mockUseGrnRates.mock.calls[0][0]).toEqual([]);
     expect(mockUseStandardRate).toHaveBeenCalledWith(false);
@@ -314,17 +375,17 @@ describe('staff set no rates on a GRN (owner, 2026-10-16)', () => {
 
   it('create and edit save without p_rates, and a line without a rate does not block the save', async () => {
     (createGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
-    const tree = await render('create');
-    await press(tree);
+    const { unmount } = await render('create');
+    await press();
     expect(showAlert).not.toHaveBeenCalled();
-    await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.onConfirm(); });
+    await confirm();
     expect((createGRN as jest.Mock).mock.calls[0][0].rates).toBeUndefined();
-    act(() => tree.unmount());
+    await unmount();
 
     (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
-    const edit = await render('edit');
-    await press(edit);
-    await act(async () => { await dialogs(edit).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.onConfirm(); });
+    await render('edit');
+    await press();
+    await confirm();
     expect((updateGRN as jest.Mock).mock.calls[0][1].rates).toBeUndefined();
   });
 
@@ -336,8 +397,8 @@ describe('staff set no rates on a GRN (owner, 2026-10-16)', () => {
 
   it('a supervisor of the same GRN still sees the block and sends the rates', async () => {
     mockRole = 'supervisor';
-    const tree = await render('create');
-    expect(texts(tree)).toContain('RATES');
+    await render('create');
+    expect(hasText('RATES')).toBe(true);
     expect(mockUseStandardRate).toHaveBeenCalledWith(true);
     expect(mockUseGrnRates.mock.calls[0][0]).toEqual(['gur', 'rice']);
   });
@@ -348,43 +409,46 @@ describe('round 3', () => {
 
   it('D1: an Everyone change does not price a row the customer has an own rate for; it shows both tags and Undo change', async () => {
     mockChanges = [everyone];
-    const tree = await render('create');
+    await render('create');
     // The row keeps the customer's own rent, so nothing is struck through.
-    expect(rowTexts(tree, 0)).toEqual(['Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5%', 'Customer rate', 'Changed · Everyone', '3.50', 'Undo change', 'Change']);
-    expect(byId(tree, 'grn-rate-undo-0').length).toBeGreaterThan(0);
+    expect(rowTexts(0)).toEqual(['Fictional Gur', '12 kg each · Labour ₹1.50 · Tax 5%', 'Customer rate', 'Changed · Everyone', '3.50', 'Undo change', 'Change']);
+    expect(action('undoFor', 0)).toBeOnTheScreen();
   });
 
   it('D9: the section header carries the count of rows without a rate as a tag', async () => {
-    const tree = await render('create');
-    expect(texts(tree)).toContain('1 without a rate');
-    act(() => tree.unmount());
+    const { unmount } = await render('create');
+    expect(hasText('1 without a rate')).toBe(true);
+    await unmount();
     mockRates = [...mockRates, stored('rice', 0, 100, 2)];
-    const full = await render('create');
-    expect(texts(full).some(x => x.includes('without a rate'))).toBe(false);
+    await render('create');
+    expect(hasText(/without a rate/)).toBe(false);
   });
 
   it('D9: Add rate is a secondary button, not a second primary', async () => {
-    const tree = await render('create');
-    expect(byId(tree, 'grn-rate-add-1')[0].props.type).toBe('secondary');
+    await render('create');
+    // A secondary button is outlined on a transparent ground; a primary one is filled and has no border.
+    expect(action('addFor', 1)).toHaveStyle({ backgroundColor: 'transparent', borderWidth: 1 });
   });
 
   it('D9: a saved GRN-only rate offers Remove, a pending one Undo change', async () => {
     mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5, saved: true }];
-    const saved = await render('edit');
-    expect(byId(saved, 'grn-rate-undo-1')[0].props.children).toBe('Remove');
-    act(() => saved.unmount());
+    const { unmount } = await render('edit');
+    expect(within(action('removeFor', 1)!).getByText('Remove')).toBeOnTheScreen();
+    expect(action('undoFor', 1)).not.toBeOnTheScreen();
+    await unmount();
     mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5 }];
-    const pending = await render('edit');
-    expect(byId(pending, 'grn-rate-undo-1')[0].props.children).toBe('Undo change');
+    await render('edit');
+    expect(within(action('undoFor', 1)!).getByText('Undo change')).toBeOnTheScreen();
+    expect(action('removeFor', 1)).not.toBeOnTheScreen();
   });
 
   it('Remove asks first; Cancel keeps the rate, Remove drops it; Undo change asks nothing', async () => {
     const savedRice = { price_type: 'monthly' as const, item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5 };
     mockGrnRates = [{ ...savedRice, saved: true }];
-    const tree = await render('edit');
-    expect(byId(tree, 'grn-rate-undo-1')[0].props.accessibilityLabel).toBe("Remove this GRN's own rate of Fictional Rice, 30 kg");
+    const { unmount } = await render('edit');
+    expect(screen.getByRole('button', { name: "Remove this GRN's own rate of Fictional Rice, 30 kg" })).toBeOnTheScreen();
     (askAlert as jest.Mock).mockResolvedValueOnce(false);
-    await act(async () => { byId(tree, 'grn-rate-undo-1')[0].props.onPress(); });
+    await actionPress('removeFor', 1);
     expect(askAlert).toHaveBeenCalledWith(
       "Remove this GRN's own rate?",
       "Fictional Rice will be charged at the customer's rate or the default rate instead. The rate is removed when you save the GRN.",
@@ -393,15 +457,15 @@ describe('round 3', () => {
     );
     expect(mockDispatch).not.toHaveBeenCalledWith(setGrnRates([]));
     (askAlert as jest.Mock).mockResolvedValueOnce(true);
-    await act(async () => { byId(tree, 'grn-rate-undo-1')[0].props.onPress(); });
+    await actionPress('removeFor', 1);
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
     expect(mockDispatch).toHaveBeenCalledWith(setRemovedGrnRates([{ ...savedRice, saved: true }]));
-    act(() => tree.unmount());
+    await unmount();
     (askAlert as jest.Mock).mockClear();
     mockDispatch.mockClear();
     mockGrnRates = [savedRice];
-    const pending = await render('edit');
-    await act(async () => { byId(pending, 'grn-rate-undo-1')[0].props.onPress(); });
+    await render('edit');
+    await actionPress('undoFor', 1);
     expect(askAlert).not.toHaveBeenCalled();
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
   });
@@ -409,21 +473,21 @@ describe('round 3', () => {
   it('after Remove the row says "Removed when you save" and Undo remove puts the rate back', async () => {
     const savedRice = { price_type: 'monthly' as const, item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5, saved: true };
     mockRemoved = [savedRice];
-    const tree = await render('edit');
+    const { unmount } = await render('edit');
     // Rice has no other rate, so the row is without one, with the tag and Undo remove beside Add rate.
-    expect(rowTexts(tree, 1)).toEqual(['Fictional Rice', '30 kg each', 'No rate', 'Removed when you save', '—', 'Undo remove', 'Add rate']);
-    expect(byId(tree, 'grn-rate-restore-1')[0].props.accessibilityLabel).toBe("Put back this GRN's own rate of Fictional Rice, 30 kg");
-    expect(rowA11y(tree, 1)).toBe('Fictional Rice, 30 kg, No rate, Removed when you save');
-    expect(byId(tree, 'grn-rate-restore-0')).toHaveLength(0);
-    await act(async () => { byId(tree, 'grn-rate-restore-1')[0].props.onPress(); });
+    expect(rowTexts(1)).toEqual(['Fictional Rice', '30 kg each', 'No rate', 'Removed when you save', '—', 'Undo remove', 'Add rate']);
+    expect(screen.getByRole('button', { name: "Put back this GRN's own rate of Fictional Rice, 30 kg" })).toBeOnTheScreen();
+    expect(rowA11y(1)).toBe('Fictional Rice, 30 kg, No rate, Removed when you save');
+    expect(action('restoreFor', 0)).not.toBeOnTheScreen();
+    await actionPress('restoreFor', 1);
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([savedRice]));
     expect(mockDispatch).toHaveBeenCalledWith(setRemovedGrnRates([]));
-    act(() => tree.unmount());
+    await unmount();
     // A rate typed after Remove prices the row: no Undo remove until that change is undone.
     mockGrnRates = [{ ...savedRice, unit_price: 3, saved: undefined }];
-    const typed = await render('edit');
-    expect(byId(typed, 'grn-rate-restore-1')).toHaveLength(0);
-    expect(texts(typed)).not.toContain('Removed when you save');
+    await render('edit');
+    expect(action('restoreFor', 1)).not.toBeOnTheScreen();
+    expect(hasText('Removed when you save')).toBe(false);
   });
 
   describe('D4: an invoiced GRN', () => {
@@ -434,20 +498,22 @@ describe('round 3', () => {
     });
 
     it('shows the note, no Add rate / Change / Undo, and "No rate" for a row without one', async () => {
-      const tree = await render('edit');
-      expect(texts(tree)).toContain('This GRN is invoiced; its rates cannot change here.');
-      expect(texts(tree)).toContain('No rate');
-      for (const id of ['grn-rate-add-1', 'grn-rate-change-0', 'grn-rate-undo-0']) expect(byId(tree, id)).toHaveLength(0);
-      expect(texts(tree).some(x => x.includes('without a rate'))).toBe(false);
+      await render('edit');
+      expect(hasText('This GRN is invoiced; its rates cannot change here.')).toBe(true);
+      expect(hasText('No rate')).toBe(true);
+      expect(action('addFor', 1)).not.toBeOnTheScreen();
+      expect(action('changeFor', 0)).not.toBeOnTheScreen();
+      expect(action('undoFor', 0)).not.toBeOnTheScreen();
+      expect(hasText(/without a rate/)).toBe(false);
     });
 
     it('Save is not blocked by the missing rate and sends the stored set back unchanged', async () => {
-      const tree = await render('edit');
-      await press(tree);
+      await render('edit');
+      await press();
       expect(showAlert).not.toHaveBeenCalled();
-      expect(dialogs(tree).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.visible).toBe(true);
+      expect(questionShown('Save changes to GRN A0010?')).toBe(true);
       (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
-      await act(async () => { await dialogs(tree).find(d => d.props.title === 'Save changes to GRN A0010?')!.props.onConfirm(); });
+      await confirm();
       expect((updateGRN as jest.Mock).mock.calls[0][1].rates).toEqual([
         { scope: 'grn', item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 4.5, labour_rate: 1, tax_percent: 5 },
       ]);
@@ -457,7 +523,7 @@ describe('round 3', () => {
   it('D7: entries of the other price type are dropped from the form and the person is told once', async () => {
     mockGrnRates = [{ price_type: 'one_time', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 0, tax_percent: 5 }];
     mockChanges = [{ ...everyone, price_type: 'one_time' }];
-    const tree = await render('create');
+    await render('create');
     expect(mockDispatch).toHaveBeenCalledWith(setGrnRates([]));
     expect(mockDispatch).toHaveBeenCalledWith(setRateChanges([]));
     expect(showToast).toHaveBeenCalledTimes(1);
@@ -466,9 +532,9 @@ describe('round 3', () => {
 
   it('D7: nothing is dropped, and no notice shown, when every entry is of the GRN price type', async () => {
     mockGrnRates = [{ price_type: 'monthly', item_id: 'rice', weight_min: 0, weight_max: 100, unit_price: 2, labour_rate: 1, tax_percent: 5 }];
-    const tree = await render('create');
+    await render('create');
     expect(mockDispatch).not.toHaveBeenCalledWith(setGrnRates([]));
-    expect(tree).toBeTruthy();
+    expect(screen.toJSON()).toBeTruthy();
     expect(showToast).not.toHaveBeenCalled();
   });
 
@@ -477,10 +543,10 @@ describe('round 3', () => {
     (createGRN as jest.Mock)
       .mockResolvedValueOnce({ success: false, error: 'x', rateError: { code: 'RATE_PLANNED', data: { starts_on: '2026-11-01' } } })
       .mockResolvedValueOnce({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
-    const tree = await render('create');
+    await render('create');
     for (let n = 0; n < 2; n += 1) {
-      await press(tree);
-      await act(async () => { await dialogs(tree).find(d => d.props.title === 'Create GRN A0010?')!.props.onConfirm(); });
+      await press();
+      await confirm();
     }
     expect(createGRN).toHaveBeenCalledTimes(2);
     expect(showAlert).toHaveBeenCalledTimes(1);
@@ -489,51 +555,53 @@ describe('round 3', () => {
 
 describe('opened on the Rates block from GRN → Overview → Rates (owner, 2026-10-17)', () => {
   const { router } = require('expo-router');
-  const scrollView = (tree: ReactTestRenderer) => tree.root.findByType(require('react-native').ScrollView);
-  const layoutRates = (tree: ReactTestRenderer, y: number) =>
-    act(() => { tree.root.find(n => n.props.testID === 'grn-rates-section' && typeof n.props.onLayout === 'function').props.onLayout({ nativeEvent: { layout: { y } } }); });
+  // The jest ScrollView keeps one shared scrollTo stand-in on its prototype.
+  const scrollTo = ScrollView.prototype.scrollTo as unknown as jest.Mock;
+  // The scroll view has no role, label or text: it is the only way to send it a drag.
+  const scrollView = () => screen.container.queryAll((node) => (node.type as unknown) === 'RCTScrollView')[0];
+  const layoutRates = (y: number) => fireEvent(screen.getByTestId('grn-rates-section'), 'layout', { nativeEvent: { layout: { y } } });
 
   it('scrolls to the Rates block each time it moves while the GRN loads, and stops once the person scrolls', async () => {
     mockParams = { id: GRN_ID, focus: 'rates' };
-    const tree = await render('edit');
-    const scrollTo = jest.spyOn(scrollView(tree).instance, 'scrollTo').mockImplementation(() => {});
-    layoutRates(tree, 600);
+    await render('edit');
+    scrollTo.mockClear();
+    await layoutRates(600);
     expect(scrollTo).toHaveBeenLastCalledWith({ y: 600 - 16, animated: true });
-    layoutRates(tree, 900);
+    await layoutRates(900);
     expect(scrollTo).toHaveBeenLastCalledWith({ y: 900 - 16, animated: true });
-    act(() => { scrollView(tree).props.onScrollBeginDrag(); });
-    layoutRates(tree, 1000);
+    await fireEvent(scrollView(), 'scrollBeginDrag');
+    await layoutRates(1000);
     expect(scrollTo).toHaveBeenCalledTimes(2);
   });
 
   it('the normal way in (from step 2) does not scroll, and Previous goes back one screen', async () => {
     mockParams = { id: GRN_ID };
-    const tree = await render('edit');
-    const scrollTo = jest.spyOn(scrollView(tree).instance, 'scrollTo').mockImplementation(() => {});
-    layoutRates(tree, 600);
+    await render('edit');
+    scrollTo.mockClear();
+    await layoutRates(600);
     expect(scrollTo).not.toHaveBeenCalled();
     expect(backOptions.enabled).toBe(false);
-    act(() => { one(tree, 'WizardBottomBar').props.onPrevious(); });
+    await user.press(screen.getByRole('button', { name: 'Previous' }));
     expect(router.back).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
   });
 
   it('Previous and the Back key put steps 1 and 2 under it; Edit details opens step 1', async () => {
     mockParams = { id: GRN_ID, focus: 'rates' };
-    const tree = await render('edit');
-    act(() => { one(tree, 'WizardBottomBar').props.onPrevious(); });
+    await render('edit');
+    await user.press(screen.getByRole('button', { name: 'Previous' }));
     expect(router.replace).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step1', params: { id: GRN_ID } });
     expect(router.push).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step2', params: { id: GRN_ID } });
     expect(router.back).not.toHaveBeenCalled();
     jest.clearAllMocks();
     expect(backOptions.enabled).toBe(true);
     let handled = false;
-    act(() => { handled = backOptions.onBackPress!(); });
+    await act(async () => { handled = backOptions.onBackPress!(); });
     expect(handled).toBe(true);
     expect(router.replace).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step1', params: { id: GRN_ID } });
     expect(router.push).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step2', params: { id: GRN_ID } });
     jest.clearAllMocks();
-    act(() => { one(tree, 'GRNStepIndicator').props.onStepPress(1); });
+    await user.press(screen.getByRole('button', { name: 'Step 1' }));
     expect(router.replace).toHaveBeenLastCalledWith({ pathname: '/grn-edit/[id]/step1', params: { id: GRN_ID } });
     expect(router.push).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
@@ -542,93 +610,99 @@ describe('opened on the Rates block from GRN → Overview → Rates (owner, 2026
 
 describe('the sections fold, one open at a time (owner, 2026-10-17)', () => {
   const SECTIONS = ['details', 'photos', 'items', 'rates'] as const;
-  const body = (tree: ReactTestRenderer, section: string) => tree.root.find(n => n.props.testID === `grn-review-body-${section}` && typeof n.type === 'string');
-  const isOpen = (tree: ReactTestRenderer, section: string) => [body(tree, section).props.style].flat(Infinity).every((st: any) => st?.display !== 'none');
-  const openOnes = (tree: ReactTestRenderer) => SECTIONS.filter(section => isOpen(tree, section));
-  const toggle = (tree: ReactTestRenderer, section: string) => tree.root.find(n => n.props.testID === `grn-review-section-${section}` && typeof n.props.onPress === 'function');
-  const line = (tree: ReactTestRenderer, section: string) =>
-    tree.root.findAll(n => n.props.testID === `grn-review-section-${section}-line` && n.type === Text).map(n => [n.props.children].flat(Infinity).join(''))[0] ?? null;
-  const tap = (tree: ReactTestRenderer, section: string) => act(() => { toggle(tree, section).props.onPress(); });
+  const NAMES = { details: /^GRN details/, photos: /^Photos/, items: /^Items/, rates: /^Rates/ };
+  const body = (section: string) => screen.getByTestId(`grn-review-body-${section}`);
+  const isOpen = (section: string) => StyleSheet.flatten(body(section).props.style)?.display !== 'none';
+  const openOnes = () => SECTIONS.filter(isOpen);
+  const toggle = (section: keyof typeof NAMES) => screen.getByRole('button', { name: NAMES[section] });
+  const closedLine = (section: string) => {
+    const node = screen.queryByTestId(`grn-review-section-${section}-line`);
+    return node ? [node.props.children].flat(Infinity).join('') : null;
+  };
+  const tap = async (section: keyof typeof NAMES) => { await user.press(toggle(section)); };
 
   it('opens on ITEMS; every closed heading carries its line; the open one none', async () => {
-    const tree = await render('edit');
-    expect(openOnes(tree)).toEqual(['items']);
-    expect(line(tree, 'details')).toBe('A0010 · 12/10/26 · Fictional Traders');
-    expect(line(tree, 'photos')).toBe('1 photo');
-    expect(line(tree, 'items')).toBeNull();
+    await render('edit');
+    expect(openOnes()).toEqual(['items']);
+    expect(closedLine('details')).toBe('A0010 · 12/10/26 · Fictional Traders');
+    expect(closedLine('photos')).toBe('1 photo');
+    expect(closedLine('items')).toBeNull();
     // Rice has no rate: the red tag says so and no line repeats it.
-    expect(line(tree, 'rates')).toBeNull();
-    expect(toggle(tree, 'rates').props.accessibilityLabel).toBe('Rates, 1 without a rate');
+    expect(closedLine('rates')).toBeNull();
+    expect(toggle('rates')).toHaveAccessibleName('Rates, 1 without a rate');
     // The closed DETAILS line is read with the date in words.
-    expect(toggle(tree, 'details').props.accessibilityLabel).toBe('GRN details, A0010 · 12 Oct 2026 · Fictional Traders');
-    expect(toggle(tree, 'items').props.accessibilityState).toEqual({ expanded: true });
-    expect(toggle(tree, 'details').props.accessibilityState).toEqual({ expanded: false });
+    expect(toggle('details')).toHaveAccessibleName('GRN details, A0010 · 12 Oct 2026 · Fictional Traders');
+    expect(toggle('items')).toBeExpanded();
+    expect(toggle('items').props.accessibilityState).toEqual({ expanded: true });
+    expect(toggle('details').props.accessibilityState).toEqual({ expanded: false });
   });
 
   it('reads the date row of DETAILS in words, while the row shows 12/10/26', async () => {
-    const tree = await render('edit');
-    act(() => { toggle(tree, 'details').props.onPress(); });
-    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Date, 12 Oct 2026').length).toBeGreaterThan(0);
-    expect(tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''))).toContain('12/10/26');
+    await render('edit');
+    await tap('details');
+    expect(screen.getAllByLabelText('Date, 12 Oct 2026').length).toBeGreaterThan(0);
+    expect(hasText('12/10/26')).toBe(true);
   });
 
   it('the Edit pencil is an icon only, the chevron\'s size, beside the chevron, and is its own button', async () => {
-    const tree = await render('edit');
-    const header = tree.root.find(n => n.props.testID === 'grn-review-section-details' && typeof n.props.onPress === 'function').parent!;
-    expect(header.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''))).toEqual(['GRN DETAILS', 'A0010 · 12/10/26 · Fictional Traders']);
-    const icons = header.findAllByType('Icon' as never).map(n => [n.props.name, n.props.size]);
-    expect(icons).toEqual([['pencil-outline', icons[1][1]], ['chevron-down', icons[1][1]]]);
-    const edit = tree.root.find(n => n.props.testID === 'grn-review-section-details-edit' && typeof n.props.onPress === 'function');
-    expect(edit.props.accessibilityLabel).toBe('Edit GRN details');
-    act(() => { edit.props.onPress(); });
-    expect(openOnes(tree)).toEqual(['items']);
+    await render('edit');
+    // The heading is the toggle's parent: no query reaches "the elements beside the toggle" but the tree.
+    const header = toggle('details').parent!;
+    expect(within(header).queryAllByText(/[\s\S]*/).map((node) => [node.props.children].flat(Infinity).join(''))).toEqual(['GRN DETAILS', 'A0010 · 12/10/26 · Fictional Traders']);
+    const icons = within(header).queryAllByTestId(/^icon-/);
+    expect(icons.map((icon) => icon.props.testID)).toEqual(['icon-pencil-outline', 'icon-chevron-down']);
+    const chevronSize = StyleSheet.flatten(icons[1].props.style).width;
+    expect(icons[0]).toHaveStyle({ width: chevronSize, height: chevronSize });
+    const edit = screen.getByRole('button', { name: 'Edit GRN details' });
+    expect(within(edit).getByTestId('icon-pencil-outline')).toBeOnTheScreen();
+    await user.press(edit);
+    expect(openOnes()).toEqual(['items']);
   });
 
   it('opening one closes the other; tapping the open one closes it', async () => {
-    const tree = await render('create');
-    tap(tree, 'details');
-    expect(openOnes(tree)).toEqual(['details']);
-    expect(line(tree, 'items')).toBe('Total quantity 20');
-    tap(tree, 'rates');
-    expect(openOnes(tree)).toEqual(['rates']);
-    tap(tree, 'rates');
-    expect(openOnes(tree)).toEqual([]);
+    await render('create');
+    await tap('details');
+    expect(openOnes()).toEqual(['details']);
+    expect(closedLine('items')).toBe('Total quantity 20');
+    await tap('rates');
+    expect(openOnes()).toEqual(['rates']);
+    await tap('rates');
+    expect(openOnes()).toEqual([]);
   });
 
   it('RATES says when every item has a rate, and while it loads', async () => {
     mockRates = [stored('gur', 0, 50, 3), stored('rice', 0, 50, 2)];
-    let tree = await render('edit');
-    expect(line(tree, 'rates')).toBe('Every item has a rate');
-    act(() => tree.unmount());
+    const { unmount } = await render('edit');
+    expect(closedLine('rates')).toBe('Every item has a rate');
+    await unmount();
     mockStatus = 'loading';
-    tree = await render('edit');
-    expect(line(tree, 'rates')).toBe('Loading rates');
+    await render('edit');
+    expect(closedLine('rates')).toBe('Loading rates');
   });
 
   it('the Summary section is gone: Total items and Total quantity are the last lines of GRN DETAILS', async () => {
-    const tree = await render('edit');
-    expect(texts(tree)).not.toContain('SUMMARY');
-    const detailTexts = body(tree, 'details').findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-    expect(detailTexts.slice(-4)).toEqual(['Total items', '2', 'Total quantity', '20']);
+    await render('edit');
+    expect(hasText('SUMMARY')).toBe(false);
+    expect(textsIn(body('details')).slice(-4)).toEqual(['Total items', '2', 'Total quantity', '20']);
   });
 
   it('opened from the GRN\'s Rates, RATES is the open section', async () => {
     mockParams = { id: GRN_ID, focus: 'rates' };
-    const tree = await render('edit');
-    expect(openOnes(tree)).toEqual(['rates']);
+    await render('edit');
+    expect(openOnes()).toEqual(['rates']);
   });
 
   it('a Save blocked by a missing rate opens RATES', async () => {
-    const tree = await render('edit');
-    expect(openOnes(tree)).toEqual(['items']);
-    await press(tree);
-    expect(openOnes(tree)).toEqual(['rates']);
+    await render('edit');
+    expect(openOnes()).toEqual(['items']);
+    await press();
+    expect(openOnes()).toEqual(['rates']);
   });
 
   it('staff have no RATES heading; ITEMS is open', async () => {
     mockRole = 'staff';
-    const tree = await render('edit');
-    expect(tree.root.findAll(n => n.props.testID === 'grn-review-section-rates')).toHaveLength(0);
-    expect(SECTIONS.filter(section => section !== 'rates' && isOpen(tree, section))).toEqual(['items']);
+    await render('edit');
+    expect(screen.queryByRole('button', { name: NAMES.rates })).not.toBeOnTheScreen();
+    expect(SECTIONS.filter((section) => section !== 'rates' && isOpen(section))).toEqual(['items']);
   });
 });
