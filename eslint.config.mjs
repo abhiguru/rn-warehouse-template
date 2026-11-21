@@ -178,6 +178,20 @@ export default [
   // CODE_GUIDE (warn): typed linting. Test files are not in tsconfig.json, so they are skipped.
   ...CODE_GUIDE_TYPED_CONFIGS,
   {
+    // The type-checked preset includes typescript-eslint's eslint-recommended override, which switches off core
+    // rules that TypeScript is meant to cover. Set back the ones TypeScript (strict) does not fully cover.
+    files: CODE_GUIDE_FILES,
+    ignores: CODE_GUIDE_IGNORES,
+    rules: {
+      // CG-6 (dead code): allowUnreachableCode is not set, so TS7027 is only an editor suggestion, not a compile error.
+      'no-unreachable': 'error',
+      // CG-8: left off because tsc errors already cover them under strict: no-const-assign (TS2588), no-dupe-keys (TS1117),
+      // no-func-assign (TS2630), no-import-assign (TS2632), no-setter-return (TS2408), getter-return (TS2378),
+      // no-unsafe-negation (TS2358, TS2360). no-redeclare stays off: it flags TypeScript function overloads,
+      // and tsc reports duplicate let/const/class names (TS2451, TS2300).
+    },
+  },
+  {
     files: CODE_GUIDE_FILES,
     ignores: CODE_GUIDE_IGNORES,
     languageOptions: {
