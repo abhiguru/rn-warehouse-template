@@ -99,17 +99,16 @@ jobs:
       - name: Lint
         run: npm run lint -- --max-warnings 6987
 
-      # CODE_GUIDE.md (WH-273): a pull request adds no lint warning in the files it changes. A file with old warnings may be
-      # touched as long as it does not get more (scripts/ci-lint-changed.mjs compares it with its base version).
-      # Existing warnings stay under the ratchet above until the code is fixed.
+      # CODE_GUIDE.md (WH-273, WH-280): a pull request adds no lint warning in the files it changes. A file with old warnings may be
+      # touched or moved as long as it does not get more (scripts/ci-lint-changed.mjs compares it with its base version at HEAD^1, the
+      # main commit GitHub built the pull-request merge commit against). Existing warnings stay under the ratchet above until fixed.
       - name: Lint changed files (no new warnings)
         if: github.event_name == 'pull_request'
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git diff --name-only --diff-filter=d "$BASE_SHA" HEAD -- '*.ts' '*.tsx' > "$RUNNER_TEMP/changed-files.txt"
-          node scripts/ci-lint-changed.mjs "$RUNNER_TEMP/changed-files.txt" "$BASE_SHA"
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          git fetch --no-tags --depth=2 origin "$(git rev-parse HEAD)"
+          base="$(git rev-parse HEAD^1)"
+          git diff --name-status -M --diff-filter=d "$base" HEAD -- '*.ts' '*.tsx' > "$RUNNER_TEMP/changed-files.txt"
+          node scripts/ci-lint-changed.mjs "$RUNNER_TEMP/changed-files.txt" "$base"
 
       - name: Type check
         run: npm run typecheck

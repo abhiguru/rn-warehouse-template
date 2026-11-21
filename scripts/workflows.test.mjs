@@ -495,12 +495,15 @@ for (const eventName of ['pull_request', 'push', 'schedule', 'workflow_dispatch'
   }
 }
 
-// WH-273: a pull request adds no lint warning in the files it changes (docs/CODE_GUIDE.md).
-test('CI lints the files a pull request changes and fails when one gets more warnings than at the base', () => {
+// WH-273, WH-280: a pull request adds no lint warning in the files it changes (docs/CODE_GUIDE.md).
+test('CI lints the files a pull request changes against HEAD^1 with rename detection and fails when one gets more warnings than at the base', () => {
   const text = workflowText('ci.yml');
   const step = text.slice(text.indexOf('- name: Lint changed files (no new warnings)'), text.indexOf('- name: Type check\n'));
   assert.ok(step.length > 0, 'ci.yml: the step "Lint changed files (no new warnings)" comes before the type check');
   assert.match(step, /if: github\.event_name == 'pull_request'/);
-  assert.match(step, /node scripts\/ci-lint-changed\.mjs "\$RUNNER_TEMP\/changed-files\.txt" "\$BASE_SHA"/);
-  assert.match(step, /BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(step, /git fetch --no-tags --depth=2 origin "\$\(git rev-parse HEAD\)"/);
+  assert.match(step, /base="\$\(git rev-parse HEAD\^1\)"/);
+  assert.match(step, /git diff --name-status -M --diff-filter=d "\$base" HEAD -- '\*\.ts' '\*\.tsx' > "\$RUNNER_TEMP\/changed-files\.txt"/);
+  assert.match(step, /node scripts\/ci-lint-changed\.mjs "\$RUNNER_TEMP\/changed-files\.txt" "\$base"/);
+  assert.doesNotMatch(step, /pull_request\.base\.sha|--name-only/);
 });
