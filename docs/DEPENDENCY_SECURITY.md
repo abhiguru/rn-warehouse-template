@@ -48,8 +48,13 @@
     istanbul plugin and `test-exclude`) is a dev dependency.
   - **How the gate stays safe.** `scripts/audit-dependencies.mjs` has a second list, `acceptedWithoutRepair` (advisory, package,
     range, reason, `reviewBy`), apart from `acceptedAdvisories`, which keeps its rule that every entry has a verified local
-    backport. The gate also reads `npm ls --omit=dev --all --json` and fails (`SHIPPED:`) when `glob` or `minimatch` is
-    declared by anything outside `toolingParents` (the list above), including the app itself. From the day after `reviewBy`
+    backport. The gate also reads `npm ls --omit=dev --all --long --json` and fails (`SHIPPED:`) when `glob` or `minimatch` is
+    declared by anything outside `toolingParents` (the list above), including the app itself. That tree keeps an optional
+    peer that a dev dependency installs (lockfile `devOptional`), such as `expo-router > @testing-library/react-native >
+    jest` since WH-273; the gate does not follow an edge that is an optional peer of its parent, `devOptional` and in the
+    app's devDependencies, because the app does not ship it (an Android export on 2026-11-21 had no `@testing-library` or
+    `test-renderer` in the bundle). A required peer, an optional peer that production also needs, and an
+    `optionalDependencies` edge are still followed. From the day after `reviewBy`
     the entries are `REVIEW_OVERDUE` and the gate fails, as for the backported ones. Tests are in
     `scripts/audit-dependencies.test.mjs`. The result carries `reviewByWithoutRepair` and `shippedPaths`.
   - **At 2026-12-15:** check whether `@expo/*`, Jest and ESLint have moved to `glob` 14 and `minimatch` 11 (`npm outdated`,
