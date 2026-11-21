@@ -272,3 +272,46 @@ test('the accepted-without-repair list is separate from the backported one and f
   }
   assert.deepEqual(Object.keys(acceptedWithoutRepair).sort(), ['GHSA-3g3m-2fjr-6pw4', 'GHSA-g3hv-75wg-m249']);
 });
+
+// WH-273: @testing-library/react-native is an optional peer of expo-router and a root devDependency. npm keeps it in
+// `npm ls --omit=dev` (lockfile `devOptional`), but the app does not ship it, so the glob/minimatch under it are not shipped.
+const rntl = '@testing-library/react-native';
+const devOnlyPeerTree = (change = {}) => ({
+  name: 'rn-warehouse-template',
+  devDependencies: { [rntl]: '^14.1.0' },
+  dependencies: {
+    'expo-router': {
+      peerDependencies: { [rntl]: '*' },
+      peerDependenciesMeta: { [rntl]: { optional: true } },
+      dependencies: { [rntl]: { path: '/r/rntl', devOptional: true, dependencies: { glob: { path: '/r/glob' } } } },
+    },
+  },
+  ...change,
+});
+
+test('an optional peer that only a root devDependency installs is not followed, so its glob is not shipped', () => {
+  assert.deepEqual(shippedPaths(devOnlyPeerTree(), ['glob', 'minimatch']), []);
+});
+
+test('the same edge is followed when the peer is required, not devOptional, or not a root devDependency', () => {
+  const names = ['glob', 'minimatch'];
+  const shipped = [{ package: 'glob', path: `rn-warehouse-template > expo-router > ${rntl} > glob` }];
+  const required = devOnlyPeerTree();
+  required.dependencies['expo-router'].peerDependenciesMeta = {};
+  assert.deepEqual(shippedPaths(required, names), shipped);
+  const notDevOptional = devOnlyPeerTree();
+  delete notDevOptional.dependencies['expo-router'].dependencies[rntl].devOptional;
+  assert.deepEqual(shippedPaths(notDevOptional, names), shipped);
+  assert.deepEqual(shippedPaths(devOnlyPeerTree({ devDependencies: {} }), names), shipped);
+  const optionalDependency = devOnlyPeerTree();
+  delete optionalDependency.dependencies['expo-router'].peerDependencies;
+  assert.deepEqual(shippedPaths(optionalDependency, names), shipped);
+});
+
+test('a package that npm prints again without its dependencies is still read, so a production path to glob is reported', () => {
+  // npm lists `helper`'s dependencies once, here under the skipped edge, and prints its other occurrences bare.
+  const tree = devOnlyPeerTree();
+  tree.dependencies['expo-router'].dependencies[rntl].dependencies = { helper: { path: '/r/helper', dependencies: { glob: { path: '/r/glob' } } } };
+  tree.dependencies['some-runtime-lib'] = { dependencies: { helper: { path: '/r/helper' } } };
+  assert.deepEqual(shippedPaths(tree, ['glob', 'minimatch']), [{ package: 'glob', path: 'rn-warehouse-template > some-runtime-lib > helper > glob' }]);
+});
