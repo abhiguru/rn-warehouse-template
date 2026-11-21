@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Alert } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { GrnItemsStep } from '@/features/grn/screens/GrnItemsStep';
 import { addItem, reconcileItems, updateItem } from '@/store/slices/grnFormSlice';
@@ -36,13 +36,55 @@ const storedLine = (rack: string) => ({
 const mockForm: Record<string, unknown> = {};
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
 
-// Children are stand-ins that keep their props, so the test can call their handlers.
+// Children are stand-ins that draw what the step hands them (the item form's fields, its Save and rack error, the
+// saved lines with their Edit, the bar's Next) and call the real props, so the test taps them.
 jest.mock('@/features/grn/components/HorizontalItemForm', () => ({
-  HorizontalItemForm: require('react').forwardRef((props: object, _ref: unknown) =>
-    require('react').createElement('HorizontalItemForm', props)),
+  HorizontalItemForm: require('react').forwardRef((props: {
+    currentItem: Record<string, unknown> & { errors?: { rack?: string } };
+    onFieldChange: (field: string, value: string) => void;
+    onSaveItem: () => unknown;
+    isValid: boolean;
+  }, _ref: unknown) => {
+    const { Pressable, Text, TextInput, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      ['item_table_id', 'item_name', 'qty', 'rack'].map((field) =>
+        createElement(TextInput, {
+          key: field,
+          accessibilityLabel: field,
+          value: String(props.currentItem[field] ?? ''),
+          onChangeText: (value: string) => props.onFieldChange(field, value),
+        })),
+      // The form's Save is held back by an invalid line (what `isValid` is for).
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Save line', disabled: !props.isValid, onPress: props.onSaveItem }),
+      props.currentItem.errors?.rack ? createElement(Text, null, props.currentItem.errors.rack) : null
+    );
+  }),
 }));
-jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({ __esModule: true, default: 'ItemsSummaryBottomSheet' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({
+  __esModule: true,
+  default: (props: { items: { grn_trl_id: string; rack: string }[]; onEditItem: (item: unknown) => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      props.items.map((item) => createElement(
+        View,
+        { key: item.grn_trl_id },
+        createElement(Text, null, `Saved rack: ${item.rack}`),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: `Edit ${item.grn_trl_id}`, onPress: () => props.onEditItem(item) })
+      ))
+    );
+  },
+}));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Next', onPress: props.onNext }),
+}));
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: () => null }));
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() },
@@ -69,22 +111,22 @@ function useForm(mode: 'create' | 'edit', items: ReturnType<typeof storedLine>[]
   });
 }
 
-async function render(mode: 'create' | 'edit') {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnItemsStep mode={mode} />);
-  });
-  return tree;
-}
-const form = (tree: ReactTestRenderer) => tree.root.findByType('HorizontalItemForm' as never);
-const set = (tree: ReactTestRenderer, field: string, value: string) =>
-  act(() => form(tree).props.onFieldChange(field, value));
+const user = userEvent.setup({ delay: 0 });
 
-async function typeLine(tree: ReactTestRenderer, rack: string) {
-  set(tree, 'item_table_id', ITEM_ID);
-  set(tree, 'item_name', 'Example Potatoes');
-  set(tree, 'qty', '10');
-  set(tree, 'rack', rack);
+const show = (mode: 'create' | 'edit') => render(<GrnItemsStep mode={mode} />);
+const press = (name: string) => user.press(screen.getByRole('button', { name }));
+/** Replaces what is in the field of the item form with `value` (pasted, so spaces at the ends arrive as typed). */
+const set = async (field: string, value: string) => {
+  const input = screen.getByLabelText(field);
+  await user.clear(input);
+  if (value) await user.paste(input, value);
+};
+
+async function typeLine(rack: string) {
+  await set('item_table_id', ITEM_ID);
+  await set('item_name', 'Example Potatoes');
+  await set('qty', '10');
+  await set('rack', rack);
 }
 
 describe('GRN items step racks', () => {
@@ -109,67 +151,62 @@ describe('GRN items step racks', () => {
     [' ROW 3 ', 'ROW 3'],
   ])('new GRN: a line with rack %p can be saved and is stored as %p', async (typed, stored) => {
     useForm('create', []);
-    const tree = await render('create');
-    await typeLine(tree, typed);
+    await show('create');
+    await typeLine(typed);
 
     // The save button of the item form is not held back by the rack.
-    expect(form(tree).props.isValid).toBe(true);
-    await act(async () => { await form(tree).props.onSaveItem(); });
+    expect(screen.getByRole('button', { name: 'Save line' })).toBeEnabled();
+    await press('Save line');
 
     expect(alert).not.toHaveBeenCalled();
     expect(mockDispatch).toHaveBeenCalledWith(
       addItem(expect.objectContaining({ item_table_id: ITEM_ID, qty: 10, rack: stored }) as never)
     );
-    await act(async () => { tree.unmount(); });
   });
 
   it('new GRN: Next takes the line that is still in the form, whatever its rack', async () => {
     useForm('create', []);
-    const tree = await render('create');
-    await typeLine(tree, '20B ');
+    await show('create');
+    await typeLine('20B ');
 
-    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
+    await press('Next');
     // "Save this item first?" is asked for a typed line; the answer "Save" stores it.
     const save = alert.mock.calls[0]?.[2]?.find((button: { text: string }) => button.text === 'Save item');
     if (save) await act(async () => { await save.onPress(); });
 
     // Next stores the step's lines in one action.
     expect(mockDispatch).toHaveBeenCalledWith(reconcileItems([expect.objectContaining({ rack: '20B' })] as never));
-    await act(async () => { tree.unmount(); });
   });
 
   it('edit: a line stored with "C3" opens with its rack, saves with it and does not hold Next back', async () => {
     useForm('edit', [storedLine('C3')]);
-    const tree = await render('edit');
-    const sheet = tree.root.findByType('ItemsSummaryBottomSheet' as never);
-    expect(sheet.props.items[0].rack).toBe('C3');
+    await show('edit');
+    expect(screen.getByText('Saved rack: C3')).toBeOnTheScreen();
 
-    await act(async () => { sheet.props.onEditItem(sheet.props.items[0]); });
-    expect(form(tree).props.currentItem.rack).toBe('C3');
-    expect(form(tree).props.isValid).toBe(true);
-    set(tree, 'qty', '12');
-    await act(async () => { await form(tree).props.onSaveItem(); });
+    await press(`Edit ${LINE_ID}`);
+    expect(screen.getByLabelText('rack')).toHaveDisplayValue('C3');
+    expect(screen.getByRole('button', { name: 'Save line' })).toBeEnabled();
+    await set('qty', '12');
+    await press('Save line');
 
     expect(alert).not.toHaveBeenCalled();
     expect(mockDispatch).toHaveBeenCalledWith(
       updateItem({ grn_trl_id: LINE_ID, item: expect.objectContaining({ qty: 12, rack: 'C3' }) as never })
     );
 
-    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
+    await press('Next');
     expect(alert).not.toHaveBeenCalled();
     expect(router.push).toHaveBeenCalledWith(`/grn-edit/${GRN_ID}/step3`);
-    await act(async () => { tree.unmount(); });
   });
 
   it('edit: a rack longer than the 30 characters the server stores is refused with that reason', async () => {
     useForm('edit', [storedLine('C3')]);
-    const tree = await render('edit');
-    await typeLine(tree, 'A'.repeat(31));
+    await show('edit');
+    await typeLine('A'.repeat(31));
 
-    await act(async () => { await form(tree).props.onSaveItem(); });
+    await press('Save line');
 
-    expect(form(tree).props.currentItem.errors.rack).toBe('Rack must be at most 30 characters');
+    expect(screen.getByText('Rack must be at most 30 characters')).toBeOnTheScreen();
     expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: addItem.type }));
-    await act(async () => { tree.unmount(); });
   });
 });

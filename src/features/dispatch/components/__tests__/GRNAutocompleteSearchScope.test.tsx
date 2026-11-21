@@ -2,7 +2,7 @@
  * The dispatch GRN picker searches only the GRNs of the dispatch's customer.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import { GRNAutocompleteBottomSheet } from '../GRNAutocompleteBottomSheet';
 import { searchGRNNumbers, getCustomerGRNsWithStock, getGRNPrefixesWithStock } from '../../services/grnDetailService';
 
@@ -29,26 +29,32 @@ jest.mock('../../services/grnDetailService', () => ({
 }));
 
 const CUSTOMER_A = '33333333-2222-4333-8444-555555555555';
+const CUSTOMER_B = '44444444-2222-4333-8444-555555555555';
+const LOAD_FAILED = "Couldn't load the GRNs. Check your connection and try again.";
 
-async function open(customerId?: string) {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(
-      <GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={customerId} />
-    );
-  });
-  return tree;
+const sheet = (customerId?: string) => (
+  <GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={customerId} />
+);
+
+const open = (customerId?: string) => render(sheet(customerId));
+
+// Time moves only when the test says so; the sheet's search waits 150 ms after a key.
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+const pass = (ms: number) => act(async () => { await jest.advanceTimersByTimeAsync(ms); });
+
+/** Press a key of the sheet's own keypad and let its 150 ms debounce pass. */
+async function tapKey(label: string) {
+  await user().press(screen.getByRole('button', { name: label }));
+  await pass(200);
 }
 
-/** Tap a key of the sheet's own keypad and let its 150 ms debounce pass. */
-async function tapKey(tree: ReactTestRenderer, label: string) {
-  const key = tree.root.find(
-    (node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label
-  );
-  await act(async () => {
-    key.props.onPress();
-    await jest.advanceTimersByTimeAsync(200);
-  });
+/** Promises the tests hold back; every one is released after the test so that a failing test cannot hang Jest. */
+let releases: (() => void)[] = [];
+function held<T>(whenReleased: T) {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => { resolve = r; });
+  releases.push(() => resolve(whenReleased));
+  return { promise, resolve };
 }
 
 let errorSpy: jest.SpyInstance | undefined;
@@ -59,320 +65,272 @@ describe('GRN picker search', () => {
     jest.clearAllMocks();
   });
   afterEach(() => {
+    releases.forEach((release) => release());
+    releases = [];
     jest.useRealTimers();
     errorSpy?.mockRestore();
     errorSpy = undefined;
   });
 
   it("passes the dispatch customer to the search", async () => {
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
 
-    await tapKey(tree, 'Enter GRN digit 7');
+    await tapKey('Enter GRN digit 7');
 
     expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
     expect(searchGRNNumbers).toHaveBeenCalledWith('7', CUSTOMER_A);
-    await act(async () => { tree.unmount(); });
   });
 
   it("loads the prefix buttons for the dispatch customer, null when there is none, and reloads when it changes", async () => {
-    const CUSTOMER_B = '44444444-2222-4333-8444-555555555555';
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
     expect(getGRNPrefixesWithStock).toHaveBeenLastCalledWith(CUSTOMER_A);
 
-    await act(async () => {
-      tree.update(<GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={CUSTOMER_B} />);
-    });
+    await screen.rerender(sheet(CUSTOMER_B));
     expect(getGRNPrefixesWithStock).toHaveBeenLastCalledWith(CUSTOMER_B);
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
 
     jest.mocked(getGRNPrefixesWithStock).mockClear();
-    const none = await open();
+    await open();
     expect(getGRNPrefixesWithStock).not.toHaveBeenCalled();
-    await act(async () => { none.unmount(); });
   });
 
   it('ignores a slow reply for a previous customer when the answers arrive out of order', async () => {
-    const CUSTOMER_B = '44444444-2222-4333-8444-555555555555';
-    let resolveSlowPrefixes!: (v: { prefix: string; grnCount: number }[]) => void;
-    let resolveSlowGrns!: (v: never[]) => void;
+    const slowPrefixes = held<{ prefix: string; grnCount: number }[]>([]);
+    const slowGrns = held<never[]>([]);
     jest.mocked(getGRNPrefixesWithStock)
-      .mockImplementationOnce(() => new Promise((r) => { resolveSlowPrefixes = r; }))
+      .mockImplementationOnce(() => slowPrefixes.promise)
       .mockResolvedValueOnce([{ prefix: 'B', grnCount: 1 }]);
     jest.mocked(getCustomerGRNsWithStock)
-      .mockImplementationOnce(() => new Promise((r) => { resolveSlowGrns = r as never; }))
+      .mockImplementationOnce(() => slowGrns.promise)
       .mockResolvedValueOnce([{ grnId: 'g-b', grNo: 'B-1', grnDate: '2026-01-01', customerName: 'Bee' }] as never);
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
+    await screen.rerender(sheet(CUSTOMER_B));
     await act(async () => {
-      tree.update(<GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={CUSTOMER_B} />);
+      slowPrefixes.resolve([{ prefix: 'A', grnCount: 9 }]);
+      slowGrns.resolve([]);
     });
-    await act(async () => {
-      resolveSlowPrefixes([{ prefix: 'A', grnCount: 9 }]);
-      resolveSlowGrns([]);
-    });
-    const labels = tree.root
-      .findAll((n) => typeof n.props.accessibilityLabel === 'string')
-      .map((n) => n.props.accessibilityLabel as string);
-    expect(labels).toContain('Use GRN prefix B, 1 GRNs');
-    expect(labels.some((l) => l.startsWith('Use GRN prefix A'))).toBe(false);
-    const shown = tree.root
-      .findAll((node) => (node.type as unknown) === 'Text')
-      .map((node) => [node.props.children].flat().join(''));
-    expect(shown).toContain('GRN B-1');
-    await act(async () => { tree.unmount(); });
+    expect(screen.getByRole('button', { name: 'Use GRN prefix B, 1 GRNs' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /^Use GRN prefix A/ })).not.toBeOnTheScreen();
+    expect(screen.getByText('GRN B-1')).toBeOnTheScreen();
   });
 
   it('a prefix button with several letters ("DV") searches that prefix, and digits go after it', async () => {
     jest.mocked(getGRNPrefixesWithStock).mockResolvedValueOnce([{ prefix: 'DV', grnCount: 2 }, { prefix: 'A', grnCount: 1 }]);
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
 
-    await tapKey(tree, 'Use GRN prefix DV, 2 GRNs');
+    await tapKey('Use GRN prefix DV, 2 GRNs');
     expect(searchGRNNumbers).toHaveBeenLastCalledWith('DV', CUSTOMER_A, { startsWith: 'DV' });
-    await tapKey(tree, 'Enter GRN digit 1');
+    await tapKey('Enter GRN digit 1');
     expect(searchGRNNumbers).toHaveBeenLastCalledWith('DV1', CUSTOMER_A, { startsWith: 'DV' });
-    await act(async () => { tree.unmount(); });
   });
 
   it('does not search every customer when the dispatch has no customer yet', async () => {
-    const tree = await open(undefined);
+    await open(undefined);
 
     // With no customer there are no prefix buttons, so there is no digit key to tap either.
-    expect(tree.root.findAll((n) => n.props.accessibilityLabel === 'Enter GRN digit 7')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Enter GRN digit 7' })).not.toBeOnTheScreen();
     expect(searchGRNNumbers).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
-  const texts = (tree: ReactTestRenderer) =>
-    tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
-  const pressRetry = async (tree: ReactTestRenderer) => {
+  const pressRetry = async () => {
     // The keypad and the list can both offer "Try again"; either one reads again.
-    const retry = tree.root.findAll((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Try again')[0];
-    await act(async () => { retry.props.onPress(); });
+    await user().press(screen.getAllByRole('button', { name: 'Try again' })[0]);
   };
 
   it('says the GRNs could not be loaded, not that there is no stock, and reads both again on "Try again"', async () => {
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.mocked(getCustomerGRNsWithStock).mockRejectedValueOnce(new Error('500'));
     jest.mocked(getGRNPrefixesWithStock).mockRejectedValueOnce(new Error('500'));
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
 
-    expect(texts(tree)).toContain("Couldn't load the GRNs. Check your connection and try again.");
-    expect(texts(tree)).not.toContain('No GRNs with stock');
+    expect(screen.getAllByText(LOAD_FAILED).length).toBeGreaterThan(0);
+    expect(screen.queryByText('No GRNs with stock')).not.toBeOnTheScreen();
 
     jest.mocked(getCustomerGRNsWithStock).mockResolvedValueOnce([]);
-    await pressRetry(tree);
+    await pressRetry();
 
     expect(getCustomerGRNsWithStock).toHaveBeenCalledTimes(2);
     expect(getGRNPrefixesWithStock).toHaveBeenCalledTimes(2);
     expect(getGRNPrefixesWithStock).toHaveBeenLastCalledWith(CUSTOMER_A);
-    expect(texts(tree)).toContain('No GRNs with stock');
-    await act(async () => { tree.unmount(); });
+    expect(screen.getByText('No GRNs with stock')).toBeOnTheScreen();
   });
 
   it('says so when the search fails, and searches again on "Try again"', async () => {
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.mocked(searchGRNNumbers).mockRejectedValueOnce(new Error('500'));
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
 
-    await tapKey(tree, 'Enter GRN digit 7');
-    expect(texts(tree)).toContain("Couldn't load the GRNs. Check your connection and try again.");
-    expect(texts(tree)).not.toContain('No GRNs match');
+    await tapKey('Enter GRN digit 7');
+    expect(screen.getAllByText(LOAD_FAILED).length).toBeGreaterThan(0);
+    expect(screen.queryByText('No GRNs match')).not.toBeOnTheScreen();
 
-    await pressRetry(tree);
+    await pressRetry();
     expect(searchGRNNumbers).toHaveBeenCalledTimes(2);
-    await act(async () => { tree.unmount(); });
   });
-  const pressLabelled = async (tree: ReactTestRenderer, label: string) => {
-    const node = tree.root.find((n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === label);
-    await act(async () => { node.props.onPress(); await jest.advanceTimersByTimeAsync(200); });
-  };
 
   it('backspacing past the prefix, or Clear, goes back to a plain "contains" search', async () => {
     jest.mocked(getGRNPrefixesWithStock).mockResolvedValue([{ prefix: 'DV', grnCount: 2 }]);
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
 
-    await tapKey(tree, 'Use GRN prefix DV, 2 GRNs');
-    await tapKey(tree, 'Enter GRN digit 1');
-    await pressLabelled(tree, 'Delete last character');
+    await tapKey('Use GRN prefix DV, 2 GRNs');
+    await tapKey('Enter GRN digit 1');
+    await tapKey('Delete last character');
     expect(searchGRNNumbers).toHaveBeenLastCalledWith('DV', CUSTOMER_A, { startsWith: 'DV' });
-    await pressLabelled(tree, 'Delete last character');
+    await tapKey('Delete last character');
     expect(searchGRNNumbers).toHaveBeenLastCalledWith('D', CUSTOMER_A);
 
-    await tapKey(tree, 'Use GRN prefix DV, 2 GRNs');
-    await pressLabelled(tree, 'Clear search');
-    await tapKey(tree, 'Enter GRN digit 5');
+    await tapKey('Use GRN prefix DV, 2 GRNs');
+    await tapKey('Clear search');
+    await tapKey('Enter GRN digit 5');
     expect(searchGRNNumbers).toHaveBeenLastCalledWith('5', CUSTOMER_A);
-    await act(async () => { tree.unmount(); });
   });
 
   it('"Try again" after an anchored search keeps the anchored mode', async () => {
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.mocked(getGRNPrefixesWithStock).mockResolvedValue([{ prefix: 'DV', grnCount: 2 }]);
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
     jest.mocked(searchGRNNumbers).mockRejectedValueOnce(new Error('500'));
 
-    await tapKey(tree, 'Use GRN prefix DV, 2 GRNs');
-    await pressRetry(tree);
+    await tapKey('Use GRN prefix DV, 2 GRNs');
+    await pressRetry();
     expect(searchGRNNumbers).toHaveBeenCalledTimes(2);
     expect(searchGRNNumbers).toHaveBeenLastCalledWith('DV', CUSTOMER_A, { startsWith: 'DV' });
-    await act(async () => { tree.unmount(); });
   });
+
   it('with no customer, says to choose one (keypad and list) and never "no stock left"', async () => {
-    const tree = await open(undefined);
-    const shown = texts(tree);
+    await open(undefined);
     // The list says it once (WH-6): the keypad row stays empty with no customer.
-    expect(shown.filter((x) => x === 'Choose a customer in the first step to see their GRNs.')).toHaveLength(1);
-    expect(shown).not.toContain('No GRNs have stock left.');
-    await act(async () => { tree.unmount(); });
+    expect(screen.getAllByText('Choose a customer in the first step to see their GRNs.')).toHaveLength(1);
+    expect(screen.queryByText('No GRNs have stock left.')).not.toBeOnTheScreen();
   });
 
   it('shows the spinner, not the previous customer\'s list, while a new customer loads', async () => {
-    const CUSTOMER_B = '44444444-2222-4333-8444-555555555555';
     jest.mocked(getCustomerGRNsWithStock).mockResolvedValueOnce(
       [{ grnId: 'g-a', grNo: 'A-1', grnDate: '2026-01-01', customerName: 'Ay' }] as never
     );
-    const tree = await open(CUSTOMER_A);
-    expect(texts(tree)).toContain('GRN A-1');
+    await open(CUSTOMER_A);
+    expect(screen.getByText('GRN A-1')).toBeOnTheScreen();
 
     jest.mocked(getCustomerGRNsWithStock).mockImplementationOnce(() => new Promise(() => {}));
-    let resolvePrefixesB!: (v: never[]) => void;
-    jest.mocked(getGRNPrefixesWithStock).mockImplementationOnce(() => new Promise((r) => { resolvePrefixesB = r as never; }));
-    await act(async () => {
-      tree.update(<GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={CUSTOMER_B} />);
-    });
-    expect(texts(tree)).not.toContain('GRN A-1');
-    expect(texts(tree)).toContain('Loading GRNs…');
-    expect(
-      tree.root.findAll((n) => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Use GRN prefix'))
-    ).toHaveLength(0);
+    const prefixesB = held<never[]>([]);
+    jest.mocked(getGRNPrefixesWithStock).mockImplementationOnce(() => prefixesB.promise);
+    await screen.rerender(sheet(CUSTOMER_B));
+    expect(screen.queryByText('GRN A-1')).not.toBeOnTheScreen();
+    expect(screen.getByText('Loading GRNs…')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /^Use GRN prefix/ })).not.toBeOnTheScreen();
     // Once the new customer's (empty) prefix answer arrives, the old buttons are still gone.
-    await act(async () => { resolvePrefixesB([]); });
-    expect(
-      tree.root.findAll((n) => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Use GRN prefix'))
-    ).toHaveLength(0);
-    await act(async () => { tree.unmount(); });
+    await act(async () => { prefixesB.resolve([]); });
+    expect(screen.queryByRole('button', { name: /^Use GRN prefix/ })).not.toBeOnTheScreen();
   });
 
   it('keeps the newest search when replies arrive out of order, and ends not loading', async () => {
-    let resolveFirst!: (v: never[]) => void;
+    const first = held<never[]>([]);
     jest.mocked(searchGRNNumbers)
-      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r as never; }))
+      .mockImplementationOnce(() => first.promise)
       .mockResolvedValueOnce([{ id: 'g-2', gr_no: 'A-22', date: '2026-01-02', customer_name: 'Ay' }] as never);
-    const tree = await open(CUSTOMER_A);
+    await open(CUSTOMER_A);
 
-    await tapKey(tree, 'Enter GRN digit 2');
-    await tapKey(tree, 'Enter GRN digit 2');
+    await tapKey('Enter GRN digit 2');
+    await tapKey('Enter GRN digit 2');
     expect(searchGRNNumbers).toHaveBeenCalledTimes(2);
     await act(async () => {
-      resolveFirst([{ id: 'g-1', gr_no: 'A-2', date: '2026-01-01', customer_name: 'Ay' }] as never);
+      first.resolve([{ id: 'g-1', gr_no: 'A-2', date: '2026-01-01', customer_name: 'Ay' }] as never);
     });
 
-    expect(texts(tree)).toContain('GRN A-22');
-    expect(texts(tree)).not.toContain('GRN A-2');
-    expect(texts(tree)).not.toContain('Searching GRNs…');
-    await act(async () => { tree.unmount(); });
+    expect(screen.getByText('GRN A-22')).toBeOnTheScreen();
+    expect(screen.queryByText('GRN A-2')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Searching GRNs…')).not.toBeOnTheScreen();
   });
 
   it('the search itself refuses to run without a customer, even if the keyboard calls it', async () => {
-    const tree = await open(undefined);
-    const keyboard = tree.root.find((n) => typeof n.props.onSearch === 'function' && typeof n.props.onClear === 'function');
-    await act(async () => { await keyboard.props.onSearch('7', ''); });
+    await open(undefined);
+    // No key can start a search without a customer, so the guard is reached through the keyboard's own onSearch prop.
+    let fiber = screen.getByRole('button', { name: 'Delete last character' }).unstable_fiber;
+    while (fiber && typeof fiber.memoizedProps?.onSearch !== 'function') fiber = fiber.return;
+    const onSearch = fiber!.memoizedProps.onSearch as (query: string, anchor: string) => Promise<void>;
+    await act(async () => { await onSearch('7', ''); });
     expect(searchGRNNumbers).not.toHaveBeenCalled();
-    expect(texts(tree)).not.toContain('Searching GRNs…');
-    await act(async () => { tree.unmount(); });
+    expect(screen.queryByText('Searching GRNs…')).not.toBeOnTheScreen();
   });
 
   it('Clear while a search is pending removes the spinner, and the late reply changes nothing', async () => {
-    let resolveSearch!: (v: never[]) => void;
-    jest.mocked(searchGRNNumbers).mockImplementationOnce(() => new Promise((r) => { resolveSearch = r as never; }));
-    const tree = await open(CUSTOMER_A);
-    await tapKey(tree, 'Enter GRN digit 7');
-    expect(texts(tree)).toContain('Searching GRNs…');
+    const search = held<never[]>([]);
+    jest.mocked(searchGRNNumbers).mockImplementationOnce(() => search.promise);
+    await open(CUSTOMER_A);
+    await tapKey('Enter GRN digit 7');
+    expect(screen.getByText('Searching GRNs…')).toBeOnTheScreen();
 
     expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
-    expect(resolveSearch).toBeDefined();
 
-    await pressLabelled(tree, 'Clear search');
-    expect(texts(tree)).not.toContain('Searching GRNs…');
-    const afterClear = texts(tree);
+    await tapKey('Clear search');
+    expect(screen.queryByText('Searching GRNs…')).not.toBeOnTheScreen();
+    const afterClear = screen.toJSON();
     await act(async () => {
-      resolveSearch([{ id: 'g-9', gr_no: 'A-7', date: '2026-01-01', customer_name: 'Ay' }] as never);
+      search.resolve([{ id: 'g-9', gr_no: 'A-7', date: '2026-01-01', customer_name: 'Ay' }] as never);
     });
     // The late reply really arrived on the one pending search and changed nothing.
     expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
-    expect(texts(tree)).not.toContain('GRN A-7');
-    expect(texts(tree)).not.toContain('Searching GRNs…');
-    expect(texts(tree)).toEqual(afterClear);
-    await act(async () => { tree.unmount(); });
+    expect(screen.queryByText('GRN A-7')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Searching GRNs…')).not.toBeOnTheScreen();
+    expect(screen.toJSON()).toEqual(afterClear);
   });
 
   it('backspacing to empty while a search is pending removes the spinner, and the late reply is ignored', async () => {
-    let resolveSearch!: (v: never[]) => void;
-    jest.mocked(searchGRNNumbers).mockImplementationOnce(() => new Promise((r) => { resolveSearch = r as never; }));
-    const tree = await open(CUSTOMER_A);
-    await tapKey(tree, 'Enter GRN digit 7');
-    expect(texts(tree)).toContain('Searching GRNs…');
+    const search = held<never[]>([]);
+    jest.mocked(searchGRNNumbers).mockImplementationOnce(() => search.promise);
+    await open(CUSTOMER_A);
+    await tapKey('Enter GRN digit 7');
+    expect(screen.getByText('Searching GRNs…')).toBeOnTheScreen();
 
     expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
-    expect(resolveSearch).toBeDefined();
 
-    await pressLabelled(tree, 'Delete last character');
-    expect(texts(tree)).not.toContain('Searching GRNs…');
-    const afterBackspace = texts(tree);
+    await tapKey('Delete last character');
+    expect(screen.queryByText('Searching GRNs…')).not.toBeOnTheScreen();
+    const afterBackspace = screen.toJSON();
     await act(async () => {
-      resolveSearch([{ id: 'g-9', gr_no: 'A-7', date: '2026-01-01', customer_name: 'Ay' }] as never);
+      search.resolve([{ id: 'g-9', gr_no: 'A-7', date: '2026-01-01', customer_name: 'Ay' }] as never);
     });
     // The empty query ran no second search; the late reply changed nothing.
     expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
-    expect(texts(tree)).not.toContain('GRN A-7');
-    expect(texts(tree)).not.toContain('Searching GRNs…');
-    expect(texts(tree)).toEqual(afterBackspace);
-    await act(async () => { tree.unmount(); });
+    expect(screen.queryByText('GRN A-7')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Searching GRNs…')).not.toBeOnTheScreen();
+    expect(screen.toJSON()).toEqual(afterBackspace);
   });
 
   it('when only the prefix read failed, the keypad says it could not load, not "no stock left", and Try again reads it again', async () => {
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.mocked(getGRNPrefixesWithStock).mockRejectedValueOnce(new Error('500'));
-    const tree = await open(CUSTOMER_A);
-    expect(texts(tree)).not.toContain('No GRNs have stock left.');
-    expect(texts(tree).filter((x) => x === "Couldn't load the GRNs. Check your connection and try again.").length).toBeGreaterThanOrEqual(2);
+    await open(CUSTOMER_A);
+    expect(screen.queryByText('No GRNs have stock left.')).not.toBeOnTheScreen();
+    expect(screen.getAllByText(LOAD_FAILED).length).toBeGreaterThanOrEqual(2);
 
-    await pressRetry(tree);
+    await pressRetry();
     expect(getGRNPrefixesWithStock).toHaveBeenCalledTimes(2);
-    expect(tree.root.findAll((n) => String(n.props.accessibilityLabel).startsWith('Use GRN prefix')).length).toBeGreaterThan(0);
-    await act(async () => { tree.unmount(); });
+    expect(screen.getAllByRole('button', { name: /^Use GRN prefix/ }).length).toBeGreaterThan(0);
   });
 
   it('a customer change drops the typed text and the pending search timer', async () => {
-    const CUSTOMER_B = '44444444-2222-4333-8444-555555555555';
-    const tree = await open(CUSTOMER_A);
-    const key = tree.root.find((n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Enter GRN digit 7');
-    await act(async () => { key.props.onPress(); }); // typed, the 150 ms timer has not fired
-    expect(texts(tree)).not.toContain('Search GRN number'); // the typed text replaced the placeholder
+    await open(CUSTOMER_A);
+    await user().press(screen.getByRole('button', { name: 'Enter GRN digit 7' })); // typed, the 150 ms timer has not fired
+    expect(screen.queryByText('Search GRN number')).not.toBeOnTheScreen(); // the typed text replaced the placeholder
 
-    await act(async () => {
-      tree.update(<GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={CUSTOMER_B} />);
-    });
-    await act(async () => { await jest.advanceTimersByTimeAsync(400); });
+    await screen.rerender(sheet(CUSTOMER_B));
+    await pass(400);
     expect(searchGRNNumbers).not.toHaveBeenCalled();
-    expect(texts(tree)).toContain('Search GRN number'); // typed text gone
-    await act(async () => { tree.unmount(); });
+    expect(screen.getByText('Search GRN number')).toBeOnTheScreen(); // typed text gone
   });
 
   it('"Try again" for a new customer does not re-run the previous customer\'s query', async () => {
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const CUSTOMER_B = '44444444-2222-4333-8444-555555555555';
-    const tree = await open(CUSTOMER_A);
-    await tapKey(tree, 'Enter GRN digit 7');
+    await open(CUSTOMER_A);
+    await tapKey('Enter GRN digit 7');
     expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
 
     jest.mocked(getGRNPrefixesWithStock).mockRejectedValueOnce(new Error('500'));
-    await act(async () => {
-      tree.update(<GRNAutocompleteBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} customerId={CUSTOMER_B} />);
-    });
-    await pressRetry(tree);
+    await screen.rerender(sheet(CUSTOMER_B));
+    await pressRetry();
     expect(searchGRNNumbers).toHaveBeenCalledTimes(1);
     expect(searchGRNNumbers).not.toHaveBeenCalledWith('7', CUSTOMER_B);
-    await act(async () => { tree.unmount(); });
   });
 
   it('keypad "Try again" reads only the prefixes; the working list is not reloaded and does not flash to the spinner', async () => {
@@ -381,37 +339,31 @@ describe('GRN picker search', () => {
     jest.mocked(getCustomerGRNsWithStock).mockResolvedValueOnce(
       [{ grnId: 'g-a', grNo: 'A-1', grnDate: '2026-01-01', customerName: 'Ay' }] as never
     );
-    const tree = await open(CUSTOMER_A);
-    expect(texts(tree)).toContain('GRN A-1');
-    const retry = tree.root.find((n) => n.props.testID === 'grn-keypad-retry' && typeof n.props.onPress === 'function');
+    await open(CUSTOMER_A);
+    expect(screen.getByText('GRN A-1')).toBeOnTheScreen();
+    // The list may offer its own "Try again"; this is the keypad's.
+    const retry = screen.getByTestId('grn-keypad-retry');
 
-    let resolvePrefixes!: (v: { prefix: string; grnCount: number }[]) => void;
-    jest.mocked(getGRNPrefixesWithStock).mockImplementationOnce(() => new Promise((r) => { resolvePrefixes = r; }));
-    await act(async () => { retry.props.onPress(); });
+    const prefixes = held<{ prefix: string; grnCount: number }[]>([{ prefix: 'A', grnCount: 3 }]);
+    jest.mocked(getGRNPrefixesWithStock).mockImplementationOnce(() => prefixes.promise);
+    await user().press(retry);
     expect(getGRNPrefixesWithStock).toHaveBeenCalledTimes(2);
     expect(getCustomerGRNsWithStock).toHaveBeenCalledTimes(1);
-    expect(texts(tree)).toContain('GRN A-1');
-    expect(texts(tree)).not.toContain('Loading GRNs…');
-    await act(async () => { resolvePrefixes([{ prefix: 'A', grnCount: 3 }]); });
-    await act(async () => { tree.unmount(); });
+    expect(screen.getByText('GRN A-1')).toBeOnTheScreen();
+    expect(screen.queryByText('Loading GRNs…')).not.toBeOnTheScreen();
+    await act(async () => { prefixes.resolve([{ prefix: 'A', grnCount: 3 }]); });
   });
 
   it('the load-failed message is a shrinkable horizontal row, and Try again sits outside it, below', async () => {
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.mocked(getGRNPrefixesWithStock).mockRejectedValueOnce(new Error('500'));
-    const tree = await open(CUSTOMER_A);
-    const row = tree.root.find((n) => n.props.testID === 'grn-keypad-message-row');
-    const inRow = (label: string) =>
-      row.findAll((n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === label);
-    expect(inRow('Try again')).toHaveLength(0);
+    await open(CUSTOMER_A);
+    const row = screen.getByTestId('grn-keypad-message-row');
+    expect(within(row).queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
     const container = row.parent!;
-    const buttons = container.findAll((n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Try again');
-    expect(buttons.length).toBeGreaterThan(0);
-    const flat = (st: unknown) => Object.assign({}, ...[st].flat(3).filter(Boolean));
-    expect(flat(row.props.style).flexDirection).toBe('row');
-    expect(flat(container.props.style).flexDirection).not.toBe('row');
-    const msg = row.findAll((n) => (n.type as unknown) === 'Text')[0];
-    expect(flat(msg.props.style).flexShrink).toBe(1);
-    await act(async () => { tree.unmount(); });
+    expect(within(container).getAllByRole('button', { name: 'Try again' }).length).toBeGreaterThan(0);
+    expect(row).toHaveStyle({ flexDirection: 'row' });
+    expect(container).not.toHaveStyle({ flexDirection: 'row' });
+    expect(within(row).getByText(LOAD_FAILED)).toHaveStyle({ flexShrink: 1 });
   });
 });

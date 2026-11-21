@@ -3,8 +3,7 @@
  * choices, the search and the other filters stay with the session, and
  * "Clear all" touches neither the period nor the sort.
  */
-import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { renderHook } from '@testing-library/react-native';
 import { REPORT_DATE_PRESETS } from '@/features/filters/datePresets';
 import type { FilterListConfig, FilterValues, SortState } from '@/features/filters/types';
 import { applyListFilters, clearListFilters } from '@/store/slices/listFilterSlice';
@@ -49,16 +48,9 @@ const REPORT: FilterListConfig<Request> = {
 const NO_PERIOD: FilterListConfig<Request> = { ...REPORT, listKey: 'report-no-period', fields: [STATUS] };
 const SCOPE = JSON.stringify(['https://warehouse.example.test', 'instance-a', 'user-a']);
 
-function use(config: FilterListConfig<Request>) {
-  let filters!: ReturnType<typeof useReportFilters<Request>>;
-  const Probe = () => {
-    filters = useReportFilters(config);
-    return null;
-  };
-  act(() => {
-    TestRenderer.create(<Probe />);
-  });
-  return filters;
+async function use(config: FilterListConfig<Request>) {
+  const { result } = await renderHook(() => useReportFilters(config));
+  return result.current;
 }
 const actions = () => mockDispatch.mock.calls.map(([action]) => action as { type: string; payload: Record<string, unknown> });
 
@@ -73,8 +65,8 @@ beforeEach(() => {
 });
 
 describe('report filters', () => {
-  it('starts on the last 120 days and the report\'s own sort, with nothing counted as a filter', () => {
-    const filters = use(REPORT);
+  it('starts on the last 120 days and the report\'s own sort, with nothing counted as a filter', async () => {
+    const filters = await use(REPORT);
     expect(filters.values).toEqual({ period: { preset: 'last120' } });
     expect(filters.sort).toEqual({ field: 'date', order: 'desc' });
     expect(filters.request).toEqual({ values: { period: { preset: 'last120' } }, sort: { field: 'date', order: 'desc' } });
@@ -82,7 +74,7 @@ describe('report filters', () => {
     expect(filters.hasAny).toBe(false);
   });
 
-  it('reads the period and the sort this account chose before, and the session\'s filters', () => {
+  it('reads the period and the sort this account chose before, and the session\'s filters', async () => {
     mockState.reportPrefs = {
       byScope: {
         [SCOPE]: { period: { preset: 'thisFinancialYear' }, sort: { 'report-test': { field: 'bags', order: 'asc' } }, pinned: [], recent: [], lastCustomer: {}, usedAt: 1 },
@@ -90,15 +82,15 @@ describe('report filters', () => {
       },
     };
     mockState.listFilters = { lists: { 'report-test': { values: { status: 'paid' } } } };
-    const filters = use(REPORT);
+    const filters = await use(REPORT);
     expect(filters.values).toEqual({ status: 'paid', period: { preset: 'thisFinancialYear' } });
     expect(filters.sort).toEqual({ field: 'bags', order: 'asc' });
     expect(filters.activeCount).toBe(1);
     expect(filters.hasAny).toBe(true);
   });
 
-  it('remembers a new period and a new sort with the report choices, not with the session', () => {
-    const filters = use(REPORT);
+  it('remembers a new period and a new sort with the report choices, not with the session', async () => {
+    const filters = await use(REPORT);
     filters.setField('period', { preset: 'last240' });
     filters.setSort({ field: 'bags', order: 'desc' });
     expect(actions()).toEqual([
@@ -107,22 +99,22 @@ describe('report filters', () => {
     ]);
   });
 
-  it('never removes the period, and keeps another filter with the session', () => {
-    const filters = use(REPORT);
+  it('never removes the period, and keeps another filter with the session', async () => {
+    const filters = await use(REPORT);
     filters.setField('period', undefined);
     expect(actions()).toEqual([]);
     filters.setField('status', 'paid');
     expect(actions()).toEqual([applyListFilters({ key: 'report-test', values: { status: 'paid' } })]);
   });
 
-  it('clears the search and filters only: the period and the sort stay', () => {
+  it('clears the search and filters only: the period and the sort stay', async () => {
     mockState.listFilters = { lists: { 'report-test': { values: { status: 'paid' } } } };
-    use(REPORT).clear();
+    (await use(REPORT)).clear();
     expect(actions()).toEqual([clearListFilters({ key: 'report-test' })]);
   });
 
-  it('applies several at once, each to where it is kept', () => {
-    use(REPORT).apply({ period: { from: '2026-04-01', to: '2026-04-30' }, status: 'paid' }, { field: 'bags', order: 'asc' });
+  it('applies several at once, each to where it is kept', async () => {
+    (await use(REPORT)).apply({ period: { from: '2026-04-01', to: '2026-04-30' }, status: 'paid' }, { field: 'bags', order: 'asc' });
     expect(actions()).toEqual([
       { type: 'reportPrefs/setReportPeriod', payload: expect.objectContaining({ period: { from: '2026-04-01', to: '2026-04-30' } }) },
       { type: 'reportPrefs/setReportSort', payload: expect.objectContaining({ listKey: 'report-test', sort: { field: 'bags', order: 'asc' } }) },
@@ -130,15 +122,15 @@ describe('report filters', () => {
     ]);
   });
 
-  it('gives a report without a period no period', () => {
-    const filters = use(NO_PERIOD);
+  it('gives a report without a period no period', async () => {
+    const filters = await use(NO_PERIOD);
     expect(filters.values).toEqual({});
     expect(filters.request).toEqual({ values: {}, sort: { field: 'date', order: 'desc' } });
   });
 
-  it('remembers nothing while no facility is selected', () => {
+  it('remembers nothing while no facility is selected', async () => {
     mockServer = null;
-    const filters = use(REPORT);
+    const filters = await use(REPORT);
     expect(filters.values).toEqual({ period: { preset: 'last120' } });
     filters.setField('period', { preset: 'last240' });
     filters.setSort({ field: 'bags', order: 'desc' });

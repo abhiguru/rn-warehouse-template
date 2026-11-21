@@ -1,6 +1,6 @@
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
+import { act, fireEvent, render, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import ItemCatalogBrowser from '../ItemCatalogBrowser';
 import { OrderService } from '@/services/order-service';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
@@ -20,7 +20,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
       return React.createElement('BottomSheet', null, props.children);
     }),
     BottomSheetBackdrop: () => null,
-    BottomSheetFlatList: (props: any) => React.createElement('CatalogList', { onEndReached: props.onEndReached, contentContainerStyle: props.contentContainerStyle },
+    BottomSheetFlatList: (props: any) => React.createElement('CatalogList', { testID: 'catalog-list', onEndReached: props.onEndReached, contentContainerStyle: props.contentContainerStyle },
       props.ListHeaderComponent, props.data.length ? props.data.map((item: any) =>
         React.createElement('CatalogItem', { key: item.id, testID: `catalog-item-${item.id}` }, props.renderItem({ item }))) : props.ListEmptyComponent),
   };
@@ -47,81 +47,87 @@ const catalogItem = (id: string, name: string) => ({
   grn_date: '2026-09-30', image_url: null, pricing_mode: 'MONTHLY', created_at: '', updated_at: '',
 });
 
+type Reply = { success: boolean; data: ReturnType<typeof catalogItem>[] };
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(settle => { resolve = settle; });
   return { promise, resolve };
 }
+// Replies a test holds back; released after each test so a failing test cannot leave work hanging.
+const held: Array<ReturnType<typeof deferred<Reply>>> = [];
+const hold = () => {
+  const reply = deferred<Reply>();
+  held.push(reply);
+  return reply;
+};
 
-const listedItemIds = (tree: ReturnType<typeof create>) =>
-  tree.root.findAllByType('CatalogItem' as never).map(node => String(node.props.testID).replace('catalog-item-', ''));
+const listedItemIds = () =>
+  screen.queryAllByTestId(/^catalog-item-/).map(node => String(node.props.testID).replace('catalog-item-', ''));
+
+const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+const advance = (ms: number) => act(() => { jest.advanceTimersByTime(ms); });
+const searchBox = () => screen.getByLabelText('Search stock items');
+const renderBrowser = (onAddItems = jest.fn()) =>
+  render(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={onAddItems} />);
 
 beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); mockState = { theme: { preference: 'light', brand: 'orange' } }; });
-afterEach(() => { jest.useRealTimers(); });
+afterEach(() => {
+  for (const reply of held.splice(0)) reply.resolve({ success: true, data: [] });
+  jest.useRealTimers();
+});
 
 it('exposes catalog search and runs one remote search for the final text after rapid edits', async () => {
   const add = jest.fn();
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={add} />); });
-  try {
-    const input = tree.root.findByType(TextInput);
-    expect(input.props.accessibilityLabel).toBe('Search stock items');
-    await act(async () => { input.props.onChangeText('FXC7'); });
-    await act(async () => { input.props.onChangeText('FXC70'); });
-    await act(async () => { input.props.onChangeText('FXC701'); });
-    await act(async () => { jest.advanceTimersByTime(249); });
-    expect(OrderService.searchCustomerItemsForOrder).not.toHaveBeenCalled();
-    await act(async () => { jest.advanceTimersByTime(1); });
-    expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledTimes(1);
-    expect(OrderService.searchCustomerItemsForOrder).toHaveBeenLastCalledWith(expect.objectContaining({
-      customer_id: 'customer-a', search_query: 'FXC701', search_type: 'auto', stock_filter_min: 1,
-    }));
-    expect(tree.root.findByType(TextInput).props.value).toBe('FXC701');
-    expect(add).not.toHaveBeenCalled();
-  } finally { await act(async () => { tree.unmount(); }); }
+  await renderBrowser(add);
+  expect(searchBox()).toBeOnTheScreen();
+  await user.type(searchBox(), 'FXC701');
+  await advance(249);
+  expect(OrderService.searchCustomerItemsForOrder).not.toHaveBeenCalled();
+  await advance(1);
+  expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledTimes(1);
+  expect(OrderService.searchCustomerItemsForOrder).toHaveBeenLastCalledWith(expect.objectContaining({
+    customer_id: 'customer-a', search_query: 'FXC701', search_type: 'auto', stock_filter_min: 1,
+  }));
+  expect(searchBox()).toHaveDisplayValue('FXC701');
+  expect(add).not.toHaveBeenCalled();
 });
 
 it('ignores a stale deferred search response that arrives after a newer search', async () => {
-  const first = deferred<{ success: boolean; data: ReturnType<typeof catalogItem>[] }>();
-  const second = deferred<{ success: boolean; data: ReturnType<typeof catalogItem>[] }>();
+  const first = hold();
+  const second = hold();
   jest.mocked(OrderService.searchCustomerItemsForOrder)
     .mockReturnValueOnce(first.promise as never)
     .mockReturnValueOnce(second.promise as never);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
-  try {
-    await act(async () => { tree.root.findByType(TextInput).props.onChangeText('FXC7'); });
-    await act(async () => { jest.advanceTimersByTime(250); });
-    await act(async () => { tree.root.findByType(TextInput).props.onChangeText('FXC701'); });
-    await act(async () => { jest.advanceTimersByTime(250); });
-    expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledTimes(2);
+  await renderBrowser();
+  await user.type(searchBox(), 'FXC7');
+  await advance(250);
+  await user.type(searchBox(), '01');
+  await advance(250);
+  expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledTimes(2);
 
-    await act(async () => { second.resolve({ success: true, data: [catalogItem('newer', 'FXC701 Potatoes')] }); await second.promise; });
-    expect(listedItemIds(tree)).toEqual(['newer']);
+  await act(async () => { second.resolve({ success: true, data: [catalogItem('newer', 'FXC701 Potatoes')] }); await second.promise; });
+  expect(listedItemIds()).toEqual(['newer']);
 
-    await act(async () => { first.resolve({ success: true, data: [catalogItem('stale', 'FXC7 Onions')] }); await first.promise; });
-    expect(listedItemIds(tree)).toEqual(['newer']);
-    expect(JSON.stringify(tree.toJSON())).not.toContain('FXC7 Onions');
-  } finally { await act(async () => { tree.unmount(); }); }
+  await act(async () => { first.resolve({ success: true, data: [catalogItem('stale', 'FXC7 Onions')] }); await first.promise; });
+  expect(listedItemIds()).toEqual(['newer']);
+  expect(screen.queryByText(/FXC7 Onions/)).not.toBeOnTheScreen();
 });
 
 it('shows an empty search result and clearing search does not submit an order', async () => {
   const add = jest.fn();
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={add} />); });
-  try {
-    await act(async () => { tree.root.findByType(TextInput).props.onChangeText('FXC702'); });
-    await act(async () => { jest.advanceTimersByTime(300); });
-    expect(JSON.stringify(tree.toJSON())).toContain('No stock available for');
-    expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledWith(expect.objectContaining({ customer_id: 'customer-a', search_query: 'FXC702' }));
-    await act(async () => { tree.root.findByType(TextInput).props.onChangeText(''); });
-    expect(tree.root.findByType(TextInput).props.value).toBe('');
-    expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledTimes(1);
-    expect(add).not.toHaveBeenCalled();
-  } finally { await act(async () => { tree.unmount(); }); }
+  await renderBrowser(add);
+  await user.type(searchBox(), 'FXC702');
+  await advance(300);
+  expect(screen.getByText(/No stock available for/)).toBeOnTheScreen();
+  expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledWith(expect.objectContaining({ customer_id: 'customer-a', search_query: 'FXC702' }));
+  await user.clear(searchBox());
+  expect(searchBox()).toHaveDisplayValue('');
+  expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledTimes(1);
+  expect(add).not.toHaveBeenCalled();
 });
 
-const catalogList = (tree: ReturnType<typeof create>) => tree.root.findByType('CatalogList' as never);
+// The list is a stand-in that has no scrolling: reaching its end is fired on it directly.
+const reachEnd = () => fireEvent(screen.getByTestId('catalog-list'), 'endReached');
 
 it('loads the next browse page when the list reaches its end', async () => {
   const page = (from: number, count: number) =>
@@ -129,16 +135,13 @@ it('loads the next browse page when the list reaches its end', async () => {
   jest.mocked(OrderService.getAvailableItems)
     .mockResolvedValueOnce({ success: true, message: '', data: page(0, 50), metadata: { has_more: true } } as never)
     .mockResolvedValueOnce({ success: true, message: '', data: page(50, 3), metadata: { has_more: false } } as never);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
-  try {
-    expect(OrderService.getAvailableItems).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0, page_size: 50 }));
-    await act(async () => { await catalogList(tree).props.onEndReached(); });
-    expect(OrderService.getAvailableItems).toHaveBeenLastCalledWith(expect.objectContaining({ customer_id: 'customer-a', offset: 50 }));
-    expect(listedItemIds(tree)).toHaveLength(53);
-    await act(async () => { await catalogList(tree).props.onEndReached(); });
-    expect(OrderService.getAvailableItems).toHaveBeenCalledTimes(2);
-  } finally { await act(async () => { tree.unmount(); }); }
+  await renderBrowser();
+  expect(OrderService.getAvailableItems).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0, page_size: 50 }));
+  await reachEnd();
+  expect(OrderService.getAvailableItems).toHaveBeenLastCalledWith(expect.objectContaining({ customer_id: 'customer-a', offset: 50 }));
+  await waitFor(() => expect(listedItemIds()).toHaveLength(53));
+  await reachEnd();
+  expect(OrderService.getAvailableItems).toHaveBeenCalledTimes(2);
   // Nothing here waits on a clock (the pages are mocked promises); the cost is rendering 53 rows,
   // twice, which passes the default 5 s only on an idle machine. Same assertions, own timeout.
 }, 30000);
@@ -149,29 +152,27 @@ it('loads the next search page from the current result count', async () => {
   jest.mocked(OrderService.searchCustomerItemsForOrder)
     .mockResolvedValueOnce({ success: true, message: '', data: hits(0, 50), metadata: { has_more: true } } as never)
     .mockResolvedValueOnce({ success: true, message: '', data: hits(50, 2), metadata: { has_more: false } } as never);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
-  try {
-    await act(async () => { tree.root.findByType(TextInput).props.onChangeText('onion'); });
-    await act(async () => { jest.advanceTimersByTime(250); });
-    expect(listedItemIds(tree)).toHaveLength(50);
-    await act(async () => { await catalogList(tree).props.onEndReached(); });
-    expect(OrderService.searchCustomerItemsForOrder).toHaveBeenLastCalledWith(
-      expect.objectContaining({ search_query: 'onion', offset: 50, page_size: 50 }));
-    expect(listedItemIds(tree)).toHaveLength(52);
-  } finally { await act(async () => { tree.unmount(); }); }
+  await renderBrowser();
+  await user.type(searchBox(), 'onion');
+  await advance(250);
+  await waitFor(() => expect(listedItemIds()).toHaveLength(50));
+  await reachEnd();
+  expect(OrderService.searchCustomerItemsForOrder).toHaveBeenLastCalledWith(
+    expect.objectContaining({ search_query: 'onion', offset: 50, page_size: 50 }));
+  await waitFor(() => expect(listedItemIds()).toHaveLength(52));
 });
 
 // The texts drawn inside one lot's row, and the label the row is read out with.
-const rowOf = (tree: ReturnType<typeof create>, id: string, name: string) => {
-  const row = tree.root.findByProps({ testID: `catalog-item-${id}` });
-  const texts = row.findAll(node => (node.type as unknown) === 'Text')
+const rowOf = (id: string, name: string) => {
+  const row = within(screen.getByTestId(`catalog-item-${id}`));
+  const texts = row.queryAllByText(/./)
     .map(node => (Array.isArray(node.props.children) ? node.props.children.join('') : String(node.props.children ?? '')));
   // The object cell row carries the whole row's label, which starts with the lot's name;
   // the status tag, the steppers and the presets have labels of their own.
-  const spoken = [...new Set(row.findAll(node => node.props.accessible === true && typeof node.props.accessibilityLabel === 'string'
-    && node.props.accessibilityLabel.startsWith(`${name}, `)).map(node => String(node.props.accessibilityLabel)))];
-  return { texts, spoken };
+  const startsWithName = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}, `);
+  const spoken = [...new Set(row.queryAllByLabelText(startsWithName)
+    .map(node => String(node.props.accessibilityLabel)))];
+  return { texts, spoken, row };
 };
 
 it('shows a lot\'s weight as the weight of one package, and none for a lot without a weight', async () => {
@@ -179,23 +180,20 @@ it('shows a lot\'s weight as the weight of one package, and none for a lot witho
     success: true, message: '',
     data: [{ ...catalogItem('lot-50', 'Fictional potatoes'), weight: 50 }, { ...catalogItem('lot-0', 'Fictional onions'), weight: 0 }],
   } as never);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
-  try {
-    const weighed = rowOf(tree, 'lot-50', 'Fictional potatoes · Bag');
-    expect(weighed.texts).toContain('50 kg each');
-    expect(weighed.texts).not.toContain('50 kg');
-    // The row is read out with the same words.
-    expect(weighed.spoken).toHaveLength(1);
-    expect(weighed.spoken[0].split(', ')).toContain('50 kg each');
+  await renderBrowser();
+  const weighed = rowOf('lot-50', 'Fictional potatoes · Bag');
+  expect(weighed.texts).toContain('50 kg each');
+  expect(weighed.texts).not.toContain('50 kg');
+  // The row is read out with the same words.
+  expect(weighed.spoken).toHaveLength(1);
+  expect(weighed.spoken[0].split(', ')).toContain('50 kg each');
 
-    const unweighed = rowOf(tree, 'lot-0', 'Fictional onions · Bag');
-    expect(unweighed.texts.some(text => /\bkg\b/.test(text))).toBe(false);
-    expect(unweighed.spoken).toHaveLength(1);
-    expect(unweighed.spoken[0]).not.toMatch(/\bkg\b/);
-    // The row itself is drawn: only the weight is missing.
-    expect(unweighed.texts).toContain('Fictional onions · Bag');
-  } finally { await act(async () => { tree.unmount(); }); }
+  const unweighed = rowOf('lot-0', 'Fictional onions · Bag');
+  expect(unweighed.texts.some(text => /\bkg\b/.test(text))).toBe(false);
+  expect(unweighed.spoken).toHaveLength(1);
+  expect(unweighed.spoken[0]).not.toMatch(/\bkg\b/);
+  // The row itself is drawn: only the weight is missing.
+  expect(unweighed.texts).toContain('Fictional onions · Bag');
 });
 
 it('counts a Box lot in boxes, never bags, in its row and its spoken label', async () => {
@@ -203,19 +201,15 @@ it('counts a Box lot in boxes, never bags, in its row and its spoken label', asy
     success: true, message: '',
     data: [{ ...catalogItem('lot-box', 'Fictional tomatoes'), packaging: 'Box', current_stock: 188, original_quantity: 188 }],
   } as never);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
-  try {
-    const box = rowOf(tree, 'lot-box', 'Fictional tomatoes · Box');
-    expect(box.texts).toContain('of 188 boxes');
-    expect(box.spoken[0]).toContain('188 of 188 boxes');
-    expect(box.spoken[0]).not.toMatch(/bags/);
-    expect(box.texts.some(text => /bags/.test(text))).toBe(false);
-    const labels = tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => String(node.props.accessibilityLabel));
-    expect(labels).toContain('Add 10 boxes of Fictional tomatoes · Box');
-    expect(labels).toContain('Add 1 box of Fictional tomatoes · Box');
-    expect(labels.some(label => /^(Add|Remove) \d+ bags? of /.test(label))).toBe(false);
-  } finally { await act(async () => { tree.unmount(); }); }
+  await renderBrowser();
+  const box = rowOf('lot-box', 'Fictional tomatoes · Box');
+  expect(box.texts).toContain('of 188 boxes');
+  expect(box.spoken[0]).toContain('188 of 188 boxes');
+  expect(box.spoken[0]).not.toMatch(/bags/);
+  expect(box.texts.some(text => /bags/.test(text))).toBe(false);
+  expect(screen.getByLabelText('Add 10 boxes of Fictional tomatoes · Box')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Add 1 box of Fictional tomatoes · Box')).toBeOnTheScreen();
+  expect(screen.queryAllByLabelText(/^(Add|Remove) \d+ bags? of /)).toHaveLength(0);
 });
 
 const MODES: Mode[] = ['light', 'dark'];
@@ -227,19 +221,17 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     jest.mocked(OrderService.getAvailableItems).mockResolvedValueOnce({
       success: true, message: '', data: [{ ...catalogItem('lot-a', 'Fictional potatoes'), current_stock: 1 }, { ...catalogItem('lot-b', 'Fictional onions'), current_stock: 0 }],
     } as never);
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
-    try {
-      const json = JSON.stringify(tree.toJSON());
-      expect(catalogList(tree).props.contentContainerStyle).toEqual(expect.objectContaining({ backgroundColor: t.background.base }));
-      expect(json).toContain(t.surface.card);
-      expect(json).toContain('Low stock');
-      expect(json).toContain('Out of stock');
-      expect(json).toContain(t.status.critical.text);
-      expect(json).toContain(t.status.negative.text);
-      expect(json).not.toMatch(/OUT|LOW/);
-      const input = tree.root.findByType(TextInput);
-      expect(input.props.placeholderTextColor).toBe(t.text.placeholder);
-    } finally { await act(async () => { tree.unmount(); }); }
+    await renderBrowser();
+    expect(StyleSheet.flatten(screen.getByTestId('catalog-list').props.contentContainerStyle)).toEqual(expect.objectContaining({ backgroundColor: t.background.base }));
+    expect(screen.getByText('Low stock')).toHaveStyle({ color: t.status.critical.text });
+    expect(screen.getByText('Out of stock')).toHaveStyle({ color: t.status.negative.text });
+    expect(screen.queryByText(/OUT|LOW/)).not.toBeOnTheScreen();
+    expect(searchBox().props.placeholderTextColor).toBe(t.text.placeholder);
+    // The cells sit on the card surface: some drawn element carries it.
+    const cell = screen.getByTestId('catalog-item-lot-a');
+    const onCard = (node: typeof cell): boolean =>
+      (node.props.style && StyleSheet.flatten(node.props.style)?.backgroundColor === t.surface.card) ||
+      node.children.some(child => typeof child !== 'string' && onCard(child as typeof cell));
+    expect(onCard(cell)).toBe(true);
   });
 });

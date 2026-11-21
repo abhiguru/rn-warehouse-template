@@ -12,8 +12,8 @@
  * `pressBehavior="none"` never calls `onPress`.
  */
 import React from 'react';
-import { BackHandler, TextInput } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { BackHandler } from 'react-native';
+import { act, render, screen, userEvent, within, type RenderResult } from '@testing-library/react-native';
 import ItemCatalogBrowser from '../ItemCatalogBrowser';
 import { OrderService } from '@/services/order-service';
 import { SessionRecentItemsService } from '@/services/session-recent-items-service';
@@ -44,8 +44,8 @@ jest.mock('@gorhom/bottom-sheet', () => {
         props.children);
     }),
     // As the library: with pressBehavior "none" no tap is attached, so onPress is never called.
-    BottomSheetBackdrop: (props: any) => React.createElement('Backdrop', { pressBehavior: props.pressBehavior, accessible: props.accessible }, props.children),
-    BottomSheetFlatList: (props: any) => React.createElement('CatalogList', { getItemLayout: props.getItemLayout },
+    BottomSheetBackdrop: (props: any) => React.createElement('Backdrop', { testID: 'catalog-backdrop', pressBehavior: props.pressBehavior, accessible: props.accessible }, props.children),
+    BottomSheetFlatList: (props: any) => React.createElement('CatalogList', { testID: 'catalog-list', getItemLayout: props.getItemLayout },
       props.ListHeaderComponent, props.data.map((item: any) =>
         React.createElement('CatalogItem', { key: item.id, testID: `catalog-item-${item.id}` }, props.renderItem({ item })))),
   };
@@ -76,8 +76,11 @@ const saved = (id: string, quantity: number): PickerLine =>
 type AddItems = (changes: PickerChange[], onProgress: (position: number, total: number) => void) => Promise<PickerResult[]>;
 const allSaved: AddItems = async changes => changes.map(change => ({ grnItemId: change.grnItemId, ok: true }));
 
-let tree: ReactTestRenderer | undefined;
+let view: RenderResult | undefined;
+let user: ReturnType<typeof userEvent.setup>;
 let backHandler: (() => boolean | null | undefined) | undefined;
+// Saves that a test keeps waiting: released after the test so nothing is left hanging.
+const heldSaves: Array<() => void> = [];
 const onClose = jest.fn();
 const onAddItems = jest.fn<ReturnType<AddItems>, Parameters<AddItems>>();
 
@@ -85,35 +88,34 @@ const element = (currentOrderItems: PickerLine[]) => (
   <ItemCatalogBrowser isVisible customerId="customer-fictional" currentOrderItems={currentOrderItems} onClose={onClose} onAddItems={onAddItems} />
 );
 async function open(currentOrderItems: PickerLine[] = []) {
-  await act(async () => { tree = create(element(currentOrderItems)); });
-  return tree!;
+  view = await render(element(currentOrderItems));
+  // The lots are read before they are drawn.
+  await screen.findByTestId(`catalog-item-${LOTS[0].id}`);
 }
-const node = (testID: string): ReactTestInstance => tree!.root.findAll(candidate => candidate.props.testID === testID)[0];
-const textOf = (instance: ReactTestInstance): string =>
-  instance.children.map(child => (typeof child === 'string' ? child : textOf(child))).join('');
-const addButtonText = () => textOf(node('catalog-add'));
-const pressLabel = (label: string) => act(async () => {
-  tree!.root.findAll(candidate => candidate.props.accessibilityLabel === label && typeof candidate.props.onPress === 'function')[0].props.onPress();
-});
+const rerenderWith = async (currentOrderItems: PickerLine[]) => { await view!.rerender(element(currentOrderItems)); };
+// The Add button has no fixed name (it counts the changes, then reads the saving progress): found by its test id.
+const addButton = () => screen.getByTestId('catalog-add');
+const pressLabel = async (label: string) => { await user.press(screen.getByRole('button', { name: label })); };
 const choose = (name: string) => pressLabel(`Add 1 bag of ${name} · Bag`);
-const pressAdd = () => act(async () => { node('catalog-add').props.onPress(); });
+const pressAdd = async () => { await user.press(addButton()); };
 const listedLots = () =>
-  tree!.root.findAllByType('CatalogItem' as never).map(item => String(item.props.testID).replace('catalog-item-', ''));
-const selectedText = (name: string) =>
-  tree!.root.findAll(candidate => candidate.props.accessibilityLabel === `1 bag of ${name} · Bag selected`).length > 0;
+  screen.getAllByTestId(/^catalog-item-/).map(item => String(item.props.testID).replace('catalog-item-', ''));
+const selectedText = (name: string) => screen.queryByLabelText(`1 bag of ${name} · Bag selected`) !== null;
+const reasonOf = (id: string) => screen.getByTestId(`catalog-reason-${id}`);
 
 // The four ways out. A swipe is the library closing the sheet by itself.
-const WAYS: Record<string, () => void> = {
-  Cancel: () => node('catalog-cancel').props.onPress(),
-  Back: () => { expect(backHandler!()).toBe(true); },
-  scrim: () => node('catalog-scrim').props.onPress(),
-  swipe: () => { if (mockSheet.props.enablePanDownToClose !== false) mockSheet.props.onDismiss?.(); },
+const WAYS: Record<string, () => Promise<void>> = {
+  Cancel: () => user.press(screen.getByRole('button', { name: 'Cancel adding items' })),
+  Back: () => act(() => { expect(backHandler!()).toBe(true); }),
+  scrim: () => user.press(screen.getByTestId('catalog-scrim')),
+  swipe: () => act(() => { if (mockSheet.props.enablePanDownToClose !== false) mockSheet.props.onDismiss?.(); }),
 };
-const leaveBy = (way: string) => act(async () => { WAYS[way](); });
-const answer = (button: string) => act(async () => { pressAlertButton(jest.mocked(showAlert), button); });
+const leaveBy = (way: string) => WAYS[way]();
+const answer = (button: string) => act(() => { pressAlertButton(jest.mocked(showAlert), button); });
 
 beforeEach(() => {
   jest.useFakeTimers();
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   jest.clearAllMocks();
   onAddItems.mockReset().mockImplementation(allSaved);
   jest.mocked(OrderService.getAvailableItems).mockResolvedValue({ success: true, message: '', data: LOTS } as never);
@@ -124,9 +126,9 @@ beforeEach(() => {
   });
 });
 afterEach(async () => {
-  // A tree left mounted logs after the test is over.
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+  // A save a test kept waiting is let go; the tree is unmounted by Testing Library after this.
+  await act(async () => { heldSaves.splice(0).forEach(release => release()); });
+  view = undefined;
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
@@ -134,18 +136,18 @@ afterEach(async () => {
 describe('what was chosen is seeded once', () => {
   it('survives a new array of the same saved lines, and one with a line someone else added', async () => {
     await open([]);
-    expect(addButtonText()).toBe('Add');
+    expect(addButton()).toHaveTextContent('Add', { exact: true });
     await choose('Fictional potatoes');
-    expect(addButtonText()).toBe('Add (1)');
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
 
     // A parent re-render: the same content in a new array.
-    await act(async () => { tree!.update(element([])); });
-    expect(addButtonText()).toBe('Add (1)');
+    await rerenderWith([]);
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
     expect(selectedText('Fictional potatoes')).toBe(true);
 
     // Another user saved a line meanwhile.
-    await act(async () => { tree!.update(element([saved('lot-other', 4)])); });
-    expect(addButtonText()).toBe('Add (1)');
+    await rerenderWith([saved('lot-other', 4)]);
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
     expect(selectedText('Fictional potatoes')).toBe(true);
 
     // Add sends the one lot the user chose: not the other user's line, and no removal of it.
@@ -156,23 +158,23 @@ describe('what was chosen is seeded once', () => {
 
   it('shows the "In order" badge from the saved lines as they are now', async () => {
     await open([]);
-    expect(JSON.stringify(tree!.toJSON())).not.toContain('In order');
-    await act(async () => { tree!.update(element([saved('lot-b', 2)])); });
-    expect(textOf(node('catalog-item-lot-b'))).toContain('In order');
-    expect(textOf(node('catalog-item-lot-a'))).not.toContain('In order');
+    expect(screen.queryByText('In order')).not.toBeOnTheScreen();
+    await rerenderWith([saved('lot-b', 2)]);
+    expect(within(screen.getByTestId('catalog-item-lot-b')).getByText('In order')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('catalog-item-lot-a')).queryByText('In order')).not.toBeOnTheScreen();
     // The badge is all the new line changes: it is not selected and not sent.
-    expect(addButtonText()).toBe('Add');
+    expect(addButton()).toHaveTextContent('Add', { exact: true });
   });
 
   it('counts unsaved changes on the Add button, not saved lots', async () => {
     await open([saved('lot-a', 2), saved('lot-b', 5)]);
-    expect(addButtonText()).toBe('Add');
+    expect(addButton()).toHaveTextContent('Add', { exact: true });
     await choose('Fictional garlic');
-    expect(addButtonText()).toBe('Add (1)');
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
     // Taking a saved lot off the order is a change too.
     await pressLabel('Remove 1 bag of Fictional potatoes · Bag');
     await pressLabel('Remove 1 bag of Fictional potatoes · Bag');
-    expect(addButtonText()).toBe('Add (2)');
+    expect(addButton()).toHaveTextContent('Add (2)', { exact: true });
     await pressAdd();
     expect(onAddItems.mock.calls[0][0]).toEqual([
       { grnItemId: 'lot-c', quantity: 1, expected: 0, packaging: 'Bag' },
@@ -184,7 +186,7 @@ describe('what was chosen is seeded once', () => {
     await open([saved('lot-a', 1)]);
     await pressLabel('Remove 1 bag of Fictional potatoes · Bag');
     // The change is counted, so the button reads Add (1) ...
-    expect(addButtonText()).toBe('Add (1)');
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
     await pressAdd();
     // ... but nothing is sent: removing a line is asked for on its card.
     expect(onAddItems).not.toHaveBeenCalled();
@@ -241,7 +243,7 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     const presented = mockSheet.present.mock.calls.length;
     await answer('Keep editing');
     expect(onClose).not.toHaveBeenCalled();
-    expect(addButtonText()).toBe('Add (1)');
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
     expect(selectedText('Fictional potatoes')).toBe(true);
     // A swipe took the sheet off the screen: it is shown again. The other ways never moved it.
     expect(mockSheet.present.mock.calls.length - presented).toBe(way === 'swipe' ? 1 : 0);
@@ -271,7 +273,7 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onAddItems).not.toHaveBeenCalled();
     // The library reporting its own dismissal afterwards does not close a second time.
-    await act(async () => { mockSheet.props.onDismiss?.(); });
+    await act(() => { mockSheet.props.onDismiss?.(); });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledTimes(1);
   });
@@ -294,7 +296,7 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     await answer('Add to order');
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(mockSheet.present.mock.calls.length - presented).toBe(0);
-    expect(addButtonText()).not.toMatch(/Saving/);
+    expect(addButton()).not.toHaveTextContent(/Saving/);
   });
 
   it('"Add to order" with a lot refused shows the sheet again with the reason', async () => {
@@ -306,28 +308,28 @@ describe.each(Object.keys(WAYS))('leaving by %s', way => {
     await answer('Add to order');
     expect(onClose).not.toHaveBeenCalled();
     if (way === 'swipe') expect(mockSheet.present.mock.calls.length - presented).toBe(1);
-    expect(textOf(node('catalog-reason-lot-a'))).toBe('Only 3 bags in stock.');
-    expect(addButtonText()).toBe('Add (1)');
+    expect(reasonOf('lot-a')).toHaveTextContent('Only 3 bags in stock.', { exact: true });
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
   });
 
   it('keeps the selection when the question is closed without an answer', async () => {
     await open([]);
     await choose('Fictional potatoes');
     await leaveBy(way);
-    await act(async () => { dismissLatestAlert(jest.mocked(showAlert)); });
+    await act(() => { dismissLatestAlert(jest.mocked(showAlert)); });
     expect(onClose).not.toHaveBeenCalled();
-    expect(addButtonText()).toBe('Add (1)');
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
   });
 
   it('does nothing while an Add is being saved', async () => {
-    onAddItems.mockImplementation(() => new Promise(() => undefined));
+    onAddItems.mockImplementation(() => new Promise(resolve => { heldSaves.push(() => resolve([])); }));
     await open([]);
     await choose('Fictional potatoes');
     await pressAdd();
     await leaveBy(way);
     expect(showAlert).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(addButtonText()).toBe('Saving 1 of 1…');
+    expect(addButton()).toHaveTextContent('Saving 1 of 1…', { exact: true });
   });
 });
 
@@ -339,7 +341,7 @@ it.each(['Back', 'Cancel', 'scrim'])('shows the sheet again on "Keep editing" wh
   await leaveBy(way);
   expect(showAlert).toHaveBeenCalledTimes(1);
   const presented = mockSheet.present.mock.calls.length;
-  await act(async () => { mockSheet.props.onDismiss?.(); });
+  await act(() => { mockSheet.props.onDismiss?.(); });
   // The question on screen answers for the swipe too: it is not asked a second time.
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(onClose).not.toHaveBeenCalled();
@@ -349,7 +351,7 @@ it.each(['Back', 'Cancel', 'scrim'])('shows the sheet again on "Keep editing" wh
   expect(mockSheet.present.mock.calls.length - presented).toBe(1);
   expect(mockSheet.dismiss).not.toHaveBeenCalled();
   expect(onClose).not.toHaveBeenCalled();
-  expect(addButtonText()).toBe('Add (1)');
+  expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
   expect(selectedText('Fictional potatoes')).toBe(true);
 
   // The sheet is up again, so the same answer the next time does not present it once more.
@@ -357,21 +359,22 @@ it.each(['Back', 'Cancel', 'scrim'])('shows the sheet again on "Keep editing" wh
   expect(showAlert).toHaveBeenCalledTimes(2);
   await answer('Keep editing');
   expect(mockSheet.present.mock.calls.length - presented).toBe(1);
-  expect(addButtonText()).toBe('Add (1)');
+  expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
 });
 
 it('takes the tap outside itself: the library\'s backdrop is told not to close the sheet', async () => {
   await open([]);
-  const backdrop = tree!.root.findByType('Backdrop' as never);
-  expect(backdrop.props.pressBehavior).toBe('none');
+  // No query reads what the backdrop was told: these are the props the stand-in was given.
+  const backdrop = screen.getByTestId('catalog-backdrop');
+  expect(backdrop).toHaveProp('pressBehavior', 'none');
   // WH-238 (Design's ruling): the scrim is no screen-reader stop; the header's Cancel button is the one way out.
-  expect(backdrop.props.accessible).toBe(false);
-  const scrim = node('catalog-scrim').props;
-  expect(scrim.accessible).toBe(false);
-  expect(scrim.importantForAccessibility).toBe('no');
-  expect(scrim.accessibilityLabel).toBeUndefined();
-  expect(scrim.accessibilityRole).toBeUndefined();
-  expect(node('catalog-cancel').props.accessibilityLabel).toBe('Cancel adding items');
+  expect(backdrop).toHaveProp('accessible', false);
+  const scrim = screen.getByTestId('catalog-scrim');
+  expect(scrim).toHaveProp('accessible', false);
+  expect(scrim).toHaveProp('importantForAccessibility', 'no');
+  expect(scrim.props.accessibilityLabel).toBeUndefined();
+  expect(scrim.props.accessibilityRole).toBeUndefined();
+  expect(screen.getByRole('button', { name: 'Cancel adding items' })).toBeOnTheScreen();
 });
 
 describe('Add waits for the server', () => {
@@ -380,7 +383,7 @@ describe('Add waits for the server', () => {
     let progress!: (position: number, total: number) => void;
     onAddItems.mockImplementation((_changes, onProgress) => {
       progress = onProgress;
-      return new Promise(resolve => { settle = resolve; });
+      return new Promise(resolve => { settle = resolve; heldSaves.push(() => resolve([])); });
     });
     await open([]);
     await choose('Fictional potatoes');
@@ -390,29 +393,36 @@ describe('Add waits for the server', () => {
     expect(onAddItems).toHaveBeenCalledTimes(1);
     expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-a', quantity: 1, expected: 0, packaging: 'Bag' }, { grnItemId: 'lot-b', quantity: 1, expected: 0, packaging: 'Bag' }]);
     expect(onClose).not.toHaveBeenCalled();
-    expect(addButtonText()).toBe('Saving 1 of 2…');
+    expect(addButton()).toHaveTextContent('Saving 1 of 2…', { exact: true });
     // The Add button is a busy, polite live region with nothing to press: a second tap cannot send again.
-    const button = node('catalog-add');
-    expect(button.props.onPress).toBeUndefined();
+    const button = screen.getByRole('button', { name: 'Saving 1 of 2…' });
+    expect(button).toBe(addButton());
+    expect(button).toBeBusy();
+    expect(button).toBeDisabled();
     expect(button.props.accessibilityState).toEqual({ disabled: true, busy: true });
-    expect(button.props.accessibilityLiveRegion).toBe('polite');
-    expect(button.props.accessibilityLabel).toBe('Saving 1 of 2…');
+    expect(button).toHaveProp('accessibilityLiveRegion', 'polite');
+    expect(button.props.onPress).toBeUndefined();
+    await user.press(button);
+    expect(onAddItems).toHaveBeenCalledTimes(1);
     // Cancel, the steppers and the presets are off; no swipe down.
-    expect(node('catalog-cancel').props.disabled).toBe(true);
-    const quantityButtons = tree!.root.findAll(candidate =>
-      typeof candidate.props.onPress === 'function' && /^(Add|Remove) \d+ bags? of /.test(String(candidate.props.accessibilityLabel)));
+    expect(screen.getByRole('button', { name: 'Cancel adding items' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel adding items' }).props.accessibilityState.disabled).toBe(true);
+    const quantityButtons = screen.getAllByRole('button', { name: /^(Add|Remove) \d+ bags? of / });
     expect(quantityButtons.length).toBeGreaterThan(8);
-    expect(quantityButtons.every(candidate => candidate.props.disabled === true)).toBe(true);
+    quantityButtons.forEach(candidate => {
+      expect(candidate).toBeDisabled();
+      expect(candidate.props.accessibilityState.disabled).toBe(true);
+    });
     expect(mockSheet.props.enablePanDownToClose).toBe(false);
     // A stepper pressed anyway changes nothing.
     await pressLabel('Add 1 bag of Fictional garlic · Bag');
     expect(selectedText('Fictional garlic')).toBe(false);
 
-    await act(async () => { progress(2, 2); });
-    expect(addButtonText()).toBe('Saving 2 of 2…');
+    await act(() => { progress(2, 2); });
+    expect(addButton()).toHaveTextContent('Saving 2 of 2…', { exact: true });
     expect(onClose).not.toHaveBeenCalled();
 
-    await act(async () => { settle([{ grnItemId: 'lot-a', ok: true }, { grnItemId: 'lot-b', ok: true }]); });
+    await act(() => { settle([{ grnItemId: 'lot-a', ok: true }, { grnItemId: 'lot-b', ok: true }]); });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(showAlert).not.toHaveBeenCalled();
   });
@@ -426,24 +436,27 @@ describe('Add waits for the server', () => {
     await choose('Fictional potatoes');
     await choose('Fictional onions');
     // A search is on when Add is tapped.
-    await act(async () => { tree!.root.findByType(TextInput).props.onChangeText('Fictional'); });
-    expect(tree!.root.findByType('CatalogList' as never).props.getItemLayout).toEqual(expect.any(Function));
+    const search = screen.getByLabelText('Search stock items');
+    await user.paste(search, 'Fictional');
+    expect(search).toHaveDisplayValue('Fictional');
+    expect(screen.getByTestId('catalog-list').props.getItemLayout).toEqual(expect.any(Function));
     await pressAdd();
 
     expect(onClose).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(addButtonText()).toBe('Add (1)');
-    expect(node('catalog-cancel').props.disabled).toBe(false);
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
+    const cancel = screen.getByRole('button', { name: 'Cancel adding items' });
+    expect(cancel).toBeEnabled();
+    expect(cancel.props.accessibilityState.disabled).toBe(false);
     expect(mockSheet.props.enablePanDownToClose).toBe(true);
     // The reason is on the failed lot's row and on no other.
-    expect(textOf(node('catalog-reason-lot-b'))).toBe('Only 3 bags in stock.');
-    expect(tree!.root.findAll(candidate => /^catalog-reason-/.test(String(candidate.props.testID)))
-      .every(candidate => candidate.props.testID === 'catalog-reason-lot-b')).toBe(true);
-    expect(textOf(node('catalog-not-saved-summary'))).toBe('1 lot was not saved. See the reason on it.');
+    expect(reasonOf('lot-b')).toHaveTextContent('Only 3 bags in stock.', { exact: true });
+    expect(screen.getAllByTestId(/^catalog-reason-/).map(reason => reason.props.testID)).toEqual(['catalog-reason-lot-b']);
+    expect(screen.getByTestId('catalog-not-saved-summary')).toHaveTextContent('1 lot was not saved. See the reason on it.', { exact: true });
     // The search is cleared, the failed lot is first, and the taller row is measured, not estimated.
-    expect(tree!.root.findByType(TextInput).props.value).toBe('');
+    expect(screen.getByLabelText('Search stock items')).toHaveDisplayValue('');
     expect(listedLots()[0]).toBe('lot-b');
-    expect(tree!.root.findByType('CatalogList' as never).props.getItemLayout).toBeUndefined();
+    expect(screen.getByTestId('catalog-list').props.getItemLayout).toBeUndefined();
     // Both lots keep their quantities on screen; only the failed one is still to send.
     expect(selectedText('Fictional potatoes')).toBe(true);
     expect(selectedText('Fictional onions')).toBe(true);
@@ -463,7 +476,7 @@ describe('Add waits for the server', () => {
     await pressAdd();
     expect(onAddItems.mock.calls[0][0]).toEqual([{ grnItemId: 'lot-b', quantity: 31, expected: 30, packaging: 'Bag' }]);
     expect(onClose).not.toHaveBeenCalled();
-    expect(textOf(node('catalog-reason-lot-b'))).toBe('Changed by someone else: now 29 bags.');
+    expect(reasonOf('lot-b')).toHaveTextContent('Changed by someone else: now 29 bags.', { exact: true });
 
     await pressAdd();
     expect(onAddItems).toHaveBeenCalledTimes(2);
@@ -480,14 +493,14 @@ describe('Add waits for the server', () => {
     await choose('Fictional potatoes');
     await choose('Fictional onions');
     await pressAdd();
-    expect(addButtonText()).toBe('Add (2)');
-    expect(textOf(node('catalog-not-saved-summary'))).toBe('2 lots were not saved. See the reason on each.');
+    expect(addButton()).toHaveTextContent('Add (2)', { exact: true });
+    expect(screen.getByTestId('catalog-not-saved-summary')).toHaveTextContent('2 lots were not saved. See the reason on each.', { exact: true });
     expect(listedLots().slice(0, 2)).toEqual(['lot-a', 'lot-b']);
 
     await pressLabel('Remove 1 bag of Fictional potatoes · Bag');
-    expect(node('catalog-reason-lot-a')).toBeUndefined();
-    expect(textOf(node('catalog-reason-lot-b'))).toBe('Only 3 bags in stock.');
-    expect(addButtonText()).toBe('Add (1)');
+    expect(screen.queryByTestId('catalog-reason-lot-a')).not.toBeOnTheScreen();
+    expect(reasonOf('lot-b')).toHaveTextContent('Only 3 bags in stock.', { exact: true });
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
   });
 
   it('treats a lot without an answer, or a save that threw, as not saved', async () => {
@@ -497,31 +510,31 @@ describe('Add waits for the server', () => {
     await choose('Fictional onions');
     await pressAdd();
     expect(onClose).not.toHaveBeenCalled();
-    expect(textOf(node('catalog-reason-lot-b'))).toBe('Not saved. Check your connection and try again.');
+    expect(reasonOf('lot-b')).toHaveTextContent('Not saved. Check your connection and try again.', { exact: true });
 
     const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     onAddItems.mockRejectedValueOnce(new Error('fictional failure'));
     await pressAdd();
     expect(logged).toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(addButtonText()).toBe('Add (1)');
-    expect(textOf(node('catalog-reason-lot-b'))).toBe('Not saved. Check your connection and try again.');
+    expect(addButton()).toHaveTextContent('Add (1)', { exact: true });
+    expect(reasonOf('lot-b')).toHaveTextContent('Not saved. Check your connection and try again.', { exact: true });
   });
 
   it('shows the sheet again for the lots not saved when it was swiped away just as Add was tapped', async () => {
     let settle!: (results: PickerResult[]) => void;
-    onAddItems.mockImplementation(() => new Promise(resolve => { settle = resolve; }));
+    onAddItems.mockImplementation(() => new Promise(resolve => { settle = resolve; heldSaves.push(() => resolve([])); }));
     await open([]);
     await choose('Fictional potatoes');
     await pressAdd();
     // A swipe already under way when saving began: the library dismisses the sheet.
     const presented = mockSheet.present.mock.calls.length;
-    await act(async () => { mockSheet.props.onDismiss?.(); });
+    await act(() => { mockSheet.props.onDismiss?.(); });
     expect(showAlert).not.toHaveBeenCalled();
-    await act(async () => { settle([{ grnItemId: 'lot-a', ok: false, reason: 'Only 3 bags in stock.' }]); });
+    await act(() => { settle([{ grnItemId: 'lot-a', ok: false, reason: 'Only 3 bags in stock.' }]); });
     expect(mockSheet.present.mock.calls.length - presented).toBe(1);
     expect(onClose).not.toHaveBeenCalled();
-    expect(textOf(node('catalog-reason-lot-a'))).toBe('Only 3 bags in stock.');
+    expect(reasonOf('lot-a')).toHaveTextContent('Only 3 bags in stock.', { exact: true });
   });
 
   it('sends nothing when only saved lots are selected and none changed, and asks for a choice when nothing is', async () => {
@@ -531,7 +544,7 @@ describe('Add waits for the server', () => {
     expect(showAlert).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
 
-    await act(async () => { tree!.unmount(); });
+    await view!.unmount();
     onClose.mockClear();
     await open([]);
     await pressAdd();

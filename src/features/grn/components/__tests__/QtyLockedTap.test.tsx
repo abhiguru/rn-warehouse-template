@@ -5,7 +5,7 @@
  * overlay that shows it on both platforms.
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { HorizontalItemForm, type ItemFormData } from '../HorizontalItemForm';
 import { QuantityWeightFields } from '../item-form';
 
@@ -35,24 +35,11 @@ const ITEM: ItemFormData = {
   errors: {},
 };
 
-const mounted: ReactTestRenderer[] = [];
-function mount(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  mounted.push(tree);
-  return tree;
-}
-afterEach(() => {
-  act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
-});
-
-const overlays = (tree: ReactTestRenderer): ReactTestInstance[] =>
-  tree.root.findAll((n) => n.props.testID === 'grn-qty-locked-overlay' && typeof n.props.onPress === 'function');
+// The overlay has no role or text (it is not an accessible element on purpose), so it is found by its testID.
+const overlay = () => screen.queryAllByTestId('grn-qty-locked-overlay');
 
 const row = (locked: boolean, onQtyLockedPress: () => void) =>
-  mount(
+  render(
     <HorizontalItemForm
       currentItem={ITEM}
       onFieldChange={jest.fn()}
@@ -69,34 +56,35 @@ const row = (locked: boolean, onQtyLockedPress: () => void) =>
   );
 
 describe('locked Quantity field', () => {
-  it('item row: a tap on the locked field shows the lock explanation', () => {
+  it('item row: a tap on the locked field shows the lock explanation', async () => {
     const onLocked = jest.fn();
-    const tree = row(true, onLocked);
-    expect(overlays(tree)).toHaveLength(1);
-    act(() => overlays(tree)[0].props.onPress());
+    await row(true, onLocked);
+    expect(overlay()).toHaveLength(1);
+    await userEvent.setup({ delay: 0 }).press(overlay()[0]);
     expect(onLocked).toHaveBeenCalledTimes(1);
   });
 
-  it('item row: an editable field has no overlay in the way of the keyboard', () => {
-    expect(overlays(row(false, jest.fn()))).toHaveLength(0);
+  it('item row: an editable field has no overlay in the way of the keyboard', async () => {
+    await row(false, jest.fn());
+    expect(overlay()).toHaveLength(0);
   });
 
-  it('QuantityWeightFields: same rule', () => {
+  it('QuantityWeightFields: same rule', async () => {
     const onLocked = jest.fn();
-    const mk = (locked: boolean) =>
-      mount(
-        <QuantityWeightFields
-          qty="100"
-          weight="50"
-          onQtyChange={jest.fn()}
-          onWeightChange={jest.fn()}
-          isQtyLocked={locked}
-          onQtyLockedPress={onLocked}
-        />
-      );
-    expect(overlays(mk(false))).toHaveLength(0);
-    const tree = mk(true);
-    act(() => overlays(tree)[0].props.onPress());
+    const fields = (locked: boolean) => (
+      <QuantityWeightFields
+        qty="100"
+        weight="50"
+        onQtyChange={jest.fn()}
+        onWeightChange={jest.fn()}
+        isQtyLocked={locked}
+        onQtyLockedPress={onLocked}
+      />
+    );
+    await render(fields(false));
+    expect(overlay()).toHaveLength(0);
+    await screen.rerender(fields(true));
+    await userEvent.setup({ delay: 0 }).press(overlay()[0]);
     expect(onLocked).toHaveBeenCalledTimes(1);
   });
 });

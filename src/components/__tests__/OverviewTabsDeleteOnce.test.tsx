@@ -6,7 +6,7 @@
  * - Dispatch: the page asks nothing, so the tab's question is the one.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { GRNOverviewTab } from '@/components/grn-details/GRNOverviewTab';
 import { DispatchOverviewTab } from '@/components/dispatch-details/DispatchOverviewTab';
 import { InvoiceOverviewTab } from '@/components/invoice-details/InvoiceOverviewTab';
@@ -25,43 +25,35 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 // The rates card reads the server; this test is about the Delete button.
 jest.mock('@/features/grn/rates/GrnItemRates', () => ({ GrnItemRates: () => null }));
 
-let tree: ReactTestRenderer;
 afterEach(() => {
-  act(() => tree?.unmount());
   jest.clearAllMocks();
 });
-const render = (element: React.ReactElement) => {
-  act(() => { tree = create(element); });
-};
-const press = (label: string) => {
-  const button = tree.root.find((node) => node.props?.accessibilityLabel === label && typeof node.props?.onPress === 'function');
-  act(() => button.props.onPress());
-};
 
 describe('the Delete button of the Overview tab', () => {
-  it('GRN: hands over to the page at once, with no question of its own', () => {
+  it('GRN: hands over to the page at once, with no question of its own', async () => {
+    const user = userEvent.setup({ delay: 0 });
     const onDelete = jest.fn();
-    render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete onDelete={onDelete} />);
+    await render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete onDelete={onDelete} />);
 
-    press('Delete GRN');
+    await user.press(screen.getByRole('button', { name: 'Delete GRN' }));
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  it('GRN: while the orders it would change are read, the button says "Checking orders…" and waits; while deleting it says Deleting', () => {
-    const texts = () => tree.root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat(Infinity).join(''));
-    render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_checking_orders onDelete={jest.fn()} />);
-    expect(texts()).toContain('Checking orders…');
-    expect(tree.root.find((n) => n.props?.accessibilityLabel === 'Delete GRN' && typeof n.props?.onPress === 'function').props.disabled).toBe(true);
-    act(() => tree.update(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_deleting is_checking_orders onDelete={jest.fn()} />));
-    expect(texts()).not.toContain('Checking orders…');
-    expect(texts()).toContain('Deleting…');
+  it('GRN: while the orders it would change are read, the button says "Checking orders…" and waits; while deleting it says Deleting', async () => {
+    const { rerender } = await render(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_checking_orders onDelete={jest.fn()} />);
+    expect(screen.getByText('Checking orders…')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Delete GRN' })).toBeDisabled();
+    await rerender(<GRNOverviewTab grn_id="g1" gr_no="Z0010" can_edit can_delete is_deleting is_checking_orders onDelete={jest.fn()} />);
+    expect(screen.queryByText('Checking orders…')).not.toBeOnTheScreen();
+    expect(screen.getByText('Deleting…')).toBeOnTheScreen();
   });
 
-  it('invoice: the button says Cancel invoice and hands over to the page at once (the page asks for the reason)', () => {
+  it('invoice: the button says Cancel invoice and hands over to the page at once (the page asks for the reason)', async () => {
+    const user = userEvent.setup({ delay: 0 });
     const onCancel = jest.fn();
-    render(
+    await render(
       <InvoiceOverviewTab
         invoice_id="i1"
         invoice_number="42"
@@ -72,17 +64,18 @@ describe('the Delete button of the Overview tab', () => {
       />
     );
 
-    press('Cancel invoice');
+    await user.press(screen.getByRole('button', { name: 'Cancel invoice' }));
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it('dispatch: the tab asks once, and deletes only when that question is answered Delete', () => {
+  it('dispatch: the tab asks once, and deletes only when that question is answered Delete', async () => {
+    const user = userEvent.setup({ delay: 0 });
     const onDelete = jest.fn();
-    render(<DispatchOverviewTab dispatch_id="d1" disp_no="I0042" can_edit can_delete onDelete={onDelete} />);
+    await render(<DispatchOverviewTab dispatch_id="d1" disp_no="I0042" can_edit can_delete onDelete={onDelete} />);
 
-    press('Delete Dispatch');
+    await user.press(screen.getByRole('button', { name: 'Delete Dispatch' }));
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(onDelete).not.toHaveBeenCalled();
@@ -90,7 +83,7 @@ describe('the Delete button of the Overview tab', () => {
     expect(title).toBe('Delete Dispatch I0042?');
     expect(message).toBe("It will be removed for everyone. You can't undo this.");
     expect(buttons?.map((button) => button.text)).toEqual(['Cancel', 'Delete Dispatch']);
-    act(() => buttons?.[1].onPress?.());
+    buttons?.[1].onPress?.();
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 });

@@ -5,7 +5,7 @@
  * where it goes stay.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { t } from '@/i18n';
 import { FilteredListHeader } from '@/features/filters/components/FilteredListHeader';
@@ -25,20 +25,13 @@ const config = { listKey: 'test-list', title: 'Test', fields: [], fastFilters: [
 const filters = { search: '', setSearch: jest.fn(), hasAny: false } as unknown as ReturnType<typeof useListFilters>;
 
 describe('the cog in a list header', () => {
-  let tree: ReactTestRenderer;
-  afterEach(() => act(() => tree.unmount()));
-
   it('is spoken "Tools and settings" and opens Settings', async () => {
-    await act(async () => {
-      tree = create(<FilteredListHeader title="Orders" config={config} filters={filters} />);
-    });
-    const cog = tree.root.find(node =>
-      typeof node.props.onPress === 'function' && node.findAll(child => child.props.name === 'cog-outline').length > 0
-      && node.props.accessibilityLabel !== undefined);
+    await render(<FilteredListHeader title="Orders" config={config} filters={filters} />);
+    const cog = screen.getByRole('button', { name: 'Tools and settings' });
+    expect(cog.children[0]).toMatchObject({ props: { name: 'cog-outline' } });
 
-    expect(cog.props.accessibilityLabel).toBe('Tools and settings');
-    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Open settings')).toHaveLength(0);
-    act(() => cog.props.onPress());
+    expect(screen.queryByLabelText('Open settings')).not.toBeOnTheScreen();
+    await userEvent.press(cog);
     expect(router.push).toHaveBeenCalledWith('/settings');
   });
 

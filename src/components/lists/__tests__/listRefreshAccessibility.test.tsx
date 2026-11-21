@@ -3,8 +3,7 @@
  * list's own refresh, and the last-updated line shows the date as well as the time when the load was on another day.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { listRefreshAccessibility } from '../listRefreshAccessibility';
 import { LastUpdatedLine } from '../ListLoadErrors';
 import { setLanguage } from '@/i18n';
@@ -33,24 +32,25 @@ describe('listRefreshAccessibility', () => {
 });
 
 describe('LastUpdatedLine with the date', () => {
-  const lineText = (at: number, withDate: boolean) => {
-    let tree!: ReturnType<typeof create>;
-    act(() => { tree = create(<LastUpdatedLine at={at} withDate={withDate} />); });
-    return tree.root.findByType(Text).props.children as string;
+  const lineText = async (at: number, withDate: boolean) => {
+    await render(<LastUpdatedLine at={at} withDate={withDate} />);
+    const text = screen.getByTestId('last-updated').props.children as string;
+    await screen.unmount();
+    return text;
   };
   const earlier = new Date(2026, 9, 9, 16, 5).getTime();
 
-  it('shows date and time for another day in English, and Gujarati digits in Gujarati', () => {
-    expect(lineText(earlier, true)).toBe('Last updated 09/10/26, 4:05 pm');
+  it('shows date and time for another day in English, and Gujarati digits in Gujarati', async () => {
+    expect(await lineText(earlier, true)).toBe('Last updated 09/10/26, 4:05 pm');
     setLanguage('gu');
-    const gu = lineText(earlier, true);
+    const gu = await lineText(earlier, true);
     expect(gu).toContain('૦૯/૧૦/૨૬');
     expect(gu).toContain('૪:૦૫');
     expect(gu).not.toMatch(/[0-9]/);
   });
 
-  it('shows only the time when it was loaded today, and without withDate shows only the time', () => {
-    expect(lineText(Date.now(), true)).toMatch(/^Last updated \d{1,2}:\d{2} (am|pm)$/);
-    expect(lineText(earlier, false)).toBe('Last updated 4:05 pm');
+  it('shows only the time when it was loaded today, and without withDate shows only the time', async () => {
+    expect(await lineText(Date.now(), true)).toMatch(/^Last updated \d{1,2}:\d{2} (am|pm)$/);
+    expect(await lineText(earlier, false)).toBe('Last updated 4:05 pm');
   });
 });

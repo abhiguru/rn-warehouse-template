@@ -2,13 +2,13 @@
  * The weight-band editor: whole kilograms, bands that follow on, one field per line.
  */
 import React, { useState } from 'react';
-import { Dimensions, Text } from 'react-native';
+import { Dimensions } from 'react-native';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import { Input } from '@/components/ui/Input';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { BandsEditor } from '@/features/item-pricing/components/BandsEditor';
 import { initialDraft, setUpTo, validate, type Draft, type EditorContext } from '@/features/item-pricing/editModel';
+import { setLanguage, t } from '@/i18n';
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
 
 jest.mock('@/store/hooks', () => ({
@@ -35,86 +35,95 @@ function Harness({ start, ctx }: { start: Draft; ctx: EditorContext }) {
 
 const WINDOW = Dimensions.get('window');
 const atTextSize = (fontScale: number) => Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale } });
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => atTextSize(1));
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   Dimensions.set({ window: WINDOW });
+  setLanguage('en');
 });
 
 const mount = async () => {
   const { draft, context } = opened();
-  await act(async () => { tree = create(<Harness start={draft} ctx={context} />); });
-  return tree!;
+  await render(<Harness start={draft} ctx={context} />);
 };
-const inputs = (t: ReactTestRenderer) => t.root.findAllByType(Input);
-const texts = (t: ReactTestRenderer) => t.root.findAllByType(Text).map(n => [n.props.children].flat().join(''));
-const upTo = (t: ReactTestRenderer, i: number) => inputs(t).filter(n => n.props.label?.startsWith('Up to'))[i];
+const upToFields = () => screen.getAllByLabelText(/^Up to/);
+const rentFields = () => screen.getAllByLabelText(/^Rent per bag, per month/);
+/** Replaces what is in the field with `text`, as a person selecting all and typing. */
+const retype = async (field: ReturnType<typeof screen.getByLabelText>, text: string) => {
+  const user = userEvent.setup({ delay: 0 });
+  await user.clear(field);
+  await user.paste(field, text);
+};
 
 it('uses Input for every number and number-pad for the weights', async () => {
-  const t = await mount();
-  const up = inputs(t).filter(n => n.props.label === 'Up to');
-  const rent = inputs(t).filter(n => n.props.label === 'Rent per bag, per month');
+  await mount();
+  const up = upToFields();
+  const rent = rentFields();
   expect(up).toHaveLength(2);
   expect(rent).toHaveLength(2);
-  expect(up.every(n => n.props.keyboardType === 'number-pad' && n.props.numeric)).toBe(true);
-  expect(rent.every(n => n.props.keyboardType === 'decimal-pad' && n.props.numeric)).toBe(true);
-  expect(up.every(n => n.props.returnKeyType === 'next')).toBe(true);
+  up.forEach(n => {
+    expect(n).toHaveProp('keyboardType', 'number-pad');
+    expect(n).toHaveProp('returnKeyType', 'next');
+  });
+  rent.forEach(n => expect(n).toHaveProp('keyboardType', 'decimal-pad'));
+  // `numeric` is not a prop of the field on screen: it shows as the digits of the language (Gujarati digits in Gujarati).
+  await screen.unmount();
+  setLanguage('gu');
+  await mount();
+  // The labels are Gujarati too; the fields are found by their Gujarati names.
+  expect(screen.getAllByLabelText(new RegExp(`^${t('pricing.edit.upTo')}`))[0]).toHaveDisplayValue('૪૦');
+  expect(screen.getAllByLabelText(new RegExp(`^${t('pricing.edit.rentMonthly')}`))[1]).toHaveDisplayValue('૯.૫૦');
 });
 
 it('typing 40.5 shows the whole-kilograms error and leaves band 2 starting at 41 kg', async () => {
-  const t = await mount();
-  await act(async () => { upTo(t, 0).props.onChangeText('40.5'); });
-  expect(upTo(t, 0).props.error).toBe('Enter whole kilograms, for example 40.');
-  expect(texts(t)).toContain('From 41 kg');
-  expect(texts(t)).not.toContain('From 42 kg');
+  await mount();
+  await retype(upToFields()[0], '40.5');
+  expect(screen.getByText('Enter whole kilograms, for example 40.')).toBeOnTheScreen();
+  expect(screen.getByText('From 41 kg')).toBeOnTheScreen();
+  expect(screen.queryByText('From 42 kg')).not.toBeOnTheScreen();
 });
 
 it('typing 60 on band 1 moves the start of band 2 to 61 kg', async () => {
-  const t = await mount();
-  expect(texts(t)).toContain('From 41 kg');
-  await act(async () => { upTo(t, 0).props.onChangeText('60'); });
-  expect(texts(t)).toContain('From 61 kg');
+  await mount();
+  expect(screen.getByText('From 41 kg')).toBeOnTheScreen();
+  await retype(upToFields()[0], '60');
+  expect(screen.getByText('From 61 kg')).toBeOnTheScreen();
   expect(latest.bands[0].upTo).toBe('60');
 });
 
 it('shows what each band is now under its rent', async () => {
-  const t = await mount();
-  const rent = inputs(t).filter(n => n.props.label === 'Rent per bag, per month');
-  expect(rent.map(n => n.props.helperText)).toEqual(['Now ₹6.00', 'Now ₹9.50']);
+  await mount();
+  expect(screen.getByText('Now ₹6.00')).toBeOnTheScreen();
+  expect(screen.getByText('Now ₹9.50')).toBeOnTheScreen();
+  // Each under its own rent field: the rents are in the bands' order.
+  expect(rentFields()[0]).toHaveDisplayValue('6.00');
+  expect(rentFields()[1]).toHaveDisplayValue('9.50');
 });
 
 it('adds an empty band after the last and removes a band by its button', async () => {
-  const t = await mount();
-  const add = t.root.findAll(n => n.props.accessibilityLabel === 'Add weight band' || n.props.children === 'Add weight band')[0];
-  expect(add).toBeDefined();
-  await act(async () => { t.root.findAll(n => typeof n.props.onPress === 'function' && n.props.children === 'Add weight band')[0].props.onPress(); });
+  await mount();
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: 'Add weight band' }));
   expect(latest.bands.map(b => b.upTo)).toEqual(['40', '100', '']);
-  expect(texts(t)).toContain('From 101 kg');
-  const remove = t.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Remove the From 101 kg band');
-  expect(remove.length).toBeGreaterThan(0);
-  await act(async () => { remove[0].props.onPress(); });
+  expect(screen.getAllByText('From 101 kg')[0]).toBeOnTheScreen();
+  await user.press(screen.getByRole('button', { name: 'Remove the From 101 kg band' }));
   // The band just added has no weights to hand over: the band before keeps its own.
   expect(latest.bands.map(b => b.upTo)).toEqual(['40', '100']);
 });
 
 it('has no remove button for a single band', async () => {
   const { draft, context } = initialDraft({ mode: 'change', params: { mode: 'change', item_id: 'garlic', price_type: 'monthly' }, rows: [row(0, 100, 6)], role: 'admin', today: '2026-10-14' });
-  await act(async () => { tree = create(<Harness start={setUpTo(draft, 0, '100')} ctx={context} />); });
-  expect(tree!.root.findAll(n => String(n.props.accessibilityLabel ?? '').startsWith('Remove the'))).toHaveLength(0);
+  await render(<Harness start={setUpTo(draft, 0, '100')} ctx={context} />);
+  expect(screen.queryByRole('button', { name: /^Remove the/ })).not.toBeOnTheScreen();
 });
 
 it('puts From above Up to at text size 2 and beside it at text size 1', async () => {
-  const flexDirection = (t: ReactTestRenderer) =>
-    [t.root.findAll(n => n.props.testID === 'band-0-span')[0].props.style].flat(Infinity).find(s => s?.flexDirection)?.flexDirection;
-  const small = await mount();
-  expect(flexDirection(small)).toBe('row');
-  act(() => small.unmount());
-  tree = undefined;
+  // The span has no role or label: its testID is the only handle on it.
+  await mount();
+  expect(screen.getByTestId('band-0-span')).toHaveStyle({ flexDirection: 'row' });
+  await screen.unmount();
   atTextSize(2);
-  const big = await mount();
-  expect(flexDirection(big)).toBe('column');
+  await mount();
+  expect(screen.getByTestId('band-0-span')).toHaveStyle({ flexDirection: 'column' });
 });
 
 it('imports no TextInput and no Modal of its own', () => {

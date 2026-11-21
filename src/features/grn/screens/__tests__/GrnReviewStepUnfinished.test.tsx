@@ -7,7 +7,8 @@
  * - the stored answer found by the check settles the note.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { t } from '@/i18n';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN } from '@/features/grn/services/grnFormService';
 import { checkSubmission } from '@/utils/lostAnswer';
@@ -63,19 +64,52 @@ jest.mock('@/features/grn/rates/useGrnRates', () => require('@/tests/helpers/grn
 jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: () => null }));
 jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'ready' }) }));
 
-// Children are stand-ins that keep their props, so the test can press their buttons.
-jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
-jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+// Children are stand-ins that draw what the test needs (the bottom bar's Create button, the X with its warning, a
+// dialog's title with its confirm button, the success dialog) and call the real props.
+jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: () => null }));
+jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: () => null }));
+interface MockDialogProps { visible: boolean; title: string; onConfirm: () => unknown }
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: MockDialogProps) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(
+          View,
+          null,
+          createElement(Text, null, props.title),
+          createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: `Confirm: ${props.title}`, onPress: props.onConfirm })
+        )
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean }) =>
+    props.isVisible ? require('react').createElement(require('react-native').Text, null, 'Success dialog') : null,
+}));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { nextLabel?: string; onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: props.nextLabel, onPress: props.onNext }),
+}));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() }, useRouter: () => ({ back: jest.fn() }), useFocusEffect: jest.fn(), useLocalSearchParams: () => ({}) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
-jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
+jest.mock('@/components/GRNStepIndicator', () => ({
+  GRNStepIndicator: (props: { onCancel: () => void; leaveWarning?: string }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Close', onPress: props.onCancel }),
+      props.leaveWarning === undefined ? null : createElement(Text, null, props.leaveWarning)
+    );
+  },
+}));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
+jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), getNextGRNNumber: jest.fn() }));
 // What unpreparedGRNPhotos answers for real forms is tested with the service (grnPhotoSaving.test.ts).
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNPhotos: jest.fn(), unpreparedGRNPhotos: jest.fn(() => null) }));
@@ -95,7 +129,7 @@ jest.mock('@/utils/localPhotoFiles', () => ({
   releaseLocalPhotos: jest.fn(async () => 0),
 }));
 
-async function render() {
+async function show() {
   mockForm = {
     header: mockHeader,
     items: mockItems,
@@ -105,25 +139,17 @@ async function render() {
     isCreateMode: true,
     resetFormState: jest.fn(),
   };
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnReviewStep mode="create" />);
-  });
-  return tree;
+  await render(<GrnReviewStep mode="create" />);
 }
-
-const one = (tree: ReactTestRenderer, type: string) => tree.root.findByType(type as never);
-const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
-const photoDialog = (tree: ReactTestRenderer) => dialogs(tree).find((dialog) => dialog.props.title === 'Photos not uploaded')!;
-const saveDialog = (tree: ReactTestRenderer) => dialogs(tree).find((dialog) => dialog.props.title !== 'Photos not uploaded')!;
 
 /**
  * Press Create in the bottom bar, then confirm the "save this GRN?" question. The confirm's handler runs until the person
- * has answered the duplicate warning, so it is not awaited here.
+ * has answered the duplicate warning, so what it does is waited for by the tests, not by the press.
  */
-async function save(tree: ReactTestRenderer) {
-  await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
-  await act(async () => { void saveDialog(tree).props.onConfirm(); });
+async function save() {
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: /^Create/ }));
+  await user.press(await screen.findByRole('button', { name: /^Confirm: (?!Photos not uploaded)/ }));
 }
 
 const KEY = 'warehouse-grn-key-1';
@@ -146,15 +172,15 @@ describe('the unfinished-save note of a GRN create', () => {
   it('is removed when the number is refused twice after a lost answer and the person is told to check the list', async () => {
     (createGRN as jest.Mock).mockResolvedValueOnce(lost).mockResolvedValueOnce(takenOnResend).mockResolvedValueOnce(takenOnResend);
     (checkSubmission as jest.Mock).mockResolvedValue({ found: false });
-    const tree = await render();
+    await show();
 
-    await save(tree);
+    await save();
 
+    await waitFor(() => expect(showAlert).toHaveBeenCalled());
     expect(createGRN).toHaveBeenCalledTimes(3);
     expect(forgetUnfinishedSave).toHaveBeenCalledWith(KEY);
     expect(releaseUnfinishedSave).not.toHaveBeenCalled();
     expect(showAlert).toHaveBeenLastCalledWith(expect.any(String), expect.stringContaining('A0010'), expect.any(Array), { cancelable: false });
-    await act(async () => { tree.unmount(); });
   });
 
   it('is handed back when the person leaves while the lost answer is checked', async () => {
@@ -165,29 +191,27 @@ describe('the unfinished-save note of a GRN create', () => {
           signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })));
         })
     );
-    const tree = await render();
-    await save(tree);
+    await show();
+    await save();
     // The check is running: the X leaves, after its warning.
-    expect(one(tree, 'GRNStepIndicator').props.leaveWarning).toBeDefined();
+    expect(await screen.findByText(t('errors.lostAnswer.leaveWarning'))).toBeOnTheScreen();
 
-    await act(async () => { one(tree, 'GRNStepIndicator').props.onCancel(); });
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Close' }));
 
     expect(releaseUnfinishedSave).toHaveBeenCalledWith(KEY);
     expect(forgetUnfinishedSave).not.toHaveBeenCalled();
     expect(createGRN).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 
   it('is removed when the check finds the stored answer', async () => {
     (createGRN as jest.Mock).mockResolvedValueOnce(lost).mockResolvedValueOnce({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
     (checkSubmission as jest.Mock).mockResolvedValue({ found: true, response: { success: true } });
-    const tree = await render();
+    await show();
 
-    await save(tree);
+    await save();
 
+    expect(await screen.findByText('Success dialog')).toBeOnTheScreen();
     expect(forgetUnfinishedSave).toHaveBeenCalledWith(KEY);
     expect(releaseUnfinishedSave).not.toHaveBeenCalled();
-    expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
-    await act(async () => { tree.unmount(); });
   });
 });

@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { Keyboard, PixelRatio, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, type RenderResult } from '@testing-library/react-native';
 import { space } from '@/theme/tokens';
 import { useKeyboardCoverLift } from '../useKeyboardCoverLift';
 import { FIELD_BLOCK_ID, useRevealFocusedField, type KeyboardRevealTarget } from '../useRevealFocusedField';
@@ -54,14 +54,14 @@ const scrollRef: { current: KeyboardRevealTarget; userScrolled: boolean; onScrol
 };
 let barTop: number;
 const barRef = { current: { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, barTop, 1080, 100) } };
-let tree: ReactTestRenderer | undefined;
+let tree: RenderResult | undefined;
 
 function Harness({ revision }: { revision: number }) {
   useRevealFocusedField(barRef as never, scrollRef, true, revision);
   return null;
 }
-const mount = async (revision = 1) => { await act(async () => { tree = create(<Harness revision={revision} />); }); };
-const bump = async (revision: number) => { await act(async () => { tree!.update(<Harness revision={revision} />); }); };
+const mount = async (revision = 1) => { tree = await render(<Harness revision={revision} />); };
+const bump = async (revision: number) => { await tree!.rerender(<Harness revision={revision} />); };
 const tick = (ms = 150) => act(async () => { jest.advanceTimersByTime(ms); });
 
 function node(top: number, height: number, id?: string): FakeNode {
@@ -109,7 +109,6 @@ beforeEach(() => {
   jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1);
 });
 afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
   tree = undefined;
   jest.clearAllTimers();
   jest.useRealTimers();
@@ -217,7 +216,7 @@ describe('the keyboard opens again on a field that kept the focus (rule 7), the 
     fractions = [0.5, 1];
     const { input, block } = fieldWithBlock(1000 - BOX_HEIGHT - 20); // block bottom 1000 + space.sm: fits with no lift
     focused = input;
-    await act(async () => { tree = create(<BarHarness />); });
+    tree = await render(<BarHarness />);
     await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 1300 } }); });
     await tick(450);
     expect(scroll).not.toHaveBeenCalled();

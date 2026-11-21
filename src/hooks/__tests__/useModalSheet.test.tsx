@@ -9,7 +9,7 @@
 import React, { useEffect, useRef } from 'react';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
-import renderer, { act } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { useModalSheet } from '../useModalSheet';
 
 class LibraryModal {
@@ -51,49 +51,43 @@ function FlagSheet({ modal, isVisible, guarded }: { modal: LibraryModal; isVisib
   return null;
 }
 
-const show = (modal: LibraryModal, guarded: boolean, flags: boolean[]) => {
-  let tree!: renderer.ReactTestRenderer;
-  act(() => {
-    tree = renderer.create(<FlagSheet modal={modal} isVisible={flags[0]} guarded={guarded} />);
-  });
+const show = async (modal: LibraryModal, guarded: boolean, flags: boolean[]) => {
+  const { rerender } = await render(<FlagSheet modal={modal} isVisible={flags[0]} guarded={guarded} />);
   for (const flag of flags.slice(1)) {
-    act(() => tree.update(<FlagSheet modal={modal} isVisible={flag} guarded={guarded} />));
+    await rerender(<FlagSheet modal={modal} isVisible={flag} guarded={guarded} />);
   }
 };
 
 describe('a sheet shown by a flag', () => {
-  it('never opens when it dismisses the modal on its first render (the defect)', () => {
+  it('never opens when it dismisses the modal on its first render (the defect)', async () => {
     const modal = new LibraryModal();
-    show(modal, false, [false, true]);
+    await show(modal, false, [false, true]);
     expect(modal.rendered).toBe(false);
   });
 
-  it('opens the first time it is asked to', () => {
+  it('opens the first time it is asked to', async () => {
     const modal = new LibraryModal();
-    show(modal, true, [false, true]);
+    await show(modal, true, [false, true]);
     expect(modal.rendered).toBe(true);
   });
 
-  it('opens, closes and opens again', () => {
+  it('opens, closes and opens again', async () => {
     const modal = new LibraryModal();
-    show(modal, true, [false, true, false]);
+    await show(modal, true, [false, true, false]);
     expect(modal.rendered).toBe(false);
-    show(modal, true, [false, true]);
+    await show(modal, true, [false, true]);
     expect(modal.rendered).toBe(true);
   });
 
-  it('opens again after the modal closed itself (swipe down, backdrop, its own X)', () => {
+  it('opens again after the modal closed itself (swipe down, backdrop, its own X)', async () => {
     const modal = new LibraryModal();
-    let tree!: renderer.ReactTestRenderer;
-    act(() => {
-      tree = renderer.create(<FlagSheet modal={modal} isVisible guarded />);
-    });
+    const { rerender } = await render(<FlagSheet modal={modal} isVisible guarded />);
     expect(modal.rendered).toBe(true);
     // the library closes the modal and reports it; the screen then clears its flag
-    act(() => modal.dismiss());
-    act(() => tree.update(<FlagSheet modal={modal} isVisible={false} guarded />));
+    await act(() => modal.dismiss());
+    await rerender(<FlagSheet modal={modal} isVisible={false} guarded />);
     expect(modal.status).toBe('dismissed');
-    act(() => tree.update(<FlagSheet modal={modal} isVisible guarded />));
+    await rerender(<FlagSheet modal={modal} isVisible guarded />);
     expect(modal.rendered).toBe(true);
   });
 });

@@ -3,7 +3,7 @@
  * again (style guide §13.9). The real component and the real showToast run; only the two service reads are faked.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import InvoiceDetails from '@/components/InvoiceDetails';
 import { getInvoiceDetails, getInvoiceItemsDetailed } from '@/services/invoice-service';
 import type { InvoiceDetailsResponse, InvoiceItemsDetailedResponse } from '@/services/invoice-service';
@@ -30,8 +30,7 @@ afterEach(() => { unregister(); jest.restoreAllMocks(); });
 
 it('a failed load shows the toast with a Try again action, and Try again reads the invoice again', async () => {
   jest.mocked(getInvoiceDetails).mockResolvedValue({ success: false, message: 'x' } as InvoiceDetailsResponse);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<InvoiceDetails invoiceId="fictional-invoice" />); });
+  await render(<InvoiceDetails invoiceId="fictional-invoice" />);
   expect(shown).toHaveLength(1);
   expect(shown[0].message).toBe("Couldn't load the invoice. Check your connection and try again.");
   expect(shown[0].action?.label).toBe('Try again');
@@ -39,5 +38,4 @@ it('a failed load shows the toast with a Try again action, and Try again reads t
 
   await act(async () => { shown[0].action!.onPress(); });
   expect(getInvoiceDetails).toHaveBeenCalledTimes(2);
-  await act(async () => { tree.unmount(); });
 });

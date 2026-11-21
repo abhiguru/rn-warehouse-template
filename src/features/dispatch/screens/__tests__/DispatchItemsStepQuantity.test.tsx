@@ -6,8 +6,7 @@
  * to parseInt, which turns "12.5" into 12 without a word, left every test green.
  */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import { DispatchItemsStep } from '../DispatchItemsStep';
 
 jest.mock('@/store/hooks', () => ({
@@ -46,37 +45,32 @@ jest.mock('@/features/dispatch/components', () => ({
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
-const bags = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Bags to dispatch')!;
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
-const type = async (tree: ReactTestRenderer, text: string) => {
-  await act(async () => { bags(tree).props.onChangeText(text); });
+const bags = () => screen.getByLabelText('Bags to dispatch');
+// With no lot chosen the field is `editable={false}`, which userEvent and fireEvent honour (they would type nothing);
+// the field's own change handler is called, as the old test did.
+const type = async (text: string) => {
+  await act(async () => { bags().props.onChangeText(text); });
 };
 
-let tree: ReactTestRenderer;
 beforeEach(async () => {
-  await act(async () => { tree = create(<DispatchItemsStep mode="create" />); });
-});
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+  await render(<DispatchItemsStep mode="create" />);
 });
 
 it('keeps "12.5" in the field as typed and says a whole number is needed; it does not become 12', async () => {
-  await type(tree, '12.5');
+  await type('12.5');
 
-  expect(bags(tree).props.value).toBe('12.5');
-  expect(texts(tree)).toContain('Quantity must be a whole number');
+  expect(bags()).toHaveDisplayValue('12.5');
+  expect(screen.getByText('Quantity must be a whole number')).toBeOnTheScreen();
 });
 
 it('takes a whole number, and the message goes when the text is corrected', async () => {
-  await type(tree, '12.5');
-  await type(tree, '12');
+  await type('12.5');
+  await type('12');
 
-  expect(bags(tree).props.value).toBe('12');
-  expect(texts(tree)).not.toContain('Quantity must be a whole number');
+  expect(bags()).toHaveDisplayValue('12');
+  expect(screen.queryByText('Quantity must be a whole number')).not.toBeOnTheScreen();
 });
 
 it('names the empty field by the lot\'s packaging (bags when no lot says otherwise)', () => {
-  expect(bags(tree).props.placeholder).toBe('Bags');
+  expect(screen.getByPlaceholderText('Bags')).toBe(bags());
 });

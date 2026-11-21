@@ -21,7 +21,7 @@
  *    started when the save ended for want of a connection.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import OrderManagement from '../OrderManagement';
 import { OrderService } from '@/services/order-service';
 import { showAlert } from '@/utils/alert';
@@ -125,12 +125,11 @@ const NOT_SAVED = 'Not saved. Check your connection and try again.';
 
 const service = jest.mocked(OrderService);
 let server: Order;
-let renderer: ReactTestRenderer | undefined;
 let logged: jest.SpyInstance;
 
 const editor = () => <OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />;
 async function openPicker() {
-  await act(async () => { renderer = create(editor()); });
+  await render(editor());
   expect(mockPicker.props).toBeDefined();
   return mockPicker.props!;
 }
@@ -180,9 +179,7 @@ beforeEach(() => {
   // A refusal is logged for the developer; it is not a test failure.
   logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
-afterEach(async () => {
-  await act(async () => { renderer?.unmount(); });
-  renderer = undefined;
+afterEach(() => {
   logged.mockRestore();
 });
 
@@ -747,7 +744,7 @@ describe('the read after the save', () => {
     // The phone reports no network while the first lot is being saved; then that lot's answer arrives.
     mockNetwork.isConnected = false;
     mockNetwork.type = 'none';
-    await act(async () => { renderer!.update(editor()); });
+    await screen.rerender(editor());
     await act(async () => { write.answer(saved); });
     await settle();
 
@@ -906,13 +903,13 @@ it('keeps the newer lines when an older read answers last', async () => {
 describe('when customerId changes while the editor is mounted', () => {
   it('drops the old order at once: no Add or quantity change reaches it, and the picker is closed', async () => {
     const onClose = jest.fn();
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={onClose} />); });
+    await render(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={onClose} />);
     const oldAdd = mockPicker.props!.onAddItems;
     // The next business's order never answers during the test.
     service.getOrCreateOrder.mockReturnValue(new Promise(() => undefined) as never);
     mockPicker.props = undefined;
 
-    await act(async () => { renderer!.update(<OrderManagement customerId="customer-fictional-2" itemCatalogOpen onCloseItemCatalog={onClose} />); });
+    await screen.rerender(<OrderManagement customerId="customer-fictional-2" itemCatalogOpen onCloseItemCatalog={onClose} />);
 
     // The picker of the old order is gone and the parent was told to close it.
     expect(mockPicker.props).toBeUndefined();
@@ -928,9 +925,9 @@ describe('when customerId changes while the editor is mounted', () => {
   it('ignores the answer of the business it left', async () => {
     const slow = waiting<never>();
     service.getOrCreateOrder.mockReturnValueOnce(slow.promise as never);
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />); });
+    await render(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />);
     expect(mockPicker.props).toBeUndefined();
-    await act(async () => { renderer!.update(<OrderManagement customerId="customer-fictional-2" itemCatalogOpen onCloseItemCatalog={jest.fn()} />); });
+    await screen.rerender(<OrderManagement customerId="customer-fictional-2" itemCatalogOpen onCloseItemCatalog={jest.fn()} />);
     // The first business answers late; its order must not be shown.
     await act(async () => { slow.answer({ success: true, data: { cart_id: 'order-old' } } as never); });
     await settle();
@@ -941,13 +938,11 @@ describe('when customerId changes while the editor is mounted', () => {
 // Open items 2026-10-15: the server now refuses only a DELETED business; a deactivated one orders as before.
 describe('a business that is deleted or deactivated', () => {
   const deleted = { success: false, message: "Couldn't open the order.", error: 'Business is not active' } as never;
-  const text = () => renderer!.root.findAll(node => node.type === 'Text' as never).map(node => [node.props.children].flat().join('')).join(' | ');
-  const addButton = () => renderer!.root.findAll(node => node.props.accessibilityLabel === 'Add items to order' && 'disabled' in node.props)[0];
 
   it('shows the customer message for exactly the server refusal', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
-    await act(async () => { renderer = create(editor()); });
-    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
+    await render(editor());
+    expect(screen.getByText("This business is no longer in this facility's list. Ask your administrator.")).toBeOnTheScreen();
     expect(showAlert).not.toHaveBeenCalled();
     expect(service.getOrderWithItems).not.toHaveBeenCalled();
   });
@@ -955,88 +950,88 @@ describe('a business that is deleted or deactivated', () => {
   it('gives staff the same not-in-the-list wording when they are refused (the server refuses only a deleted business)', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
     const onBusinessDeleted = jest.fn();
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView onBusinessDeleted={onBusinessDeleted} />); });
-    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
-    expect(text()).not.toContain('Ask your cold storage');
+    await render(<OrderManagement customerId="customer-fictional-1" staffView onBusinessDeleted={onBusinessDeleted} />);
+    expect(screen.getByText("This business is no longer in this facility's list. Ask your administrator.")).toBeOnTheScreen();
+    expect(screen.queryByText(/Ask your cold storage/)).not.toBeOnTheScreen();
     expect(onBusinessDeleted).toHaveBeenCalledTimes(1);
   });
 
   it('older facility: staff refused for a business the record says is deactivated get the not-in-the-list wording', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
-    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
-    expect(text()).not.toContain('was deleted');
+    await render(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />);
+    expect(screen.getByText("This business is no longer in this facility's list. Ask your administrator.")).toBeOnTheScreen();
+    expect(screen.queryByText(/was deleted/)).not.toBeOnTheScreen();
   });
 
   it('older facility: a customer login refused for a deactivated business gets the not-in-the-list wording', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" businessDeactivated />); });
-    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
+    await render(<OrderManagement customerId="customer-fictional-1" businessDeactivated />);
+    expect(screen.getByText("This business is no longer in this facility's list. Ask your administrator.")).toBeOnTheScreen();
   });
 
   it('always asks the server, even when the record says deleted (an older facility marks deactivated businesses so)', async () => {
     server.items = [];
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
+    await render(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />);
     expect(service.getOrCreateOrder).toHaveBeenCalledWith('customer-fictional-1');
     expect(service.getOrderWithItems).toHaveBeenCalled();
-    expect(text()).toContain('Deactivated at the cold storage');
-    expect(text()).toContain('No items in this order');
-    expect(text()).not.toContain('was deleted');
+    expect(screen.getByText('Deactivated at the cold storage')).toBeOnTheScreen();
+    expect(screen.getByText('No items in this order')).toBeOnTheScreen();
+    expect(screen.queryByText(/was deleted/)).not.toBeOnTheScreen();
   });
 
   it('gives staff the not-in-the-list wording after a refusal whenever the record says active=false', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
+    await render(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />);
     expect(service.getOrCreateOrder).toHaveBeenCalledTimes(1);
-    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
-    expect(text()).not.toContain('was deleted');
+    expect(screen.getByText("This business is no longer in this facility's list. Ask your administrator.")).toBeOnTheScreen();
+    expect(screen.queryByText(/was deleted/)).not.toBeOnTheScreen();
   });
 
   it('gives staff the same sentence, not "was deleted", when the record could not be read', async () => {
     service.getOrCreateOrder.mockResolvedValue(deleted);
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessRecordUnread />); });
-    expect(text()).toContain("This business is no longer in this facility's list. Ask your administrator.");
-    expect(text()).not.toContain('was deleted');
+    await render(<OrderManagement customerId="customer-fictional-1" staffView businessRecordUnread />);
+    expect(screen.getByText("This business is no longer in this facility's list. Ask your administrator.")).toBeOnTheScreen();
+    expect(screen.queryByText(/was deleted/)).not.toBeOnTheScreen();
   });
 
   it('opens a deactivated business for staff with the banner, and the empty-state Add button stays on', async () => {
     server.items = [];
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />); });
-    expect(text()).toContain('Deactivated at the cold storage');
-    expect(text()).toContain('No new goods are taken in. Turn it on in Customers to change that.');
-    expect(text()).toContain('No items in this order');
-    expect(addButton().props.disabled).toBeFalsy();
+    await render(<OrderManagement customerId="customer-fictional-1" staffView businessDeactivated />);
+    expect(screen.getByText('Deactivated at the cold storage')).toBeOnTheScreen();
+    expect(screen.getByText('No new goods are taken in. Turn it on in Customers to change that.')).toBeOnTheScreen();
+    expect(screen.getByText('No items in this order')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Add items to order' })).toBeEnabled();
   });
 
   it('opens a deactivated business for a customer login with the customer wording and Add on', async () => {
     server.items = [];
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" businessDeactivated />); });
-    expect(text()).toContain('Deactivated at the cold storage');
-    expect(text()).toContain('You can still order your goods out.');
-    expect(text()).not.toContain('Turn it on in Customers');
-    expect(addButton().props.disabled).toBeFalsy();
+    await render(<OrderManagement customerId="customer-fictional-1" businessDeactivated />);
+    expect(screen.getByText('Deactivated at the cold storage')).toBeOnTheScreen();
+    expect(screen.getByText('You can still order your goods out.')).toBeOnTheScreen();
+    expect(screen.queryByText(/Turn it on in Customers/)).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Add items to order' })).toBeEnabled();
   });
 
   it('shows no banner for an active business', async () => {
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" staffView />); });
-    expect(text()).not.toContain('Deactivated');
+    await render(<OrderManagement customerId="customer-fictional-1" staffView />);
+    expect(screen.queryByText(/Deactivated/)).not.toBeOnTheScreen();
   });
 
   it('shows the error state with Try again for any other error, never "No items in this order"', async () => {
     service.getOrCreateOrder.mockResolvedValue({ success: false, message: "Couldn't open the order. Check your connection and try again.", error: 'permission denied' } as never);
-    await act(async () => { renderer = create(editor()); });
-    expect(text()).not.toContain('no longer active');
-    expect(text()).not.toContain('No items in this order');
-    expect(text()).toContain("Couldn't open the order. Check your connection and try again.");
+    await render(editor());
+    expect(screen.queryByText(/no longer active/)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/No items in this order/)).not.toBeOnTheScreen();
+    expect(screen.getByText("Couldn't open the order. Check your connection and try again.")).toBeOnTheScreen();
     expect(showAlert).not.toHaveBeenCalled();
 
     // Try again runs the open again.
     service.getOrCreateOrder.mockResolvedValue({ success: true, data: { cart_id: ORDER_ID } } as never);
     service.getOrderWithItems.mockResolvedValue({ success: true, data: copy(server) } as never);
-    const retry = renderer!.root.find(node => node.props.testID === 'order-open-retry' && typeof node.props.onPress === 'function');
-    await act(async () => { retry.props.onPress(); });
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    await userEvent.press(retry);
     expect(service.getOrCreateOrder).toHaveBeenCalledTimes(2);
-    expect(renderer!.root.findAll(node => node.props.testID === 'order-open-error')).toHaveLength(0);
+    expect(screen.queryByTestId('order-open-error')).not.toBeOnTheScreen();
   });
 });
 
@@ -1046,14 +1041,13 @@ describe('an order that is made by its first line', () => {
   const none = { success: true, message: '', data: { order_id: null, order_no: null, item_count: 0 } } as never;
   const existing = { success: true, message: '', data: { order_id: ORDER_ID, order_no: 'ORD-7', item_count: 3 } } as never;
   const created = { success: true, message: '', data: { data: { order_id: NEW_ORDER_ID, order_created: true } } } as never;
-  const text = () => renderer!.root.findAll(node => node.type === 'Text' as never).map(node => [node.props.children].flat().join('')).join(' | ');
   const newServerOrder = (...lots: Array<[string, number]>): Order => ({
     ...makeOrder(), id: NEW_ORDER_ID, items: lots.map(([lot, quantity]) => line(lot, quantity)),
   });
 
   it('opens an existing order by reading it, and never asks for one to be made', async () => {
     service.getCustomerOrder.mockResolvedValue(existing);
-    await act(async () => { renderer = create(editor()); });
+    await render(editor());
     expect(service.getCustomerOrder).toHaveBeenCalledWith('customer-fictional-1');
     expect(service.getOrCreateOrder).not.toHaveBeenCalled();
     expect(service.getOrderWithItems).toHaveBeenCalledWith(ORDER_ID);
@@ -1061,11 +1055,11 @@ describe('an order that is made by its first line', () => {
 
   it('opens a business with no order as an empty screen: nothing is read, nothing is made', async () => {
     service.getCustomerOrder.mockResolvedValue(none);
-    await act(async () => { renderer = create(editor()); });
+    await render(editor());
     expect(service.getOrCreateOrder).not.toHaveBeenCalled();
     expect(service.getOrderWithItems).not.toHaveBeenCalled();
-    expect(text()).toContain('No items in this order');
-    expect(text()).not.toContain("Couldn't open the order");
+    expect(screen.getByText('No items in this order')).toBeOnTheScreen();
+    expect(screen.queryByText(/Couldn't open the order/)).not.toBeOnTheScreen();
     // The picker is offered all the same: its first Add makes the order.
     expect(mockPicker.props).toBeDefined();
   });
@@ -1129,7 +1123,7 @@ describe('an order that is made by its first line', () => {
 
   it('reads a business\'s order on a pull to refresh when it had none', async () => {
     service.getCustomerOrder.mockResolvedValueOnce(none);
-    await act(async () => { renderer = create(editor()); });
+    await render(editor());
     service.getCustomerOrder.mockResolvedValue(existing);
     await act(async () => { await mockLive.refresh?.(); });
     expect(service.getOrderWithItems).toHaveBeenCalledWith(ORDER_ID);

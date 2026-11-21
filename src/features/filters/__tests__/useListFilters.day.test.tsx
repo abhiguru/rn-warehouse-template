@@ -2,8 +2,7 @@
  * "Today" in a stored filter means the day the list is read, not the day the
  * filter was set (M4-14): the app stays open past midnight and past 1 April.
  */
-import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { renderHook } from '@testing-library/react-native';
 import { useListFilters } from '../useListFilters';
 import { DISPATCH_FILTERS, INVOICE_FILTERS } from '../configs';
 
@@ -21,29 +20,21 @@ jest.mock('@/store/slices/authSlice', () => ({ forceLogoutOnInvalidToken: jest.f
 
 afterEach(() => jest.useRealTimers());
 
-it('the request for "Today" follows the calendar when the list is drawn again', () => {
+it('the request for "Today" follows the calendar when the list is drawn again', async () => {
   expect(DISPATCH_FILTERS.listKey).toBe('dispatch-list');
   jest.useFakeTimers({ now: new Date(2026, 9, 10, 23, 50) });
-  let request: any;
-  const Probe = () => {
-    request = useListFilters(DISPATCH_FILTERS).request;
-    return null;
-  };
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Probe />);
-  });
-  expect(request.p_filters.date_from).toBe('2026-10-10T00:00:00+05:30');
-  const before = request;
+  const { result, rerender } = await renderHook(() => useListFilters(DISPATCH_FILTERS).request as any, { initialProps: 0 });
+  expect(result.current.p_filters.date_from).toBe('2026-10-10T00:00:00+05:30');
+  const before = result.current;
 
   // Same day: the same request object, so a list keyed on it does not load again.
-  act(() => renderer.update(<Probe />));
-  expect(request).toBe(before);
+  await rerender(1);
+  expect(result.current).toBe(before);
 
   jest.setSystemTime(new Date(2026, 9, 11, 0, 10));
-  act(() => renderer.update(<Probe />));
-  expect(request.p_filters.date_from).toBe('2026-10-11T00:00:00+05:30');
-  expect(request.p_filters.date_to).toBe('2026-10-11T23:59:59.999+05:30');
+  await rerender(2);
+  expect(result.current.p_filters.date_from).toBe('2026-10-11T00:00:00+05:30');
+  expect(result.current.p_filters.date_to).toBe('2026-10-11T23:59:59.999+05:30');
 });
 
 it('the invoice Year filter offers the financial year of the day it is opened', () => {
@@ -58,22 +49,15 @@ it('the invoice Year filter offers the financial year of the day it is opened', 
 });
 
 // M4-19: the profile can lose a customer while a filter naming it is stored.
-it('reads stored filters through the account as it is now', () => {
+it('reads stored filters through the account as it is now', async () => {
   const state = mockState as any;
   const before = { auth: state.auth, lists: state.listFilters.lists };
   state.auth = { userProfile: { role: 'customer', assignedCustomers: [{ id: 'c1', name: 'A' }] } };
   state.listFilters.lists = { 'dispatch-list': { values: { customers: [{ id: 'c9', label: 'Revoked' }], package: 'red' } } };
-  let filters!: ReturnType<typeof useListFilters>;
-  const Probe = () => {
-    filters = useListFilters(DISPATCH_FILTERS);
-    return null;
-  };
-  act(() => {
-    TestRenderer.create(<Probe />);
-  });
+  const { result } = await renderHook(() => useListFilters(DISPATCH_FILTERS));
   // One assigned customer: the Customer filter is hidden, so its stored value is not used or sent.
-  expect(filters.values).toEqual({ package: 'red' });
-  expect((filters.request as any).p_filters).toEqual({ package_mark: 'red' });
+  expect(result.current.values).toEqual({ package: 'red' });
+  expect((result.current.request as any).p_filters).toEqual({ package_mark: 'red' });
   state.auth = before.auth;
   state.listFilters.lists = before.lists;
 });

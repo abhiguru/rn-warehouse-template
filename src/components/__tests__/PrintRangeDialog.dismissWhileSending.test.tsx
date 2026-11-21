@@ -3,8 +3,7 @@
  * ignored, so a failure is seen in the dialog. Once the send is over they close it again.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { Modal } from 'react-native';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -20,55 +19,63 @@ jest.mock('@/config/demoCapabilities', () => ({
 }));
 
 const onDismiss = jest.fn();
-let tree: ReactTestRenderer;
-let failJob: (error: Error) => void;
-let finishJob: () => void;
+let failJob: ((error: Error) => void) | undefined;
+let finishJob: (() => void) | undefined;
 const onConfirm = jest.fn(() => new Promise<void>((resolve, reject) => { finishJob = resolve; failJob = reject; }));
 
-async function render() {
-  await act(async () => {
-    tree = create(
-      <PrintRangeDialog visible onDismiss={onDismiss} onConfirm={onConfirm} title="Print invoices" defaultNumber="2555" entity="invoice" />
-    );
-  });
-}
-const byLabel = (label: string) =>
-  tree.root.find((node) => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-const closers = () => [
-  () => byLabel('Cancel').props.onPress(),
-  () => tree.root.find((node) => node.props.importantForAccessibility === 'no' && typeof node.props.onPress === 'function').props.onPress(),
-  () => tree.root.findByType(Modal).props.onRequestClose(),
-];
+const renderDialog = () =>
+  render(<PrintRangeDialog visible onDismiss={onDismiss} onConfirm={onConfirm} title="Print invoices" defaultNumber="2555" entity="invoice" />);
+
+// The dialog's Modal is the root host element. Its Android back handler and the scrim behind the card have no role or
+// name (the scrim is hidden from the screen reader on purpose), so they are reached from the root.
+type Host = ReturnType<typeof screen.getByRole>;
+const modal = () => screen.root as unknown as Host;
+const scrim = () => ((modal().children[0] as Host).children[0] as Host).children[0] as Host;
 
 beforeEach(() => jest.clearAllMocks());
-afterEach(() => { act(() => tree?.unmount()); });
+afterEach(async () => {
+  // Release a send still held, so a failing test does not leave it pending.
+  finishJob?.();
+  finishJob = undefined;
+  failJob = undefined;
+});
 
 describe('closing the print dialog', () => {
   it('is ignored by the backdrop, Cancel and Android back (the X is gone, WH-219) while a print is being sent', async () => {
-    await render();
-    await act(async () => { byLabel('Print').props.onPress(); });
-    for (const close of closers()) {
-      await act(async () => { close(); });
-    }
+    const user = userEvent.setup({ delay: 0 });
+    await renderDialog();
+    await user.press(screen.getByRole('button', { name: 'Print' }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+
+    await user.press(scrim());
+    (modal().props as { onRequestClose: () => void }).onRequestClose();
+    // Cancel is disabled while sending, so a press never reaches the handler.
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await user.press(screen.getByRole('button', { name: 'Cancel' }));
+
     expect(onDismiss).not.toHaveBeenCalled();
-    await act(async () => { finishJob(); });
   });
 
   it('shows the failure of the send in the dialog, which was not closed', async () => {
-    await render();
-    await act(async () => { byLabel('Print').props.onPress(); });
-    await act(async () => { closers()[0](); });
-    await act(async () => { failJob(new Error("Couldn't reach the print server. Check your connection and try again.")); });
-    const texts = tree.root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join(''));
-    expect(texts).toContain("Couldn't reach the print server. Check your connection and try again.");
+    const user = userEvent.setup({ delay: 0 });
+    await renderDialog();
+    await user.press(screen.getByRole('button', { name: 'Print' }));
+    await user.press(screen.getByRole('button', { name: 'Cancel' }));
+    failJob?.(new Error("Couldn't reach the print server. Check your connection and try again."));
+    finishJob = undefined;
+
+    expect(await screen.findByText("Couldn't reach the print server. Check your connection and try again.")).toBeOnTheScreen();
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
   it('closes again once nothing is being sent', async () => {
-    await render();
-    for (const close of closers()) {
-      await act(async () => { close(); });
-    }
+    const user = userEvent.setup({ delay: 0 });
+    await renderDialog();
+
+    await user.press(scrim());
+    (modal().props as { onRequestClose: () => void }).onRequestClose();
+    await user.press(screen.getByRole('button', { name: 'Cancel' }));
+
     expect(onDismiss).toHaveBeenCalledTimes(3);
   });
 });

@@ -9,8 +9,8 @@
  * validation and the buttons are unchanged.
  */
 import React from 'react';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-import { KeyboardAvoidingView, Modal, Platform, ScrollView, TextInput } from 'react-native';
+import { Platform } from 'react-native';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -24,98 +24,105 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/config/demoCapabilities', () => ({
   DEMO_CAPABILITIES: { printing: true, sensors: false, realtime: true, customerDocuments: false },
 }));
+// The real component drops `behavior` and `keyboardVerticalOffset` before the native view; this stand-in shows them to the test.
+jest.mock('react-native/Libraries/Components/Keyboard/KeyboardAvoidingView', () => {
+  const { View } = jest.requireActual('react-native');
+  return { __esModule: true, default: (props: object) => <View testID="keyboard-avoiding" {...props} /> };
+});
 
 const onConfirm = jest.fn(async () => undefined);
 const onDismiss = jest.fn();
 const onViewJobs = jest.fn();
 
-let tree: ReactTestRenderer;
-async function render() {
-  await act(async () => {
-    tree = create(
-      <PrintRangeDialog
-        visible
-        onDismiss={onDismiss}
-        onConfirm={onConfirm}
-        onViewJobs={onViewJobs}
-        title="Print GRNs"
-        defaultNumber="311"
-        entity="grn"
-      />
-    );
-  });
-}
-const button = (label: string) =>
-  tree.root.find(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-const isInside = (node: ReactTestInstance, ancestor: ReactTestInstance) => {
-  for (let parent = node.parent; parent; parent = parent.parent) if (parent === ancestor) return true;
-  return false;
-};
-const flatStyle = (style: unknown): Record<string, unknown> => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+const renderDialog = () =>
+  render(
+    <PrintRangeDialog
+      visible
+      onDismiss={onDismiss}
+      onConfirm={onConfirm}
+      onViewJobs={onViewJobs}
+      title="Print GRNs"
+      defaultNumber="311"
+      entity="grn"
+    />
+  );
+
+// The Modal is the root host element; below it come the keyboard-avoiding view, the overlay (scrim, then the card) and
+// the card, whose first child is the scrolling body. None of them has a role or a name.
+type Host = ReturnType<typeof screen.getByRole>;
+const modal = () => screen.root as unknown as Host;
+const overlay = () => screen.getByTestId('keyboard-avoiding').children[0] as Host;
+const card = () => overlay().children[1] as Host;
+const scrollBody = () => card().children[0] as Host;
 
 const originalOS = Platform.OS;
 beforeEach(() => jest.clearAllMocks());
 afterEach(() => {
   Object.defineProperty(Platform, 'OS', { configurable: true, get: () => originalOS });
-  act(() => tree?.unmount());
 });
 
 describe('PrintRangeDialog above the keyboard', () => {
   it('draws the Modal behind both system bars', async () => {
-    await render();
-    const modal = tree.root.findByType(Modal);
-    expect(modal.props.statusBarTranslucent).toBe(true);
-    expect(modal.props.navigationBarTranslucent).toBe(true);
+    await renderDialog();
+    expect(modal()).toHaveProp('statusBarTranslucent', true);
+    expect(modal()).toHaveProp('navigationBarTranslucent', true);
   });
 
-  it.each(['ios', 'android'])('pads by the keyboard on %s, offset by minus the bottom inset', async os => {
+  it.each(['ios', 'android'])('pads by the keyboard on %s, offset by minus the bottom inset', async (os) => {
     Object.defineProperty(Platform, 'OS', { configurable: true, get: () => os });
-    await render();
-    const avoiding = tree.root.findByType(KeyboardAvoidingView);
-    expect(avoiding.props.behavior).toBe('padding');
-    expect(avoiding.props.keyboardVerticalOffset).toBe(-24);
+    await renderDialog();
+    const avoiding = screen.getByTestId('keyboard-avoiding');
+    expect(avoiding).toHaveProp('behavior', 'padding');
+    expect(avoiding).toHaveProp('keyboardVerticalOffset', -24);
     // The overlay pads for both system bars itself, so the inset is never counted twice.
-    const overlay = avoiding.findAll(node => typeof node.type === 'string' && flatStyle(node.props.style).paddingTop !== undefined)[0];
-    expect(flatStyle(overlay.props.style)).toMatchObject({ paddingTop: 24 + 16, paddingBottom: 24 + 16 });
+    expect(overlay()).toHaveStyle({ paddingTop: 24 + 16, paddingBottom: 24 + 16 });
   });
 
   it('scrolls both fields and keeps Cancel and Print outside the scrolling part', async () => {
-    await render();
-    const scroll = tree.root.findByType(ScrollView);
-    expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
-    const inputs = tree.root.findAllByType(TextInput);
-    expect(inputs).toHaveLength(2);
-    inputs.forEach(input => expect(isInside(input, scroll)).toBe(true));
-    expect(isInside(button('View print jobs'), scroll)).toBe(true); // WH-219: Print jobs sits in the body
-    expect(isInside(button('Cancel'), scroll)).toBe(false);
-    expect(isInside(button('Print'), scroll)).toBe(false);
+    await renderDialog();
+    const scroll = within(scrollBody());
+    expect(scrollBody()).toHaveProp('keyboardShouldPersistTaps', 'handled');
+    expect(scroll.getByPlaceholderText('Start GRN number')).toBeOnTheScreen();
+    expect(scroll.getByPlaceholderText('End GRN number')).toBeOnTheScreen();
+    expect(screen.getAllByPlaceholderText(/GRN number/)).toHaveLength(2);
+    expect(scroll.getByRole('button', { name: 'View print jobs' })).toBeOnTheScreen(); // WH-219: Print jobs sits in the body
+    expect(scroll.queryByRole('button', { name: 'Cancel' })).not.toBeOnTheScreen();
+    expect(scroll.queryByRole('button', { name: 'Print' })).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Print' })).toBeOnTheScreen();
     // The dialog never grows past the space left above the keyboard.
-    const dialog = tree.root.find(node => node.props.accessibilityViewIsModal === true && typeof node.type === 'string');
-    expect(flatStyle(dialog.props.style)).toMatchObject({ maxHeight: '100%', flexShrink: 1 });
+    expect(card()).toHaveStyle({ maxHeight: '100%', flexShrink: 1 });
   });
 
   it('keeps the fields, validation and buttons: both numbers prefilled, an empty field is refused, Print sends the range', async () => {
-    await render();
-    const [from, to] = tree.root.findAllByType(TextInput);
-    expect(from.props.value).toBe('311');
-    expect(to.props.value).toBe('311');
+    const user = userEvent.setup({ delay: 0 });
+    await renderDialog();
+    const from = screen.getByPlaceholderText('Start GRN number');
+    const to = screen.getByPlaceholderText('End GRN number');
+    expect(from).toHaveDisplayValue('311');
+    expect(to).toHaveDisplayValue('311');
 
-    await act(async () => from.props.onChangeText('  '));
-    await act(async () => button('Print').props.onPress());
+    await user.clear(from);
+    await user.type(from, '  ');
+    await user.press(screen.getByRole('button', { name: 'Print' }));
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(tree.root.find(node => node.props.accessibilityRole === 'alert')).toBeTruthy();
+    // The strip is a plain View with the alert role (not an accessible element), so it is found by its text.
+    expect(screen.getByText('Enter both a start and an end number.').parent).toHaveProp('accessibilityRole', 'alert');
 
-    await act(async () => tree.root.findAllByType(TextInput)[0].props.onChangeText(' 305 '));
-    await act(async () => tree.root.findAllByType(TextInput)[1].props.onSubmitEditing());
+    await user.clear(from);
+    await user.type(from, ' 305 ');
+    await user.type(to, '', { submitEditing: true });
     expect(onConfirm).toHaveBeenCalledWith('305', '311');
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it('Back and the scrim close it', async () => {
-    await render();
-    act(() => tree.root.findByType(Modal).props.onRequestClose());
+    const user = userEvent.setup({ delay: 0 });
+    await renderDialog();
+    // Android back has no control on the screen: the Modal's own handler is called.
+    await act(async () => { (modal().props as { onRequestClose: () => void }).onRequestClose(); });
     expect(onDismiss).toHaveBeenCalledTimes(1);
-    act(() => button('Cancel').props.onPress());
+    await user.press(screen.getByRole('button', { name: 'Cancel' }));
     expect(onDismiss).toHaveBeenCalledTimes(2);
   });
 });

@@ -3,11 +3,11 @@
  * another customer's GRN keeps the items and review steps from passing.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import dispatchFormReducer, { loadDispatchData } from '@/store/slices/dispatchFormSlice';
 import { createEmptyDispatchHeader, type DispatchItemData } from '@/types/dispatch.types';
-import { useDispatchForm, type UseDispatchFormReturn } from '../useDispatchForm';
+import { useDispatchForm } from '../useDispatchForm';
 
 // react-redux is not transformed for jest here, so the store is bound by hand.
 let mockStore: ReturnType<typeof makeStore>;
@@ -71,16 +71,10 @@ function makeStore() {
 async function validate(items: DispatchItemData[], step: number) {
   mockStore = makeStore();
   mockStore.dispatch(loadDispatchData({ dispatchId: DISPATCH_ID, header, items }));
-  const latest: { current: UseDispatchFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useDispatchForm({ mode: 'edit', dispatchIdParam: DISPATCH_ID });
-    return null;
-  };
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<Harness />); });
+  const { result: hook, unmount } = await renderHook(() => useDispatchForm({ mode: 'edit', dispatchIdParam: DISPATCH_ID }));
   let result!: { isValid: boolean; errors: Record<string, string> };
-  await act(async () => { result = await latest.current!.validateCurrentStep(step); });
-  await act(async () => { tree.unmount(); });
+  await act(async () => { result = await hook.current.validateCurrentStep(step); });
+  await unmount();
   return result;
 }
 

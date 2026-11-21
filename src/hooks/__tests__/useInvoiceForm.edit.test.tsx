@@ -6,8 +6,7 @@
  * The real validation schemas run, on a real invoice-form slice; the server
  * calls and the router are mocked.
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { setCurrentStep, updateHeader } from '@/store/slices/invoiceFormSlice';
 import { validateItemPricing } from '@/features/invoice/schemas/invoiceValidation';
@@ -59,18 +58,11 @@ async function mount(mode: InvoiceFormMode, step: number, prepare: (store: Invoi
   const store = makeInvoiceStore();
   prepare(store);
   mockStore = store;
-  const latest: { current: UseInvoiceFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useInvoiceForm({ mode, step });
-    return null;
-  };
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<Harness />); });
+  const { result: latest } = await renderHook((): UseInvoiceFormReturn => useInvoiceForm({ mode, step }));
   return {
     form: () => latest.current!,
     header: () => store.getState().invoiceForm.header,
     store,
-    unmount: () => act(async () => { tree.unmount(); }),
   };
 }
 
@@ -85,16 +77,15 @@ describe('the invoice number cap in an edit', () => {
   const edit = (invNo: number) => (store: InvoiceStore) => openForEdit(store, [invoiceLine()], { inv_no: invNo });
 
   it('keeps a 9-digit number the invoice was saved with: it is not refused when the number did not change', async () => {
-    const { form, unmount } = await mount('edit', 1, edit(123456789));
+    const { form } = await mount('edit', 1, edit(123456789));
 
     const check = await form().validateCurrentStep(1);
 
     expect(check.isValid).toBe(true);
-    await unmount();
   });
 
   it('refuses a changed number above 99999999, with the range message on the number field', async () => {
-    const { form, unmount } = await mount('edit', 1, edit(123456789));
+    const { form } = await mount('edit', 1, edit(123456789));
     await act(async () => { form().updateHeaderField('inv_no', 100000000); });
 
     let check!: Awaited<ReturnType<UseInvoiceFormReturn['validateCurrentStep']>>;
@@ -103,22 +94,20 @@ describe('the invoice number cap in an edit', () => {
     expect(check.isValid).toBe(false);
     expect(check.errors.inv_no).toBe('Invoice number must be between 1 and 99999999');
     expect(form().validationErrors.inv_no).toBe(check.errors.inv_no);
-    await unmount();
   });
 
   it('accepts a changed number inside the range', async () => {
-    const { form, unmount } = await mount('edit', 1, edit(123456789));
+    const { form } = await mount('edit', 1, edit(123456789));
     await act(async () => { form().updateHeaderField('inv_no', 99999999); });
 
     const check = await form().validateCurrentStep(1);
 
     expect(check.isValid).toBe(true);
-    await unmount();
   });
 
   it('saves an invoice that keeps its 9-digit number', async () => {
     jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'inv-42', invoice_no: 123456789, total: 735 } } as never);
-    const { form, unmount } = await mount('edit', 3, edit(123456789));
+    const { form } = await mount('edit', 3, edit(123456789));
 
     let result: Awaited<ReturnType<UseInvoiceFormReturn['submitForm']>> = 'busy';
     await act(async () => { result = await form().submitForm(); });
@@ -129,24 +118,22 @@ describe('the invoice number cap in an edit', () => {
       expect.objectContaining({ header: expect.objectContaining({ inv_no: 123456789 }) }),
       expect.stringMatching(/^warehouse-invoice-update-/)
     );
-    await unmount();
   });
 
   it('refuses a save with a changed number above the cap, and sends nothing', async () => {
-    const { form, unmount } = await mount('edit', 3, edit(123456789));
+    const { form } = await mount('edit', 3, edit(123456789));
     await act(async () => { form().updateHeaderField('inv_no', 100000000); });
 
     await act(async () => { await form().submitForm(); });
 
     expect(updateInvoice).not.toHaveBeenCalled();
     expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.stringContaining('between 1 and 99999999'));
-    await unmount();
   });
 });
 
 describe('the screen\'s own step', () => {
   it('checks step 1 when going on from step 1, although the slice says the form is on step 3', async () => {
-    const { form, store, unmount } = await mount('edit', 1, (s) => openForEdit(s, [invoiceLine()], { customer_id: 'not-a-uuid' }));
+    const { form, store } = await mount('edit', 1, (s) => openForEdit(s, [invoiceLine()], { customer_id: 'not-a-uuid' }));
     await act(async () => { store.dispatch(setCurrentStep(3)); });
 
     let result = '';
@@ -156,11 +143,10 @@ describe('the screen\'s own step', () => {
     expect(result).toBe('invalid');
     expect(router.navigate).not.toHaveBeenCalled();
     expect(showAlert).toHaveBeenCalledWith('Check the invoice', expect.any(String));
-    await unmount();
   });
 
   it('does not check step 1 from step 2, although the slice says the form is on step 1', async () => {
-    const { form, store, unmount } = await mount('edit', 2, (s) => openForEdit(s, [invoiceLine()], { customer_id: 'not-a-uuid' }));
+    const { form, store } = await mount('edit', 2, (s) => openForEdit(s, [invoiceLine()], { customer_id: 'not-a-uuid' }));
     await act(async () => { store.dispatch(setCurrentStep(1)); });
 
     let result = '';
@@ -168,36 +154,32 @@ describe('the screen\'s own step', () => {
 
     expect(result).toBe('ok');
     expect(router.navigate).toHaveBeenCalledWith('/invoice-edit/inv-42/step3');
-    await unmount();
   });
 
   it('goes back with dismissTo, unchecked, even from a slice that says step 1', async () => {
-    const { form, store, unmount } = await mount('edit', 3, (s) => openForEdit(s, [invoiceLine()], { customer_id: 'not-a-uuid' }));
+    const { form, store } = await mount('edit', 3, (s) => openForEdit(s, [invoiceLine()], { customer_id: 'not-a-uuid' }));
     await act(async () => { store.dispatch(setCurrentStep(1)); });
 
     await act(async () => { await form().navigateToStep(2); });
 
     expect(router.dismissTo).toHaveBeenCalledWith('/invoice-edit/inv-42/step2');
     expect(router.navigate).not.toHaveBeenCalled();
-    await unmount();
   });
 
   it('keeps the slice\'s step to the screen in front', async () => {
-    const { store, unmount } = await mount('edit', 2, (s) => openForEdit(s));
+    const { store } = await mount('edit', 2, (s) => openForEdit(s));
 
     expect(store.getState().invoiceForm.currentStep).toBe(2);
-    await unmount();
   });
 
   it('says there is no GRN yet, instead of a field message, when step 1 has no lines', async () => {
-    const { form, unmount } = await mount('create', 1, () => {});
+    const { form } = await mount('create', 1, () => {});
 
     let result = '';
     await act(async () => { result = await form().navigateToStep(2); });
 
     expect(result).toBe('noItems');
     expect(showAlert).not.toHaveBeenCalled();
-    await unmount();
   });
 });
 
@@ -205,7 +187,7 @@ describe('saving twice', () => {
   it('sends one update when the second tap comes while the first is still being sent', async () => {
     const sending = deferred<unknown>();
     jest.mocked(updateInvoice).mockReturnValue(sending.promise as never);
-    const { form, store, unmount } = await mount('edit', 3, (s) => openForEdit(s));
+    const { form, store } = await mount('edit', 3, (s) => openForEdit(s));
 
     let first!: Promise<unknown>;
     let second: unknown;
@@ -219,14 +201,13 @@ describe('saving twice', () => {
 
     expect(updateInvoice).toHaveBeenCalledTimes(1);
     expect(store.getState().invoiceForm.is_saving).toBe(false);
-    await unmount();
   });
 
   it('sends one new invoice when the second tap comes while the GRN is still being checked', async () => {
     const checking = deferred<{ ok: boolean }>();
     jest.mocked(checkGrnStillInvoiceable).mockReturnValue(checking.promise as never);
     jest.mocked(createInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'new-1', invoice_no: 55, total: 735 } } as never);
-    const { form, unmount } = await mount('create', 3, (s) => {
+    const { form } = await mount('create', 3, (s) => {
       fillNewInvoice(s);
       s.dispatch({ type: 'invoiceForm/updateHeader', payload: { inv_no: 55, inv_date: '2026-10-05' } });
     });
@@ -242,13 +223,12 @@ describe('saving twice', () => {
     await act(async () => { checking.resolve({ ok: true }); await first; });
 
     expect(createInvoice).toHaveBeenCalledTimes(1);
-    await unmount();
   });
 
   it('is free again after a refused save, so a corrected form can be saved', async () => {
     jest.mocked(updateInvoice).mockResolvedValueOnce({ success: false, data: { invoice_id: '', invoice_no: 0 }, message: 'No' } as never);
     jest.mocked(updateInvoice).mockResolvedValueOnce({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: 735 } } as never);
-    const { form, unmount } = await mount('edit', 3, (s) => openForEdit(s));
+    const { form } = await mount('edit', 3, (s) => openForEdit(s));
 
     let first: unknown;
     let second: unknown;
@@ -257,7 +237,6 @@ describe('saving twice', () => {
 
     expect(first).toMatchObject({ success: false });
     expect(second).toMatchObject({ success: true });
-    await unmount();
   });
 });
 
@@ -268,7 +247,7 @@ describe('the financial year of an edit', () => {
   it('asks for the next number of the other year first; the date stays as it was until the number is known and the move is confirmed', async () => {
     const forLastYear = deferred<ReturnType<typeof answer>>();
     nextNumber.mockReturnValueOnce(forLastYear.promise as never);
-    const { form, header, unmount } = await mount('edit', 1, prepare);
+    const { form, header } = await mount('edit', 1, prepare);
 
     await act(async () => { form().updateHeaderField('inv_date', '2026-03-31'); });
 
@@ -278,11 +257,10 @@ describe('the financial year of an edit', () => {
     await act(async () => { forLastYear.resolve(answer(1210, '2025-26')); });
     expect(header()).toMatchObject({ inv_date: '2026-03-31', inv_fin_year: '2025-26', inv_no: 1210 });
     expect(form().isGettingNextNumber).toBe(false);
-    await unmount();
   });
 
   it('gives the saved number back when the date returns to the saved year, and asks nothing more', async () => {
-    const { form, header, unmount } = await mount('edit', 1, prepare);
+    const { form, header } = await mount('edit', 1, prepare);
     await act(async () => { form().updateHeaderField('inv_date', '2026-03-31'); });
     expect(header().inv_no).toBe(1210);
 
@@ -290,23 +268,21 @@ describe('the financial year of an edit', () => {
 
     expect(header()).toMatchObject({ inv_fin_year: '2026-27', inv_no: 42 });
     expect(nextNumber).toHaveBeenCalledTimes(1);
-    await unmount();
   });
 
   it('keeps a number the person typed when the date moves to another year', async () => {
-    const { form, header, unmount } = await mount('edit', 1, prepare);
+    const { form, header } = await mount('edit', 1, prepare);
     await act(async () => { form().updateHeaderField('inv_no', 7301); });
 
     await act(async () => { form().updateHeaderField('inv_date', '2026-03-31'); });
 
     expect(nextNumber).not.toHaveBeenCalled();
     expect(header()).toMatchObject({ inv_fin_year: '2025-26', inv_no: 7301 });
-    await unmount();
   });
 
   it('asks for a typed number when the other year has none to give', async () => {
     nextNumber.mockResolvedValue({ success: false, message: 'none' } as never);
-    const { form, header, unmount } = await mount('edit', 1, prepare);
+    const { form, header } = await mount('edit', 1, prepare);
 
     await act(async () => { form().updateHeaderField('inv_date', '2026-03-31'); });
 
@@ -316,14 +292,13 @@ describe('the financial year of an edit', () => {
     let check!: Awaited<ReturnType<UseInvoiceFormReturn['validateCurrentStep']>>;
     await act(async () => { check = await form().validateCurrentStep(1); });
     expect(check.errors.inv_no).toBeDefined();
-    await unmount();
   });
 
   it('holds Next while the number of the other year is on its way', async () => {
     const forLastYear = deferred<ReturnType<typeof answer>>();
     // The question's own lookup fails, so "Move invoice" asks for the number as before, and that answer is slow.
     nextNumber.mockResolvedValueOnce({ success: false, message: 'none' } as never).mockReturnValueOnce(forLastYear.promise as never);
-    const { form, unmount } = await mount('edit', 1, prepare);
+    const { form } = await mount('edit', 1, prepare);
     await act(async () => { form().updateHeaderField('inv_date', '2026-03-31'); });
 
     let result = '';
@@ -332,13 +307,12 @@ describe('the financial year of an edit', () => {
     expect(result).toBe('busy');
     expect(router.navigate).not.toHaveBeenCalled();
     await act(async () => { forLastYear.resolve(answer(1210, '2025-26')); });
-    await unmount();
   });
 });
 
 describe('the changed flag of an edit', () => {
   it('follows the form against the saved invoice', async () => {
-    const { form, unmount } = await mount('edit', 1, (s) => openForEdit(s));
+    const { form } = await mount('edit', 1, (s) => openForEdit(s));
     expect(form().getIsChanged()).toBe(false);
 
     await act(async () => { form().updateDiscountAmount(10); });
@@ -346,7 +320,6 @@ describe('the changed flag of an edit', () => {
 
     await act(async () => { form().updateDiscountAmount(0); });
     expect(form().getIsChanged()).toBe(false);
-    await unmount();
   });
 });
 
@@ -356,20 +329,17 @@ describe('the duration check follows the invoice\'s charging rule (WH-169)', () 
     (await validateItemPricing({ duration, no_of_days: 10, charge: 1, labour_rate: 0, tax: 0 })).isValid;
 
   it('closing one step screen does not reset the minimum; resetForm restores the default', async () => {
-    const { form, store, unmount } = await mount('create', 2, (s) => fillNewInvoice(s));
+    const { form, store } = await mount('create', 2, (s) => fillNewInvoice(s));
     await act(async () => { store.dispatch(updateHeader({ charging: oneStepByDay })); });
     expect(await durationAccepted(0.33)).toBe(true);
 
     // Another step screen of the same form comes to the front and then closes (Review closing on Back).
-    const Other = () => { useInvoiceForm({ mode: 'create', step: 3 }); return null; };
-    let other!: ReturnType<typeof create>;
-    await act(async () => { other = create(<Other />); });
-    await act(async () => { other.unmount(); });
+    const other = await renderHook(() => useInvoiceForm({ mode: 'create', step: 3 }));
+    await other.unmount();
     expect(await durationAccepted(0.33)).toBe(true);
 
     await act(async () => { form().resetFormState(); });
     expect(await durationAccepted(0.33)).toBe(false);
     expect(await durationAccepted(0.5)).toBe(true);
-    await unmount();
   });
 });

@@ -1,6 +1,6 @@
 /** G-50: the A–Z rail scrubs: a finger drawn down it calls the letters it passes over, once each. */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { AlphabeticalRail, letterAtOffset } from '@/features/customer/AlphabeticalRail';
 import { railLetters } from '@/features/customer/railKey';
 
@@ -35,23 +35,17 @@ const LETTER_HEIGHT = 27;
 const available = new Set(['A', 'G', 'H', 'Z', '#']);
 const letters = railLetters(available);
 
-let tree: ReactTestRenderer | undefined;
 const onLetterPress = jest.fn();
 const mount = async () => {
-  await act(async () => {
-    tree = create(<AlphabeticalRail letters={letters} availableLetters={available} activeLetter={null} onLetterPress={onLetterPress} />);
-  });
-  const rail = (tree as ReactTestRenderer).root.find(node => typeof node.props.onLayout === 'function');
-  await act(async () => { rail.props.onLayout({ nativeEvent: { layout: { height: LETTER_HEIGHT * letters.length } } }); });
+  await render(<AlphabeticalRail letters={letters} availableLetters={available} activeLetter={null} onLetterPress={onLetterPress} />);
+  // The rail's own box has no role or label; it is the parent of its letter buttons (the one place a parent is used).
+  const rail = screen.getByRole('button', { name: 'Jump to A' }).parent!;
+  await fireEvent(rail, 'layout', { nativeEvent: { layout: { height: LETTER_HEIGHT * letters.length } } });
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockHandlers.onUpdate = undefined;
-});
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
 });
 
 it('maps a finger position to the letter under it, and holds at the ends', () => {
@@ -67,10 +61,10 @@ it('calls A and then G as the finger moves down, and never the same letter twice
   const pan = mockHandlers.onUpdate as (event: { y: number }) => void;
   expect(pan).toBeDefined();
   // Rail built for A–Z plus '#': the letter height is the rail height over 27 entries.
-  act(() => { pan({ y: 5 }); });
-  act(() => { pan({ y: 9 }); });
-  act(() => { pan({ y: LETTER_HEIGHT * 6 + 3 }); });
-  act(() => { pan({ y: LETTER_HEIGHT * 6 + 20 }); });
+  pan({ y: 5 });
+  pan({ y: 9 });
+  pan({ y: LETTER_HEIGHT * 6 + 3 });
+  pan({ y: LETTER_HEIGHT * 6 + 20 });
   expect(onLetterPress.mock.calls.map(call => call[0])).toEqual(['A', 'G']);
   expect(mockSelection).toHaveBeenCalledTimes(2);
 });
@@ -78,27 +72,26 @@ it('calls A and then G as the finger moves down, and never the same letter twice
 it('passes over letters without customers silently', async () => {
   await mount();
   const pan = mockHandlers.onUpdate as (event: { y: number }) => void;
-  act(() => { pan({ y: LETTER_HEIGHT * 1 + 3 }); }); // B has none
+  pan({ y: LETTER_HEIGHT * 1 + 3 }); // B has none
   expect(onLetterPress).not.toHaveBeenCalled();
 });
 
 it('can reach the same letter again after the finger is lifted', async () => {
   await mount();
   const pan = mockHandlers.onUpdate as (event: { y: number }) => void;
-  act(() => { pan({ y: 3 }); });
-  act(() => { mockHandlers.onFinalize?.(); });
-  act(() => { pan({ y: 3 }); });
+  pan({ y: 3 });
+  mockHandlers.onFinalize?.();
+  pan({ y: 3 });
   expect(onLetterPress.mock.calls.map(call => call[0])).toEqual(['A', 'A']);
 });
 
 it('keeps taps working, and makes letters without customers inactive but visible', async () => {
   await mount();
-  const button = (label: string) =>
-    (tree as ReactTestRenderer).root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label)[0];
-  await act(async () => { button('Jump to H').props.onPress(); });
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: 'Jump to H' }));
   expect(onLetterPress).toHaveBeenCalledWith('H');
   onLetterPress.mockClear();
-  await act(async () => { button('Jump to B').props.onPress(); });
+  await user.press(screen.getByRole('button', { name: 'Jump to B' }));
   expect(onLetterPress).not.toHaveBeenCalled();
-  expect(button('Jump to B').props.accessibilityState).toEqual({ disabled: true, selected: false });
+  expect(screen.getByRole('button', { name: 'Jump to B' }).props.accessibilityState).toEqual({ disabled: true, selected: false });
 });

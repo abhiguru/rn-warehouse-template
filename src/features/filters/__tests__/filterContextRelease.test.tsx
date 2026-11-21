@@ -4,8 +4,7 @@
  * active server are stood in. The setting changing under a mounted list (the Charging screen switches it without a
  * restart) must show on the next render.
  */
-import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
@@ -59,28 +58,24 @@ type Invoice = ReturnType<typeof useListFilters<ReturnType<typeof INVOICE_FILTER
 type Grn = ReturnType<typeof useListFilters<ReturnType<typeof GRN_FILTERS.toRequest>>>;
 
 /** Mounts one list on the real hook; `render()` draws it again, as any state change in the screen does. */
-function mount<T>(config: unknown, role: string | null, initial?: { key: string; values: Record<string, unknown> }) {
+async function mount<T>(config: unknown, role: string | null, initial?: { key: string; values: Record<string, unknown> }) {
   mockStore = makeStore(role);
-  const shown: { current: T | null } = { current: null };
-  const Probe = ({ tick }: { tick: number }) => {
-    void tick;
-    shown.current = useListFilters(config as never) as unknown as T;
-    return null;
-  };
-  let renderer!: TestRenderer.ReactTestRenderer;
   let tick = 0;
-  act(() => {
-    renderer = TestRenderer.create(<Probe tick={tick} />);
-  });
+  const hook = await renderHook(
+    (props: { tick: number }) => {
+      void props;
+      return useListFilters(config as never) as unknown as T;
+    },
+    { initialProps: { tick } }
+  );
   if (initial) {
-    act(() => {
-      (shown.current as unknown as Invoice).apply(initial.values as never);
+    await act(() => {
+      (hook.result.current as unknown as Invoice).apply(initial.values as never);
     });
   }
-  mounted.push(renderer);
   return {
-    get now() { return shown.current as T; },
-    render: () => act(() => renderer.update(<Probe tick={++tick} />)),
+    get now() { return hook.result.current as T; },
+    render: () => hook.rerender({ tick: ++tick }),
   };
 }
 
@@ -88,10 +83,6 @@ const keysOf = (list: { fields: { key: string }[] }) => list.fields.map(field =>
 const optionValues = (list: { fields: Array<{ key: string; options?: Array<{ value: string }> }> }, key: string) =>
   list.fields.find(field => field.key === key)?.options?.map(option => option.value);
 
-const mounted: TestRenderer.ReactTestRenderer[] = [];
-afterEach(() => {
-  act(() => mounted.splice(0).forEach(renderer => renderer.unmount()));
-});
 beforeEach(() => {
   resetFacilityCapabilities();
   resetFacilityRelease();
@@ -99,125 +90,125 @@ beforeEach(() => {
 });
 
 describe('WH-143: the Invoices Payment filter follows the setting and the release at every render', () => {
-  it.each([['admin'], ['supervisor']])('a %s sees it on the next render after the setting turns on, with Due, Part paid and Paid', role => {
+  it.each([['admin'], ['supervisor']])('a %s sees it on the next render after the setting turns on, with Due, Part paid and Paid', async role => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_172 });
     setFacilityCapabilities(mockServer, { payments: false });
-    const list = mount<Invoice>(INVOICE_FILTERS, role);
+    const list = await mount<Invoice>(INVOICE_FILTERS, role);
     expect(keysOf(list.now)).not.toContain('payment');
 
     // The Charging screen switches the setting; no restart, no new mount.
-    act(() => setFacilityCapabilities(mockServer, { payments: true }));
-    list.render();
+    await act(() => setFacilityCapabilities(mockServer, { payments: true }));
+    await list.render();
     expect(keysOf(list.now)).toContain('payment');
     expect(optionValues(list.now as never, 'payment')).toEqual(['all', 'due', 'part_paid', 'paid']);
     expect(describeValue(INVOICE_FILTERS.fields.find(field => field.key === 'payment')!, 'part_paid')).toBe('Part paid');
   });
 
-  it('shows it when the release is recorded after the setting (the phone finding: setting on first, release second)', () => {
+  it('shows it when the release is recorded after the setting (the phone finding: setting on first, release second)', async () => {
     setFacilityCapabilities(mockServer, { payments: true });
-    const list = mount<Invoice>(INVOICE_FILTERS, 'admin');
+    const list = await mount<Invoice>(INVOICE_FILTERS, 'admin');
     expect(keysOf(list.now)).not.toContain('payment');
     setFacilityRelease(mockServer, { schemaHead: HEAD_172 });
-    list.render();
+    await list.render();
     expect(keysOf(list.now)).toContain('payment');
   });
 
-  it.each([['staff'], ['customer']])('never offers it to %s, even with the setting on and the release current', role => {
+  it.each([['staff'], ['customer']])('never offers it to %s, even with the setting on and the release current', async role => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_172 });
     setFacilityCapabilities(mockServer, { payments: true });
-    const list = mount<Invoice>(INVOICE_FILTERS, role);
-    list.render();
+    const list = await mount<Invoice>(INVOICE_FILTERS, role);
+    await list.render();
     expect(keysOf(list.now)).not.toContain('payment');
   });
 
-  it('does not offer it on a backend below migration 172, or one that does not say', () => {
+  it('does not offer it on a backend below migration 172, or one that does not say', async () => {
     setFacilityCapabilities(mockServer, { payments: true });
     setFacilityRelease(mockServer, { schemaHead: '00000000000171_before_payments' });
-    const list = mount<Invoice>(INVOICE_FILTERS, 'admin');
+    const list = await mount<Invoice>(INVOICE_FILTERS, 'admin');
     expect(keysOf(list.now)).not.toContain('payment');
     resetFacilityRelease();
-    list.render();
+    await list.render();
     expect(keysOf(list.now)).not.toContain('payment');
   });
 
-  it('turning the setting off removes it and the stored choice is not sent', () => {
+  it('turning the setting off removes it and the stored choice is not sent', async () => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_172 });
     setFacilityCapabilities(mockServer, { payments: true });
-    const list = mount<Invoice>(INVOICE_FILTERS, 'admin', { key: 'payment', values: { payment: 'due' } });
+    const list = await mount<Invoice>(INVOICE_FILTERS, 'admin', { key: 'payment', values: { payment: 'due' } });
     expect(list.now.request.p_payment_status).toBe('due');
 
-    act(() => setFacilityCapabilities(mockServer, { payments: false }));
-    list.render();
+    await act(() => setFacilityCapabilities(mockServer, { payments: false }));
+    await list.render();
     expect(keysOf(list.now)).not.toContain('payment');
     expect(list.now.values.payment).toBeUndefined();
     expect(list.now.request).not.toHaveProperty('p_payment_status');
 
     // Switched on again: the stored choice was kept in the store only as far as the field is visible.
-    act(() => setFacilityCapabilities(mockServer, { payments: true }));
-    list.render();
+    await act(() => setFacilityCapabilities(mockServer, { payments: true }));
+    await list.render();
     expect(keysOf(list.now)).toContain('payment');
   });
 
-  it('a stored choice is not sent to a staff account', () => {
+  it('a stored choice is not sent to a staff account', async () => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_172 });
     setFacilityCapabilities(mockServer, { payments: true });
-    const list = mount<Invoice>(INVOICE_FILTERS, 'staff');
-    act(() => { list.now.apply({ payment: 'paid' }); });
+    const list = await mount<Invoice>(INVOICE_FILTERS, 'staff');
+    await act(() => { list.now.apply({ payment: 'paid' }); });
     expect(list.now.request).not.toHaveProperty('p_payment_status');
   });
 });
 
 describe('WH-138: the GRN Invoicing filter follows the backend release at every render', () => {
-  it('is hidden below migration 202, appears on the next render when the release rises to 202', () => {
+  it('is hidden below migration 202, appears on the next render when the release rises to 202', async () => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_201 });
-    const list = mount<Grn>(GRN_FILTERS, 'admin');
+    const list = await mount<Grn>(GRN_FILTERS, 'admin');
     expect(keysOf(list.now)).not.toContain('invoicing');
     expect(list.now.ctx.grnInvoiceFilter).toBe(false);
 
     setFacilityRelease(mockServer, { schemaHead: HEAD_202 });
-    list.render();
+    await list.render();
     expect(keysOf(list.now)).toContain('invoicing');
     expect(list.now.ctx.grnInvoiceFilter).toBe(true);
   });
 
-  it('is hidden when the backend does not say its release', () => {
-    const list = mount<Grn>(GRN_FILTERS, 'admin');
+  it('is hidden when the backend does not say its release', async () => {
+    const list = await mount<Grn>(GRN_FILTERS, 'admin');
     expect(keysOf(list.now)).not.toContain('invoicing');
   });
 
-  it.each([['admin'], ['supervisor'], ['staff']])('is offered to %s on a current backend, with a fast chip', role => {
+  it.each([['admin'], ['supervisor'], ['staff']])('is offered to %s on a current backend, with a fast chip', async role => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_202 });
-    const list = mount<Grn>(GRN_FILTERS, role);
+    const list = await mount<Grn>(GRN_FILTERS, role);
     expect(keysOf(list.now)).toContain('invoicing');
     expect(GRN_FILTERS.fastFilters).toContain('invoicing');
     expect(optionValues(list.now as never, 'invoicing')).toEqual(['all', 'invoiced', 'not_invoiced', 'partly_invoiced']);
   });
 
-  it('is hidden for a customer even on a current backend, and a stored choice sends nothing', () => {
+  it('is hidden for a customer even on a current backend, and a stored choice sends nothing', async () => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_202 });
-    const list = mount<Grn>(GRN_FILTERS, 'customer');
+    const list = await mount<Grn>(GRN_FILTERS, 'customer');
     expect(keysOf(list.now)).not.toContain('invoicing');
-    act(() => { list.now.apply({ invoicing: 'invoiced' }); });
+    await act(() => { list.now.apply({ invoicing: 'invoiced' }); });
     expect(list.now.request.p_filters?.invoiced).toBeUndefined();
   });
 
-  it('a stored choice is not sent once the release drops below 202 (an older backend would ignore it and show every GRN)', () => {
+  it('a stored choice is not sent once the release drops below 202 (an older backend would ignore it and show every GRN)', async () => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_202 });
-    const list = mount<Grn>(GRN_FILTERS, 'admin');
-    act(() => { list.now.apply({ invoicing: 'invoiced' }); });
+    const list = await mount<Grn>(GRN_FILTERS, 'admin');
+    await act(() => { list.now.apply({ invoicing: 'invoiced' }); });
     expect(list.now.request.p_filters?.invoiced).toBe(true);
     setFacilityRelease(mockServer, { schemaHead: HEAD_201 });
-    list.render();
+    await list.render();
     expect(list.now.request.p_filters?.invoiced).toBeUndefined();
   });
 
-  it('clearing the choice sends nothing and takes the chip off', () => {
+  it('clearing the choice sends nothing and takes the chip off', async () => {
     setFacilityRelease(mockServer, { schemaHead: HEAD_202 });
-    const list = mount<Grn>(GRN_FILTERS, 'admin');
-    act(() => { list.now.setField('invoicing', 'partly_invoiced'); });
+    const list = await mount<Grn>(GRN_FILTERS, 'admin');
+    await act(() => { list.now.setField('invoicing', 'partly_invoiced'); });
     expect(list.now.request.p_filters?.invoiced).toBe('partly_invoiced');
     expect(list.now.activeCount).toBe(1);
-    act(() => { list.now.setField('invoicing', 'all'); });
+    await act(() => { list.now.setField('invoicing', 'all'); });
     expect(list.now.request.p_filters?.invoiced).toBeUndefined();
     expect(list.now.activeCount).toBe(0);
     expect(list.now.values.invoicing).toBeUndefined();

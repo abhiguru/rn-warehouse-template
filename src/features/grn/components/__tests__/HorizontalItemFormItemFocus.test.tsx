@@ -1,6 +1,6 @@
 /** The GRN item row can give the Item search field the cursor, as it does Quantity, Weight, Rack and Mark (D7). */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { HorizontalItemForm, type HorizontalItemFormRef, type ItemFormData } from '../HorizontalItemForm';
 
 const mockFocus = jest.fn();
@@ -32,31 +32,26 @@ const EMPTY: ItemFormData = { grn_trl_id: 'line-1', item_table_id: '', item_name
 beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); mockFocused = false; });
 afterEach(() => jest.useRealTimers());
 
-const mount = () => {
+const mount = async () => {
   const ref = React.createRef<HorizontalItemFormRef>();
-  let tree!: ReturnType<typeof create>;
-  act(() => {
-    tree = create(<HorizontalItemForm ref={ref} currentItem={EMPTY} onFieldChange={jest.fn()} onImagePick={jest.fn()} onImageRemove={jest.fn()} onSaveItem={jest.fn()} isValid isEditing editingItemNumber={1} savedItemsCount={1} />);
-  });
-  return { ref, tree };
+  await render(<HorizontalItemForm ref={ref} currentItem={EMPTY} onFieldChange={jest.fn()} onImagePick={jest.fn()} onImageRemove={jest.fn()} onSaveItem={jest.fn()} isValid isEditing editingItemNumber={1} savedItemsCount={1} />);
+  return ref;
 };
 
-it('focusField("item") gives the Item field the cursor after the dialog has gone', () => {
-  const { ref, tree } = mount();
-  act(() => ref.current!.focusField('item'));
-  act(() => { jest.advanceTimersByTime(249); });
+it('focusField("item") gives the Item field the cursor after the dialog has gone', async () => {
+  const ref = await mount();
+  await act(() => ref.current!.focusField('item'));
+  await act(() => { jest.advanceTimersByTime(249); });
   expect(mockFocus).not.toHaveBeenCalled();
-  act(() => { jest.advanceTimersByTime(1); });
+  await act(() => { jest.advanceTimersByTime(1); });
   expect(mockFocus).toHaveBeenCalledTimes(1);
-  act(() => tree.unmount());
 });
 
-it('a field that still has the cursor lets go of it first', () => {
+it('a field that still has the cursor lets go of it first', async () => {
   mockFocused = true;
-  const { ref, tree } = mount();
-  act(() => ref.current!.focusField('item'));
+  const ref = await mount();
+  await act(() => ref.current!.focusField('item'));
   expect(mockBlur).toHaveBeenCalledTimes(1);
-  act(() => { jest.advanceTimersByTime(250); });
+  await act(() => { jest.advanceTimersByTime(250); });
   expect(mockFocus).toHaveBeenCalledTimes(1);
-  act(() => tree.unmount());
 });

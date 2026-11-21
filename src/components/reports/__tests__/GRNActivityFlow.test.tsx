@@ -9,9 +9,8 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, fireEvent, render, userEvent, within, type RenderResult } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
-import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { resetReportExportAvailability } from '@/features/reports/useReportExport';
 import { generateReportPDF, type ReportPdfResult } from '@/services/pdf-service';
 import { getAllGRNActivity, getCustomerGRNActivity } from '@/services/reporting/grn-activity-service';
@@ -171,8 +170,6 @@ type Store = ReturnType<typeof makeStore>;
 // one, which draws the screen for the first time, can take longer than Jest's 5 seconds.
 jest.setTimeout(30_000);
 
-// A mounted skeleton or query keeps timers alive: every tree is taken down after its test.
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -193,68 +190,90 @@ beforeEach(() => {
   sharePdf.mockResolvedValue({ success: true });
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
+
+type TestInstance = RenderResult['container'];
+
+/** Lets the promises behind a query answer run, and the screen draw them. */
+const settle = () => act(() => settleQueries());
+const textOf = (node: TestInstance): string => node.children.map(child => (typeof child === 'string' ? child : textOf(child))).join('');
 
 /** `params`: the route's own, for a tree that stands for one entry of the stack. */
 async function open(store: Store, params?: Record<string, string>) {
   mockStore = store;
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(
-      params ? (
-        <ParamsContext.Provider value={params}>
-          <GRNActivityScreen />
-        </ParamsContext.Provider>
-      ) : (
+  const user = userEvent.setup();
+  const view = await render(
+    params ? (
+      <ParamsContext.Provider value={params}>
         <GRNActivityScreen />
-      )
-    );
-    await settleQueries();
-  });
-  mounted.push(tree);
+      </ParamsContext.Provider>
+    ) : (
+      <GRNActivityScreen />
+    )
+  );
+  await settle();
+  const here = within(view.container);
 
-  const run = (callback: () => void) =>
-    act(async () => {
-      callback();
-      await settleQueries();
-    });
+  const find = (label: string) => here.queryByRole('button', { name: label }) ?? here.queryByRole('radio', { name: label }) ?? here.queryByLabelText(label);
   const control = (label: string) => {
-    const found = tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-    if (found.length === 0) throw new Error(`No control labelled "${label}"`);
-    return found[0];
+    const found = find(label);
+    if (!found) throw new Error(`No control labelled "${label}"`);
+    return found;
   };
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
+  const texts = () => view.container.queryAll(node => node.type === 'Text').map(node => textOf(node));
+  const searchField = () => here.getByPlaceholderText(/./);
   return {
-    tree,
+    view,
+    here,
     texts,
     control,
-    press: (label: string) => run(() => control(label).props.onPress()),
-    has: (label: string) => tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function').length > 0,
+    press: async (label: string) => {
+      await user.press(control(label));
+      await settle();
+    },
+    has: (label: string) => find(label) !== null,
+    /** Presses the one button whose name matches. */
+    pressRow: async (name: RegExp) => {
+      await user.press(here.getByRole('button', { name }));
+      await settle();
+    },
     /** Customer names in the order the rows show them. */
-    customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
+    customers: () =>
+      here
+        .queryAllByRole('button', { name: /^.+, \d+ GRNs? · Latest / })
+        .map(row => (row.props.accessibilityLabel as string).replace(/, \d+ GRNs? · Latest .*$/, '')),
     /** GRN cards and date headings in the order they are drawn. */
     grnRows: () =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && (node.props.accessibilityRole === 'header' || /^GRN A\d+$/.test([node.props.children].flat().join(''))))
-        .map(node => [node.props.children].flat().join(''))
+      view.container
+        .queryAll(node => node.type === 'Text' && (node.props.accessibilityRole === 'header' || /^GRN A\d+$/.test(textOf(node))))
+        .map(node => textOf(node))
         .filter(text => text !== 'GRN activity'),
     status: () => texts().find(text => text.includes('Last updated')),
     search: async (text: string) => {
-      const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
-      await run(() => field.props.onChangeText(text));
+      await user.paste(searchField(), text);
+      await settle();
       // Submitting commits at once, without waiting for the field's 300 ms pause.
-      await run(() => tree.root.findAll(node => typeof node.props.onSubmitEditing === 'function')[0].props.onSubmitEditing());
+      await fireEvent(searchField(), 'submitEditing', { nativeEvent: { text } });
+      await settle();
     },
-    searchValue: () => tree.root.findAll(node => typeof node.props.onChangeText === 'function')[0].props.value as string,
-    refresh: () => run(() => tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh()),
+    searchValue: () => searchField().props.value as string,
+    refresh: async () => {
+      const list = view.container.queryAll(node => node.type === 'FlashList')[0];
+      await act(async () => {
+        list.props.refreshControl.props.onRefresh();
+        await settleQueries();
+      });
+    },
     bold: () =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
-        .map(node => [node.props.children].flat().join('')),
+      view.container
+        .queryAll(node => node.type === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
+        .map(node => textOf(node)),
   };
 }
+
+/** The host list the screen draws its rows in (the FlashList stand-in keeps the list's props). */
+const grnsList = (opened: { view: { container: TestInstance } }) => opened.view.container.queryAll(node => node.type === 'FlashList')[0];
 
 const DEFAULT_ORDER = ['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co'];
 const days = (fromDate: string) => ({ fromDate, toDate: '2026-10-12' });
@@ -324,7 +343,7 @@ describe('GRN activity, every customer', () => {
     await screen.press('Close');
     const byGrns = ['Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods', 'Green Valley Traders', 'Old Mill Stores'];
     expect(screen.customers()).toEqual(byGrns);
-    expect(screen.texts()).not.toContain('Last opened');
+    expect(screen.here.queryByText('Last opened')).not.toBeOnTheScreen();
 
     await screen.press('Riverbank Produce, 9 GRNs · Latest 11/08/26, 80 units');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
@@ -332,7 +351,7 @@ describe('GRN activity, every customer', () => {
 
     // A restart: the screen is gone, the answers in memory are gone, and only the
     // persisted choices come back, read as the app reads them from the phone.
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    await screen.view.unmount();
     forgetQueries();
     allActivity.mockClear();
     const stored = sanitizeReportPrefs(JSON.parse(JSON.stringify(store.getState().reportPrefs)));
@@ -341,7 +360,8 @@ describe('GRN activity, every customer', () => {
     expect(again.customers()).toEqual(byGrns);
     expect(again.has('Period: Last 240 days. Change')).toBe(true);
     expect(again.has('Sorted by GRNs, highest first. Change sort')).toBe(true);
-    expect(again.texts()).toEqual(expect.arrayContaining(['Last opened', 'Riverbank Produce']));
+    expect(again.here.getByText('Last opened')).toBeOnTheScreen();
+    expect(again.here.getAllByText('Riverbank Produce')[0]).toBeOnTheScreen();
 
     await again.press('Last opened: Riverbank Produce');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
@@ -354,7 +374,8 @@ describe('GRN activity, every customer', () => {
     expect(allActivity).toHaveBeenCalledTimes(2);
     expect(screen.customers()).toEqual(DEFAULT_ORDER);
     // The service's own words for a failure are not shown; the screen's are (useReportQuery).
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load GRN activity. Check your connection and try again."]));
+    expect(screen.here.getByText("Couldn't update. These figures were loaded earlier.")).toBeOnTheScreen();
+    expect(screen.here.getByText("Couldn't load GRN activity. Check your connection and try again.")).toBeOnTheScreen();
   });
 });
 
@@ -371,7 +392,7 @@ describe('GRN activity, one customer', () => {
     await screen.press('Close');
     expect(screen.grnRows()).toEqual(['GRN A0009', 'GRN A0100', 'GRN A0010', 'GRN A0050']);
     // With no heading above it, each card gives its own date.
-    expect(screen.texts()).toEqual(expect.arrayContaining(['11/10/26', '12/10/26', '20/09/26']));
+    for (const date of ['11/10/26', '12/10/26', '20/09/26']) expect(screen.here.getAllByText(date)[0]).toBeOnTheScreen();
 
     await screen.press('Sorted by Units, highest first. Change sort');
     await screen.press('Date');
@@ -403,7 +424,7 @@ describe('GRN activity, one customer', () => {
     expect(screen.grnRows()).toEqual(['Yesterday', 'GRN A0009', '20/09/26', 'GRN A0050']);
     expect(screen.status()).toBe('15/06/26 – 12/10/26 · Showing 2 of 4 · Last updated 10:00 am');
     // The figures are the whole period's.
-    expect(screen.texts()).toContain('2 of 4');
+    expect(screen.here.getByText('2 of 4')).toBeOnTheScreen();
 
     await screen.press('Clear all filters and the search');
     expect(screen.grnRows()).toEqual(['Today', 'GRN A0010', 'Yesterday', 'GRN A0009', 'GRN A0100', '20/09/26', 'GRN A0050']);
@@ -415,8 +436,9 @@ describe('GRN activity, one customer', () => {
     const screen = await open(makeStore(account));
     expect(allActivity).not.toHaveBeenCalled();
     expect(customerActivity).not.toHaveBeenCalled();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['No customer linked', 'No customer is linked to your account. Ask your facility to link one.']));
-    expect(screen.texts()).not.toContain('Riverbank Produce');
+    expect(screen.here.getByText('No customer linked')).toBeOnTheScreen();
+    expect(screen.here.getByText('No customer is linked to your account. Ask your facility to link one.')).toBeOnTheScreen();
+    expect(screen.here.queryByText('Riverbank Produce')).not.toBeOnTheScreen();
     expect(screen.has('Try again')).toBe(false);
   });
 });
@@ -428,7 +450,7 @@ describe('GRN activity, a search across customers', () => {
   const ALL_ROWS = ['A0010', 'A0009', 'A0100', 'A0050'];
   /** The GRN numbers the list draws (a search marks the match in bold, so the card's text is split). */
   const grns = (screen: Awaited<ReturnType<typeof open>>) =>
-    (screen.tree.root.findByType('FlashList' as never).props.data as { kind: string; grn?: { gr_no: string } }[])
+    (grnsList(screen).props.data as { kind: string; grn?: { gr_no: string } }[])
       .filter(row => row.kind === 'grn')
       .map(row => row.grn?.gr_no);
 
@@ -445,8 +467,7 @@ describe('GRN activity, a search across customers', () => {
     expect(grns(green)).toEqual(['A0009']);
 
     // Back: Riverbank is gone, Green Valley still shows its search and the GRNs it found.
-    act(() => river.tree.unmount());
-    mounted.splice(mounted.indexOf(river.tree), 1);
+    await river.view.unmount();
     expect(green.searchValue()).toBe('A0009');
     expect(grns(green)).toEqual(['A0009']);
   });
@@ -458,17 +479,10 @@ describe('GRN activity, a search across customers', () => {
     await green.press('Not invoiced');
     await green.search('A0009');
     expect(grns(green)).toEqual(['A0009']);
-    act(() => green.tree.unmount());
-    mounted.splice(mounted.indexOf(green.tree), 1);
+    await green.view.unmount();
 
     const list = await open(store);
-    const row = list.tree.root.findAll(
-      node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('Green Valley Traders,') && typeof node.props.onPress === 'function'
-    )[0];
-    await act(async () => {
-      row.props.onPress();
-      await settleQueries();
-    });
+    await list.pressRow(/^Green Valley Traders,/);
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: GREEN });
     expect(store.getState().listFilters.lists['report-grn-activity-customer'].searches?.c2).toBeUndefined();
 
@@ -501,14 +515,14 @@ async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: R
   for (const field of ['customer_id', 'from', 'to', 'sort']) {
     if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
   }
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  expect(screen.control(label)).toBeBusy();
   expect(sharePdf).not.toHaveBeenCalled();
   await act(async () => {
     answer({ success: true, pdfUrl: PDF_URL });
     await settleQueries();
   });
   expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  expect(screen.control(label)).not.toBeBusy();
   expect(alert).not.toHaveBeenCalled();
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
@@ -605,7 +619,7 @@ describe('GRN activity, the report PDF of what the screen shows', () => {
     await answerDialog('Cancel');
     expect(makePdf).not.toHaveBeenCalled();
     expect(sharePdf).not.toHaveBeenCalled();
-    expect(screen.control('Share PDF').props.accessibilityState).toMatchObject({ busy: false });
+    expect(screen.control('Share PDF')).not.toBeBusy();
 
     await screen.press('Share PDF');
     await answerDialog('Share without the search');
@@ -631,7 +645,8 @@ describe('GRN activity, nothing in the period', () => {
     allActivity.mockImplementation(async () => answerCustomers([]));
     const screen = await open(makeStore());
     expect(screen.customers()).toEqual([]);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['No GRNs in this period', 'Choose a longer period to see more GRNs.']));
+    expect(screen.here.getByText('No GRNs in this period')).toBeOnTheScreen();
+    expect(screen.here.getByText('Choose a longer period to see more GRNs.')).toBeOnTheScreen();
     expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
     expect(screen.has('Show last 420 days')).toBe(true);
 
@@ -640,8 +655,8 @@ describe('GRN activity, nothing in the period', () => {
     expect(screen.has('Period: Last 420 days. Change')).toBe(true);
     expect(screen.status()).toBe('19/08/25 – 12/10/26 · Last updated 10:00 am');
     // The longest period has nothing longer to offer: no button, and no "Choose a longer period".
-    expect(screen.texts()).toContain('No GRNs in this period');
-    expect(screen.texts()).not.toContain('Choose a longer period to see more GRNs.');
+    expect(screen.here.getByText('No GRNs in this period')).toBeOnTheScreen();
+    expect(screen.here.queryByText('Choose a longer period to see more GRNs.')).not.toBeOnTheScreen();
     expect(screen.has('Show last 420 days')).toBe(false);
   });
 
@@ -667,11 +682,9 @@ describe('GRN activity, what a GRN is counted in (D18)', () => {
     ];
     customerActivity.mockResolvedValue({ success: true, message: '', data: { ...answerGrns.data, grns: rows } } as never);
     const screen = await open(makeStore());
-    const labels = (tree: TestRenderer.ReactTestRenderer) => tree.root.findAll(node => typeof node.props.accessibilityLabel === "string").map(node => node.props.accessibilityLabel as string);
-    const all = labels(screen.tree);
-    expect(all.some(label => label.includes('60 of 50 boxes in stock'))).toBe(true);
-    expect(all.some(label => label.includes('5 of 200 units in stock'))).toBe(true);
-    expect(all.some(label => label.includes('90 of 120 bags in stock'))).toBe(true);
+    expect(screen.here.getAllByLabelText(/60 of 50 boxes in stock/)[0]).toBeOnTheScreen();
+    expect(screen.here.getAllByLabelText(/5 of 200 units in stock/)[0]).toBeOnTheScreen();
+    expect(screen.here.getAllByLabelText(/90 of 120 bags in stock/)[0]).toBeOnTheScreen();
   });
 
   it('the single-customer tile names the word of every GRN of the period, and units when they differ', async () => {
@@ -683,14 +696,14 @@ describe('GRN activity, what a GRN is counted in (D18)', () => {
       { ...grn('g2', 'A0009', '2026-10-11', 200, 5, false), items: [line('Box'), line('Bag')] },
     ]);
     const mixed = await open(makeStore());
-    expect(mixed.texts()).toContain('Units');
+    expect(mixed.here.getByText('Units')).toBeOnTheScreen();
     serve([
       { ...grn('g1', 'A0010', '2026-10-12', 50, 60, true), items: [line('Box')] },
       { ...grn('g2', 'A0009', '2026-10-11', 200, 5, false), items: [line('Box'), line('Box')] },
     ]);
     const boxes = await open(makeStore());
-    expect(boxes.texts()).toContain('Boxes');
-    expect(boxes.texts()).not.toContain('Bags');
+    expect(boxes.here.getByText('Boxes')).toBeOnTheScreen();
+    expect(boxes.here.queryByText('Bags')).not.toBeOnTheScreen();
   });
 });
 

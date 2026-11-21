@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { Alert } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { GrnItemsStep } from '@/features/grn/screens/GrnItemsStep';
 import { deleteGRNImage, uploadGRNItemImage } from '@/features/grn/services/imageUploadService';
@@ -46,13 +46,44 @@ const mockForm = {
 };
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
 
-// Children are stand-ins that keep their props, so the test can call their handlers.
+// Children are stand-ins that draw what the step hands them (the item form's line and photos, the saved lines with
+// their Edit) and call the real props, so the test taps them.
 jest.mock('@/features/grn/components/HorizontalItemForm', () => ({
-  HorizontalItemForm: require('react').forwardRef((props: object, _ref: unknown) =>
-    require('react').createElement('HorizontalItemForm', props)),
+  HorizontalItemForm: require('react').forwardRef((props: {
+    currentItem: { grn_trl_id: string; trl_images: { id: string; imageUrl: string; uploadStatus: string; storagePath?: string }[] };
+    onImagePick: () => void;
+    onImageRemove: (id: string) => unknown;
+  }, _ref: unknown) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      createElement(Text, null, `Line ${props.currentItem.grn_trl_id}`),
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Add photo', onPress: props.onImagePick }),
+      props.currentItem.trl_images.map((photo) => createElement(
+        View,
+        { key: photo.id },
+        createElement(Text, null, `Photo ${photo.id} ${photo.imageUrl} ${photo.uploadStatus} ${photo.storagePath ?? 'no path'}`),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: `Remove photo ${photo.id}`, onPress: () => props.onImageRemove(photo.id) })
+      ))
+    );
+  }),
 }));
-jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({ __esModule: true, default: 'ItemsSummaryBottomSheet' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({
+  __esModule: true,
+  default: (props: { items: { grn_trl_id: string }[]; onEditItem: (item: unknown) => void }) => {
+    const { Pressable, View } = require('react-native');
+    const { createElement } = require('react');
+    return createElement(
+      View,
+      null,
+      props.items.map((item) =>
+        createElement(Pressable, { key: item.grn_trl_id, accessibilityRole: 'button', accessibilityLabel: `Edit ${item.grn_trl_id}`, onPress: () => props.onEditItem(item) }))
+    );
+  },
+}));
+jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: () => null }));
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() },
@@ -79,20 +110,16 @@ jest.mock('@/utils/localPhotoFiles', () => ({
   releaseLocalPhotos: jest.fn(async () => 0),
 }));
 
-async function render() {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnItemsStep mode="edit" />);
-  });
-  return tree;
-}
-const form = (tree: ReactTestRenderer) => tree.root.findByType('HorizontalItemForm' as never);
+const user = userEvent.setup({ delay: 0 });
+
+const show = () => render(<GrnItemsStep mode="edit" />);
+const press = (name: string | RegExp) => user.press(screen.getByRole('button', { name }));
+/** The id of the line now in the form. */
+const lineInForm = () => String(screen.getByText(/^Line /).props.children).slice('Line '.length);
+const photosInForm = () => screen.queryAllByText(/^Photo /);
 
 /** Open the saved line in the item form, as "Edit" in the items sheet does. */
-async function editSavedLine(tree: ReactTestRenderer) {
-  const sheet = tree.root.findByType('ItemsSummaryBottomSheet' as never);
-  await act(async () => { sheet.props.onEditItem(sheet.props.items[0]); });
-}
+const editSavedLine = () => press(`Edit ${LINE_ID}`);
 
 describe('GRN items step photos while editing', () => {
   beforeEach(() => {
@@ -102,18 +129,17 @@ describe('GRN items step photos while editing', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('removes a saved photo from the form only', async () => {
-    const tree = await render();
-    await editSavedLine(tree);
-    expect(form(tree).props.currentItem.trl_images).toHaveLength(1);
+    await show();
+    await editSavedLine();
+    expect(photosInForm()).toHaveLength(1);
 
-    await act(async () => { await form(tree).props.onImageRemove(SAVED_PHOTO); });
+    await press(`Remove photo ${SAVED_PHOTO}`);
 
     expect(deleteGRNImage).not.toHaveBeenCalled();
     // A saved photo has no file of the app's on the phone to release.
     expect(releaseLocalPhotos).not.toHaveBeenCalled();
     expect(mockDispatch).toHaveBeenCalledWith(removeItemImage({ itemId: LINE_ID, imageId: SAVED_PHOTO }));
-    expect(form(tree).props.currentItem.trl_images).toEqual([]);
-    await act(async () => { tree.unmount(); });
+    expect(photosInForm()).toHaveLength(0);
   });
 
   it('keeps a picked photo on the device: no upload under the saved GRN id', async () => {
@@ -128,12 +154,12 @@ describe('GRN items step photos while editing', () => {
       metadata: { fileName: 'raw.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z', storagePath: undefined },
     });
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await render();
+    await show();
 
     // A line that is being added in this edit: it has only a local id.
-    const newLineId = form(tree).props.currentItem.grn_trl_id;
+    const newLineId = lineInForm();
     expect(newLineId).toMatch(/^item-/);
-    act(() => form(tree).props.onImagePick());
+    await press('Add photo');
     const chooseFromGallery = alert.mock.calls[0][2]![1];
     await act(async () => { await chooseFromGallery.onPress!(); });
 
@@ -143,11 +169,8 @@ describe('GRN items step photos while editing', () => {
     expect(uploadId).not.toBe(GRN_ID);
     expect(lineId).toBe(newLineId);
     // The photo waits in the form as a local file, to be uploaded by the save.
-    expect(form(tree).props.currentItem.trl_images).toEqual([
-      expect.objectContaining({ imageUrl: 'file:///cache/prepared.webp', uploadStatus: 'completed', storagePath: undefined }),
-    ]);
-    expect(form(tree).props.currentItem.trl_images[0].id).toMatch(/^temp_/);
-    await act(async () => { tree.unmount(); });
+    expect(photosInForm()).toHaveLength(1);
+    expect(photosInForm()[0]).toHaveTextContent(/^Photo temp_\S+ file:\/\/\/cache\/prepared\.webp completed no path$/);
   });
 
   // P2F-MEDIA-3: removing a photo that never reached the server releases its prepared file.
@@ -163,20 +186,18 @@ describe('GRN items step photos while editing', () => {
       metadata: { fileName: 'raw.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z', storagePath: undefined },
     });
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await render();
-    act(() => form(tree).props.onImagePick());
+    await show();
+    await press('Add photo');
     await act(async () => { await alert.mock.calls[0][2]![1].onPress!(); });
-    const picked = form(tree).props.currentItem.trl_images[0];
     // Only the picked original has gone, once the prepared copy took its place.
     expect(releaseLocalPhotos).toHaveBeenCalledTimes(1);
     expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///camera/raw.jpg']);
 
-    await act(async () => { await form(tree).props.onImageRemove(picked.id); });
+    await press(/^Remove photo temp_/);
 
-    expect(form(tree).props.currentItem.trl_images).toEqual([]);
+    expect(photosInForm()).toHaveLength(0);
     expect(releaseLocalPhotos).toHaveBeenCalledTimes(2);
     expect(releaseLocalPhotos).toHaveBeenLastCalledWith(['file:///cache/prepared.webp']);
-    await act(async () => { tree.unmount(); });
   });
 
   // F57: the picker writes the original into the app's cache; it is registered and released.
@@ -192,13 +213,12 @@ describe('GRN items step photos while editing', () => {
       metadata: { fileName: 'shot.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z' },
     });
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await render();
-    act(() => form(tree).props.onImagePick());
+    await show();
+    await press('Add photo');
     await act(async () => { await alert.mock.calls[0][2]![0].onPress!(); });
 
     expect(registerLocalPhoto).toHaveBeenCalledWith('file:///cache/ImagePicker/shot.jpg', 'grn-form', 'capture');
     expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/ImagePicker/shot.jpg']);
-    await act(async () => { tree.unmount(); });
   });
 
   it('releases the picked original when the photo could not be prepared', async () => {
@@ -208,13 +228,12 @@ describe('GRN items step photos while editing', () => {
     });
     (uploadGRNItemImage as jest.Mock).mockResolvedValue({ success: false, error: 'Too large' });
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await render();
-    act(() => form(tree).props.onImagePick());
+    await show();
+    await press('Add photo');
     await act(async () => { await alert.mock.calls[0][2]![1].onPress!(); });
 
-    expect(form(tree).props.currentItem.trl_images).toEqual([]);
+    expect(photosInForm()).toHaveLength(0);
     expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/ImagePicker/big.jpg']);
-    await act(async () => { tree.unmount(); });
   });
 
   // F60: the photo is recorded under the item that is in the form when the picker returns.
@@ -229,14 +248,14 @@ describe('GRN items step photos while editing', () => {
       metadata: { fileName: 'raw.webp', fileSize: 1200, mimeType: 'image/webp', uploadTimestamp: '2026-10-10T08:00:00.000Z' },
     });
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await render();
-    const freshItemId = form(tree).props.currentItem.grn_trl_id;
+    await show();
+    const freshItemId = lineInForm();
     expect(freshItemId).toMatch(/^item-/);
     // The dialog is opened for the new item ...
-    act(() => form(tree).props.onImagePick());
+    await press('Add photo');
     // ... and while it is open the form moves to the saved line.
-    await editSavedLine(tree);
-    expect(form(tree).props.currentItem.grn_trl_id).toBe(LINE_ID);
+    await editSavedLine();
+    expect(lineInForm()).toBe(LINE_ID);
     await act(async () => { await alert.mock.calls[0][2]![1].onPress!(); });
 
     const added = mockDispatch.mock.calls.map(([action]) => action).find((action) => action.type === addItemImage.type);
@@ -244,6 +263,5 @@ describe('GRN items step photos while editing', () => {
     const completed = mockDispatch.mock.calls.map(([action]) => action).find((action) => action.type === completeItemImageUpload.type);
     expect(completed.payload.itemId).toBe(LINE_ID);
     expect((uploadGRNItemImage as jest.Mock).mock.calls[0][2]).toBe(LINE_ID);
-    await act(async () => { tree.unmount(); });
   });
 });

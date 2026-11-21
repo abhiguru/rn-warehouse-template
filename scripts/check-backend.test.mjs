@@ -18,3 +18,11 @@ test('rejects invalid origins, expired keys, malformed shapes and private envelo
   for (const change of [ { version: 1 }, { featureFlags: { printing: 'yes' } }, { urls: { publicConfig: 'http://other.example', fullConfig: url + '/functions/v1/get-config' } }, { anonKey: 'invalid' }, { anonKey: `header.${Buffer.from(JSON.stringify({ role: 'anon', exp: 1 })).toString('base64url')}.signature` } ]) assert.throws(() => validatePublicConfig({ success: true, data: { ...config().data, ...change } }, url));
   assert.throws(() => validatePublicConfig({ ...config(), debug: { JWT_SECRET: 'fixture-private-field' } }, url));
 });
+
+// WH-82: a backend config without maintenanceMode (the field WH-28 removed) still passes; the app ignores the field.
+test('accepts a public config that has no maintenanceMode field', () => {
+  const value = config();
+  delete value.data.maintenanceMode;
+  assert.equal('maintenanceMode' in value.data, false);
+  assert.equal(validatePublicConfig(value, url).supabaseUrl, url);
+});

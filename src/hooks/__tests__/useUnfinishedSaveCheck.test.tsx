@@ -3,7 +3,7 @@
  * session, and Open shows the saved document.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { checkUnfinishedSaves } from '@/services/unfinishedSaveCheck';
 import { useUnfinishedSaveCheck } from '../useUnfinishedSaveCheck';
@@ -19,11 +19,6 @@ function Probe() {
   useUnfinishedSaveCheck();
   return null;
 }
-const render = async () => {
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<Probe />); });
-  return tree;
-};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -31,26 +26,26 @@ beforeEach(() => {
 });
 
 it('does nothing while nobody is signed in', async () => {
-  await render();
+  await render(<Probe />);
   expect(checkUnfinishedSaves).not.toHaveBeenCalled();
 });
 
 it('checks once the profile is there, and again only for another session', async () => {
   mockProfileId = 'user-ana';
-  const tree = await render();
+  const view = await render(<Probe />);
   expect(checkUnfinishedSaves).toHaveBeenCalledTimes(1);
 
-  await act(async () => { tree.update(<Probe />); });
+  await view.rerender(<Probe />);
   expect(checkUnfinishedSaves).toHaveBeenCalledTimes(1);
 
   mockProfileId = 'user-ben';
-  await act(async () => { tree.update(<Probe />); });
+  await view.rerender(<Probe />);
   expect(checkUnfinishedSaves).toHaveBeenCalledTimes(2);
 });
 
 it('Open shows the details page of the saved GRN or dispatch', async () => {
   mockProfileId = 'user-ana';
-  await render();
+  await render(<Probe />);
   const { open } = jest.mocked(checkUnfinishedSaves).mock.calls[0][0];
 
   open('grn', 'grn-id-1');

@@ -6,10 +6,10 @@
  */
 import React from 'react';
 import { Dimensions, StyleSheet } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { render as renderScreen, screen } from '@testing-library/react-native';
+import type { TestInstance } from 'test-renderer';
 import { setLanguage } from '@/i18n';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
-import { StatusTag } from '@/components/ui';
 import { ReportCustomerCard, type ReportCustomerCardProps } from '../ReportCustomerCard';
 
 let mockState: { theme: { preference: string; brand: string } } = { theme: { preference: 'light', brand: 'orange' } };
@@ -31,34 +31,30 @@ const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)
 const TAG = { status: 'informative', label: 'Average: 121–240 days' } as const;
 const A11Y_WITH_TAG = 'Apex Cold Storage Traders, Average age 353 days, 1,200 units, Average: 121–240 days';
 
-function render(brand: string, mode: Mode, props: Partial<ReportCustomerCardProps> = {}) {
+async function render(brand: string, mode: Mode, props: Partial<ReportCustomerCardProps> = {}) {
   mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(
-      <ReportCustomerCard
-        title="Apex Cold Storage Traders"
-        subtitle="Average age 353 days"
-        value={1200}
-        onPress={jest.fn()}
-        customerId="c-apex"
-        {...props}
-      />
-    );
-  });
-  return tree;
+  await renderScreen(
+    <ReportCustomerCard
+      title="Apex Cold Storage Traders"
+      subtitle="Average age 353 days"
+      value={1200}
+      onPress={jest.fn()}
+      customerId="c-apex"
+      {...props}
+    />
+  );
 }
 
-const flat = (node: ReactTestInstance) => (StyleSheet.flatten(node.props.style) ?? {}) as Record<string, unknown>;
-const textOf = (node: ReactTestInstance) => [].concat(node.props.children).join('');
-const hostTexts = (root: ReactTestInstance) => root.findAll(n => (n.type as unknown) === 'Text');
+const flat = (node: TestInstance) => (StyleSheet.flatten(node.props.style) ?? {}) as Record<string, unknown>;
+const textOf = (node: TestInstance) => [].concat(node.props.children).join('');
+const hostTexts = (root: TestInstance) => root.queryAll(node => node.type === 'Text');
+const elements = (node: TestInstance): TestInstance[] => node.children.filter((child): child is TestInstance => typeof child !== 'string');
 
-/** The row (the pressable's own view), and its direct children: avatar, content, value, chevron. */
-function columns(tree: ReactTestRenderer, label: string) {
-  const row = tree.root.findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityLabel === label && n.props.accessibilityRole === 'button')[0];
-  const parts = row.children.filter((child): child is ReactTestInstance => typeof child !== 'string' && (child.type as { name?: string }).name !== 'PressabilityDebugView');
-  // The test renderer shows the mocked View as a component around the host view: take the host.
-  const holding = (text: string) => parts.find(part => hostTexts(part).some(node => textOf(node) === text))!.findAll(node => typeof node.type === 'string')[0];
+/** The row (the pressable's own view) and its direct children: avatar, content, value, chevron. */
+function columns(label: string) {
+  const row = screen.getByRole('button', { name: label });
+  const parts = elements(row);
+  const holding = (text: string) => parts.find(part => hostTexts(part).some(node => textOf(node) === text))!;
   return { row, parts, content: holding('Apex Cold Storage Traders'), value: holding('1,200') };
 }
 
@@ -74,93 +70,88 @@ afterEach(() => {
 describe.each(THEMES)('report customer card in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('draws the status tag in the content column, under the subtitle, and not in the value column', () => {
-    const tree = render(brand, mode, { status: TAG });
-    const { parts, content, value } = columns(tree, A11Y_WITH_TAG);
-    // Avatar, content, value, chevron (the pressable's own debug view is not the card's).
-    expect(parts.map(part => (typeof part.type === 'string' ? part.type : (part.type as { name?: string }).name))).toEqual(['Avatar', 'View', 'View', 'Icon']);
+  it('draws the status tag in the content column, under the subtitle, and not in the value column', async () => {
+    await render(brand, mode, { status: TAG });
+    const { parts, content, value } = columns(A11Y_WITH_TAG);
+    // Avatar, content, value, chevron.
+    expect(parts.map(part => part.type)).toEqual(['View', 'View', 'View', 'Icon']);
 
-    expect(content.findAllByType(StatusTag)).toHaveLength(1);
-    expect(value.findAllByType(StatusTag)).toHaveLength(0);
+    expect(hostTexts(content).map(textOf)).toContain(TAG.label);
+    expect(hostTexts(value).map(textOf)).not.toContain(TAG.label);
     // The value column holds the value and its label, nothing else.
     expect(hostTexts(value).map(textOf)).toEqual(['1,200', 'units']);
     expect(hostTexts(content).map(textOf)).toEqual(expect.arrayContaining(['Apex Cold Storage Traders', 'Average age 353 days', TAG.label]));
 
     // Title, then subtitle, then the tag: the tag is the last thing in the column.
-    const order = content.children.map(child => (typeof child === 'string' ? child : child.type));
-    expect(order[order.length - 1]).toBe(StatusTag);
-    const names = content.findAll(n => (n.type as unknown) === 'Text').map(textOf);
+    const names = hostTexts(content).map(textOf);
     expect(names.indexOf('Average age 353 days')).toBeLessThan(names.indexOf(TAG.label));
+    const tag = elements(content).at(-1)!;
+    expect(hostTexts(tag).map(textOf)).toEqual([TAG.label]);
+    expect(elements(content).filter(child => hostTexts(child).some(node => textOf(node) === TAG.label)).length).toBe(1);
 
     // On a line of its own, at the left edge of the column, and never wider than it.
-    const tag = content.findByType(StatusTag);
-    expect(flat(tag.findAll(n => (n.type as unknown) === 'View')[0])).toMatchObject({
+    expect(flat(tag)).toMatchObject({
       alignSelf: 'flex-start',
       maxWidth: '100%',
       backgroundColor: t.status.informative.background,
     });
-    act(() => tree.unmount());
   });
 
-  it('keeps the value column as wide as the value and its label', () => {
-    const tree = render(brand, mode, { status: TAG });
-    const { value } = columns(tree, A11Y_WITH_TAG);
+  it('keeps the value column as wide as the value and its label', async () => {
+    await render(brand, mode, { status: TAG });
+    const { content, value } = columns(A11Y_WITH_TAG);
     const style = flat(value);
     expect(style).toMatchObject({ alignItems: 'flex-end', flexShrink: 0 });
     // It does not stretch (no flex grow, no set width): the content column takes the rest.
     expect(style.flex).toBeUndefined();
     expect(style.flexGrow).toBeUndefined();
     expect(style.width).toBeUndefined();
-    const { content } = columns(tree, A11Y_WITH_TAG);
     expect(flat(content)).toMatchObject({ flex: 1 });
-    act(() => tree.unmount());
   });
 
-  it('reads the same label as before, the tag last', () => {
-    const tagged = render(brand, mode, { status: TAG });
-    expect(columns(tagged, A11Y_WITH_TAG).row.props.accessibilityLabel).toBe(A11Y_WITH_TAG);
-    act(() => tagged.unmount());
+  it('reads the same label as before, the tag last', async () => {
+    await render(brand, mode, { status: TAG });
+    expect(columns(A11Y_WITH_TAG).row).toHaveAccessibleName(A11Y_WITH_TAG);
+    await screen.unmount();
 
-    const plain = render(brand, mode);
+    await render(brand, mode);
     const label = 'Apex Cold Storage Traders, Average age 353 days, 1,200 units';
-    expect(columns(plain, label).row.props.accessibilityLabel).toBe(label);
-    // No tag, no tag view.
-    expect(plain.root.findAllByType(StatusTag)).toHaveLength(0);
-    act(() => plain.unmount());
+    expect(columns(label).row).toHaveAccessibleName(label);
+    // No tag, no tag text.
+    expect(screen.queryByText(TAG.label)).not.toBeOnTheScreen();
+    await screen.unmount();
 
-    const given = render(brand, mode, { status: TAG, accessibilityLabel: 'Open Apex' });
-    expect(given.root.findAll(n => n.props.accessibilityLabel === 'Open Apex' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
-    act(() => given.unmount());
+    await render(brand, mode, { status: TAG, accessibilityLabel: 'Open Apex' });
+    expect(screen.getByRole('button', { name: 'Open Apex' })).toBeOnTheScreen();
   });
 
-  it('lets the subtitle use two lines unless the screen asks for another limit', () => {
-    const subtitleLimit = (props: Partial<ReportCustomerCardProps>) => {
-      const tree = render(brand, mode, { subtitle: '6 items · 38 GRNs', ...props });
-      const limit = hostTexts(tree.root).find(node => textOf(node) === '6 items · 38 GRNs')!.props.numberOfLines;
-      act(() => tree.unmount());
+  it('lets the subtitle use two lines unless the screen asks for another limit', async () => {
+    const subtitleLimit = async (props: Partial<ReportCustomerCardProps>) => {
+      await render(brand, mode, { subtitle: '6 items · 38 GRNs', ...props });
+      const limit = screen.getByText('6 items · 38 GRNs').props.numberOfLines;
+      await screen.unmount();
       return limit;
     };
-    expect(subtitleLimit({})).toBe(2);
-    expect(subtitleLimit({ subtitleLines: 3 })).toBe(3);
-    expect(subtitleLimit({ subtitleLines: 1 })).toBe(1);
+    expect(await subtitleLimit({})).toBe(2);
+    expect(await subtitleLimit({ subtitleLines: 3 })).toBe(3);
+    expect(await subtitleLimit({ subtitleLines: 1 })).toBe(1);
     // The title keeps its two lines.
-    const tree = render(brand, mode);
-    expect(hostTexts(tree.root).find(node => textOf(node) === 'Apex Cold Storage Traders')!.props.numberOfLines).toBe(2);
-    act(() => tree.unmount());
+    await render(brand, mode);
+    expect(screen.getByText('Apex Cold Storage Traders').props.numberOfLines).toBe(2);
   });
 
-  it('stacks the facts, two lines each, in Gujarati, with the tag still under them', () => {
+  it('stacks the facts, two lines each, in Gujarati, with the tag still under them', async () => {
     setLanguage('gu');
-    const tree = render(brand, mode, { subtitle: ['6 items', '38 GRNs'], status: TAG });
-    const tag = tree.root.findByType(StatusTag);
-    // The tag's parent is the content column: it holds the name and both facts too.
+    await render(brand, mode, { subtitle: ['6 items', '38 GRNs'], status: TAG });
+    // The tag's label sits in the content column, which holds the name and both facts too.
+    let tag = screen.getByText(TAG.label);
+    while (flat(tag.parent!).flex !== 1) tag = tag.parent!;
     const content = tag.parent!;
     expect(flat(content)).toMatchObject({ flex: 1 });
     const facts = hostTexts(content).filter(node => ['6 items', '38 GRNs'].includes(textOf(node)));
     expect(facts.map(textOf)).toEqual(['6 items', '38 GRNs']);
     expect(facts.map(node => node.props.numberOfLines)).toEqual([2, 2]);
-    expect(content.children[content.children.length - 1]).toBe(tag);
-    act(() => tree.unmount());
+    expect(elements(content).at(-1)).toBe(tag);
   });
 });
 
@@ -170,31 +161,30 @@ describe('report customer card, a long name or a large text size', () => {
   const SHORT = 'Apex Cold Storage Traders';
 
   /** Where the value is: in a column of its own beside the name, or in the name's column under it. */
-  function layoutOf(props: Partial<ReportCustomerCardProps>) {
-    const tree = render('orange', 'light', { onShare: jest.fn(), ...props });
+  async function layoutOf(props: Partial<ReportCustomerCardProps>) {
+    await render('orange', 'light', { onShare: jest.fn(), ...props });
     const title = props.title ?? SHORT;
-    const name = hostTexts(tree.root).find(node => textOf(node) === title)!;
+    const name = screen.getByText(title);
     // 1,200 in either language's digits.
-    const value = hostTexts(tree.root).find(node => /^[0-9૦-૯,]+$/.test(textOf(node)))!;
+    const value = hostTexts(screen.container).find(node => /^[0-9૦-૯,]+$/.test(textOf(node)))!;
     // The name's column: the nearest host view around the name that takes the row's free width.
-    let column: ReactTestInstance | null = name.parent;
-    while (column && !(typeof column.type === 'string' && flat(column).flex === 1)) column = column.parent;
-    const row = tree.root.findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityRole === 'button' && typeof n.props.accessibilityLabel === 'string')[0];
-    const share = tree.root.findAll(n => n.props.accessibilityLabel === `Share PDF for ${title}` && typeof n.props.onPress === 'function');
-    const shareInsideRow = row.findAll(n => n.props.accessibilityLabel === `Share PDF for ${title}`).length > 0;
+    let column: TestInstance | null = name.parent;
+    while (column && flat(column).flex !== 1) column = column.parent;
+    const row = screen.getAllByRole('button')[0];
+    const shareName = `Share PDF for ${title}`;
     const result = {
-      valueUnderName: column!.findAll(node => node === value).length > 0,
+      valueUnderName: column!.queryAll(node => node === value).length > 0,
       titleLines: name.props.numberOfLines,
       label: row.props.accessibilityLabel as string,
-      shares: share.length > 0,
-      shareInsideRow,
+      shares: screen.queryByRole('button', { name: shareName }) !== null,
+      shareInsideRow: row.queryAll(node => node.props.accessibilityLabel === shareName).length > 0,
     };
-    act(() => tree.unmount());
+    await screen.unmount();
     return result;
   }
 
-  it('keeps the value beside the name for a short name at an ordinary text size', () => {
-    expect(layoutOf({ title: SHORT })).toEqual({
+  it('keeps the value beside the name for a short name at an ordinary text size', async () => {
+    expect(await layoutOf({ title: SHORT })).toEqual({
       valueUnderName: false,
       titleLines: 2,
       label: `${SHORT}, Average age 353 days, 1,200 units`,
@@ -202,12 +192,12 @@ describe('report customer card, a long name or a large text size', () => {
       shareInsideRow: false,
     });
     atTextSize(1.29);
-    expect(layoutOf({ title: SHORT }).valueUnderName).toBe(false);
+    expect((await layoutOf({ title: SHORT })).valueUnderName).toBe(false);
   });
 
-  it('moves the value under the name at 1.3 times the text size, the name on up to four lines', () => {
+  it('moves the value under the name at 1.3 times the text size, the name on up to four lines', async () => {
     atTextSize(1.3);
-    expect(layoutOf({ title: SHORT })).toEqual({
+    expect(await layoutOf({ title: SHORT })).toEqual({
       valueUnderName: true,
       titleLines: 4,
       // The label still has the whole name and the figure, read once.
@@ -224,16 +214,16 @@ describe('report customer card, a long name or a large text size', () => {
     [1.2999999523162842, true],
     [Math.fround(1.3), true],
     [1.2, false],
-  ])('at the text size %d the value is under the name: %s', (fontScale, under) => {
+  ])('at the text size %d the value is under the name: %s', async (fontScale, under) => {
     atTextSize(fontScale);
-    const layout = layoutOf({ title: SHORT });
+    const layout = await layoutOf({ title: SHORT });
     expect(layout.valueUnderName).toBe(under);
     expect(layout.titleLines).toBe(under ? 4 : 2);
   });
 
-  it('moves the value under a name longer than 28 characters at any text size, in Gujarati too', () => {
+  it('moves the value under a name longer than 28 characters at any text size, in Gujarati too', async () => {
     expect([...LONG].length).toBeGreaterThan(28);
-    expect(layoutOf({ title: LONG })).toEqual({
+    expect(await layoutOf({ title: LONG })).toEqual({
       valueUnderName: true,
       titleLines: 4,
       label: `${LONG}, Average age 353 days, 1,200 units`,
@@ -241,7 +231,7 @@ describe('report customer card, a long name or a large text size', () => {
       shareInsideRow: false,
     });
     setLanguage('gu');
-    const gujarati = layoutOf({ title: 'સૂર્યોદય ઍગ્રો ફૂડ્સ ઍન્ડ કોલ્ડ ચેઇન ટ્રેડર્સ', valueLabel: 'નંગ' });
+    const gujarati = await layoutOf({ title: 'સૂર્યોદય ઍગ્રો ફૂડ્સ ઍન્ડ કોલ્ડ ચેઇન ટ્રેડર્સ', valueLabel: 'નંગ' });
     expect(gujarati.valueUnderName).toBe(true);
     expect(gujarati.label).toBe('સૂર્યોદય ઍગ્રો ફૂડ્સ ઍન્ડ કોલ્ડ ચેઇન ટ્રેડર્સ, Average age 353 days, ૧,૨૦૦ નંગ');
   });
@@ -252,25 +242,23 @@ describe('report customer card, the share button under a stacked card', () => {
   const { space, iconSize, touchTarget } = jest.requireActual('@/theme/tokens');
 
   /** The row, the share button (host views), the line holding the button, and the card around both. */
-  function shareParts() {
-    const tree = render('orange', 'light', { title: SHORT, subtitle: ['6 items', '38 GRNs'], onShare: jest.fn() });
-    const row = tree.root.findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityRole === 'button' && typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith(SHORT))[0];
-    const share = tree.root.findAll(n => (n.type as unknown) === 'View' && n.props.accessibilityLabel === `Share PDF for ${SHORT}`)[0];
-    let line: ReactTestInstance = share.parent!;
-    while (typeof line.type !== 'string') line = line.parent!;
-    let card: ReactTestInstance = line.parent!;
-    while (typeof card.type !== 'string') card = card.parent!;
-    const facts = hostTexts(tree.root).find(node => textOf(node) === '6 items · 38 GRNs')!;
-    return { tree, row, share, line, card, facts };
+  async function shareParts() {
+    await render('orange', 'light', { title: SHORT, subtitle: ['6 items', '38 GRNs'], onShare: jest.fn() });
+    const row = screen.getAllByRole('button').find(node => String(node.props.accessibilityLabel).startsWith(SHORT))!;
+    const share = screen.getByRole('button', { name: `Share PDF for ${SHORT}` });
+    const line = share.parent!;
+    const card = line.parent!;
+    const facts = screen.getByText('6 items · 38 GRNs');
+    return { row, share, line, card, facts };
   }
 
-  it('stacked: the share icon sits a small gap under the facts, its full touch area below the row', () => {
+  it('stacked: the share icon sits a small gap under the facts, its full touch area below the row', async () => {
     atTextSize(1.3);
-    const { tree, row, share, line, card, facts } = shareParts();
+    const { row, share, line, card, facts } = await shareParts();
     // The facts are the last line of the row's content; the row and the share line are the card's two parts.
-    expect(row.findAll(node => node === facts)).toHaveLength(1);
-    expect(card.findAll(node => node === row)).toHaveLength(1);
-    expect(row.findAll(node => node === share)).toHaveLength(0);
+    expect(row.queryAll(node => node === facts).length).toBe(1);
+    expect(card.queryAll(node => node === row).length).toBe(1);
+    expect(row.queryAll(node => node === share).length).toBe(0);
 
     // No stretched spacer between the facts and the share line.
     for (const part of [card, line]) {
@@ -296,33 +284,30 @@ describe('report customer card, the share button under a stacked card', () => {
     expect(button.width).toBe(touchTarget);
     expect(slop.top ?? 0).toBe(0);
     expect(flat(line).paddingBottom).toBeGreaterThanOrEqual(slop.bottom ?? 0);
-    act(() => tree.unmount());
   });
 
-  it('side by side: the share button keeps its full square target and the row its padding', () => {
-    const { tree, row, share } = shareParts();
+  it('side by side: the share button keeps its full square target and the row its padding', async () => {
+    const { row, share } = await shareParts();
     expect(flat(share)).toMatchObject({ width: touchTarget, height: touchTarget });
     expect(share.props.hitSlop).toBeUndefined();
     expect(flat(row).paddingVertical).toBe(space.md);
     expect(flat(row).paddingBottom).toBeUndefined();
-    act(() => tree.unmount());
   });
 });
 
 describe('report customer card, the word beside the figure', () => {
-  it('reads "unit" for a stock of one and "units" for more, in the label too, unless the screen names its own', () => {
-    const one = render('orange', 'light', { value: 1 });
-    expect(hostTexts(one.root).map(textOf)).toEqual(expect.arrayContaining(['1', 'unit']));
-    expect(hostTexts(one.root).map(textOf)).not.toContain('units');
-    expect(one.root.findAll(n => n.props.accessibilityLabel === 'Apex Cold Storage Traders, Average age 353 days, 1 unit').length).toBeGreaterThan(0);
-    act(() => one.unmount());
+  it('reads "unit" for a stock of one and "units" for more, in the label too, unless the screen names its own', async () => {
+    await render('orange', 'light', { value: 1 });
+    expect(hostTexts(screen.container).map(textOf)).toEqual(expect.arrayContaining(['1', 'unit']));
+    expect(hostTexts(screen.container).map(textOf)).not.toContain('units');
+    expect(screen.getByRole('button', { name: 'Apex Cold Storage Traders, Average age 353 days, 1 unit' })).toBeOnTheScreen();
+    await screen.unmount();
 
-    const many = render('orange', 'light', { value: 2 });
-    expect(hostTexts(many.root).map(textOf)).toEqual(expect.arrayContaining(['2', 'units']));
-    act(() => many.unmount());
+    await render('orange', 'light', { value: 2 });
+    expect(hostTexts(screen.container).map(textOf)).toEqual(expect.arrayContaining(['2', 'units']));
+    await screen.unmount();
 
-    const own = render('orange', 'light', { value: 1, valueLabel: 'in stock' });
-    expect(hostTexts(own.root).map(textOf)).toEqual(expect.arrayContaining(['1', 'in stock']));
-    act(() => own.unmount());
+    await render('orange', 'light', { value: 1, valueLabel: 'in stock' });
+    expect(hostTexts(screen.container).map(textOf)).toEqual(expect.arrayContaining(['1', 'in stock']));
   });
 });

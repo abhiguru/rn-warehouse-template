@@ -4,7 +4,7 @@
  * screens do, and not the plain failure that invites a reprint.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { printDispatchRange } from '@/services/print-service';
 import { showAlert } from '@/utils/alert';
@@ -42,11 +42,26 @@ jest.mock('@/hooks/useDispatchForm', () => ({
   }),
 }));
 
-// Children are stand-ins that keep their props, so the test can press their buttons.
+// Children are stand-ins; the print dialog draws a Print button and does what the real one does on Print.
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
+jest.mock('@/components/PrintRangeDialog', () => ({
+  PrintRangeDialog: (props: { onConfirm: (start: string, end: string) => Promise<void>; onDismiss: () => void }) =>
+    require('react').createElement(
+      require('react-native').Pressable,
+      {
+        accessibilityRole: 'button',
+        accessibilityLabel: 'Print range',
+        // What the real dialog does on Print: onConfirm, then onDismiss.
+        onPress: async () => {
+          await props.onConfirm('I0042', 'I0042');
+          props.onDismiss();
+        },
+      },
+      require('react').createElement(require('react-native').Text, null, 'Print range')
+    ),
+}));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
@@ -68,26 +83,14 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-async function render() {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<DispatchReviewStep mode="create" />);
-  });
-  return tree;
-}
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());
 
-/** What the real PrintRangeDialog does on Print: onConfirm, then onDismiss. */
-const press = async (tree: ReactTestRenderer) => {
-  const dialog = tree.root.findByType('PrintRangeDialog' as never);
-  await act(async () => {
-    await dialog.props.onConfirm('I0042', 'I0042');
-    dialog.props.onDismiss();
-  });
+const press = async () => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Print range' }));
 };
 
 it.each([
@@ -95,9 +98,9 @@ it.each([
   [{ success: false, error: 'x' }, "Couldn't print", "Couldn't send to the printer. Check the printer and try again."],
 ])('print answer %j shows the dialog "%s" and leaves the step once', async (answer, title, text) => {
   jest.mocked(printDispatchRange).mockResolvedValue(answer as never);
-  const tree = await render();
+  await render(<DispatchReviewStep mode="create" />);
 
-  await press(tree);
+  await press();
 
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(showAlert).toHaveBeenCalledWith(title, text, expect.any(Array), expect.any(Object));
@@ -105,18 +108,16 @@ it.each([
   expect(showToast).not.toHaveBeenCalled();
   expect(router.replace).toHaveBeenCalledTimes(1);
   expect(router.replace).toHaveBeenCalledWith('/dispatch');
-  await act(async () => { tree.unmount(); });
 });
 
 it('a printed job shows no alert, and says so in a toast once the step is left', async () => {
   jest.mocked(printDispatchRange).mockResolvedValue({ success: true, print_job: { cups_job_id: 42 } } as never);
-  const tree = await render();
-  await press(tree);
+  await render(<DispatchReviewStep mode="create" />);
+  await press();
   expect(showAlert).not.toHaveBeenCalled();
   expect(showToast).toHaveBeenCalledTimes(1);
   expect(showToast).toHaveBeenCalledWith('Sent to the printer (job 42).');
   // The toast is made after the step is left, so it is on the screen the person lands on.
   expect(jest.mocked(router.replace).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(showToast).mock.invocationCallOrder[0]);
   expect(router.replace).toHaveBeenCalledTimes(1);
-  await act(async () => { tree.unmount(); });
 });

@@ -3,8 +3,7 @@
  * number is asked again for the new date; a number the person typed is never replaced; under another rule nothing is
  * asked (WS-8, backend migration 127).
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import grnFormReducer, { updateHeader, setGrNoTyped } from '@/store/slices/grnFormSlice';
 import { getNextGRNNumber } from '@/features/grn/services/grnFormService';
@@ -35,15 +34,9 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 const makeStore = () => configureStore({ reducer: { grnForm: grnFormReducer, auth: () => ({ userProfile: null }) } });
 
 async function mount(mode: GRNFormMode, store: ReturnType<typeof makeStore>) {
-  const latest: { current: UseGRNFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useGRNForm({ mode, grnIdParam: undefined });
-    return null;
-  };
-  let tree!: ReturnType<typeof create>;
   mockStore = store;
-  await act(async () => { tree = create(<Harness />); });
-  return { form: () => latest.current!, unmount: () => act(async () => { tree.unmount(); }) };
+  const { result, unmount } = await renderHook(() => useGRNForm({ mode, grnIdParam: undefined }));
+  return { form: (): UseGRNFormReturn => result.current, unmount };
 }
 /** A new form that holds a suggested number for 30 March 2027. */
 const newForm = (typed = false) => {

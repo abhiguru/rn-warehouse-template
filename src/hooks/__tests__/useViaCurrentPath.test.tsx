@@ -2,8 +2,7 @@
  * A photo already on screen follows the phone onto the warehouse network and back (WS-L review L6): the link is worked
  * out again whenever the path changes, instead of keeping the host it was signed with.
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import { noteNetworkState, resetLanTransport, setLanContext, transportFetch } from '@/config/lanTransport';
 import { OTHER_WIFI_SAME_RANGE, onWarehouseWifi } from '@/tests/helpers/lanNetwork';
@@ -49,44 +48,27 @@ afterEach(() => {
 });
 
 it('gives the link on the address in use now, and again when the path changes', async () => {
-  let shown = '';
-  const Photo = ({ url }: { url: string }) => {
-    shown = useViaCurrentPath(url);
-    return null;
-  };
-  let tree: ReturnType<typeof create>;
-  await act(async () => {
-    tree = create(<Photo url={photo} />);
+  const { result, rerender, unmount } = await renderHook(({ url }: { url: string }) => useViaCurrentPath(url), {
+    initialProps: { url: photo },
   });
-  expect(shown).toBe(photo);
+  expect(result.current).toBe(photo);
   // The internet goes: the phone moves to the warehouse network and the same photo is fetched from there.
   publicUp = false;
   await act(async () => {
     await transportFetch(`${PUBLIC}/rest/v1/items`, undefined, { read: true });
   });
-  expect(shown).toBe(PHOTO_FILE);
+  expect(result.current).toBe(PHOTO_FILE);
   // A link that was signed on the LAN address is moved back too once the phone returns to the public path.
   await act(async () => {
     noteNetworkState(OTHER_WIFI_SAME_RANGE);
   });
-  expect(shown).toBe(photo);
-  await act(async () => {
-    tree!.update(<Photo url={photo.replace(PUBLIC, LAN)} />);
-  });
-  expect(shown).toBe(photo);
-  await act(async () => {
-    tree!.unmount();
-  });
+  expect(result.current).toBe(photo);
+  await rerender({ url: photo.replace(PUBLIC, LAN) });
+  expect(result.current).toBe(photo);
+  await unmount();
 });
 
 it('leaves a link of another origin alone', async () => {
-  let shown = '';
-  const Photo = () => {
-    shown = useViaCurrentPath('https://cdn.example.test/a.jpg');
-    return null;
-  };
-  await act(async () => {
-    create(<Photo />);
-  });
-  expect(shown).toBe('https://cdn.example.test/a.jpg');
+  const { result } = await renderHook(() => useViaCurrentPath('https://cdn.example.test/a.jpg'));
+  expect(result.current).toBe('https://cdn.example.test/a.jpg');
 });

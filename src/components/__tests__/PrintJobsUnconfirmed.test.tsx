@@ -4,7 +4,7 @@
  * reported as ready.
  */
 import React, { createRef } from 'react';
-import renderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getPrintJobs, getPrinterStatus, serverNowMs, type PrintJob } from '@/services/print-service';
 import PrintJobsBottomSheet, { type PrintJobsBottomSheetRef } from '../PrintJobsBottomSheet';
@@ -59,69 +59,63 @@ afterEach(() => {
 const CHANGED = Date.parse('2026-10-09T10:00:00Z');
 const atMinutes = (m: number) => jest.setSystemTime(new Date(CHANGED + m * 60_000));
 
+const advance = (ms: number) => act(async () => { await jest.advanceTimersByTimeAsync(ms); });
+
 async function openSheet() {
   const ref = createRef<PrintJobsBottomSheetRef>();
-  let tree!: renderer.ReactTestRenderer;
-  act(() => { tree = renderer.create(<PrintJobsBottomSheet ref={ref} />); });
-  act(() => ref.current!.open());
-  await act(async () => { await jest.advanceTimersByTimeAsync(0); });
-  return tree;
+  await render(<PrintJobsBottomSheet ref={ref} />);
+  await act(async () => { ref.current!.open(); });
+  await advance(0);
 }
-const textsOf = (tree: renderer.ReactTestRenderer) =>
-  tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join(''));
-const openFinished = async (tree: renderer.ReactTestRenderer) => {
-  const finished = tree.root.find(n => n.props.accessibilityRole === 'tab' && typeof n.props.onPress === 'function' && n.props.accessibilityState?.selected === false);
-  act(() => finished.props.onPress());
-  await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+const openFinished = async () => {
+  const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+  await user.press(screen.getByRole('tab', { selected: false }));
+  await advance(0);
 };
 const latestReads = () => (getPrintJobs as jest.Mock).mock.calls.filter(c => c[1] === 1).length;
 
 test('a job younger than 5 minutes is listed under In progress, marked "Not confirmed", with the red strip and fast polling', async () => {
   atMinutes(4);
-  const tree = await openSheet();
-  expect(textsOf(tree)).toContain('Not confirmed');
-  expect(textsOf(tree).some(x => x.includes('Printer ready'))).toBe(false);
-  expect(textsOf(tree).some(x => x.includes('was not confirmed'))).toBe(true);
+  await openSheet();
+  expect(screen.getByText('Not confirmed')).toBeOnTheScreen();
+  expect(screen.queryByText(/Printer ready/)).not.toBeOnTheScreen();
+  expect(screen.getByText(/was not confirmed/)).toBeOnTheScreen();
   (getPrintJobs as jest.Mock).mockClear();
-  await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+  await advance(60_000);
   expect(latestReads()).toBeGreaterThanOrEqual(10);
-  act(() => tree.unmount());
 });
 
 test('a job older than 5 minutes is not In progress: it is in history marked "Not confirmed", with no strip and slow polling', async () => {
   atMinutes(6);
-  const tree = await openSheet();
-  expect(textsOf(tree)).not.toContain('Not confirmed');
-  expect(textsOf(tree)).toContain('No print jobs in progress');
-  expect(textsOf(tree).some(x => x.includes('was not confirmed'))).toBe(false);
+  await openSheet();
+  expect(screen.queryByText('Not confirmed')).not.toBeOnTheScreen();
+  expect(screen.getByText('No print jobs in progress')).toBeOnTheScreen();
+  expect(screen.queryByText(/was not confirmed/)).not.toBeOnTheScreen();
   (getPrintJobs as jest.Mock).mockClear();
-  await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+  await advance(60_000);
   expect(latestReads()).toBeLessThanOrEqual(3);
-  await openFinished(tree);
-  expect(textsOf(tree)).toContain('Not confirmed');
+  await openFinished();
+  expect(screen.getByText('Not confirmed')).toBeOnTheScreen();
   // the history asks for the unconfirmed jobs as its fourth read
   expect((getPrintJobs as jest.Mock).mock.calls.some(c => c[0] === undefined && c[1] === 50 && c[2] === 'unknown')).toBe(true);
-  act(() => tree.unmount());
 });
 
 test('the history never shows a young unconfirmed job', async () => {
   atMinutes(1);
-  const tree = await openSheet();
-  await openFinished(tree);
-  expect(textsOf(tree)).not.toContain('Not confirmed');
-  act(() => tree.unmount());
+  await openSheet();
+  await openFinished();
+  expect(screen.queryByText('Not confirmed')).not.toBeOnTheScreen();
 });
 
 test('a job moves from In progress to history by the clock alone, with no new read', async () => {
   atMinutes(4);
-  const tree = await openSheet();
-  expect(textsOf(tree)).toContain('Not confirmed');
+  await openSheet();
+  expect(screen.getByText('Not confirmed')).toBeOnTheScreen();
   // every later read hangs: only the 15-second re-check can move the job
   (getPrintJobs as jest.Mock).mockImplementation(() => new Promise(() => undefined));
   atMinutes(5.5);
-  await act(async () => { await jest.advanceTimersByTimeAsync(16_000); });
-  expect(textsOf(tree)).not.toContain('Not confirmed');
-  act(() => tree.unmount());
+  await advance(16_000);
+  expect(screen.queryByText('Not confirmed')).not.toBeOnTheScreen();
 });
 
 test('on a server that sends no time (serverNowMs is null) the strip still leaves "not confirmed" within 15 seconds of the 5 minutes', async () => {
@@ -129,15 +123,14 @@ test('on a server that sends no time (serverNowMs is null) the strip still leave
   (serverNowMs as jest.Mock).mockReturnValue(null);
   try {
     atMinutes(4);
-    const tree = await openSheet();
-    expect(textsOf(tree)).toContain('Not confirmed');
+    await openSheet();
+    expect(screen.getByText('Not confirmed')).toBeOnTheScreen();
     // every later read hangs: only the timer can move the job out of In progress
     (getPrintJobs as jest.Mock).mockImplementation(() => new Promise(() => undefined));
     atMinutes(5.5);
-    await act(async () => { await jest.advanceTimersByTimeAsync(16_000); });
-    expect(textsOf(tree)).not.toContain('Not confirmed');
-    expect(textsOf(tree).some(x => x.includes('was not confirmed'))).toBe(false);
-    act(() => tree.unmount());
+    await advance(16_000);
+    expect(screen.queryByText('Not confirmed')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/was not confirmed/)).not.toBeOnTheScreen();
   } finally {
     (serverNowMs as jest.Mock).mockImplementation(() => Date.now());
   }

@@ -6,7 +6,7 @@
  * the save button stays a bare check mark).
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 import { HorizontalItemForm, type ItemFormData } from '../HorizontalItemForm';
 
@@ -20,8 +20,22 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-image', () => ({ Image: 'Image' }));
-// A stand-in that keeps its props, so a test can choose an item as the list does.
-jest.mock('@/components/RemoteAutocompleteInput', () => ({ RemoteAutocompleteInput: 'RemoteAutocompleteInput' }));
+// Draws two buttons that choose or clear an item through the real onSelect prop, as the suggestion list does.
+jest.mock('@/components/RemoteAutocompleteInput', () => ({
+  RemoteAutocompleteInput: (props: { onSelect?: (item: { id: string; name: string; packaging?: string } | null) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <>
+        <Pressable accessibilityRole="button" accessibilityLabel="Choose Onion" onPress={() => props.onSelect?.({ id: 'item-7', name: 'Onion', packaging: 'Crate' })}>
+          <Text>Choose Onion</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Clear item" onPress={() => props.onSelect?.(null)}>
+          <Text>Clear item</Text>
+        </Pressable>
+      </>
+    );
+  },
+}));
 jest.mock('@/services/item-search-service', () => ({ searchItems: jest.fn() }));
 
 const line = (over: Partial<ItemFormData> = {}): ItemFormData => ({
@@ -68,129 +82,120 @@ function Harness({ initial, options }: { initial: ItemFormData; options: Options
   );
 }
 
-const mounted: ReactTestRenderer[] = [];
-function render(initial: ItemFormData, options: Options = {}) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(<Harness initial={initial} options={options} />);
-  });
-  mounted.push(tree);
-  return tree;
-}
+const renderForm = (initial: ItemFormData, options: Options = {}) => render(<Harness initial={initial} options={options} />);
 /** A correction of line 5 of a receipt with ten saved lines. */
 const CORRECTION: Options = { isEditing: true, editingItemNumber: 5, savedItemsCount: 10 };
+
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 
 beforeEach(() => {
   jest.useFakeTimers();
   onViewAll.mockClear();
 });
-afterEach(() => {
+afterEach(async () => {
   // Choosing an item focuses Quantity a moment later: let that run before the tree goes.
-  act(() => {
+  await act(() => {
     jest.runOnlyPendingTimers();
   });
-  act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
   jest.useRealTimers();
   setLanguage('en');
 });
 
-const isText = (node: ReactTestInstance) => (node.type as unknown) === 'Text';
-/** The view or text a drawn node sits in. */
-const hostParent = (node: ReactTestInstance) => {
-  let parent = node.parent;
-  while (parent && typeof parent.type !== 'string') parent = parent.parent;
-  return parent!;
-};
-const textOf = (node: ReactTestInstance) => ([] as unknown[]).concat(node.props.children).join('');
+type Host = ReturnType<typeof screen.getByRole>;
+const textOf = (node: { props: { children?: unknown } }) => ([] as unknown[]).concat(node.props.children).join('');
+/** The icon names drawn inside a node. The mocked icon is a bare host 'Icon' that no query reaches, so this walks its children. */
+const iconsIn = (node: Host): string[] =>
+  node.children.flatMap((child) =>
+    typeof child === 'string' ? [] : child.type === 'Icon' ? [child.props.name as string] : iconsIn(child)
+  );
 /** The strip: the first control of the form, a button when the saved items can be opened and a header otherwise. */
-const strip = (tree: ReactTestRenderer) =>
-  tree.root.findAll(
-    (node) => typeof node.type === 'string' && (node.props.accessibilityRole === 'button' || node.props.accessibilityRole === 'header') && typeof node.props.accessibilityLabel === 'string'
-  )[0];
-const stripTextNodes = (tree: ReactTestRenderer) => strip(tree).findAll(isText);
+const STRIP_NAME = /^(Editing item|New item|આઇટમ . માં ફેરફાર|નવી આઇટમ)/;
+const strip = (): Host => screen.queryByRole('button', { name: STRIP_NAME }) ?? screen.getByRole('header', { name: STRIP_NAME });
+const stripTextNodes = () => within(strip()).queryAllByText(/[\s\S]*/);
 /** The strip's texts, top to bottom. */
-const stripTexts = (tree: ReactTestRenderer) => stripTextNodes(tree).map(textOf);
-const stripLabel = (tree: ReactTestRenderer) => strip(tree).props.accessibilityLabel as string;
-const stripText = (tree: ReactTestRenderer, text: string) => stripTextNodes(tree).find((node) => textOf(node) === text)!;
-const quantityInput = (tree: ReactTestRenderer) =>
-  tree.root.find((node) => (node.type as unknown) === 'TextInput' && node.props.accessibilityLabel === 'Receipt item quantity');
-const typeQuantity = (tree: ReactTestRenderer, text: string) => act(() => quantityInput(tree).props.onChangeText(text));
-const chooseItem = (tree: ReactTestRenderer, item: { id: string; name: string; packaging?: string } | null) =>
-  act(() => tree.root.findByType('RemoteAutocompleteInput' as never).props.onSelect(item));
+const stripTexts = () => stripTextNodes().map(textOf);
+const stripLabel = () => strip().props.accessibilityLabel as string;
+const stripText = (text: string) => within(strip()).getByText(text);
+const quantityInput = (label = 'Receipt item quantity') => screen.getByLabelText(label);
+const typeQuantity = (text: string, label?: string) => fireEvent.changeText(quantityInput(label), text);
+const chooseItem = (name: 'Choose Onion' | 'Clear item') => user().press(screen.getByRole('button', { name }));
 
 describe('GRN item form strip', () => {
-  it('names the line being corrected: overline and saved link, number with item, quantity with packaging', () => {
-    const tree = render(line(), CORRECTION);
+  it('names the line being corrected: overline and saved link, number with item, quantity with packaging', async () => {
+    await renderForm(line(), CORRECTION);
 
-    expect(stripTexts(tree)).toEqual(['Editing item', '10 saved', 'Item 5 · Potato', '99 Bag']);
+    expect(stripTexts()).toEqual(['Editing item', '10 saved', 'Item 5 · Potato', '99 Bag']);
   });
 
-  it('shows the number alone, and no third line, before an item is chosen', () => {
-    const tree = render(EMPTY, { savedItemsCount: 10 });
+  it('shows the number alone, and no third line, before an item is chosen', async () => {
+    await renderForm(EMPTY, { savedItemsCount: 10 });
 
-    expect(stripTexts(tree)).toEqual(['New item', '10 saved', 'Item 11']);
+    expect(stripTexts()).toEqual(['New item', '10 saved', 'Item 11']);
   });
 
-  it('puts the saved link at the end of the overline row, not beside the title', () => {
-    const tree = render(line(), CORRECTION);
+  it('puts the saved link at the end of the overline row, not beside the title', async () => {
+    await renderForm(line(), CORRECTION);
 
-    const overlineRow = hostParent(stripText(tree, 'Editing item'));
-    expect(overlineRow.findAll(isText).map(textOf)).toEqual(['Editing item', '10 saved']);
-    expect(overlineRow.findAll((node) => (node.type as unknown) === 'Icon').map((node) => node.props.name)).toEqual(['chevron-right']);
+    const overlineRow = stripText('Editing item').parent!;
+    expect(within(overlineRow).queryAllByText(/[\s\S]*/).map(textOf)).toEqual(['Editing item', '10 saved']);
+    expect(iconsIn(overlineRow)).toEqual(['chevron-right']);
     // The row is drawn from its two ends.
     expect(overlineRow.props.style).toEqual(expect.objectContaining({ flexDirection: 'row', justifyContent: 'space-between' }));
-    // The title is a line of its own under that row.
-    expect(hostParent(stripText(tree, 'Item 5 · Potato'))).toBe(strip(tree));
+    // The title is a line of its own under that row: its parent is the strip itself, not the overline row.
+    expect(stripText('Item 5 · Potato').parent).toBe(strip());
+    expect(stripText('Item 5 · Potato').parent).not.toBe(overlineRow);
   });
 
-  it('has no saved link while nothing is saved, or when the saved items cannot be opened', () => {
-    expect(stripTexts(render(line(), { savedItemsCount: 0 }))).toEqual(['New item', 'Item 1 · Potato', '99 Bag']);
-    expect(stripTexts(render(line(), { ...CORRECTION, canOpenSaved: false }))).toEqual(['Editing item', 'Item 5 · Potato', '99 Bag']);
+  it('has no saved link while nothing is saved, or when the saved items cannot be opened', async () => {
+    await renderForm(line(), { savedItemsCount: 0 });
+    expect(stripTexts()).toEqual(['New item', 'Item 1 · Potato', '99 Bag']);
+    await renderForm(line(), { ...CORRECTION, canOpenSaved: false });
+    expect(stripTexts()).toEqual(['Editing item', 'Item 5 · Potato', '99 Bag']);
   });
 
-  it('follows the quantity as it is typed: 99 becomes 1,200', () => {
-    const tree = render(line(), CORRECTION);
-    expect(stripTexts(tree)).toContain('99 Bag');
+  it('follows the quantity as it is typed: 99 becomes 1,200', async () => {
+    await renderForm(line(), CORRECTION);
+    expect(stripTexts()).toContain('99 Bag');
 
-    typeQuantity(tree, '1200');
+    await typeQuantity('1200');
 
-    expect(stripTexts(tree)).toContain('1,200 Bag');
-    expect(stripTexts(tree)).not.toContain('99 Bag');
-    expect(stripLabel(tree)).toBe('Editing item 5, Potato, quantity 1,200, Bag, View 10 saved items');
+    expect(stripTexts()).toContain('1,200 Bag');
+    expect(stripTexts()).not.toContain('99 Bag');
+    expect(stripLabel()).toBe('Editing item 5, Potato, quantity 1,200, Bag, View 10 saved items');
   });
 
-  it('follows the item as it is chosen and cleared', () => {
-    const tree = render(EMPTY, { savedItemsCount: 10 });
-    expect(stripTexts(tree)).toEqual(['New item', '10 saved', 'Item 11']);
+  it('follows the item as it is chosen and cleared', async () => {
+    await renderForm(EMPTY, { savedItemsCount: 10 });
+    expect(stripTexts()).toEqual(['New item', '10 saved', 'Item 11']);
 
-    chooseItem(tree, { id: 'item-7', name: 'Onion', packaging: 'Crate' });
-    expect(stripTexts(tree)).toEqual(['New item', '10 saved', 'Item 11 · Onion', 'Crate']);
-    typeQuantity(tree, '40');
-    expect(stripTexts(tree)).toEqual(['New item', '10 saved', 'Item 11 · Onion', '40 Crate']);
+    await chooseItem('Choose Onion');
+    expect(stripTexts()).toEqual(['New item', '10 saved', 'Item 11 · Onion', 'Crate']);
+    await typeQuantity('40');
+    expect(stripTexts()).toEqual(['New item', '10 saved', 'Item 11 · Onion', '40 Crate']);
 
-    chooseItem(tree, null);
-    expect(stripTexts(tree)).toEqual(['New item', '10 saved', 'Item 11', '40']);
+    await chooseItem('Clear item');
+    expect(stripTexts()).toEqual(['New item', '10 saved', 'Item 11', '40']);
   });
 
-  it('shows the packaging alone while no quantity is typed', () => {
-    const tree = render(line({ qty: '' }), CORRECTION);
+  it('shows the packaging alone while no quantity is typed', async () => {
+    await renderForm(line({ qty: '' }), CORRECTION);
 
-    expect(stripTexts(tree)).toEqual(['Editing item', '10 saved', 'Item 5 · Potato', 'Bag']);
-    expect(stripLabel(tree)).toBe('Editing item 5, Potato, Bag, View 10 saved items');
+    expect(stripTexts()).toEqual(['Editing item', '10 saved', 'Item 5 · Potato', 'Bag']);
+    expect(stripLabel()).toBe('Editing item 5, Potato, Bag, View 10 saved items');
   });
 
-  it('shows the quantity alone for an item without packaging', () => {
-    const tree = render(line({ packaging: '' }), CORRECTION);
+  it('shows the quantity alone for an item without packaging', async () => {
+    await renderForm(line({ packaging: '' }), CORRECTION);
 
-    expect(stripTexts(tree)).toEqual(['Editing item', '10 saved', 'Item 5 · Potato', '99']);
-    expect(stripLabel(tree)).toBe('Editing item 5, Potato, quantity 99, View 10 saved items');
+    expect(stripTexts()).toEqual(['Editing item', '10 saved', 'Item 5 · Potato', '99']);
+    expect(stripLabel()).toBe('Editing item 5, Potato, quantity 99, View 10 saved items');
   });
 
-  it('shows no third line when there is neither a quantity nor packaging', () => {
-    const tree = render(line({ qty: '  ', packaging: ' ' }), CORRECTION);
+  it('shows no third line when there is neither a quantity nor packaging', async () => {
+    await renderForm(line({ qty: '  ', packaging: ' ' }), CORRECTION);
 
-    expect(stripTexts(tree)).toEqual(['Editing item', '10 saved', 'Item 5 · Potato']);
-    expect(stripLabel(tree)).toBe('Editing item 5, Potato, View 10 saved items');
+    expect(stripTexts()).toEqual(['Editing item', '10 saved', 'Item 5 · Potato']);
+    expect(stripLabel()).toBe('Editing item 5, Potato, View 10 saved items');
   });
 
   // The strip shows what is in the field; whether it can be saved is the field's own message.
@@ -200,108 +205,110 @@ describe('GRN item form strip', () => {
     ['12a', '12a Bag'],
     ['007', '7 Bag'],
     [' 250 ', '250 Bag'],
-  ])('shows the typed quantity %p as %p', (typed, shown) => {
-    const tree = render(line(), CORRECTION);
+  ])('shows the typed quantity %p as %p', async (typed, shown) => {
+    await renderForm(line(), CORRECTION);
 
-    typeQuantity(tree, typed);
+    await typeQuantity(typed);
 
-    expect(stripTexts(tree)[3]).toBe(shown);
+    expect(stripTexts()[3]).toBe(shown);
   });
 
-  it('gives the item name three lines with an ellipsis at the end and no cap on text size', () => {
+  it('gives the item name three lines with an ellipsis at the end and no cap on text size', async () => {
     const name = 'Potato Kufri Jyoti first grade washed and sorted for the retail counter at Deesa market yard';
-    const tree = render(line({ item_name: name }), CORRECTION);
+    await renderForm(line({ item_name: name }), CORRECTION);
 
-    const title = stripText(tree, `Item 5 · ${name}`);
+    const title = stripText(`Item 5 · ${name}`);
     expect(title.props.numberOfLines).toBe(3);
     expect(title.props.ellipsizeMode).toBe('tail');
-    for (const node of stripTextNodes(tree)) {
+    for (const node of stripTextNodes()) {
       expect(node.props.maxFontSizeMultiplier).toBeUndefined();
       expect(node.props.allowFontScaling).not.toBe(false);
     }
   });
 
-  it('never cuts the quantity line short, and holds no text to one line', () => {
-    const tree = render(line({ qty: '123456789', packaging: 'Jumbo bag, double stitched, 50 kg' }), CORRECTION);
+  it('never cuts the quantity line short, and holds no text to one line', async () => {
+    await renderForm(line({ qty: '123456789', packaging: 'Jumbo bag, double stitched, 50 kg' }), CORRECTION);
 
-    const quantity = stripText(tree, '12,34,56,789 Jumbo bag, double stitched, 50 kg');
+    const quantity = stripText('12,34,56,789 Jumbo bag, double stitched, 50 kg');
     expect(quantity.props.numberOfLines).toBeUndefined();
-    expect(stripTextNodes(tree).filter((node) => node.props.numberOfLines === 1)).toEqual([]);
+    expect(stripTextNodes().filter((node) => node.props.numberOfLines === 1)).toEqual([]);
   });
 
-  it('draws the quantity line as secondary-size text in the primary text colour', () => {
-    const tree = render(line(), CORRECTION);
+  it('draws the quantity line as secondary-size text in the primary text colour', async () => {
+    await renderForm(line(), CORRECTION);
 
     const { typography, getTokens } = jest.requireActual<typeof import('@/theme/tokens')>('@/theme/tokens');
-    expect(stripText(tree, '99 Bag').props.style).toEqual(
+    expect(stripText('99 Bag').props.style).toEqual(
       expect.objectContaining({ ...typography.subhead, color: getTokens('orange', 'light').text.primary })
     );
   });
 
   describe('spoken label', () => {
-    it('reads a correction as number, item, quantity, packaging, then the way to the saved items', () => {
-      const tree = render(line(), CORRECTION);
+    it('reads a correction as number, item, quantity, packaging, then the way to the saved items', async () => {
+      await renderForm(line(), CORRECTION);
 
-      expect(stripLabel(tree)).toBe('Editing item 5, Potato, quantity 99, Bag, View 10 saved items');
-      expect(strip(tree).props.accessibilityRole).toBe('button');
+      expect(stripLabel()).toBe('Editing item 5, Potato, quantity 99, Bag, View 10 saved items');
+      expect(strip().props.accessibilityRole).toBe('button');
     });
 
-    it('reads a new item the same way, and "item" for one saved line', () => {
-      expect(stripLabel(render(line(), { savedItemsCount: 1 }))).toBe('New item 2, Potato, quantity 99, Bag, View 1 saved item');
+    it('reads a new item the same way, and "item" for one saved line', async () => {
+      await renderForm(line(), { savedItemsCount: 1 });
+      expect(stripLabel()).toBe('New item 2, Potato, quantity 99, Bag, View 1 saved item');
     });
 
-    it('is a header with only the number while the form is empty and nothing is saved', () => {
-      const tree = render(EMPTY);
+    it('is a header with only the number while the form is empty and nothing is saved', async () => {
+      await renderForm(EMPTY);
 
-      expect(stripLabel(tree)).toBe('New item 1');
-      expect(strip(tree).props.accessibilityRole).toBe('header');
+      expect(stripLabel()).toBe('New item 1');
+      expect(strip().props.accessibilityRole).toBe('header');
     });
 
-    it('does not offer the saved items when they cannot be opened', () => {
-      expect(stripLabel(render(line(), { ...CORRECTION, canOpenSaved: false }))).toBe('Editing item 5, Potato, quantity 99, Bag');
+    it('does not offer the saved items when they cannot be opened', async () => {
+      await renderForm(line(), { ...CORRECTION, canOpenSaved: false });
+      expect(stripLabel()).toBe('Editing item 5, Potato, quantity 99, Bag');
     });
   });
 
-  it('opens the saved items from anywhere on the strip', () => {
-    const tree = render(line(), CORRECTION);
-    const press = tree.root.findAll((node) => node.props.accessibilityLabel === stripLabel(tree) && typeof node.props.onPress === 'function')[0];
+  it('opens the saved items from anywhere on the strip', async () => {
+    await renderForm(line(), CORRECTION);
 
-    act(() => press.props.onPress());
+    await user().press(strip());
 
     expect(onViewAll).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the save button a bare check mark, with its spoken name', () => {
-    const tree = render(line(), CORRECTION);
+  it('keeps the save button a bare check mark, with its spoken name', async () => {
+    await renderForm(line(), CORRECTION);
 
-    const save = tree.root.findAll((node) => typeof node.type === 'string' && node.props.accessibilityLabel === 'Save receipt item')[0];
-    expect(save.findAll(isText)).toEqual([]);
-    expect(save.findAll((node) => (node.type as unknown) === 'Icon').map((node) => node.props.name)).toEqual(['check']);
+    const save = screen.getByRole('button', { name: 'Save receipt item' });
+    expect(within(save).queryAllByText(/[\s\S]*/)).toEqual([]);
+    expect(iconsIn(save)).toEqual(['check']);
   });
 
   describe('in Gujarati', () => {
     beforeEach(() => setLanguage('gu'));
 
-    it('writes the number and the quantity in Gujarati digits and leaves the typed names as they are', () => {
-      const tree = render(line(), CORRECTION);
+    it('writes the number and the quantity in Gujarati digits and leaves the typed names as they are', async () => {
+      await renderForm(line(), CORRECTION);
 
-      expect(stripTexts(tree)).toEqual(['આઇટમમાં ફેરફાર', '૧૦ સાચવેલી', 'આઇટમ ૫ · Potato', '૯૯ Bag']);
+      expect(stripTexts()).toEqual(['આઇટમમાં ફેરફાર', '૧૦ સાચવેલી', 'આઇટમ ૫ · Potato', '૯૯ Bag']);
     });
 
-    it('follows the typed quantity, which the field stores in 0-9', () => {
-      const tree = render(line(), CORRECTION);
-      const quantity = tree.root.find((node) => (node.type as unknown) === 'TextInput' && node.props.accessibilityLabel === 'આઇટમના નંગ');
+    it('follows the typed quantity, which the field stores in 0-9', async () => {
+      await renderForm(line(), CORRECTION);
 
-      act(() => quantity.props.onChangeText('૧૨૦૦'));
-      expect(stripTexts(tree)[3]).toBe('૧,૨૦૦ Bag');
+      await typeQuantity('૧૨૦૦', 'આઇટમના નંગ');
+      expect(stripTexts()[3]).toBe('૧,૨૦૦ Bag');
       // Not a quantity yet: shown as typed, in the language's digits.
-      act(() => quantity.props.onChangeText('12.5'));
-      expect(stripTexts(tree)[3]).toBe('૧૨.૫ Bag');
+      await typeQuantity('12.5', 'આઇટમના નંગ');
+      expect(stripTexts()[3]).toBe('૧૨.૫ Bag');
     });
 
-    it('reads the label in Gujarati', () => {
-      expect(stripLabel(render(line(), CORRECTION))).toBe('આઇટમ ૫ માં ફેરફાર, Potato, નંગ ૯૯, Bag, સાચવેલી ૧૦ આઇટમ જુઓ');
-      expect(stripLabel(render(EMPTY, { savedItemsCount: 10 }))).toBe('નવી આઇટમ ૧૧, સાચવેલી ૧૦ આઇટમ જુઓ');
+    it('reads the label in Gujarati', async () => {
+      await renderForm(line(), CORRECTION);
+      expect(stripLabel()).toBe('આઇટમ ૫ માં ફેરફાર, Potato, નંગ ૯૯, Bag, સાચવેલી ૧૦ આઇટમ જુઓ');
+      await renderForm(EMPTY, { savedItemsCount: 10 });
+      expect(stripLabel()).toBe('નવી આઇટમ ૧૧, સાચવેલી ૧૦ આઇટમ જુઓ');
     });
   });
 });

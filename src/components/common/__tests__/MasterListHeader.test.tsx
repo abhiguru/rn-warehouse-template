@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { MasterListHeader, type MasterListHeaderProps } from '@/components/common';
 
@@ -19,7 +19,6 @@ jest.mock('../SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null
 
 const REFRESH_FAILED = "Couldn't refresh items. Showing the list from 10:42 am.";
 
-let tree: ReactTestRenderer | null = null;
 const onSearch = jest.fn();
 
 function element(props: Partial<MasterListHeaderProps> = {}) {
@@ -35,22 +34,9 @@ function element(props: Partial<MasterListHeaderProps> = {}) {
   );
 }
 
-function mount(props: Partial<MasterListHeaderProps> = {}) {
-  act(() => { tree = create(element(props)); });
-  return tree!;
-}
+const mount = (props: Partial<MasterListHeaderProps> = {}) => render(element(props));
 
-function texts() {
-  return tree!.root
-    .findAll(n => (n.type as unknown) === 'Text')
-    .map(n => ([] as unknown[]).concat(n.props.children).join(''));
-}
-const field = () => tree!.root.find(n => (n.type as unknown) === 'TextInput');
-const retryButtons = () =>
-  tree!.root.findAll(n => n.props.accessibilityLabel === 'Try again' && typeof n.props.onPress === 'function');
-/** How many "Try again" buttons are drawn (a TouchableOpacity is two nodes with one onPress). */
-const retryCount = () => new Set(retryButtons().map(n => n.props.onPress)).size;
-const type = (text: string) => act(() => { field().props.onChangeText(text); });
+const field = () => screen.getByLabelText('Search items');
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -59,87 +45,81 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (tree) act(() => tree!.unmount());
-  tree = null;
   jest.useRealTimers();
 });
 
 describe('MasterListHeader', () => {
-  it('shows the search field and the count line, and no refresh strip', () => {
-    mount();
+  it('shows the search field and the count line, and no refresh strip', async () => {
+    await mount();
 
-    expect(field().props.accessibilityLabel).toBe('Search items');
-    expect(field().props.placeholder).toBe('Search items');
-    expect(texts()).toContain('91 items');
-    expect(retryCount()).toBe(0);
-    expect(texts()).not.toContain(REFRESH_FAILED);
+    expect(field()).toHaveProp('placeholder', 'Search items');
+    expect(screen.getByText('91 items')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
+    expect(screen.queryByText(REFRESH_FAILED)).not.toBeOnTheScreen();
   });
 
-  it('reads the count out when it changes, and wraps it rather than cutting it', () => {
-    mount();
-    const count = tree!.root.find(n => (n.type as unknown) === 'Text' && n.props.children === '91 items');
-    expect(count.props.accessibilityLiveRegion).toBe('polite');
-    expect(count.props.numberOfLines).toBeUndefined();
+  it('reads the count out when it changes, and wraps it rather than cutting it', async () => {
+    await mount();
+    const count = screen.getByText('91 items');
+    expect(count).toHaveProp('accessibilityLiveRegion', 'polite');
+    expect(count).not.toHaveProp('numberOfLines');
   });
 
-  it('leaves the count line out when there is no count', () => {
-    mount({ countText: undefined });
-    expect(texts()).not.toContain('91 items');
-    expect(field()).toBeTruthy();
+  it('leaves the count line out when there is no count', async () => {
+    await mount({ countText: undefined });
+    expect(screen.queryByText('91 items')).not.toBeOnTheScreen();
+    expect(field()).toBeOnTheScreen();
   });
 
-  it('shows a failed reload with "Try again", which asks once', () => {
-    mount();
+  it('shows a failed reload with "Try again", which asks once', async () => {
+    const { rerender } = await mount();
     const onRetry = jest.fn();
 
-    act(() => { tree!.update(element({ refreshError: { message: REFRESH_FAILED, onRetry } })); });
+    await rerender(element({ refreshError: { message: REFRESH_FAILED, onRetry } }));
 
-    expect(texts()).toContain(REFRESH_FAILED);
-    expect(retryCount()).toBe(1);
-    act(() => { retryButtons()[0].props.onPress(); });
+    expect(screen.getByText(REFRESH_FAILED)).toBeOnTheScreen();
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await user.press(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
     // The search field and the count stay with the strip.
-    expect(field()).toBeTruthy();
-    expect(texts()).toContain('91 items');
+    expect(field()).toBeOnTheScreen();
+    expect(screen.getByText('91 items')).toBeOnTheScreen();
   });
 
-  it('gives "Try again" a full touch target', () => {
-    mount({ refreshError: { message: REFRESH_FAILED, onRetry: jest.fn() } });
-    const style = StyleSheet.flatten(retryButtons()[0].props.style);
+  it('gives "Try again" a full touch target', async () => {
+    await mount({ refreshError: { message: REFRESH_FAILED, onRetry: jest.fn() } });
+    const style = StyleSheet.flatten(screen.getByRole('button', { name: 'Try again' }).props.style);
     const { touchTarget } = jest.requireActual('@/theme/tokens');
     expect(style.minHeight).toBeGreaterThanOrEqual(touchTarget);
   });
 
-  it('searches after 300 ms with two characters, and not for one', () => {
-    mount();
+  it('searches after 300 ms with two characters, and not for one', async () => {
+    await mount();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
-    type('p');
-    act(() => { jest.advanceTimersByTime(300); });
+    await user.type(field(), 'p');
+    await jest.advanceTimersByTimeAsync(300);
     expect(onSearch).not.toHaveBeenCalled();
 
-    type('po');
-    act(() => { jest.advanceTimersByTime(299); });
+    await user.type(field(), 'o');
+    await jest.advanceTimersByTimeAsync(299);
     expect(onSearch).not.toHaveBeenCalled();
-    act(() => { jest.advanceTimersByTime(1); });
+    await jest.advanceTimersByTimeAsync(1);
     expect(onSearch).toHaveBeenCalledTimes(1);
     expect(onSearch).toHaveBeenCalledWith('po');
   });
 
   describe.each(BRANDS.flatMap(b => (['light', 'dark'] as Mode[]).map(m => [b, m] as const)))('%s %s', (brand, mode) => {
-    it('sits on the header surface, the count in secondary text', () => {
+    it('sits on the header surface, the count in secondary text', async () => {
       mockTheme = { preference: mode, brand };
       const t = getTokens(brand, mode);
-      mount({ refreshError: { message: REFRESH_FAILED, onRetry: jest.fn() } });
+      await mount({ refreshError: { message: REFRESH_FAILED, onRetry: jest.fn() } });
 
-      const container = tree!.root.findAll(n => (n.type as unknown) === 'View')[0];
-      expect(StyleSheet.flatten(container.props.style).backgroundColor).toBe(t.surface.header);
-      const count = tree!.root.find(n => (n.type as unknown) === 'Text' && n.props.children === '91 items');
-      expect(StyleSheet.flatten(count.props.style).color).toBe(t.text.secondary);
-      const strip = tree!.root.findAll(n => {
-        const style = StyleSheet.flatten(n.props.style ?? {}) as { backgroundColor?: string };
-        return typeof n.type === 'string' && style.backgroundColor === t.status.negative.background;
-      });
-      expect(strip.length).toBeGreaterThan(0);
+      // The root is the header container.
+      expect(StyleSheet.flatten(screen.root!.props.style).backgroundColor).toBe(t.surface.header);
+      expect(StyleSheet.flatten(screen.getByText('91 items').props.style).color).toBe(t.text.secondary);
+      expect(StyleSheet.flatten(screen.getByRole('alert').props.style).backgroundColor).toBe(t.status.negative.background);
     });
   });
 });

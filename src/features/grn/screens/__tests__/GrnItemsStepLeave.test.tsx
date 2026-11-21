@@ -12,7 +12,7 @@
  */
 import React from 'react';
 import { Alert, Platform } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { configureStore, type UnknownAction } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -63,15 +63,25 @@ jest.mock('@/hooks', () => ({
 // Children are stand-ins that keep their props, so the test can call their handlers.
 // The form's stand-in also takes what the step asks of the form through its ref.
 const mockFormRef = { focusField: jest.fn(), resetScroll: jest.fn(), revealField: jest.fn() };
+const mockProps: Record<'form' | 'sheet' | 'bar' | 'indicator', any> = { form: null, sheet: null, bar: null, indicator: null };
 jest.mock('@/features/grn/components/HorizontalItemForm', () => ({
   HorizontalItemForm: require('react').forwardRef((props: object, ref: React.Ref<unknown>) => {
     require('react').useImperativeHandle(ref, () => mockFormRef);
-    return require('react').createElement('HorizontalItemForm', props);
+    mockProps.form = props;
+    return null;
   }),
 }));
-jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({ __esModule: true, default: 'ItemsSummaryBottomSheet' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
-jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: 'GRNStepIndicator' }));
+jest.mock('@/features/grn/components/ItemsSummaryBottomSheet', () => ({
+  __esModule: true,
+  default: (props: object) => { mockProps.sheet = props; return null; },
+}));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: object) => { mockProps.bar = props; return null; },
+}));
+jest.mock('@/components/GRNStepIndicator', () => ({
+  GRNStepIndicator: (props: object) => { mockProps.indicator = props; return null; },
+}));
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() },
   useLocalSearchParams: () => ({ id: '11111111-2222-4333-8444-555555555555' }),
@@ -136,45 +146,42 @@ const storedItems = () => mockStore.getState().grnForm.items;
 const sentToReview = () => mockActions.find((action) => action.type === reconcileItems.type)?.payload as GRNItemData[] | undefined;
 const wentToDetails = () => mockActions.some((action) => action.type === setCurrentStep.type && action.payload === 1);
 
-const mounted: ReactTestRenderer[] = [];
-async function render(mode: 'create' | 'edit', stored: GRNItemData[], backGuard?: React.RefObject<GrnItemsBackGuard | null>) {
+type Tree = Awaited<ReturnType<typeof render>>;
+async function mountStep(mode: 'create' | 'edit', stored: GRNItemData[], backGuard?: React.RefObject<GrnItemsBackGuard | null>) {
   mockMode = mode;
   mockStore = makeStore();
   stored.forEach((item) => mockStore.dispatch(addItem(item)));
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnItemsStep mode={mode} backGuard={backGuard} />);
-  });
-  mounted.push(tree);
+  const tree = await render(<GrnItemsStep mode={mode} backGuard={backGuard} />);
   mockActions.length = 0;
   return tree;
 }
 
-const form = (tree: ReactTestRenderer) => tree.root.findByType('HorizontalItemForm' as never);
-const sheet = (tree: ReactTestRenderer) => tree.root.findByType('ItemsSummaryBottomSheet' as never);
-const bar = (tree: ReactTestRenderer) => tree.root.findByType('WizardBottomBar' as never);
-const indicator = (tree: ReactTestRenderer) => tree.root.findByType('GRNStepIndicator' as never);
+// The stand-ins draw nothing and hand the step's latest props to these helpers (no query can reach a prop).
+const form = (_tree: Tree) => ({ props: mockProps.form });
+const sheet = (_tree: Tree) => ({ props: mockProps.sheet });
+const bar = (_tree: Tree) => ({ props: mockProps.bar });
+const indicator = (_tree: Tree) => ({ props: mockProps.indicator });
 /** What the form shows of its item. */
-const inForm = (tree: ReactTestRenderer) => {
+const inForm = (tree: Tree) => {
   const { currentItem, isEditing, editingItemNumber } = form(tree).props;
   return { id: currentItem.grn_trl_id, item: currentItem.item_table_id, qty: currentItem.qty, rack: currentItem.rack, mark: currentItem.package_mark, isEditing, editingItemNumber };
 };
 
-const set = (tree: ReactTestRenderer, field: string, value: string) =>
+const set = (tree: Tree, field: string, value: string) =>
   act(() => form(tree).props.onFieldChange(field, value));
-const pressNext = (tree: ReactTestRenderer) => act(async () => { await bar(tree).props.onNext(); });
+const pressNext = (tree: Tree) => act(async () => { await bar(tree).props.onNext(); });
 /** A tap on saved item n in the saved-items sheet: it reports the row, closes, and (iOS) tells when it is gone. */
-const openRow = (tree: ReactTestRenderer, n: number) =>
+const openRow = (tree: Tree, n: number) =>
   act(async () => {
     sheet(tree).props.onEditItem(sheet(tree).props.items[n - 1]);
     sheet(tree).props.onClose();
     sheet(tree).props.onDismissed?.();
   });
 /** Saved item 5 in the form with quantity 99 and rack TEMP typed, not checkmarked. */
-async function correctRowFive(tree: ReactTestRenderer) {
+async function correctRowFive(tree: Tree) {
   await openRow(tree, 5);
-  set(tree, 'qty', '99');
-  set(tree, 'rack', 'TEMP');
+  await set(tree, 'qty', '99');
+  await set(tree, 'rack', 'TEMP');
 }
 
 const alerts = () => jest.mocked(Alert.alert).mock.calls;
@@ -190,16 +197,13 @@ async function answer(text: string) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockActions.length = 0;
+  Object.keys(mockProps).forEach((key) => { mockProps[key as keyof typeof mockProps] = null; });
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(require('react-native').Vibration, 'vibrate').mockImplementation(() => {});
   jest.spyOn(global, 'requestAnimationFrame').mockImplementation((run: FrameRequestCallback) => { run(0); return 0; });
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
-afterEach(async () => {
-  // A tree left mounted can log after the test run has ended.
-  for (const tree of mounted.splice(0)) {
-    await act(async () => { tree.unmount(); });
-  }
+afterEach(() => {
   jest.mocked(router.back).mockReset();
   jest.restoreAllMocks();
   setLanguage('en');
@@ -208,7 +212,7 @@ afterEach(async () => {
 describe('GRN items step, Next with a correction that was not checkmarked', () => {
   // Defect A: Next went on without a question and Review showed 15 and R1.
   it.each(['create', 'edit'] as const)('%s: asks before the item is left, and goes nowhere', async (mode) => {
-    const tree = await render(mode, lines(10));
+    const tree = await mountStep(mode, lines(10));
     await correctRowFive(tree);
 
     await pressNext(tree);
@@ -223,7 +227,7 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
 
   it('asks in Gujarati: the position in its digits, the item name as it was typed', async () => {
     setLanguage('gu');
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await correctRowFive(tree);
 
     await pressNext(tree);
@@ -234,7 +238,7 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   });
 
   it('Keep editing: the form still holds what was typed and nothing is stored', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     const before = storedItems();
     await correctRowFive(tree);
     await pressNext(tree);
@@ -250,7 +254,7 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   });
 
   it('asks once: a second Next while the question is open does nothing, and closing it without a button lets it be asked again', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await correctRowFive(tree);
 
     await pressNext(tree);
@@ -258,14 +262,14 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
     expect(alerts()).toHaveLength(1);
 
     // Android Back or a tap beside the dialog.
-    act(() => lastAlert()?.[3]?.onDismiss?.());
+    await act(() => lastAlert()?.[3]?.onDismiss?.());
     await pressNext(tree);
     expect(alerts()).toHaveLength(2);
     expect(inForm(tree)).toMatchObject({ id: lineId(5), qty: '99', rack: 'TEMP' });
   });
 
   it('Discard changes: the stored items stay as they were, Review opens and the form is new', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     const before = storedItems();
     await correctRowFive(tree);
     await pressNext(tree);
@@ -280,7 +284,7 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   });
 
   it('Save changes: the item is stored as typed, Review gets it, and the other items keep their objects', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     const before = storedItems();
     await correctRowFive(tree);
     await pressNext(tree);
@@ -301,10 +305,10 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   });
 
   it('edit: an item with dispatches keeps its stock and its locked quantity when its rack is corrected', async () => {
-    const tree = await render('edit', lines(10, { 5: { qty: 100, stock: 60 } }));
+    const tree = await mountStep('edit', lines(10, { 5: { qty: 100, stock: 60 } }));
     await openRow(tree, 5);
     expect(form(tree).props.isQtyLocked).toBe(true);
-    set(tree, 'rack', 'NEW-RACK');
+    await set(tree, 'rack', 'NEW-RACK');
     await pressNext(tree);
     expect(lastAlert()?.[0]).toBe('Save changes to this item?');
 
@@ -316,11 +320,11 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   });
 
   it('a correction that cannot be saved stays in the form, with its error and what was typed', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     const before = storedItems();
     await openRow(tree, 5);
-    set(tree, 'qty', '');
-    set(tree, 'rack', 'TEMP');
+    await set(tree, 'qty', '');
+    await set(tree, 'rack', 'TEMP');
     await pressNext(tree);
 
     await answer('Save changes');
@@ -342,9 +346,9 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   // again. Now the step asks the form to bring it into view and give it the
   // cursor with the keyboard open (the form's own test covers what that does).
   it('a correction with the quantity cleared: OK on the refusal brings Quantity into view and gives it the cursor', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await openRow(tree, 5);
-    set(tree, 'qty', '');
+    await set(tree, 'qty', '');
     await pressNext(tree);
     await answer('Save changes');
     expect(lastAlert()?.slice(0, 2)).toEqual(['Check the item details', 'Fix the highlighted fields, then save the item.']);
@@ -369,9 +373,9 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
     ['a rack of more than 30 characters', 'rack', 'R'.repeat(31)],
     ['a mark of more than 60 characters', 'package_mark', 'M'.repeat(61)],
   ])('a correction with %s: OK on the refusal brings that field into view and gives it the cursor', async (_what, field, value) => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await openRow(tree, 5);
-    set(tree, field, value);
+    await set(tree, field, value);
     await pressNext(tree);
 
     await answer('Save changes');
@@ -387,10 +391,10 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   });
 
   it('a correction with no item: OK on the refusal scrolls the row back to the start and gives the Item field the cursor (D7)', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await openRow(tree, 5);
-    set(tree, 'item_table_id', '');
-    set(tree, 'item_name', '');
+    await set(tree, 'item_table_id', '');
+    await set(tree, 'item_name', '');
     await pressNext(tree);
     await answer('Save changes');
     expect(lastAlert()?.[1]).toBe('Fix the highlighted fields, then save the item.');
@@ -405,10 +409,10 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   });
 
   it('with several fields wrong, the first of the row is the one brought into view', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await openRow(tree, 5);
-    set(tree, 'rack', 'R'.repeat(31));
-    set(tree, 'weight', '12.5');
+    await set(tree, 'rack', 'R'.repeat(31));
+    await set(tree, 'weight', '12.5');
     await pressNext(tree);
     await answer('Save changes');
     await answer('OK');
@@ -418,7 +422,7 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
     expect(mockFormRef.focusField.mock.calls).toEqual([['weight']]);
 
     // Quantity is drawn before both.
-    set(tree, 'qty', '');
+    await set(tree, 'qty', '');
     await pressNext(tree);
     await answer('Save changes');
     await answer('OK');
@@ -429,7 +433,7 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
   });
 
   it('a saved item that was opened and not changed is not asked about: the form closes and Review opens', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     const before = storedItems();
     await openRow(tree, 5);
     expect(inForm(tree)).toMatchObject({ id: lineId(5), isEditing: true });
@@ -446,11 +450,11 @@ describe('GRN items step, Next with a correction that was not checkmarked', () =
 describe('GRN items step, Next with a new item that was not checkmarked', () => {
   // Defect B: the discarded line was checked and stored, so Review showed ten items.
   it('Discard item: nine saved items and a complete tenth give nine in the store and nine for Review', async () => {
-    const tree = await render('create', lines(9));
+    const tree = await mountStep('create', lines(9));
     const before = storedItems();
-    set(tree, 'item_table_id', NEW_ITEM_ID);
-    set(tree, 'item_name', 'Fictional garlic');
-    set(tree, 'qty', '7');
+    await set(tree, 'item_table_id', NEW_ITEM_ID);
+    await set(tree, 'item_name', 'Fictional garlic');
+    await set(tree, 'qty', '7');
     await pressNext(tree);
     expect(lastAlert()?.[0]).toBe('Save this item?');
     expect(buttonTexts()).toEqual(['Keep editing', 'Discard item', 'Save item']);
@@ -467,10 +471,10 @@ describe('GRN items step, Next with a new item that was not checkmarked', () => 
   });
 
   it('Discard item with nothing saved stays on the step: a GRN needs an item', async () => {
-    const tree = await render('create', []);
-    set(tree, 'item_table_id', NEW_ITEM_ID);
-    set(tree, 'item_name', 'Fictional garlic');
-    set(tree, 'qty', '7');
+    const tree = await mountStep('create', []);
+    await set(tree, 'item_table_id', NEW_ITEM_ID);
+    await set(tree, 'item_name', 'Fictional garlic');
+    await set(tree, 'qty', '7');
     await pressNext(tree);
 
     await answer('Discard item');
@@ -489,9 +493,9 @@ describe('GRN items step, Next with a new item that was not checkmarked', () => 
     ['an item', 'item_table_id', NEW_ITEM_ID],
     ['a changed rack', 'rack', 'OTHER'],
   ])('a new item with only %s typed is asked about; Save item refuses it and keeps what was typed', async (_what, field, value) => {
-    const tree = await render('create', lines(3));
+    const tree = await mountStep('create', lines(3));
     const before = storedItems();
-    set(tree, field, value);
+    await set(tree, field, value);
 
     await pressNext(tree);
     expect(lastAlert()?.[0]).toBe('Save this item?');
@@ -508,7 +512,7 @@ describe('GRN items step, Next with a new item that was not checkmarked', () => 
   });
 
   it('a new form that only holds the rack of the first saved item is not asked about', async () => {
-    const tree = await render('create', lines(3));
+    const tree = await mountStep('create', lines(3));
     // The rack comes from the most recent saved line, line 3 (WH-56): R3, since line n has rack R(n mod 4).
     expect(inForm(tree)).toMatchObject({ rack: 'R3', item: '', qty: '' });
 
@@ -522,7 +526,7 @@ describe('GRN items step, Next with a new item that was not checkmarked', () => 
 describe('GRN items step, going back to Details with a correction that was not checkmarked', () => {
   type WayBack = {
     backGuard?: React.RefObject<GrnItemsBackGuard | null>;
-    press: (tree: ReactTestRenderer, leave: () => void) => void;
+    press: (tree: Tree, leave: () => void) => void;
   };
   /** The three ways back. The Back key hands the step what leaving does; the other two go one step back. */
   const waysBack: [string, () => WayBack][] = [
@@ -541,8 +545,8 @@ describe('GRN items step, going back to Details with a correction that was not c
   const NOT_LEFT = { byRouteLeave: 0, byRouterBack: 0 };
   const leftOnce = (way: WayBack) => (way.backGuard ? { byRouteLeave: 1, byRouterBack: 0 } : { byRouteLeave: 0, byRouterBack: 1 });
 
-  async function setUp(way: WayBack, type: (tree: ReactTestRenderer) => Promise<void> | void = correctRowFive) {
-    const tree = await render('edit', lines(10), way.backGuard);
+  async function setUp(way: WayBack, type: (tree: Tree) => Promise<void> | void = correctRowFive) {
+    const tree = await mountStep('edit', lines(10), way.backGuard);
     const before = storedItems();
     await type(tree);
     // What the store held for item 5 at the moment the step was left.
@@ -596,8 +600,8 @@ describe('GRN items step, going back to Details with a correction that was not c
   it.each(waysBack)('%s, Save changes on a correction that cannot be saved: stays on the step', async (_name, makeWay) => {
     const { tree, before, left } = await setUp(makeWay(), async (step) => {
       await openRow(step, 5);
-      set(step, 'qty', '0');
-      set(step, 'rack', 'TEMP');
+      await set(step, 'qty', '0');
+      await set(step, 'rack', 'TEMP');
     });
 
     await answer('Save changes');
@@ -621,10 +625,10 @@ describe('GRN items step, going back to Details with a correction that was not c
 
   it.each(waysBack)('%s with a new item that was typed asks about it, and Discard item goes to Details', async (_name, makeWay) => {
     const way = makeWay();
-    const { before, left } = await setUp(way, (step) => {
-      set(step, 'item_table_id', NEW_ITEM_ID);
-      set(step, 'item_name', 'Fictional garlic');
-      set(step, 'qty', '7');
+    const { before, left } = await setUp(way, async (step) => {
+      await set(step, 'item_table_id', NEW_ITEM_ID);
+      await set(step, 'item_name', 'Fictional garlic');
+      await set(step, 'qty', '7');
     });
     expect(lastAlert()?.[0]).toBe('Save this item?');
     expect(left()).toEqual(NOT_LEFT);
@@ -638,11 +642,10 @@ describe('GRN items step, going back to Details with a correction that was not c
 
   it('takes its guard off the route when the step goes away', async () => {
     const backGuard: React.RefObject<GrnItemsBackGuard | null> = { current: null };
-    const tree = await render('create', lines(2), backGuard);
+    const tree = await mountStep('create', lines(2), backGuard);
     expect(backGuard.current).toEqual(expect.any(Function));
 
-    await act(async () => { tree.unmount(); });
-    mounted.length = 0;
+    await tree.unmount();
 
     expect(backGuard.current).toBeNull();
   });
@@ -650,7 +653,7 @@ describe('GRN items step, going back to Details with a correction that was not c
 
 describe('GRN items step, opening another saved item with an item in the form', () => {
   it('asks, and the form still holds the item that was being corrected', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await correctRowFive(tree);
 
     await openRow(tree, 2);
@@ -661,7 +664,7 @@ describe('GRN items step, opening another saved item with an item in the form', 
   });
 
   it('Save changes: the corrected item is stored and the other one is in the form', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await correctRowFive(tree);
     await openRow(tree, 2);
 
@@ -677,7 +680,7 @@ describe('GRN items step, opening another saved item with an item in the form', 
   });
 
   it('Discard changes: nothing is stored and the other one is in the form', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     const before = storedItems();
     await correctRowFive(tree);
     await openRow(tree, 2);
@@ -692,7 +695,7 @@ describe('GRN items step, opening another saved item with an item in the form', 
   });
 
   it('Keep editing: the item that was being corrected stays in the form', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     const before = storedItems();
     await correctRowFive(tree);
     await openRow(tree, 2);
@@ -704,7 +707,7 @@ describe('GRN items step, opening another saved item with an item in the form', 
   });
 
   it('a tap on the item that is already in the form does nothing', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await correctRowFive(tree);
 
     await openRow(tree, 5);
@@ -714,10 +717,10 @@ describe('GRN items step, opening another saved item with an item in the form', 
   });
 
   it('a new item that was typed is asked about too, and Save item stores it before the saved one is opened', async () => {
-    const tree = await render('create', lines(3));
-    set(tree, 'item_table_id', NEW_ITEM_ID);
-    set(tree, 'item_name', 'Fictional garlic');
-    set(tree, 'qty', '7');
+    const tree = await mountStep('create', lines(3));
+    await set(tree, 'item_table_id', NEW_ITEM_ID);
+    await set(tree, 'item_name', 'Fictional garlic');
+    await set(tree, 'qty', '7');
 
     await openRow(tree, 2);
     expect(lastAlert()?.[0]).toBe('Save this item?');
@@ -729,7 +732,7 @@ describe('GRN items step, opening another saved item with an item in the form', 
   });
 
   it('with nothing typed the saved item opens at once', async () => {
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
 
     await openRow(tree, 2);
 
@@ -752,15 +755,15 @@ describe('GRN items step, photos of an item that is left', () => {
     });
   };
   /** The camera button of the form, then "Choose from gallery". */
-  async function pickFromGallery(tree: ReactTestRenderer) {
-    act(() => form(tree).props.onImagePick());
+  async function pickFromGallery(tree: Tree) {
+    await act(() => form(tree).props.onImagePick());
     await answer('Choose from gallery');
   }
   const removedImages = () => mockStore.getState().grnForm.removedImages;
 
   // A photo taken off a saved item reaches the store at once and waits to be deleted when the GRN is saved.
   it('Discard changes puts a removed saved photo back, and the save no longer deletes it', async () => {
-    const tree = await render('edit', lines(10, { 5: { trl_images: [savedPhoto] } }));
+    const tree = await mountStep('edit', lines(10, { 5: { trl_images: [savedPhoto] } }));
     await openRow(tree, 5);
     await act(async () => { await form(tree).props.onImageRemove(SAVED_PHOTO); });
     expect(storedItems()[4].trl_images).toEqual([]);
@@ -779,7 +782,7 @@ describe('GRN items step, photos of an item that is left', () => {
   });
 
   it('Save changes keeps the photo removed, for the save to delete', async () => {
-    const tree = await render('edit', lines(10, { 5: { trl_images: [savedPhoto] } }));
+    const tree = await mountStep('edit', lines(10, { 5: { trl_images: [savedPhoto] } }));
     await openRow(tree, 5);
     await act(async () => { await form(tree).props.onImageRemove(SAVED_PHOTO); });
     await pressNext(tree);
@@ -793,7 +796,7 @@ describe('GRN items step, photos of an item that is left', () => {
 
   it('Discard changes takes a photo picked for a saved item out again and releases its file', async () => {
     pickedPhoto();
-    const tree = await render('edit', lines(10, { 5: { trl_images: [savedPhoto] } }));
+    const tree = await mountStep('edit', lines(10, { 5: { trl_images: [savedPhoto] } }));
     await openRow(tree, 5);
     await pickFromGallery(tree);
     expect(storedItems()[4].trl_images).toHaveLength(2);
@@ -812,7 +815,7 @@ describe('GRN items step, photos of an item that is left', () => {
   const earlierPhoto: GRNImageData = { id: 'temp_100', fileName: 'earlier.webp', imageUrl: 'file:///cache/earlier.webp', uploadStatus: 'completed' };
 
   it('a photo the saved item already had keeps its file while its removal can still be discarded', async () => {
-    const tree = await render('create', lines(3, { 2: { trl_images: [earlierPhoto] } }));
+    const tree = await mountStep('create', lines(3, { 2: { trl_images: [earlierPhoto] } }));
     await openRow(tree, 2);
 
     await act(async () => { await form(tree).props.onImageRemove(earlierPhoto.id); });
@@ -828,10 +831,10 @@ describe('GRN items step, photos of an item that is left', () => {
   });
 
   it.each([
-    ['Save changes in the question', async (tree: ReactTestRenderer) => { await pressNext(tree); await answer('Save changes'); }],
-    ['the checkmark', async (tree: ReactTestRenderer) => { await act(async () => { await form(tree).props.onSaveItem(); }); }],
+    ['Save changes in the question', async (tree: Tree) => { await pressNext(tree); await answer('Save changes'); }],
+    ['the checkmark', async (tree: Tree) => { await act(async () => { await form(tree).props.onSaveItem(); }); }],
   ])('a photo the saved item already had: %s makes its removal final and releases its file', async (_how, save) => {
-    const tree = await render('create', lines(3, { 2: { trl_images: [earlierPhoto] } }));
+    const tree = await mountStep('create', lines(3, { 2: { trl_images: [earlierPhoto] } }));
     await openRow(tree, 2);
     await act(async () => { await form(tree).props.onImageRemove(earlierPhoto.id); });
 
@@ -844,7 +847,7 @@ describe('GRN items step, photos of an item that is left', () => {
 
   it('a new item with only a photo is asked about, and Discard item releases the photo\'s file', async () => {
     pickedPhoto();
-    const tree = await render('create', lines(3));
+    const tree = await mountStep('create', lines(3));
     const before = storedItems();
     await pickFromGallery(tree);
     expect(form(tree).props.currentItem.trl_images).toHaveLength(1);
@@ -887,11 +890,11 @@ describe('GRN items step, photos of an item that is left', () => {
       });
       (uploadGRNItemImage as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => { endPreparation = resolve; }));
 
-      const tree = await render('create', lines(2));
-      set(tree, 'item_table_id', NEW_ITEM_ID);
-      set(tree, 'item_name', 'Fictional garlic');
-      set(tree, 'qty', '7');
-      act(() => form(tree).props.onImagePick());
+      const tree = await mountStep('create', lines(2));
+      await set(tree, 'item_table_id', NEW_ITEM_ID);
+      await set(tree, 'item_name', 'Fictional garlic');
+      await set(tree, 'qty', '7');
+      await act(() => form(tree).props.onImagePick());
       const gallery = lastAlert()?.[2]?.find((candidate) => candidate.text === 'Choose from gallery');
       let picking!: Promise<unknown>;
       await act(async () => {
@@ -911,7 +914,7 @@ describe('GRN items step, photos of an item that is left', () => {
       return { tree, photoId: storedItems()[2].trl_images[0].id, finish };
     }
     /** Everywhere the third item's photos are held once the step is left for Review. */
-    const photosOfItemThree = (tree: ReactTestRenderer) => ({
+    const photosOfItemThree = (tree: Tree) => ({
       stored: storedItems()[2].trl_images,
       sentToReview: sentToReview()?.[2].trl_images,
       inSavedItemsSheet: sheet(tree).props.items[2].trl_images,
@@ -974,7 +977,7 @@ describe('GRN items step, photos of an item that is left', () => {
       const { tree, finish } = await reopenedWhilePreparing();
       await finish({ success: false, error: 'The photo is too large.' });
 
-      set(tree, 'package_mark', 'OTHER');
+      await set(tree, 'package_mark', 'OTHER');
       await pressNext(tree);
       expect(lastAlert()?.[0]).toBe('Save changes to this item?');
       await answer('Discard changes');
@@ -993,10 +996,10 @@ describe('GRN items step, deleting a saved item while a new one is being typed',
     ['one of three saved items', 3, 2, 2],
     ['the only saved item', 1, 1, 0],
   ])('deleting %s keeps what was typed', async (_what, saved, deleted, left) => {
-    const tree = await render('create', lines(saved));
-    set(tree, 'item_table_id', NEW_ITEM_ID);
-    set(tree, 'item_name', 'Fictional garlic');
-    set(tree, 'package_mark', 'HALF');
+    const tree = await mountStep('create', lines(saved));
+    await set(tree, 'item_table_id', NEW_ITEM_ID);
+    await set(tree, 'item_name', 'Fictional garlic');
+    await set(tree, 'package_mark', 'HALF');
     const typed = inForm(tree);
 
     await act(async () => { sheet(tree).props.onRemoveItem(lineId(deleted)); });
@@ -1008,9 +1011,9 @@ describe('GRN items step, deleting a saved item while a new one is being typed',
   });
 
   it('deleting the saved item that is being corrected closes the form', async () => {
-    const tree = await render('edit', lines(3));
+    const tree = await mountStep('edit', lines(3));
     await openRow(tree, 2);
-    set(tree, 'qty', '99');
+    await set(tree, 'qty', '99');
 
     await act(async () => { sheet(tree).props.onRemoveItem(lineId(2)); });
 
@@ -1025,19 +1028,19 @@ describe('GRN items step, deleting a saved item while a new one is being typed',
 
 describe('GRN items step, a saved item tapped in the sheet while an item is unsaved', () => {
   /** What the sheet does when a row is tapped: it reports the row, then closes itself. */
-  const tapRowInSheet = (tree: ReactTestRenderer, n: number) =>
+  const tapRowInSheet = (tree: Tree, n: number) =>
     act(async () => {
       sheet(tree).props.onEditItem(sheet(tree).props.items[n - 1]);
       sheet(tree).props.onClose();
     });
   /** iOS tells when the sheet's Modal is fully gone. */
-  const sheetGone = (tree: ReactTestRenderer) => act(async () => { sheet(tree).props.onDismissed?.(); });
+  const sheetGone = (tree: Tree) => act(async () => { sheet(tree).props.onDismissed?.(); });
 
   // iOS cannot present the question over a Modal that is still going away: it never appears
   // and the step then refuses every way out.
   it('iOS: the question is raised after the sheet has gone, not while it is closing', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await correctRowFive(tree);
     await act(async () => { sheet(tree).props.onClose(); });
 
@@ -1055,10 +1058,10 @@ describe('GRN items step, a saved item tapped in the sheet while an item is unsa
   it('Android: the question is raised once the sheet is hidden', async () => {
     jest.replaceProperty(Platform, 'OS', 'android');
     jest.useFakeTimers();
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await correctRowFive(tree);
     // "View all" opens the sheet (after a short pause); Android has no event for its closing.
-    act(() => form(tree).props.onViewAll());
+    await act(() => form(tree).props.onViewAll());
     await act(async () => { jest.advanceTimersByTime(200); });
 
     await tapRowInSheet(tree, 2);
@@ -1070,7 +1073,7 @@ describe('GRN items step, a saved item tapped in the sheet while an item is unsa
 
   it('with nothing typed the row opens at once, without waiting for the sheet', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
 
     await tapRowInSheet(tree, 2);
 
@@ -1080,7 +1083,7 @@ describe('GRN items step, a saved item tapped in the sheet while an item is unsa
 
   it('a tap on the row already in the form is ignored, also after the sheet has gone', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
-    const tree = await render('edit', lines(10));
+    const tree = await mountStep('edit', lines(10));
     await correctRowFive(tree);
 
     await tapRowInSheet(tree, 5);
@@ -1092,7 +1095,7 @@ describe('GRN items step, a saved item tapped in the sheet while an item is unsa
 });
 
 describe('GRN items step, a photo still being prepared when its item is discarded', () => {
-  const pick = async (tree: ReactTestRenderer) => {
+  const pick = async (tree: Tree) => {
     let now = Date.parse('2026-10-10T08:00:00.000Z');
     jest.spyOn(Date, 'now').mockImplementation(() => (now += 1000));
     let end!: (result: unknown) => void;
@@ -1101,10 +1104,10 @@ describe('GRN items step, a photo still being prepared when its item is discarde
       assets: [{ uri: 'file:///camera/raw.jpg', fileName: 'raw.jpg', fileSize: 5000, mimeType: 'image/jpeg' }],
     });
     (uploadGRNItemImage as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => { end = resolve; }));
-    set(tree, 'item_table_id', NEW_ITEM_ID);
-    set(tree, 'item_name', 'Fictional garlic');
-    set(tree, 'qty', '7');
-    act(() => form(tree).props.onImagePick());
+    await set(tree, 'item_table_id', NEW_ITEM_ID);
+    await set(tree, 'item_name', 'Fictional garlic');
+    await set(tree, 'qty', '7');
+    await act(() => form(tree).props.onImagePick());
     const gallery = lastAlert()?.[2]?.find((candidate) => candidate.text === 'Choose from gallery');
     let picking!: Promise<unknown>;
     await act(async () => {
@@ -1116,7 +1119,7 @@ describe('GRN items step, a photo still being prepared when its item is discarde
   };
 
   it('a failed preparation after "Discard item" shows no message', async () => {
-    const tree = await render('create', lines(2));
+    const tree = await mountStep('create', lines(2));
     const finish = await pick(tree);
     await pressNext(tree);
     await answer('Discard item');
@@ -1129,7 +1132,7 @@ describe('GRN items step, a photo still being prepared when its item is discarde
   });
 
   it('a prepared copy that arrives after "Discard item" is released', async () => {
-    const tree = await render('create', lines(2));
+    const tree = await mountStep('create', lines(2));
     const finish = await pick(tree);
     await pressNext(tree);
     await answer('Discard item');

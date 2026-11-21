@@ -7,8 +7,7 @@ import React from 'react';
 import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
 
 registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
-import { Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 
 let mockState: Record<string, unknown> = {};
@@ -205,36 +204,37 @@ const SCREENS: Array<[string, () => React.ReactElement, string | ((t: ReturnType
 
 const MODES: Mode[] = ['light', 'dark'];
 
-function styleValues(tree: ReactTestRenderer, key: 'backgroundColor' | 'color'): string[] {
-  return tree.root
-    .findAll(node => typeof node.type === 'string' && !!node.props.style)
-    .flatMap(node =>
-      [node.props.style]
-        .flat(Infinity)
-        .filter(Boolean)
-        .map((s: Record<string, string>) => s[key])
-        .filter(Boolean)
-    );
+type Json = ReturnType<typeof screen.toJSON>;
+/** Every style value of one kind on the drawn screen. The colours of all nodes are the point of this test, and no query lists them, so the drawn tree is walked. */
+function styleValues(key: 'backgroundColor' | 'color'): string[] {
+  const walk = (node: Json | string): string[] => {
+    if (node === null || typeof node === 'string') return [];
+    if (Array.isArray(node)) return node.flatMap(walk);
+    const own = [node.props.style]
+      .flat(Infinity)
+      .filter(Boolean)
+      .map((s: Record<string, string>) => s[key])
+      .filter(Boolean);
+    return [...own, ...(node.children ?? []).flatMap(walk)];
+  };
+  return walk(screen.toJSON());
 }
 
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as [Brand, Mode])))('%s %s', (brand, mode) => {
   const tokens = getTokens(brand, mode);
 
-  it.each(SCREENS)('renders %s with themed colours', async (_name, render, background) => {
+  it.each(SCREENS)('renders %s with themed colours', async (_name, makeScreen, background) => {
     mockState = {
       theme: { preference: mode, brand },
       auth: { user: { id: 'a1' }, userProfile: { id: 'u1', name: 'Asha', role: 'admin', mobile: '9876543210' } },
       // Item pricing reads its filters from here: one applied, as before.
       listFilters: { lists: { 'item-rates-list': { values: { priceType: 'monthly' } } } },
     };
-    let tree!: ReactTestRenderer;
-    await act(async () => {
-      tree = create(render());
-    });
-    const backgrounds = styleValues(tree, 'backgroundColor');
+    await render(makeScreen());
+    const backgrounds = styleValues('backgroundColor');
     const expected = typeof background === 'function' ? background(tokens) : background;
     expect(backgrounds).toContain(expected);
-    const colours = [...backgrounds, ...styleValues(tree, 'color')].map(c => String(c).toLowerCase());
+    const colours = [...backgrounds, ...styleValues('color')].map(c => String(c).toLowerCase());
     // Token colours of every brand in this mode (Settings shows both brands' swatches).
     const allowed = new Set(
       BRANDS.flatMap(b => JSON.stringify(getTokens(b, mode)).match(/#[0-9a-f]{3,8}/gi) ?? []).map(c =>
@@ -246,10 +246,7 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as [Brand,
         expect(allowed.has(c)).toBe(true);
       }
     }
-    expect(tree.root.findAllByType(Text).length).toBeGreaterThan(0);
-    await act(async () => {
-      tree.unmount();
-    });
+    expect(screen.queryAllByText(/./).length).toBeGreaterThan(0);
   });
 });
 
@@ -268,13 +265,6 @@ describe('what each role is offered', () => {
       listFilters: { lists: {} },
     };
   };
-  const renderScreen = async (element: React.ReactElement) => {
-    let tree!: ReactTestRenderer;
-    await act(async () => {
-      tree = create(element);
-    });
-    return tree;
-  };
 
   // The Sensors row also needs the facility's `sensors` capability (its public config).
   const FACILITY = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
@@ -291,17 +281,20 @@ describe('what each role is offered', () => {
     setFacilityCapabilities(FACILITY, { sensors });
     // Document numbers is offered where the backend has migration 127.
     setFacilityRelease(FACILITY, { schemaHead: '00000000000127_document_numbering' });
-    const tree = await renderScreen(<SettingsScreen />);
-    const shown = tree.root
-      .findAll(node => typeof node.type !== 'string' && String(node.props.testID ?? '').startsWith('settings-feature-'))
+    await render(<SettingsScreen />);
+    // The rows carry no role or label of their own that names the feature; their testID is the handle.
+    const shown = screen
+      .queryAllByTestId(/^settings-feature-/)
       .map(node => String(node.props.testID).replace('settings-feature-', ''));
     expect([...new Set(shown)]).toEqual(rows);
-    await act(async () => { tree.unmount(); });
-    resetFacilityCapabilities();
-    resetFacilityRelease();
-    await clearOperatorServer();
   });
 
+  afterEach(async () => {
+    resetFacilityCapabilities();
+    resetFacilityRelease();
+
+
+  });
   it.each([
     // caller, caller id, target role, target id, role and status open, assignments open
     // (customer assignments belong to the Customer role only; any other role gets a note instead)
@@ -325,21 +318,15 @@ describe('what each role is offered', () => {
         assigned_customers: [{ customer_id: 'c1', customer_name: 'Patel Traders', customer_mobile: '9812345678', customer_city: 'Rajkot' }],
       },
     });
-    const tree = await renderScreen(<UserEditScreen />);
-    const byLabel = (label: string) =>
-      tree.root.findAll(node => typeof node.type !== 'string' && node.props.accessibilityLabel === label);
-    const roleRow = tree.root.findAll(
-      node => typeof node.type !== 'string' && String(node.props.accessibilityLabel ?? '').startsWith('User role,') && node.props.accessibilityState
-    )[0];
+    await render(<UserEditScreen />);
+    const roleRow = screen.getAllByLabelText(/^User role,/)[0];
+    // Exact true/false: the key must be there (toBeDisabled and toBeEnabled also pass when it is missing).
     expect(roleRow.props.accessibilityState.disabled).toBe(!canEdit);
-    const statusSwitch = byLabel('Account active')[0];
-    expect(statusSwitch.props.disabled).toBe(!canEdit);
-    expect(byLabel('Assign customer').length > 0).toBe(canAssign);
-    expect(byLabel('Remove Patel Traders').length > 0).toBe(canAssign);
+    expect(screen.getAllByLabelText('Account active')[0].props.disabled).toBe(!canEdit);
+    expect(screen.queryAllByLabelText('Assign customer').length > 0).toBe(canAssign);
+    expect(screen.queryAllByLabelText('Remove Patel Traders').length > 0).toBe(canAssign);
     if (targetRole !== 'customer') {
-      const all = tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-      expect(all).toContain('Staff see every active customer. Customer assignments apply only to the Customer role.');
+      expect(screen.getByText('Staff see every active customer. Customer assignments apply only to the Customer role.')).toBeOnTheScreen();
     }
-    await act(async () => { tree.unmount(); });
   });
 });

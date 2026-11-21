@@ -35,16 +35,43 @@ export const toolingParents = [
   '@sentry/bundler-plugins',
 ];
 
-// Every place in the production tree (`npm ls --omit=dev --all --json`) where one of `names` is declared as a
-// dependency by a package that is not a tooling parent (the packages in `names` may declare one another).
+// Every place in the production tree (`npm ls --omit=dev --all --long --json`) where one of `names` is declared as
+// a dependency by a package that is not a tooling parent (the packages in `names` may declare one another).
+// npm keeps an optional peer in that tree when a dev dependency installs it (lockfile `devOptional`), for example
+// `expo-router > @testing-library/react-native`. Such an edge is not followed: the package is optional for its parent
+// and installed only because the app lists it in devDependencies, so the app does not ship it. A required peer, an
+// optional peer that anything else in production needs (npm then drops `devOptional`), and an optionalDependencies
+// edge are still followed.
 export function shippedPaths(tree, names, allowedParents = toolingParents) {
   if (!tree || typeof tree !== 'object' || !tree.dependencies || typeof tree.dependencies !== 'object') throw new Error('Missing or unsupported npm ls report');
+  // npm ls lists an installed package's dependencies once and prints its other occurrences without them, so every
+  // occurrence of an installed `path` is read through the occurrence that lists them.
+  const listed = new Map();
+  const collect = node => {
+    for (const child of Object.values(node.dependencies ?? {})) {
+      if (!child || typeof child !== 'object') continue;
+      if (typeof child.path === 'string' && Object.keys(child.dependencies ?? {}).length && !listed.has(child.path)) listed.set(child.path, child);
+      collect(child);
+    }
+  };
+  collect(tree);
+  const full = node => (typeof node?.path === 'string' && listed.get(node.path)) || node || {};
+  const devOnlyOptionalPeer = (parent, name, child) => parent.peerDependenciesMeta?.[name]?.optional === true
+    && Object.hasOwn(parent.peerDependencies ?? {}, name) && child.devOptional === true
+    && Object.hasOwn(tree.devDependencies ?? {}, name);
+  const visited = new Set();
   const found = [];
   const walk = (node, chain) => {
-    for (const [name, child] of Object.entries(node.dependencies ?? {})) {
+    for (const [name, listedChild] of Object.entries(node.dependencies ?? {})) {
+      const child = full(listedChild);
+      if (devOnlyOptionalPeer(node, name, child)) continue;
       const parent = chain[chain.length - 1];
       if (names.includes(name) && !allowedParents.includes(parent) && !names.includes(parent)) found.push({ package: name, path: [...chain, name].join(' > ') });
-      walk(child ?? {}, [...chain, name]);
+      if (typeof child.path === 'string') {
+        if (visited.has(child.path)) continue;
+        visited.add(child.path);
+      }
+      walk(child, [...chain, name]);
     }
   };
   walk(tree, [tree.name ?? '(root)']);
@@ -152,7 +179,7 @@ export function auditDependencies(root, reportDirectory) {
   let report;
   try { report = JSON.parse(run.stdout); } catch { throw new Error('npm audit returned invalid JSON'); }
   // Which of the accepted-without-repair packages the shipped (production) dependency tree declares.
-  const listing = spawnSync('npm', ['ls', '--omit=dev', '--all', '--json'], { cwd: root, encoding: 'utf8', timeout: 120000, maxBuffer: 64 * 1024 * 1024 });
+  const listing = spawnSync('npm', ['ls', '--omit=dev', '--all', '--long', '--json'],{ cwd: root, encoding: 'utf8', timeout: 120000, maxBuffer: 64 * 1024 * 1024 });
   if (listing.error || ![0, 1].includes(listing.status)) throw new Error('npm ls failed to return a complete report');
   let tree;
   try { tree = JSON.parse(listing.stdout); } catch { throw new Error('npm ls returned invalid JSON'); }

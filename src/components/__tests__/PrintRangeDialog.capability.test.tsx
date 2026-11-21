@@ -2,7 +2,7 @@
  * The print dialog follows the facility's own `printing` capability, not the demo default.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -20,29 +20,20 @@ jest.mock('@/config/demoCapabilities', () => ({
 let mockPrinting = true;
 jest.mock('@/hooks/useCapability', () => ({ useCapability: () => mockPrinting }));
 
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join(''));
-
-async function render() {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(
-      <PrintRangeDialog visible onDismiss={jest.fn()} onConfirm={jest.fn(async () => undefined)} title="Print GRNs" defaultNumber="311" entity="grn" />
-    );
-  });
-  return tree;
-}
+const renderDialog = () =>
+  render(
+    <PrintRangeDialog visible onDismiss={jest.fn()} onConfirm={jest.fn(async () => undefined)} title="Print GRNs" defaultNumber="311" entity="grn" />
+  );
 
 it('offers the print form where the facility has printing on', async () => {
   mockPrinting = true;
-  const tree = await render();
-  expect(texts(tree).some(x => x.includes('Printing unavailable'))).toBe(false);
-  act(() => tree.unmount());
+  await renderDialog();
+  expect(screen.getByText('Print GRNs')).toBeOnTheScreen();
+  expect(screen.queryByText(/Printing unavailable/)).not.toBeOnTheScreen();
 });
 
 it('says printing is unavailable where the facility has it off', async () => {
   mockPrinting = false;
-  const tree = await render();
-  expect(texts(tree).some(x => x.includes('Printing unavailable'))).toBe(true);
-  act(() => tree.unmount());
+  await renderDialog();
+  expect(screen.getByText(/Printing unavailable/)).toBeOnTheScreen();
 });

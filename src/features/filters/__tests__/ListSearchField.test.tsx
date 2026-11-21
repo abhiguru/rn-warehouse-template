@@ -1,6 +1,6 @@
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
-import { Keyboard, StyleSheet, TextInput } from 'react-native';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
+import { Keyboard, StyleSheet } from 'react-native';
 import { radius, touchTarget } from '@/theme/tokens';
 import { ListSearchField, SEARCH_DEBOUNCE_MS, rememberSearch } from '../components/ListSearchField';
 import { TextEditor, TextRangeEditor } from '../components/editors/RangeEditors';
@@ -12,117 +12,138 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
-const texts = (renderer: TestRenderer.ReactTestRenderer) =>
-  renderer.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
+type Json = NonNullable<ReturnType<typeof screen.toJSON>>;
+type JsonNode = Extract<Json, { type: string }>;
 
-function render(element: React.ReactElement) {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(element);
-  });
-  return renderer;
+/** The first node under `node` (itself included) that satisfies `test`. No query reaches a View by its style. */
+function findJson(node: Json | string | null | undefined, test: (found: JsonNode) => boolean): JsonNode | undefined {
+  if (!node || typeof node === 'string') return undefined;
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const hit = findJson(child, test);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+  if (test(node)) return node;
+  for (const child of node.children ?? []) {
+    const hit = findJson(child, test);
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 describe('ListSearchField', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  const type = (renderer: TestRenderer.ReactTestRenderer, text: string) => {
-    act(() => renderer.root.findByType(TextInput).props.onChangeText(text));
-    act(() => {
+  const setup = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+  const searchBox = () => screen.getByPlaceholderText('Search');
+
+  /** Replaces the text of the box with `text`, then waits out the debounce. */
+  const type = async (user: ReturnType<typeof setup>, text: string) => {
+    await user.clear(searchBox());
+    await user.paste(searchBox(), text);
+    await act(() => {
       jest.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
     });
   };
 
   // M4-18: one letter stays in the field but is not searched for.
-  it('says that one letter is not searched for', () => {
+  it('says that one letter is not searched for', async () => {
+    const user = setup();
     const onSearch = jest.fn();
-    const renderer = render(<ListSearchField listKey="grn-list" value="" onSearch={onSearch} placeholder="Search" />);
-    expect(texts(renderer)).not.toContain(t('filters.search.minLength'));
+    await render(<ListSearchField listKey="grn-list" value="" onSearch={onSearch} placeholder="Search" />);
+    expect(screen.queryByText(t('filters.search.minLength'))).toBeNull();
 
-    type(renderer, 'B');
+    await type(user, 'B');
     expect(onSearch).not.toHaveBeenCalled();
-    expect(texts(renderer)).toContain(t('filters.search.minLength'));
+    expect(screen.getByText(t('filters.search.minLength'))).toBeOnTheScreen();
 
-    type(renderer, 'B9');
+    await type(user, 'B9');
     expect(onSearch).toHaveBeenCalledWith('B9');
-    expect(texts(renderer)).not.toContain(t('filters.search.minLength'));
+    expect(screen.queryByText(t('filters.search.minLength'))).toBeNull();
   });
 
   // X1-8: the server reads the first eight words of a search and drops the rest.
-  it('says that words after the eighth are not searched for', () => {
+  it('says that words after the eighth are not searched for', async () => {
+    const user = setup();
     const onSearch = jest.fn();
-    const renderer = render(<ListSearchField listKey="grn-list" value="" onSearch={onSearch} placeholder="Search" />);
+    await render(<ListSearchField listKey="grn-list" value="" onSearch={onSearch} placeholder="Search" />);
 
-    type(renderer, 'one two three four five six seven eight');
-    expect(texts(renderer)).not.toContain(t('filters.search.tooManyWords'));
+    await type(user, 'one two three four five six seven eight');
+    expect(screen.queryByText(t('filters.search.tooManyWords'))).toBeNull();
 
-    type(renderer, 'one two three four five six seven eight nine');
-    expect(texts(renderer)).toContain(t('filters.search.tooManyWords'));
+    await type(user, 'one two three four five six seven eight nine');
+    expect(screen.getByText(t('filters.search.tooManyWords'))).toBeOnTheScreen();
     expect(t('filters.search.tooManyWords')).toBe('Only the first eight words are searched.');
   });
 
   // M4-10: the server reads at most 120 characters of a search.
-  it('takes no more text than the server reads', () => {
-    const renderer = render(<ListSearchField listKey="grn-list" value="" onSearch={jest.fn()} placeholder="Search" />);
-    expect(renderer.root.findByType(TextInput).props.maxLength).toBe(120);
+  it('takes no more text than the server reads', async () => {
+    await render(<ListSearchField listKey="grn-list" value="" onSearch={jest.fn()} placeholder="Search" />);
+    expect(searchBox()).toHaveProp('maxLength', 120);
   });
 
   // The clear button empties the field and the search, and puts the keyboard away.
-  it('clears the text and the search and dismisses the keyboard once when the clear button is pressed', () => {
+  it('clears the text and the search and dismisses the keyboard once when the clear button is pressed', async () => {
     const dismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => undefined);
     try {
+      const user = setup();
       const onSearch = jest.fn();
-      const renderer = render(<ListSearchField listKey="clear-test" value="" onSearch={onSearch} placeholder="Search" />);
-      type(renderer, 'garlic');
-      expect(renderer.root.findByType(TextInput).props.value).toBe('garlic');
+      await render(<ListSearchField listKey="clear-test" value="" onSearch={onSearch} placeholder="Search" />);
+      await type(user, 'garlic');
+      expect(searchBox()).toHaveDisplayValue('garlic');
       expect(onSearch).toHaveBeenLastCalledWith('garlic');
       expect(dismiss).not.toHaveBeenCalled();
 
-      const clear = renderer.root.find(node => node.props.accessibilityLabel === t('common.clearSearch') && typeof node.props.onPress === 'function');
-      act(() => clear.props.onPress());
+      await user.press(screen.getByRole('button', { name: t('common.clearSearch') }));
       expect(dismiss).toHaveBeenCalledTimes(1);
-      expect(renderer.root.findByType(TextInput).props.value).toBe('');
+      expect(searchBox()).toHaveDisplayValue('');
       expect(onSearch).toHaveBeenLastCalledWith('');
       // Nothing to clear any more: the button is gone.
-      expect(renderer.root.findAll(node => node.props.accessibilityLabel === t('common.clearSearch'))).toEqual([]);
+      expect(screen.queryByRole('button', { name: t('common.clearSearch') })).toBeNull();
     } finally {
       dismiss.mockRestore();
     }
   });
 
   // §11.2: a recent search is a whole touch target, its 32 high pill drawn inside; no hitSlop.
-  it('offers each recent search as a whole touch target, and searches it again', () => {
+  it('offers each recent search as a whole touch target, and searches it again', async () => {
+    const user = setup();
     rememberSearch('recent-target-test', 'garlic');
     const onSearch = jest.fn();
-    const renderer = render(<ListSearchField listKey="recent-target-test" value="" onSearch={onSearch} placeholder="Search" />);
-    act(() => renderer.root.findByType(TextInput).props.onFocus());
-    const chip = renderer.root.find(
-      node => typeof node.type !== 'string' && node.props.accessibilityLabel === t('filters.search.searchAgain', { text: 'garlic' }) && typeof node.props.onPress === 'function'
-    );
+    await render(<ListSearchField listKey="recent-target-test" value="" onSearch={onSearch} placeholder="Search" />);
+    // A press does not focus a TextInput in the test renderer.
+    await fireEvent(searchBox(), 'focus', {});
+    const name = t('filters.search.searchAgain', { text: 'garlic' });
+    const chip = screen.getByRole('button', { name });
     expect(StyleSheet.flatten(chip.props.style).minHeight).toBe(touchTarget);
     expect(chip.props.hitSlop).toBeUndefined();
-    const pill = chip.findAll(node => (node.type as unknown) === 'View' && StyleSheet.flatten(node.props.style)?.borderRadius === radius.pill);
-    expect(StyleSheet.flatten(pill[0].props.style).minHeight).toBe(32);
-    act(() => chip.props.onPress());
+    const chipJson = findJson(screen.toJSON(), node => node.props.accessibilityLabel === name);
+    const pill = findJson(chipJson, node => node.type === 'View' && StyleSheet.flatten(node.props.style)?.borderRadius === radius.pill);
+    expect(StyleSheet.flatten(pill!.props.style).minHeight).toBe(32);
+    await user.press(chip);
     expect(onSearch).toHaveBeenCalledWith('garlic');
   });
 });
 
 describe('filter text boxes', () => {
   // M4-6: document numbers are stored in capitals.
-  it('a document-number range box holds capitals and 0-9', () => {
+  it('a document-number range box holds capitals and 0-9', async () => {
     const onChange = jest.fn();
-    const renderer = render(<TextRangeEditor label="GRN no." value={undefined} onChange={onChange} />);
-    act(() => renderer.root.findAllByType(TextInput)[0].props.onChangeText('a૦૦૧૦'));
+    const user = userEvent.setup({ delay: 0 });
+    await render(<TextRangeEditor label="GRN no." value={undefined} onChange={onChange} />);
+    await user.paste(screen.getAllByPlaceholderText(t('common.any'))[0], 'a૦૦૧૦');
     expect(onChange).toHaveBeenCalledWith({ from: 'A0010', to: undefined });
   });
 
   // M4-8: ૦-૯ typed into Package or GRN number matched nothing.
-  it('a text box holds 0-9 whatever digits were typed', () => {
+  it('a text box holds 0-9 whatever digits were typed', async () => {
     const onChange = jest.fn();
-    const renderer = render(<TextEditor label="Package" value={undefined} onChange={onChange} />);
-    act(() => renderer.root.findByType(TextInput).props.onChangeText('red ૧૨'));
+    const user = userEvent.setup({ delay: 0 });
+    await render(<TextEditor label="Package" value={undefined} onChange={onChange} />);
+    await user.paste(screen.getByLabelText('Package'), 'red ૧૨');
     expect(onChange).toHaveBeenCalledWith('red 12');
   });
 });

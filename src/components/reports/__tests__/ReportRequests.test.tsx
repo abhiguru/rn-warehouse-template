@@ -10,9 +10,8 @@
  * store (e.g. DispatchActivityFlow.test.tsx).
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import ItemStockSummaryScreen from '../../../../app/reports/item-stock-summary';
-import { Button } from '@/components/ui/Button';
 import { StockService } from '@/services/stock-service';
 import { getAllGRNItems } from '@/services/grn-service';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
@@ -50,19 +49,14 @@ jest.mock('@/config/operatorServer', () => ({
 const ADMIN = { id: 'p1', role: 'admin', assignedCustomerIds: [] };
 const CUSTOMER = { id: 'p2', role: 'customer', assignedCustomerIds: ['c1'], assignedCustomers: [{ id: 'c1', name: 'Fictional Traders', active: true }] };
 
-let tree: ReactTestRenderer | undefined;
 async function open(Screen: React.ComponentType, profile: object = ADMIN) {
   mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: profile } };
-  await act(async () => {
-    tree = create(<Screen />);
-  });
+  await render(<Screen />);
 }
-const texts = () => tree!.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
+const itemNames = () => screen.queryAllByText(/^Example /).map((node) => [node.props.children].flat().join(''));
 const press = async (label: string) => {
-  const control = tree!.root.findAll((node) => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel ?? '').startsWith(label))[0];
-  await act(async () => {
-    control.props.onPress();
-  });
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: new RegExp(`^${label}`) }));
 };
 
 /** A request that stays unanswered until the test answers it. */
@@ -82,10 +76,8 @@ beforeEach(() => {
   }
   mockParams = {};
 });
-afterEach(async () => {
+afterEach(() => {
   jest.useRealTimers();
-  if (tree) await act(async () => tree!.unmount());
-  tree = undefined;
 });
 
 describe('item stock summary', () => {
@@ -99,9 +91,20 @@ describe('item stock summary', () => {
   const ONIONS = { item_id: 'item-2', item_name: 'Example Onions', total_qty: 80, total_stock: 40, grn_count: 2 };
   const page = (items: object[], totalCount = items.length): Page =>
     ({ success: true, message: '', data: { items, pagination: { totalCount, hasMore: items.length < totalCount, limit: 50, offset: 0 } } }) as never;
-  const itemNames = () => texts().filter((text) => text.startsWith('Example '));
-  const rows = () => tree!.root.findByType('FlashList' as never);
-  const footerButtons = (label: string) => tree!.root.findAllByType(Button).filter((button) => button.props.children === label);
+
+  // The list stand-in (flashListMock) is one host element named "FlashList" that keeps the list's
+  // props, so the end of the list can be reached; Testing Library has no query for it.
+  type Node = NonNullable<typeof screen.root>;
+  const findFlashList = (node: Node): Node | undefined =>
+    (node.type as unknown) === 'FlashList'
+      ? node
+      : (node.children as unknown[]).filter((child): child is Node => typeof child !== 'string').map(findFlashList).find(Boolean);
+  const reachEnd = () => {
+    const rows = screen.root && findFlashList(screen.root);
+    if (!rows) throw new Error('The list is not on the screen');
+    rows.props.onEndReached();
+  };
+  const footerButtons = (label: string) => screen.queryAllByRole('button', { name: label });
 
   let restoreQueries: () => void;
   beforeAll(() => {
@@ -112,10 +115,8 @@ describe('item stock summary', () => {
 
   async function openItems(profile: object = ADMIN) {
     mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: profile }, listFilters: { lists: {} }, reportPrefs: { byScope: {} } };
-    await act(async () => {
-      tree = create(<ItemStockSummaryScreen />);
-      await settleQueries();
-    });
+    await render(<ItemStockSummaryScreen />);
+    await act(settleQueries);
   }
   const run = (callback: () => void) =>
     act(async () => {
@@ -139,18 +140,18 @@ describe('item stock summary', () => {
 
       // The list reports its end twice before the first report has changed anything.
       await run(() => {
-        rows().props.onEndReached();
-        rows().props.onEndReached();
+        reachEnd();
+        reachEnd();
       });
       expect(list).toHaveBeenCalledTimes(2);
       expect(list.mock.calls[1][0]).toMatchObject({ offset: 1 });
-      expect(texts()).toContain('Loading more items');
+      expect(screen.getByText('Loading more items')).toBeOnTheScreen();
 
       await run(() => next.answer(page([ONIONS], 2)));
       expect(itemNames()).toEqual(['Example Potatoes', 'Example Onions']);
-      expect(texts()).not.toContain('Loading more items');
+      expect(screen.queryByText('Loading more items')).not.toBeOnTheScreen();
       // Everything is loaded: no more to ask for, at the end or with the button.
-      await run(() => rows().props.onEndReached());
+      await run(() => reachEnd());
       expect(list).toHaveBeenCalledTimes(2);
       expect(footerButtons('Show more items')).toHaveLength(0);
     });
@@ -159,22 +160,25 @@ describe('item stock summary', () => {
       list.mockResolvedValueOnce(page([POTATOES], 2)).mockResolvedValueOnce({ success: false, message: 'The facility is busy.' } as never);
       await openItems();
       expect(footerButtons('Show more items')).toHaveLength(1);
-      await run(() => rows().props.onEndReached());
+      await run(() => reachEnd());
       expect(list).toHaveBeenCalledTimes(2);
       // What failed and what to do; the service's own words are not shown.
-      expect(texts()).toEqual(expect.arrayContaining(["Couldn't load more items.", 'Check your connection and try again.']));
-      expect(texts()).not.toContain('The facility is busy.');
+      expect(screen.getByText("Couldn't load more items.")).toBeOnTheScreen();
+      expect(screen.getByText('Check your connection and try again.')).toBeOnTheScreen();
+      expect(screen.queryByText('The facility is busy.')).not.toBeOnTheScreen();
       expect(itemNames()).toEqual(['Example Potatoes']);
 
-      await run(() => rows().props.onEndReached());
+      await run(() => reachEnd());
       expect(list).toHaveBeenCalledTimes(2);
 
       list.mockResolvedValueOnce(page([ONIONS], 2));
-      await run(() => footerButtons('Try again')[0].props.onPress());
+      const user = userEvent.setup({ delay: 0 });
+      await user.press(footerButtons('Try again')[0]);
+      await act(settleQueries);
       expect(list).toHaveBeenCalledTimes(3);
       expect(list.mock.calls[2][0]).toMatchObject({ offset: 1 });
       expect(itemNames()).toEqual(['Example Potatoes', 'Example Onions']);
-      expect(texts()).not.toContain("Couldn't load more items.");
+      expect(screen.queryByText("Couldn't load more items.")).not.toBeOnTheScreen();
     });
   });
 
@@ -192,27 +196,27 @@ describe('item stock summary', () => {
       grns.mockResolvedValueOnce({ success: false, message: 'refused' } as never);
       await openItems();
       await press('Example Potatoes');
+      await act(settleQueries);
       expect(grns).toHaveBeenCalledTimes(1);
-      expect(texts()).toContain(ERROR);
-      expect(texts()).not.toContain(NONE);
+      expect(screen.getByText(ERROR)).toBeOnTheScreen();
+      expect(screen.queryByText(NONE)).not.toBeOnTheScreen();
       expect(retryButtons()).toHaveLength(1);
 
       // While the second try waits, the card shows that it is loading, not the error.
       const second = pending<never>();
       grns.mockImplementationOnce(() => second.promise);
-      await act(async () => {
-        retryButtons()[0].props.onPress();
-      });
+      const user = userEvent.setup({ delay: 0 });
+      await user.press(retryButtons()[0]);
       expect(grns).toHaveBeenCalledTimes(2);
       expect(grns.mock.calls[1]).toEqual(grns.mock.calls[0]);
-      expect(texts()).toContain('Loading GRNs');
-      expect(texts()).not.toContain(ERROR);
+      expect(screen.getByText('Loading GRNs')).toBeOnTheScreen();
+      expect(screen.queryByText(ERROR)).not.toBeOnTheScreen();
 
       await act(async () => {
         second.answer({ success: true, message: '', data: { items: [GRN] } } as never);
       });
-      expect(texts()).toContain('GRN 311');
-      expect(texts()).not.toContain(ERROR);
+      expect(screen.getByText('GRN 311')).toBeOnTheScreen();
+      expect(screen.queryByText(ERROR)).not.toBeOnTheScreen();
       expect(retryButtons()).toHaveLength(0);
     });
 
@@ -220,21 +224,24 @@ describe('item stock summary', () => {
       grns.mockRejectedValueOnce(new Error('offline'));
       await openItems();
       await press('Example Potatoes');
-      expect(texts()).toContain(ERROR);
-      expect(texts()).not.toContain(NONE);
+      await act(settleQueries);
+      expect(screen.getByText(ERROR)).toBeOnTheScreen();
+      expect(screen.queryByText(NONE)).not.toBeOnTheScreen();
 
       // Closed and opened again: asked again, and this time the item truly has no GRNs in stock.
       grns.mockResolvedValueOnce({ success: true, message: '', data: { items: [] } } as never);
       await press('Example Potatoes');
       await press('Example Potatoes');
+      await act(settleQueries);
       expect(grns).toHaveBeenCalledTimes(2);
-      expect(texts()).toContain(NONE);
-      expect(texts()).not.toContain(ERROR);
+      expect(screen.getByText(NONE)).toBeOnTheScreen();
+      expect(screen.queryByText(ERROR)).not.toBeOnTheScreen();
       expect(retryButtons()).toHaveLength(0);
 
       // A real "no GRNs" answer is kept: a third opening does not ask again.
       await press('Example Potatoes');
       await press('Example Potatoes');
+      await act(settleQueries);
       expect(grns).toHaveBeenCalledTimes(2);
     });
   });

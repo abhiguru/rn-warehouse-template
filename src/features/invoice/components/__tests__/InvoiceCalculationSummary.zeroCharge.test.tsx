@@ -3,8 +3,8 @@
  * of 2026-10-11). It is built like the discount reason field beside it.
  */
 import React from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { InvoiceCalculationSummary } from '../InvoiceCalculationSummary';
 import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 import { getTokens } from '@/theme/tokens';
@@ -30,135 +30,103 @@ const FREE = line('free', 0);
 const PAID = line('paid', 5);
 
 type Props = Partial<React.ComponentProps<typeof InvoiceCalculationSummary>>;
-async function render(props: Props) {
-  let tree!: ReturnType<typeof create>;
-  await act(async () => {
-    tree = create(
-      <InvoiceCalculationSummary header={header()} items={[FREE, PAID]} onDiscountChange={jest.fn()} onZeroChargeReasonChange={jest.fn()} {...props} />
-    );
-  });
-  return tree;
-}
-const reasonInput = (tree: ReturnType<typeof create>, label = 'Reason for zero charge') =>
-  tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === label);
-const labels = (tree: ReturnType<typeof create>) =>
-  tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
+const summary = (props: Props) => (
+  <InvoiceCalculationSummary header={header()} items={[FREE, PAID]} onDiscountChange={jest.fn()} onZeroChargeReasonChange={jest.fn()} {...props} />
+);
+const renderSummary = (props: Props) => render(summary(props));
+const REASON = 'Reason for zero charge';
 
 afterEach(() => setLanguage('en'));
 
 describe('the reason field for a zero charge', () => {
   it('is not shown when no line has a charge of 0', async () => {
-    const tree = await render({ items: [PAID], zeroChargeReasonRequired: true });
+    await renderSummary({ items: [PAID], zeroChargeReasonRequired: true });
 
-    expect(reasonInput(tree)).toBeUndefined();
-    expect(labels(tree).join('|')).not.toMatch(/zero charge/i);
-    await act(async () => { tree.unmount(); });
+    expect(screen.queryByLabelText(REASON)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/zero charge/i)).not.toBeOnTheScreen();
   });
 
   it('is shown for a charge that rounds to 0 (the server would ask for the reason), not for one that rounds to 0.01', async () => {
-    let tree = await render({ items: [line('almost', 0.004), PAID] });
-    expect(reasonInput(tree)).toBeDefined();
-    await act(async () => { tree.unmount(); });
+    const { rerender } = await renderSummary({ items: [line('almost', 0.004), PAID] });
+    expect(screen.getByLabelText(REASON)).toBeOnTheScreen();
 
-    tree = await render({ items: [line('paisa', 0.005), PAID] });
-    expect(reasonInput(tree)).toBeUndefined();
-    await act(async () => { tree.unmount(); });
+    await rerender(summary({ items: [line('paisa', 0.005), PAID] }));
+    expect(screen.queryByLabelText(REASON)).not.toBeOnTheScreen();
   });
 
   it('is not shown where the step does not handle it', async () => {
-    const tree = await render({ onZeroChargeReasonChange: undefined });
+    await renderSummary({ onZeroChargeReasonChange: undefined });
 
-    expect(reasonInput(tree)).toBeUndefined();
-    await act(async () => { tree.unmount(); });
+    expect(screen.queryByLabelText(REASON)).not.toBeOnTheScreen();
   });
 
   it('is shown when one line has a charge of 0, built like the discount reason field', async () => {
-    const tree = await render({});
-
-    const input = reasonInput(tree)!;
-    expect(labels(tree)).toContain('Reason for zero charge');
-    expect(labels(tree)).not.toContain('Reason for zero charge (required)');
-    expect(input.props.placeholder).toBe('Why is the charge 0?');
-    expect(input.props.maxLength).toBe(500);
-    expect(input.props.multiline).toBe(true);
-    expect(input.props.value).toBe('');
+    await renderSummary({});
+    const input = screen.getByLabelText(REASON);
+    expect(screen.getByText('Reason for zero charge')).toBeOnTheScreen();
+    expect(screen.queryByText('Reason for zero charge (required)')).not.toBeOnTheScreen();
+    expect(input).toHaveProp('placeholder', 'Why is the charge 0?');
+    expect(input).toHaveProp('maxLength', 500);
+    expect(input).toHaveProp('multiline', true);
+    expect(input).toHaveDisplayValue('');
     expect(StyleSheet.flatten(input.props.style).borderColor).toBe(getTokens('orange', 'light').border.field);
-    await act(async () => { tree.unmount(); });
   });
 
   it('is asked for, not red, before a save was refused', async () => {
-    const tree = await render({ zeroChargeReasonRequired: true });
+    await renderSummary({ zeroChargeReasonRequired: true });
 
-    expect(labels(tree)).toContain('Reason for zero charge (required)');
-    const style = StyleSheet.flatten(reasonInput(tree)!.props.style);
+    expect(screen.getByText('Reason for zero charge (required)')).toBeOnTheScreen();
+    const style = StyleSheet.flatten(screen.getByLabelText(REASON).props.style);
     expect(style.borderColor).toBe(getTokens('orange', 'light').border.field);
     expect(style.borderWidth).toBe(1);
-    await act(async () => { tree.unmount(); });
   });
 
   it('is marked required, with a red border, for staff who have not written one, once a save was refused', async () => {
-    const tree = await render({ zeroChargeReasonRequired: true, showErrors: true });
+    await renderSummary({ zeroChargeReasonRequired: true, showErrors: true });
 
-    expect(labels(tree)).toContain('Reason for zero charge (required)');
-    expect(labels(tree)).not.toContain('Reason for zero charge');
-    const style = StyleSheet.flatten(reasonInput(tree)!.props.style);
+    expect(screen.getByText('Reason for zero charge (required)')).toBeOnTheScreen();
+    expect(screen.queryByText('Reason for zero charge')).not.toBeOnTheScreen();
+    const style = StyleSheet.flatten(screen.getByLabelText(REASON).props.style);
     expect(style.borderColor).toBe(getTokens('orange', 'light').status.negative.border);
     expect(style.borderWidth).toBe(2);
-    await act(async () => { tree.unmount(); });
   });
 
   it('passes on what is typed and shows what the form holds', async () => {
     const onReason = jest.fn();
-    const tree = await render({ onZeroChargeReasonChange: onReason });
+    const user = userEvent.setup({ delay: 0 });
+    const { rerender } = await renderSummary({ onZeroChargeReasonChange: onReason });
 
-    await act(async () => { reasonInput(tree)!.props.onChangeText('Sample lot'); });
+    await user.paste(screen.getByLabelText(REASON), 'Sample lot');
     expect(onReason).toHaveBeenCalledWith('Sample lot');
 
-    await act(async () => {
-      tree.update(
-        <InvoiceCalculationSummary
-          header={header({ zero_charge_reason: 'Sample lot' })}
-          items={[FREE, PAID]}
-          onDiscountChange={jest.fn()}
-          onZeroChargeReasonChange={onReason}
-        />
-      );
-    });
-    expect(reasonInput(tree)!.props.value).toBe('Sample lot');
-    await act(async () => { tree.unmount(); });
+    await rerender(summary({ header: header({ zero_charge_reason: 'Sample lot' }), onZeroChargeReasonChange: onReason }));
+    expect(screen.getByLabelText(REASON)).toHaveDisplayValue('Sample lot');
   });
 
   it('keeps showing the stored reason of an invoice being edited when other lines become free', async () => {
     const stored = header({ zero_charge_reason: 'Sample lot' });
-    const tree = await render({ header: stored });
-    expect(reasonInput(tree)!.props.value).toBe('Sample lot');
+    const { rerender } = await renderSummary({ header: stored });
+    expect(screen.getByLabelText(REASON)).toHaveDisplayValue('Sample lot');
 
-    await act(async () => {
-      tree.update(
-        <InvoiceCalculationSummary header={stored} items={[line('free', 3), line('paid', 0)]} onDiscountChange={jest.fn()} onZeroChargeReasonChange={jest.fn()} />
-      );
-    });
-    expect(reasonInput(tree)!.props.value).toBe('Sample lot');
-    await act(async () => { tree.unmount(); });
+    await rerender(summary({ header: stored, items: [line('free', 3), line('paid', 0)] }));
+    expect(screen.getByLabelText(REASON)).toHaveDisplayValue('Sample lot');
   });
 
   it('stands beside the discount reason, each with its own text', async () => {
-    const tree = await render({
+    await renderSummary({
       header: header({ discount: 50, discount_reason: 'Damaged bags', zero_charge_reason: 'Sample lot' }),
       onDiscountReasonChange: jest.fn(),
     });
 
-    expect(reasonInput(tree, 'Discount reason')!.props.value).toBe('Damaged bags');
-    expect(reasonInput(tree)!.props.value).toBe('Sample lot');
-    await act(async () => { tree.unmount(); });
+    expect(screen.getByLabelText('Discount reason')).toHaveDisplayValue('Damaged bags');
+    expect(screen.getByLabelText(REASON)).toHaveDisplayValue('Sample lot');
   });
 
   it('is in Gujarati when the app is', async () => {
     setLanguage('gu');
-    const tree = await render({ zeroChargeReasonRequired: true });
+    await renderSummary({ zeroChargeReasonRequired: true });
 
-    expect(labels(tree)).toContain('શૂન્ય ભાડાનું કારણ (જરૂરી)');
-    expect(reasonInput(tree, 'શૂન્ય ભાડાનું કારણ')!.props.placeholder).toBe('ભાડાનો દર ૦ શા માટે છે?');
-    await act(async () => { tree.unmount(); });
+    expect(screen.getByText('શૂન્ય ભાડાનું કારણ (જરૂરી)')).toBeOnTheScreen();
+    expect(screen.getByLabelText('શૂન્ય ભાડાનું કારણ')).toHaveProp('placeholder', 'ભાડાનો દર ૦ શા માટે છે?');
   });
 });

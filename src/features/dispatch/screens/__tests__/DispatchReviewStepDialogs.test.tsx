@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { Platform } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { printDispatchRange } from '@/services/print-service';
 import { showAlert } from '@/utils/alert';
@@ -41,11 +41,56 @@ jest.mock('@/hooks/useDispatchForm', () => ({
   }),
 }));
 
-// Children are stand-ins that keep their props, so the test can answer them.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
+// Children are stand-ins that draw what a person sees (the title and message of an open dialog) and keep their
+// props, so the test can answer them where the real component answers through a Modal event.
+interface MockDialogProps {
+  visible: boolean;
+  title: string;
+  message?: string;
+  onConfirm: () => unknown;
+  onCancel: () => void;
+  onDismissed?: () => void;
+}
+interface MockPrintProps {
+  onConfirm: (start: string, end: string) => Promise<void>;
+  onDismiss: () => void;
+}
+let mockDialogs: Record<string, MockDialogProps> = {};
+let mockPrintProps: MockPrintProps | undefined;
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: MockDialogProps) => {
+    const { Text, View } = require('react-native');
+    mockDialogs[props.title] = props;
+    return props.visible
+      ? require('react').createElement(
+          View,
+          { accessible: true, accessibilityRole: 'alert' },
+          require('react').createElement(Text, null, props.title),
+          require('react').createElement(Text, null, props.message)
+        )
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean; onPrint: () => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.isVisible
+      ? createElement(
+          View,
+          { accessible: true, accessibilityLabel: 'Success dialog' },
+          createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Print', onPress: props.onPrint }, createElement(Text, null, 'Print'))
+        )
+      : null;
+  },
+}));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
+jest.mock('@/components/PrintRangeDialog', () => ({
+  PrintRangeDialog: (props: MockPrintProps) => {
+    mockPrintProps = props;
+    return null;
+  },
+}));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
@@ -69,22 +114,22 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-let tree: ReactTestRenderer;
-const dialogs = () => tree.root.findAllByType('ConfirmDialog' as never);
-const visibleDialogs = () => dialogs().filter((dialog) => dialog.props.visible);
-const confirm = () => dialogs()[0];
-const photoDialog = () => dialogs().find((dialog) => dialog.props.title === 'Photos not uploaded')!;
-const savedDialog = () => dialogs().find((dialog) => String(dialog.props.title).endsWith('saved'))!;
-const success = () => tree.root.findByType('DocumentSuccessDialog' as never);
+const CONFIRM_TITLE = { create: 'Create dispatch I0042?', edit: 'Save changes to dispatch I0042?' };
+const PHOTO_TITLE = 'Photos not uploaded';
+const SAVED_TITLE = 'Dispatch I0042 saved';
+const confirmProps = () => mockDialogs[mockCreateMode ? CONFIRM_TITLE.create : CONFIRM_TITLE.edit];
+const dialogsOnScreen = () => screen.queryAllByRole('alert');
+const successDialog = () => screen.queryByLabelText('Success dialog');
 /** A dialog has finished closing (iOS `onDismissed`). */
 const dismissed = async () => {
-  await act(async () => { dialogs().forEach((dialog) => dialog.props.onDismissed?.()); });
+  await act(async () => { Object.values(mockDialogs).forEach((dialog) => dialog.onDismissed?.()); });
 };
 /** Create / Save: opens the confirm, answers it, and leaves it closing. */
 const saveAndAnswer = async () => {
-  await act(async () => { tree.root.find((n) => n.props.testID === 'dispatch-review-submit' && typeof n.props.onPress === 'function').props.onPress(); });
-  expect(confirm().props.visible).toBe(true);
-  await act(async () => { await confirm().props.onConfirm(); });
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: mockCreateMode ? 'Create dispatch' : 'Save dispatch' }));
+  expect(await screen.findByText(mockCreateMode ? CONFIRM_TITLE.create : CONFIRM_TITLE.edit)).toBeOnTheScreen();
+  await act(async () => { await confirmProps().onConfirm(); });
 };
 
 const setPlatform = (os: 'ios' | 'android') => jest.replaceProperty(Platform, 'OS', os);
@@ -93,14 +138,15 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   mockCreateMode = true;
+  mockDialogs = {};
+  mockPrintProps = undefined;
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
-const render = async (mode: 'create' | 'edit' = 'create') => {
+const show = async (mode: 'create' | 'edit' = 'create') => {
   mockCreateMode = mode === 'create';
-  await act(async () => { tree = create(<DispatchReviewStep mode={mode} />); });
+  await render(<DispatchReviewStep mode={mode} />);
 };
 
 describe('on iOS', () => {
@@ -108,53 +154,53 @@ describe('on iOS', () => {
 
   it('opens the success dialog only after the busy confirm has finished closing', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [] });
-    await render();
+    await show();
     await saveAndAnswer();
     // The confirm is hidden but still closing: a Modal now would never show.
-    expect(visibleDialogs()).toHaveLength(0);
-    expect(success().props.isVisible).toBe(false);
+    expect(dialogsOnScreen()).toHaveLength(0);
+    expect(successDialog()).not.toBeOnTheScreen();
 
     await dismissed();
-    expect(success().props.isVisible).toBe(true);
+    expect(successDialog()).toBeOnTheScreen();
   });
 
   it('holds "Photos not uploaded" back the same way, and then the success dialog behind it', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [failedPhoto] });
-    await render();
+    await show();
     await saveAndAnswer();
-    expect(photoDialog().props.visible).toBe(false);
+    expect(screen.queryByText(PHOTO_TITLE)).not.toBeOnTheScreen();
 
     await dismissed();
-    expect(photoDialog().props.visible).toBe(true);
-    expect(success().props.isVisible).toBe(false);
+    expect(screen.getByText(PHOTO_TITLE)).toBeOnTheScreen();
+    expect(successDialog()).not.toBeOnTheScreen();
 
     // Continue without them: the success dialog waits for the photo dialog to close.
-    await act(async () => { photoDialog().props.onCancel(); });
-    expect(success().props.isVisible).toBe(false);
+    await act(async () => { mockDialogs[PHOTO_TITLE].onCancel(); });
+    expect(successDialog()).not.toBeOnTheScreen();
     await dismissed();
-    expect(success().props.isVisible).toBe(true);
+    expect(successDialog()).toBeOnTheScreen();
   });
 
   it('an edit with no order notes opens no dialog: once the confirm has closed it says "Dispatch … saved." as a toast', async () => {
     mockSubmitForm.mockResolvedValue({ success: true });
-    await render('edit');
+    await show('edit');
     await saveAndAnswer();
     expect(showToast).not.toHaveBeenCalled();
 
     await dismissed();
-    expect(savedDialog().props.visible).toBe(false);
+    expect(screen.queryByText(SAVED_TITLE)).not.toBeOnTheScreen();
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(jest.mocked(showToast).mock.calls[0][0]).toMatch(/^Dispatch .+ saved\.$/);
   });
 
   it('holds "Dispatch saved" (edit, an order synced) back until the confirm has finished closing', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, orderSynced: true });
-    await render('edit');
+    await show('edit');
     await saveAndAnswer();
-    expect(savedDialog().props.visible).toBe(false);
+    expect(screen.queryByText(SAVED_TITLE)).not.toBeOnTheScreen();
 
     await dismissed();
-    expect(savedDialog().props.visible).toBe(true);
+    expect(screen.getByText(SAVED_TITLE)).toBeOnTheScreen();
   });
 
   it('holds the alert of a refused save back until the confirm has finished closing, then shows it once', async () => {
@@ -162,15 +208,15 @@ describe('on iOS', () => {
       onFailure('Could not save', 'No number left');
       return { success: false, error: 'No number left' };
     });
-    await render();
+    await show();
     await saveAndAnswer();
-    expect(visibleDialogs()).toHaveLength(0);
+    expect(dialogsOnScreen()).toHaveLength(0);
     expect(showAlert).not.toHaveBeenCalled();
 
     await dismissed();
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Could not save', 'No number left');
-    expect(success().props.isVisible).toBe(false);
+    expect(successDialog()).not.toBeOnTheScreen();
 
     // A later dismissal (another dialog) shows nothing more.
     await dismissed();
@@ -183,10 +229,10 @@ describe('on Android', () => {
 
   it('opens the success dialog as soon as the confirm is hidden (there is no dismissal event)', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [] });
-    await render();
+    await show();
     await saveAndAnswer();
-    expect(visibleDialogs()).toHaveLength(0);
-    expect(success().props.isVisible).toBe(true);
+    expect(dialogsOnScreen()).toHaveLength(0);
+    expect(successDialog()).toBeOnTheScreen();
   });
 
   it('shows the alert of a refused save once the confirm is hidden', async () => {
@@ -194,7 +240,7 @@ describe('on Android', () => {
       onFailure('Could not save', 'No number left');
       return { success: false, error: 'No number left' };
     });
-    await render();
+    await show();
     await saveAndAnswer();
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Could not save', 'No number left');
@@ -206,15 +252,15 @@ describe('after a failed print', () => {
     setPlatform('ios');
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: 0 });
     jest.mocked(printDispatchRange).mockResolvedValue({ success: false } as never);
-    await render();
+    await show();
     await saveAndAnswer();
     await dismissed();
 
-    const printDialog = () => tree.root.findByType('PrintRangeDialog' as never);
-    await act(async () => { success().props.onPrint(); });
+    const user = userEvent.setup({ delay: 0 });
+    await user.press(screen.getByRole('button', { name: 'Print' }));
     await act(async () => {
-      await printDialog().props.onConfirm('I0042', 'I0042');
-      printDialog().props.onDismiss();
+      await mockPrintProps!.onConfirm('I0042', 'I0042');
+      mockPrintProps!.onDismiss();
     });
 
     // The step is left, the alert is on screen, and the toast has not run under it.
@@ -239,7 +285,7 @@ describe('when another dispatch holds the number', () => {
       error: 'Dispatch number I0042 is already used. The next free number is I0043.',
       numberTaken: { message: 'Dispatch number I0042 is already used. The next free number is I0043.' },
     });
-    await render();
+    await show();
     await saveAndAnswer();
 
     expect(showAlert).toHaveBeenCalledTimes(1);

@@ -4,7 +4,7 @@
  * P2F-UI-1; the lines no longer open since the Review was rebuilt, 2026-10-18).
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { formatIdentifier } from '@/i18n';
 import { reviewHeader, reviewLine } from '@/tests/helpers/dispatchReviewFixtures';
@@ -41,7 +41,11 @@ jest.mock('@/store/hooks', () => ({
 jest.mock('@/hooks/useDispatchForm', () => ({ useDispatchForm: () => ({ ...mockForm }) }));
 
 // Children are stand-ins that keep their props, so the test can press their buttons.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// The confirm dialog is a stand-in that draws its title while it is open.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string }) =>
+    props.visible ? require('react').createElement(require('react-native').Text, { accessibilityRole: 'alert' }, props.title) : null,
+}));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
@@ -66,44 +70,36 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-async function render() {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<DispatchReviewStep mode="create" />);
-  });
-  return tree;
-}
 /** The GRN numbers formatted since the last clear: the lines that were worked out. */
 const rowsDrawn = () => new Set(jest.mocked(formatIdentifier).mock.calls.map(([value]) => value).filter((value) => GRN_NUMBERS.has(value as string)));
-const byTestId = (tree: ReactTestRenderer, id: string) => tree.root.find((node) => node.props.testID === id && typeof node.props.onPress === 'function');
-const open = (tree: ReactTestRenderer, section: string) => byTestId(tree, `dispatch-review-section-${section}`).props.accessibilityState.expanded as boolean;
+const toggle = (section: 'items' | 'details') => screen.getByRole('button', { name: section === 'items' ? /^Items/ : /^Dispatch details/ });
 
 beforeEach(() => {
   jest.clearAllMocks();
 });
 
 it('opening and closing a section, and a dialog opening, format no line again', async () => {
-  const tree = await render();
+  const user = userEvent.setup({ delay: 0 });
+  await render(<DispatchReviewStep mode="create" />);
   // Every one of the 20 lines was worked out (not only the first)
   expect(rowsDrawn()).toEqual(GRN_NUMBERS);
-  expect(open(tree, 'items')).toBe(true);
-  expect(open(tree, 'details')).toBe(false);
+  expect(toggle('items')).toBeExpanded();
+  expect(toggle('details')).toBeCollapsed();
   jest.mocked(formatIdentifier).mockClear();
 
   // Details opens, and ITEMS closes with it (one open at a time).
-  await act(async () => { byTestId(tree, 'dispatch-review-section-details').props.onPress(); });
-  expect(open(tree, 'details')).toBe(true);
-  expect(open(tree, 'items')).toBe(false);
+  await user.press(toggle('details'));
+  expect(toggle('details')).toBeExpanded();
+  expect(toggle('items')).toBeCollapsed();
   expect(rowsDrawn().size).toBe(0);
 
   // And back.
-  await act(async () => { byTestId(tree, 'dispatch-review-section-items').props.onPress(); });
-  expect(open(tree, 'items')).toBe(true);
+  await user.press(toggle('items'));
+  expect(toggle('items')).toBeExpanded();
   expect(rowsDrawn().size).toBe(0);
 
   // The confirm dialog opens: no line is worked out again.
-  await act(async () => { byTestId(tree, 'dispatch-review-submit').props.onPress(); });
-  expect(tree.root.findAllByType('ConfirmDialog' as never)[0].props.visible).toBe(true);
+  await user.press(screen.getByRole('button', { name: 'Create dispatch' }));
+  expect(screen.getByText('Create dispatch I0042?')).toBeOnTheScreen();
   expect(rowsDrawn().size).toBe(0);
-  await act(async () => { tree.unmount(); });
 });

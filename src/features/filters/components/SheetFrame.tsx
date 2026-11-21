@@ -83,7 +83,7 @@ export function SheetFrame({ visible, title, onClose, closeHint, leading, action
   return (
     <Modal visible={visible} transparent animationType={reduceMotion ? 'fade' : 'slide'} onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <KeyboardAvoidingView style={styles.root} behavior="padding">
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('filters.sheet.closeScrim', { action: t('common.close'), title })} />
+        <Pressable style={styles.scrim} onPress={onClose} accessible={false} importantForAccessibility="no" />
         <View style={[styles.sheet, tall && styles.sheetTall]} accessibilityViewIsModal>
           <View style={styles.handle} />
           <View style={styles.header}>

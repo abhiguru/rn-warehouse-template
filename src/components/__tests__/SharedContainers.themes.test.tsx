@@ -4,7 +4,7 @@
  * the key surfaces take their colours from the semantic tokens.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 
 import { ConfirmDialog } from '../ConfirmDialog';
@@ -98,39 +98,37 @@ function setTheme(brand: Brand, mode: Mode, auth: Partial<MockState['auth']> = {
   };
 }
 
-function render(element: React.ReactElement): ReactTestRenderer {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
-}
-
 function flatStyle(style: unknown): Record<string, unknown> {
   const list = ([] as unknown[]).concat(style ?? []).flat(Infinity as 1).filter(Boolean);
   return Object.assign({}, ...(list as object[]));
 }
 
-function hasBackground(tree: ReactTestRenderer, colour: string) {
-  return tree.root.findAll(node => {
-    const raw = node.props?.style;
-    const style = typeof raw === 'function' ? raw({ pressed: false }) : raw;
-    return flatStyle(style).backgroundColor === colour;
-  }).length > 0;
+type Json = ReturnType<typeof screen.toJSON>;
+type JsonNode = Exclude<NonNullable<Json>, unknown[]>;
+
+/** Every element of the rendered tree (a style has no role or text to query, so the tree is walked). */
+function elements(json: Json = screen.toJSON()): JsonNode[] {
+  const out: JsonNode[] = [];
+  const walk = (node: unknown) => {
+    if (!node || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    out.push(node as JsonNode);
+    ((node as JsonNode).children ?? []).forEach(walk);
+  };
+  walk(json);
+  return out;
 }
 
-function texts(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(node => (node.type as unknown) === 'Text')
-    .map(node => ([] as unknown[]).concat(node.props.children).join(''));
+function hasBackground(colour: string) {
+  return elements().some(node => flatStyle(node.props?.style).backgroundColor === colour);
 }
 
 describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
   beforeEach(() => setTheme(brand, mode));
 
-  it('ConfirmDialog uses the sheet surface, scrim and destructive fill', () => {
-    const tree = render(
+  it('ConfirmDialog uses the sheet surface, scrim and destructive fill', async () => {
+    await render(
       <ConfirmDialog
         visible
         title="Delete GRN 311?"
@@ -141,55 +139,52 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
         variant="danger"
       />
     );
-    expect(hasBackground(tree, t.overlay.scrim)).toBe(true);
-    expect(hasBackground(tree, t.surface.sheet)).toBe(true);
-    expect(hasBackground(tree, t.destructive.fill)).toBe(true);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Delete GRN', 'Cancel']));
-    act(() => tree.unmount());
+    expect(hasBackground(t.overlay.scrim)).toBe(true);
+    expect(hasBackground(t.surface.sheet)).toBe(true);
+    expect(hasBackground(t.destructive.fill)).toBe(true);
+    expect(screen.getByText('Delete GRN')).toBeOnTheScreen();
+    expect(screen.getByText('Cancel')).toBeOnTheScreen();
   });
 
-  it('ForceUpdateModal renders as a dialog without developer text', () => {
-    const force = render(<ForceUpdateModal />);
-    expect(hasBackground(force, t.surface.sheet)).toBe(true);
-    expect(hasBackground(force, t.brand.fill)).toBe(true);
-    expect(texts(force)).toContain('Update app');
-    act(() => force.unmount());
+  it('ForceUpdateModal renders as a dialog without developer text', async () => {
+    await render(<ForceUpdateModal />);
+    expect(hasBackground(t.surface.sheet)).toBe(true);
+    expect(hasBackground(t.brand.fill)).toBe(true);
+    expect(screen.getByText('Update app')).toBeOnTheScreen();
   });
 
-  it('media components use the placeholder and photo tokens', () => {
-    const image = render(<CachedImage uri="https://example.com/a.jpg" usePlaceholder={false} />);
-    expect(hasBackground(image, t.surface.cardActive)).toBe(true);
-    act(() => image.unmount());
+  it('media components use the placeholder and photo tokens', async () => {
+    const image = await render(<CachedImage uri="https://example.com/a.jpg" usePlaceholder={false} />);
+    expect(hasBackground(t.surface.cardActive)).toBe(true);
+    await image.unmount();
 
-    const overlay = render(
+    const overlay = await render(
       <ImageOverlay
         visible
         images={[{ id: '1', imageUrl: 'u', fileName: 'lot.jpg', fileSize: 1, mimeType: 'image/jpeg', uploadTimestamp: '', uploadStatus: 'completed' }]}
         onClose={jest.fn()}
       />
     );
-    expect(overlay.root.findByType('ImageViewing' as unknown as React.ElementType).props.backgroundColor).toBe(
-      t.overlay.imageBackdrop
-    );
-    expect(overlay.root.findAll(n => n.props.accessibilityLabel === 'Close photo').length).toBeGreaterThan(0);
-    act(() => overlay.unmount());
+    // The viewer is a string-typed stand-in, so its backdrop colour is only on the tree.
+    expect(elements().find(n => n.type === 'ImageViewing')?.props.backgroundColor).toBe(t.overlay.imageBackdrop);
+    expect(screen.getAllByLabelText('Close photo').length).toBeGreaterThan(0);
+    await overlay.unmount();
 
-    const camera = render(<CameraModal visible onClose={jest.fn()} onCapture={jest.fn()} />);
-    expect(hasBackground(camera, t.background.base)).toBe(true);
-    expect(texts(camera)).toContain('Allow camera access');
-    act(() => camera.unmount());
+    await render(<CameraModal visible onClose={jest.fn()} onCapture={jest.fn()} />);
+    expect(hasBackground(t.background.base)).toBe(true);
+    expect(screen.getByText('Allow camera access')).toBeOnTheScreen();
   });
 
-  it('list states and skeletons use tokens', () => {
-    const emptyFiltered = render(<ListEmptyState activeFilterCount={2} onClearFilters={jest.fn()} />);
-    expect(texts(emptyFiltered)).toContain('Clear filters');
-    act(() => emptyFiltered.unmount());
+  it('list states and skeletons use tokens', async () => {
+    const emptyFiltered = await render(<ListEmptyState activeFilterCount={2} onClearFilters={jest.fn()} />);
+    expect(screen.getByText('Clear filters')).toBeOnTheScreen();
+    await emptyFiltered.unmount();
 
-    const loading = render(<LoadingState />);
-    expect(hasBackground(loading, t.background.base)).toBe(true);
-    act(() => loading.unmount());
+    const loading = await render(<LoadingState />);
+    expect(hasBackground(t.background.base)).toBe(true);
+    await loading.unmount();
 
-    const skeletons = render(
+    await render(
       <>
         <ListSkeletonCard />
         <ListSkeleton count={1} />
@@ -197,12 +192,11 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
         <SkeletonBox />
       </>
     );
-    expect(hasBackground(skeletons, t.surface.cardActive)).toBe(true);
-    act(() => skeletons.unmount());
+    expect(hasBackground(t.surface.cardActive)).toBe(true);
   });
 
-  it('overview tab blocks use tokens', () => {
-    const tree = render(
+  it('overview tab blocks use tokens', async () => {
+    await render(
       <>
         <SectionHeader title="Customer" />
         <ContactCard type="Customer" name="Patel Traders" phone="9876543210" iconName="account-outline" iconColor={t.brand.tint} iconBgColor={t.brand.subtle} />
@@ -211,41 +205,34 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
         <ActionsSection entityType="GRN" entityNumber="311" entityId="g1" canEdit onDelete={jest.fn()} onSharePDF={jest.fn()} />
       </>
     );
-    expect(hasBackground(tree, t.surface.card)).toBe(true);
-    expect(hasBackground(tree, t.status.neutral.background)).toBe(true);
+    expect(hasBackground(t.surface.card)).toBe(true);
+    expect(hasBackground(t.status.neutral.background)).toBe(true);
     // WH-216: the primary Edit button moved to the page header, so this section no longer draws a brand fill.
-    expect(hasBackground(tree, t.brand.fill)).toBe(false);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['CUSTOMER', '+91 98765 43210', 'Delete GRN']));
-    act(() => tree.unmount());
+    expect(hasBackground(t.brand.fill)).toBe(false);
+    expect(screen.getByText('CUSTOMER')).toBeOnTheScreen();
+    expect(screen.getByText('+91 98765 43210')).toBeOnTheScreen();
+    expect(screen.getByText('Delete GRN')).toBeOnTheScreen();
   });
 });
 
 describe('contact card without a number', () => {
   const card = (phone: string | undefined) => {
     mockState = { ...mockState, theme: { preference: 'light', brand: 'orange' } };
-    let tree!: ReactTestRenderer;
-    act(() => {
-      tree = create(
-        <ContactCard type="Supervisor" name="Ravi Example" phone={phone} iconName="account-tie" iconColor="#111111" iconBgColor="#eeeeee" />
-      );
-    });
-    return tree;
+    return render(
+      <ContactCard type="Supervisor" name="Ravi Example" phone={phone} iconName="account-tie" iconColor="#111111" iconBgColor="#eeeeee" />
+    );
   };
-  const callActions = (tree: ReactTestRenderer) =>
-    tree.root.findAll(node => typeof node.type !== 'string' && node.props.accessibilityRole === 'button' && typeof node.props.onPress === 'function');
 
   // The server leaves the supervisor's mobile out for a customer account (migration 45).
-  it.each([[undefined], [''], ['   ']])('shows the name and no Call action when the phone is %j', (phone) => {
-    const tree = card(phone);
-    expect(JSON.stringify(tree.toJSON())).toContain('Ravi Example');
-    expect(callActions(tree)).toHaveLength(0);
-    act(() => tree.unmount());
+  it.each([[undefined], [''], ['   ']])('shows the name and no Call action when the phone is %j', async (phone) => {
+    await card(phone);
+    expect(screen.getByText('Ravi Example')).toBeOnTheScreen();
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 
-  it('shows Call when there is a number', () => {
-    const tree = card('9876543210');
-    expect(callActions(tree)).toHaveLength(1);
-    act(() => tree.unmount());
+  it('shows Call when there is a number', async () => {
+    await card('9876543210');
+    expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 });
 

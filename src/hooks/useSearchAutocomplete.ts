@@ -56,7 +56,7 @@ export interface UseSearchAutocompleteReturn<T> {
   /** Perform search immediately (no debounce) */
   performSearchNow: (query: string) => Promise<void>;
   /** Ref to the search timeout (for manual cleanup if needed) */
-  searchTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
+  searchTimeoutRef: React.RefObject<ReturnType<typeof setTimeout> | null>;
 }
 
 export function useSearchAutocomplete<T>({

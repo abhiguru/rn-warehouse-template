@@ -6,8 +6,7 @@
  * as they are. The answer of an older read never replaces the rows of a newer one.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import RecentDispatchedOrdersSection from '@/components/RecentDispatchedOrdersSection';
 import { setLanguage } from '@/i18n';
@@ -25,8 +24,25 @@ jest.mock('react-native/Libraries/LayoutAnimation/LayoutAnimation', () => ({
   default: { configureNext: jest.fn(), Presets: { easeInEaseOut: {} } },
 }));
 jest.mock('@/services/dispatch-service', () => ({ getRecentDispatchedOrders: jest.fn() }));
-jest.mock('@/components/list-items/RecentDispatchedOrderCard', () => ({ RecentDispatchedOrderCard: 'RecentDispatchedOrderCard' }));
-jest.mock('@/components/ui/SectionHeader', () => ({ SectionHeader: 'SectionHeader' }));
+// This test is about the section, not about the card or the header. The stand-ins draw only what the section hands them:
+// a card is its dispatch number; the header is its count (when it has one) and its Show or Hide button.
+jest.mock('@/components/list-items/RecentDispatchedOrderCard', () => {
+  const { Text } = require('react-native');
+  return { RecentDispatchedOrderCard: ({ dispatch }: { dispatch: { disp_no: string } }) => <Text>{dispatch.disp_no}</Text> };
+});
+jest.mock('@/components/ui/SectionHeader', () => {
+  const { Pressable, Text, View } = require('react-native');
+  return {
+    SectionHeader: ({ count, action }: { count?: number; action: { label: string; accessibilityLabel: string; onPress: () => void } }) => (
+      <View>
+        {count !== undefined && <Text>{`Count: ${count}`}</Text>}
+        <Pressable accessibilityRole="button" accessibilityLabel={action.accessibilityLabel} onPress={action.onPress}>
+          <Text>{action.label}</Text>
+        </Pressable>
+      </View>
+    ),
+  };
+});
 
 const dispatchOf = (n: number): RecentDispatchedOrder => ({
   dispatch_id: `dispatch-${n}`,
@@ -48,56 +64,62 @@ const answer = (count: number, total: number = count) => ({
   data: { total_count: total, has_more: total > count, dispatches: Array.from({ length: count }, (_, i) => dispatchOf(total - i)) },
 });
 
+type Props = Partial<React.ComponentProps<typeof RecentDispatchedOrdersSection>>;
 const read = jest.mocked(getRecentDispatchedOrders);
-let tree: ReactTestRenderer;
-const header = () => tree.root.findByType('SectionHeader' as never);
-const expand = async () => { await act(async () => { header().props.action.onPress(); }); };
-const seeAll = () => tree.root.findAll((node) => node.props?.testID === 'recent-dispatched-see-all' && typeof node.props?.onPress === 'function');
-const cards = () => tree.root.findAllByType('RecentDispatchedOrderCard' as never);
-const render = async (props: Partial<React.ComponentProps<typeof RecentDispatchedOrdersSection>> = {}) => {
-  await act(async () => { tree = create(<RecentDispatchedOrdersSection limit={10} {...props} />); });
+let rerenderSection: (props: Props) => Promise<void>;
+const showCount = (count: number) => expect(screen.getByText(`Count: ${count}`)).toBeOnTheScreen();
+const noCount = () => expect(screen.queryByText(/^Count:/)).not.toBeOnTheScreen();
+const expand = async () => {
+  const user = userEvent.setup({ delay: 0 });
+  // Before the list is open the Show button is the only button on the screen (its name is spoken in the app's language).
+  await user.press(screen.getByRole('button'));
 };
-const update = async (props: Partial<React.ComponentProps<typeof RecentDispatchedOrdersSection>>) => {
-  await act(async () => { tree.update(<RecentDispatchedOrdersSection limit={10} {...props} />); });
+const cards = () => screen.queryAllByText(/^D00\d+$/);
+const seeAll = (total: number) => screen.queryByRole('button', { name: `See all ${total} recently dispatched orders` });
+const anySeeAll = () => screen.queryByRole('button', { name: /^See all / });
+const renderSection = async (props: Props = {}) => {
+  const view = await render(<RecentDispatchedOrdersSection limit={10} {...props} />);
+  rerenderSection = async (next) => { await view.rerender(<RecentDispatchedOrdersSection limit={10} {...next} />); };
 };
+const update = (props: Props) => rerenderSection(props);
 
 beforeEach(() => {
   read.mockReset();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
+  setLanguage('en');
 });
 
 it('reads once on mount and shows the count of the rows it got', async () => {
   read.mockResolvedValue(answer(3));
-  await render();
+  await renderSection();
 
   expect(read).toHaveBeenCalledTimes(1);
   expect(read).toHaveBeenCalledWith(10, 0);
-  expect(header().props.count).toBe(3);
+  showCount(3);
 });
 
 it('a pull to refresh (refreshTrigger) reads again and hides the count while it runs', async () => {
   read.mockResolvedValue(answer(3));
-  await render({ refreshTrigger: 0 });
+  await renderSection({ refreshTrigger: 0 });
   let finish!: (value: ReturnType<typeof answer>) => void;
   read.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }) as never);
 
   await update({ refreshTrigger: 1 });
 
   expect(read).toHaveBeenCalledTimes(2);
-  expect(header().props.count).toBeUndefined();
+  noCount();
   await act(async () => { finish(answer(4)); });
-  expect(header().props.count).toBe(4);
+  showCount(4);
 });
 
 describe('a quiet refresh on a return to the queue', () => {
   it('does not read again on mount, only when the trigger changes', async () => {
     read.mockResolvedValue(answer(3));
-    await render({ quietRefreshTrigger: 0 });
+    await renderSection({ quietRefreshTrigger: 0 });
     expect(read).toHaveBeenCalledTimes(1);
 
     await update({ quietRefreshTrigger: 0 });
@@ -108,74 +130,78 @@ describe('a quiet refresh on a return to the queue', () => {
 
   it('keeps the rows and the count on screen while it reads, then shows the new dispatch', async () => {
     read.mockResolvedValue(answer(3));
-    await render({ quietRefreshTrigger: 0 });
-    expect(header().props.count).toBe(3);
+    await renderSection({ quietRefreshTrigger: 0 });
+    showCount(3);
     let finish!: (value: ReturnType<typeof answer>) => void;
     read.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }) as never);
 
     await update({ quietRefreshTrigger: 1 });
 
     // No loading state: the count is still the old one.
-    expect(header().props.count).toBe(3);
+    showCount(3);
     await act(async () => { finish(answer(4)); });
-    expect(header().props.count).toBe(4);
+    showCount(4);
   });
 
   it('leaves the rows as they are when the read fails, with no error shown', async () => {
     read.mockResolvedValueOnce(answer(3)).mockResolvedValueOnce({ success: false, error: 'offline' });
-    await render({ quietRefreshTrigger: 0 });
+    await renderSection({ quietRefreshTrigger: 0 });
 
     await update({ quietRefreshTrigger: 1 });
 
-    expect(header().props.count).toBe(3);
-    expect(tree.root.findAllByType('Text' as never)).toHaveLength(0);
+    showCount(3);
+    // The section is closed, so any error or loading text would show only after it is opened: open it and look.
+    await expand();
+    expect(screen.queryByText(/Couldn't load recent dispatches/)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Loading recent dispatches/)).not.toBeOnTheScreen();
+    expect(cards()).toHaveLength(3);
   });
 
   it('leaves the rows as they are when the read throws', async () => {
     read.mockResolvedValueOnce(answer(3)).mockRejectedValueOnce(new Error('offline'));
-    await render({ quietRefreshTrigger: 0 });
+    await renderSection({ quietRefreshTrigger: 0 });
 
     await update({ quietRefreshTrigger: 1 });
 
-    expect(header().props.count).toBe(3);
+    showCount(3);
   });
 });
 
 describe('the count and the link to the full list', () => {
   it('the header counts all the order dispatches (the server\'s total), the list holds the newest 10', async () => {
     read.mockResolvedValue(answer(10, 37));
-    await render({ limit: 10 });
+    await renderSection({ limit: 10 });
 
-    expect(header().props.count).toBe(37);
+    showCount(37);
     await expand();
     expect(cards()).toHaveLength(10);
   });
 
   it('a new dispatch raises the count even when the list is full: 10 of 37 becomes 10 of 38, newest first', async () => {
     read.mockResolvedValueOnce(answer(10, 37));
-    await render({ quietRefreshTrigger: 0 });
-    expect(header().props.count).toBe(37);
+    await renderSection({ quietRefreshTrigger: 0 });
+    showCount(37);
 
     read.mockResolvedValueOnce(answer(10, 38));
     await update({ quietRefreshTrigger: 1 });
 
-    expect(header().props.count).toBe(38);
+    showCount(38);
     await expand();
-    expect(cards()[0].props.dispatch.disp_no).toBe('D0038');
+    expect(cards()[0]).toHaveTextContent('D0038');
   });
 
   it('the link "See all 37 →" ends the opened list, has its own spoken label, and opens the full list', async () => {
+    const user = userEvent.setup({ delay: 0 });
     read.mockResolvedValue(answer(10, 37));
-    await render();
+    await renderSection();
     // Not while the section is closed.
-    expect(seeAll()).toHaveLength(0);
+    expect(anySeeAll()).not.toBeOnTheScreen();
 
     await expand();
 
-    expect(seeAll().length).toBeGreaterThan(0);
-    expect(seeAll()[0].props.accessibilityLabel).toBe('See all 37 recently dispatched orders');
-    expect(tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join(''))).toContain('See all 37 →');
-    act(() => seeAll()[0].props.onPress());
+    expect(seeAll(37)).toBeOnTheScreen();
+    expect(screen.getByText('See all 37 →')).toBeOnTheScreen();
+    await user.press(seeAll(37)!);
     expect(router.push).toHaveBeenCalledWith('/recent-dispatched');
   });
 
@@ -184,43 +210,43 @@ describe('the count and the link to the full list', () => {
     ['three of three', answer(3)],
   ])('is hidden when everything is listed (%s)', async (_name, rows) => {
     read.mockResolvedValue(rows);
-    await render();
+    await renderSection();
     await expand();
 
     expect(cards().length).toBeGreaterThan(0);
-    expect(seeAll()).toHaveLength(0);
+    expect(anySeeAll()).not.toBeOnTheScreen();
   });
 
   it('is hidden while the section reads again (the count is not known then) and for a failed read', async () => {
     read.mockResolvedValueOnce(answer(10, 37)).mockResolvedValueOnce({ success: false, error: 'offline' });
-    await render({ refreshTrigger: 0 });
+    await renderSection({ refreshTrigger: 0 });
     await expand();
-    expect(seeAll().length).toBeGreaterThan(0);
+    expect(seeAll(37)).toBeOnTheScreen();
 
     await update({ refreshTrigger: 1 });
 
-    expect(seeAll()).toHaveLength(0);
+    expect(anySeeAll()).not.toBeOnTheScreen();
   });
 
   it('counts the rows it got when the server gives no total (an older server)', async () => {
     read.mockResolvedValue({ success: true as const, data: { has_more: false, dispatches: answer(4).data.dispatches } as never });
-    await render();
-    expect(header().props.count).toBe(4);
+    await renderSection();
+    showCount(4);
     await expand();
-    expect(seeAll()).toHaveLength(0);
+    expect(anySeeAll()).not.toBeOnTheScreen();
   });
 
   it('is in Gujarati, with Gujarati digits and the arrow', async () => {
     setLanguage('gu');
     read.mockResolvedValue(answer(10, 37));
-    await render();
+    await renderSection();
     await expand();
 
-    expect(seeAll()[0].props.accessibilityLabel).toBe('તાજેતરમાં જાવક થયેલા બધા ૩૭ ઑર્ડર જુઓ');
-    expect(tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join(''))).toContain('બધી ૩૭ જુઓ →');
-    setLanguage('en');
+    expect(screen.getByRole('button', { name: 'તાજેતરમાં જાવક થયેલા બધા ૩૭ ઑર્ડર જુઓ' })).toBeOnTheScreen();
+    expect(screen.getByText('બધી ૩૭ જુઓ →')).toBeOnTheScreen();
   });
 });
+
 
 describe('overlapping reads', () => {
   const later = () => {
@@ -233,21 +259,21 @@ describe('overlapping reads', () => {
     const first = later();
     const second = later();
     read.mockReturnValueOnce(first.promise as never).mockReturnValueOnce(second.promise as never);
-    await render({ quietRefreshTrigger: 0 });
+    await renderSection({ quietRefreshTrigger: 0 });
     await update({ quietRefreshTrigger: 1 });
     expect(read).toHaveBeenCalledTimes(2);
 
     await act(async () => { second.resolve(answer(5, 5)); });
-    expect(header().props.count).toBe(5);
+    showCount(5);
     // The older read answers late, with fewer rows: it is ignored.
     await act(async () => { first.resolve(answer(3, 3)); });
 
-    expect(header().props.count).toBe(5);
+    showCount(5);
   });
 
   it('a pull to refresh that is overtaken by a newer one does not end the newer one\'s loading early', async () => {
     read.mockResolvedValueOnce(answer(2, 2));
-    await render({ refreshTrigger: 0 });
+    await renderSection({ refreshTrigger: 0 });
     const first = later();
     const second = later();
     read.mockReturnValueOnce(first.promise as never).mockReturnValueOnce(second.promise as never);
@@ -256,24 +282,27 @@ describe('overlapping reads', () => {
 
     await act(async () => { first.resolve(answer(3, 3)); });
     // The newer read is still running: the count stays hidden.
-    expect(header().props.count).toBeUndefined();
+    noCount();
 
     await act(async () => { second.resolve(answer(4, 4)); });
-    expect(header().props.count).toBe(4);
+    showCount(4);
   });
 
   it('a quiet read that takes over from one still loading does its work: the section shows when it answers, and its failure is shown', async () => {
     const first = later();
     read.mockReturnValueOnce(first.promise as never).mockResolvedValueOnce({ success: false, error: 'offline' });
-    await render({ quietRefreshTrigger: 0 });
+    await renderSection({ quietRefreshTrigger: 0 });
 
     await update({ quietRefreshTrigger: 1 });
 
     // The first read was never answered; the quiet one failed, so the section shows its error rather than staying silent.
-    expect(tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join(''))).toEqual([]);
+    expect(screen.queryByText(/Couldn't load recent dispatches/)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Loading recent dispatches/)).not.toBeOnTheScreen();
+    expect(cards()).toHaveLength(0);
+    showCount(0); // the stand-in for the header: nothing was read yet
     await expand();
-    expect(tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join('')).join(' ')).toContain("Couldn't load recent dispatches");
+    expect(screen.getByText(/Couldn't load recent dispatches/)).toBeOnTheScreen();
     await act(async () => { first.resolve(answer(2, 2)); });
-    expect(tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join('')).join(' ')).toContain("Couldn't load recent dispatches");
+    expect(screen.getByText(/Couldn't load recent dispatches/)).toBeOnTheScreen();
   });
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { GRNImagesTab } from '../GRNImagesTab';
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -17,11 +17,12 @@ jest.mock('@/store/hooks', () => ({
 
 it('says "Photo missing" on a tile whose file fails to load', async () => {
   const images = [{ id: 'p1', image_url: 'https://example.invalid/p1.jpg', category: 'header' as const }];
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<GRNImagesTab images={images} />); });
-  const missing = () => tree.root.findAll(node => node.props.testID === 'photo-missing' && node.props.children === 'Photo missing');
-  expect(missing()).toHaveLength(0);
-  await act(async () => { tree.root.findByType('Image' as never).props.onError({}); });
-  expect(missing().length).toBeGreaterThan(0);
-  await act(async () => { tree.unmount(); });
+  await render(<GRNImagesTab images={images} />);
+  expect(screen.queryByText('Photo missing')).not.toBeOnTheScreen();
+  // The photo is a native Image stand-in with no role or text: the load failure is raised on it directly.
+  const photo = screen.getByRole('imagebutton', { name: 'GRN photo' }).children.find(child => typeof child !== 'string' && child.type === 'Image');
+  expect(photo).toBeDefined();
+  await fireEvent(photo as NonNullable<typeof photo> & object, 'error', {});
+  expect(screen.getByTestId('photo-missing')).toHaveTextContent('Photo missing');
+  expect(screen.getByText('Photo missing')).toBeOnTheScreen();
 });

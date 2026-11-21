@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { getAllGRNActivity, getCustomerGRNActivity } from '@/services/reporting/grn-activity-service';
 import { BRANDS, fontWeight, getTokens, type Mode } from '@/theme/tokens';
 import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
@@ -17,6 +17,9 @@ let mockState: Record<string, unknown> = {};
 let mockParams: Record<string, string> = {};
 const mockPush = jest.fn();
 const mockRouterPush = jest.fn();
+/** An element of the rendered tree, as the queries return it. */
+type HostElement = ReturnType<typeof screen.getByRole>;
+
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -93,33 +96,31 @@ beforeEach(() => {
   customerActivity.mockResolvedValue(answerGrns([G311, G312]) as never);
   allActivity.mockResolvedValue(answerCustomers([FICTIONAL]) as never);
 });
-// A mounted skeleton or query keeps timers alive: every tree is taken down after its test.
-let tree: ReactTestRenderer | undefined;
-afterEach(() => {
-  if (tree) act(() => tree!.unmount());
-  tree = undefined;
-});
+
+const user = userEvent.setup({ delay: 0 });
+
+/** Lets the answers already on their way reach the screen. */
+const settle = () => act(async () => { await settleQueries(); });
 
 async function open() {
-  await act(async () => {
-    tree = create(<GRNActivityScreen />);
-    await settleQueries();
-  });
-  return tree!;
+  await render(<GRNActivityScreen />);
+  await settle();
 }
-const run = (callback: () => void) =>
-  act(async () => {
-    callback();
-    await settleQueries();
-  });
-const texts = () => tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-const pressables = (match: (label: string) => boolean) =>
-  tree!.root.findAll(node => typeof node.props.onPress === 'function' && typeof node.props.accessibilityLabel === 'string' && match(node.props.accessibilityLabel));
-const press = (label: string) => run(() => pressables(text => text === label)[0].props.onPress());
-const grnCard = (number: string) => pressables(label => label.startsWith(`GRN ${number},`))[0];
+const press = async (name: string | RegExp) => {
+  await user.press(screen.getByRole('button', { name }));
+  await settle();
+};
+const shown = (...words: string[]) => words.forEach(word => expect(screen.getByText(word)).toBeOnTheScreen());
+const grnCard = (number: string) => screen.getByRole('button', { name: new RegExp(`^GRN ${number},`) });
 const flat = (style: unknown) => (StyleSheet.flatten(typeof style === 'function' ? style({ pressed: false }) : style) ?? {}) as Record<string, unknown>;
+/** Every drawn element of the tree: the bold words have no role to query by. */
+function elementsIn(root: HostElement): HostElement[] {
+  return [root, ...root.children.flatMap(child => (typeof child === 'string' ? [] : elementsIn(child)))];
+}
 const bold = () =>
-  tree!.root.findAll(node => (node.type as unknown) === 'Text' && flat(node.props.style).fontWeight === fontWeight.bold).map(node => [node.props.children].flat().join(''));
+  elementsIn(screen.root!)
+    .filter(node => (node.type as unknown) === 'Text' && flat(node.props.style).fontWeight === fontWeight.bold)
+    .map(node => [node.props.children].flat().join(''));
 
 const MODES: Mode[] = ['light', 'dark'];
 
@@ -130,19 +131,17 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     signIn(STAFF, { brand, mode });
     mockParams = { customerId: 'c1', customerName: 'Green Valley Traders' };
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(['GRN activity', 'Green Valley Traders', 'GRN 311', 'Invoice 2026-0042', 'Not invoiced', '1 dispatch']));
-    const notInvoiced = tree!.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === 'Not invoiced')[0];
-    expect(flat(notInvoiced.props.style).color).toBe(t.status.critical.text);
-    expect(flat(grnCard('311').props.style).backgroundColor).toBe(t.surface.card);
-    expect(flat(tree!.root.findAllByType('View' as never)[0].props.style).backgroundColor).toBe(t.background.base);
+    shown('GRN activity', 'Green Valley Traders', 'GRN 311', 'Invoice 2026-0042', 'Not invoiced', '1 dispatch');
+    expect(screen.getByText('Not invoiced')).toHaveStyle({ color: t.status.critical.text });
+    expect(grnCard('311')).toHaveStyle({ backgroundColor: t.surface.card });
+    expect(screen.root).toHaveStyle({ backgroundColor: t.background.base });
   });
 
   it('every customer: one card per customer on theme tokens', async () => {
     signIn(STAFF, { brand, mode });
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(['GRN activity', 'All customers', 'GRNs', 'Green Valley Traders', '4 GRNs · Latest 01/10/25']));
-    const row = pressables(label => label.startsWith('Green Valley Traders,'))[0];
-    expect(flat(row.props.style).backgroundColor).toBe(t.surface.card);
+    shown('GRN activity', 'All customers', 'GRNs', 'Green Valley Traders', '4 GRNs · Latest 01/10/25');
+    expect(screen.getByRole('button', { name: /^Green Valley Traders,/ })).toHaveStyle({ backgroundColor: t.surface.card });
   });
 });
 
@@ -154,15 +153,14 @@ describe('the GRN card', () => {
   it('reads as one element with every fact, the date included, and opens the GRN', async () => {
     signIn(STAFF);
     await open();
-    expect(grnCard('311').props.accessibilityLabel).toBe(
+    expect(grnCard('311')).toHaveAccessibleName(
       'GRN 311, 8 Oct 2025, Fictional Farms · Asha Example, 80 of 100 units in stock, Invoice 2026-0042, 1 dispatch, 2 photos'
     );
-    expect(grnCard('312').props.accessibilityLabel).toBe('GRN 312, 8 Oct 2025, Sender not recorded · Ravi Example, 20 of 20 bags in stock, Not invoiced');
+    expect(grnCard('312')).toHaveAccessibleName('GRN 312, 8 Oct 2025, Sender not recorded · Ravi Example, 20 of 20 bags in stock, Not invoiced');
     // A document number is never cut short.
-    const title = tree!.root.findAll(node => (node.type as unknown) === 'Text' && node.props.children === 'GRN 311')[0];
-    expect(title.props.numberOfLines).toBeUndefined();
+    expect(screen.getByText('GRN 311').props.numberOfLines).toBeUndefined();
 
-    await run(() => grnCard('311').props.onPress());
+    await press(/^GRN 311,/);
     expect(mockRouterPush).toHaveBeenCalledWith('/grn-details/g1');
   });
 
@@ -170,17 +168,17 @@ describe('the GRN card', () => {
     // One customer's search lives under its own scope since the per-customer search (SR-06).
     signIn(STAFF, { lists: { 'report-grn-activity-customer': { values: {}, searches: { c1: 'garlic' } } } });
     await open();
-    expect(texts()).toContain('GRN 311');
-    expect(texts()).not.toContain('GRN 312');
-    expect(texts()).toContain('Garlic');
+    expect(screen.getByText('GRN 311')).toBeOnTheScreen();
+    expect(screen.queryByText('GRN 312')).not.toBeOnTheScreen();
+    expect(screen.getByText('Garlic')).toBeOnTheScreen();
     expect(bold()).toEqual(['Garlic']);
     expect(grnCard('311').props.accessibilityLabel).toMatch(/, Garlic$/);
-    act(() => tree!.unmount());
+    await screen.unmount();
 
     // "fictional" is in the sender's name on the card, so the item that also has it is not named.
     signIn(STAFF, { lists: { 'report-grn-activity-customer': { values: {}, searches: { c1: 'fictional' } } } });
     await open();
-    expect(texts()).not.toContain('Fictional Onions');
+    expect(screen.queryByText('Fictional Onions')).not.toBeOnTheScreen();
     expect(bold()).toEqual(['Fictional']);
   });
 });
@@ -197,8 +195,8 @@ describe('whose GRNs', () => {
   it('a customer account with no customer is told so, with nothing to retry and nothing asked', async () => {
     signIn({ id: 'u1', role: 'customer', assignedCustomerIds: [] });
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(['No customer linked', 'No customer is linked to your account. Ask your facility to link one.']));
-    expect(pressables(label => label === 'Try again')).toHaveLength(0);
+    shown('No customer linked', 'No customer is linked to your account. Ask your facility to link one.');
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
     expect(allActivity).not.toHaveBeenCalled();
     expect(customerActivity).not.toHaveBeenCalled();
   });
@@ -206,7 +204,7 @@ describe('whose GRNs', () => {
   it('a customer account with several customers chooses one, and can change it from the header', async () => {
     signIn({ id: 'u1', role: 'customer', assignedCustomerIds: ['c1', 'c2'], assignedCustomers: [GREEN, RIVER] });
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(['Choose a customer', 'Green Valley Traders', 'Riverbank Produce']));
+    shown('Choose a customer', 'Green Valley Traders', 'Riverbank Produce');
     expect(customerActivity).not.toHaveBeenCalled();
 
     await press('Riverbank Produce');
@@ -214,19 +212,19 @@ describe('whose GRNs', () => {
     const [argument] = customerActivity.mock.calls[0];
     expect(Object.keys(argument).sort()).toEqual(['customerId', 'fromDate', 'toDate']);
     expect(argument.customerId).toBe('c2');
-    expect(texts()).toEqual(expect.arrayContaining(['Riverbank Produce', 'GRN 311']));
+    shown('Riverbank Produce', 'GRN 311');
     expect(allActivity).not.toHaveBeenCalled();
 
     await press('Change customer');
-    expect(texts()).toContain('Choose a customer');
-    expect(texts()).not.toContain('GRN 311');
+    expect(screen.getByText('Choose a customer')).toBeOnTheScreen();
+    expect(screen.queryByText('GRN 311')).not.toBeOnTheScreen();
   });
 
   it('a warehouse role is offered no "Change customer"', async () => {
     signIn(STAFF);
     mockParams = { customerId: 'c1', customerName: 'Green Valley Traders' };
     await open();
-    expect(pressables(label => label === 'Change customer')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Change customer' })).not.toBeOnTheScreen();
   });
 });
 
@@ -236,7 +234,7 @@ describe('the customer opened last', () => {
   it('is one row above the customers, which opens that customer', async () => {
     signIn(STAFF, { prefs });
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(['Last opened', 'Riverbank Produce']));
+    shown('Last opened', 'Riverbank Produce');
     await press('Last opened: Riverbank Produce');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c2', customerName: 'Riverbank Produce' } });
   });
@@ -244,7 +242,7 @@ describe('the customer opened last', () => {
   it('is not offered while a search is typed', async () => {
     signIn(STAFF, { prefs, lists: { 'report-grn-activity': { values: { search: 'green' } } } });
     await open();
-    expect(texts()).not.toContain('Last opened');
+    expect(screen.queryByText('Last opened')).not.toBeOnTheScreen();
   });
 });
 
@@ -257,16 +255,16 @@ describe('nothing to show', () => {
   it('suggests a longer period', async () => {
     signIn(STAFF);
     await open();
-    expect(texts()).toEqual(expect.arrayContaining(['No GRNs in this period', 'Choose a longer period to see more GRNs.']));
+    shown('No GRNs in this period', 'Choose a longer period to see more GRNs.');
   });
 
   it('suggests no longer period when the period is already the longest', async () => {
     signIn(STAFF, { prefs: { period: { preset: 'last420' } } });
     await open();
-    expect(texts()).toContain('No GRNs in this period');
-    expect(texts()).not.toContain('Choose a longer period to see more GRNs.');
+    expect(screen.getByText('No GRNs in this period')).toBeOnTheScreen();
+    expect(screen.queryByText('Choose a longer period to see more GRNs.')).not.toBeOnTheScreen();
     // Nor the lists' own words for an empty list.
-    expect(texts()).not.toContain('Items you create appear here.');
+    expect(screen.queryByText('Items you create appear here.')).not.toBeOnTheScreen();
   });
 
   it('says what failed and why when the report could not be read', async () => {
@@ -274,7 +272,8 @@ describe('nothing to show', () => {
     signIn(STAFF);
     await open();
     // Not an access refusal: the screen's own words (its fallbackError), not the service's.
-    expect(texts()).toEqual(expect.arrayContaining(["Couldn't load GRN activity", "Couldn't load GRN activity. Check your connection and try again.", 'Try again']));
-    expect(texts()).not.toContain('The facility refused this report.');
+    shown("Couldn't load GRN activity", "Couldn't load GRN activity. Check your connection and try again.", 'Try again');
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeOnTheScreen();
+    expect(screen.queryByText('The facility refused this report.')).not.toBeOnTheScreen();
   });
 });

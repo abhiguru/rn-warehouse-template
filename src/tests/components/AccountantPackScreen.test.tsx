@@ -4,11 +4,10 @@
  * does not exist. Some mocks below stand in for the app shell and may need a line when the screen's own imports are known.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import AccountantPackScreen from '../../../app/reports/accountant-pack';
-import { DatePickerInput } from '@/components/ui/DatePickerInput';
+import { formatSpokenPickerValue } from '@/components/ui/DatePickerInput';
 import { setLanguage, t } from '@/i18n';
-import { toLocalISODate } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
 import { shareFileBytes } from '@/utils/shareDocument';
 
@@ -36,6 +35,16 @@ jest.mock('@/config/supabaseConfig', () => ({
   createAuthenticatedFetch: jest.fn(() => (...args: Parameters<typeof fetch>) => global.fetch(...args)),
 }));
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: jest.fn(async () => 'fictional-access-credential') }));
+// The native calendar stands in as one button that "chooses" the day the test names (the picker's own change event).
+let mockChosenDay = new Date(2026, 9, 5);
+jest.mock('@react-native-community/datetimepicker', () => ({
+  __esModule: true,
+  default: ({ onChange }: { onChange: (event: { type: string }, date?: Date) => void }) => {
+    const { Pressable: Press, Text: Label } = jest.requireActual('react-native');
+    return <Press accessibilityRole="button" accessibilityLabel="Choose the day" onPress={() => onChange({ type: 'set' }, mockChosenDay)}><Label>Choose the day</Label></Press>;
+  },
+  DateTimePickerAndroid: { open: jest.fn() },
+}));
 
 const originalFetch = global.fetch;
 const ZIP_BYTES = new Uint8Array([0x50, 0x4b, 3, 4]).buffer;
@@ -49,7 +58,6 @@ const refusal = (status: number, code: string) => ({
   json: async () => ({ success: false, error: 'Server text.', code }), arrayBuffer: jest.fn(), text: async () => '',
 }) as any;
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   // Only Date is faked: "today" is 14 November 2026, so the last complete month is October 2026.
   jest.useFakeTimers({ now: new Date('2026-11-14T06:00:00Z'), doNotFake: ['nextTick', 'setImmediate', 'clearImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'queueMicrotask'] });
@@ -60,38 +68,45 @@ beforeEach(() => {
   jest.mocked(shareFileBytes).mockResolvedValue({ success: true });
   ['log', 'info', 'warn', 'error', 'debug'].forEach(m => jest.spyOn(console, m as 'log').mockImplementation(() => {}));
 });
-afterEach(async () => {
-  if (tree) await act(async () => tree!.unmount());
-  tree = undefined;
+afterEach(() => {
   global.fetch = originalFetch;
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
-async function render() { await act(async () => { tree = create(<AccountantPackScreen />); }); }
-const pickers = () => tree!.root.findAllByType(DatePickerInput);
-const days = () => pickers().map(p => toLocalISODate(p.props.value));
-const pick = async (index: number, date: Date) => { await act(async () => { pickers()[index].props.onChange(date); }); };
-const make = () => tree!.root.find(n => n.props.testID === 'accountant-pack-make' && typeof n.props.onPress === 'function');
-const press = async () => { await act(async () => { make().props.onPress(); }); };
-const hostText = (id: string) => tree!.root.findAll(n => n.props.testID === id && typeof n.type === 'string').map(n => [n.props.children].flat(Infinity).join(''));
-const has = (id: string) => tree!.root.findAll(n => n.props.testID === id).length > 0;
+const user = () => userEvent.setup({ delay: 0 });
+const dateField = (label: string) => screen.getByRole('button', { name: new RegExp(`^${label}`) });
+const makeButton = () => screen.getByRole('button', { name: t('reports.accountantPack.makePack') });
+/** The From and To fields say their day in their accessible name; compare with the day written the way the field writes it. */
+const expectDays = (from: Date, to: Date) => {
+  expect(dateField('From')).toHaveAccessibleName(t('components.datePicker.fieldLabel', { label: 'From', value: formatSpokenPickerValue(from, 'date') }));
+  expect(dateField('To')).toHaveAccessibleName(t('components.datePicker.fieldLabel', { label: 'To', value: formatSpokenPickerValue(to, 'date') }));
+};
+const OCT_1 = new Date(2026, 9, 1);
+const OCT_31 = new Date(2026, 9, 31);
+const pick = async (label: string, date: Date) => {
+  mockChosenDay = date;
+  await user().press(dateField(label));
+  await user().press(screen.getByRole('button', { name: 'Choose the day' }));
+  await user().press(screen.getByRole('button', { name: t('common.done') }));
+};
+const press = async () => { await user().press(makeButton()); };
 
 it('[crit 10] opens with the last complete month in From and To, the testIDs, and the note under the button', async () => {
-  await render();
-  expect(pickers()).toHaveLength(2);
-  expect(pickers()[0].props.label).toBe('From');
-  expect(pickers()[1].props.label).toBe('To');
-  expect(days()).toEqual(['2026-10-01', '2026-10-31']);
-  for (const id of ['accountant-pack-from', 'accountant-pack-to', 'accountant-pack-make', 'accountant-pack-note']) expect(has(id)).toBe(true);
-  expect(hostText('accountant-pack-note').join('')).toBe('The pack holds customer names, GSTINs and amounts. Send it only to your accountant.');
-  expect(has('accountant-pack-problem')).toBe(false);
-  expect(make().props.disabled).toBeFalsy();
+  await render(<AccountantPackScreen />);
+  expect(screen.getAllByRole('button', { name: /^(From|To)/ })).toHaveLength(2);
+  expectDays(OCT_1, OCT_31);
+  for (const id of ['accountant-pack-from', 'accountant-pack-to']) expect(screen.getByTestId(id)).toBeOnTheScreen();
+  for (const id of ['accountant-pack-make', 'accountant-pack-note']) expect(screen.getByTestId(id)).toBeOnTheScreen();
+  expect(makeButton()).toBeOnTheScreen();
+  expect(screen.getByText('The pack holds customer names, GSTINs and amounts. Send it only to your accountant.')).toBeOnTheScreen();
+  expect(screen.queryByRole('alert')).not.toBeOnTheScreen();
+  expect(makeButton()).toBeEnabled();
 });
 
 it('[crit 10] Make pack sends the two dates once, then shares the zip with its name, as a zip', async () => {
   jest.mocked(fetch).mockResolvedValue(zipAnswer());
-  await render();
+  await render(<AccountantPackScreen />);
   await press();
   expect(fetch).toHaveBeenCalledTimes(1);
   const [url, init] = jest.mocked(fetch).mock.calls[0];
@@ -105,87 +120,90 @@ it('[crit 10] Make pack sends the two dates once, then shares the zip with its n
 it('a double tap makes one pack; the button is loading meanwhile', async () => {
   let release!: (answer: unknown) => void;
   jest.mocked(fetch).mockImplementation(() => new Promise(resolve => { release = resolve; }) as never);
-  await render();
-  await act(async () => { make().props.onPress(); make().props.onPress(); });
+  await render(<AccountantPackScreen />);
+  // Both taps reach the button before the screen has drawn the busy state (a real double tap), so the guard in the handler is what stops the second.
+  const button = makeButton();
+  // eslint-disable-next-line testing-library/no-unnecessary-act -- one act so that both taps land before the screen draws the busy state
+  await act(async () => { await fireEvent.press(button); await fireEvent.press(button); });
   expect(fetch).toHaveBeenCalledTimes(1);
-  expect(Boolean(make().props.loading)).toBe(true);
+  expect(makeButton()).toBeBusy();
   await act(async () => { release(zipAnswer()); });
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
 it('[crit 15] a period with nothing in it: packEmpty inline, the dates kept, no share', async () => {
   jest.mocked(fetch).mockResolvedValue(refusal(404, 'NOTHING_IN_PERIOD'));
-  await render();
-  await pick(0, new Date(2026, 9, 5));
+  await render(<AccountantPackScreen />);
+  await pick('From', new Date(2026, 9, 5));
   await press();
-  expect(hostText('accountant-pack-problem').join('')).toBe('No invoices or receipts in this period.');
-  expect(days()).toEqual(['2026-10-05', '2026-10-31']);
+  expect(await screen.findByRole('alert', { name: 'No invoices or receipts in this period.' })).toBeOnTheScreen();
+  expectDays(new Date(2026, 9, 5), OCT_31);
   expect(shareFileBytes).not.toHaveBeenCalled();
   expect(showAlert).not.toHaveBeenCalled();
 });
 
 it('[crit 15] the server refuses a period across two financial years: packOneYear inline, dates kept', async () => {
   jest.mocked(fetch).mockResolvedValue(refusal(400, 'PERIOD_ACROSS_YEARS'));
-  await render();
+  await render(<AccountantPackScreen />);
   await press();
-  expect(hostText('accountant-pack-problem').join('')).toBe('Choose dates inside one financial year.');
-  expect(days()).toEqual(['2026-10-01', '2026-10-31']);
+  expect(await screen.findByRole('alert', { name: 'Choose dates inside one financial year.' })).toBeOnTheScreen();
+  expectDays(OCT_1, OCT_31);
 });
 
 it('dates in two financial years: the same text inline at once, the button disabled, nothing sent', async () => {
-  await render();
-  await pick(0, new Date(2026, 2, 15)); // 15 March 2026 is in 2025-26, To is in 2026-27
-  expect(hostText('accountant-pack-problem').join('')).toBe('Choose dates inside one financial year.');
-  expect(make().props.disabled).toBe(true);
+  await render(<AccountantPackScreen />);
+  await pick('From', new Date(2026, 2, 15)); // 15 March 2026 is in 2025-26, To is in 2026-27
+  expect(screen.getByRole('alert', { name: 'Choose dates inside one financial year.' })).toBeOnTheScreen();
+  expect(makeButton()).toBeDisabled();
   await press();
   expect(fetch).not.toHaveBeenCalled();
-  await pick(0, new Date(2026, 3, 1)); // 1 April 2026 is inside 2026-27
-  expect(has('accountant-pack-problem')).toBe(false);
-  expect(make().props.disabled).toBeFalsy();
+  await pick('From', new Date(2026, 3, 1)); // 1 April 2026 is inside 2026-27
+  expect(screen.queryByRole('alert')).not.toBeOnTheScreen();
+  expect(makeButton()).toBeEnabled();
 });
 
 it('[crit 15] a pack too long to make (PACK_TOO_LONG): an alert titled Accountant pack with packTooLarge, dates kept', async () => {
   jest.mocked(fetch).mockResolvedValue(refusal(400, 'PACK_TOO_LONG'));
-  await render();
+  await render(<AccountantPackScreen />);
   await press();
   expect(showAlert).toHaveBeenCalledWith('Accountant pack', 'This pack is too large. Choose a shorter period.');
-  expect(days()).toEqual(['2026-10-01', '2026-10-31']);
-  expect(has('accountant-pack-problem')).toBe(false);
+  expectDays(OCT_1, OCT_31);
+  expect(screen.queryByRole('alert')).not.toBeOnTheScreen();
 });
 
 it('[crit 15] a zip over the 25 MB cap (shareFileBytes refuses): the same alert, dates kept', async () => {
   jest.mocked(fetch).mockResolvedValue(zipAnswer());
   jest.mocked(shareFileBytes).mockResolvedValue({ success: false, error: t('reports.accountantPack.packTooLarge') });
-  await render();
+  await render(<AccountantPackScreen />);
   await press();
   expect(showAlert).toHaveBeenCalledWith('Accountant pack', 'This pack is too large. Choose a shorter period.');
-  expect(days()).toEqual(['2026-10-01', '2026-10-31']);
+  expectDays(OCT_1, OCT_31);
 });
 
 it('[crit 15] in Gujarati the alert and the inline texts are the spec\'s Gujarati', async () => {
   setLanguage('gu');
   jest.mocked(fetch).mockResolvedValue(refusal(400, 'PACK_TOO_LONG'));
-  await render();
+  await render(<AccountantPackScreen />);
   await press();
   expect(showAlert).toHaveBeenCalledWith('હિસાબનીશ માટેની ફાઇલો', 'આ ફાઇલો બહુ મોટી છે. ટૂંકો સમયગાળો પસંદ કરો.');
   jest.mocked(fetch).mockResolvedValue(refusal(404, 'NOTHING_IN_PERIOD'));
   await press();
-  expect(hostText('accountant-pack-problem').join('')).toBe('આ સમયગાળામાં કોઈ ઇન્વૉઇસ કે આવક નથી.');
-  expect(hostText('accountant-pack-note').join('')).toBe('આ ફાઇલોમાં વેપારીઓના નામ, જીએસટીઆઈએન અને રકમ છે. ફક્ત તમારા હિસાબનીશને જ મોકલો.');
+  expect(await screen.findByRole('alert', { name: 'આ સમયગાળામાં કોઈ ઇન્વૉઇસ કે આવક નથી.' })).toBeOnTheScreen();
+  expect(screen.getByText('આ ફાઇલોમાં વેપારીઓના નામ, જીએસટીઆઈએન અને રકમ છે. ફક્ત તમારા હિસાબનીશને જ મોકલો.')).toBeOnTheScreen();
 });
 
 it('an account the server refuses (PACK_FORBIDDEN) is told the report is not available as a PDF; dates kept', async () => {
   jest.mocked(fetch).mockResolvedValue(refusal(403, 'PACK_FORBIDDEN'));
-  await render();
+  await render(<AccountantPackScreen />);
   await press();
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(jest.mocked(showAlert).mock.calls[0][1]).toBe(t('reports.export.notAvailable'));
-  expect(days()).toEqual(['2026-10-01', '2026-10-31']);
+  expectDays(OCT_1, OCT_31);
 });
 
 it('no answer from the server: the app\'s network text; any other failure: the existing failure texts; dates kept', async () => {
   jest.mocked(fetch).mockRejectedValue(new TypeError('Network request failed'));
-  await render();
+  await render(<AccountantPackScreen />);
   await press();
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(jest.mocked(showAlert).mock.calls[0][1]).toBe(t('errors.parsed.network'));
@@ -193,13 +211,13 @@ it('no answer from the server: the app\'s network text; any other failure: the e
   jest.mocked(fetch).mockResolvedValue(refusal(503, 'PACK_UNAVAILABLE'));
   await press();
   expect(jest.mocked(showAlert).mock.calls[0][0]).toBe(t('reports.export.failedTitle'));
-  expect(days()).toEqual(['2026-10-01', '2026-10-31']);
+  expectDays(OCT_1, OCT_31);
 });
 
 it('a failed share (not the size cap) says the existing share failure; after any failure a second try makes a second request', async () => {
   jest.mocked(fetch).mockResolvedValue(zipAnswer());
   jest.mocked(shareFileBytes).mockResolvedValue({ success: false, error: 'Share sheet is closed.' });
-  await render();
+  await render(<AccountantPackScreen />);
   await press();
   expect(jest.mocked(showAlert).mock.calls[0][0]).toBe(t('reports.export.shareFailedTitle'));
   await press();

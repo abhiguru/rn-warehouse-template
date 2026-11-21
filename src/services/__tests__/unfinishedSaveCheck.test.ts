@@ -5,7 +5,7 @@
  * the server has not had time to settle (younger than the lost-answer wait plus 20 s) is not asked about yet.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act } from 'react-test-renderer';
+import { act } from '@testing-library/react-native';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { getSessionGeneration, onSessionChange } from '@/config/sessionLifecycle';
 import { showAlert } from '@/utils/alert';
@@ -125,6 +125,7 @@ describe('a create the server saved', () => {
     expect(savedIdOf('grn', { dispatch_id: 'd1' })).toBeUndefined();
     expect(savedIdOf('dispatch', { dispatch_id: 'd1' })).toBe('d1');
     expect(savedIdOf('dispatch', { data: { dispatch_id: 'd2' } })).toBe('d2');
+    expect(savedIdOf('invoice', { data: { invoice_id: 'i2' } })).toBe('i2');
     expect(savedIdOf('dispatch', null)).toBeUndefined();
     expect(savedIdOf('grn', 'text')).toBeUndefined();
   });

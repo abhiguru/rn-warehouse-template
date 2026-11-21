@@ -4,7 +4,7 @@
  * server's reply (rpc) is faked. Written BEFORE the build: fails today because app/accountant-export.tsx does not exist.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import AccountantExportScreen from '../../../app/accountant-export';
 import { setLanguage, t } from '@/i18n';
 
@@ -44,7 +44,6 @@ const DEFAULTS: Record<string, string> = {
   discount: 'Discount Allowed', round_off: 'Round Off', receipt_cash: 'Cash', receipt_upi: 'Bank', receipt_bank_transfer: 'Bank', receipt_cheque: 'Bank', receipt_other: 'Bank',
 };
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   setLanguage('en');
   mockRpc.mockReset();
@@ -55,48 +54,54 @@ beforeEach(() => {
   });
   ['log', 'info', 'warn', 'error', 'debug'].forEach(m => jest.spyOn(console, m as 'log').mockImplementation(() => {}));
 });
-afterEach(async () => {
-  if (tree) await act(async () => tree!.unmount());
-  tree = undefined;
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
-async function render() { await act(async () => { tree = create(<AccountantExportScreen />); }); await act(async () => {}); }
-const field = (key: string) => tree!.root.find(n => n.props.testID === `accountant-export-${key}` && typeof n.props.onChangeText === 'function');
-const type = async (key: string, value: string) => { await act(async () => { field(key).props.onChangeText(value); }); };
-const save = async () => { await act(async () => { tree!.root.find(n => n.props.testID === 'accountant-export-save' && typeof n.props.onPress === 'function').props.onPress(); }); await act(async () => {}); };
-const texts = () => tree!.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat(Infinity).filter(c => typeof c === 'string').join(''));
+const renderScreen = async () => { await render(<AccountantExportScreen />); await screen.findByLabelText(new RegExp(`^${t('settings.accountantExport.fields.labour')}`)); };
+const field = (key: string) => screen.getByLabelText(`${LABELS[KEYS.indexOf(key)]}, required`);
+const type = async (key: string, value: string) => {
+  const user = userEvent.setup({ delay: 0 });
+  await user.clear(field(key));
+  if (value) await user.paste(field(key), value);
+};
+const save = async () => { await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: t('settings.accountantExport.saveLabel') })); };
 
 it('[crit 11] loads the names with get_accountant_ledgers and shows the help line and 13 fields in the contract\'s order, each at most 60 characters', async () => {
-  await render();
+  await renderScreen();
   expect(mockRpc.mock.calls[0][0]).toBe('get_accountant_ledgers');
-  expect(texts()).toContain('The ledger names your accountant uses in Tally.');
-  const fields = tree!.root.findAll(n => /^accountant-export-(?!save$|error$)/.test(String(n.props.testID ?? '')) && typeof n.props.onChangeText === 'function' && typeof n.type === 'string');
-  expect(fields.map(n => n.props.testID)).toEqual(KEYS.map(k => `accountant-export-${k}`));
-  KEYS.forEach((key, i) => {
-    expect(field(key).props.value).toBe(DEFAULTS[key]);
-    expect(field(key).props.maxLength).toBe(60);
-    expect(texts()).toContain(LABELS[i]);
-  });
-  expect(tree!.root.findAll(n => n.props.testID === 'accountant-export-save').length).toBeGreaterThan(0);
+  expect(screen.getByText('The ledger names your accountant uses in Tally.')).toBeOnTheScreen();
+  // Order of the fields on the screen: the text inputs in tree order.
+  expect(screen.getAllByDisplayValue(/.*/).map(n => n.props.accessibilityLabel)).toEqual(LABELS.map(l => `${l}, required`));
+  for (const [i, key] of KEYS.entries()) {
+    expect(field(key)).toHaveDisplayValue(DEFAULTS[key]);
+    // The limit is soft (the field marks 61 characters too long, not blocks them); it is the Input's own error text.
+    await type(key, 'x'.repeat(60));
+    expect(screen.queryByText(t('components.input.tooLong', { max: '60' }))).not.toBeOnTheScreen();
+    await type(key, 'x'.repeat(61));
+    expect(screen.getByText(t('components.input.tooLong', { max: '60' }))).toBeOnTheScreen();
+    await type(key, DEFAULTS[key]);
+    expect(screen.getAllByText(LABELS[i], { exact: false }).length).toBeGreaterThan(0);
+  }
+  expect(screen.getByRole('button', { name: t('settings.accountantExport.saveLabel') })).toBeOnTheScreen();
 });
 
 it('[crit 11] Save sends all 13 names with the change (set_accountant_ledgers, p_ledgers)', async () => {
-  await render();
+  await renderScreen();
   await type('labour', 'Labour X');
   await save();
   const call = mockRpc.mock.calls.find(([name]) => name === 'set_accountant_ledgers');
   expect(call).toBeDefined();
   expect(call![1]).toEqual({ p_ledgers: { ...DEFAULTS, labour: 'Labour X' } });
-  expect(field('labour').props.value).toBe('Labour X');
+  expect(field('labour')).toHaveDisplayValue('Labour X');
 });
 
 it('an empty name is refused before saving, with the existing required-field text; nothing is sent', async () => {
-  await render();
+  await renderScreen();
   await type('cgst', '   ');
   await save();
   expect(mockRpc.mock.calls.some(([name]) => name === 'set_accountant_ledgers')).toBe(false);
-  expect(texts()).toContain(t('validation.required', { field: 'CGST' }));
+  expect(screen.getByText(t('validation.required', { field: 'CGST' }))).toBeOnTheScreen();
 });
 
 it('a refusal from the server is shown at accountant-export-error and the typed names stay', async () => {
@@ -104,17 +109,17 @@ it('a refusal from the server is shown at accountant-export-error and the typed 
     if (name === 'get_accountant_ledgers') return { data: { success: true, data: { ledgers: DEFAULTS, defaults: DEFAULTS, saved: false } }, error: null };
     return { data: { success: false, error_code: 'WH409', reason: 'LEDGER_NAME_TOO_LONG', error: 'A ledger name has at most 60 characters.', field: 'labour' }, error: null };
   });
-  await render();
+  await renderScreen();
   await type('labour', 'Labour X');
   await save();
-  expect(tree!.root.findAll(n => n.props.testID === 'accountant-export-error').length).toBeGreaterThan(0);
-  expect(field('labour').props.value).toBe('Labour X');
+  expect(await screen.findByTestId('accountant-export-error')).toBeOnTheScreen();
+  expect(field('labour')).toHaveDisplayValue('Labour X');
 });
 
 it('[crit 12] in Gujarati the title, help line and labels are the spec\'s Gujarati drafts', async () => {
   setLanguage('gu');
-  await render();
-  expect(texts()).toContain('તમારા હિસાબનીશ ટેલીમાં જે ખાતાના નામ વાપરે છે તે.');
-  expect(texts()).toContain(t('settings.accountantExport.fields.labour'));
+  await renderScreen();
+  expect(screen.getByText('તમારા હિસાબનીશ ટેલીમાં જે ખાતાના નામ વાપરે છે તે.')).toBeOnTheScreen();
+  expect(screen.getAllByText(t('settings.accountantExport.fields.labour'), { exact: false }).length).toBeGreaterThan(0);
   expect(t('settings.accountantExport.fields.labour')).toMatch(/[઀-૿]/);
 });

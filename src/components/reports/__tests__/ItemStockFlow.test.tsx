@@ -13,10 +13,9 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureStore } from '@reduxjs/toolkit';
-import { StockItemCard } from '@/components/reports/StockItemCard';
 import { getAuthenticatedClient, getSessionIdentity } from '@/config/supabaseConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 import { readReportCache, writeReportCache } from '@/features/reports/reportCache';
@@ -186,7 +185,7 @@ type Store = ReturnType<typeof makeStore>;
 
 jest.setTimeout(30_000);
 
-const mounted: TestRenderer.ReactTestRenderer[] = [];
+let user: ReturnType<typeof userEvent.setup>;
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -211,60 +210,77 @@ beforeEach(async () => {
   jest.mocked(getCustomerGRNItems).mockReset();
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never);
   jest.mocked(getSessionIdentity).mockResolvedValue(null);
+  user = userEvent.setup();
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
 
 /** Longer than the search field's 300 ms pause. */
 const pause = () => new Promise(resolve => setTimeout(resolve, 350));
 
-async function open(store: Store = makeStore()) {
-  mockStore = store;
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<ItemStockSummaryScreen />);
+/** Lets the promises behind the queries run. */
+const settle = () => act(async () => void (await settleQueries()));
+/** Works `callback` (outside the screen's own events), then lets the queries settle. */
+const work = (callback: () => void | Promise<unknown>) =>
+  act(async () => {
+    await callback();
     await settleQueries();
   });
-  mounted.push(tree);
-  const run = (callback: () => void | Promise<unknown>) =>
-    act(async () => {
-      await callback();
-      await settleQueries();
-    });
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-  const control = (label: string) => {
-    const found = tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-    if (found.length === 0) throw new Error(`No control labelled "${label}"`);
+
+async function open(store: Store = makeStore()) {
+  mockStore = store;
+  await render(<ItemStockSummaryScreen />);
+  await settle();
+  /** A button, or an option of the sort sheet (a radio). */
+  const control = (label: string) => screen.queryByRole('button', { name: label }) ?? screen.getByRole('radio', { name: label });
+  const searchField = () => screen.getByLabelText('Search items');
+  /** The list the stand-in FlashList draws; the screen gives it no name, so it is found by its host type. */
+  const list = () => {
+    const found = screen.root!.queryAll(node => (node.type as unknown) === 'FlashList');
+    if (found.length !== 1) throw new Error(`Expected one list, found ${found.length}`);
     return found[0];
   };
-  const searchField = () => tree.root.findAll(node => typeof node.props.onChangeText === 'function' && node.props.accessibilityLabel === 'Search items')[0];
+  /** The card of the item named so (its button is named "<item>, <packaging>, ..."). */
+  const card = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name},`) });
+  const press = async (label: string) => {
+    await user.press(control(label));
+    await settle();
+  };
+  /** The GRN lines on screen, in order. */
+  const grnRows = () => screen.queryAllByRole('button', { name: /^GRN \S+, / });
   return {
-    tree,
-    texts,
     store,
     control,
-    press: (label: string) => run(() => control(label).props.onPress()),
-    has: (label: string) => tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function').length > 0,
-    bold: () =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
-        .map(node => [node.props.children].flat().join('')),
-    /** Item names in the order the rows show them. */
-    items: () => tree.root.findAllByType(StockItemCard).map(card => card.props.name as string),
-    status: () => texts().find(text => text.includes('Last updated')),
+    press,
     /** The value of a figure tile, by its label. */
-    figure: (label: string) => tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(`${label}: `))[0]?.props.accessibilityLabel as string | undefined,
+    figure: (label: string) => screen.queryByLabelText(new RegExp(`^${label}: `))?.props.accessibilityLabel as string | undefined,
+    bold: () => screen.root!.queryAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold),
+    /** Item names in the order the rows show them. */
+    items: () => screen.queryAllByRole('button', { name: /^Example / }).map(row => (row.props.accessibilityLabel as string).split(', ')[0]),
+    /** The status line under the figures. */
+    status: () => screen.queryByText(/Last updated/),
+    /** The GRN lines on screen, as their numbers. */
+    grnNumbers: () => grnRows().map(row => /^GRN (\S+),/.exec(row.props.accessibilityLabel as string)![1]),
     /** Letters typed one after the other, faster than the field's pause. */
-    type: (...steps: string[]) => run(() => steps.forEach(text => searchField().props.onChangeText(text))),
-    waitForSearch: () => run(pause),
-    endReached: () => run(() => tree.root.findByType('FlashList' as never).props.onEndReached()),
+    type: async (...steps: string[]) => {
+      for (const text of steps) await fireEvent.changeText(searchField(), text);
+      await settle();
+    },
+    waitForSearch: () => work(pause),
+    endReached: async () => {
+      await fireEvent(list(), 'endReached');
+      await settle();
+    },
     /** Pull to refresh; the test settles, it does not wait for the answer. */
-    refresh: () => run(() => void tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh()),
-    /** The card of the item named so. */
-    card: (name: string) => tree.root.findAllByType(StockItemCard).find(found => found.props.name === name),
-    run,
+    refresh: () => work(() => void list().props.refreshControl.props.onRefresh()),
+    card,
+    /** Opens or closes the card of the item named so. */
+    toggle: async (name: string) => {
+      await user.press(card(name));
+      await settle();
+    },
+    run: work,
   };
 }
 
@@ -275,36 +291,36 @@ const page0 = (over: Partial<Params> = {}) => ({ p_customer_id: null, p_search_q
 describe('the search (backend with migration 52)', () => {
   it('asks once, after the pause, for what was typed last; an answer to an earlier search that comes late is dropped', async () => {
     const held = holdCalls(facility(FEW, { sorts: true }));
-    const screen = await open();
+    const ui = await open();
     expect(calls()).toEqual([page0()]);
-    await screen.run(() => held[0].release());
-    expect(screen.items()).toEqual(['Example Cumin', 'Example Garlic', 'Example Onions']);
+    await ui.run(() => held[0].release());
+    expect(ui.items()).toEqual(['Example Cumin', 'Example Garlic', 'Example Onions']);
 
     // One letter is not searched for; two are, once the typing pauses.
-    await screen.type('g', 'ga');
+    await ui.type('g', 'ga');
     expect(rpc).toHaveBeenCalledTimes(1);
-    await screen.waitForSearch();
+    await ui.waitForSearch();
     expect(calls()).toEqual([page0(), page0({ p_search_query: 'ga' })]);
     // The search runs on the server: while it is answered the field shows a spinner, not its clear button.
-    expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Searching').length).toBeGreaterThan(0);
-    expect(screen.has('Clear search')).toBe(false);
+    expect(screen.getByLabelText('Searching')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Clear search' })).not.toBeOnTheScreen();
 
     // Typed again before "ga" was answered: one more call, for "oni" only.
-    await screen.type('o', 'on', 'oni');
-    await screen.waitForSearch();
+    await ui.type('o', 'on', 'oni');
+    await ui.waitForSearch();
     expect(calls()).toEqual([page0(), page0({ p_search_query: 'ga' }), page0({ p_search_query: 'oni' })]);
 
-    await screen.run(() => held[2].release());
-    expect(screen.items()).toEqual(['Example Onions']);
+    await ui.run(() => held[2].release());
+    expect(ui.items()).toEqual(['Example Onions']);
     // The answer to "ga" arrives last, and changes nothing.
-    await screen.run(() => held[1].release());
-    expect(screen.items()).toEqual(['Example Onions']);
+    await ui.run(() => held[1].release());
+    expect(ui.items()).toEqual(['Example Onions']);
     // Answered: the spinner gives way to the clear button.
-    expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Searching')).toHaveLength(0);
-    expect(screen.has('Clear search')).toBe(true);
+    expect(screen.queryByLabelText('Searching')).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Clear search' })).toBeOnTheScreen();
     // The figures cover every item, not the one the search leaves (§14.10), and say so.
-    expect(screen.figure('All items')).toBe('All items: 3');
-    expect(screen.figure('Items')).toBeUndefined();
+    expect(ui.figure('All items')).toBe('All items: 3');
+    expect(ui.figure('Items')).toBeUndefined();
     expect(rpc).toHaveBeenCalledTimes(3);
   });
 });
@@ -319,46 +335,46 @@ describe('the figures with a search typed (backend with migration 52)', () => {
     return { data: { success: true, data: { ...answer.data.data, summary } }, error: null };
   };
 
-  const figures = (screen: Awaited<ReturnType<typeof open>>) => [screen.figure('All items'), screen.figure('All stock')];
+  const figures = (ui: Awaited<ReturnType<typeof open>>) => [ui.figure('All items'), ui.figure('All stock')];
 
   it('are those of the whole list, from its first page already read, under any sort, and nothing more is asked', async () => {
     serve(totalling(FEW));
-    const screen = await open();
-    expect([screen.figure('Items'), screen.figure('Stock')]).toEqual(['Items: 3', 'Stock: 130']);
+    const ui = await open();
+    expect([ui.figure('Items'), ui.figure('Stock')]).toEqual(['Items: 3', 'Stock: 130']);
 
-    await screen.type('oni');
-    await screen.waitForSearch();
-    expect(screen.items()).toEqual(['Example Onions']);
+    await ui.type('oni');
+    await ui.waitForSearch();
+    expect(ui.items()).toEqual(['Example Onions']);
     // A broken screen would show the searched list's figures: Items 1, Stock 90.
-    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
+    expect(figures(ui)).toEqual(['All items: 3', 'All stock: 130']);
     expect(calls()).toEqual([page0(), page0({ p_search_query: 'oni' })]);
 
     // Sorted otherwise with the search still typed: the whole list read under the other sort still counts.
-    await screen.press('Sorted by Item, A to Z. Change sort');
-    await screen.press('Stock');
-    await screen.press('Close');
+    await ui.press('Sorted by Item, A to Z. Change sort');
+    await ui.press('Stock');
+    await ui.press('Close');
     expect(calls()).toEqual([page0(), page0({ p_search_query: 'oni' }), page0({ p_search_query: 'oni', p_sort_by: 'total_stock' })]);
     // A broken screen falls back to the searched figures here: Items 1, Stock 90.
-    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
-    expect([screen.figure('Items'), screen.figure('Stock')]).toEqual([undefined, undefined]);
+    expect(figures(ui)).toEqual(['All items: 3', 'All stock: 130']);
+    expect([ui.figure('Items'), ui.figure('Stock')]).toEqual([undefined, undefined]);
   });
 
   it('with a search kept from before the screen opened, the whole list is asked for once, after the searched one', async () => {
     serve(totalling(FEW));
     const store = makeStore();
     store.dispatch(applyListFilters({ key: 'report-item-stock', values: { [SEARCH_KEY]: 'oni' } }));
-    const screen = await open(store);
-    expect(screen.items()).toEqual(['Example Onions']);
+    const ui = await open(store);
+    expect(ui.items()).toEqual(['Example Onions']);
     // A broken screen asks for the searched list alone and shows Items 1, Stock 90.
     expect(calls()).toEqual([page0({ p_search_query: 'oni' }), page0()]);
-    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
+    expect(figures(ui)).toEqual(['All items: 3', 'All stock: 130']);
 
     // Sorted otherwise: the whole list already read stands; it is not asked for again.
-    await screen.press('Sorted by Item, A to Z. Change sort');
-    await screen.press('Stock');
-    await screen.press('Close');
+    await ui.press('Sorted by Item, A to Z. Change sort');
+    await ui.press('Stock');
+    await ui.press('Close');
     expect(calls()).toEqual([page0({ p_search_query: 'oni' }), page0(), page0({ p_search_query: 'oni', p_sort_by: 'total_stock' })]);
-    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
+    expect(figures(ui)).toEqual(['All items: 3', 'All stock: 130']);
   });
 
   it('say when the figures were read, not when the search was answered, until a pull to refresh reads them again', async () => {
@@ -368,149 +384,149 @@ describe('the figures with a search typed (backend with migration 52)', () => {
       if (!params.p_search_query) answer.data.data.summary.total_stock = stock;
       return answer as Answer;
     });
-    const screen = await open();
-    expect(screen.status()).toBe('Last updated 10:00 am');
+    const ui = await open();
+    expect(ui.status()).toHaveTextContent('Last updated 10:00 am');
 
     jest.setSystemTime(new Date(2026, 9, 12, 10, 5));
     stock = 140;
-    await screen.type('oni');
-    await screen.waitForSearch();
-    expect(screen.items()).toEqual(['Example Onions']);
+    await ui.type('oni');
+    await ui.waitForSearch();
+    expect(ui.items()).toEqual(['Example Onions']);
     // The figures are the ones read at 10:00. A broken screen says 10:05, as if they had been read again.
-    expect(screen.status()).toBe('Last updated 10:00 am');
-    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 130']);
+    expect(ui.status()).toHaveTextContent('Last updated 10:00 am');
+    expect(figures(ui)).toEqual(['All items: 3', 'All stock: 130']);
 
-    await screen.refresh();
-    await screen.run(() => undefined);
+    await ui.refresh();
+    await ui.run(() => undefined);
     // The pull reads the searched list and the whole list again.
     expect(calls().slice(2)).toEqual([page0({ p_search_query: 'oni' }), page0()]);
-    expect(screen.status()).toBe('Last updated 10:05 am');
-    expect(figures(screen)).toEqual(['All items: 3', 'All stock: 140']);
+    expect(ui.status()).toHaveTextContent('Last updated 10:05 am');
+    expect(figures(ui)).toEqual(['All items: 3', 'All stock: 140']);
   });
 });
 
 describe('the sort (backend with migration 52)', () => {
   it('asks the server for the order chosen in the sort sheet, and the Stock figure is the server\'s total', async () => {
     serve(facility(FEW, { sorts: true }));
-    const screen = await open();
-    expect(screen.items()).toEqual(['Example Cumin', 'Example Garlic', 'Example Onions']);
+    const ui = await open();
+    expect(ui.items()).toEqual(['Example Cumin', 'Example Garlic', 'Example Onions']);
     // The whole list's stock as the server totals it, not the sum of the rows on screen (130).
-    expect(screen.figure('Stock')).toBe('Stock: 4,321');
+    expect(ui.figure('Stock')).toBe('Stock: 4,321');
 
-    await screen.press('Sorted by Item, A to Z. Change sort');
-    await screen.press('Stock');
+    await ui.press('Sorted by Item, A to Z. Change sort');
+    await ui.press('Stock');
     // The field changed and the direction was kept: lowest first.
     expect(calls()[1]).toEqual(page0({ p_sort_by: 'total_stock', p_sort_order: 'asc' }));
-    expect(screen.items()).toEqual(['Example Cumin', 'Example Garlic', 'Example Onions']);
-    await screen.press('Highest first');
-    await screen.press('Close');
+    expect(ui.items()).toEqual(['Example Cumin', 'Example Garlic', 'Example Onions']);
+    await ui.press('Highest first');
+    await ui.press('Close');
     expect(calls()[2]).toEqual(page0({ p_sort_by: 'total_stock', p_sort_order: 'desc' }));
-    expect(screen.items()).toEqual(['Example Onions', 'Example Garlic', 'Example Cumin']);
+    expect(ui.items()).toEqual(['Example Onions', 'Example Garlic', 'Example Cumin']);
 
-    await screen.press('Sorted by Stock, highest first. Change sort');
-    await screen.press('GRNs');
-    await screen.press('Close');
+    await ui.press('Sorted by Stock, highest first. Change sort');
+    await ui.press('GRNs');
+    await ui.press('Close');
     expect(calls()[3]).toEqual(page0({ p_sort_by: 'grn_count', p_sort_order: 'desc' }));
-    expect(screen.items()).toEqual(['Example Garlic', 'Example Cumin', 'Example Onions']);
-    expect(screen.figure('Stock')).toBe('Stock: 4,321');
+    expect(ui.items()).toEqual(['Example Garlic', 'Example Cumin', 'Example Onions']);
+    expect(ui.figure('Stock')).toBe('Stock: 4,321');
     expect(rpc).toHaveBeenCalledTimes(4);
     // Remembered for this facility and account.
-    expect(screen.store.getState().reportPrefs.byScope[SCOPE].sort['report-item-stock']).toEqual({ field: 'grn_count', order: 'desc' });
+    expect(ui.store.getState().reportPrefs.byScope[SCOPE].sort['report-item-stock']).toEqual({ field: 'grn_count', order: 'desc' });
   });
 });
 
 describe('a backend without migration 52', () => {
   it('asks again without the sort, sorts the items loaded here, and gives the Stock figure only once every item is loaded', async () => {
     serve(facility(MANY, { sorts: false }));
-    const screen = await open();
+    const ui = await open();
     // Refused with the sort, asked again without it.
     expect(calls()).toEqual([page0(), { p_customer_id: null, p_search_query: null, p_limit: 50, p_offset: 0 }]);
-    expect(screen.items()).toHaveLength(50);
-    expect(screen.items().slice(0, 2)).toEqual(['Example Item 001', 'Example Item 002']);
+    expect(ui.items()).toHaveLength(50);
+    expect(ui.items().slice(0, 2)).toEqual(['Example Item 001', 'Example Item 002']);
     // 73 items are not loaded: their stock is not known here.
-    expect(screen.figure('Stock')).toBe('Stock: —');
-    expect(screen.status()).toBe('Showing 50 of 123 · Last updated 10:00 am');
+    expect(ui.figure('Stock')).toBe('Stock: —');
+    expect(ui.status()).toHaveTextContent('Showing 50 of 123 · Last updated 10:00 am');
     // In name order the server's own order holds for the whole list: no note. No PDF on this backend.
-    expect(screen.texts().filter(text => text.startsWith('Sorted among'))).toEqual([]);
-    expect(screen.has('Share PDF')).toBe(false);
+    expect(screen.queryByText(/^Sorted among/)).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Share PDF' })).not.toBeOnTheScreen();
 
-    await screen.press('Sorted by Item, A to Z. Change sort');
-    await screen.press('Stock');
-    await screen.press('Highest first');
-    await screen.press('Close');
+    await ui.press('Sorted by Item, A to Z. Change sort');
+    await ui.press('Stock');
+    await ui.press('Highest first');
+    await ui.press('Close');
     // The facility is known not to sort: no second refused call, and the 50 loaded are sorted here.
     expect(calls().slice(2)).toEqual([
       { p_customer_id: null, p_search_query: null, p_limit: 50, p_offset: 0 },
       { p_customer_id: null, p_search_query: null, p_limit: 50, p_offset: 0 },
     ]);
     const firstFifty = MANY.slice(0, 50).sort((a, b) => b.total_stock - a.total_stock).map(row => row.item_name);
-    expect(screen.items()).toEqual(firstFifty);
-    expect(screen.texts()).toContain('Sorted among the 50 items loaded');
+    expect(ui.items()).toEqual(firstFifty);
+    expect(screen.getByText('Sorted among the 50 items loaded')).toBeOnTheScreen();
 
-    await screen.endReached();
-    await screen.endReached();
-    await screen.endReached();
+    await ui.endReached();
+    await ui.endReached();
+    await ui.endReached();
     expect(calls().slice(4).map(params => params.p_offset)).toEqual([50, 100]);
-    expect(screen.texts().filter(text => text.startsWith('Sorted among'))).toEqual([]);
+    expect(screen.queryByText(/^Sorted among/)).not.toBeOnTheScreen();
     expect(calls().slice(4).every(params => !('p_sort_by' in params))).toBe(true);
-    expect(screen.items()).toEqual([...MANY].sort((a, b) => b.total_stock - a.total_stock).map(row => row.item_name));
-    expect(screen.status()).toBe('Last updated 10:00 am');
+    expect(ui.items()).toEqual([...MANY].sort((a, b) => b.total_stock - a.total_stock).map(row => row.item_name));
+    expect(ui.status()).toHaveTextContent('Last updated 10:00 am');
     const allStock = MANY.reduce((sum, row) => sum + row.total_stock, 0);
-    expect(screen.figure('Stock')).toBe(`Stock: ${allStock.toLocaleString('en-IN')}`);
+    expect(ui.figure('Stock')).toBe(`Stock: ${allStock.toLocaleString('en-IN')}`);
   });
 });
 
 describe('the next page (backend with migration 52)', () => {
   it('is asked for at the end of the list from the next offset, and the status says how many are shown', async () => {
     const held = holdCalls(facility(MANY, { sorts: true }));
-    const screen = await open();
-    await screen.run(() => held[0].release());
-    expect(screen.status()).toBe('Showing 50 of 123 · Last updated 10:00 am');
-    expect(screen.texts()).not.toContain('Loading more items');
+    const ui = await open();
+    await ui.run(() => held[0].release());
+    expect(ui.status()).toHaveTextContent('Showing 50 of 123 · Last updated 10:00 am');
+    expect(screen.queryByText('Loading more items')).not.toBeOnTheScreen();
 
-    await screen.endReached();
+    await ui.endReached();
     expect(calls()[1]).toEqual(page0({ p_offset: 50 }));
-    expect(screen.texts()).toContain('Loading more items');
+    expect(screen.getByText('Loading more items')).toBeOnTheScreen();
 
-    await screen.run(() => held[1].release());
-    expect(screen.items()).toHaveLength(100);
-    expect(screen.items()[50]).toBe('Example Item 051');
-    expect(screen.status()).toBe('Showing 100 of 123 · Last updated 10:00 am');
-    expect(screen.texts()).not.toContain('Loading more items');
+    await ui.run(() => held[1].release());
+    expect(ui.items()).toHaveLength(100);
+    expect(ui.items()[50]).toBe('Example Item 051');
+    expect(ui.status()).toHaveTextContent('Showing 100 of 123 · Last updated 10:00 am');
+    expect(screen.queryByText('Loading more items')).not.toBeOnTheScreen();
     expect(rpc).toHaveBeenCalledTimes(2);
   });
 
   it('a search typed while the next page loads takes its place: the footer goes, and the late page is not added', async () => {
     const held = holdCalls(facility([...MANY, item('o1', 'Example Onions', 7, 70, 1)], { sorts: true }));
-    const screen = await open();
-    await screen.run(() => held[0].release());
-    await screen.endReached();
-    expect(screen.texts()).toContain('Loading more items');
+    const ui = await open();
+    await ui.run(() => held[0].release());
+    await ui.endReached();
+    expect(screen.getByText('Loading more items')).toBeOnTheScreen();
 
-    await screen.type('oni');
-    await screen.waitForSearch();
+    await ui.type('oni');
+    await ui.waitForSearch();
     expect(calls()[2]).toEqual(page0({ p_search_query: 'oni' }));
     // The page of the list that is gone no longer shows as loading.
-    expect(screen.texts()).not.toContain('Loading more items');
+    expect(screen.queryByText('Loading more items')).not.toBeOnTheScreen();
 
-    await screen.run(() => held[2].release());
-    expect(screen.items()).toEqual(['Example Onions']);
-    await screen.run(() => held[1].release());
-    expect(screen.items()).toEqual(['Example Onions']);
-    expect(screen.texts()).not.toContain('Loading more items');
-    expect(screen.texts()).not.toContain('Show more items');
+    await ui.run(() => held[2].release());
+    expect(ui.items()).toEqual(['Example Onions']);
+    await ui.run(() => held[1].release());
+    expect(ui.items()).toEqual(['Example Onions']);
+    expect(screen.queryByText('Loading more items')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Show more items')).not.toBeOnTheScreen();
     expect(rpc).toHaveBeenCalledTimes(3);
   });
 
   it('adds every page of a list that did not change, page after page, and asks for nothing else', async () => {
     serve(facility(MANY, { sorts: true }));
-    const screen = await open();
-    await screen.endReached();
-    await screen.endReached();
+    const ui = await open();
+    await ui.endReached();
+    await ui.endReached();
     expect(calls().map(params => params.p_offset)).toEqual([0, 50, 100]);
-    expect(screen.items()).toEqual(MANY.map(row => row.item_name));
-    expect(screen.status()).toBe('Last updated 10:00 am');
-    await screen.run(() => undefined);
+    expect(ui.items()).toEqual(MANY.map(row => row.item_name));
+    expect(ui.status()).toHaveTextContent('Last updated 10:00 am');
+    await ui.run(() => undefined);
     expect(rpc).toHaveBeenCalledTimes(3);
   });
 
@@ -521,80 +537,80 @@ describe('the next page (backend with migration 52)', () => {
       // The reviewer's reproduction: page one is items 001 to 050 of 100; item 025 is removed before page two.
       let dataset = MANY.slice(0, 100);
       serve(params => facility(dataset, { sorts: true })(params));
-      const screen = await open();
-      expect(screen.items()).toHaveLength(50);
-      expect(screen.items()).toContain('Example Item 025');
-      expect(screen.items()).not.toContain('Example Item 051');
-      expect(screen.status()).toBe('Showing 50 of 100 · Last updated 10:00 am');
+      const ui = await open();
+      expect(ui.items()).toHaveLength(50);
+      expect(ui.items()).toContain('Example Item 025');
+      expect(ui.items()).not.toContain('Example Item 051');
+      expect(ui.status()).toHaveTextContent('Showing 50 of 100 · Last updated 10:00 am');
 
       dataset = dataset.filter(row => row.item_id !== 'm25');
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       // Page two (offset 50) said 99 items against page one's 100: it was not added, page one was asked for again.
       // A broken screen adds it: 99 rows with 051 missing and 025 kept (offsets 0, 50 and nothing more).
       expect(offsets()).toEqual([0, 50, 0]);
-      expect(screen.items()).toHaveLength(50);
-      expect(screen.items()).toContain('Example Item 051');
-      expect(screen.items()).not.toContain('Example Item 025');
-      expect(screen.status()).toBe('Showing 50 of 99 · Last updated 10:00 am');
-      expect(screen.texts()).not.toContain('Loading more items');
+      expect(ui.items()).toHaveLength(50);
+      expect(ui.items()).toContain('Example Item 051');
+      expect(ui.items()).not.toContain('Example Item 025');
+      expect(ui.status()).toHaveTextContent('Showing 50 of 99 · Last updated 10:00 am');
+      expect(screen.queryByText('Loading more items')).not.toBeOnTheScreen();
 
       // The next scroll to the end asks for page two of the list as it is now, and nothing is missing or twice.
-      await screen.endReached();
+      await ui.endReached();
       expect(offsets()).toEqual([0, 50, 0, 50]);
-      expect(screen.items()).toEqual(dataset.map(row => row.item_name));
-      expect(screen.status()).toBe('Last updated 10:00 am');
+      expect(ui.items()).toEqual(dataset.map(row => row.item_name));
+      expect(ui.status()).toHaveTextContent('Last updated 10:00 am');
     });
 
     it('the count the same but the Stock figure moved: page two is not added either, and the new Stock shows', async () => {
       let stock = 4321;
       serve(params => facility(MANY.slice(0, 100), { sorts: true, stock })(params));
-      const screen = await open();
-      expect(screen.figure('Stock')).toBe('Stock: 4,321');
+      const ui = await open();
+      expect(ui.figure('Stock')).toBe('Stock: 4,321');
 
       stock = 4000;
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       // A broken screen adds page two (100 rows, offsets 0 and 50) and still says 4,321.
       expect(offsets()).toEqual([0, 50, 0]);
-      expect(screen.items()).toHaveLength(50);
-      expect(screen.figure('Stock')).toBe('Stock: 4,000');
+      expect(ui.items()).toHaveLength(50);
+      expect(ui.figure('Stock')).toBe('Stock: 4,000');
 
-      await screen.endReached();
+      await ui.endReached();
       expect(offsets()).toEqual([0, 50, 0, 50]);
-      expect(screen.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
+      expect(ui.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
     });
 
     it('the Total quantity moved with the count and the Stock the same: page two is not added', async () => {
       let qty = 9876;
       serve(params => facility(MANY.slice(0, 100), { sorts: true, qty })(params));
-      const screen = await open();
+      const ui = await open();
       qty = 9000;
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0]);
-      expect(screen.items()).toHaveLength(50);
+      expect(ui.items()).toHaveLength(50);
     });
 
     it('a server without migration 52 has no summary: the count alone says it changed, and an equal count adds the page', async () => {
       let dataset = MANY.slice(0, 100);
       serve(params => facility(dataset, { sorts: false })(params));
-      const screen = await open();
+      const ui = await open();
       // The sort is refused once (offset 0 twice); the offsets of the calls that carry no sort are the pages.
       const pages = () => calls().filter(params => !('p_sort_by' in params)).map(params => params.p_offset);
       expect(pages()).toEqual([0]);
 
       dataset = dataset.filter(row => row.item_id !== 'm25');
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(pages()).toEqual([0, 50, 0]);
-      expect(screen.items()).toHaveLength(50);
-      expect(screen.items()).toContain('Example Item 051');
+      expect(ui.items()).toHaveLength(50);
+      expect(ui.items()).toContain('Example Item 051');
 
       // Nothing changes now: the equal count is no sign of a change, and page two is added.
-      await screen.endReached();
+      await ui.endReached();
       expect(pages()).toEqual([0, 50, 0, 50]);
-      expect(screen.items()).toEqual(dataset.map(row => row.item_name));
+      expect(ui.items()).toEqual(dataset.map(row => row.item_name));
     });
 
     it('starts over twice at most for one list: the third change in a row is added, and nothing is asked for again', async () => {
@@ -604,27 +620,27 @@ describe('the next page (backend with migration 52)', () => {
         if (params.p_offset > 0) stock += 1;
         return facility(MANY.slice(0, 100), { sorts: true, stock })(params);
       });
-      const screen = await open();
-      expect(screen.figure('Stock')).toBe('Stock: 4,000');
+      const ui = await open();
+      expect(ui.figure('Stock')).toBe('Stock: 4,000');
 
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0]);
-      expect(screen.items()).toHaveLength(50);
-      expect(screen.figure('Stock')).toBe('Stock: 4,001');
+      expect(ui.items()).toHaveLength(50);
+      expect(ui.figure('Stock')).toBe('Stock: 4,001');
 
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0, 50, 0]);
-      expect(screen.items()).toHaveLength(50);
-      expect(screen.figure('Stock')).toBe('Stock: 4,002');
+      expect(ui.items()).toHaveLength(50);
+      expect(ui.figure('Stock')).toBe('Stock: 4,002');
 
       // The third time the page differs from page one again (4,003 against 4,002): it is added all the same.
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0, 50, 0, 50]);
-      expect(screen.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
-      expect(screen.status()).toBe('Last updated 10:00 am');
+      expect(ui.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
+      expect(ui.status()).toHaveTextContent('Last updated 10:00 am');
       expect(rpc).toHaveBeenCalledTimes(6);
     });
 
@@ -634,64 +650,64 @@ describe('the next page (backend with migration 52)', () => {
         if (params.p_offset > 0) stock += 1;
         return facility(MANY.slice(0, 100), { sorts: true, stock })(params);
       });
-      const screen = await open();
-      await screen.endReached();
-      await screen.endReached();
-      await screen.run(() => undefined);
+      const ui = await open();
+      await ui.endReached();
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0, 50, 0]);
 
-      await screen.refresh();
-      await screen.run(() => undefined);
+      await ui.refresh();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0, 50, 0, 0]);
       // Two restarts are allowed again: the page that differs is not added, the first page is asked for again.
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0, 50, 0, 0, 50, 0]);
-      expect(screen.items()).toHaveLength(50);
+      expect(ui.items()).toHaveLength(50);
     });
 
     it('the restarts are counted again after a page that fits is added', async () => {
       let stock = 4000;
       serve(params => facility(MANY, { sorts: true, stock })(params));
-      const screen = await open();
+      const ui = await open();
       stock = 4001;
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0]);
 
       // Nothing moves now: page two fits the new page one and is added.
-      await screen.endReached();
+      await ui.endReached();
       expect(offsets()).toEqual([0, 50, 0, 50]);
-      expect(screen.items()).toHaveLength(100);
+      expect(ui.items()).toHaveLength(100);
 
       // Page three finds the stock moved again: it is not added, though a restart has been made already.
       stock = 4002;
-      await screen.endReached();
-      await screen.run(() => undefined);
+      await ui.endReached();
+      await ui.run(() => undefined);
       expect(offsets()).toEqual([0, 50, 0, 50, 100, 0]);
-      expect(screen.items()).toHaveLength(50);
+      expect(ui.items()).toHaveLength(50);
     });
 
     it('when the first page cannot be read again, the footer does not stay on "loading", and the pages on screen stay', async () => {
       let dataset = MANY.slice(0, 100);
       const held = holdCalls(params => facility(dataset, { sorts: true })(params));
-      const screen = await open();
-      await screen.run(() => held[0].release());
+      const ui = await open();
+      await ui.run(() => held[0].release());
       dataset = dataset.filter(row => row.item_id !== 'm25');
-      await screen.endReached();
-      expect(screen.texts()).toContain('Loading more items');
+      await ui.endReached();
+      expect(screen.getByText('Loading more items')).toBeOnTheScreen();
 
-      await screen.run(() => held[1].release());
+      await ui.run(() => held[1].release());
       // Page two said the list changed: page one is being asked for again, and nothing waits for page two.
       expect(offsets()).toEqual([0, 50, 0]);
-      expect(screen.texts()).not.toContain('Loading more items');
+      expect(screen.queryByText('Loading more items')).not.toBeOnTheScreen();
 
-      await screen.run(() => held[2].release(FAILED));
-      expect(screen.texts()).not.toContain('Loading more items');
-      expect(screen.texts()).toContain("Couldn't update. These figures were loaded earlier.");
+      await ui.run(() => held[2].release(FAILED));
+      expect(screen.queryByText('Loading more items')).not.toBeOnTheScreen();
+      expect(screen.getByText("Couldn't update. These figures were loaded earlier.")).toBeOnTheScreen();
       // The page one that was read stays, and page two can be asked for again.
-      expect(screen.items()).toHaveLength(50);
-      expect(screen.texts()).toContain('Show more items');
+      expect(ui.items()).toHaveLength(50);
+      expect(screen.getByText('Show more items')).toBeOnTheScreen();
     });
   });
 });
@@ -699,50 +715,49 @@ describe('the next page (backend with migration 52)', () => {
 describe('a pull to refresh with later pages loaded (backend with migration 52)', () => {
   it('keeps the later pages until the new first page has come, asks for no next page meanwhile, and starts over from it', async () => {
     const held = holdCalls(facility(MANY, { sorts: true }));
-    const screen = await open();
-    await screen.run(() => held[0].release());
-    await screen.endReached();
-    await screen.run(() => held[1].release());
-    expect(screen.items()).toHaveLength(100);
+    const ui = await open();
+    await ui.run(() => held[0].release());
+    await ui.endReached();
+    await ui.run(() => held[1].release());
+    expect(ui.items()).toHaveLength(100);
 
-    await screen.refresh();
+    await ui.refresh();
     expect(calls()[2]).toEqual(page0());
     // A broken screen empties the list to 50 at once.
-    expect(screen.items()).toHaveLength(100);
+    expect(ui.items()).toHaveLength(100);
     // The first page is being asked for again: no next page is asked against it.
-    await screen.endReached();
+    await ui.endReached();
     expect(rpc).toHaveBeenCalledTimes(3);
-    expect(screen.texts()).not.toContain('Show more items');
+    expect(screen.queryByText('Show more items')).not.toBeOnTheScreen();
 
-    await screen.run(() => held[2].release());
-    expect(screen.items()).toHaveLength(50);
-    expect(screen.status()).toBe('Showing 50 of 123 · Last updated 10:00 am');
-    await screen.endReached();
+    await ui.run(() => held[2].release());
+    expect(ui.items()).toHaveLength(50);
+    expect(ui.status()).toHaveTextContent('Showing 50 of 123 · Last updated 10:00 am');
+    await ui.endReached();
     expect(calls()[3]).toEqual(page0({ p_offset: 50 }));
     // Nothing left out: a request still out at the end would hold Jest open.
-    await screen.run(() => held[3].release());
+    await ui.run(() => held[3].release());
   });
 
   it('keeps every page loaded when the refresh fails, and says the figures are not current', async () => {
     const held = holdCalls(facility(MANY, { sorts: true }));
-    const screen = await open();
-    await screen.run(() => held[0].release());
-    await screen.endReached();
-    await screen.run(() => held[1].release());
-    expect(screen.items()).toHaveLength(100);
+    const ui = await open();
+    await ui.run(() => held[0].release());
+    await ui.endReached();
+    await ui.run(() => held[1].release());
+    expect(ui.items()).toHaveLength(100);
 
-    await screen.refresh();
-    await screen.run(() => held[2].release(FAILED));
-    expect(screen.items()).toHaveLength(100);
-    expect(screen.texts()).toEqual(
-      expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load items. Check your connection and try again."])
-    );
+    await ui.refresh();
+    await ui.run(() => held[2].release(FAILED));
+    expect(ui.items()).toHaveLength(100);
+    expect(screen.getByText("Couldn't update. These figures were loaded earlier.")).toBeOnTheScreen();
+    expect(screen.getByText("Couldn't load items. Check your connection and try again.")).toBeOnTheScreen();
     // The developer text of the server's failure is not shown.
-    expect(screen.texts().some(text => text.includes('fictional internal failure'))).toBe(false);
+    expect(screen.queryByText(/fictional internal failure/)).not.toBeOnTheScreen();
     // The pages on screen came from the facility in this run: the next one may still be asked for.
-    await screen.endReached();
+    await ui.endReached();
     expect(calls()[3]).toEqual(page0({ p_offset: 100 }));
-    await screen.run(() => held[3].release());
+    await ui.run(() => held[3].release());
   });
 });
 
@@ -755,33 +770,33 @@ describe('the first page answered again without a pull (backend with migration 5
   it('drops the later pages when the first page came back different: the next page is asked from offset 50', async () => {
     let stock = 4321;
     serve(params => facility(MANY, { sorts: true, stock })(params));
-    const screen = await open();
-    await screen.endReached();
-    expect(screen.items()).toHaveLength(100);
+    const ui = await open();
+    await ui.endReached();
+    expect(ui.items()).toHaveLength(100);
 
     stock = 4000;
-    await screen.run(askFirstAgain);
+    await ui.run(askFirstAgain);
     expect(offsets()).toEqual([0, 50, 0]);
     // A broken screen keeps the 100 rows built on the old first page and next asks for offset 100.
-    expect(screen.items()).toHaveLength(50);
-    expect(screen.figure('Stock')).toBe('Stock: 4,000');
-    await screen.endReached();
+    expect(ui.items()).toHaveLength(50);
+    expect(ui.figure('Stock')).toBe('Stock: 4,000');
+    await ui.endReached();
     expect(offsets()).toEqual([0, 50, 0, 50]);
-    expect(screen.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
+    expect(ui.items()).toEqual(MANY.slice(0, 100).map(row => row.item_name));
   });
 
   it('keeps the later pages when the first page came back the same: the next page is asked from offset 100', async () => {
     serve(facility(MANY, { sorts: true }));
-    const screen = await open();
-    await screen.endReached();
-    expect(screen.items()).toHaveLength(100);
+    const ui = await open();
+    await ui.endReached();
+    expect(ui.items()).toHaveLength(100);
 
-    await screen.run(askFirstAgain);
+    await ui.run(askFirstAgain);
     expect(offsets()).toEqual([0, 50, 0]);
-    expect(screen.items()).toHaveLength(100);
-    await screen.endReached();
+    expect(ui.items()).toHaveLength(100);
+    await ui.endReached();
     expect(offsets()).toEqual([0, 50, 0, 100]);
-    expect(screen.items()).toEqual(MANY.map(row => row.item_name));
+    expect(ui.items()).toEqual(MANY.map(row => row.item_name));
   });
 });
 
@@ -799,33 +814,33 @@ describe('the copy kept on the phone (backend with migration 52)', () => {
     };
     await writeReportCache(FIRST_KEY, { data: keptPage, updatedAt: new Date(2026, 9, 12, 8, 0).getTime() });
     const held = holdCalls(facility(MANY, { sorts: true }));
-    const screen = await open();
-    await screen.run(() => undefined);
+    const ui = await open();
+    await ui.run(() => undefined);
     // The phone's copy is on screen while the facility is asked.
-    expect(screen.items()).toHaveLength(50);
-    expect(screen.status()).toBe('Showing 50 of 123 · Saved copy, refreshing… · Last updated 8:00 am');
-    await screen.endReached();
+    expect(ui.items()).toHaveLength(50);
+    expect(ui.status()).toHaveTextContent('Showing 50 of 123 · Saved copy, refreshing… · Last updated 8:00 am');
+    await ui.endReached();
     // A broken screen asks for offset 50 here, against a first page that may have changed.
     expect(calls()).toEqual([page0()]);
-    expect(screen.texts()).not.toContain('Show more items');
+    expect(screen.queryByText('Show more items')).not.toBeOnTheScreen();
 
-    await screen.run(() => held[0].release());
-    expect(screen.status()).toBe('Showing 50 of 123 · Last updated 10:00 am');
-    await screen.endReached();
+    await ui.run(() => held[0].release());
+    expect(ui.status()).toHaveTextContent('Showing 50 of 123 · Last updated 10:00 am');
+    await ui.endReached();
     expect(calls()).toEqual([page0(), page0({ p_offset: 50 })]);
-    await screen.run(() => held[1].release());
+    await ui.run(() => held[1].release());
   });
 
   it('keeps only the first page without a search: no later page and no searched list is written', async () => {
     jest.mocked(getSessionIdentity).mockResolvedValue(account);
     serve(facility(MANY, { sorts: true }));
-    const screen = await open();
-    await screen.endReached();
-    expect(screen.items()).toHaveLength(100);
-    await screen.type('item 01');
-    await screen.waitForSearch();
-    expect(screen.items()).toHaveLength(10);
-    await screen.run(() => undefined);
+    const ui = await open();
+    await ui.endReached();
+    expect(ui.items()).toHaveLength(100);
+    await ui.type('item 01');
+    await ui.waitForSearch();
+    expect(ui.items()).toHaveLength(10);
+    await ui.run(() => undefined);
     expect(calls().map(params => [params.p_search_query, params.p_offset])).toEqual([[null, 0], [null, 50], ['item 01', 0]]);
 
     expect(await readReportCache(FIRST_KEY)).not.toBeNull();
@@ -843,20 +858,19 @@ describe('the GRNs of an item', () => {
     serve(facility(FEW, { sorts: true }));
     let answer!: (value: unknown) => void;
     grnItems.mockImplementationOnce(() => new Promise(resolve => (answer = resolve)) as never);
-    const screen = await open();
-    const card = () => screen.tree.root.findAllByType(StockItemCard).find(found => found.props.name === 'Example Garlic')!;
-    await screen.run(() => card().props.onToggle());
+    const ui = await open();
+    await ui.toggle('Example Garlic');
     expect(grnItems).toHaveBeenCalledWith({ p_filters: { item_ids: ['i1'], stock_status: 'in_stock' }, p_limit: 100 });
-    expect(screen.texts()).toContain('Loading GRNs');
+    expect(screen.getByText('Loading GRNs')).toBeOnTheScreen();
 
-    await screen.run(() => answer({ success: false, message: 'refused' }));
-    expect(screen.texts()).toContain("Couldn't load the GRNs for this item.");
+    await ui.run(() => answer({ success: false, message: 'refused' }));
+    expect(screen.getByText("Couldn't load the GRNs for this item.")).toBeOnTheScreen();
 
     grnItems.mockResolvedValueOnce({ success: true, message: '', data: { items: [GRN] } } as never);
-    await screen.run(() => card().props.grns.onRetry());
+    await ui.press('Try again');
     expect(grnItems).toHaveBeenCalledTimes(2);
-    expect(screen.texts()).toContain('GRN 311');
-    expect(screen.texts()).not.toContain("Couldn't load the GRNs for this item.");
+    expect(screen.getByText('GRN 311')).toBeOnTheScreen();
+    expect(screen.queryByText("Couldn't load the GRNs for this item.")).not.toBeOnTheScreen();
   });
 
   it('a GRN line gives the weight of one bag as "50 kg each" after its rack; a line without a weight gives none', async () => {
@@ -873,13 +887,14 @@ describe('the GRNs of an item', () => {
         ],
       },
     } as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
-    expect(screen.texts()).toEqual(expect.arrayContaining(['GRN 311', 'Rack B-14 · 50 kg each', 'GRN 312', 'Rack C-02', 'GRN 313', 'Rack D-07']));
+    const ui = await open();
+    await ui.toggle('Example Garlic');
+    for (const text of ['GRN 311', 'Rack B-14 · 50 kg each', 'GRN 312', 'Rack C-02', 'GRN 313', 'Rack D-07']) expect(screen.getByText(text)).toBeOnTheScreen();
     // The one weight on the screen, worded "each": no bare "50 kg", no "0 kg", and no total (200 bags × 50 kg).
-    expect(screen.texts().filter(text => /kg/.test(text))).toEqual(['Rack B-14 · 50 kg each']);
-    expect(screen.has('GRN 311, Fictional Traders, Received 1 Oct 2026, Rack B-14 · 50 kg each, 30 of 200 in stock')).toBe(true);
-    expect(screen.has('GRN 312, Fictional Traders, Received 1 Oct 2026, Rack C-02, 30 of 200 in stock')).toBe(true);
+    expect(screen.getAllByText(/kg/)).toHaveLength(1);
+    expect(screen.getByText(/kg/)).toHaveTextContent('Rack B-14 · 50 kg each');
+    expect(screen.getByRole('button', { name: 'GRN 311, Fictional Traders, Received 1 Oct 2026, Rack B-14 · 50 kg each, 30 of 200 in stock' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'GRN 312, Fictional Traders, Received 1 Oct 2026, Rack C-02, 30 of 200 in stock' })).toBeOnTheScreen();
   });
 
   /**
@@ -900,7 +915,7 @@ describe('the GRNs of an item', () => {
       ...(total === undefined ? {} : { pagination: { total_count: total, limit: 100, offset, has_more: hasMore ?? offset + count < total } }),
     },
   });
-  const footnotes = (screen: Awaited<ReturnType<typeof open>>) => screen.texts().filter(text => text.startsWith('Showing') && !text.includes('Last updated'));
+  const footnotes = () => screen.queryAllByText(/^Showing(?!.*Last updated)/).map(note => [note.props.children].flat().join(''));
   /** What the drill-down asks for the item `itemId`: the first 100 lines, or 100 from `offset`. */
   const drillDown = (itemId: string, offset = 0) => ({
     p_filters: { item_ids: [itemId], stock_status: 'in_stock' },
@@ -910,95 +925,98 @@ describe('the GRNs of an item', () => {
   const MORE = 'Show more GRN lines';
 
   it('reads every GRN line of an item, 100 at a time: "Show more GRN lines" asks from where the lines end', async () => {
+    const errors = jest.spyOn(console, 'error');
     serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    const ui = await open();
+    await ui.toggle('Example Garlic');
     expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1'));
-    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(100);
-    expect(footnotes(screen)).toEqual(['Showing 100 of 240 GRN lines']);
+    expect(ui.grnNumbers()).toHaveLength(100);
+    expect(footnotes()).toEqual(['Showing 100 of 240 GRN lines']);
     // A broken screen stops here: the note, and no way to the other 140 lines.
-    expect(screen.has(MORE)).toBe(true);
+    expect(screen.getByRole('button', { name: MORE })).toBeOnTheScreen();
 
     grnItems.mockResolvedValueOnce(grnPage(100, 240, { offset: 100 }) as never);
-    await screen.press(MORE);
+    await ui.press(MORE);
     expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1', 100));
-    const rows = () => screen.card('Example Garlic')!.props.grns.rows as { key: string; grNo: string }[];
+    const rows = () => ui.grnNumbers();
     expect(rows()).toHaveLength(200);
-    expect(rows()[100].grNo).toBe('500');
-    expect(footnotes(screen)).toEqual(['Showing 200 of 240 GRN lines']);
+    expect(rows()[100]).toBe('500');
+    expect(footnotes()).toEqual(['Showing 200 of 240 GRN lines']);
 
     grnItems.mockResolvedValueOnce(grnPage(40, 240, { offset: 200 }) as never);
-    await screen.press(MORE);
+    await ui.press(MORE);
     expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1', 200));
     expect(rows()).toHaveLength(240);
-    expect(new Set(rows().map(row => row.key)).size).toBe(240);
+    expect(new Set(rows()).size).toBe(240);
+    // Rows with one key twice would be warned about by React.
+    expect(errors.mock.calls.filter(([message]) => String(message).includes('same key'))).toEqual([]);
+    errors.mockRestore();
     // Every line read: no note, nothing more to show.
-    expect(footnotes(screen)).toEqual([]);
-    expect(screen.has(MORE)).toBe(false);
+    expect(footnotes()).toEqual([]);
+    expect(screen.queryByRole('button', { name: MORE })).not.toBeOnTheScreen();
     expect(grnItems).toHaveBeenCalledTimes(3);
   });
 
   it('every line read at once (3 of 3): no note and nothing more to show', async () => {
     serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(3, 3) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Onions')!.props.onToggle());
-    expect(screen.card('Example Onions')!.props.grns.rows).toHaveLength(3);
-    expect(screen.card('Example Onions')!.props.grnsFooter).toBeUndefined();
-    expect(footnotes(screen)).toEqual([]);
-    expect(screen.has(MORE)).toBe(false);
+    const ui = await open();
+    await ui.toggle('Example Onions');
+    expect(ui.grnNumbers()).toHaveLength(3);
+    expect(footnotes()).toEqual([]);
+    expect(screen.queryByRole('button', { name: MORE })).not.toBeOnTheScreen();
   });
 
   it("without a total in the answer: a page shorter than 100 is the end (the item's GRN count is not taken for a line count)", async () => {
     serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(2) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Cumin')!.props.onToggle());
+    const ui = await open();
+    await ui.toggle('Example Cumin');
     // Cumin has 3 GRNs. A broken screen says "Showing 2 of 3", counting GRNs against lines.
-    expect(footnotes(screen)).toEqual([]);
-    expect(screen.has(MORE)).toBe(false);
+    expect(footnotes()).toEqual([]);
+    expect(screen.queryByRole('button', { name: MORE })).not.toBeOnTheScreen();
   });
 
   it('without a total in the answer: a full page says how many lines are shown and offers more until a page is short', async () => {
     serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(100) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
-    expect(footnotes(screen)).toEqual(['Showing 100 GRN lines']);
-    expect(screen.has(MORE)).toBe(true);
+    const ui = await open();
+    await ui.toggle('Example Garlic');
+    expect(footnotes()).toEqual(['Showing 100 GRN lines']);
+    expect(screen.getByRole('button', { name: MORE })).toBeOnTheScreen();
 
     grnItems.mockResolvedValueOnce(grnPage(30, undefined, { offset: 100 }) as never);
-    await screen.press(MORE);
+    await ui.press(MORE);
     expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1', 100));
-    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(130);
-    expect(footnotes(screen)).toEqual([]);
-    expect(screen.has(MORE)).toBe(false);
+    expect(ui.grnNumbers()).toHaveLength(130);
+    expect(footnotes()).toEqual([]);
+    expect(screen.queryByRole('button', { name: MORE })).not.toBeOnTheScreen();
   });
 
   it('a failure to read more keeps the lines read and offers "Try again", which asks from the same place', async () => {
     serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    const ui = await open();
+    await ui.toggle('Example Garlic');
 
     let answer!: (value: unknown) => void;
     grnItems.mockImplementationOnce(() => new Promise(resolve => (answer = resolve)) as never);
-    await screen.press(MORE);
-    expect(screen.texts()).toContain('Loading more GRN lines');
-    expect(screen.has(MORE)).toBe(false);
-    await screen.run(() => answer({ success: false, message: 'fictional failure' }));
-    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(100);
-    expect(screen.texts()).toContain("Couldn't load more GRN lines.");
-    expect(screen.texts()).not.toContain("Couldn't load the GRNs for this item.");
-    expect(footnotes(screen)).toEqual(['Showing 100 of 240 GRN lines']);
+    await ui.press(MORE);
+    expect(screen.getByText('Loading more GRN lines')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: MORE })).not.toBeOnTheScreen();
+    await ui.run(() => answer({ success: false, message: 'fictional failure' }));
+    expect(ui.grnNumbers()).toHaveLength(100);
+    expect(screen.getByText("Couldn't load more GRN lines.")).toBeOnTheScreen();
+    expect(screen.queryByText("Couldn't load the GRNs for this item.")).not.toBeOnTheScreen();
+    expect(footnotes()).toEqual(['Showing 100 of 240 GRN lines']);
 
     grnItems.mockResolvedValueOnce(grnPage(100, 240, { offset: 100 }) as never);
-    await screen.press('Try again');
+    await ui.press('Try again');
     expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1', 100));
-    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(200);
-    expect(screen.texts()).not.toContain("Couldn't load more GRN lines.");
-    expect(footnotes(screen)).toEqual(['Showing 200 of 240 GRN lines']);
+    expect(ui.grnNumbers()).toHaveLength(200);
+    expect(screen.queryByText("Couldn't load more GRN lines.")).not.toBeOnTheScreen();
+    expect(footnotes()).toEqual(['Showing 200 of 240 GRN lines']);
   });
 
   it("one customer: follows the server's has_more, not the size of the page, and asks that customer's lines", async () => {
@@ -1006,102 +1024,103 @@ describe('the GRNs of an item', () => {
     mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
     const customerGrnItems = jest.mocked(getCustomerGRNItems);
     customerGrnItems.mockResolvedValueOnce(grnPage(100, 100, { hasMore: false }) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    const ui = await open();
+    await ui.toggle('Example Garlic');
     expect(customerGrnItems).toHaveBeenLastCalledWith('c2', drillDown('i1'));
     // A full page that the server says is the last: nothing more.
-    expect(screen.has(MORE)).toBe(false);
-    expect(footnotes(screen)).toEqual([]);
+    expect(screen.queryByRole('button', { name: MORE })).not.toBeOnTheScreen();
+    expect(footnotes()).toEqual([]);
 
     customerGrnItems.mockResolvedValueOnce(grnPage(100, 150) as never);
-    await screen.run(() => screen.card('Example Onions')!.props.onToggle());
-    expect(footnotes(screen)).toEqual(['Showing 100 of 150 GRN lines']);
+    await ui.toggle('Example Onions');
+    expect(footnotes()).toEqual(['Showing 100 of 150 GRN lines']);
     customerGrnItems.mockResolvedValueOnce(grnPage(50, 150, { offset: 100 }) as never);
-    await screen.press(MORE);
+    await ui.press(MORE);
     expect(customerGrnItems).toHaveBeenLastCalledWith('c2', drillDown('i2', 100));
-    expect(screen.card('Example Onions')!.props.grns.rows).toHaveLength(150);
-    expect(screen.has(MORE)).toBe(false);
+    // Garlic still shows its 100 lines, so with the 150 of Onions 250 lines are on screen.
+    expect(ui.grnNumbers()).toHaveLength(100 + 150);
+    expect(screen.queryByRole('button', { name: MORE })).not.toBeOnTheScreen();
     expect(grnItems).not.toHaveBeenCalled();
   });
 
   it('more lines that answer after the search has changed are not added anywhere', async () => {
     serve(facility(FEW, { sorts: true }));
     grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    const ui = await open();
+    await ui.toggle('Example Garlic');
     let answer!: (value: unknown) => void;
     grnItems.mockImplementationOnce(() => new Promise(resolve => (answer = resolve)) as never);
-    await screen.press(MORE);
+    await ui.press(MORE);
 
-    await screen.type('ga');
-    await screen.waitForSearch();
-    expect(screen.items()).toEqual(['Example Garlic']);
+    await ui.type('ga');
+    await ui.waitForSearch();
+    expect(ui.items()).toEqual(['Example Garlic']);
     // The search closed the card; opened again, its lines are read from the start.
-    expect(screen.card('Example Garlic')!.props.isExpanded).toBe(false);
+    expect(ui.card('Example Garlic')).toBeCollapsed();
     grnItems.mockResolvedValueOnce(grnPage(100, 240) as never);
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
+    await ui.toggle('Example Garlic');
     expect(grnItems).toHaveBeenLastCalledWith(drillDown('i1'));
 
     // The lines asked for before the search answer now. A broken screen adds them: 200 rows.
-    await screen.run(() => answer(grnPage(100, 240, { offset: 100 })));
-    expect(screen.card('Example Garlic')!.props.grns.rows).toHaveLength(100);
-    expect(footnotes(screen)).toEqual(['Showing 100 of 240 GRN lines']);
-    expect(screen.has(MORE)).toBe(true);
+    await ui.run(() => answer(grnPage(100, 240, { offset: 100 })));
+    expect(ui.grnNumbers()).toHaveLength(100);
+    expect(footnotes()).toEqual(['Showing 100 of 240 GRN lines']);
+    expect(screen.getByRole('button', { name: MORE })).toBeOnTheScreen();
   });
 
   it('a late answer for a search that has gone leaves the cards opened since alone', async () => {
     serve(facility(FEW, { sorts: true }));
     let answerGarlic!: (value: unknown) => void;
     grnItems.mockImplementationOnce(() => new Promise(resolve => (answerGarlic = resolve)) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
-    expect(screen.card('Example Garlic')!.props.isExpanded).toBe(true);
+    const ui = await open();
+    await ui.toggle('Example Garlic');
+    expect(ui.card('Example Garlic')).toBeExpanded();
 
-    await screen.type('oni');
-    await screen.waitForSearch();
-    expect(screen.items()).toEqual(['Example Onions']);
+    await ui.type('oni');
+    await ui.waitForSearch();
+    expect(ui.items()).toEqual(['Example Onions']);
     grnItems.mockResolvedValueOnce({ success: true, message: '', data: { items: [{ ...GRN, gr_no: '312' }] } } as never);
-    await screen.run(() => screen.card('Example Onions')!.props.onToggle());
-    expect(screen.card('Example Onions')!.props.isExpanded).toBe(true);
-    expect(screen.texts()).toContain('GRN 312');
+    await ui.toggle('Example Onions');
+    expect(ui.card('Example Onions')).toBeExpanded();
+    expect(screen.getByText('GRN 312')).toBeOnTheScreen();
 
     // Garlic's GRNs answer now, for the search before. A broken screen closes Onions here.
-    await screen.run(() => answerGarlic({ success: true, message: '', data: { items: [GRN] } }));
-    expect(screen.card('Example Onions')!.props.isExpanded).toBe(true);
-    expect(screen.texts()).toContain('GRN 312');
-    expect(screen.texts()).not.toContain('GRN 311');
+    await ui.run(() => answerGarlic({ success: true, message: '', data: { items: [GRN] } }));
+    expect(ui.card('Example Onions')).toBeExpanded();
+    expect(screen.getByText('GRN 312')).toBeOnTheScreen();
+    expect(screen.queryByText('GRN 311')).not.toBeOnTheScreen();
   });
 
   it('a late answer from before a pull to refresh leaves the cards opened since alone', async () => {
     serve(facility(FEW, { sorts: true }));
     let answerGarlic!: (value: unknown) => void;
     grnItems.mockImplementationOnce(() => new Promise(resolve => (answerGarlic = resolve)) as never);
-    const screen = await open();
-    await screen.run(() => screen.card('Example Garlic')!.props.onToggle());
-    await screen.refresh();
+    const ui = await open();
+    await ui.toggle('Example Garlic');
+    await ui.refresh();
     // The refresh closed the cards.
-    expect(screen.card('Example Garlic')!.props.isExpanded).toBe(false);
+    expect(ui.card('Example Garlic')).toBeCollapsed();
     grnItems.mockResolvedValueOnce({ success: true, message: '', data: { items: [{ ...GRN, gr_no: '312' }] } } as never);
-    await screen.run(() => screen.card('Example Onions')!.props.onToggle());
-    expect(screen.card('Example Onions')!.props.isExpanded).toBe(true);
+    await ui.toggle('Example Onions');
+    expect(ui.card('Example Onions')).toBeExpanded();
 
-    await screen.run(() => answerGarlic({ success: true, message: '', data: { items: [GRN] } }));
-    expect(screen.card('Example Onions')!.props.isExpanded).toBe(true);
-    expect(screen.card('Example Garlic')!.props.isExpanded).toBe(false);
-    expect(screen.texts()).toContain('GRN 312');
+    await ui.run(() => answerGarlic({ success: true, message: '', data: { items: [GRN] } }));
+    expect(ui.card('Example Onions')).toBeExpanded();
+    expect(ui.card('Example Garlic')).toBeCollapsed();
+    expect(screen.getByText('GRN 312')).toBeOnTheScreen();
   });
 });
 
 describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const)))('in %s %s', (brand, mode) => {
   it('draws the figures, the item cards and the footer in the theme\'s colours', async () => {
     serve(facility(MANY, { sorts: true }));
-    const screen = await open(makeStore({ preference: mode, brand }));
+    const ui = await open(makeStore({ preference: mode, brand }));
     const t = getTokens(brand, mode);
-    const backgrounds = screen.tree.root
-      .findAll(node => typeof node.type === 'string')
+    const backgrounds = screen.root!
+      .queryAll(node => typeof node.type === 'string')
       .map(node => (StyleSheet.flatten(typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style) ?? {}).backgroundColor);
     expect(backgrounds).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle]));
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Item stock summary', 'All customers', 'Example Item 001', 'Show more items']));
+    for (const text of ['Item stock summary', 'All customers', 'Example Item 001', 'Show more items']) expect(screen.getByText(text)).toBeOnTheScreen();
   });
 });
 
@@ -1119,55 +1138,55 @@ const NEEDS_UPDATE = "This facility's server needs an update before reports can 
  * 403 is said in an alert and the action stays; a server without report PDFs
  * is said once and the action goes.
  */
-async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
+async function sharesThePdf(ui: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
   let answer!: (result: ReportPdfResult) => void;
   makePdf.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
-  await screen.press(label);
+  await ui.press(label);
   expect(makePdf.mock.calls).toEqual([[request]]);
   for (const field of ['customer_id', 'from', 'to', 'sort']) {
     if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
   }
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  expect(ui.control(label)).toBeBusy();
   expect(sharePdf).not.toHaveBeenCalled();
   await act(async () => {
     answer({ success: true, pdfUrl: PDF_URL });
     await settleQueries();
   });
   expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  expect(ui.control(label)).not.toBeBusy();
   expect(alert).not.toHaveBeenCalled();
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
-  await screen.press(label);
+  await ui.press(label);
   expect(alert.mock.calls).toEqual([["Couldn't create the PDF", NOT_AVAILABLE]]);
   expect(sharePdf).toHaveBeenCalledTimes(1);
-  expect(screen.has(label)).toBe(true);
+  expect(screen.getByRole('button', { name: label })).toBeOnTheScreen();
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: NEEDS_UPDATE });
-  await screen.press(label);
+  await ui.press(label);
   expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]);
-  expect(screen.has(label)).toBe(false);
+  expect(screen.queryByRole('button', { name: label })).not.toBeOnTheScreen();
 }
 
 describe('the report PDF (backend with migration 52)', () => {
   it('every customer: shares the sort on screen as the PDF names it, with no customer and no dates', async () => {
     serve(facility(FEW, { sorts: true }));
-    const screen = await open();
-    await screen.press('Sorted by Item, A to Z. Change sort');
-    await screen.press('Received quantity');
-    await screen.press('Highest first');
-    await screen.press('Close');
-    expect(screen.has('Sorted by Received quantity, highest first. Change sort')).toBe(true);
-    await sharesThePdf(screen, { report: 'item-stock-summary', sort: { field: 'received', order: 'desc' } }, 'Item_stock_summary_All_customers.pdf');
+    const ui = await open();
+    await ui.press('Sorted by Item, A to Z. Change sort');
+    await ui.press('Received quantity');
+    await ui.press('Highest first');
+    await ui.press('Close');
+    expect(screen.getByRole('button', { name: 'Sorted by Received quantity, highest first. Change sort' })).toBeOnTheScreen();
+    await sharesThePdf(ui, { report: 'item-stock-summary', sort: { field: 'received', order: 'desc' } }, 'Item_stock_summary_All_customers.pdf');
   });
 
   it('one customer: shares that customer and the sort on screen, with no dates', async () => {
     serve(facility(FEW, { sorts: true }));
     mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
-    const screen = await open();
+    const ui = await open();
     expect(calls()).toEqual([page0({ p_customer_id: 'c2' })]);
     await sharesThePdf(
-      screen,
+      ui,
       { report: 'item-stock-summary', customer_id: 'c2', sort: { field: 'item', order: 'asc' } },
       'Item_stock_summary_Green_Valley_Traders.pdf'
     );
@@ -1186,18 +1205,18 @@ describe('the report PDF of the list on screen (backend with migration 52)', () 
   it('sends the search as the server searched the rows, and asks nothing', async () => {
     serve(facility(FEW, { sorts: true }));
     makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
-    const screen = await open();
-    await screen.type('oni');
-    await screen.waitForSearch();
-    expect(screen.items()).toEqual(['Example Onions']);
-    await screen.press('Share PDF');
+    const ui = await open();
+    await ui.type('oni');
+    await ui.waitForSearch();
+    expect(ui.items()).toEqual(['Example Onions']);
+    await ui.press('Share PDF');
     // A broken screen leaves the search out: the PDF lists all three items.
     expect(makePdf.mock.calls).toEqual([[{ ...ALL, search: 'oni' }]]);
     expect(alert).not.toHaveBeenCalled();
     expect(sharePdf.mock.calls).toEqual([[PDF_URL, FILE]]);
 
     // One customer: the same, with the customer.
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    await screen.unmount();
     makePdf.mockClear();
     mockParams = { customerId: 'c2', customerName: 'Green Valley Traders' };
     const one = await open();
@@ -1213,11 +1232,11 @@ describe('the report PDF of the list on screen (backend with migration 52)', () 
     expect(long).toHaveLength(81);
     serve(facility([...FEW, item('i9', long, 5, 50, 1)], { sorts: true }));
     makePdf.mockResolvedValue({ success: true, pdfUrl: PDF_URL });
-    const screen = await open();
-    await screen.type(long);
-    await screen.waitForSearch();
-    expect(screen.items()).toEqual([long]);
-    await screen.press('Share PDF');
+    const ui = await open();
+    await ui.type(long);
+    await ui.waitForSearch();
+    expect(ui.items()).toEqual([long]);
+    await ui.press('Share PDF');
     expect(alertTexts(alert)).toEqual([
       ['Share the full report?', `The PDF will include all the stock, not only the 1 matching "Example ${'x'.repeat(32)}…".`],
     ]);
@@ -1231,10 +1250,10 @@ describe('the report PDF of the list on screen (backend with migration 52)', () 
     makePdf
       .mockResolvedValueOnce({ success: false, reason: 'filter-unsupported', error: 'fictional refusal' })
       .mockResolvedValueOnce({ success: true, pdfUrl: PDF_URL });
-    const screen = await open();
-    await screen.type('oni');
-    await screen.waitForSearch();
-    await screen.press('Share PDF');
+    const ui = await open();
+    await ui.type('oni');
+    await ui.waitForSearch();
+    await ui.press('Share PDF');
     expect(makePdf.mock.calls).toEqual([[{ ...ALL, search: 'oni' }]]);
     expect(alertTexts(alert)).toEqual([
       [
@@ -1253,13 +1272,12 @@ describe('the report PDF of the list on screen (backend with migration 52)', () 
 describe('the search words in bold', () => {
   it('gives the item cards the search words, so the matching part of the item name is bold', async () => {
     serve(facility(FEW, { sorts: true }));
-    const screen = await open();
-    expect(screen.bold()).toEqual([]);
-    await screen.type('ga', 'garlic');
-    await screen.waitForSearch();
-    expect(screen.items()).toEqual(['Example Garlic']);
-    const [card] = screen.tree.root.findAllByType(StockItemCard);
-    expect(card.props.highlightWords).toEqual(['garlic']);
-    expect(screen.bold()).toEqual(['Garlic']);
+    const ui = await open();
+    expect(ui.bold()).toHaveLength(0);
+    await ui.type('ga', 'garlic');
+    await ui.waitForSearch();
+    expect(ui.items()).toEqual(['Example Garlic']);
+    expect(ui.bold()).toHaveLength(1);
+    expect(ui.bold()[0]).toHaveTextContent('Garlic');
   });
 });

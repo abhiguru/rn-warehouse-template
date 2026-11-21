@@ -48,8 +48,13 @@
     istanbul plugin and `test-exclude`) is a dev dependency.
   - **How the gate stays safe.** `scripts/audit-dependencies.mjs` has a second list, `acceptedWithoutRepair` (advisory, package,
     range, reason, `reviewBy`), apart from `acceptedAdvisories`, which keeps its rule that every entry has a verified local
-    backport. The gate also reads `npm ls --omit=dev --all --json` and fails (`SHIPPED:`) when `glob` or `minimatch` is
-    declared by anything outside `toolingParents` (the list above), including the app itself. From the day after `reviewBy`
+    backport. The gate also reads `npm ls --omit=dev --all --long --json` and fails (`SHIPPED:`) when `glob` or `minimatch` is
+    declared by anything outside `toolingParents` (the list above), including the app itself. That tree keeps an optional
+    peer that a dev dependency installs (lockfile `devOptional`), such as `expo-router > @testing-library/react-native >
+    jest` since WH-273; the gate does not follow an edge that is an optional peer of its parent, `devOptional` and in the
+    app's devDependencies, because the app does not ship it (an Android export on 2026-11-21 had no `@testing-library` or
+    `test-renderer` in the bundle). A required peer, an optional peer that production also needs, and an
+    `optionalDependencies` edge are still followed. From the day after `reviewBy`
     the entries are `REVIEW_OVERDUE` and the gate fails, as for the backported ones. Tests are in
     `scripts/audit-dependencies.test.mjs`. The result carries `reviewByWithoutRepair` and `shippedPaths`.
   - **At 2026-12-15:** check whether `@expo/*`, Jest and ESLint have moved to `glob` 14 and `minimatch` 11 (`npm outdated`,
@@ -95,14 +100,14 @@ Wherever the sections below describe the zod repair, they are superseded by this
 
 ## node-forge 1.4.1 — 2026-10-27
 
-- **What moved.** `package.json` `overrides` pins `node-forge` to 1.4.1. Both consumers (`@expo/cli` through `expo`, and
-  `@expo/code-signing-certificates` through `expo-updates`) resolve the one copy. 1.4.1 was published on 2026-10-27 with fixes
+- **What moved.** `package.json` `overrides` pinned `node-forge` to 1.4.1 on 2026-10-27; it now pins 1.4.3. Both consumers then (`@expo/cli` through `expo`, and
+  `@expo/code-signing-certificates` through `expo-updates`, since removed from the app, WH-105) resolved the one copy. Today only `@expo/cli` through `expo` reaches `@expo/code-signing-certificates` and `node-forge` (`npm ls`). 1.4.1 was published on 2026-10-27 with fixes
   for about ten high advisories, so the audit would otherwise have listed them as `UNREPAIRED`.
 - **The local GHSA-86w9-cpqp-85rv repair is retired.** It copied upstream PR 1152, which was closed unmerged. 1.4.1 instead
   re-encodes the DigestInfo canonically and compares the bytes (`lib/rsa.js`), which rejects the same forgery and more.
   `scripts/security-backports.json` now declares node-forge `unaffected` from 1.4.1 (the same mechanism the zod entry used, since removed) and no
   longer patches it; the patch script refuses any other node-forge version. The regression test in
-  `scripts/security-backports.test.mjs` is unchanged and now runs against the installed, unpatched 1.4.1: a signature whose
+  `scripts/security-backports.test.mjs` is unchanged and now runs against the installed, unpatched copy (1.4.3 today): a signature whose
   DigestInfo carries an extra nested DigestAlgorithm element must fail `verify`.
 - **Accepted set now.** Three advisories, each repaired locally: braces (GHSA-vfj7-8cjw-p6xm, review by 2027-01-10), sprintf-js
   (GHSA-hp3w-g68c-fv3c, 2027-01-10) and zod (GHSA-mrhx-c7xc-m3w5, 2027-01-24; removed again, see the SDK 58 section). `npm run audit:dependencies` reports
@@ -119,8 +124,8 @@ GHSA-mrhx-c7xc-m3w5 `<4.6.6`, and the ranges allow `^4`). The other copies have 
 
 | Package | Advisory | Pulled in by | Fixed version |
 | ------- | -------- | ------------ | ------------- |
-| `node-forge` (history) | GHSA-86w9-cpqp-85rv | `@expo/cli`, and `expo-updates` through `@expo/code-signing-certificates` | 1.4.1 (2026-10-27); no longer accepted, see the section above |
-| `@expo/cli`, `expo`, `@expo/code-signing-certificates`, `expo-updates` | the node-forge row above, as dependents | | follow the row above |
+| `node-forge` (history) | GHSA-86w9-cpqp-85rv | `@expo/cli`; the 2026-10-27 finding also named `expo-updates` through `@expo/code-signing-certificates`, since removed from the app | 1.4.1 (2026-10-27); no longer accepted, see the section above |
+| `@expo/cli`, `expo`, `@expo/code-signing-certificates` (and `expo-updates` until WH-105) | the node-forge row above, as dependents | | follow the row above |
 
 - These are build and development tools: the Expo CLI (Metro, prebuild, export) and the code-signing of over-the-air updates
   (off in this template, see below). They run on the developer's machine, not in the app. On 2026-10-24 `npx expo export

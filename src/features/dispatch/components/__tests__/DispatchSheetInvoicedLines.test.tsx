@@ -1,6 +1,6 @@
 /** The dispatch saved-items sheet with a line on an invoice (App 93): its row says so, and its swipe Delete is refused. */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { showAlert } from '@/utils/alert';
 import type { DispatchItemData } from '@/types/dispatch.types';
 import { ItemsSummaryBottomSheet } from '../ItemsSummaryBottomSheet';
@@ -30,48 +30,42 @@ const line = (unique_id: string, name: string, over: Partial<DispatchItemData> =
     grnItems_package_mark: 'PM', grnItems_rack: 'B-14', grnItems_weight: 50, disp_quantity: 5, ...over,
   }) as DispatchItemData;
 
-let tree: ReactTestRenderer;
 const onDeleteItem = jest.fn();
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
-  act(() => {
-    tree = create(
-      <ItemsSummaryBottomSheet
-        isVisible
-        onClose={jest.fn()}
-        items={[line('a', 'Invoiced Potatoes', { invoice_no: 'INV7' }), line('b', 'Free Onions')]}
-        onDeleteItem={onDeleteItem}
-        onEditItem={jest.fn()}
-      />,
-    );
-  });
+  await render(
+    <ItemsSummaryBottomSheet
+      isVisible
+      onClose={jest.fn()}
+      items={[line('a', 'Invoiced Potatoes', { invoice_no: 'INV7' }), line('b', 'Free Onions')]}
+      onDeleteItem={onDeleteItem}
+      onEditItem={jest.fn()}
+    />,
+  );
 });
 afterEach(() => {
-  act(() => tree.unmount());
   jest.restoreAllMocks();
 });
 
-const texts = () => tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
-const deleteOf = (label: RegExp) =>
-  tree.root.find((node) => typeof node.props.onPress === 'function' && typeof node.props.accessibilityLabel === 'string' && label.test(node.props.accessibilityLabel));
-
 it('the row of the invoiced line says which invoice holds it', () => {
-  expect(texts()).toContain('On invoice INV7. Delete or edit the invoice first.');
+  expect(screen.getByText('On invoice INV7. Delete or edit the invoice first.')).toBeOnTheScreen();
 });
 
-it('swipe Delete on the invoiced line is locked and only explains; nothing is deleted', () => {
-  act(() => deleteOf(/Invoiced Potatoes/).props.onPress());
+it('swipe Delete on the invoiced line is locked and only explains; nothing is deleted', async () => {
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: 'Invoiced Potatoes is protected' }));
 
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(jest.mocked(showAlert).mock.calls[0][1]).toBe('On invoice INV7. Delete or edit the invoice first.');
   expect(onDeleteItem).not.toHaveBeenCalled();
 });
 
-it('the other line asks to delete and deletes only when confirmed', () => {
-  act(() => deleteOf(/Free Onions/).props.onPress());
+it('the other line asks to delete and deletes only when confirmed', async () => {
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: 'Delete Free Onions' }));
   const buttons = jest.mocked(showAlert).mock.calls[0][2] as { style?: string; onPress?: () => void }[];
   expect(onDeleteItem).not.toHaveBeenCalled();
-  act(() => buttons.find((button) => button.style === 'destructive')!.onPress!());
+  buttons.find((button) => button.style === 'destructive')!.onPress!();
   expect(onDeleteItem).toHaveBeenCalledWith('b');
 });

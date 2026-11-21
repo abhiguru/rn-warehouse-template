@@ -12,7 +12,7 @@
  *    is sent again.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import OrderManagement from '../OrderManagement';
 import { OrderService } from '@/services/order-service';
 import { askAlert, showAlert } from '@/utils/alert';
@@ -100,12 +100,11 @@ const GONE_TITLE = 'This item is no longer on the order';
 const GONE_MESSAGE = 'Someone else removed it, or it was dispatched. The order is shown again as it is now.';
 
 const service = jest.mocked(OrderService);
-let renderer: ReactTestRenderer | undefined;
 let logged: jest.SpyInstance;
 const settle = () => act(async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); });
 
 async function openOrder() {
-  await act(async () => { renderer = create(<OrderManagement customerId="customer-fictional-1" />); });
+  await render(<OrderManagement customerId="customer-fictional-1" />);
   await settle();
   expect(mockCards.byId[LINE]).toBeDefined();
   return mockCards.byId[LINE];
@@ -125,9 +124,10 @@ beforeEach(() => {
   jest.mocked(askAlert).mockReset().mockResolvedValue('remove' as never);
   logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
-afterEach(async () => {
-  await act(async () => { renderer?.unmount(); });
-  renderer = undefined;
+// Promises a test holds open are released here, so a failing test cannot leave Jest hanging.
+const held: (() => void)[] = [];
+afterEach(() => {
+  held.splice(0).forEach(release => release());
   logged.mockRestore();
 });
 
@@ -180,7 +180,10 @@ describe('a change of the quantity of a line', () => {
   it('while the card is taking the line off, a save that finds it gone says nothing', async () => {
     const card = await openOrder();
     let finishQuestion!: (answer: string) => void;
-    jest.mocked(askAlert).mockImplementationOnce((() => new Promise(resolve => { finishQuestion = resolve as (answer: string) => void; })) as never);
+    jest.mocked(askAlert).mockImplementationOnce((() => new Promise(resolve => {
+      finishQuestion = resolve as (answer: string) => void;
+      held.push(() => resolve('cancel'));
+    })) as never);
     let removal!: Promise<boolean | 'unknown'>;
     await act(async () => { removal = card.onRemove(LINE) as Promise<boolean | 'unknown'>; });
     service.updateOrderItemQuantity.mockResolvedValueOnce(refusal('Order item not found'));
@@ -329,7 +332,7 @@ describe('a line whose answer was lost', () => {
     const card = await openOrder();
     expect(mockCards.byId[LINE].checking).toBeUndefined();
     let release!: () => void;
-    jest.mocked(waitForServer).mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    jest.mocked(waitForServer).mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; held.push(resolve); }));
     service.updateOrderItemQuantity.mockResolvedValueOnce(lost);
     let change!: Promise<boolean>;
     await act(async () => { change = card.onQuantityChange(LINE, 6, ORDER_ID); });

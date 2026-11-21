@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import { GuardedScreen, useRootRouteGuard } from '../RouteGuard';
 import { resetCentralStateForTests, setCentralState } from '@/config/centralState';
 
@@ -40,7 +40,6 @@ jest.mock('@/hooks/useTheme', () => ({
 }));
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
 
-let renderer: ReactTestRenderer | undefined;
 function Root({ routeName }: { routeName: string }) {
   useRootRouteGuard(true);
   return (
@@ -51,11 +50,11 @@ function Root({ routeName }: { routeName: string }) {
 }
 const mount = async (routeName: string, segments: string[]) => {
   mockSegments = segments;
-  await act(async () => { renderer = create(<Root routeName={routeName} />); });
+  await render(<Root routeName={routeName} />);
 };
 const moveTo = async (routeName: string, segments: string[]) => {
   mockSegments = segments;
-  await act(async () => { renderer!.update(<Root routeName={routeName} />); });
+  await screen.rerender(<Root routeName={routeName} />);
 };
 
 beforeEach(() => {
@@ -66,10 +65,6 @@ beforeEach(() => {
   mockAuth = { userProfile: null, session: null, user: null };
   resetCentralStateForTests();
   setCentralState({ status: 'signedOut' });
-});
-afterEach(async () => {
-  if (renderer) await act(async () => renderer!.unmount());
-  renderer = undefined;
 });
 
 describe.each([

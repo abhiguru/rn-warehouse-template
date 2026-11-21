@@ -72,8 +72,6 @@ jest.mock('@/config/centralSession', () => ({
   fetchCentralProfile: jest.fn(async () => ({ ok: true })),
   updateCentralName: jest.fn(),
 }));
-// The test renderer has no native node to name: the box gets a handle, so the focus move can be seen.
-jest.mock('react-native/Libraries/ReactNative/RendererProxy', () => ({ ...jest.requireActual('react-native/Libraries/ReactNative/RendererProxy'), findNodeHandle: jest.fn(() => 7) }));
 jest.mock('@/config/centralFacilities', () => ({
   ...jest.requireActual('@/config/centralFacilities'),
   loadMyFacilities: jest.fn(),
@@ -301,12 +299,12 @@ describe('central sign-in', () => {
     expect(checked()).toBe(false);
     expect(button('Send code').props.disabled).toBe(false);
     expect(termsError()).toHaveLength(0);
-    const setFocus = jest.spyOn(AccessibilityInfo, 'setAccessibilityFocus').mockImplementation(() => undefined);
+    const setFocus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => undefined);
     await press(button('Send code'));
     expect(requestCentralCode).not.toHaveBeenCalled();
     expect(JSON.stringify(termsError()[0].props.children)).toContain('Tick the box above to continue');
     // The focus goes to the box.
-    expect(setFocus).toHaveBeenCalledWith(7);
+    expect(setFocus).toHaveBeenCalledWith(expect.anything(), 'focus');
 
     await tick();
     expect(checked()).toBe(true);

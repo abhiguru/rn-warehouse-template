@@ -3,7 +3,7 @@
  * document scanner; each scanned page is one photo; pages beyond the limit are released and said so.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { ImageUploadButton } from '../ImageUploadButton';
 import { showAlert } from '@/utils/alert';
 import { registerLocalPhoto, releaseLocalPhotos } from '@/utils/localPhotoFiles';
@@ -41,17 +41,18 @@ const upload = jest.fn(async (asset: { uri: string }) => ({
   metadata: { file_size: 1000, file_name: 'p.webp', mime_type: 'image/webp', uploadTimestamp: '2026-10-31T09:00:00.000Z' },
 }));
 
-function render(props: Partial<React.ComponentProps<typeof ImageUploadButton>> = {}): ReactTestRenderer {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(<ImageUploadButton customUploadFunction={upload} grnId="temp_1" documentScan onImageUploadComplete={jest.fn()} {...props} />);
-  });
-  return tree;
-}
-const openMenu = (tree: ReactTestRenderer) => {
-  act(() => { tree.root.find((n) => n.props.accessibilityRole === 'button' && typeof n.props.onPress === 'function').props.onPress(); });
+const button = (props: Partial<React.ComponentProps<typeof ImageUploadButton>> = {}) => (
+  <ImageUploadButton customUploadFunction={upload} grnId="temp_1" documentScan onImageUploadComplete={jest.fn()} {...props} />
+);
+// Presses the button on the screen and returns the menu it handed to showAlert.
+const pressForMenu = async () => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button'));
   const [title, message, buttons] = jest.mocked(showAlert).mock.calls.at(-1)!;
   return { title, message, buttons: buttons as { text: string; onPress?: () => void }[] };
+};
+const openMenu = async (props: Partial<React.ComponentProps<typeof ImageUploadButton>> = {}) => {
+  await render(button(props));
+  return pressForMenu();
 };
 
 beforeEach(() => {
@@ -61,22 +62,24 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-it('offers Scan document first where the scanner is available', () => {
-  const { buttons, message } = openMenu(render());
+it('offers Scan document first where the scanner is available', async () => {
+  const { buttons, message } = await openMenu();
   expect(buttons.map((b) => b.text)).toEqual(['Scan document', 'Take photo', 'Choose from library', 'Cancel']);
   expect(message).toBe('Scan the document, take a new photo or choose one from your library.');
 });
 
-it('leaves the menu as it was where there is no scanner, or for photos that are not documents', () => {
+it('leaves the menu as it was where there is no scanner, or for photos that are not documents', async () => {
   mockScannerAvailable = false;
-  expect(openMenu(render()).buttons.map((b) => b.text)).toEqual(['Take photo', 'Choose from library', 'Cancel']);
+  const first = await openMenu();
+  expect(first.buttons.map((b) => b.text)).toEqual(['Take photo', 'Choose from library', 'Cancel']);
   mockScannerAvailable = true;
-  expect(openMenu(render({ documentScan: false })).buttons.map((b) => b.text)).toEqual(['Take photo', 'Choose from library', 'Cancel']);
+  await screen.rerender(button({ documentScan: false }));
+  expect((await pressForMenu()).buttons.map((b) => b.text)).toEqual(['Take photo', 'Choose from library', 'Cancel']);
 });
 
 it('adds each scanned page as one photo', async () => {
   mockScan.mockResolvedValueOnce({ pages: ['file:///cache/s1.jpg', 'file:///cache/s2.jpg'] });
-  const { buttons } = openMenu(render());
+  const { buttons } = await openMenu();
   await act(async () => { await buttons[0].onPress!(); });
   expect(upload).toHaveBeenCalledTimes(2);
   expect(upload.mock.calls.map((c) => c[0].uri)).toEqual(['file:///cache/s1.jpg', 'file:///cache/s2.jpg']);
@@ -85,14 +88,14 @@ it('adds each scanned page as one photo', async () => {
 
 it('adds nothing when the scan is cancelled', async () => {
   mockScan.mockResolvedValueOnce(null);
-  const { buttons } = openMenu(render());
+  const { buttons } = await openMenu();
   await act(async () => { await buttons[0].onPress!(); });
   expect(upload).not.toHaveBeenCalled();
 });
 
 it('releases the pages beyond the limit and says how many were added', async () => {
   mockScan.mockResolvedValueOnce({ pages: ['file:///cache/s1.jpg', 'file:///cache/s2.jpg', 'file:///cache/s3.jpg'] });
-  const { buttons } = openMenu(render({ maxImages: 2 }));
+  const { buttons } = await openMenu({ maxImages: 2 });
   await act(async () => { await buttons[0].onPress!(); });
   expect(upload).toHaveBeenCalledTimes(2);
   expect(releaseLocalPhotos).toHaveBeenCalledWith(['file:///cache/s3.jpg']);

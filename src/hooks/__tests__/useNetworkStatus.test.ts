@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { NetworkStatus, useNetworkStatus } from '../useNetworkStatus';
 
@@ -21,7 +21,7 @@ const offline = { type: 'none', isConnected: false, isInternetReachable: false, 
 let initial: ReturnType<typeof deferred<NetInfoState>>;
 let listener: (state: NetInfoState) => void;
 let status: NetworkStatus;
-let tree: ReturnType<typeof create> | undefined;
+let tree: Awaited<ReturnType<typeof render>> | undefined;
 const unsubscribe = jest.fn();
 const Harness = () => { status = useNetworkStatus(); return null; };
 
@@ -36,12 +36,12 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
+  if (tree) await tree.unmount();
   tree = undefined;
 });
 
 async function mount() {
-  await act(async () => { tree = create(React.createElement(Harness)); });
+  tree = await render(React.createElement(Harness));
 }
 
 it.each([online, offline])('uses the initial $type check when no event has arrived', async state => {
@@ -92,7 +92,7 @@ it('keeps a newer event even if the initial check subsequently fails', async () 
 
 it('unsubscribes and ignores late native results after unmount', async () => {
   await mount();
-  await act(async () => { tree!.unmount(); });
+  await tree!.unmount();
   tree = undefined;
   expect(unsubscribe).toHaveBeenCalledTimes(1);
   // Reading the late state would itself prove a stale callback was processed.

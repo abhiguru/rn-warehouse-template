@@ -1,6 +1,6 @@
 import React from 'react';
-import { Text, View } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { InvoiceCalculationSummary } from '../InvoiceCalculationSummary';
 import type { InvoiceHeaderData } from '@/types/invoice.types';
@@ -12,7 +12,10 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// A stand-in that draws the dialog's message (the sum is in it), so the test reads what the person would be shown.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: ({ message }: { message?: string }) => require('react').createElement(require('react-native').Text, null, message),
+}));
 jest.mock('@/components/ConfirmInputDialog', () => ({ ConfirmInputDialog: () => null }));
 jest.mock('@/components/fiori', () => ({ InlineValidation: () => null }));
 
@@ -24,49 +27,36 @@ const header: InvoiceHeaderData = {
   labour: 1200, tax_amount: 0, total: 123456.5,
 };
 
-const flatten = (style: unknown) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
-
 describe('InvoiceCalculationSummary themes', () => {
   describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('%s %s', (brand, mode) => {
-    it('draws no card or title of its own, with Indian-formatted amounts in tabular figures', () => {
+    it('draws no card or title of its own, with Indian-formatted amounts in tabular figures', async () => {
       mockState = { theme: { preference: mode, brand } };
       const t = getTokens(brand, mode);
-      let tree!: ReactTestRenderer;
-      act(() => {
-        tree = create(
-          <InvoiceCalculationSummary header={header} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={jest.fn()} />
-        );
-      });
+      await render(
+        <InvoiceCalculationSummary header={header} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={jest.fn()} />
+      );
       // The Review step's section is the card; the summary is its body.
-      const root = tree.root.findByProps({ testID: 'invoice-summary' });
-      expect(flatten(root.props.style).backgroundColor).toBeUndefined();
-      expect(tree.root.findAllByProps({ accessibilityRole: 'header' })).toHaveLength(0);
+      expect(StyleSheet.flatten(screen.getByTestId('invoice-summary').props.style).backgroundColor).toBeUndefined();
+      // The old check looked at every node, so hidden ones are counted too.
+      expect(screen.queryAllByRole('header')).toHaveLength(0);
 
-      const texts = tree.root.findAllByType(Text);
-      const total = texts.find(n => n.props.children === '₹1,23,456.50');
-      expect(total).toBeDefined();
-      expect(flatten(total!.props.style).fontVariant).toEqual(['tabular-nums']);
-      expect(flatten(total!.props.style).color).toBe(t.text.primary);
+      const total = screen.getByText('₹1,23,456.50');
+      expect(total).toHaveStyle({ fontVariant: ['tabular-nums'] });
+      expect(total).toHaveStyle({ color: t.text.primary });
       // One Total row.
-      expect(texts.filter(n => n.props.children === '₹1,23,456.50')).toHaveLength(1);
-      act(() => tree.unmount());
+      expect(screen.getAllByText('₹1,23,456.50')).toHaveLength(1);
     });
   });
 });
 
 describe('InvoiceCalculationSummary formula', () => {
-  it('keeps the minus before a zero discount, so the formula reads as a sum', () => {
+  it('keeps the minus before a zero discount, so the formula reads as a sum', async () => {
     mockState = { theme: { preference: MODES[0], brand: BRANDS[0] } };
-    let tree!: ReactTestRenderer;
-    act(() => {
-      tree = create(
-        <InvoiceCalculationSummary header={{ ...header, discount: 0, discount_reason: '' }} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={jest.fn()} />
-      );
-    });
+    await render(
+      <InvoiceCalculationSummary header={{ ...header, discount: 0, discount_reason: '' }} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={jest.fn()} />
+    );
     // The sum is in the "How the total is calculated" dialog.
-    const message = tree.root.findByType('ConfirmDialog' as unknown as React.ElementType).props.message as string;
-    expect(message).toContain('−₹0.00 (discount)');
-    expect(message).not.toContain(' ₹0.00 (discount)');
-    act(() => tree.unmount());
+    expect(screen.getByText(/−₹0\.00 \(discount\)/)).toBeOnTheScreen();
+    expect(screen.queryByText(/ ₹0\.00 \(discount\)/)).not.toBeOnTheScreen();
   });
 });

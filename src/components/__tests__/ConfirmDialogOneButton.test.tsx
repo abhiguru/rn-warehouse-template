@@ -4,7 +4,7 @@
  * beside "Close" (seen on a phone in the "Enter a reason" dialogs of the invoice form).
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { ConfirmDialog } from '../ConfirmDialog';
 
 jest.mock('@/store/hooks', () => ({
@@ -13,43 +13,39 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 
-async function buttons(cancelText: string | undefined) {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(
-      <ConfirmDialog
-        visible
-        title="Enter a discount reason"
-        message="Enter the reason for this discount before submitting the invoice."
-        confirmText="Close"
-        cancelText={cancelText}
-        onConfirm={jest.fn()}
-        onCancel={jest.fn()}
-      />
-    );
-  });
-  // One entry per button: the same label sits on the component and on its host view.
-  const labels = [
-    ...new Set(
-      tree.root
-        .findAll((node) => node.props.accessibilityRole === 'button')
-        .map((button) => String(button.props.accessibilityLabel))
-    ),
-  ];
-  await act(async () => { tree.unmount(); });
-  return labels;
+async function renderDialog(cancelText: string | undefined) {
+  await render(
+    <ConfirmDialog
+      visible
+      title="Enter a discount reason"
+      message="Enter the reason for this discount before submitting the invoice."
+      confirmText="Close"
+      cancelText={cancelText}
+      onConfirm={jest.fn()}
+      onCancel={jest.fn()}
+    />
+  );
+  return screen.getAllByRole('button');
 }
 
 describe('ConfirmDialog buttons', () => {
   it('shows only the confirm button when the cancel text is empty', async () => {
-    expect(await buttons('')).toEqual(['Close']);
+    const buttons = await renderDialog('');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName('Close');
   });
 
   it('shows both buttons when a cancel text is given', async () => {
-    expect(await buttons('Keep editing')).toEqual(['Keep editing', 'Close']);
+    const buttons = await renderDialog('Keep editing');
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toHaveAccessibleName('Keep editing');
+    expect(buttons[1]).toHaveAccessibleName('Close');
   });
 
   it('shows the default cancel button when no cancel text is given', async () => {
-    expect(await buttons(undefined)).toEqual(['Cancel', 'Close']);
+    const buttons = await renderDialog(undefined);
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toHaveAccessibleName('Cancel');
+    expect(buttons[1]).toHaveAccessibleName('Close');
   });
 });

@@ -1,6 +1,6 @@
 /** The order toolbar's saved time: after a day it is a date, written DD/MM/YY on screen and in words for a screen reader. */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import CustomerOrderSummary from '../CustomerOrderSummary';
 import type { Order } from '@/types/order.types';
 
@@ -13,12 +13,8 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 
 it('reads the saved date in words ("9 Oct 2020"), while the toolbar shows 09/10/20', async () => {
   const order = { id: 'o1', updated_at: '2020-10-09T08:00:00.000Z', created_at: '2020-10-09T08:00:00.000Z', items: [] } as unknown as Order;
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<CustomerOrderSummary order={order} />); });
-  const toolbar = tree.root.find(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessible === true);
-  expect(toolbar.props.accessibilityLabel).toContain('9 Oct 2020');
-  expect(toolbar.props.accessibilityLabel).not.toMatch(/\d\d\/\d\d\/\d\d/);
-  const shown = tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat(Infinity).join(''));
-  expect(shown.join('|')).toContain('09/10/20');
-  await act(async () => { tree.unmount(); });
+  await render(<CustomerOrderSummary order={order} />);
+  expect(screen.getByLabelText(/9 Oct 2020/)).toBeOnTheScreen();
+  expect(screen.queryByLabelText(/\d\d\/\d\d\/\d\d/)).not.toBeOnTheScreen();
+  expect(screen.getByText(/09\/10\/20/)).toBeOnTheScreen();
 });

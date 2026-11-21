@@ -3,10 +3,10 @@ import React from 'react';
 import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
 
 registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { BRANDS, type Mode } from '@/theme/tokens';
 import { makeInvoiceStore, fillNewInvoice, openForEdit, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor } from '@/tests/helpers/invoiceItemsHarness';
 
 let mockStore: InvoiceStore;
 let mockFontScale = 1;
@@ -37,14 +37,12 @@ describe.each(BRANDS.flatMap((brand) => MODES.map((mode) => [brand, mode] as con
       mockStore = makeInvoiceStore();
       if (kind === 'create') fillNewInvoice(mockStore, groupLines(2));
       else openForEdit(mockStore, groupLines(2));
-      let tree!: ReactTestRenderer;
-      await act(async () => { tree = create(<ConnectedEditor />); });
-      await openAllGroups(tree);
-      const texts = textsOf(tree);
-      expect(texts).toContain('₹735.00');
-      expect(texts).toContain('₹1,470.00');
-      expect(inputOf(tree, 'cell|edit_0_0|charge').props.value).toBe('5.00');
-      await act(async () => { tree.unmount(); });
+      await render(<ConnectedEditor />);
+      // A user opens each closed card with its "Show dispatch details" button.
+      for (const toggle of screen.getAllByRole('button', { expanded: false })) await userEvent.press(toggle);
+      expect(screen.getAllByText('₹735.00').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('₹1,470.00').length).toBeGreaterThan(0);
+      expect(screen.getByTestId('cell|edit_0_0|charge')).toHaveDisplayValue('5.00');
     });
   });
 });

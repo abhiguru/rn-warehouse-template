@@ -8,9 +8,8 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
-import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { getAllCustomerActivity, getCustomerActivityDetail } from '@/services/reporting/customer-activity-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer, { sanitizeReportPrefs, type ReportPrefsState } from '@/store/slices/reportPrefsSlice';
@@ -159,8 +158,7 @@ type Store = ReturnType<typeof makeStore>;
 
 jest.setTimeout(30_000);
 
-// A mounted skeleton or query keeps timers alive: every tree is taken down after its test.
-const mounted: TestRenderer.ReactTestRenderer[] = [];
+type Host = NonNullable<typeof screen.root>;
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -183,59 +181,83 @@ beforeEach(() => {
   detail.mockResolvedValue(answerDetail() as never);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
   resetFacilityCapabilities();
   resetFacilityRelease();
 });
 
-const textOf = (node: TestRenderer.ReactTestInstance) => [node.props.children].flat().join('');
-const flat = (style: unknown) => (StyleSheet.flatten(typeof style === 'function' ? style({ pressed: false }) : style) ?? {}) as Record<string, unknown>;
+const textOf = (node: Host | string): string => (typeof node === 'string' ? node : node.children.map(textOf).join(''));
+/** Every host element drawn, in the order drawn (styles, list order and nesting have no role or text to query by). */
+function hosts(): Host[] {
+  const found: Host[] = [];
+  const visit = (node: Host | string) => {
+    if (typeof node === 'string') return;
+    found.push(node);
+    node.children.forEach(visit);
+  };
+  visit(screen.root!);
+  return found;
+}
+const labelOf = (node: Host): string => (typeof node.props.accessibilityLabel === 'string' ? node.props.accessibilityLabel : '');
+/** A host that takes a press (a Pressable's host takes the responder). */
+const isPressable = (node: Host) => typeof node.props.onStartShouldSetResponder === 'function';
+const flat = (node: Host) => (StyleSheet.flatten(node.props.style) ?? {}) as Record<string, unknown>;
+/** Lets the promises behind a query answer run, and the screen draw what they bring. */
+const settle = () =>
+  act(async () => {
+    await settleQueries();
+  });
+const ALL_CUSTOMERS = ['Riverbank Produce', 'Green Valley Traders', 'Sunrise Agro Foods', 'Hillside Produce Co', 'Old Mill Stores'];
 
 async function open(store: Store) {
   mockStore = store;
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<CustomerActivityScreen />);
-    await settleQueries();
-  });
-  mounted.push(tree);
+  const user = userEvent.setup();
+  await render(<CustomerActivityScreen />);
+  await settle();
 
-  const run = (callback: () => void) =>
-    act(async () => {
-      callback();
-      await settleQueries();
-    });
-  const controls = (match: (label: string) => boolean) =>
-    tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string' && match(node.props.accessibilityLabel) && typeof node.props.onPress === 'function');
-  const control = (label: string) => {
-    const found = controls(text => text === label);
-    if (found.length === 0) throw new Error(`No control labelled "${label}"`);
-    return found[0];
+  const controls = (match: (label: string) => boolean) => hosts().filter(node => isPressable(node) && labelOf(node) !== '' && match(labelOf(node)));
+  /** The control with this label: by its role and name, else any pressable with that label. */
+  const find = (label: string): Host | undefined =>
+    (['button', 'radio'] as const).flatMap(role => screen.queryAllByRole(role, { name: label }))[0] ?? screen.queryAllByLabelText(label).find(isPressable);
+  const control = (label: string): Host => {
+    const found = find(label);
+    if (!found) throw new Error(`No control labelled "${label}"`);
+    return found;
   };
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(textOf);
+  const texts = () => hosts().filter(node => node.type === 'Text').map(textOf);
+  const field = () => screen.getByPlaceholderText(/search/i);
   return {
-    tree,
     texts,
     controls,
     control,
-    press: (label: string) => run(() => control(label).props.onPress()),
-    pressStarting: (start: string) => run(() => controls(text => text.startsWith(start))[0].props.onPress()),
-    has: (label: string) => controls(text => text === label).length > 0,
-    labels: () => tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string),
-    customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
-    status: () => texts().find(text => text.includes('Last updated')),
-    searchFields: () => tree.root.findAll(node => typeof node.props.onChangeText === 'function'),
-    search: async (text: string) => {
-      const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
-      await run(() => field.props.onChangeText(text));
-      await run(() => tree.root.findAll(node => typeof node.props.onSubmitEditing === 'function')[0].props.onSubmitEditing());
+    press: async (label: string) => {
+      await user.press(control(label));
+      await settle();
     },
-    refresh: () => run(() => tree.root.findByType('FlashList' as never).props.refreshControl.props.onRefresh()),
-    bold: () =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
-        .map(textOf),
+    pressStarting: async (start: string) => {
+      await user.press(controls(text => text.startsWith(start))[0]);
+      await settle();
+    },
+    has: (label: string) => find(label) !== undefined,
+    labels: () => hosts().map(labelOf).filter(label => label !== ''),
+    /** Customer names in the order the rows show them (each card is read as "name, facts"). */
+    customers: () => controls(label => ALL_CUSTOMERS.some(name => label.startsWith(`${name}, `))).map(node => labelOf(node).split(', ')[0]),
+    status: () => texts().find(text => text.includes('Last updated')),
+    searchFields: () => screen.queryAllByPlaceholderText(/search/i),
+    search: async (text: string) => {
+      await user.clear(field());
+      // Submitting commits at once, without waiting for the field's pause.
+      await user.type(field(), text, { submitEditing: true });
+      await settle();
+    },
+    refresh: async () => {
+      await act(async () => {
+        hosts().find(node => node.type === 'FlashList')!.props.refreshControl.props.onRefresh();
+        await settleQueries();
+      });
+    },
+    bold: () => hosts().filter(node => node.type === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold).map(textOf),
+    unmount: () => screen.unmount(),
   };
 }
 
@@ -249,40 +271,40 @@ const openGreenValley = () => {
 
 describe('customer activity, every customer', () => {
   it('asks for the last 120 days, and asks again for 240 days when that period is chosen', async () => {
-    const screen = await open(makeStore());
+    const report = await open(makeStore());
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')]]);
     expect(detail).not.toHaveBeenCalled();
-    expect(screen.customers()).toEqual(DEFAULT_ORDER);
-    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Customers: 4', 'Stock: 550']));
+    expect(report.customers()).toEqual(DEFAULT_ORDER);
+    expect(report.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
+    expect(report.labels()).toEqual(expect.arrayContaining(['Customers: 4', 'Stock: 550']));
     // City, when last active, and the stock.
-    expect(screen.labels()).toContain('Hillside Produce Co, Morbi · Active today, 50 in stock');
-    expect(screen.labels()).toContain('Riverbank Produce, Rajkot · Last active 11/08/26, 80 in stock');
+    expect(report.labels()).toContain('Hillside Produce Co, Morbi · Active today, 50 in stock');
+    expect(report.labels()).toContain('Riverbank Produce, Rajkot · Last active 11/08/26, 80 in stock');
 
-    await screen.press('Period: Last 120 days. Change');
-    await screen.press('Last 240 days');
+    await report.press('Period: Last 120 days. Change');
+    await report.press('Last 240 days');
     expect(allActivity.mock.calls).toEqual([[days('2026-06-15')], [days('2026-02-15')]]);
-    expect(screen.has('Period: Last 240 days. Change')).toBe(true);
-    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
-    expect(screen.customers()).toEqual([...DEFAULT_ORDER, 'Old Mill Stores']);
+    expect(report.has('Period: Last 240 days. Change')).toBe(true);
+    expect(report.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
+    expect(report.customers()).toEqual([...DEFAULT_ORDER, 'Old Mill Stores']);
   });
 
   it('names the whole list with the shared "All customers" subtitle (WH-221)', async () => {
-    const screen = await open(makeStore());
-    expect(screen.texts()).toContain('All customers');
+    const report = await open(makeStore());
+    expect(report.texts()).toContain('All customers');
   });
 
   it('orders the rows by the field chosen in the sort sheet, and the other direction reverses them', async () => {
-    const screen = await open(makeStore());
-    await screen.press('Sorted by Last active, newest first. Change sort');
-    await screen.press('Stock');
-    expect(screen.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
+    const report = await open(makeStore());
+    await report.press('Sorted by Last active, newest first. Change sort');
+    await report.press('Stock');
+    expect(report.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co']);
     // Sorted by stock, the figure on the card is the stock: no invoiced amount is added.
-    expect(screen.labels().filter(label => label.includes('Invoiced ₹'))).toEqual([]);
-    await screen.press('Invoiced amount');
-    expect(screen.customers()).toEqual(['Sunrise Agro Foods', 'Riverbank Produce', 'Green Valley Traders', 'Hillside Produce Co']);
+    expect(report.labels().filter(label => label.includes('Invoiced ₹'))).toEqual([]);
+    await report.press('Invoiced amount');
+    expect(report.customers()).toEqual(['Sunrise Agro Foods', 'Riverbank Produce', 'Green Valley Traders', 'Hillside Produce Co']);
     // Sorted by the invoiced amount, each card says it first, so the order can be read off the cards.
-    expect(screen.labels()).toEqual(
+    expect(report.labels()).toEqual(
       expect.arrayContaining([
         'Sunrise Agro Foods, Invoiced ₹9,000 · Anand · Last active 01/07/26, 120 in stock',
         'Riverbank Produce, Invoiced ₹5,000 · Rajkot · Last active 11/08/26, 80 in stock',
@@ -290,49 +312,49 @@ describe('customer activity, every customer', () => {
         'Hillside Produce Co, Invoiced ₹300 · Morbi · Active today, 50 in stock',
       ])
     );
-    await screen.press('Lowest first');
-    expect(screen.customers()).toEqual(['Hillside Produce Co', 'Green Valley Traders', 'Riverbank Produce', 'Sunrise Agro Foods']);
-    await screen.press('Customer');
-    expect(screen.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods']);
-    await screen.press('Close');
-    expect(screen.has('Sorted by Customer, A to Z. Change sort')).toBe(true);
-    expect(screen.labels()).toContain('Green Valley Traders, Surat · Last active 20/09/26, 300 in stock');
-    expect(screen.labels().filter(label => label.includes('Invoiced ₹'))).toEqual([]);
+    await report.press('Lowest first');
+    expect(report.customers()).toEqual(['Hillside Produce Co', 'Green Valley Traders', 'Riverbank Produce', 'Sunrise Agro Foods']);
+    await report.press('Customer');
+    expect(report.customers()).toEqual(['Green Valley Traders', 'Hillside Produce Co', 'Riverbank Produce', 'Sunrise Agro Foods']);
+    await report.press('Close');
+    expect(report.has('Sorted by Customer, A to Z. Change sort')).toBe(true);
+    expect(report.labels()).toContain('Green Valley Traders, Surat · Last active 20/09/26, 300 in stock');
+    expect(report.labels().filter(label => label.includes('Invoiced ₹'))).toEqual([]);
     expect(allActivity).toHaveBeenCalledTimes(1);
   });
 
   it('narrows to the customers a search finds, in bold, and Clear all brings the rest back with the period and sort kept', async () => {
-    const screen = await open(makeStore());
-    await screen.press('Period: Last 120 days. Change');
-    await screen.press('Last 240 days');
-    await screen.press('Sorted by Last active, newest first. Change sort');
-    await screen.press('Stock');
-    await screen.press('Close');
+    const report = await open(makeStore());
+    await report.press('Period: Last 120 days. Change');
+    await report.press('Last 240 days');
+    await report.press('Sorted by Last active, newest first. Change sort');
+    await report.press('Stock');
+    await report.press('Close');
 
-    await screen.search('produce');
-    expect(screen.customers()).toEqual(['Riverbank Produce', 'Hillside Produce Co']);
-    expect(screen.bold()).toEqual(['Produce', 'Produce']);
-    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Showing 2 of 5 · Last updated 10:00 am');
+    await report.search('produce');
+    expect(report.customers()).toEqual(['Riverbank Produce', 'Hillside Produce Co']);
+    expect(report.bold()).toEqual(['Produce', 'Produce']);
+    expect(report.status()).toBe('15/02/26 – 12/10/26 · Showing 2 of 5 · Last updated 10:00 am');
 
-    await screen.press('Clear all filters and the search');
-    expect(screen.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co', 'Old Mill Stores']);
-    expect(screen.bold()).toEqual([]);
-    expect(screen.has('Period: Last 240 days. Change')).toBe(true);
-    expect(screen.has('Sorted by Stock, highest first. Change sort')).toBe(true);
+    await report.press('Clear all filters and the search');
+    expect(report.customers()).toEqual(['Green Valley Traders', 'Sunrise Agro Foods', 'Riverbank Produce', 'Hillside Produce Co', 'Old Mill Stores']);
+    expect(report.bold()).toEqual([]);
+    expect(report.has('Period: Last 240 days. Change')).toBe(true);
+    expect(report.has('Sorted by Stock, highest first. Change sort')).toBe(true);
     expect(allActivity).toHaveBeenCalledTimes(2);
   });
 
   it('opens a customer as a route and remembers it; after a restart the sort and that customer are back', async () => {
     const store = makeStore();
-    const screen = await open(store);
-    await screen.press('Sorted by Last active, newest first. Change sort');
-    await screen.press('Invoiced amount');
-    await screen.press('Close');
-    await screen.pressStarting('Riverbank Produce, ');
+    const report = await open(store);
+    await report.press('Sorted by Last active, newest first. Change sort');
+    await report.press('Invoiced amount');
+    await report.press('Close');
+    await report.pressStarting('Riverbank Produce, ');
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/customer-activity', params: { customerId: 'c1', customerName: 'Riverbank Produce' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({ 'customer-activity': { id: 'c1', name: 'Riverbank Produce' } });
 
-    act(() => mounted.splice(0).forEach(tree => tree.unmount()));
+    await report.unmount();
     forgetQueries();
     const stored = sanitizeReportPrefs(JSON.parse(JSON.stringify(store.getState().reportPrefs)));
     const again = await open(makeStore(STAFF, stored));
@@ -342,56 +364,56 @@ describe('customer activity, every customer', () => {
 
   it('says there is no activity, and suggests a longer period unless the period is already the longest', async () => {
     allActivity.mockResolvedValue(answerCustomers([]) as never);
-    const screen = await open(makeStore());
-    expect(screen.texts()).toEqual(expect.arrayContaining(['No customer activity', 'No GRNs, dispatches or invoices in this period. Try a longer period.']));
+    const report = await open(makeStore());
+    expect(report.texts()).toEqual(expect.arrayContaining(['No customer activity', 'No GRNs, dispatches or invoices in this period. Try a longer period.']));
 
-    await screen.press('Period: Last 120 days. Change');
-    await screen.press('Last 420 days');
-    expect(screen.texts()).toContain('No customer activity');
-    expect(screen.texts()).toContain('No GRNs, dispatches or invoices in this period.');
-    expect(screen.texts()).not.toContain('No GRNs, dispatches or invoices in this period. Try a longer period.');
+    await report.press('Period: Last 120 days. Change');
+    await report.press('Last 420 days');
+    expect(report.texts()).toContain('No customer activity');
+    expect(report.texts()).toContain('No GRNs, dispatches or invoices in this period.');
+    expect(report.texts()).not.toContain('No GRNs, dispatches or invoices in this period. Try a longer period.');
   });
 
   it('keeps the rows when a refresh fails, and says they are not current', async () => {
-    const screen = await open(makeStore());
+    const report = await open(makeStore());
     allActivity.mockResolvedValueOnce({ success: false, message: 'Could not reach the facility' } as never);
-    await screen.refresh();
-    expect(screen.customers()).toEqual(DEFAULT_ORDER);
+    await report.refresh();
+    expect(report.customers()).toEqual(DEFAULT_ORDER);
     // The service's own words for a failure are not shown; the screen's are (useReportQuery).
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load customer activity. Check your connection and try again."]));
+    expect(report.texts()).toEqual(expect.arrayContaining(["Couldn't update. These figures were loaded earlier.", "Couldn't load customer activity. Check your connection and try again."]));
   });
 });
 
 describe('customer activity, one customer', () => {
   it('asks for the customer and the period, with the period chip as its only control', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
+    const report = await open(makeStore());
     expect(detail.mock.calls).toEqual([[{ customerId: 'c2', ...days('2026-06-15') }]]);
     expect(allActivity).not.toHaveBeenCalled();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Customer activity', 'Green Valley Traders']));
+    expect(report.texts()).toEqual(expect.arrayContaining(['Customer activity', 'Green Valley Traders']));
     // The facility the figures come from, under the title: the report, then the facility, then the customer.
-    const header = screen.texts();
+    const header = report.texts();
     expect(header.indexOf('Customer activity')).toBeLessThan(header.indexOf('Riverside Cold Storage'));
     expect(header.indexOf('Riverside Cold Storage')).toBeLessThan(header.indexOf('Green Valley Traders'));
-    expect(screen.labels()).toContain('Facility: Riverside Cold Storage');
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Stock: 300', 'GRNs: 12', 'Dispatches: 7']));
-    expect(screen.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
+    expect(report.labels()).toContain('Facility: Riverside Cold Storage');
+    expect(report.labels()).toEqual(expect.arrayContaining(['Stock: 300', 'GRNs: 12', 'Dispatches: 7']));
+    expect(report.status()).toBe('15/06/26 – 12/10/26 · Last updated 10:00 am');
     // Nothing to search or sort.
-    expect(screen.searchFields()).toEqual([]);
-    expect(screen.labels().filter(label => label.startsWith('Sorted by'))).toEqual([]);
+    expect(report.searchFields()).toEqual([]);
+    expect(report.labels().filter(label => label.startsWith('Sorted by'))).toEqual([]);
     // No "No customer activity" under the dashboard.
-    expect(screen.texts()).not.toContain('No customer activity');
+    expect(report.texts()).not.toContain('No customer activity');
 
-    await screen.press('Period: Last 120 days. Change');
-    await screen.press('Last 240 days');
+    await report.press('Period: Last 120 days. Change');
+    await report.press('Last 240 days');
     expect(detail.mock.calls).toEqual([[{ customerId: 'c2', ...days('2026-06-15') }], [{ customerId: 'c2', ...days('2026-02-15') }]]);
-    expect(screen.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
+    expect(report.status()).toBe('15/02/26 – 12/10/26 · Last updated 10:00 am');
   });
 
   it('counts each card from the period\'s totals, not from its few preview rows, and names the period and what the action opens', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
-    const cards = screen.controls(label => label.includes('. View ')).map(node => node.props.accessibilityLabel);
+    const report = await open(makeStore());
+    const cards = report.controls(label => label.includes('. View ')).map(node => labelOf(node));
     expect(cards).toEqual([
       'GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26',
       'Dispatches in 15/06/26 – 12/10/26: 7. View dispatches in 15/06/26 – 12/10/26',
@@ -399,10 +421,10 @@ describe('customer activity, one customer', () => {
       'Invoiced in 15/06/26 – 12/10/26: ₹15,400. View invoices in 15/06/26 – 12/10/26',
     ]);
     // The preview rows are the latest of any date, under a heading that says so; the stock card's are its top items.
-    const headings = screen.tree.root.findAll(node => (node.type as unknown) === 'Text' && node.props.accessibilityRole === 'header').map(textOf);
+    const headings = screen.getAllByRole('header').map(textOf);
     expect(headings).toEqual(expect.arrayContaining(['Latest GRNs (any date)', 'Latest dispatches (any date)', 'Top stock items', 'Latest invoices (any date)']));
-    expect(screen.texts()).toEqual(expect.arrayContaining(['View GRNs in 15/06/26 – 12/10/26', 'View stock age']));
-    expect(screen.texts()).not.toContain('View all');
+    expect(report.texts()).toEqual(expect.arrayContaining(['View GRNs in 15/06/26 – 12/10/26', 'View stock age']));
+    expect(report.texts()).not.toContain('View all');
   });
 
   it('under Last month, counts September and says so, while its preview rows are the latest GRNs of any date', async () => {
@@ -417,23 +439,23 @@ describe('customer activity, one customer', () => {
       (fromDate === '2026-09-01' ? answerDetail({ summary: { ...DETAIL.summary, total_grns: 1 }, recent_grns: october }) : answerDetail()) as never
     );
     const store = makeStore();
-    const screen = await open(store);
-    await screen.press('Period: Last 120 days. Change');
-    await screen.press('Last month');
+    const report = await open(store);
+    await report.press('Period: Last 120 days. Change');
+    await report.press('Last month');
     expect(detail.mock.calls.at(-1)).toEqual([{ customerId: 'c2', fromDate: '2026-09-01', toDate: '2026-09-30' }]);
 
     const card = 'GRNs in 01/09/26 – 30/09/26: 1. View GRNs in 01/09/26 – 30/09/26';
-    expect(screen.has(card)).toBe(true);
+    expect(report.has(card)).toBe(true);
     // The October rows sit under "Latest GRNs (any date)", not under the September count.
-    const texts = screen.texts();
+    const texts = report.texts();
     expect(texts.indexOf('GRNs in 01/09/26 – 30/09/26: 1')).toBeLessThan(texts.indexOf('Latest GRNs (any date)'));
     expect(texts.indexOf('Latest GRNs (any date)')).toBeLessThan(texts.indexOf('GRN A0012'));
-    expect(screen.labels()).toEqual(expect.arrayContaining(['GRN A0012, 9 Oct 2026, 40 of 40 in stock', 'GRN A0010, 5 Oct 2026, 60 of 100 in stock']));
+    expect(report.labels()).toEqual(expect.arrayContaining(['GRN A0012, 9 Oct 2026, 40 of 40 in stock', 'GRN A0010, 5 Oct 2026, 60 of 100 in stock']));
     // On screen the same rows keep DD/MM/YY.
     expect(texts).toEqual(expect.arrayContaining(['09/10/26', '05/10/26']));
 
     // The action opens GRN activity with the period it names: the one period every report shares.
-    await screen.press(card);
+    await report.press(card);
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
     expect(store.getState().reportPrefs.byScope[SCOPE].period).toEqual({ preset: 'lastMonth' });
   });
@@ -441,14 +463,14 @@ describe('customer activity, one customer', () => {
   it('opens each card\'s report for the customer, as a customers list opens one, and remembers the customer there', async () => {
     openGreenValley();
     const store = makeStore();
-    const screen = await open(store);
-    await screen.press('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
+    const report = await open(store);
+    await report.press('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
     // The stock card says where it goes: the customer's stock age.
-    await screen.press('Current stock: 300 bags. View stock age');
+    await report.press('Current stock: 300 bags. View stock age');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/stock-aging', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
-    await screen.press('Dispatches in 15/06/26 – 12/10/26: 7. View dispatches in 15/06/26 – 12/10/26');
-    await screen.press('Invoiced in 15/06/26 – 12/10/26: ₹15,400. View invoices in 15/06/26 – 12/10/26');
+    await report.press('Dispatches in 15/06/26 – 12/10/26: 7. View dispatches in 15/06/26 – 12/10/26');
+    await report.press('Invoiced in 15/06/26 – 12/10/26: ₹15,400. View invoices in 15/06/26 – 12/10/26');
     expect(mockPush.mock.calls.map(([target]) => target.pathname)).toEqual(['/reports/grn-activity', '/reports/stock-aging', '/reports/dispatch-activity', '/reports/invoice-history']);
     const green = { id: 'c2', name: 'Green Valley Traders' };
     expect(store.getState().reportPrefs.byScope[SCOPE].lastCustomer).toEqual({
@@ -461,33 +483,33 @@ describe('customer activity, one customer', () => {
 
   it('opens a GRN, a dispatch or an invoice from its preview row; an item row is not a button', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
-    await screen.pressStarting('GRN A0010, ');
+    const report = await open(makeStore());
+    await report.pressStarting('GRN A0010, ');
     expect(mockRouterPush).toHaveBeenLastCalledWith('/grn-details/g1');
-    await screen.pressStarting('Dispatch D0005, ');
+    await report.pressStarting('Dispatch D0005, ');
     expect(mockRouterPush).toHaveBeenLastCalledWith('/dispatch-details/d1');
-    await screen.pressStarting('Invoice 2026-0042, ');
+    await report.pressStarting('Invoice 2026-0042, ');
     expect(mockRouterPush).toHaveBeenLastCalledWith('/invoice-details/i1');
     // The item rows are read as one element each, with nothing to press and no chevron.
-    expect(screen.labels()).toContain('Garlic · Bag, 2 GRNs, 200 bags');
-    expect(screen.controls(label => label.startsWith('Garlic'))).toEqual([]);
+    expect(report.labels()).toContain('Garlic · Bag, 2 GRNs, 200 bags');
+    expect(report.controls(label => label.startsWith('Garlic'))).toEqual([]);
   });
 
   describe('the status tag of the latest invoices', () => {
     const NORTH = { origin: 'https://warehouse.example.test', instanceId: 'instance-a' };
-    const invoiceLabel = (screen: Awaited<ReturnType<typeof open>>) => screen.labels().find(label => label.startsWith('Invoice 2026-0042, ')) ?? '';
+    const invoiceLabel = (report: Awaited<ReturnType<typeof open>>) => report.labels().find(label => label.startsWith('Invoice 2026-0042, ')) ?? '';
 
     it('says Paid where the facility records payments', async () => {
       setFacilityCapabilities(NORTH, { payments: true });
       openGreenValley();
-      const screen = await open(makeStore());
-      expect(invoiceLabel(screen)).toMatch(/, Paid$/);
+      const report = await open(makeStore());
+      expect(invoiceLabel(report)).toMatch(/, Paid$/);
     });
 
     it('says nothing of payment where it does not (the default), and still says Cancelled for a cancelled invoice', async () => {
       openGreenValley();
-      const screen = await open(makeStore());
-      expect(invoiceLabel(screen)).not.toMatch(/Paid|Pending/);
+      const report = await open(makeStore());
+      expect(invoiceLabel(report)).not.toMatch(/Paid|Pending/);
 
       detail.mockResolvedValue(answerDetail({ recent_invoices: [{ invoice_id: 'i1', invoice_number: '2026-0042', invoice_date: '2026-10-01', net_total: 1540, status: 'cancelled' as const }] }) as never);
       const again = await open(makeStore());
@@ -497,29 +519,31 @@ describe('customer activity, one customer', () => {
 
   it('draws the stock trend with axis numbers in the number format and a unit, and opens it as a chart or a table', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
-    const chart = screen.tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0];
+    const report = await open(makeStore());
+    const chart = hosts().find(node => node.type === 'LineChart')!;
     expect(chart.props.formatYLabel('1200')).toBe('1,200');
     expect(chart.props.formatYLabel('433.3333')).toBe('433');
-    expect(screen.texts()).toContain('units');
+    expect(report.texts()).toContain('units');
     // October is in progress on 12 October: its figure is the stock as of today, not a month end.
-    expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12/10/26. Highest 1,200.');
+    expect(report.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12/10/26. Highest 1,200.');
 
-    await screen.pressStarting('Stock level trend. ');
-    const segments = screen.tree.root.findAll(node => node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function');
-    expect(segments.map(node => node.props.accessibilityLabel)).toEqual(['Chart', 'Table of values']);
+    await report.pressStarting('Stock level trend. ');
+    const segments = screen.getAllByRole('radio');
+    expect(segments.map(labelOf)).toEqual(['Chart', 'Table of values']);
     // Each segment is a whole touch target, not a short one padded by hitSlop inside a clipping parent.
     for (const segment of segments) {
-      expect(flat(segment.props.style).minHeight).toBe(touchTarget);
+      expect(segment).toHaveStyle({ minHeight: touchTarget });
       expect(segment.props.hitSlop).toBeUndefined();
     }
-    expect(segments.map(node => node.props.accessibilityState.selected)).toEqual([true, false]);
+    expect(segments[0]).toBeSelected();
+    expect(segments[1]).not.toBeSelected();
 
-    await screen.press('Table of values');
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, as of 12 Oct 2026, 300']));
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Stock at month end', 'as of 12/10/26', 'Oct 2026: as of 12/10/26']));
-    const after = screen.tree.root.findAll(node => node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function');
-    expect(after.map(node => node.props.accessibilityState.selected)).toEqual([false, true]);
+    await report.press('Table of values');
+    expect(report.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, as of 12 Oct 2026, 300']));
+    expect(report.texts()).toEqual(expect.arrayContaining(['Stock at month end', 'as of 12/10/26', 'Oct 2026: as of 12/10/26']));
+    const after = screen.getAllByRole('radio');
+    expect(after[0]).not.toBeSelected();
+    expect(after[1]).toBeSelected();
   });
 
   it('ends the stock trend at the Stock tile\'s figure, so its Latest and Highest never fall short of the tile', async () => {
@@ -527,58 +551,58 @@ describe('customer activity, one customer', () => {
     // As a phone showed it: the stock the server keeps (the tile) above its own figure for the
     // month in progress (300 for October here) and above every month end of the period (1,200 at most).
     detail.mockResolvedValue(answerDetail({ summary: { ...DETAIL.summary, current_stock: 1300 } }) as never);
-    const screen = await open(makeStore());
-    expect(screen.labels()).toContain('Stock: 1,300');
-    expect(screen.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 1,300 as of 12/10/26. Highest 1,300.');
-    expect(screen.texts()).not.toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12/10/26. Highest 1,200.');
-    const chart = screen.tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0];
+    const report = await open(makeStore());
+    expect(report.labels()).toContain('Stock: 1,300');
+    expect(report.texts()).toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 1,300 as of 12/10/26. Highest 1,300.');
+    expect(report.texts()).not.toContain('Stock went from 200 in Aug 2026 to 1,200 at the end of Sep 2026, and 300 as of 12/10/26. Highest 1,200.');
+    const chart = hosts().find(node => node.type === 'LineChart')!;
     expect((chart.props.data as { value: number }[]).map(dot => dot.value)).toEqual([200, 1200, 1300]);
 
-    await screen.pressStarting('Stock level trend. ');
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Latest 1,300', 'Highest 1,300']));
-    await screen.press('Table of values');
+    await report.pressStarting('Stock level trend. ');
+    expect(report.labels()).toEqual(expect.arrayContaining(['Latest 1,300', 'Highest 1,300']));
+    await report.press('Table of values');
     // The months that are over keep the server's month-end figures.
-    expect(screen.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, as of 12 Oct 2026, 1,300']));
-    expect(screen.labels()).not.toContain('Oct 2026, as of 12 Oct 2026, 300');
+    expect(report.labels()).toEqual(expect.arrayContaining(['Aug 2026, 200', 'Sep 2026, 1,200', 'Oct 2026, as of 12 Oct 2026, 1,300']));
+    expect(report.labels()).not.toContain('Oct 2026, as of 12 Oct 2026, 300');
   });
 
   it('says so when the period has no stock trend, instead of leaving the section out', async () => {
     openGreenValley();
     detail.mockResolvedValue(answerDetail({ monthly_trends: [] }) as never);
-    const screen = await open(makeStore());
+    const report = await open(makeStore());
     // The section header writes its title in capitals.
-    expect(screen.texts()).toEqual(expect.arrayContaining(['CHARTS', 'Stock level trend', 'No stock levels to show for this period.']));
-    expect(screen.controls(label => label.startsWith('Stock level trend'))).toEqual([]);
+    expect(report.texts()).toEqual(expect.arrayContaining(['CHARTS', 'Stock level trend', 'No stock levels to show for this period.']));
+    expect(report.controls(label => label.startsWith('Stock level trend'))).toEqual([]);
     // The rest of the dashboard is still there.
-    expect(screen.labels()).toContain('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
+    expect(report.labels()).toContain('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
   });
 
   it('shows the report\'s empty state for a customer with nothing in the period', async () => {
     openGreenValley();
     const nothing = { ...DETAIL.summary, current_stock: 0, total_grns: 0, total_dispatches: 0, total_invoice_amount: 0 };
     detail.mockResolvedValue(answerDetail({ summary: nothing, monthly_trends: [], recent_grns: [], recent_dispatches: [], recent_invoices: [], top_stock_items: [] }) as never);
-    const screen = await open(makeStore());
-    expect(screen.texts()).toEqual(expect.arrayContaining(['No customer activity', 'No GRNs, dispatches or invoices in this period. Try a longer period.']));
-    expect(screen.controls(label => label.includes('. View '))).toEqual([]);
+    const report = await open(makeStore());
+    expect(report.texts()).toEqual(expect.arrayContaining(['No customer activity', 'No GRNs, dispatches or invoices in this period. Try a longer period.']));
+    expect(report.controls(label => label.includes('. View '))).toEqual([]);
   });
 
   it('says what failed and why when the report could not be read', async () => {
     openGreenValley();
     detail.mockResolvedValue({ success: false, message: 'The facility refused this report.' } as never);
-    const screen = await open(makeStore());
+    const report = await open(makeStore());
     // Not an access refusal: the screen's own words, not the service's.
-    expect(screen.texts()).toEqual(expect.arrayContaining(["Couldn't load customer activity", "Couldn't load this customer's activity. Check your connection and try again.", 'Try again']));
-    expect(screen.texts()).not.toContain('The facility refused this report.');
+    expect(report.texts()).toEqual(expect.arrayContaining(["Couldn't load customer activity", "Couldn't load this customer's activity. Check your connection and try again.", 'Try again']));
+    expect(report.texts()).not.toContain('The facility refused this report.');
   });
 
   it('asks nothing for a customer account whose route names a customer it is not assigned', async () => {
     mockParams = { customerId: 'c9', customerName: 'Riverbank Produce' };
     const account = { userProfile: { id: 'user-a', role: 'customer', assignedCustomerIds: ['c1'], assignedCustomers: [{ id: 'c1', name: 'Green Valley Traders', active: true }] } };
-    const screen = await open(makeStore(account));
+    const report = await open(makeStore(account));
     expect(allActivity).not.toHaveBeenCalled();
     expect(detail).not.toHaveBeenCalled();
-    expect(screen.texts()).toContain('No customer linked');
-    expect(screen.texts()).not.toContain('Riverbank Produce');
+    expect(report.texts()).toContain('No customer linked');
+    expect(report.texts()).not.toContain('Riverbank Produce');
   });
 });
 
@@ -597,8 +621,8 @@ describe('customer activity, a card\'s "View …" clears what the destination wa
       values: { invoiced: 'not_invoiced' },
       searches: { c2: 'A0009', c1: 'E0014' },
     });
-    const screen = await open(store);
-    await screen.press('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
+    const report = await open(store);
+    await report.press('GRNs in 15/06/26 – 12/10/26: 12. View GRNs in 15/06/26 – 12/10/26');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c2', customerName: 'Green Valley Traders' } });
     const after = store.getState().listFilters.lists['report-grn-activity-customer'];
     expect(after.values).toEqual({});
@@ -610,8 +634,8 @@ describe('customer activity, a card\'s "View …" clears what the destination wa
     openGreenValley();
     const store = makeStore();
     narrow(store, 'report-invoice-history-customer', { payment: 'paid', search: '2026/0042' }, 'c2');
-    const screen = await open(store);
-    await screen.press('Invoiced in 15/06/26 – 12/10/26: ₹15,400. View invoices in 15/06/26 – 12/10/26');
+    const report = await open(store);
+    await report.press('Invoiced in 15/06/26 – 12/10/26: ₹15,400. View invoices in 15/06/26 – 12/10/26');
     const after = store.getState().listFilters.lists['report-invoice-history-customer'];
     expect(after.values).toEqual({});
     expect(after.searches?.c2).toBeUndefined();
@@ -621,24 +645,23 @@ describe('customer activity, a card\'s "View …" clears what the destination wa
 const MODES: Mode[] = ['light', 'dark'];
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('customer activity in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
-  const backgrounds = (tree: TestRenderer.ReactTestRenderer) =>
-    tree.root.findAll(node => typeof node.type === 'string').map(node => flat(node.props.style).backgroundColor);
+  const backgrounds = () => hosts().map(node => flat(node).backgroundColor);
 
   it('every customer: rows on theme tokens', async () => {
-    const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
-    expect(backgrounds(screen.tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.surface.header]));
-    expect(screen.customers()).toEqual(DEFAULT_ORDER);
+    const report = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.surface.header]));
+    expect(report.customers()).toEqual(DEFAULT_ORDER);
   });
 
   it('one customer: the dashboard and its full-screen trend on theme tokens', async () => {
     openGreenValley();
-    const screen = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
-    expect(backgrounds(screen.tree)).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.positive.element]));
-    const chart = screen.tree.root.findAll(node => (node.type as unknown) === 'LineChart')[0];
+    const report = await open(makeStore(STAFF, undefined, { preference: mode, brand }));
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.brand.subtle, t.status.positive.element]));
+    const chart = hosts().find(node => node.type === 'LineChart')!;
     expect(chart.props.color).toBe(t.chart[0]);
     expect(chart.props.yAxisTextStyle.color).toBe(t.text.secondary);
-    await screen.pressStarting('Stock level trend. ');
-    expect(backgrounds(screen.tree)).toEqual(expect.arrayContaining([t.brand.fill, t.surface.header]));
+    await report.pressStarting('Stock level trend. ');
+    expect(backgrounds()).toEqual(expect.arrayContaining([t.brand.fill, t.surface.header]));
   });
 });
 
@@ -656,43 +679,43 @@ const NEEDS_UPDATE = "This facility's server needs an update before reports can 
  * 403 is said in an alert and the action stays; a server without report PDFs
  * is said once and the action goes.
  */
-async function sharesThePdf(screen: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
+async function sharesThePdf(report: Awaited<ReturnType<typeof open>>, request: Record<string, unknown>, filename: string, label = 'Share PDF') {
   let answer!: (result: ReportPdfResult) => void;
   makePdf.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
-  await screen.press(label);
+  await report.press(label);
   expect(makePdf.mock.calls).toEqual([[request]]);
   for (const field of ['customer_id', 'from', 'to', 'sort']) {
     if (!(field in request)) expect(makePdf.mock.calls[0][0]).not.toHaveProperty(field);
   }
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: true });
+  expect(report.control(label)).toBeBusy();
   expect(sharePdf).not.toHaveBeenCalled();
   await act(async () => {
     answer({ success: true, pdfUrl: PDF_URL });
     await settleQueries();
   });
   expect(sharePdf.mock.calls).toEqual([[PDF_URL, filename]]);
-  expect(screen.control(label).props.accessibilityState).toMatchObject({ busy: false });
+  expect(report.control(label)).not.toBeBusy();
   expect(alert).not.toHaveBeenCalled();
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'forbidden', error: NOT_AVAILABLE });
-  await screen.press(label);
+  await report.press(label);
   expect(alert.mock.calls).toEqual([["Couldn't create the PDF", NOT_AVAILABLE]]);
   expect(sharePdf).toHaveBeenCalledTimes(1);
-  expect(screen.has(label)).toBe(true);
+  expect(report.has(label)).toBe(true);
 
   makePdf.mockResolvedValueOnce({ success: false, reason: 'server-outdated', error: NEEDS_UPDATE });
-  await screen.press(label);
+  await report.press(label);
   expect(alert.mock.calls[1]).toEqual(["Couldn't create the PDF", NEEDS_UPDATE]);
-  expect(screen.has(label)).toBe(false);
+  expect(report.has(label)).toBe(false);
 }
 
 describe('customer activity, the report PDF', () => {
   it('every customer: shares the period and the sort on screen as the PDF names them, with no customer', async () => {
-    const screen = await open(makeStore());
+    const report = await open(makeStore());
     // The screen's "Last active" is the PDF's last_activity column.
-    expect(screen.has('Sorted by Last active, newest first. Change sort')).toBe(true);
+    expect(report.has('Sorted by Last active, newest first. Change sort')).toBe(true);
     await sharesThePdf(
-      screen,
+      report,
       { report: 'customer-activity', from: '2026-06-15', to: '2026-10-12', sort: { field: 'last_activity', order: 'desc' } },
       'Customer_activity_All_customers_2026_06_15_to_2026_10_12.pdf'
     );
@@ -700,11 +723,11 @@ describe('customer activity, the report PDF', () => {
 
   it('one customer: shares that customer and the period, with no sort (the dashboard has none)', async () => {
     openGreenValley();
-    const screen = await open(makeStore());
-    await screen.press('Period: Last 120 days. Change');
-    await screen.press('Last 240 days');
+    const report = await open(makeStore());
+    await report.press('Period: Last 120 days. Change');
+    await report.press('Last 240 days');
     await sharesThePdf(
-      screen,
+      report,
       { report: 'customer-activity', customer_id: 'c2', from: '2026-02-15', to: '2026-10-12' },
       'Customer_activity_Green_Valley_Traders_2026_02_15_to_2026_10_12.pdf'
     );
@@ -723,8 +746,8 @@ describe('customer activity, what the stock is counted in (D18)', () => {
         ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
       }) as never
     );
-    const screen = await open(makeStore());
-    const labels = screen.labels();
+    const report = await open(makeStore());
+    const labels = report.labels();
     expect(labels).toContain('Garlic · Box, 2 GRNs, 200 boxes');
     expect(labels).toContain('Cumin, 1 GRN, 100 units');
     expect(labels).toContain('Ginger · Bag, 1 GRN, 50 bags');
@@ -742,8 +765,8 @@ describe('customer activity, what the stock is counted in (D18)', () => {
         ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
       }) as never
     );
-    const screen = await open(makeStore());
-    expect(screen.labels()).toContain('Current stock: 300 boxes. View stock age');
+    const report = await open(makeStore());
+    expect(report.labels()).toContain('Current stock: 300 boxes. View stock age');
   });
 
   it('an older server (no current_stock_packaging): units when the top rows are all Box but stock outside them makes up the rest', async () => {
@@ -756,8 +779,8 @@ describe('customer activity, what the stock is counted in (D18)', () => {
         ] as StockItemPreview[] as typeof DETAIL.top_stock_items,
       }) as never
     );
-    const screen = await open(makeStore());
-    expect(screen.labels()).toContain('Current stock: 300 units. View stock age');
+    const report = await open(makeStore());
+    expect(report.labels()).toContain('Current stock: 300 units. View stock age');
   });
 
   describe('current_stock_packaging from the server covers all stock, not only the top five items', () => {
@@ -798,12 +821,12 @@ describe('customer activity, what the stock is counted in (D18)', () => {
         ] as RecentDispatchPreview[] as typeof DETAIL.recent_dispatches,
       }) as never
     );
-    const screen = await open(makeStore());
-    const labels = screen.labels();
+    const report = await open(makeStore());
+    const labels = report.labels();
     expect(labels).toEqual(expect.arrayContaining([
       expect.stringContaining('40 boxes'), expect.stringContaining('30 units'), expect.stringContaining('20 bags'),
     ]));
-    expect(screen.labels()).toEqual(expect.arrayContaining([
+    expect(report.labels()).toEqual(expect.arrayContaining([
       expect.stringContaining('60 of 100 boxes in stock'), expect.stringContaining('50 of 50 units in stock'),
     ]));
   });

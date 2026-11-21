@@ -3,8 +3,8 @@
  * the rule's pattern, and an empty box says what to do when the rule offered no number.
  */
 import React from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+
+import { render, screen } from '@testing-library/react-native';
 import { DispatchHeaderStep } from '../DispatchHeaderStep';
 import { setLanguage } from '@/i18n';
 import { space } from '@/theme/tokens';
@@ -48,72 +48,71 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 
-
-let tree: ReturnType<typeof create> | undefined;
-const mount = async () => { await act(async () => { tree = create(<DispatchHeaderStep mode="create" />); }); return tree!; };
-const box = () => tree!.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === 'Dispatch number');
-const note = () => tree!.root.findAll(node => node.props.testID === 'dispatch-header-number-note')[0];
-const allText = () => tree!.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
+const mount = () => render(<DispatchHeaderStep mode="create" />);
+const box = () => screen.getByLabelText('Dispatch number');
+const note = () => screen.queryByTestId('dispatch-header-number-note');
 
 beforeEach(() => { setLanguage('en'); reset(); });
-afterEach(async () => { if (tree) await act(async () => { tree!.unmount(); }); tree = undefined; });
 
 it('shows the pattern of the rule as the placeholder', async () => {
   reset({ numberHint: 'D/26-27/####' });
   await mount();
-  expect(box()?.props.placeholder).toBe('D/26-27/####');
+  expect(box()).toHaveProp('placeholder', 'D/26-27/####');
 });
 
 it('keeps the box\'s own placeholder where the server gave no pattern (older backend)', async () => {
   await mount();
-  expect(box()?.props.placeholder).toBe('I####');
-  expect(note()).toBeUndefined();
+  expect(box()).toHaveProp('placeholder', 'I####');
+  expect(note()).toBeNull();
 });
 
 it('shows no pattern and says to type the number when the rule is typed by hand', async () => {
   reset({ numberReason: 'TYPE_IT' });
   await mount();
-  expect(box()?.props.placeholder).toBe('');
-  expect(allText()).toContain('No dispatch number is offered. Type the dispatch number.');
+  expect(box()).toHaveProp('placeholder', '');
+  expect(screen.getByText('No dispatch number is offered. Type the dispatch number.')).toBeOnTheScreen();
 });
 
 it('says to ask an administrator when the series has no number left', async () => {
   reset({ numberReason: 'SERIES_FULL', numberHint: 'I####' });
   await mount();
-  expect(box()?.props.placeholder).toBe('I####');
-  expect(allText()).toContain('All numbers of this series are used. Type a number, or ask an administrator to change the numbering.');
+  expect(box()).toHaveProp('placeholder', 'I####');
+  expect(
+    screen.getByText('All numbers of this series are used. Type a number, or ask an administrator to change the numbering.'),
+  ).toBeOnTheScreen();
 });
 
 it('says nothing once a number is in the box, while one is being fetched, or when the number is wrong', async () => {
   const withNumber = { ...require('@/types/dispatch.types').createEmptyDispatchHeader(), disp_no: '14/B/2027', disp_date: '2026-10-28' };
   reset({ numberReason: 'TYPE_IT', header: withNumber });
-  await mount();
-  expect(note()).toBeUndefined();
-  await act(async () => { tree!.unmount(); });
+  const first = await mount();
+  expect(note()).toBeNull();
+  await first.unmount();
   reset({ numberReason: 'TYPE_IT', isGeneratingNumber: true });
-  await mount();
-  expect(note()).toBeUndefined();
-  await act(async () => { tree!.unmount(); });
+  const second = await mount();
+  expect(note()).toBeNull();
+  await second.unmount();
   reset({ numberReason: 'TYPE_IT', validationErrors: { disp_no: 'Dispatch number is required' } });
   await mount();
-  expect(note()).toBeUndefined();
-  expect(allText()).toContain('Dispatch number is required');
+  expect(note()).toBeNull();
+  expect(screen.getByText('Dispatch number is required')).toBeOnTheScreen();
 });
 
 it('says it in Gujarati too', async () => {
   setLanguage('gu');
   reset({ numberReason: 'TYPE_IT' });
   await mount();
-  expect(allText()).toContain('કોઈ જાવક નંબર સૂચવાયો નથી');
+  expect(screen.getByText(/કોઈ જાવક નંબર સૂચવાયો નથી/)).toBeOnTheScreen();
 });
 
 // WH-232: the note under the number box is part of the block the wizard bar keeps above itself.
 describe('the note is inside the number field\'s block', () => {
-  const blockOf = (start: { parent: unknown } | null) => {
-    let current = start as { parent: unknown; props: Record<string, unknown> } | null;
+  type Node = ReturnType<typeof screen.getByText>;
+  const blockOf = (start: Node) => {
+    let current: Node | null = start;
     while (current) {
-      if (current.props?.nativeID === FIELD_BLOCK_ID && typeof current.props === 'object') return current;
-      current = current.parent as typeof current;
+      if (current.props.nativeID === FIELD_BLOCK_ID) return current;
+      current = current.parent;
     }
     return null;
   };
@@ -121,18 +120,17 @@ describe('the note is inside the number field\'s block', () => {
   it.each([['TYPE_IT'], ['SERIES_FULL']])('with %s: the box and its note share the nearest block, and the note follows the box closely', async (numberReason) => {
     reset({ numberReason });
     await mount();
-    const noteBlock = blockOf(note());
+    const noteElement = screen.getByTestId('dispatch-header-number-note');
+    const noteBlock = blockOf(noteElement);
     expect(noteBlock).not.toBeNull();
-    expect(blockOf(box() as never)).toBe(noteBlock);
-    expect(StyleSheet.flatten(note().props.style).marginTop).toBe(space.xs);
+    expect(blockOf(box())).toBe(noteBlock);
+    expect(noteElement).toHaveStyle({ marginTop: space.xs });
   });
 
   it('the date field is not in that block', async () => {
     reset({ numberReason: 'TYPE_IT' });
     await mount();
-    const noteBlock = blockOf(note());
-    const dateText = tree!.root.findAllByType(Text).find(node => [node.props.children].flat(3).includes('Date'));
-    expect(dateText).toBeDefined();
-    expect(blockOf(dateText as never)).not.toBe(noteBlock);
+    const noteBlock = blockOf(screen.getByTestId('dispatch-header-number-note'));
+    expect(blockOf(screen.getByText(/^Date/))).not.toBe(noteBlock);
   });
 });

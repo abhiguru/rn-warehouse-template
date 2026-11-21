@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { REPORTS, reportById } from '../reportRegistry';
 import { NavigationStack } from '../../../../app/_layout';
 import { canOpenScreen } from '@/config/roles';
@@ -10,12 +10,13 @@ import { setLanguage } from '@/i18n';
 import { en } from '@/i18n/locales/en';
 import { gu } from '@/i18n/locales/gu';
 
-// The root stack of app/_layout.tsx is rendered with a Stack.Screen that records its name.
+// The root stack of app/_layout.tsx is rendered with a Stack.Screen that draws its name.
 // The layout imports the whole app shell; only its stack is rendered, so the shell is stubbed.
 jest.mock('expo-router', () => {
   const React = require('react');
-  const Stack = ({ children }: { children?: React.ReactNode }) => React.createElement('Stack', null, children);
-  Stack.Screen = ({ name }: { name: string }) => React.createElement('StackScreen', { name });
+  const rn = require('react-native');
+  const Stack = ({ children }: { children?: React.ReactNode }) => React.createElement(rn.View, { testID: 'root-stack' }, children);
+  Stack.Screen = ({ name }: { name: string }) => React.createElement(rn.Text, null, name);
   return { Stack, DarkTheme: { colors: {} }, DefaultTheme: { colors: {} }, ThemeProvider: ({ children }: { children: React.ReactNode }) => children };
 });
 jest.mock('react-native-safe-area-context', () => ({
@@ -76,19 +77,15 @@ describe('report registry', () => {
     expect(files.map((name) => name.replace(/\.tsx$/, '')).sort()).toEqual(REPORTS.map((report) => report.id).sort());
   });
 
-  it('the root stack declares every report route from the registry', () => {
-    let tree!: ReactTestRenderer;
-    act(() => {
-      tree = create(React.createElement(NavigationStack, { screenBackground: '#fff' }));
-    });
-    const stacks = tree.root.findAll((node) => (node.type as unknown) === 'Stack');
-    expect(stacks).toHaveLength(1);
-    const names = stacks[0].findAll((node) => (node.type as unknown) === 'StackScreen').map((node) => node.props.name as string);
+  it('the root stack declares every report route from the registry', async () => {
+    await render(React.createElement(NavigationStack, { screenBackground: '#fff' }));
+    // The stack has no role or text of its own: its test id is the only way to count it.
+    expect(screen.getAllByTestId('root-stack')).toHaveLength(1);
+    const names = screen.getAllByText(/./).map((node) => node.props.children as string);
     // One screen per report, named by its id, once each: a report removed from the stack fails here.
     expect(names.filter((name) => name.startsWith('reports/'))).toEqual(REPORTS.map((report) => `reports/${report.id}`));
     // The other screens are still declared beside them.
     expect(names).toEqual(expect.arrayContaining(['(tabs)', 'login', 'settings']));
-    act(() => tree.unmount());
   });
 
   it('files the reports under their categories and marks the ones without a period', () => {

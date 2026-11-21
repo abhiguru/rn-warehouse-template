@@ -3,12 +3,11 @@
  * gets it only on a backend from migration 145 (older servers refuse create_item for staff).
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { HorizontalItemForm, type ItemFormData } from '../HorizontalItemForm';
 
 let mockIsStaff = false;
 let mockHasStaffAddItem = true;
-const mockSearchProps: { footerAction?: unknown }[] = [];
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ isStaffRole: mockIsStaff }) }));
 jest.mock('@/config/backendFeatures', () => ({
   backendHasFeature: (feature: string) => (feature === 'staffAddItem' ? mockHasStaffAddItem : true),
@@ -21,10 +20,21 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-image', () => ({ Image: 'Image' }));
+// Always draws a marker for the search field, and its footer action as a button as the real field does.
 jest.mock('@/components/RemoteAutocompleteInput', () => ({
-  RemoteAutocompleteInput: (props: { footerAction?: unknown }) => {
-    mockSearchProps.push(props);
-    return null;
+  RemoteAutocompleteInput: (props: { footerAction?: { label: string; onPress: (typed: string) => void } }) => {
+    const { Pressable, Text, TextInput } = require('react-native');
+    const { footerAction } = props;
+    return (
+      <>
+        <TextInput accessibilityLabel="Item search" />
+        {footerAction ? (
+          <Pressable accessibilityRole="button" onPress={() => footerAction.onPress('')}>
+            <Text>{footerAction.label}</Text>
+          </Pressable>
+        ) : null}
+      </>
+    );
   },
 }));
 jest.mock('@/services/item-search-service', () => ({ searchItems: jest.fn() }));
@@ -34,29 +44,22 @@ const emptyLine: ItemFormData = {
   package_mark: '', trl_images: [], errors: {},
 };
 
-function footerActionFor(isStaff: boolean, hasFeature: boolean) {
+async function renderForm(isStaff: boolean, hasFeature: boolean) {
   mockIsStaff = isStaff;
   mockHasStaffAddItem = hasFeature;
-  mockSearchProps.length = 0;
-  let tree!: ReturnType<typeof create>;
-  act(() => {
-    tree = create(
-      <HorizontalItemForm
-        currentItem={emptyLine}
-        onFieldChange={jest.fn()}
-        onImagePick={jest.fn()}
-        onImageRemove={jest.fn()}
-        onSaveItem={jest.fn()}
-        isValid={false}
-        isEditing={false}
-        editingItemNumber={1}
-        savedItemsCount={0}
-      />
-    );
-  });
-  const last = mockSearchProps[mockSearchProps.length - 1];
-  act(() => tree.unmount());
-  return last;
+  await render(
+    <HorizontalItemForm
+      currentItem={emptyLine}
+      onFieldChange={jest.fn()}
+      onImagePick={jest.fn()}
+      onImageRemove={jest.fn()}
+      onSaveItem={jest.fn()}
+      isValid={false}
+      isEditing={false}
+      editingItemNumber={1}
+      savedItemsCount={0}
+    />
+  );
 }
 
 it.each([
@@ -64,8 +67,10 @@ it.each([
   ['an admin or supervisor on a current backend', false, true, true],
   ['a staff account on a backend from migration 145', true, true, true],
   ['a staff account on an older backend', true, false, false],
-])('%s: Add item offered = %s', (_who, isStaff, hasFeature, offered) => {
-  const props = footerActionFor(isStaff as boolean, hasFeature as boolean);
-  expect(props).toBeDefined();
-  expect(props.footerAction !== undefined).toBe(offered);
+])('%s: Add item offered = %s', async (_who, isStaff, hasFeature, offered) => {
+  await renderForm(isStaff as boolean, hasFeature as boolean);
+  // The search field is on the screen, so an absent button is the form's choice and not a form that drew nothing.
+  expect(screen.getByLabelText('Item search')).toBeOnTheScreen();
+  if (offered) expect(screen.getByRole('button', { name: 'Add item' })).toBeOnTheScreen();
+  else expect(screen.queryByRole('button', { name: 'Add item' })).not.toBeOnTheScreen();
 });

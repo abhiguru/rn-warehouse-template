@@ -4,8 +4,7 @@
  * the neutral wordmark when Orange is chosen. The pack here is the fictional sample-teal.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BrandMark } from '../BrandMark';
 import { setLanguage } from '@/i18n';
 import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
@@ -18,28 +17,22 @@ jest.mock('@/store/hooks', () => ({
     selector({ theme: { preference: 'light', brand: mockBrand, language: 'en' } }),
 }));
 
-let tree: ReactTestRenderer | undefined;
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   setLanguage('en');
 });
 
-const lines = (): string[] => tree!.root.findAllByType(Text).map(node => [node.props.children].flat(Infinity).join(''));
-const render = () => {
-  act(() => {
-    tree = create(<BrandMark label="Review Cold Storage" />);
-  });
-};
-const logoLabel = () => tree!.root.findAll(node => node.props.accessibilityRole === 'image')[0].props.accessibilityLabel;
+const renderMark = () => render(<BrandMark label="Review Cold Storage" />);
+const logoText = () => screen.getByRole('image');
 
 // The first describe runs before the sample pack is registered: a build without a pack.
 describe('a build without a brand pack', () => {
-  it('has one brand and shows the neutral wordmark with no caption', () => {
+  it('has one brand and shows the neutral wordmark with no caption', async () => {
     expect(BRANDS).toEqual(['orange']);
-    render();
-    expect(lines()).toEqual(['COLD', 'STORAGE']);
-    expect(logoLabel()).toBe('Review Cold Storage logo');
+    await renderMark();
+    expect(screen.getByText('COLD')).toBeOnTheScreen();
+    expect(screen.getByText('STORAGE')).toBeOnTheScreen();
+    expect(logoText()).toHaveTextContent(/^COLDSTORAGE$/);
+    expect(screen.getByRole('image')).toHaveAccessibleName('Review Cold Storage logo');
   });
 });
 
@@ -50,25 +43,29 @@ describe('a build with the sample brand pack', () => {
     expect(BRANDS).toEqual(['orange', SAMPLE_BRAND]);
   });
 
-  it('shows the pack wordmark and caption when its brand is chosen, the caption in Gujarati in Gujarati', () => {
+  it('shows the pack wordmark and caption when its brand is chosen, the caption in Gujarati in Gujarati', async () => {
     mockBrand = SAMPLE_BRAND;
-    render();
-    expect(lines()).toEqual(['SAMPLE', 'SAMPLE COLD STORAGE']);
-    act(() => tree?.unmount());
+    await renderMark();
+    expect(screen.getByText('SAMPLE')).toBeOnTheScreen();
+    expect(screen.getByText('SAMPLE COLD STORAGE')).toBeOnTheScreen();
+    expect(logoText()).toHaveTextContent(/^SAMPLESAMPLE COLD STORAGE$/);
+    await screen.unmount();
     setLanguage('gu');
-    render();
-    expect(lines()).toEqual(['SAMPLE', 'નમૂનો કોલ્ડ સ્ટોરેજ']);
+    await renderMark();
+    expect(screen.getByText('SAMPLE')).toBeOnTheScreen();
+    expect(screen.getByText('નમૂનો કોલ્ડ સ્ટોરેજ')).toBeOnTheScreen();
+    expect(logoText()).toHaveTextContent(/^SAMPLEનમૂનો કોલ્ડ સ્ટોરેજ$/);
   });
 
-  it('shows the neutral wordmark when Orange is chosen, whatever the pack', () => {
+  it('shows the neutral wordmark when Orange is chosen, whatever the pack', async () => {
     mockBrand = 'orange';
-    render();
-    expect(lines()).toEqual(['COLD', 'STORAGE']);
+    await renderMark();
+    expect(logoText()).toHaveTextContent(/^COLDSTORAGE$/);
   });
 
-  it('shows the neutral wordmark for a saved brand this build does not have', () => {
+  it('shows the neutral wordmark for a saved brand this build does not have', async () => {
     mockBrand = 'removed-brand';
-    render();
-    expect(lines()).toEqual(['COLD', 'STORAGE']);
+    await renderMark();
+    expect(logoText()).toHaveTextContent(/^COLDSTORAGE$/);
   });
 });

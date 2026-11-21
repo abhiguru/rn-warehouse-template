@@ -3,7 +3,7 @@
  * again only when the user says so (M9-1: it used to ask without end).
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { CustomerOrderGroupCard } from '@/components/list-items/CustomerOrderGroupCard';
 import { OrderService } from '@/services/order-service';
 import { t } from '@/i18n';
@@ -30,20 +30,12 @@ const order = {
 
 const lines = [{ id: 'line-1', requested_quantity: 5, grn_item: { name: 'Example Potatoes', current_stock: 20 } }];
 
-function texts(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(node => (node.type as unknown) === 'Text')
-    .map(node => [].concat(node.props.children).join(''));
-}
+const texts = (): string[] => screen.queryAllByText(/[\s\S]*/, { includeHiddenElements: true }).map(node => [].concat(node.props.children).join(''));
 
-async function render(isExpanded = true) {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<CustomerOrderGroupCard order={order} isExpanded={isExpanded} onToggleExpand={jest.fn()} />);
-  });
+async function draw(isExpanded = true) {
+  await render(<CustomerOrderGroupCard order={order} isExpanded={isExpanded} onToggleExpand={jest.fn()} />);
   // Let any follow-up requests a looping card would make run.
-  for (let i = 0; i < 5; i += 1) await act(async () => {});
-  return tree;
+  for (let i = 0; i < 5; i += 1) await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
 }
 
 beforeEach(() => {
@@ -54,80 +46,75 @@ afterEach(() => jest.restoreAllMocks());
 
 it('asks once when the server refuses, and shows the reason with a retry', async () => {
   getOrderWithItems.mockResolvedValue({ success: false, message: 'Order not found' });
-  const tree = await render();
+  await draw();
 
   expect(getOrderWithItems).toHaveBeenCalledTimes(1);
-  expect(texts(tree)).toContain('Order not found');
-  expect(texts(tree)).not.toContain(t('lists.orderGroup.noItems'));
-  expect(tree.root.findAllByProps({ accessibilityLabel: t('lists.orderGroup.retryLabel') }).length).toBeGreaterThan(0);
+  expect(screen.getByText('Order not found')).toBeOnTheScreen();
+  expect(texts()).not.toContain(t('lists.orderGroup.noItems'));
+  expect(screen.getAllByLabelText(t('lists.orderGroup.retryLabel')).length).toBeGreaterThan(0);
 });
 
 it('asks once when the request throws', async () => {
   getOrderWithItems.mockRejectedValue(new Error('Network request failed'));
-  const tree = await render();
+  await draw();
 
   expect(getOrderWithItems).toHaveBeenCalledTimes(1);
-  expect(texts(tree)).toContain(t('lists.orderGroup.loadFailed'));
+  expect(texts()).toContain(t('lists.orderGroup.loadFailed'));
 });
 
 it('asks again when "Try again" is pressed, and shows the lines when that works', async () => {
   getOrderWithItems.mockResolvedValueOnce({ success: false, message: 'Order not found' });
-  const tree = await render();
+  await draw();
   getOrderWithItems.mockResolvedValue({ success: true, data: { ...order, items: lines } });
 
-  const retry = tree.root.findAll(node => node.props.accessibilityLabel === t('lists.orderGroup.retryLabel') && typeof node.props.onPress === 'function')[0];
-  await act(async () => {
-    retry.props.onPress();
-  });
-  for (let i = 0; i < 3; i += 1) await act(async () => {});
+  await userEvent.press(screen.getAllByLabelText(t('lists.orderGroup.retryLabel'))[0]);
+  for (let i = 0; i < 3; i += 1) await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
 
   expect(getOrderWithItems).toHaveBeenCalledTimes(2);
-  expect(texts(tree)).toContain('Example Potatoes');
-  expect(texts(tree)).not.toContain('Order not found');
+  expect(screen.getByText('Example Potatoes')).toBeOnTheScreen();
+  expect(texts()).not.toContain('Order not found');
 });
 
 it('asks once for an order that loads', async () => {
   getOrderWithItems.mockResolvedValue({ success: true, data: { ...order, items: lines } });
-  const tree = await render();
+  await draw();
   expect(getOrderWithItems).toHaveBeenCalledTimes(1);
-  expect(texts(tree)).toContain('Example Potatoes');
+  expect(screen.getByText('Example Potatoes')).toBeOnTheScreen();
 });
 
 it('asks for nothing while the card is closed', async () => {
   getOrderWithItems.mockResolvedValue({ success: false, message: 'Order not found' });
-  await render(false);
+  await draw(false);
   expect(getOrderWithItems).not.toHaveBeenCalled();
 });
 
 describe('Queue card of a deactivated business', () => {
   const withActive = (active?: boolean) => ({ ...order, customer: { ...order.customer, ...(active === undefined ? {} : { active }) } }) as unknown as Order;
-  const label = (tree: ReactTestRenderer) => tree.root.findAll(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityState?.expanded !== undefined)[0].props.accessibilityLabel as string;
-  const draw = async (o: Order) => {
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<CustomerOrderGroupCard order={o} isExpanded={false} onToggleExpand={jest.fn()} />); });
-    return tree;
+  /** The card's header: the one control that says whether it is open. */
+  const header = () => screen.getByRole('button', { expanded: false });
+  const drawOrder = async (o: Order) => {
+    await render(<CustomerOrderGroupCard order={o} isExpanded={false} onToggleExpand={jest.fn()} />);
   };
 
   it('shows the Deactivated tag and says so in the header label', async () => {
-    const tree = await draw(withActive(false));
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Deactivated']));
+    await drawOrder(withActive(false));
+    expect(texts()).toEqual(expect.arrayContaining(['Deactivated']));
     // A queue card shows no fixed "Open" tag: every order in the queue is open (owner, 2026-10-17).
-    expect(texts(tree)).not.toContain('Open');
-    expect(label(tree).endsWith(', deactivated')).toBe(true);
+    expect(texts()).not.toContain('Open');
+    expect(header()).toHaveAccessibleName(/, deactivated$/);
   });
 
   it.each([[true], [undefined]])('shows no tag when active is %s', async (active) => {
-    const tree = await draw(withActive(active));
-    expect(texts(tree)).not.toContain('Deactivated');
-    expect(label(tree)).not.toContain('deactivated');
+    await drawOrder(withActive(active));
+    expect(texts()).not.toContain('Deactivated');
+    expect(header()).not.toHaveAccessibleName(/deactivated/);
   });
 
   it('redraws when only customer.active changes on the same order', async () => {
     const onToggleExpand = jest.fn();
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<CustomerOrderGroupCard order={withActive(true)} isExpanded={false} onToggleExpand={onToggleExpand} />); });
-    expect(texts(tree)).not.toContain('Deactivated');
-    await act(async () => { tree.update(<CustomerOrderGroupCard order={withActive(false)} isExpanded={false} onToggleExpand={onToggleExpand} />); });
-    expect(texts(tree)).toContain('Deactivated');
+    await render(<CustomerOrderGroupCard order={withActive(true)} isExpanded={false} onToggleExpand={onToggleExpand} />);
+    expect(texts()).not.toContain('Deactivated');
+    await screen.rerender(<CustomerOrderGroupCard order={withActive(false)} isExpanded={false} onToggleExpand={onToggleExpand} />);
+    expect(texts()).toContain('Deactivated');
   });
 });

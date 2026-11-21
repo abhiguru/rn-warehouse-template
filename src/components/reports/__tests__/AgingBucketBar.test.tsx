@@ -1,6 +1,6 @@
 import React from 'react';
-import { act, create, ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
 import { StyleSheet } from 'react-native';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { setLanguage } from '@/i18n';
 import {
@@ -27,49 +27,49 @@ const buckets = (q: [number, number, number, number]): AgingBucket[] => [
   { id: 'over-364', quantity: q[3] },
 ];
 
-let tree: ReactTestRenderer | null = null;
+type Host = NonNullable<typeof screen.root>;
 
-function render(element: React.ReactElement, brand: Brand = 'orange', mode: Mode = 'light') {
+async function draw(element: React.ReactElement, brand: Brand = 'orange', mode: Mode = 'light') {
   mockState = { theme: { preference: mode, brand } };
-  act(() => {
-    tree = create(element);
-  });
-  return tree!;
+  await render(element);
 }
 
-afterEach(() => {
-  if (tree) act(() => tree!.unmount());
-  tree = null;
-  setLanguage('en');
-});
+afterEach(() => setLanguage('en'));
 
-function flat(node: ReactTestInstance) {
+function flat(node: Host) {
   return (StyleSheet.flatten(node.props.style) ?? {}) as Record<string, unknown>;
 }
 
-function texts(r: ReactTestRenderer): string[] {
-  return r.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
+/** Every host element drawn, hidden or not (a fill width or a colour has no text or role to query by). */
+function hosts(): Host[] {
+  const found: Host[] = [];
+  const visit = (node: Host | string) => {
+    if (typeof node === 'string') return;
+    found.push(node);
+    node.children.forEach(visit);
+  };
+  visit(screen.root!);
+  return found;
+}
+
+/** Every text, including the parts that are hidden from screen readers under the summary. */
+function texts(): string[] {
+  return screen.queryAllByText(/[\s\S]*/, { hidden: true }).map(n => n.children.join(''));
 }
 
 /** The bar fills, in bucket order: the views whose width is a percentage. */
-function fillWidths(r: ReactTestRenderer): string[] {
-  return r.root
-    .findAll(n => (n.type as unknown) === 'View' && typeof flat(n).width === 'string' && String(flat(n).width).endsWith('%'))
+function fillWidths(): string[] {
+  return hosts()
+    .filter(n => n.type === 'View' && typeof flat(n).width === 'string' && String(flat(n).width).endsWith('%'))
     .map(n => String(flat(n).width));
-}
-
-function summary(r: ReactTestRenderer): string {
-  const groups = r.root.findAll(n => (n.type as unknown) === 'View' && n.props.accessible === true && !!n.props.accessibilityLabel);
-  // The StatusTags are accessible too; the group is the outermost one.
-  return groups[0].props.accessibilityLabel;
 }
 
 describe.each(THEMES)('aging bucket bar in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('draws each bucket in its status colour on a token track', () => {
-    const r = render(<AgingBucketBar buckets={buckets([10, 20, 30, 40])} />, brand, mode);
-    const backgrounds = r.root.findAll(n => typeof n.type === 'string').map(n => flat(n).backgroundColor);
+  it('draws each bucket in its status colour on a token track', async () => {
+    await draw(<AgingBucketBar buckets={buckets([10, 20, 30, 40])} />, brand, mode);
+    const backgrounds = hosts().map(n => flat(n).backgroundColor);
     expect(backgrounds).toEqual(
       expect.arrayContaining([
         t.brand.subtleStrong,
@@ -81,84 +81,89 @@ describe.each(THEMES)('aging bucket bar in %s %s', (brand, mode) => {
         t.status.negative.background,
       ])
     );
-    expect(texts(r)).toEqual(expect.arrayContaining(['0–120 days', '121–240 days', '241–364 days', 'Over 364 days']));
+    expect(texts()).toEqual(expect.arrayContaining(['0–120 days', '121–240 days', '241–364 days', 'Over 364 days']));
   });
 });
 
 describe('aging bucket bar', () => {
-  it('scales each bar to its share of the total, not of the largest bucket', () => {
-    const r = render(<AgingBucketBar buckets={buckets([10, 20, 30, 40])} />);
-    expect(fillWidths(r)).toEqual(['10%', '20%', '30%', '40%']);
-    expect(texts(r)).toEqual(expect.arrayContaining(['10.0%', '20.0%', '30.0%', '40.0%']));
+  it('scales each bar to its share of the total, not of the largest bucket', async () => {
+    await draw(<AgingBucketBar buckets={buckets([10, 20, 30, 40])} />);
+    expect(fillWidths()).toEqual(['10%', '20%', '30%', '40%']);
+    expect(texts()).toEqual(expect.arrayContaining(['10.0%', '20.0%', '30.0%', '40.0%']));
   });
 
-  it('gives a single bucket with stock the whole track', () => {
-    const r = render(<AgingBucketBar buckets={buckets([0, 0, 0, 50])} />);
-    expect(fillWidths(r)).toEqual(['0%', '0%', '0%', '100%']);
-    expect(texts(r)).toEqual(expect.arrayContaining(['0.0%', '100.0%', '50 units', '0 units']));
+  it('gives a single bucket with stock the whole track', async () => {
+    await draw(<AgingBucketBar buckets={buckets([0, 0, 0, 50])} />);
+    expect(fillWidths()).toEqual(['0%', '0%', '0%', '100%']);
+    expect(texts()).toEqual(expect.arrayContaining(['0.0%', '100.0%', '50 units', '0 units']));
   });
 
-  it('shows the unit with every quantity, singular for one', () => {
-    const r = render(<AgingBucketBar buckets={buckets([1, 1200, 0, 0])} />);
-    expect(texts(r)).toEqual(expect.arrayContaining(['1 unit', '1,200 units']));
-    act(() => r.unmount());
-    tree = render(<AgingBucketBar buckets={buckets([3, 0, 0, 0])} unit="bag" />);
-    expect(texts(tree)).toContain('3 bags');
+  it('shows the unit with every quantity, singular for one', async () => {
+    await draw(<AgingBucketBar buckets={buckets([1, 1200, 0, 0])} />);
+    expect(texts()).toEqual(expect.arrayContaining(['1 unit', '1,200 units']));
+    await screen.unmount();
+    await draw(<AgingBucketBar buckets={buckets([3, 0, 0, 0])} unit="bag" />);
+    expect(texts()).toContain('3 bags');
   });
 
-  it('says there is no stock when every bucket is empty, without NaN', () => {
-    const r = render(<AgingBucketBar buckets={buckets([0, 0, 0, 0])} />);
-    const all = texts(r).join(' ');
+  it('says there is no stock when every bucket is empty, without NaN', async () => {
+    await draw(<AgingBucketBar buckets={buckets([0, 0, 0, 0])} />);
+    const all = texts().join(' ');
     expect(all).toContain('No stock yet');
     expect(all).not.toMatch(/NaN|Infinity/);
-    expect(fillWidths(r)).toEqual([]);
-    expect(summary(r)).toBe('No stock yet');
+    expect(fillWidths()).toEqual([]);
+    // The one element a screen reader reaches says it; the empty-state text under it is hidden.
+    expect(screen.getByLabelText('No stock yet')).toBeOnTheScreen();
+    expect(screen.queryByText('No stock yet')).not.toBeOnTheScreen();
   });
 
-  it('treats missing, negative and non-numeric quantities as 0', () => {
-    const r = render(<AgingBucketBar buckets={buckets([Number.NaN, -5, 25, 75])} />);
-    expect(fillWidths(r)).toEqual(['0%', '0%', '25%', '75%']);
-    expect(texts(r).join(' ')).not.toMatch(/NaN|-/);
+  it('treats missing, negative and non-numeric quantities as 0', async () => {
+    await draw(<AgingBucketBar buckets={buckets([Number.NaN, -5, 25, 75])} />);
+    expect(fillWidths()).toEqual(['0%', '0%', '25%', '75%']);
+    expect(texts().join(' ')).not.toMatch(/NaN|-/);
   });
 
-  it('reads the whole group as one summary with a sentence per bucket', () => {
-    const r = render(<AgingBucketBar buckets={buckets([10, 20, 30, 40])} />);
-    expect(summary(r)).toBe(
+  it('reads the whole group as one summary with a sentence per bucket', async () => {
+    await draw(<AgingBucketBar buckets={buckets([10, 20, 30, 40])} />);
+    // The tags inside the group are accessible too; the summary is the outermost label.
+    const summary =
       '0–120 days: 10.0% of all stock, 10 units. ' +
-        '121–240 days: 20.0% of all stock, 20 units. ' +
-        '241–364 days: 30.0% of all stock, 30 units. ' +
-        'Over 364 days: 40.0% of all stock, 40 units.'
-    );
+      '121–240 days: 20.0% of all stock, 20 units. ' +
+      '241–364 days: 30.0% of all stock, 30 units. ' +
+      'Over 364 days: 40.0% of all stock, 40 units.';
+    expect(screen.getByLabelText(summary)).toBeOnTheScreen();
+    expect(screen.getAllByLabelText(/./)).toHaveLength(1);
     // The parts under the summary are hidden from screen readers.
-    const hidden = r.root.findAll(n => n.props.importantForAccessibility === 'no-hide-descendants');
+    expect(screen.queryByText('0–120 days')).not.toBeOnTheScreen();
+    expect(screen.getByText('0–120 days', { hidden: true })).toBeOnTheScreen();
+    expect(screen.queryByText('10.0%')).not.toBeOnTheScreen();
+    const hidden = hosts().filter(n => n.props.importantForAccessibility === 'no-hide-descendants');
     expect(hidden.length).toBeGreaterThan(0);
     expect(hidden[0].props.accessibilityElementsHidden).toBe(true);
   });
 
-  it('has nothing pressable, and no figure is held to one line', () => {
-    const r = render(<AgingBucketBar buckets={buckets([10, 20, 30, 40])} onPress={jest.fn()} title="Stock age" />);
-    expect(r.root.findAll(n => typeof n.props.onPress === 'function' && typeof n.type === 'string')).toHaveLength(0);
-    const figures = r.root.findAll(
-      n => (n.type as unknown) === 'Text' && /(%|units?)$/.test([].concat(n.props.children).join(''))
-    );
-    expect(figures.length).toBe(8);
+  it('has nothing pressable, and no figure is held to one line', async () => {
+    await draw(<AgingBucketBar buckets={buckets([10, 20, 30, 40])} onPress={jest.fn()} title="Stock age" />);
+    expect(screen.queryAllByRole('button', { hidden: true })).toHaveLength(0);
+    expect(hosts().filter(n => typeof n.props.onPress === 'function')).toHaveLength(0);
+    const figures = screen.getAllByText(/(%|units?)$/, { hidden: true });
+    expect(figures).toHaveLength(8);
     figures.forEach(f => {
       expect(f.props.numberOfLines).toBeUndefined();
-      expect(flat(f).fontVariant).toEqual(['tabular-nums']);
-      expect(flat(f).textAlign).toBe('right');
+      expect(f).toHaveStyle({ fontVariant: ['tabular-nums'], textAlign: 'right' });
     });
-    const header = r.root.findAll(n => (n.type as unknown) === 'Text' && n.props.accessibilityRole === 'header');
-    expect(header.map(h => h.props.children)).toEqual(['Stock age']);
+    expect(screen.getAllByRole('header')).toHaveLength(1);
+    expect(screen.getByRole('header', { name: 'Stock age' })).toBeOnTheScreen();
   });
 
-  it('writes labels and digits in Gujarati', () => {
+  it('writes labels and digits in Gujarati', async () => {
     setLanguage('gu');
-    const r = render(<AgingBucketBar buckets={buckets([0, 1200, 0, 300])} />);
-    expect(texts(r)).toEqual(
+    await draw(<AgingBucketBar buckets={buckets([0, 1200, 0, 300])} />);
+    expect(texts()).toEqual(
       expect.arrayContaining(['૦–૧૨૦ દિવસ', '૩૬૪ દિવસથી વધુ', '૮૦.૦%', '૨૦.૦%', '૧,૨૦૦ નંગ', '૩૦૦ નંગ'])
     );
-    expect(texts(r).join(' ')).not.toMatch(/[0-9]/);
-    expect(summary(r)).toContain('૩૬૪ દિવસથી વધુ: કુલ સ્ટોકના ૨૦.૦%, ૩૦૦ નંગ.');
+    expect(texts().join(' ')).not.toMatch(/[0-9]/);
+    expect(screen.getByLabelText(/૩૬૪ દિવસથી વધુ: કુલ સ્ટોકના ૨૦\.૦%, ૩૦૦ નંગ\./)).toBeOnTheScreen();
   });
 });
 

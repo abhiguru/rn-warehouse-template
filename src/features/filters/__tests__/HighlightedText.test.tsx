@@ -1,23 +1,23 @@
 import React from 'react';
-import { Text } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { fontWeight } from '@/theme/tokens';
 import { HighlightedText, matchRanges, matchesAnyWord, searchWords, wholeClusters } from '../components/HighlightedText';
 
-/** The pieces of the rendered text, with which of them are bold. */
-function pieces(text: string, words?: string[]): { text: string; bold: boolean }[] {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<HighlightedText text={text} words={words} />);
-  });
-  const outer = renderer.root.findAllByType(Text)[0];
-  const children = React.Children.toArray(outer.props.children) as (string | React.ReactElement<{ children: string; style?: { fontWeight?: string } }>)[];
-  const result = children.map(child =>
+/**
+ * The pieces of the rendered text, with which of them are bold. No query reports which part of one Text is bold, so this
+ * walks the children of the rendered outer Text.
+ */
+async function pieces(text: string, words?: string[]): Promise<{ text: string; bold: boolean }[]> {
+  await render(<HighlightedText text={text} words={words} />);
+  const outer = screen.toJSON();
+  if (!outer || Array.isArray(outer)) throw new Error('expected one outer Text');
+  const result = (outer.children ?? []).map(child =>
     typeof child === 'string'
       ? { text: child, bold: false }
-      : { text: child.props.children, bold: child.props.style?.fontWeight === fontWeight.bold }
+      : { text: (child.children ?? []).join(''), bold: StyleSheet.flatten(child.props.style)?.fontWeight === fontWeight.bold }
   );
-  act(() => renderer.unmount());
+  await screen.unmount();
   return result;
 }
 
@@ -55,33 +55,33 @@ describe('match ranges', () => {
 });
 
 describe('HighlightedText', () => {
-  it('puts every matched word in bold and leaves the rest plain', () => {
-    expect(pieces('Lakeview Spices, Garlic', ['garlic', 'lake'])).toEqual([
+  it('puts every matched word in bold and leaves the rest plain', async () => {
+    expect(await pieces('Lakeview Spices, Garlic', ['garlic', 'lake'])).toEqual([
       { text: 'Lake', bold: true },
       { text: 'view Spices, ', bold: false },
       { text: 'Garlic', bold: true },
     ]);
   });
 
-  it('keeps the original capitals of the matched text', () => {
-    expect(pieces('GARLIC paste', ['garlic'])).toEqual([
+  it('keeps the original capitals of the matched text', async () => {
+    expect(await pieces('GARLIC paste', ['garlic'])).toEqual([
       { text: 'GARLIC', bold: true },
       { text: ' paste', bold: false },
     ]);
   });
 
-  it('renders the text unchanged when nothing matches or there is no search', () => {
-    expect(pieces('Garlic', ['onion'])).toEqual([{ text: 'Garlic', bold: false }]);
-    expect(pieces('Garlic', [])).toEqual([{ text: 'Garlic', bold: false }]);
-    expect(pieces('Garlic')).toEqual([{ text: 'Garlic', bold: false }]);
+  it('renders the text unchanged when nothing matches or there is no search', async () => {
+    expect(await pieces('Garlic', ['onion'])).toEqual([{ text: 'Garlic', bold: false }]);
+    expect(await pieces('Garlic', [])).toEqual([{ text: 'Garlic', bold: false }]);
+    expect(await pieces('Garlic')).toEqual([{ text: 'Garlic', bold: false }]);
   });
 });
 
 describe('Gujarati text', () => {
-  it('never cuts a letter from the vowel signs drawn on it', () => {
+  it('never cuts a letter from the vowel signs drawn on it', async () => {
     // બ ટ ા ક ા: "બટ" ends between ટ and its vowel sign, so the match grows to "બટા".
     expect(matchRanges('બટાકા', ['બટ'])).toEqual([[0, 3]]);
-    expect(pieces('બટાકા', ['બટ'])).toEqual([
+    expect(await pieces('બટાકા', ['બટ'])).toEqual([
       { text: 'બટા', bold: true },
       { text: 'કા', bold: false },
     ]);
@@ -90,13 +90,13 @@ describe('Gujarati text', () => {
     expect(matchRanges('લસણ', ['લસ'])).toEqual([[0, 2]]);
   });
 
-  it('keeps a conjunct together', () => {
+  it('keeps a conjunct together', async () => {
     // ઑ ર ્ ડ ર: ર + virama + ડ is one shape, whichever half was typed.
-    expect(pieces('ઑર્ડર', ['ઑર'])).toEqual([
+    expect(await pieces('ઑર્ડર', ['ઑર'])).toEqual([
       { text: 'ઑર્ડ', bold: true },
       { text: 'ર', bold: false },
     ]);
-    expect(pieces('ઑર્ડર', ['ડ'])).toEqual([
+    expect(await pieces('ઑર્ડર', ['ડ'])).toEqual([
       { text: 'ઑ', bold: false },
       { text: 'ર્ડ', bold: true },
       { text: 'ર', bold: false },

@@ -3,8 +3,7 @@
  * the account opened before; and under which name: the facility's own, never
  * the one a route carries.
  */
-import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { forgetCustomerNames, trustedCustomerName } from '../customerNames';
 import { PUSH_GUARD_MS, clearDestinationFilters, useReportScope, type ReportScope } from '../useReportScope';
@@ -66,26 +65,19 @@ function signIn(profile: Record<string, unknown>, lastCustomer: Record<string, u
 }
 /** One turn of the event loop: every promise already resolved has run by then. */
 const turn = () => new Promise<void>(resolve => setTimeout(resolve, 0));
-const mounted: TestRenderer.ReactTestRenderer[] = [];
-function use() {
-  let scope!: ReportScope;
+async function use() {
   // The name of every render, to show what was never on screen, not only what is there at the end.
   const names: string[] = [];
-  const Probe = () => {
-    scope = useReportScope('grn-activity');
+  const { result, rerender } = await renderHook(() => {
+    const scope: ReportScope = useReportScope('grn-activity');
     if (scope.level.kind === 'customer') names.push(scope.level.customerName);
-    return null;
-  };
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Probe />);
+    return scope;
   });
-  mounted.push(renderer);
   return {
-    scope: () => scope,
+    scope: () => result.current,
     names: () => [...new Set(names)],
-    run: (callback: () => void) => act(() => callback()),
-    rerender: () => act(() => renderer.update(<Probe />)),
+    run: async (callback: () => void) => { await act(() => { callback(); }); },
+    rerender: async () => { await rerender({}); },
     /** Let the facility's answer, when it is not held back, arrive. */
     settle: () => act(async () => { await turn(); }),
   };
@@ -112,24 +104,21 @@ beforeEach(() => {
   mockCustomers = {};
   mockAnswer = undefined;
 });
-afterEach(() => {
-  act(() => mounted.splice(0).forEach(renderer => renderer.unmount()));
-});
 
 describe('a warehouse role', () => {
-  it.each(['admin', 'supervisor', 'staff'])('%s starts on every customer', role => {
+  it.each(['admin', 'supervisor', 'staff'])('%s starts on every customer', async role => {
     signIn({ role });
-    const { scope } = use();
+    const { scope } = await use();
     expect(scope().level).toEqual({ kind: 'customers' });
     expect(scope().isWarehouseUser).toBe(true);
     expect(scope().changeCustomer).toBeUndefined();
     expect(mockNameQuery).not.toHaveBeenCalled();
   });
 
-  it('opens a customer by pushing the same report with the customer in the route, and remembers it', () => {
+  it('opens a customer by pushing the same report with the customer in the route, and remembers it', async () => {
     signIn({ role: 'staff' });
-    const probe = use();
-    probe.run(() => probe.scope().openCustomer(GREEN));
+    const probe = await use();
+    await probe.run(() => probe.scope().openCustomer(GREEN));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Green Valley Traders' } });
     expect(actions()).toContainEqual({
       type: 'reportPrefs/setReportCustomer',
@@ -139,22 +128,22 @@ describe('a warehouse role', () => {
     expect(trustedCustomerName('c1')).toBe('Green Valley Traders');
   });
 
-  it('opens a customer once for a double tap, and another one after the first push has gone through', () => {
+  it('opens a customer once for a double tap, and another one after the first push has gone through', async () => {
     const now = jest.spyOn(Date, 'now');
     try {
       signIn({ role: 'staff' });
-      const probe = use();
+      const probe = await use();
       now.mockReturnValue(2_000_000);
-      probe.run(() => probe.scope().openCustomer(GREEN));
+      await probe.run(() => probe.scope().openCustomer(GREEN));
       now.mockReturnValue(2_000_000 + PUSH_GUARD_MS - 1);
-      probe.run(() => probe.scope().openCustomer(GREEN));
-      probe.run(() => probe.scope().openCustomer(RIVER));
+      await probe.run(() => probe.scope().openCustomer(GREEN));
+      await probe.run(() => probe.scope().openCustomer(RIVER));
       expect(mockPush.mock.calls.map(([route]) => route.params.customerId)).toEqual(['c1']);
       // The double tap is not remembered as the customer opened last either.
       expect(remembered()).toEqual([GREEN]);
       expect(trustedCustomerName('c2')).toBe('');
       now.mockReturnValue(2_000_000 + PUSH_GUARD_MS);
-      probe.run(() => probe.scope().openCustomer(RIVER));
+      await probe.run(() => probe.scope().openCustomer(RIVER));
       expect(mockPush.mock.calls.map(([route]) => route.params.customerId)).toEqual(['c1', 'c2']);
     } finally {
       now.mockRestore();
@@ -163,11 +152,11 @@ describe('a warehouse role', () => {
 
   it("shows the customer of a row it tapped under the row's name at once, without asking the facility", async () => {
     signIn({ role: 'staff' });
-    const list = use();
-    list.run(() => list.scope().openCustomer(RIVER));
+    const list = await use();
+    await list.run(() => list.scope().openCustomer(RIVER));
     // The route the tap pushed.
     mockParams = mockPush.mock.calls[0][0].params;
-    const probe = use();
+    const probe = await use();
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c2', customerName: 'Riverbank Produce' });
     await probe.settle();
     expect(probe.names()).toEqual(['Riverbank Produce']);
@@ -176,10 +165,10 @@ describe('a warehouse role', () => {
 
   it("keeps the tapped row's name whatever name the route carries", async () => {
     signIn({ role: 'staff' });
-    const list = use();
-    list.run(() => list.scope().openCustomer(RIVER));
+    const list = await use();
+    await list.run(() => list.scope().openCustomer(RIVER));
     mockParams = { customerId: 'c2', customerName: 'Other Company' };
-    const probe = use();
+    const probe = await use();
     await probe.settle();
     expect(probe.names()).toEqual(['Riverbank Produce']);
   });
@@ -189,7 +178,7 @@ describe('a warehouse role', () => {
     mockCustomers = { c1: 'Green Valley Traders' };
     const answer = holdAnswers();
     mockParams = LINK_TO_GREEN;
-    const probe = use();
+    const probe = await use();
     // The customer's data is asked for by the id at once; only the name waits.
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: '' });
     await probe.settle();
@@ -213,18 +202,18 @@ describe('a warehouse role', () => {
     signIn({ role: 'staff' });
     mockAnswer = answer;
     mockParams = LINK_TO_GREEN;
-    const probe = use();
+    const probe = await use();
     await probe.settle();
     expect(mockNameQuery.mock.calls).toEqual([NAME_QUERY('c1')]);
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: '' });
     expect(probe.names()).toEqual(['']);
   });
 
-  it('offers the customer opened last in this report on the customers list only', () => {
+  it('offers the customer opened last in this report on the customers list only', async () => {
     signIn({ role: 'staff' }, { 'grn-activity': GREEN, 'stock-aging': RIVER });
-    expect(use().scope().lastCustomer).toEqual(GREEN);
+    expect((await use()).scope().lastCustomer).toEqual(GREEN);
     mockParams = { customerId: 'c2', customerName: 'Riverbank Produce' };
-    expect(use().scope().lastCustomer).toBeUndefined();
+    expect((await use()).scope().lastCustomer).toBeUndefined();
   });
 
   it('offers "Last opened" under the name the phone kept, but does not take that name for the facility\'s', async () => {
@@ -232,10 +221,10 @@ describe('a warehouse role', () => {
     const stored = { id: 'c1', name: 'Other Company' };
     signIn({ role: 'staff' }, { 'grn-activity': stored });
     mockCustomers = { c1: 'Green Valley Traders' };
-    const list = use();
+    const list = await use();
     expect(list.scope().lastCustomer).toEqual(stored);
 
-    list.run(() => list.scope().openCustomer(list.scope().lastCustomer!));
+    await list.run(() => list.scope().openCustomer(list.scope().lastCustomer!));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/reports/grn-activity', params: { customerId: 'c1', customerName: 'Other Company' } });
     expect(trustedCustomerName('c1')).toBe('');
     // Nothing is stored again from what the phone kept.
@@ -243,9 +232,10 @@ describe('a warehouse role', () => {
 
     // The report it opens asks for the name, and what the phone keeps is put right.
     mockParams = mockPush.mock.calls[0][0].params;
-    const probe = use();
+    const answer = holdAnswers();
+    const probe = await use();
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: '' });
-    await probe.settle();
+    await answer();
     expect(probe.names()).toEqual(['', 'Green Valley Traders']);
     expect(remembered()).toEqual([GREEN]);
     expect(actions()).toContainEqual({
@@ -256,10 +246,10 @@ describe('a warehouse role', () => {
 
   it('forgets the names when the session changes', async () => {
     signIn({ role: 'staff' });
-    const list = use();
-    list.run(() => list.scope().openCustomer(RIVER));
+    const list = await use();
+    await list.run(() => list.scope().openCustomer(RIVER));
     mockParams = { customerId: 'c2' };
-    const probe = use();
+    const probe = await use();
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c2', customerName: 'Riverbank Produce' });
 
     // Sign-out, forced sign-out, a new sign-in and a facility switch all advance the session.
@@ -273,9 +263,9 @@ describe('a warehouse role', () => {
 });
 
 describe('a customer account', () => {
-  it('with one customer goes straight to it', () => {
+  it('with one customer goes straight to it', async () => {
     signIn({ role: 'customer', assignedCustomerIds: ['c1'], assignedCustomers: [GREEN] });
-    const { scope } = use();
+    const { scope } = await use();
     expect(scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: 'Green Valley Traders' });
     expect(scope().changeCustomer).toBeUndefined();
     // The profile names the customer: the facility is not asked.
@@ -285,9 +275,10 @@ describe('a customer account', () => {
   it('with one customer and a profile that carries ids only (as a sign-in stores it) asks the facility for the name', async () => {
     signIn({ role: 'customer', assignedCustomerIds: ['c1'] });
     mockCustomers = { c1: 'Green Valley Traders' };
-    const probe = use();
+    const answer = holdAnswers();
+    const probe = await use();
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: '' });
-    await probe.settle();
+    await answer();
     expect(mockNameQuery.mock.calls).toEqual([NAME_QUERY('c1')]);
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: 'Green Valley Traders' });
   });
@@ -297,7 +288,7 @@ describe('a customer account', () => {
     mockCustomers = { c1: 'Green Valley Traders' };
     const answer = holdAnswers();
     mockParams = LINK_TO_GREEN;
-    const probe = use();
+    const probe = await use();
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: '' });
     await probe.settle();
     expect(mockNameQuery.mock.calls).toEqual([NAME_QUERY('c1')]);
@@ -310,53 +301,54 @@ describe('a customer account', () => {
   it("opened by a link to its own customer shows the profile's name for it, not the link's", async () => {
     signIn({ role: 'customer', assignedCustomerIds: ['c1'], assignedCustomers: [GREEN] });
     mockParams = LINK_TO_GREEN;
-    const probe = use();
+    const probe = await use();
     await probe.settle();
     expect(probe.names()).toEqual(['Green Valley Traders']);
     expect(mockNameQuery).not.toHaveBeenCalled();
   });
 
-  it('with several chooses one, and can go back to choose another', () => {
+  it('with several chooses one, and can go back to choose another', async () => {
     signIn({ role: 'customer', assignedCustomerIds: ['c1', 'c2'], assignedCustomers: [GREEN, RIVER] });
-    const probe = use();
+    const probe = await use();
     expect(probe.scope().level).toEqual({ kind: 'choose' });
-    probe.run(() => probe.scope().chooseCustomer(RIVER));
+    await probe.run(() => probe.scope().chooseCustomer(RIVER));
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c2', customerName: 'Riverbank Produce' });
     expect(mockPush).not.toHaveBeenCalled();
     expect(actions()).toContainEqual({
       type: 'reportPrefs/setReportCustomer',
       payload: expect.objectContaining({ reportId: 'grn-activity', customer: RIVER }),
     });
-    probe.run(() => probe.scope().changeCustomer?.());
+    await probe.run(() => probe.scope().changeCustomer?.());
     expect(probe.scope().level).toEqual({ kind: 'choose' });
   });
 
   it("with several and a profile that carries ids only shows the picked customer under the picker's name at once", async () => {
     signIn({ role: 'customer', assignedCustomerIds: ['c1', 'c2'] });
-    const probe = use();
+    const probe = await use();
     expect(probe.scope().level).toEqual({ kind: 'choose' });
     // The picker read its list from the facility and hands the row that was picked.
-    probe.run(() => probe.scope().chooseCustomer(RIVER));
+    await probe.run(() => probe.scope().chooseCustomer(RIVER));
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c2', customerName: 'Riverbank Produce' });
     await probe.settle();
     expect(probe.names()).toEqual(['Riverbank Produce']);
     expect(mockNameQuery).not.toHaveBeenCalled();
   });
 
-  it('with several starts on the one it opened last, if that customer is still its own', () => {
+  it('with several starts on the one it opened last, if that customer is still its own', async () => {
     signIn({ role: 'customer', assignedCustomerIds: ['c1', 'c2'], assignedCustomers: [GREEN, RIVER] }, { 'grn-activity': RIVER });
-    expect(use().scope().level).toEqual({ kind: 'customer', customerId: 'c2', customerName: 'Riverbank Produce' });
+    expect((await use()).scope().level).toEqual({ kind: 'customer', customerId: 'c2', customerName: 'Riverbank Produce' });
     // The customer was taken from the account since.
     signIn({ role: 'customer', assignedCustomerIds: ['c1', 'c3'], assignedCustomers: [GREEN] }, { 'grn-activity': RIVER });
-    expect(use().scope().level).toEqual({ kind: 'choose' });
+    expect((await use()).scope().level).toEqual({ kind: 'choose' });
   });
 
   it("with several starts on the one it opened last under the facility's name, not the one the phone kept", async () => {
     signIn({ role: 'customer', assignedCustomerIds: ['c1', 'c2'] }, { 'grn-activity': { id: 'c2', name: 'Other Company' } });
     mockCustomers = { c2: 'Riverbank Produce' };
-    const probe = use();
+    const answer = holdAnswers();
+    const probe = await use();
     expect(probe.scope().level).toEqual({ kind: 'customer', customerId: 'c2', customerName: '' });
-    await probe.settle();
+    await answer();
     expect(mockNameQuery.mock.calls).toEqual([NAME_QUERY('c2')]);
     expect(probe.names()).toEqual(['', 'Riverbank Produce']);
     // What the phone keeps is put right.
@@ -366,25 +358,25 @@ describe('a customer account', () => {
   it('is shown nothing for a route that names somebody else\'s customer, whatever name the route gives', async () => {
     signIn({ role: 'customer', assignedCustomerIds: ['c1'], assignedCustomers: [GREEN] });
     mockParams = { customerId: 'c9', customerName: 'Green Valley Traders' };
-    const refused = use();
+    const refused = await use();
     expect(refused.scope().level).toEqual({ kind: 'none' });
     await refused.settle();
     // Nothing is asked about a customer the account is not given.
     expect(mockNameQuery).not.toHaveBeenCalled();
     mockParams = { customerId: 'c1' };
-    expect(use().scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: 'Green Valley Traders' });
+    expect((await use()).scope().level).toEqual({ kind: 'customer', customerId: 'c1', customerName: 'Green Valley Traders' });
   });
 
-  it('with no customer linked is shown nothing', () => {
+  it('with no customer linked is shown nothing', async () => {
     signIn({ role: 'customer', assignedCustomerIds: [] });
-    expect(use().scope().level).toEqual({ kind: 'none' });
+    expect((await use()).scope().level).toEqual({ kind: 'none' });
   });
 });
 
-it('notes the report as opened, once', () => {
+it('notes the report as opened, once', async () => {
   signIn({ role: 'staff' });
-  const probe = use();
-  probe.rerender();
+  const probe = await use();
+  await probe.rerender();
   expect(actions().filter(action => action.type === 'reportPrefs/noteReportOpened')).toEqual([
     { type: 'reportPrefs/noteReportOpened', payload: expect.objectContaining({ scope: SCOPE, reportId: 'grn-activity' }) },
   ]);
@@ -392,29 +384,29 @@ it('notes the report as opened, once', () => {
 
 // SR-06: a search typed for an earlier visit must not narrow the customer's report that opens.
 describe('opening a customer clears that customer\'s search there', () => {
-  it('openCustomer clears only the destination customer\'s search, before it pushes', () => {
+  it('openCustomer clears only the destination customer\'s search, before it pushes', async () => {
     signIn({ role: 'staff' });
-    const probe = use();
+    const probe = await use();
     let clearedBeforePush = false;
     mockPush.mockImplementationOnce(() => {
       clearedBeforePush = actions().some(action => action.type === 'listFilters/clearListFilterScope');
     });
-    probe.run(() => probe.scope().openCustomer(RIVER));
+    await probe.run(() => probe.scope().openCustomer(RIVER));
     expect(actions().filter(action => action.type === 'listFilters/clearListFilterScope')).toEqual([
       { type: 'listFilters/clearListFilterScope', payload: { key: 'report-grn-activity-customer', scope: 'c2', choices: false } },
     ]);
     expect(clearedBeforePush).toBe(true);
   });
 
-  it('a double tap clears once, as it pushes once', () => {
+  it('a double tap clears once, as it pushes once', async () => {
     signIn({ role: 'staff' });
-    const probe = use();
-    probe.run(() => probe.scope().openCustomer(GREEN));
-    probe.run(() => probe.scope().openCustomer(GREEN));
+    const probe = await use();
+    await probe.run(() => probe.scope().openCustomer(GREEN));
+    await probe.run(() => probe.scope().openCustomer(GREEN));
     expect(actions().filter(action => action.type === 'listFilters/clearListFilterScope')).toHaveLength(1);
   });
 
-  it('clearDestinationFilters clears the search and, when asked, the choices', () => {
+  it('clearDestinationFilters clears the search and, when asked, the choices', async () => {
     const dispatch = jest.fn();
     clearDestinationFilters(dispatch, 'invoice-history', 'c1', { choices: true });
     clearDestinationFilters(dispatch, 'stock-aging', 'c2');
@@ -424,7 +416,7 @@ describe('opening a customer clears that customer\'s search there', () => {
     ]);
   });
 
-  it('clearDestinationFilters does nothing for a report without a customer level or without a customer', () => {
+  it('clearDestinationFilters does nothing for a report without a customer level or without a customer', async () => {
     const dispatch = jest.fn();
     clearDestinationFilters(dispatch, 'operations-dashboard', 'c1', { choices: true });
     clearDestinationFilters(dispatch, 'grn-activity', '');

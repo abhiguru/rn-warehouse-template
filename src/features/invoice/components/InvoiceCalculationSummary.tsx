@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TextInput, Platform, Pressable, StyleSheet, AccessibilityInfo, findNodeHandle } from 'react-native';
+import { View, Text, TextInput, Platform, Pressable, StyleSheet, AccessibilityInfo } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ConfirmInputDialog } from '@/components/ConfirmInputDialog';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -332,8 +332,7 @@ export const InvoiceCalculationSummary = React.memo(function InvoiceCalculationS
           : null;
     if (!target) return;
     target.focus?.();
-    const node = findNodeHandle(target);
-    if (node) AccessibilityInfo.setAccessibilityFocus(node);
+    AccessibilityInfo.sendAccessibilityEvent(target, 'focus');
   }, [focusRequest]);
 
   // Walks every line: only when the lines or a figure it uses changes, not on each keystroke in a field.

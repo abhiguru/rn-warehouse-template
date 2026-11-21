@@ -97,10 +97,12 @@ facility access requests, and forced sign-out (`forceLogoutOnInvalidToken`).
   CI fails above a fixed warning count, `--max-warnings` in `ci.yml` and `release.yml`, which is
   lowered as warnings are fixed) and `npm run test:setup`. CI runs the same plus expo-doctor
   and an audit of the Android export and the debug build.
+- New and changed code follows [docs/CODE_GUIDE.md](docs/CODE_GUIDE.md); its review checklist is at
+  the end of the guide.
 - Add or update tests with every behavior change (Jest; see `src/**/__tests__`).
 - Never commit secrets, signing keys, `.env` or generated `android/`/`ios/` folders.
 - Use fictional names and phone numbers in tests, fixtures and screenshots.
-- UI follows [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md), the app's **only** style guide, as it
+- UI follows [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md), the app's **only** UI style guide, as it
   stands on `main`, with its SAP Fiori-style components and theme (`src/components/fiori`, `src/theme`).
   Do not use older copies of it, Material Design 3 or Guru Cold Storage brand guidelines, or design
   skills built on them. Support both theme axes: the default brand and the sample brand (`brand-packs/sample-teal`), each in light and dark

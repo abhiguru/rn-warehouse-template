@@ -1,7 +1,6 @@
 /** "Rates for this GRN only" on the GRN details screen: band and figures, and the tag once the GRN is invoiced. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { GrnOnlyRates } from '../GrnOnlyRates';
 import { GRNOverviewTab } from '@/components/grn-details/GRNOverviewTab';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
@@ -17,28 +16,30 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 const rate = (over: Partial<RpcGrnRate>): RpcGrnRate => ({
   id: 'r1', item_id: 'gur', item_name: 'Fictional Gur', price_type: 'monthly', weight_min: 21, weight_max: 40, unit_price: 4.5, labour_rate: 1.5, tax_percent: 5, archived: false, ...over,
 });
-let tree: ReactTestRenderer;
-const texts = () => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-afterEach(() => act(() => tree.unmount()));
+const TITLE = 'RATES FOR THIS GRN ONLY';
 
-describe('RATES FOR THIS GRN ONLY', () => {
-  it('lists each rate with its band and figures; the tag appears only on an archived one', () => {
-    act(() => { tree = create(<GrnOnlyRates rates={[rate({}), rate({ id: 'r2', item_name: 'Fictional Rice', archived: true, price_type: 'one_time' })]} />); });
-    expect(texts()).toEqual([
-      'RATES FOR THIS GRN ONLY',
+describe(TITLE, () => {
+  it('lists each rate with its band and figures; the tag appears only on an archived one', async () => {
+    await render(<GrnOnlyRates rates={[rate({}), rate({ id: 'r2', item_name: 'Fictional Rice', archived: true, price_type: 'one_time' })]} />);
+    const expected = [
+      TITLE,
       'Fictional Gur', '21–40 kg · ₹4.50 rent · ₹1.50 labour · 5% tax',
       'Fictional Rice', '21–40 kg · ₹4.50 rent · 5% tax', 'Archived once invoiced',
-    ]);
+    ];
+    const shown = screen.getAllByText(/./);
+    expect(shown).toHaveLength(expected.length);
+    shown.forEach((node, i) => expect(node).toHaveTextContent(expected[i], { exact: true }));
+    expect(screen.getAllByText('Archived once invoiced')).toHaveLength(1);
   });
 
-  it('is on the overview tab when the GRN has such rates, and absent when it has none or the server sends none', () => {
-    act(() => { tree = create(<GRNOverviewTab rates={[rate({})]} pricing_mode="MONTHLY" />); });
-    expect(texts()).toContain('RATES FOR THIS GRN ONLY');
-    act(() => tree.unmount());
-    act(() => { tree = create(<GRNOverviewTab rates={[]} pricing_mode="MONTHLY" />); });
-    expect(texts()).not.toContain('RATES FOR THIS GRN ONLY');
-    act(() => tree.unmount());
-    act(() => { tree = create(<GRNOverviewTab pricing_mode="MONTHLY" />); });
-    expect(texts()).not.toContain('RATES FOR THIS GRN ONLY');
+  it('is on the overview tab when the GRN has such rates, and absent when it has none or the server sends none', async () => {
+    const { unmount } = await render(<GRNOverviewTab rates={[rate({})]} pricing_mode="MONTHLY" />);
+    expect(screen.getByText(TITLE)).toBeOnTheScreen();
+    await unmount();
+    const second = await render(<GRNOverviewTab rates={[]} pricing_mode="MONTHLY" />);
+    expect(screen.queryByText(TITLE)).not.toBeOnTheScreen();
+    await second.unmount();
+    await render(<GRNOverviewTab pricing_mode="MONTHLY" />);
+    expect(screen.queryByText(TITLE)).not.toBeOnTheScreen();
   });
 });

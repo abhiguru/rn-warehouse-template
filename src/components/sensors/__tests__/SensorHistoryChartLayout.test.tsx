@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Dimensions } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SensorHistoryChart } from '../SensorHistoryChart';
 import type { SensorHistoryReading } from '@/types/sensor-history.types';
 
@@ -25,28 +25,27 @@ const READINGS: SensorHistoryReading[] = Array.from({ length: 14 }, (_, i) => ({
   humidity: 84 + (i % 4),
 }));
 
-const mounted: ReactTestRenderer[] = [];
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.restoreAllMocks();
 });
 
-function render(readings = READINGS) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(<SensorHistoryChart readings={readings} aggregationInterval="1 hour" periodDays={14} />);
-  });
-  mounted.push(tree);
-  return tree;
+async function draw(readings = READINGS) {
+  await render(<SensorHistoryChart readings={readings} aggregationInterval="1 hour" periodDays={14} />);
 }
 
-const lineChart = (tree: ReactTestRenderer) => tree.root.findAll(n => (n.type as unknown) === 'LineChart')[0];
-const measure = (tree: ReactTestRenderer, width: number) => {
-  const area = tree.root.findAll(n => n.props.testID === 'sensor-chart-area' && typeof n.props.onLayout === 'function')[0];
-  act(() => area.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width, height: 140 } } }));
-};
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [].concat(n.props.children).join(''));
+type Json = ReturnType<typeof screen.toJSON>;
+/** The props of the stand-in chart host (react-native-gifted-charts is mocked as a host named LineChart). */
+function lineChart(): Record<string, any> {
+  const walk = (node: Json | string | null): Record<string, any> | undefined => {
+    if (!node || typeof node === 'string') return undefined;
+    if (Array.isArray(node)) return node.map(walk).find(Boolean);
+    if ((node.type as string) === 'LineChart') return node.props;
+    return node.children?.map(walk).find(Boolean);
+  };
+  return walk(screen.toJSON())!;
+}
+const measure = (width: number) =>
+  fireEvent(screen.getByTestId('sensor-chart-area', { includeHiddenElements: true }), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width, height: 140 } } });
 
 const original = Dimensions.get('window');
 /** The window's font scale, which the chart reads through useWindowDimensions. */
@@ -58,55 +57,56 @@ describe('the compact history chart', () => {
     setFontScale(1.3);
   });
 
-  it('fits both value axes inside the width the card gives it', () => {
-    const tree = render();
-    measure(tree, 340);
-    const chart = lineChart(tree);
-    expect(chart.props.yAxisLabelWidth).toBe(Math.ceil(40 * 1.3));
-    expect(chart.props.secondaryYAxis.yAxisLabelWidth).toBe(chart.props.yAxisLabelWidth);
-    expect(chart.props.width + 2 * chart.props.yAxisLabelWidth).toBeLessThanOrEqual(340);
-    expect(chart.props.adjustToWidth).toBeUndefined();
+  it('fits both value axes inside the width the card gives it', async () => {
+    await draw();
+    await measure(340);
+    const chart = lineChart();
+    expect(chart.yAxisLabelWidth).toBe(Math.ceil(40 * 1.3));
+    expect(chart.secondaryYAxis.yAxisLabelWidth).toBe(chart.yAxisLabelWidth);
+    expect(chart.width + 2 * chart.yAxisLabelWidth).toBeLessThanOrEqual(340);
+    expect(chart.adjustToWidth).toBeUndefined();
     // The points are spread over the chart area exactly.
     const n = READINGS.length;
-    expect(chart.props.spacing * (n - 1) + chart.props.initialSpacing + chart.props.endSpacing).toBeCloseTo(chart.props.width, 5);
+    expect(chart.spacing * (n - 1) + chart.initialSpacing + chart.endSpacing).toBeCloseTo(chart.width, 5);
   });
 
-  it('follows the card when it is narrower', () => {
-    const tree = render();
-    measure(tree, 260);
-    const chart = lineChart(tree);
-    expect(chart.props.width + 2 * chart.props.yAxisLabelWidth).toBeLessThanOrEqual(260);
+  it('follows the card when it is narrower', async () => {
+    await draw();
+    await measure(260);
+    const chart = lineChart();
+    expect(chart.width + 2 * chart.yAxisLabelWidth).toBeLessThanOrEqual(260);
   });
 
-  it('draws no value text on the points and hides the dots of a long series', () => {
-    const tree = render();
-    measure(tree, 340);
-    const chart = lineChart(tree);
-    expect(chart.props.data.some((p: { dataPointText?: string }) => p.dataPointText !== undefined)).toBe(false);
-    expect(chart.props.secondaryData.some((p: { dataPointText?: string }) => p.dataPointText !== undefined)).toBe(false);
-    expect(chart.props.hideDataPoints).toBe(true);
+  it('draws no value text on the points and hides the dots of a long series', async () => {
+    await draw();
+    await measure(340);
+    const chart = lineChart();
+    expect(chart.data.some((p: { dataPointText?: string }) => p.dataPointText !== undefined)).toBe(false);
+    expect(chart.secondaryData.some((p: { dataPointText?: string }) => p.dataPointText !== undefined)).toBe(false);
+    expect(chart.hideDataPoints).toBe(true);
   });
 
-  it('draws at most three dates, each in a box wide enough for it', () => {
-    const tree = render();
-    measure(tree, 340);
-    const chart = lineChart(tree);
-    const labels = chart.props.data.map((p: { label: string }) => p.label).filter((l: string) => l !== '');
+  it('draws at most three dates, each in a box wide enough for it', async () => {
+    await draw();
+    await measure(340);
+    const chart = lineChart();
+    const labels = chart.data.map((p: { label: string }) => p.label).filter((l: string) => l !== '');
     expect(labels).toEqual(['01/10/26', '08/10/26', '14/10/26']);
-    const style = [chart.props.xAxisLabelTextStyle].flat(3).reduce((a: object, s: object) => ({ ...a, ...s }), {});
+    const style = [chart.xAxisLabelTextStyle].flat(3).reduce((a: object, s: object) => ({ ...a, ...s }), {});
     expect((style as { width: number }).width).toBe(Math.ceil(64 * 1.3));
   });
 
-  it('CR-66: below font scale 1 the extra label height is zero, not negative', () => {
+  it('CR-66: below font scale 1 the extra label height is zero, not negative', async () => {
     setFontScale(0.8);
-    const tree = render();
-    measure(tree, 340);
-    expect(lineChart(tree).props.labelsExtraHeight).toBe(0);
-    expect(lineChart(tree).props.yAxisLabelWidth).toBe(Math.ceil(40 * 0.8));
+    await draw();
+    await measure(340);
+    expect(lineChart().labelsExtraHeight).toBe(0);
+    expect(lineChart().yAxisLabelWidth).toBe(Math.ceil(40 * 0.8));
   });
 
-  it('names the units in its legend', () => {
-    const tree = render();
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Temperature (°C)', 'Humidity (%, right axis)']));
+  it('names the units in its legend', async () => {
+    await draw();
+    expect(screen.getByText('Temperature (°C)')).toBeOnTheScreen();
+    expect(screen.getByText('Humidity (%, right axis)')).toBeOnTheScreen();
   });
 });

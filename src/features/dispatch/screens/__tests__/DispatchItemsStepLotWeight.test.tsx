@@ -7,7 +7,7 @@
  * left out when the lot has no weight.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { setLanguage } from '@/i18n';
 import { DispatchItemsStep } from '../DispatchItemsStep';
@@ -43,8 +43,13 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrol
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/SwipeableFormStep', () => ({ __esModule: true, default: 'SwipeableFormStep' }));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
+// The GRN picker is a stand-in that keeps its `onSelect`, so the test can choose a GRN as the person would in the sheet.
+let mockSelectGrn: ((grn: { id: string; gr_no: string }) => Promise<void> | void) | undefined;
 jest.mock('@/features/dispatch/components', () => ({
-  GRNAutocompleteBottomSheet: 'GRNAutocompleteBottomSheet',
+  GRNAutocompleteBottomSheet: (props: { onSelect: typeof mockSelectGrn }) => {
+    mockSelectGrn = props.onSelect;
+    return null;
+  },
   GRNItemBottomSheet: () => null,
   LotBottomSheet: () => null,
   ItemsSummaryBottomSheet: () => null,
@@ -52,11 +57,7 @@ jest.mock('@/features/dispatch/components', () => ({
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''));
-
-let tree: ReactTestRenderer;
-/** Mounts the step and chooses a GRN whose one lot has this weight; the step puts that lot in the form. */
+/**Mounts the step and chooses a GRN whose one lot has this weight; the step puts that lot in the form. */
 const chooseLot = async (weight: number | null) => {
   jest.mocked(getGRNDetailByNumber).mockResolvedValue({
     success: true,
@@ -65,16 +66,15 @@ const chooseLot = async (weight: number | null) => {
       items: [{ id: 'lot-1', item_id: 'potato', item_name: 'Example Potatoes', quantity: 100, stock: 40, package_mark: 'M1', rack: 'R1', weight }],
     },
   } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>);
-  await act(async () => { tree = create(<DispatchItemsStep mode="create" />); });
-  const grnPicker = tree.root.find((node) => (node.type as unknown) === 'GRNAutocompleteBottomSheet');
-  await act(async () => { await grnPicker.props.onSelect({ id: GRN, gr_no: 'G0311' }); });
+  await render(<DispatchItemsStep mode="create" />);
+  await act(async () => { await mockSelectGrn!({ id: GRN, gr_no: 'G0311' }); });
 };
 
 beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
+  mockSelectGrn = undefined;
   setLanguage('en');
   jest.restoreAllMocks();
 });
@@ -82,20 +82,25 @@ afterEach(async () => {
 it('reads "Weight" and "50 kg each"', async () => {
   await chooseLot(50);
 
-  expect(texts(tree)).toEqual(expect.arrayContaining(['Lot details', 'In stock', '40 bags', 'Weight', '50 kg each']));
-  expect(texts(tree)).not.toContain('50 kg');
+  for (const text of ['Lot details', 'In stock', '40 bags', 'Weight', '50 kg each']) {
+    expect(screen.getByText(text)).toBeOnTheScreen();
+  }
+  expect(screen.queryByText('50 kg')).not.toBeOnTheScreen();
 });
 
 it('reads વજન and દરેક ૫૦ કિલો in Gujarati', async () => {
   setLanguage('gu');
   await chooseLot(50);
 
-  expect(texts(tree)).toEqual(expect.arrayContaining(['વજન', 'દરેક ૫૦ કિલો']));
+  expect(screen.getByText('વજન')).toBeOnTheScreen();
+  expect(screen.getByText('દરેક ૫૦ કિલો')).toBeOnTheScreen();
 });
 
 it.each([[0], [null]])('leaves the weight row out for a lot without a weight (%s)', async (weight) => {
   await chooseLot(weight);
 
-  expect(texts(tree)).toEqual(expect.arrayContaining(['Lot details', 'In stock', '40 bags', 'M1', 'R1']));
-  expect(texts(tree).some((text) => /kg|weight/i.test(text))).toBe(false);
+  for (const text of ['Lot details', 'In stock', '40 bags', 'M1', 'R1']) {
+    expect(screen.getByText(text)).toBeOnTheScreen();
+  }
+  expect(screen.queryByText(/kg|weight/i)).not.toBeOnTheScreen();
 });

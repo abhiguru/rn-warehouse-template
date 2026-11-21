@@ -1,6 +1,6 @@
 /** The per-band "From" inputs report to the screen, so Save can scroll to them and Next can leave them. */
 import React from 'react';
-import { create, act } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 
 const mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1' } } };
 jest.mock('@/store/hooks', () => ({
@@ -15,7 +15,7 @@ import { BandsEditor } from '../components/BandsEditor';
 import type { Draft, EditorContext } from '../editModel';
 
 describe('BandsEditor From inputs', () => {
-  it('register under firstFrom and band.<i>.from and pass Next on', () => {
+  it('register under firstFrom and band.<i>.from and pass Next on', async () => {
     const draft = {
       priceType: 'monthly', startsOn: null, startsOnChoice: null, firstFrom: 0, labour: '1', tax: '5',
       bands: [{ upTo: '40', rent: '3' }, { upTo: '100', rent: '4', fromText: '61' }],
@@ -24,13 +24,11 @@ describe('BandsEditor From inputs', () => {
     const registered: string[] = [];
     const next: string[] = [];
     const fields = { register: (k: string, n: unknown) => { if (n) registered.push(k); }, onFocus: jest.fn(), next: (k: string) => next.push(k) };
-    let tree!: ReturnType<typeof create>;
-    act(() => { tree = create(<BandsEditor draft={draft} ctx={ctx} errors={{}} onChange={jest.fn()} fields={fields} />); });
-    const input = (id: string) => tree.root.findAll(n => n.props.testID === id && typeof n.type !== 'string')[0];
-    expect(input('first-from').props.onSubmitEditing).toBeDefined();
-    input('band-1-from').props.onSubmitEditing();
+    await render(<BandsEditor draft={draft} ctx={ctx} errors={{}} onChange={jest.fn()} fields={fields} />);
+    // The From inputs have a label shared with every band, so each is found by its test id (CG-68: no name tells them apart).
+    expect(screen.getByTestId('first-from')).toHaveProp('onSubmitEditing');
+    await userEvent.type(screen.getByTestId('band-1-from'), '', { submitEditing: true });
     expect(next).toEqual(['band.1.from']);
     expect(registered).toEqual(expect.arrayContaining(['firstFrom', 'band.1.from']));
-    act(() => tree.unmount());
   });
 });

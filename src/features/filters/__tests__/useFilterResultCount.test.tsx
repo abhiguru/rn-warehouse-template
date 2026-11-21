@@ -1,5 +1,4 @@
-import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import type { CountableFilterList } from '../configs';
 import type { FilterContext, FilterValues } from '../types';
 import { COUNT_DEBOUNCE_MS, resultsLabel, useFilterResultCount, type FilterResultCount } from '../useFilterResultCount';
@@ -8,7 +7,7 @@ const ctx: FilterContext = { role: 'staff', isWarehouseRole: true, assignedCusto
 
 type Pending = { values: FilterValues; resolve: (count: number) => void; reject: (error: Error) => void };
 
-function setup(enabled = true) {
+async function setup(enabled = true) {
   const pending: Pending[] = [];
   const config = {
     listKey: 'test-list',
@@ -24,20 +23,14 @@ function setup(enabled = true) {
     ),
   } as unknown as CountableFilterList;
 
-  let latest!: FilterResultCount;
-  function Probe({ values }: { values: FilterValues }) {
-    latest = useFilterResultCount(config, values, undefined, ctx, enabled);
-    return null;
-  }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Probe values={{}} />);
+  const hook = await renderHook((values: FilterValues) => useFilterResultCount(config, values, undefined, ctx, enabled), {
+    initialProps: {} as FilterValues,
   });
   return {
     config,
     pending,
-    result: () => latest,
-    change: (values: FilterValues) => act(() => renderer.update(<Probe values={values} />)),
+    result: (): FilterResultCount => hook.result.current,
+    change: (values: FilterValues) => hook.rerender(values),
     wait: (ms: number) => act(() => { jest.advanceTimersByTime(ms); }),
     answer: async (index: number, count: number) => {
       await act(async () => { pending[index].resolve(count); });
@@ -45,7 +38,7 @@ function setup(enabled = true) {
     fail: async (index: number) => {
       await act(async () => { pending[index].reject(new Error('offline')); });
     },
-    unmount: () => act(() => renderer.unmount()),
+    unmount: () => hook.unmount(),
   };
 }
 
@@ -53,41 +46,41 @@ describe('filter result count', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('asks once, 400 ms after the last change', () => {
-    const probe = setup();
-    probe.wait(COUNT_DEBOUNCE_MS - 1);
-    probe.change({ stock: 'in_stock' });
-    probe.wait(COUNT_DEBOUNCE_MS - 1);
+  it('asks once, 400 ms after the last change', async () => {
+    const probe = await setup();
+    await probe.wait(COUNT_DEBOUNCE_MS - 1);
+    await probe.change({ stock: 'in_stock' });
+    await probe.wait(COUNT_DEBOUNCE_MS - 1);
     expect(probe.config.countResults).not.toHaveBeenCalled();
-    probe.wait(1);
+    await probe.wait(1);
     expect(probe.config.countResults).toHaveBeenCalledTimes(1);
     expect(probe.pending[0].values).toEqual({ stock: 'in_stock' });
-    probe.unmount();
+    await probe.unmount();
   });
 
-  it('does not ask again when the same values arrive in a new object', () => {
-    const probe = setup();
-    probe.wait(COUNT_DEBOUNCE_MS);
-    probe.change({});
-    probe.wait(COUNT_DEBOUNCE_MS);
+  it('does not ask again when the same values arrive in a new object', async () => {
+    const probe = await setup();
+    await probe.wait(COUNT_DEBOUNCE_MS);
+    await probe.change({});
+    await probe.wait(COUNT_DEBOUNCE_MS);
     expect(probe.config.countResults).toHaveBeenCalledTimes(1);
-    probe.unmount();
+    await probe.unmount();
   });
 
   it('shows the count when the answer arrives', async () => {
-    const probe = setup();
+    const probe = await setup();
     expect(probe.result()).toEqual({ count: null, loading: true });
-    probe.wait(COUNT_DEBOUNCE_MS);
+    await probe.wait(COUNT_DEBOUNCE_MS);
     await probe.answer(0, 24);
     expect(probe.result()).toEqual({ count: 24, loading: false });
-    probe.unmount();
+    await probe.unmount();
   });
 
   it('keeps the latest question when answers arrive out of order', async () => {
-    const probe = setup();
-    probe.wait(COUNT_DEBOUNCE_MS);
-    probe.change({ stock: 'in_stock' });
-    probe.wait(COUNT_DEBOUNCE_MS);
+    const probe = await setup();
+    await probe.wait(COUNT_DEBOUNCE_MS);
+    await probe.change({ stock: 'in_stock' });
+    await probe.wait(COUNT_DEBOUNCE_MS);
     expect(probe.pending).toHaveLength(2);
 
     await probe.answer(1, 7);
@@ -95,32 +88,32 @@ describe('filter result count', () => {
     // The slow answer to the first question must not replace it.
     await probe.answer(0, 210);
     expect(probe.result()).toEqual({ count: 7, loading: false });
-    probe.unmount();
+    await probe.unmount();
   });
 
   it('keeps the previous count on screen while the next one loads', async () => {
-    const probe = setup();
-    probe.wait(COUNT_DEBOUNCE_MS);
+    const probe = await setup();
+    await probe.wait(COUNT_DEBOUNCE_MS);
     await probe.answer(0, 24);
-    probe.change({ stock: 'in_stock' });
+    await probe.change({ stock: 'in_stock' });
     expect(probe.result()).toEqual({ count: 24, loading: true });
-    probe.unmount();
+    await probe.unmount();
   });
 
   it('falls back to no count when the request fails', async () => {
-    const probe = setup();
-    probe.wait(COUNT_DEBOUNCE_MS);
+    const probe = await setup();
+    await probe.wait(COUNT_DEBOUNCE_MS);
     await probe.fail(0);
     expect(probe.result()).toEqual({ count: null, loading: false });
-    probe.unmount();
+    await probe.unmount();
   });
 
-  it('asks nothing while disabled', () => {
-    const probe = setup(false);
-    probe.wait(COUNT_DEBOUNCE_MS * 3);
+  it('asks nothing while disabled', async () => {
+    const probe = await setup(false);
+    await probe.wait(COUNT_DEBOUNCE_MS * 3);
     expect(probe.config.countResults).not.toHaveBeenCalled();
     expect(probe.result()).toEqual({ count: null, loading: false });
-    probe.unmount();
+    await probe.unmount();
   });
 });
 

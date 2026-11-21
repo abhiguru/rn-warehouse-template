@@ -5,7 +5,7 @@
  * Step 1 Next and Save agree: both refuse an empty one; filled, the GRN saves.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, renderHook, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import grnFormReducer, { loadGRNData as loadIntoForm, updateHeader } from '@/store/slices/grnFormSlice';
 import { loadGRNData } from '@/features/grn/services/grnFormService';
@@ -85,9 +85,24 @@ jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: () => null
 jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'ready' }) }));
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// The dialog draws its title and Confirm button while it is open, and the bar draws its Next button; both call the real props.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; onConfirm: () => unknown }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(View, null,
+        createElement(Text, null, props.title),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Confirm', onPress: props.onConfirm }))
+      : null;
+  },
+}));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Wizard next', onPress: props.onNext }),
+}));
 jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: jest.fn() }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
@@ -110,8 +125,7 @@ const rate = (): ItemStoragePrice => ({
   unit_price: 2, weight_min: 0, weight_max: 100, labour_rate: 1.5, tax_percent: 5, effective_from: '2026-01-01', effective_to: null, created_at: '', created_by: '',
 });
 
-const trees: ReactTestRenderer[] = [];
-let form: { current: UseGRNFormReturn | null };
+let form: { current: UseGRNFormReturn };
 
 /** Opens the GRN as the edit screen does (real load into the form), then mounts the hook the wizard's steps share. */
 async function openForEdit(row: Record<string, unknown>) {
@@ -122,28 +136,25 @@ async function openForEdit(row: Record<string, unknown>) {
   await act(async () => { mockStore.dispatch(loadIntoForm({ ...(loaded.data as any), grnId: GRN_ID })); });
   // The photo the review step needs, as a worker would have it on an app-made GRN.
   await act(async () => { mockStore.dispatch(updateHeader({ gr_images: [PHOTO] as any })); });
-  form = { current: null };
-  const Harness = () => { form.current = useGRNForm({ mode: 'edit', grnIdParam: GRN_ID }); return null; };
-  await act(async () => { trees.push(create(<Harness />)); });
+  const hook = await renderHook(() => useGRNForm({ mode: 'edit', grnIdParam: GRN_ID }));
+  form = hook.result;
 }
 
 /** Step 1 Next and step 2 Next, as the wizard does them. */
 async function next() {
-  const step1 = await form.current!.validateCurrentStep(1);
-  const step2 = await form.current!.validateCurrentStep(2);
+  const step1 = await form.current.validateCurrentStep(1);
+  const step2 = await form.current.validateCurrentStep(2);
   return { step1, step2 };
 }
 
 /** Review step: tap Save, confirm the dialog, and report the update_grn call. */
 async function saveOnReview() {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<GrnReviewStep mode="edit" />); });
-  trees.push(tree);
+  await render(<GrnReviewStep mode="edit" />);
   mockRpc.mockClear();
-  await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
-  const dialog = tree.root.findAllByType('ConfirmDialog' as never).find((d) => String(d.props.title).startsWith('Save changes to GRN'));
-  const asked = Boolean(dialog?.props.visible); // read before confirming, which closes it
-  if (asked) await act(async () => { await dialog!.props.onConfirm(); });
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: 'Wizard next' }));
+  const asked = screen.queryByText(/^Save changes to GRN/) !== null; // read before confirming, which closes it
+  if (asked) await user.press(screen.getByRole('button', { name: 'Confirm' }));
   const call = mockRpc.mock.calls.find(([name]) => name === 'update_grn');
   return { asked, body: call?.[1] };
 }
@@ -162,10 +173,7 @@ beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { trees.splice(0).forEach((t) => t.unmount()); });
-  jest.restoreAllMocks();
-});
+afterEach(() => jest.restoreAllMocks());
 
 describe('Review step Save on an old GRN with no Sender name and no Supervisor', () => {
   it('is refused at step 1 Next and at Save ("Check the GRN details"), and nothing is sent', async () => {
@@ -230,10 +238,8 @@ describe('Review step Save on a new GRN without a Sender name and Supervisor', (
     await act(async () => {
       mockStore.dispatch(updateHeader({ gr_no: 'A0011', date: '2026-10-01', customer_id: CUST, customer_name: 'Fictional Traders', gr_images: [PHOTO] as any }));
     });
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<GrnReviewStep mode="create" />); });
-    trees.push(tree);
-    await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); });
+    await render(<GrnReviewStep mode="create" />);
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Wizard next' }));
     expect(checkDetailsAlerts()).toHaveLength(1);
     expect(checkDetailsAlerts()[0][1]).toMatch(/Sender name is required/);
     expect(mockRpc.mock.calls.find(([name]) => name === 'save_grn')).toBeUndefined();

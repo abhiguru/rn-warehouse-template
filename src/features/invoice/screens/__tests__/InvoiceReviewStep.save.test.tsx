@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { Platform } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
@@ -51,13 +51,69 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: () => null }));
-// Stand-ins that keep their props, so the test can read what they show and answer them.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: 'InvoiceSuccessDialog' }));
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
-
-const as = (name: string) => name as unknown as React.ElementType;
-let tree: ReactTestRenderer;
+// The three dialogs are stand-ins that draw what the step hands them and call the step's own props: the open question
+// (its title, message and one button per action; `busy` is the confirm button's busy state), the invoice dialog (its
+// buttons and the reason a share or print failed) and the print question (its answer, then its dismissal, as the real
+// one does). The button of the confirm is left pressable while busy, so a second press reaches the step's own guard.
+// A Modal's native "finished closing" event (iOS) has no button: the stand-ins keep it, and finishClosing() sends it.
+const mockClosed: Record<string, (() => void) | undefined> = {};
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message: string; confirmText?: string; cancelText?: string; busy?: boolean; onConfirm: () => void; onCancel: () => void; onDismissed?: () => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    mockClosed[`confirm:${props.title}`] = props.onDismissed;
+    if (!props.visible) return null;
+    return createElement(
+      View,
+      { accessible: true, accessibilityRole: 'alert', accessibilityLabel: props.title },
+      createElement(Text, null, props.title),
+      createElement(Text, null, props.message),
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: props.confirmText, accessibilityState: { busy: Boolean(props.busy) }, onPress: props.onConfirm }, createElement(Text, null, props.confirmText)),
+      props.cancelText ? createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: props.cancelText, onPress: props.onCancel }, createElement(Text, null, props.cancelText)) : null
+    );
+  },
+}));
+jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({
+  InvoiceSuccessDialog: (props: { isVisible: boolean; isShareLoading?: boolean; shareError?: string | null; onPrint?: () => void; onSharePDF?: () => void; onDismissed?: () => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    mockClosed.success = props.onDismissed;
+    if (!props.isVisible) return null;
+    return createElement(
+      View,
+      null,
+      createElement(Text, null, 'Invoice dialog'),
+      props.shareError ? createElement(Text, null, props.shareError) : null,
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Print', onPress: props.onPrint }),
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Share PDF', accessibilityState: { busy: Boolean(props.isShareLoading) }, onPress: props.onSharePDF })
+    );
+  },
+}));
+jest.mock('@/components/PrintRangeDialog', () => ({
+  PrintRangeDialog: (props: { visible: boolean; onDismiss: () => void; onDismissed?: () => void; onConfirm: (start: string, end: string) => Promise<void | string> }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    mockClosed.print = props.onDismissed;
+    if (!props.visible) return null;
+    const print = (start: string, end: string) => async () => {
+      const note = await props.onConfirm(start, end);
+      // The real question dismisses itself after it was answered, unless the answer is a note to show.
+      if (!(typeof note === 'string' && note !== '')) props.onDismiss();
+    };
+    return createElement(
+      View,
+      null,
+      createElement(Text, null, 'Print question'),
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Print 42', onPress: print('42', '42') }),
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Print 40 to 42', onPress: print('40', '42') }),
+      createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Cancel print', onPress: props.onDismiss })
+    );
+  },
+}));
+// A Snackbar of react-native-paper would be drawn as text here: the step draws none.
+jest.mock('react-native-paper', () => ({
+  Snackbar: () => require('react').createElement(require('react-native').Text, null, 'Snackbar'),
+}));
 
 /** A promise the test settles when it wants. */
 function deferred<T>() {
@@ -66,17 +122,18 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const confirm = () => tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)[0];
-const success = () => tree.root.findByType(as('InvoiceSuccessDialog'));
+/** The questions that are open (the save question, or a refusal): each is an alert. */
+const questions = () => screen.queryAllByRole('alert');
 /** The question has finished closing (iOS `onDismissed`): what waited for it is drawn now. */
 const dismissConfirm = async () => {
-  await act(async () => { tree.root.findAllByType(as('ConfirmDialog')).forEach((dialog) => dialog.props.onDismissed?.()); });
+  await act(async () => { Object.entries(mockClosed).filter(([name]) => name.startsWith('confirm:')).forEach(([, done]) => done?.()); });
 };
-const printDialog = () => tree.root.findByType(as('PrintRangeDialog'));
 /** A Modal has finished closing (iOS `onDismiss`): what waited for it is drawn now. */
-const finishClosing = async (name: 'InvoiceSuccessDialog' | 'PrintRangeDialog') => {
-  await act(async () => { tree.root.findByType(as(name)).props.onDismissed?.(); });
+const finishClosing = async (name: 'success' | 'print') => {
+  await act(async () => { mockClosed[name]?.(); });
 };
+const invoiceDialog = () => screen.queryByText('Invoice dialog');
+const printQuestion = () => screen.queryByText('Print question');
 
 const MODES = [
   ['create', 'Create invoice', '/(tabs)/invoices', InvoiceFormStep3],
@@ -84,8 +141,12 @@ const MODES = [
 ] as const;
 
 describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leaveTo, Step) => {
+  let user: ReturnType<typeof userEvent.setup>;
   beforeEach(async () => {
     jest.clearAllMocks();
+    Object.keys(mockClosed).forEach((name) => { delete mockClosed[name]; });
+    jest.useFakeTimers();
+    user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
     mockStore = makeInvoiceStore();
     jest.spyOn(console, 'error').mockImplementation(() => {});
     if (mode === 'edit') {
@@ -98,67 +159,80 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
     jest.mocked(createInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: 735 } } as never);
     jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: 735 } } as never);
     jest.mocked(printInvoiceRange).mockResolvedValue({ success: true } as never);
-    await act(async () => { tree = create(<Step />); });
+    await render(<Step />);
   });
-  afterEach(async () => {
-    await act(async () => { tree.unmount(); });
+  afterEach(() => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
   });
 
   const send = (mode === 'edit' ? updateInvoice : createInvoice) as jest.Mock;
+  /** The bottom bar's button (the question's own button carries the same label, so this is for when no question is open). */
   const pressSave = async () => {
-    const button = tree.root.find((node) => node.props.accessibilityLabel === saveLabel && typeof node.props.onPress === 'function');
-    await act(async () => { button.props.onPress(); });
+    await user.press(screen.getByRole('button', { name: saveLabel }));
+  };
+  /** The confirm button of the open question. */
+  const confirmButton = () => within(screen.getByRole('alert')).getByRole('button', { name: saveLabel });
+  const pressConfirm = async () => {
+    await user.press(confirmButton());
   };
   /** Saves and answers the question; the invoice dialog is then open. */
   const save = async () => {
     await pressSave();
-    await act(async () => { await confirm().props.onConfirm(); });
+    await pressConfirm();
+    expect(questions()).toHaveLength(0);
     await dismissConfirm();
-    expect(success().props.isVisible).toBe(true);
+    expect(await screen.findByText('Invoice dialog')).toBeOnTheScreen();
+  };
+  /** The invoice dialog's Print, answered at the print question. */
+  const openPrintQuestion = async () => {
+    await user.press(screen.getByRole('button', { name: 'Print' }));
+    await finishClosing('success');
+    expect(await screen.findByText('Print question')).toBeOnTheScreen();
   };
 
   it('keeps the question open and busy while the save runs, and a second press sends nothing more', async () => {
     const sending = deferred<unknown>();
     send.mockReturnValue(sending.promise as never);
     await pressSave();
-    expect(confirm().props.busy).toBe(false);
+    expect(confirmButton().props.accessibilityState).toEqual({ busy: false });
 
-    let first!: Promise<void>;
-    await act(async () => { first = confirm().props.onConfirm(); });
-    expect(confirm().props.busy).toBe(true);
-    await act(async () => { await confirm().props.onConfirm(); });
+    await pressConfirm();
+    expect(confirmButton().props.accessibilityState).toEqual({ busy: true });
+    await pressConfirm();
     expect(send).toHaveBeenCalledTimes(1);
 
-    await act(async () => { sending.resolve({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: 735 } }); await first; });
+    await act(async () => { sending.resolve({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: 735 } }); });
+    expect(questions()).toHaveLength(0);
     expect(send).toHaveBeenCalledTimes(1);
     await dismissConfirm();
-    expect(tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)).toHaveLength(0);
-    expect(success().props.isVisible).toBe(true);
+    expect(questions()).toHaveLength(0);
+    expect(await screen.findByText('Invoice dialog')).toBeOnTheScreen();
   });
 
   it('opens the invoice dialog only after the question has finished closing', async () => {
     await pressSave();
-    await act(async () => { await confirm().props.onConfirm(); });
+    await pressConfirm();
     // The question is hidden, but still closing: a second Modal now would never show on iOS.
-    expect(tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)).toHaveLength(0);
-    expect(success().props.isVisible).toBe(false);
+    expect(questions()).toHaveLength(0);
+    expect(invoiceDialog()).not.toBeOnTheScreen();
 
     await dismissConfirm();
-    expect(success().props.isVisible).toBe(true);
+    expect(await screen.findByText('Invoice dialog')).toBeOnTheScreen();
   });
 
   it('closes the question when the server refuses, and says why in an alert', async () => {
     send.mockResolvedValue({ success: false, data: { invoice_id: '', invoice_no: 0 }, message: 'No number left' } as never);
     await pressSave();
 
-    await act(async () => { await confirm().props.onConfirm(); });
+    await pressConfirm();
+    expect(questions()).toHaveLength(0);
     // The alert waits until the question has finished closing, as the invoice dialog does.
     expect(showAlert).not.toHaveBeenCalled();
     await dismissConfirm();
 
-    expect(tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)).toHaveLength(0);
-    expect(success().props.isVisible).toBe(false);
+    expect(questions()).toHaveLength(0);
+    expect(invoiceDialog()).not.toBeOnTheScreen();
     expect(showAlert).toHaveBeenCalledWith(expect.any(String), 'No number left');
   });
 
@@ -169,57 +243,53 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
     await pressSave();
 
     // The only dialog is the refusal with the D8 sentence, not the question of the save.
-    const open = tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible);
-    expect(open.map((dialog) => dialog.props.title)).toEqual(['Check the discount']);
-    expect(open[0].props.message).toContain("A discount can't take the total to ₹0.");
+    const open = questions();
+    expect(open).toHaveLength(1);
+    expect(open[0]).toHaveAccessibleName('Check the discount');
+    expect(within(open[0]).getByText(/A discount can't take the total to ₹0\./)).toBeOnTheScreen();
     expect(send).not.toHaveBeenCalled();
   });
 
   it('Cancel in the print question returns to the invoice dialog', async () => {
     await save();
-    await act(async () => { success().props.onPrint(); });
-    expect(success().props.isVisible).toBe(false);
+    await user.press(screen.getByRole('button', { name: 'Print' }));
+    expect(invoiceDialog()).not.toBeOnTheScreen();
     // The invoice dialog is still closing: the print question waits for it (iOS drops a Modal opened over a closing one).
-    expect(printDialog().props.visible).toBe(false);
-    await finishClosing('InvoiceSuccessDialog');
-    expect(printDialog().props.visible).toBe(true);
+    expect(printQuestion()).not.toBeOnTheScreen();
+    await finishClosing('success');
+    expect(await screen.findByText('Print question')).toBeOnTheScreen();
 
-    await act(async () => { printDialog().props.onDismiss(); });
+    await user.press(screen.getByRole('button', { name: 'Cancel print' }));
 
-    expect(printDialog().props.visible).toBe(false);
-    expect(success().props.isVisible).toBe(false);
-    await finishClosing('PrintRangeDialog');
-    expect(success().props.isVisible).toBe(true);
+    expect(printQuestion()).not.toBeOnTheScreen();
+    expect(invoiceDialog()).not.toBeOnTheScreen();
+    await finishClosing('print');
+    expect(await screen.findByText('Invoice dialog')).toBeOnTheScreen();
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
   });
 
   it('a printed invoice leaves the form with a toast, and the question closing after the answer does not bring the dialog back', async () => {
     await save();
-    await act(async () => { success().props.onPrint(); });
-    await finishClosing('InvoiceSuccessDialog');
+    await openPrintQuestion();
 
-    await act(async () => {
-      await printDialog().props.onConfirm('42', '42');
-      // The question calls this after it was answered.
-      printDialog().props.onDismiss();
-    });
+    // The question answers, then dismisses itself, as the real one does.
+    await user.press(screen.getByRole('button', { name: 'Print 42' }));
 
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Invoice 42 sent to the printer.'));
     expect(printInvoiceRange).toHaveBeenCalledWith('42', '42', 2026);
-    expect(showToast).toHaveBeenCalledWith('Invoice 42 sent to the printer.');
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.dismissTo).toHaveBeenCalledWith(leaveTo);
-    expect(success().props.isVisible).toBe(false);
+    expect(invoiceDialog()).not.toBeOnTheScreen();
   });
 
   it('a range sent to the printer says so in the toast', async () => {
     await save();
-    await act(async () => { success().props.onPrint(); });
-    await finishClosing('InvoiceSuccessDialog');
+    await openPrintQuestion();
 
-    await act(async () => { await printDialog().props.onConfirm('40', '42'); });
+    await user.press(screen.getByRole('button', { name: 'Print 40 to 42' }));
 
-    expect(showToast).toHaveBeenCalledWith('Invoices 40 to 42 sent to the printer.');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Invoices 40 to 42 sent to the printer.'));
   });
 
   it.each([
@@ -228,20 +298,17 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
   ])('a print that %s is told inside the invoice dialog, which returns once the print question has closed', async (_what, result, message) => {
     jest.mocked(printInvoiceRange).mockResolvedValue(result as never);
     await save();
-    await act(async () => { success().props.onPrint(); });
-    await finishClosing('InvoiceSuccessDialog');
+    await openPrintQuestion();
 
-    await act(async () => {
-      await printDialog().props.onConfirm('42', '42');
-      printDialog().props.onDismiss();
-    });
+    await user.press(screen.getByRole('button', { name: 'Print 42' }));
 
     // No second Modal (an alert) opens at the same time as the invoice dialog; the reason is drawn inside the dialog.
-    expect(success().props.isVisible).toBe(false);
+    await waitFor(() => expect(printQuestion()).not.toBeOnTheScreen());
+    expect(invoiceDialog()).not.toBeOnTheScreen();
     expect(showAlert).not.toHaveBeenCalled();
-    await finishClosing('PrintRangeDialog');
-    expect(success().props.isVisible).toBe(true);
-    expect(success().props.shareError).toBe(message);
+    await finishClosing('print');
+    expect(await screen.findByText('Invoice dialog')).toBeOnTheScreen();
+    expect(screen.getByText(message)).toBeOnTheScreen();
     expect(showAlert).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
     expect(router.dismissTo).not.toHaveBeenCalled();
@@ -250,12 +317,12 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
   it('a failure to make the PDF is shown inside the invoice dialog', async () => {
     jest.mocked(generateInvoicePDF).mockResolvedValue({ success: false } as never);
     await save();
-    expect(success().props.shareError).toBeNull();
+    expect(screen.queryByText(/Try again\./)).not.toBeOnTheScreen();
 
-    await act(async () => { await success().props.onSharePDF(); });
+    await user.press(screen.getByRole('button', { name: 'Share PDF' }));
 
-    expect(success().props.shareError).toBe("Couldn't create the PDF. Try again.");
-    expect(success().props.isShareLoading).toBe(false);
+    expect(await screen.findByText("Couldn't create the PDF. Try again.")).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Share PDF' }).props.accessibilityState).toEqual({ busy: false });
     expect(showToast).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
   });
@@ -266,20 +333,21 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
     jest.mocked(downloadAndSharePDF).mockResolvedValueOnce({ success: true } as never);
     await save();
 
-    await act(async () => { await success().props.onSharePDF(); });
-    expect(success().props.shareError).toBe("Couldn't share the PDF. Try again.");
+    await user.press(screen.getByRole('button', { name: 'Share PDF' }));
+    expect(await screen.findByText("Couldn't share the PDF. Try again.")).toBeOnTheScreen();
 
-    await act(async () => { await success().props.onSharePDF(); });
-    expect(success().props.shareError).toBeNull();
+    await user.press(screen.getByRole('button', { name: 'Share PDF' }));
+    await waitFor(() => expect(screen.queryByText("Couldn't share the PDF. Try again.")).not.toBeOnTheScreen());
+    expect(downloadAndSharePDF).toHaveBeenCalledTimes(2);
   });
 
   it('a share that throws is shown inside the dialog too', async () => {
     jest.mocked(generateInvoicePDF).mockRejectedValue(new Error('Network request failed'));
     await save();
 
-    await act(async () => { await success().props.onSharePDF(); });
+    await user.press(screen.getByRole('button', { name: 'Share PDF' }));
 
-    expect(success().props.shareError).toBe("Couldn't share the PDF. Try again.");
+    expect(await screen.findByText("Couldn't share the PDF. Try again.")).toBeOnTheScreen();
   });
 
   describe('on Android, where no dismissal event comes', () => {
@@ -289,33 +357,34 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
 
     it('opens the invoice dialog as soon as the question is hidden', async () => {
       await pressSave();
-      await act(async () => { await confirm().props.onConfirm(); });
+      await pressConfirm();
 
       // No onDismissed was called by hand.
-      expect(success().props.isVisible).toBe(true);
+      await act(async () => { await Promise.resolve(); });
+      expect(screen.getByText('Invoice dialog')).toBeOnTheScreen();
     });
 
     it('tells a refusal in an alert as soon as the question is hidden', async () => {
       send.mockResolvedValue({ success: false, data: { invoice_id: '', invoice_no: 0 }, message: 'No number left' } as never);
       await pressSave();
 
-      await act(async () => { await confirm().props.onConfirm(); });
+      await pressConfirm();
 
-      expect(success().props.isVisible).toBe(false);
-      expect(showAlert).toHaveBeenCalledWith(expect.any(String), 'No number left');
+      await waitFor(() => expect(showAlert).toHaveBeenCalledWith(expect.any(String), 'No number left'));
+      expect(invoiceDialog()).not.toBeOnTheScreen();
     });
 
     it('goes from the invoice dialog to the print question, and back on Cancel, with no dismissal events', async () => {
       await pressSave();
-      await act(async () => { await confirm().props.onConfirm(); });
-      await act(async () => { success().props.onPrint(); });
-      expect(success().props.isVisible).toBe(false);
-      expect(printDialog().props.visible).toBe(true);
+      await pressConfirm();
+      await user.press(await screen.findByRole('button', { name: 'Print' }));
+      expect(invoiceDialog()).not.toBeOnTheScreen();
+      expect(await screen.findByText('Print question')).toBeOnTheScreen();
 
-      await act(async () => { printDialog().props.onDismiss(); });
+      await user.press(screen.getByRole('button', { name: 'Cancel print' }));
 
-      expect(printDialog().props.visible).toBe(false);
-      expect(success().props.isVisible).toBe(true);
+      expect(printQuestion()).not.toBeOnTheScreen();
+      expect(await screen.findByText('Invoice dialog')).toBeOnTheScreen();
     });
   });
 
@@ -325,21 +394,23 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
   ])('holds the alert of a save that fails because %s until the question has closed', async (_what, message, arrange) => {
     arrange();
     await pressSave();
-    await act(async () => { await confirm().props.onConfirm(); });
+    await pressConfirm();
+    expect(questions()).toHaveLength(0);
     expect(showAlert).not.toHaveBeenCalled();
 
     await dismissConfirm();
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(jest.mocked(showAlert).mock.calls[0][1]).toEqual(expect.stringContaining(message.slice(0, 12)));
-    expect(confirm()).toBeUndefined();
+    expect(questions()).toHaveLength(0);
   });
 
   it('holds the alert of "the GRN can no longer be invoiced" until the question has closed (a new invoice only)', async () => {
     if (mode === 'edit') return; // an invoice that exists never asks the GRN question
     jest.mocked(checkGrnStillInvoiceable).mockResolvedValue({ ok: false, message: 'Already invoiced' } as never);
     await pressSave();
-    await act(async () => { await confirm().props.onConfirm(); });
+    await pressConfirm();
+    expect(questions()).toHaveLength(0);
     expect(showAlert).not.toHaveBeenCalled();
 
     await dismissConfirm();
@@ -351,7 +422,8 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
   it('a failed save reads "Couldn\'t update the invoice" in an edit and "Couldn\'t save the invoice" in a new invoice', async () => {
     send.mockResolvedValue({ success: false, data: { invoice_id: '', invoice_no: 0 }, message: 'Server says no' } as never);
     await pressSave();
-    await act(async () => { await confirm().props.onConfirm(); });
+    await pressConfirm();
+    expect(questions()).toHaveLength(0);
     await dismissConfirm();
 
     expect(showAlert).toHaveBeenCalledWith(mode === 'edit' ? "Couldn't update the invoice" : "Couldn't save the invoice", 'Server says no');
@@ -360,7 +432,7 @@ describe.each(MODES)('the %s Review step after the save', (mode, saveLabel, leav
   it('draws no Snackbar of its own', async () => {
     await save();
 
-    expect(tree.root.findAll((node) => typeof node.type !== 'string' && (node.type as { displayName?: string }).displayName === 'Snackbar')).toHaveLength(0);
+    expect(screen.queryByText('Snackbar')).not.toBeOnTheScreen();
     const source = require('fs').readFileSync(require('path').join(__dirname, '../InvoiceReviewStep.tsx'), 'utf8');
     expect(source).not.toMatch(/react-native-paper|Snackbar/);
   });

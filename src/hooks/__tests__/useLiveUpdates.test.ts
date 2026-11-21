@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { queryClient } from '@/lib/queryClient';
 import { invalidateSensorQueries, sensorKeys } from '@/features/sensors/sensorQueries';
 import { useLiveUpdates, type UseLiveUpdatesOptions } from '../useLiveUpdates';
@@ -24,7 +24,7 @@ jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConn
 
 const INTERVAL = 1_000;
 const appStateListeners = new Set<(state: AppStateStatus) => void>();
-const appState = (state: AppStateStatus) => act(() => { appStateListeners.forEach(listener => listener(state)); });
+const appState = (state: AppStateStatus) => act(async () => { appStateListeners.forEach(listener => listener(state)); });
 const advance = (ms: number) => act(async () => { await jest.advanceTimersByTimeAsync(ms); });
 let originalState: typeof AppState.currentState;
 
@@ -48,19 +48,17 @@ afterEach(() => {
   queryClient.clear();
 });
 
-function render(refresh: () => void | Promise<void>, enabled = true, options: Partial<UseLiveUpdatesOptions> = {}) {
-  const Harness = () => { useLiveUpdates(refresh, enabled, { intervalMs: INTERVAL, ...options }); return null; };
-  let tree!: ReturnType<typeof create>;
-  act(() => { tree = create(React.createElement(Harness)); });
+async function mountLive(refresh: () => void | Promise<void>, enabled = true, options: Partial<UseLiveUpdatesOptions> = {}) {
+  const view = await renderHook(() => useLiveUpdates(refresh, enabled, { intervalMs: INTERVAL, ...options }));
   return {
-    rerender: () => act(() => { tree.update(React.createElement(Harness)); }),
-    unmount: () => act(() => { tree.unmount(); }),
+    rerender: () => view.rerender({}),
+    unmount: () => view.unmount(),
   };
 }
 
 test('no call at mount; a call after each interval', async () => {
   const refresh = jest.fn();
-  const screen = render(refresh);
+  const screen = await mountLive(refresh);
   expect(refresh).not.toHaveBeenCalled();
   await advance(INTERVAL - 1);
   expect(refresh).not.toHaveBeenCalled();
@@ -70,7 +68,7 @@ test('no call at mount; a call after each interval', async () => {
   expect(refresh).toHaveBeenCalledTimes(2);
   await advance(3 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(5);
-  screen.unmount();
+  await screen.unmount();
   await advance(5 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(5);
 });
@@ -78,7 +76,7 @@ test('no call at mount; a call after each interval', async () => {
 test('the interval is measured from the end of the call, and calls never overlap', async () => {
   let release!: () => void;
   const refresh = jest.fn(() => new Promise<void>(resolve => { release = resolve; }));
-  const screen = render(refresh);
+  const screen = await mountLive(refresh);
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
   // Three intervals pass with the call in flight: no second call.
@@ -90,7 +88,7 @@ test('the interval is measured from the end of the call, and calls never overlap
   expect(refresh).toHaveBeenCalledTimes(1);
   await advance(1);
   expect(refresh).toHaveBeenCalledTimes(2);
-  screen.unmount();
+  await screen.unmount();
 });
 
 test('a refresh that rejects or throws does not stop the timer', async () => {
@@ -98,42 +96,40 @@ test('a refresh that rejects or throws does not stop the timer', async () => {
     .mockRejectedValueOnce(new Error('network'))
     .mockImplementationOnce(() => { throw new Error('sync'); })
     .mockResolvedValue(undefined);
-  const screen = render(refresh);
+  const screen = await mountLive(refresh);
   await advance(3 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(3);
-  screen.unmount();
+  await screen.unmount();
 });
 
 test('under StrictMode (cleanups then setups again) the timer still runs', async () => {
   const refresh = jest.fn();
-  const Harness = () => { useLiveUpdates(refresh, true, { intervalMs: INTERVAL }); return null; };
-  let tree!: ReturnType<typeof create>;
-  act(() => { tree = create(React.createElement(React.StrictMode, null, React.createElement(Harness))); });
+  const { unmount } = await renderHook(() => useLiveUpdates(refresh, true, { intervalMs: INTERVAL }), { wrapper: React.StrictMode });
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
-  act(() => { tree.unmount(); });
+  await unmount();
 });
 
 test('a gate turned off while a call is in flight: nothing is scheduled when it settles', async () => {
   let release!: () => void;
   const refresh = jest.fn(() => new Promise<void>(resolve => { release = resolve; }));
-  const screen = render(refresh);
+  const screen = await mountLive(refresh);
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
-  appState('background');
+  await appState('background');
   await act(async () => { release(); });
   await advance(5 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
-  screen.unmount();
+  await screen.unmount();
 });
 
 test('unmount while a call is in flight: releasing it makes no further call and no error', async () => {
   let release!: () => void;
   const refresh = jest.fn(() => new Promise<void>(resolve => { release = resolve; }));
-  const screen = render(refresh);
+  const screen = await mountLive(refresh);
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
-  screen.unmount();
+  await screen.unmount();
   await act(async () => { release(); });
   await advance(5 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
@@ -141,152 +137,151 @@ test('unmount while a call is in flight: releasing it makes no further call and 
 
 test('a new refresh identity on every render does not restart the timer', async () => {
   const calls = jest.fn();
-  const Harness = () => { useLiveUpdates(() => { calls(); }, true, { intervalMs: INTERVAL }); return null; };
-  let tree!: ReturnType<typeof create>;
-  act(() => { tree = create(React.createElement(Harness)); });
+  const { rerender, unmount } = await renderHook(() => useLiveUpdates(() => { calls(); }, true, { intervalMs: INTERVAL }));
   await advance(INTERVAL / 2);
-  act(() => { tree.update(React.createElement(Harness)); });
+  await rerender({});
   await advance(INTERVAL / 2);
   expect(calls).toHaveBeenCalledTimes(1);
-  act(() => { tree.unmount(); });
+  await unmount();
 });
 
 test('the latest refresh is the one called', async () => {
   const first = jest.fn();
   const second = jest.fn();
-  let current = first;
-  const Harness = () => { useLiveUpdates(() => current(), true, { intervalMs: INTERVAL }); return null; };
-  let tree!: ReturnType<typeof create>;
-  act(() => { tree = create(React.createElement(Harness)); });
-  current = second;
-  act(() => { tree.update(React.createElement(Harness)); });
+  // A different function on the second draw (not one closure that reads a variable): only the hook can pick it.
+  const { rerender, unmount } = await renderHook(
+    ({ refresh }: { refresh: () => void }) => useLiveUpdates(refresh, true, { intervalMs: INTERVAL }),
+    { initialProps: { refresh: first } },
+  );
+  await rerender({ refresh: second });
   await advance(INTERVAL);
   expect(first).not.toHaveBeenCalled();
   expect(second).toHaveBeenCalledTimes(1);
-  act(() => { tree.unmount(); });
+  await unmount();
 });
 
 test('a replaced profile object for the same account keeps the timer running', async () => {
   const refresh = jest.fn();
-  const screen = render(refresh);
+  const screen = await mountLive(refresh);
   await advance(INTERVAL / 2);
   mockProfile = { id: 'profile-fictional-1' };
-  screen.rerender();
+  await screen.rerender();
   await advance(INTERVAL / 2);
   expect(refresh).toHaveBeenCalledTimes(1);
-  screen.unmount();
+  await screen.unmount();
 });
 
 test('background, offline, covered and signed out stop the timer; going back restarts it', async () => {
   const refresh = jest.fn();
-  const screen = render(refresh);
-  appState('background');
+  const screen = await mountLive(refresh);
+  await appState('background');
   await advance(5 * INTERVAL);
   expect(refresh).not.toHaveBeenCalled();
-  appState('active');
+  await appState('active');
   // Back in the foreground while shown: one catch-up, then the timer.
   expect(refresh).toHaveBeenCalledTimes(1);
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(2);
 
   mockConnected = false;
-  screen.rerender();
+  await screen.rerender();
   await advance(5 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(2);
   mockConnected = true;
-  screen.rerender();
+  await screen.rerender();
   expect(refresh).toHaveBeenCalledTimes(3);
 
   mockFocused = false;
-  screen.rerender();
+  await screen.rerender();
   await advance(5 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(3);
   mockFocused = true;
-  screen.rerender();
+  await screen.rerender();
   expect(refresh).toHaveBeenCalledTimes(4);
 
   mockProfile = null;
-  screen.rerender();
+  await screen.rerender();
   await advance(5 * INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(4);
   mockProfile = { id: 'profile-fictional-2' };
-  screen.rerender();
+  await screen.rerender();
   // Signing in again is no return to the screen: no catch-up, the timer starts afresh.
   expect(refresh).toHaveBeenCalledTimes(4);
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(5);
-  screen.unmount();
+  await screen.unmount();
   expect(appStateListeners.size).toBe(0);
 });
 
 test('disabled: no timer and no catch-up; enabling starts the timer', async () => {
   const refresh = jest.fn();
-  const Harness = ({ enabled }: { enabled: boolean }) => { useLiveUpdates(refresh, enabled, { intervalMs: INTERVAL }); return null; };
-  let tree!: ReturnType<typeof create>;
-  act(() => { tree = create(React.createElement(Harness, { enabled: false })); });
+  const { rerender, unmount } = await renderHook(
+    ({ enabled }: { enabled: boolean }) => useLiveUpdates(refresh, enabled, { intervalMs: INTERVAL }),
+    { initialProps: { enabled: false } },
+  );
   await advance(5 * INTERVAL);
-  appState('background');
-  appState('active');
+  await appState('background');
+  await appState('active');
   mockFocused = false;
-  act(() => { tree.update(React.createElement(Harness, { enabled: false })); });
+  await rerender({ enabled: false });
   mockFocused = true;
-  act(() => { tree.update(React.createElement(Harness, { enabled: false })); });
+  await rerender({ enabled: false });
   await advance(5 * INTERVAL);
   expect(refresh).not.toHaveBeenCalled();
-  act(() => { tree.update(React.createElement(Harness, { enabled: true })); });
+  await rerender({ enabled: true });
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
-  act(() => { tree.unmount(); });
+  await unmount();
 });
 
 test('a covered screen catches up once on its return, then goes on with the timer', async () => {
   const refresh = jest.fn();
-  const screen = render(refresh);
+  const screen = await mountLive(refresh);
   mockFocused = false;
-  screen.rerender();
+  await screen.rerender();
   mockFocused = true;
-  screen.rerender();
+  await screen.rerender();
   expect(refresh).toHaveBeenCalledTimes(1);
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(2);
-  screen.unmount();
+  await screen.unmount();
 });
 
 test('refreshOnFocus false: the return catches up with nothing, the timer still restarts', async () => {
   const refresh = jest.fn();
-  const screen = render(refresh, true, { refreshOnFocus: false });
+  const screen = await mountLive(refresh, true, { refreshOnFocus: false });
   mockFocused = false;
-  screen.rerender();
+  await screen.rerender();
   mockFocused = true;
-  screen.rerender();
+  await screen.rerender();
   expect(refresh).not.toHaveBeenCalled();
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
-  screen.unmount();
+  await screen.unmount();
 });
 
 test('the foreground or a connection while not shown refreshes nothing', async () => {
   const refresh = jest.fn();
   mockFocused = false;
-  const screen = render(refresh);
-  appState('background');
-  appState('active');
+  const screen = await mountLive(refresh);
+  await appState('background');
+  await appState('active');
   await advance(5 * INTERVAL);
   expect(refresh).not.toHaveBeenCalled();
-  screen.unmount();
+  await screen.unmount();
 });
 
 test('the first move to live of an app started in the background refreshes nothing', async () => {
   AppState.currentState = 'background';
   const refresh = jest.fn();
-  const screen = render(refresh);
+  const screen = await mountLive(refresh);
   await advance(5 * INTERVAL);
   expect(refresh).not.toHaveBeenCalled();
-  appState('active');
+  await appState('active');
   expect(refresh).not.toHaveBeenCalled();
   await advance(INTERVAL);
   expect(refresh).toHaveBeenCalledTimes(1);
-  screen.unmount();
+  await screen.unmount();
 });
 
 describe('sensors', () => {
@@ -311,13 +306,11 @@ describe('sensors', () => {
 
   test('useSensorLiveUpdates: every 60 s the sensor queries go out of date; a return refreshes nothing', async () => {
     expect(SENSOR_REFRESH_INTERVAL_MS).toBe(60_000);
-    let tree!: ReturnType<typeof create>;
-    const Harness = () => { useSensorLiveUpdates(); return null; };
-    act(() => { tree = create(React.createElement(Harness)); });
+    const { rerender, unmount } = await renderHook(() => useSensorLiveUpdates());
     mockFocused = false;
-    act(() => { tree.update(React.createElement(Harness)); });
+    await rerender({});
     mockFocused = true;
-    act(() => { tree.update(React.createElement(Harness)); });
+    await rerender({});
     await advance(0);
     expect(invalidated(sensorsLatest)).toBe(false);
     await advance(59_999);
@@ -325,6 +318,6 @@ describe('sensors', () => {
     await advance(1);
     expect(invalidated(sensorsLatest)).toBe(true);
     expect(invalidated(grnActivity)).toBe(false);
-    act(() => { tree.unmount(); });
+    await unmount();
   });
 });

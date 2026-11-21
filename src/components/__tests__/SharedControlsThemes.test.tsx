@@ -3,8 +3,8 @@
  * themes and checks the token roles the guide assigns to them.
  */
 import React from 'react';
-import { StyleSheet, Switch as RNSwitch, Text, type StyleProp, type TextStyle } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { Text } from 'react-native';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -65,17 +65,6 @@ jest.mock('@/services/invoice-service', () => ({ getInvoicesList: jest.fn() }));
 const MODES: Mode[] = ['light', 'dark'];
 const THEMES = BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const));
 
-function render(brand: Brand, mode: Mode, element: React.ReactElement): ReactTestRenderer {
-  mockState = { theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
-}
-
-// The rendered style, flattened, typed as the style of a text (it has the view's fields too).
-const flat = (style: unknown): TextStyle => StyleSheet.flatten(style as StyleProp<TextStyle>) ?? {};
 
 const steps = [{ label: 'Customer' }, { label: 'Items' }, { label: 'Review' }];
 
@@ -135,39 +124,67 @@ function Gallery() {
   );
 }
 
+
+type Json = ReturnType<typeof screen.toJSON>;
+type JsonNode = Exclude<NonNullable<Json>, unknown[]>;
+
+/** The first element of a native type in the rendered tree (the native switch has no query of its own). */
+function findByType(node: unknown, type: string): JsonNode | undefined {
+  if (!node || typeof node === 'string') return undefined;
+  if (Array.isArray(node)) return node.map(child => findByType(child, type)).find(Boolean);
+  const json = node as JsonNode;
+  if (json.type === type) return json;
+  return (json.children ?? []).map(child => findByType(child, type)).find(Boolean);
+}
+
+function setTheme(brand: Brand, mode: Mode) {
+  mockState = { theme: { preference: mode, brand } };
+}
+
+const tabBarProps = (
+  routes: Array<{ key: string; name: string; params: undefined }>,
+  titles: Record<string, string>,
+  badges: Record<string, number>,
+) =>
+  ({
+    state: { index: 0, routes },
+    descriptors: Object.fromEntries(Object.entries(titles).map(([key, title]) => [key, { options: { title } }])),
+    navigation: { emit: () => ({ defaultPrevented: false }), navigate: jest.fn() },
+    badges,
+  }) as unknown as React.ComponentProps<typeof FioriTabBar>;
+
 describe.each(THEMES)('shared controls in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
+  beforeEach(() => setTheme(brand, mode));
 
-  it('render without crashing', () => {
-    const tree = render(brand, mode, <Gallery />);
-    expect(tree.toJSON()).toBeTruthy();
-    act(() => tree.unmount());
+  it('render without crashing', async () => {
+    await render(<Gallery />);
+    expect(screen.toJSON()).toBeTruthy();
   });
 
-  it('fill primary buttons with brand tokens and confirm destructive actions with destructive tokens', () => {
-    const tree = render(brand, mode, (
+  it('fill primary buttons with brand tokens and confirm destructive actions with destructive tokens', async () => {
+    await render(
       <>
         <Button type="primary" testID="primary">Save</Button>
         <Button type="primary" variant="negative" testID="negative">Delete</Button>
         <Button type="secondary" testID="secondary">Print</Button>
       </>
-    ));
-    const bg = (id: string) =>
-      flat(tree.root.findAll(n => n.props?.testID === id && Boolean(n.props.style))[0].props.style);
-    expect(bg('primary').backgroundColor).toBe(t.brand.fill);
-    expect(bg('negative').backgroundColor).toBe(t.destructive.fill);
-    expect(bg('secondary').borderColor).toBe(t.border.button);
-    const labels = tree.root.findAllByType(Text).map(n => flat(n.props.style).color);
-    expect(labels).toEqual([t.brand.onFill, t.destructive.onFill, t.brand.tint]);
-    act(() => tree.unmount());
+    );
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveStyle({ backgroundColor: t.brand.fill });
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveStyle({ backgroundColor: t.destructive.fill });
+    expect(screen.getByRole('button', { name: 'Print' })).toHaveStyle({ borderColor: t.border.button });
+    expect(screen.getByText('Save')).toHaveStyle({ color: t.brand.onFill });
+    expect(screen.getByText('Delete')).toHaveStyle({ color: t.destructive.onFill });
+    expect(screen.getByText('Print')).toHaveStyle({ color: t.brand.tint });
   });
 
-  it('colour the switch track with brand.fill and control tokens', () => {
-    const tree = render(brand, mode, <Switch label="Notify" value onValueChange={jest.fn()} />);
-    const sw = tree.root.findByType(RNSwitch);
-    expect(sw.props.trackColor).toEqual({ false: t.control.trackOff, true: t.brand.fill });
-    expect(sw.props.thumbColor).toBe(t.control.thumb);
-    act(() => tree.unmount());
+  it('colour the switch track with brand.fill and control tokens', async () => {
+    await render(<Switch label="Notify" value onValueChange={jest.fn()} />);
+    // The native switch (iOS in Jest) takes the off track as tintColor, the on track as onTintColor.
+    const sw = findByType(screen.toJSON(), 'RCTSwitch')?.props ?? {};
+    expect(sw.tintColor).toBe(t.control.trackOff);
+    expect(sw.onTintColor).toBe(t.brand.fill);
+    expect(sw.thumbTintColor).toBe(t.control.thumb);
   });
 
   it('map stock status colours to the status tokens', () => {
@@ -179,65 +196,46 @@ describe.each(THEMES)('shared controls in %s %s', (brand, mode) => {
     });
   });
 
-  it('label stock with the one app-wide rule (below 20% is low)', () => {
-    const tree = render(brand, mode, (
+  it('label stock with the one app-wide rule (below 20% is low)', async () => {
+    await render(
       <>
         <StockIndicator currentStock={19} originalStock={100} />
         <StockIndicator currentStock={20} originalStock={100} />
         <StockIndicator currentStock={0} originalStock={100} />
         <StockIndicator currentStock={1} originalStock={1} />
       </>
-    ));
-    const words = tree.root.findAllByType(Text).map(n => n.props.children);
-    expect(words).toEqual(expect.arrayContaining(['Low stock', 'In stock', 'Out of stock', '1 of 1 unit', '19 of 100 units']));
-    act(() => tree.unmount());
+    );
+    for (const word of ['Low stock', 'In stock', 'Out of stock', '1 of 1 unit', '19 of 100 units']) {
+      expect(screen.getAllByText(word).length).toBeGreaterThan(0);
+    }
   });
 
-  it('fill plain counts with brand.fill and "needs action" counts with destructive.fill', () => {
-    const header = render(brand, mode, <SectionHeader title="Items" count={3} />);
-    const count = header.root.findAllByType(Text).find(n => n.props.children === '3')!;
-    expect(flat(count.props.style).color).toBe(t.brand.onFill);
-    act(() => header.unmount());
+  it('fill plain counts with brand.fill and "needs action" counts with destructive.fill', async () => {
+    const header = await render(<SectionHeader title="Items" count={3} />);
+    expect(screen.getByText('3')).toHaveStyle({ color: t.brand.onFill });
+    await header.unmount();
 
-    const routes = [{ key: 'a', name: 'grn', params: undefined }];
-    const props = {
-      state: { index: 0, routes },
-      descriptors: { a: { options: { title: 'GRN' } } },
-      navigation: { emit: () => ({ defaultPrevented: false }), navigate: jest.fn() },
-      badges: { grn: 2 },
-    } as unknown as React.ComponentProps<typeof FioriTabBar>;
-    const bar = render(brand, mode, <FioriTabBar {...props} />);
-    const badge = bar.root.findAllByType(Text).find(n => n.props.children === '2')!;
-    expect(flat(badge.props.style).color).toBe(t.destructive.onFill);
-    act(() => bar.unmount());
+    await render(<FioriTabBar {...tabBarProps([{ key: 'a', name: 'grn', params: undefined }], { a: 'GRN' }, { grn: 2 })} />);
+    expect(screen.getByText('2', { includeHiddenElements: true })).toHaveStyle({ color: t.destructive.onFill });
   });
 
-  it('render the tab bar on surface.tabBar with the selected tab in brand.tint', () => {
+  it('render the tab bar on surface.tabBar with the selected tab in brand.tint', async () => {
     const routes = [
       { key: 'a', name: 'index', params: undefined },
       { key: 'b', name: 'grn', params: undefined },
     ];
-    const props = {
-      state: { index: 0, routes },
-      descriptors: { a: { options: { title: 'Orders' } }, b: { options: { title: 'GRN' } } },
-      navigation: { emit: () => ({ defaultPrevented: false }), navigate: jest.fn() },
-      badges: { grn: 3 },
-    } as unknown as React.ComponentProps<typeof FioriTabBar>;
-    const tree = render(brand, mode, <FioriTabBar {...props} />);
-    const labels = tree.root.findAllByType(Text).filter(n => ['Orders', 'GRN'].includes(n.props.children));
-    expect(flat(labels[0].props.style).color).toBe(t.brand.tint);
-    expect(flat(labels[1].props.style).color).toBe(t.text.secondary);
-    act(() => tree.unmount());
+    await render(<FioriTabBar {...tabBarProps(routes, { a: 'Orders', b: 'GRN' }, { grn: 3 })} />);
+    expect(screen.getByText('Orders')).toHaveStyle({ color: t.brand.tint });
+    expect(screen.getByText('GRN')).toHaveStyle({ color: t.text.secondary });
   });
 
-  it('render the form step wrapper', () => {
-    const tree = render(brand, mode, (
+  it('render the form step wrapper', async () => {
+    await render(
       <FormStepWrapper title="Create GRN" currentStep={1} totalSteps={3} stepLabels={['Customer', 'Items', 'Review']}
         onCancel={jest.fn()} enableSwipe={false}>
         <Text>Content</Text>
       </FormStepWrapper>
-    ));
-    expect(tree.toJSON()).toBeTruthy();
-    act(() => tree.unmount());
+    );
+    expect(screen.toJSON()).toBeTruthy();
   });
 });

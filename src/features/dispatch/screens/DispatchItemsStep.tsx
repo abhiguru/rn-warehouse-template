@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import type { MutableRefObject } from 'react';
+import type { RefObject } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View,
@@ -20,7 +20,6 @@ import {
   Keyboard,
   ActivityIndicator,
   AccessibilityInfo,
-  findNodeHandle,
 } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -77,7 +76,7 @@ type DispatchItemsStepProps = {
      * step is mounted it puts its own way back here, the one the footer's Back
      * button takes, so the key asks "Go back to details?" as the button does.
      */
-    backGuard?: MutableRefObject<(() => void) | null>;
+    backGuard?: RefObject<(() => void) | null>;
 };
 
 /** The form holds a change to a saved line: the lot or the bags, the two things a save sends for a line. */
@@ -488,8 +487,8 @@ export function DispatchItemsStep({ mode, backGuard }: DispatchItemsStepProps) {
         }
         scrollViewRef.current?.scrollToPosition(0, Math.max(0, (fieldTops.current[first] ?? 0) - space.lg), true);
         setTimeout(() => {
-            const node = findNodeHandle(pickerRefs.current[first] ?? null);
-            if (node) AccessibilityInfo.setAccessibilityFocus(node);
+            const node = pickerRefs.current[first];
+            if (node) AccessibilityInfo.sendAccessibilityEvent(node, 'focus');
         }, 300);
     };
 

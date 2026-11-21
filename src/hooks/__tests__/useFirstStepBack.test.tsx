@@ -4,7 +4,7 @@
  * leaves at once when nothing was; on later steps it goes back one step.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 import { BackHandler } from 'react-native';
 import { router } from 'expo-router';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
@@ -48,10 +48,8 @@ beforeEach(() => {
 });
 afterEach(() => back.restore());
 
-async function mount(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  return tree;
+function mount(element: React.ReactElement) {
+  return render(element);
 }
 
 describe('Back on the first step of a create form', () => {
@@ -68,7 +66,7 @@ describe('Back on the first step of a create form', () => {
 
     expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
     expect(router.replace).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 
   it('asks before discarding when something was entered, and goes nowhere', async () => {
@@ -79,7 +77,7 @@ describe('Back on the first step of a create form', () => {
     expect(askToDiscard).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 
   it('leaves for the list at once when nothing was entered', async () => {
@@ -90,23 +88,23 @@ describe('Back on the first step of a create form', () => {
     expect(askToDiscard).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/(tabs)/grn');
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 
   it('follows the form: empty, then filled, then emptied again', async () => {
     const tree = await mount(<FirstStep hasData={false} />);
-    await act(async () => { tree.update(<FirstStep hasData />); });
+    await tree.rerender(<FirstStep hasData />);
     back.press();
     expect(askToDiscard).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
 
-    await act(async () => { tree.update(<FirstStep hasData={false} />); });
+    await tree.rerender(<FirstStep hasData={false} />);
     back.press();
     expect(askToDiscard).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/(tabs)/grn');
     // One listener throughout, not one more for each change of the form.
     expect(back.count()).toBe(1);
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 
   it('stays behind a listener added later (an open sheet), however often the step draws itself', async () => {
@@ -116,8 +114,8 @@ describe('Back on the first step of a create form', () => {
     const sheet = BackHandler.addEventListener('hardwareBackPress', sheetBack);
 
     // A new `askToDiscard` and a new `hasData` with every drawing, as a screen passes them.
-    await act(async () => { tree.update(<FirstStep hasData={false} askToDiscard={() => askToDiscard()} />); });
-    await act(async () => { tree.update(<FirstStep hasData askToDiscard={() => askToDiscard()} />); });
+    await tree.rerender(<FirstStep hasData={false} askToDiscard={() => askToDiscard()} />);
+    await tree.rerender(<FirstStep hasData askToDiscard={() => askToDiscard()} />);
 
     expect(back.press()).toBe(true);
     expect(sheetBack).toHaveBeenCalledTimes(1);
@@ -129,21 +127,21 @@ describe('Back on the first step of a create form', () => {
     sheet.remove();
     expect(back.press()).toBe(true);
     expect(askToDiscard).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 
   it('starts to listen when it is switched on later, and stops when switched off', async () => {
     const tree = await mount(<FirstStep enabled={false} hasData />);
     expect(back.press()).toBe(false);
 
-    await act(async () => { tree.update(<FirstStep enabled hasData />); });
+    await tree.rerender(<FirstStep enabled hasData />);
     expect(back.press()).toBe(true);
     expect(askToDiscard).toHaveBeenCalledTimes(1);
 
-    await act(async () => { tree.update(<FirstStep enabled={false} hasData />); });
+    await tree.rerender(<FirstStep enabled={false} hasData />);
     expect(back.press()).toBe(false);
     expect(askToDiscard).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 
   it('leaves Back to the system where it is switched off (the edit form of the same screen)', async () => {
@@ -153,14 +151,14 @@ describe('Back on the first step of a create form', () => {
 
     expect(askToDiscard).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 
   it('stops listening when the step is left', async () => {
     const tree = await mount(<FirstStep hasData />);
     expect(back.count()).toBe(1);
 
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
 
     expect(back.count()).toBe(0);
     expect(back.press()).toBe(false);
@@ -184,7 +182,7 @@ describe('Back on the later steps of a create form', () => {
     expect(router.dismissTo).toHaveBeenCalledWith(previous);
     expect(router.replace).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 });
 
@@ -201,14 +199,14 @@ describe('Back on the dispatch review while the server is asked what became of a
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 
   it('an edited dispatch leaves the Back key to the system when nothing is being checked', async () => {
     const tree = await mount(<DispatchEditStep3 />);
 
     expect(back.press()).toBe(false);
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 });
 
@@ -223,6 +221,6 @@ describe('Back on the GRN review step while the GRN is being created', () => {
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
+    await tree.unmount();
   });
 });

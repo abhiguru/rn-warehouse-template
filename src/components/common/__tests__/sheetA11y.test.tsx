@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import ChangeLogBottomSheet from '../../ChangeLogBottomSheet';
 import { RolePickerBottomSheet } from '../../RolePickerBottomSheet';
 import { SHEET_A11Y, SHEET_BACKDROP_A11Y } from '../sheetA11y';
@@ -59,11 +59,19 @@ jest.mock('@gorhom/bottom-sheet', () => {
   };
 });
 
-const render = (element: React.ReactElement) => {
-  let tree!: ReactTestRenderer;
-  act(() => { tree = create(element); });
-  return tree;
-};
+type HostNode = { type: string; props: Record<string, unknown>; children: Array<HostNode | string> | null };
+
+/** The first host element of a tag; the sheet mocks are plain host tags with no role or text to query by. */
+function host(type: string): HostNode {
+  const find = (node: HostNode): HostNode | undefined =>
+    node.type === type
+      ? node
+      : (node.children ?? []).reduce<HostNode | undefined>((found, child) => found ?? (typeof child === 'string' ? undefined : find(child)), undefined);
+  const json = screen.toJSON() as HostNode | HostNode[] | null;
+  const found = ([] as Array<HostNode | null>).concat(json).reduce<HostNode | undefined>((hit, root) => hit ?? (root ? find(root) : undefined), undefined);
+  if (!found) throw new Error(`No ${type} on the screen`);
+  return found;
+}
 
 const LIBRARY_WORDS = /bottom ?sheet/i;
 
@@ -78,26 +86,26 @@ describe('the shared settings', () => {
     expect(SHEET_BACKDROP_A11Y).toEqual({ accessible: false, accessibilityRole: null, accessibilityLabel: null });
   });
 
-  it('the background is a plain view with no label, hidden from a screen reader, that keeps the library\'s look and the sheet\'s style', () => {
+  it('the background is a plain view with no label, hidden from a screen reader, that keeps the library\'s look and the sheet\'s style', async () => {
     const Background = SHEET_A11Y.backgroundComponent as unknown as React.ComponentType<Record<string, unknown>>;
-    const tree = render(<Background pointerEvents="none" style={{ backgroundColor: '#123456' }} />);
-    const view = tree.root.findByType('View' as never);
+    await render(<Background pointerEvents="none" style={{ backgroundColor: '#123456' }} />);
+    const view = host('View');
     expect(view.props.accessible).toBe(false);
     expect(view.props.accessibilityLabel).toBeUndefined();
     expect(view.props.importantForAccessibility).toBe('no');
     expect(view.props.accessibilityElementsHidden).toBe(true);
     expect(view.props.pointerEvents).toBe('none');
-    const flat = StyleSheet.flatten(view.props.style) as { backgroundColor: string; borderRadius: number };
+    const flat = StyleSheet.flatten(view.props.style as never) as { backgroundColor: string; borderRadius: number };
     expect(flat.borderRadius).toBe(15); // the library's default corners (3a762da6)
     expect(flat.backgroundColor).toBe('#123456'); // the sheet's own colour wins over the library's white
-    const plain = render(<Background pointerEvents="auto" style={undefined} />);
-    expect(StyleSheet.flatten(plain.root.findByType('View' as never).props.style)).toEqual({ backgroundColor: 'white', borderRadius: 15 });
+    await render(<Background pointerEvents="auto" style={undefined} />);
+    expect(StyleSheet.flatten(host('View').props.style as never)).toEqual({ backgroundColor: 'white', borderRadius: 15 });
   });
 
-  it('the handle is the library\'s handle with its label, role and hint off, and passes the rest on', () => {
+  it('the handle is the library\'s handle with its label, role and hint off, and passes the rest on', async () => {
     const Handle = SHEET_A11Y.handleComponent as unknown as React.ComponentType<Record<string, unknown>>;
-    const tree = render(<Handle indicatorStyle={{ width: 40 }} />);
-    const handle = tree.root.findByType('BottomSheetHandle' as never);
+    await render(<Handle indicatorStyle={{ width: 40 }} />);
+    const handle = host('BottomSheetHandle');
     expect(handle.props.accessible).toBe(false);
     expect(handle.props.accessibilityRole).toBeNull();
     expect(handle.props.accessibilityLabel).toBeNull();
@@ -107,32 +115,29 @@ describe('the shared settings', () => {
 });
 
 describe('sheets rendered', () => {
-  it('the change log sheet (a modal) carries the settings and shows none of the library\'s words', () => {
-    const tree = render(<ChangeLogBottomSheet isVisible onClose={jest.fn()} customer={null} entries={[]} loading={false} />);
-    const sheet = tree.root.findByType('BottomSheetModal' as never);
+  it('the change log sheet (a modal) carries the settings and shows none of the library\'s words', async () => {
+    await render(<ChangeLogBottomSheet isVisible onClose={jest.fn()} customer={null} entries={[]} loading={false} />);
+    const sheet = host('BottomSheetModal');
     expect(sheet.props.accessible).toBe(false);
     expect(sheet.props.accessibilityLabel).toBeNull();
     expect(sheet.props.backgroundComponent).toBe(SHEET_A11Y.backgroundComponent);
     expect(sheet.props.handleComponent).toBe(SHEET_A11Y.handleComponent);
-    const labels = tree.root.findAll(n => typeof n.props.accessibilityLabel === 'string').map(n => n.props.accessibilityLabel as string);
-    expect(labels.filter(label => LIBRARY_WORDS.test(label))).toEqual([]);
-    act(() => tree.unmount());
+    expect(screen.queryAllByLabelText(LIBRARY_WORDS, { hidden: true })).toEqual([]);
   });
 
-  it('the role picker (a plain sheet) carries the settings and its backdrop is no stop', () => {
-    const tree = render(
+  it('the role picker (a plain sheet) carries the settings and its backdrop is no stop', async () => {
+    await render(
       <RolePickerBottomSheet isVisible onClose={jest.fn()} onSelect={jest.fn()} currentRole="staff" callerRole="supervisor" />);
-    const sheet = tree.root.findByType('BottomSheet' as never);
+    const sheet = host('BottomSheet');
     expect(sheet.props.accessible).toBe(false);
     expect(sheet.props.backgroundComponent).toBe(SHEET_A11Y.backgroundComponent);
     expect(sheet.props.handleComponent).toBe(SHEET_A11Y.handleComponent);
     const Backdrop = sheet.props.backdropComponent as (p: object) => React.ReactElement;
-    const backdrop = render(Backdrop({ animatedIndex: { value: 0 }, animatedPosition: { value: 0 } }));
-    const props = backdrop.root.findByType('BottomSheetBackdrop' as never).props;
+    await render(Backdrop({ animatedIndex: { value: 0 }, animatedPosition: { value: 0 } }));
+    const props = host('BottomSheetBackdrop').props;
     expect(props.accessible).toBe(false);
     expect(props.accessibilityRole).toBeNull();
     expect(props.accessibilityLabel).toBeNull();
-    act(() => tree.unmount());
   });
 });
 

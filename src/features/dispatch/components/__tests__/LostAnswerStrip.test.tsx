@@ -3,9 +3,8 @@
  * (owner rule D22): the sentence for a save or a delete, and that it is waiting for the connection while offline.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { t } from '@/i18n';
-import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { LostAnswerStrip } from '../LostAnswerStrip';
 
 jest.mock('@/store/hooks', () => ({
@@ -17,45 +16,39 @@ let mockOffline = false;
 // The strip asks the lost-answer rule's own online test (utils/lostAnswer), the one the wait uses.
 jest.mock('@/utils/lostAnswer', () => ({ useIsDisconnected: () => mockOffline }));
 
-let tree: ReactTestRenderer;
-const render = (kind: 'save' | 'delete') => {
-  act(() => { tree = create(<LostAnswerStrip kind={kind} testID="strip" />); });
-};
-const message = () => tree.root.findByType(InlineValidation).props.message as string;
+const show = (kind: 'save' | 'delete') => render(<LostAnswerStrip kind={kind} testID="strip" />);
 
 beforeEach(() => { mockOffline = false; });
-afterEach(() => { act(() => tree.unmount()); });
 
 describe('while online', () => {
-  it('says it is checking whether it was saved', () => {
-    render('save');
-    expect(message()).toBe(t('errors.lostAnswer.checking'));
+  it('says it is checking whether it was saved', async () => {
+    await show('save');
+    expect(screen.getByText(t('errors.lostAnswer.checking'))).toBeOnTheScreen();
   });
 
-  it('says it is checking whether it was deleted, for a delete', () => {
-    render('delete');
-    expect(message()).toBe(t('errors.lostAnswer.checkingDelete'));
+  it('says it is checking whether it was deleted, for a delete', async () => {
+    await show('delete');
+    expect(screen.getByText(t('errors.lostAnswer.checkingDelete'))).toBeOnTheScreen();
   });
 });
 
 describe('while offline', () => {
-  it('adds that it is waiting for the connection', () => {
+  it('adds that it is waiting for the connection', async () => {
     mockOffline = true;
-    render('save');
-    expect(message()).toBe(`${t('errors.lostAnswer.checking')} ${t('errors.lostAnswer.waiting')}`);
+    await show('save');
+    expect(screen.getByText(`${t('errors.lostAnswer.checking')} ${t('errors.lostAnswer.waiting')}`)).toBeOnTheScreen();
   });
 
-  it('adds it to the delete sentence too', () => {
+  it('adds it to the delete sentence too', async () => {
     mockOffline = true;
-    render('delete');
-    expect(message()).toBe(`${t('errors.lostAnswer.checkingDelete')} ${t('errors.lostAnswer.waiting')}`);
+    await show('delete');
+    expect(screen.getByText(`${t('errors.lostAnswer.checkingDelete')} ${t('errors.lostAnswer.waiting')}`)).toBeOnTheScreen();
   });
 });
 
 describe('as a message', () => {
-  it('is a polite live region, so a screen reader says it', () => {
-    render('save');
-    const strip = tree.root.find((node) => node.props.testID === 'strip' && node.props.accessibilityLiveRegion === 'polite');
-    expect(strip).toBeTruthy();
+  it('is a polite live region, so a screen reader says it', async () => {
+    await show('save');
+    expect(screen.getByTestId('strip')).toHaveProp('accessibilityLiveRegion', 'polite');
   });
 });

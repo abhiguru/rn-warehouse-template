@@ -1,6 +1,6 @@
 /** A sheet that searches from zero letters (minQueryLength 0) lists everything as soon as it opens; the others wait for typing. */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 import { SearchableBottomSheet } from '../SearchableBottomSheet';
 
 const mockSearchNow = jest.fn();
@@ -38,33 +38,31 @@ jest.mock('@gorhom/bottom-sheet', () => {
   };
 });
 
-const mount = (props: { minQueryLength?: number; isVisible?: boolean; currentValue?: { id: string; name: string } | null }) => {
-  act(() => {
-    create(
-      <SearchableBottomSheet<{ id: string }>
-        isVisible={props.isVisible ?? true}
-        onClose={jest.fn()}
-        onSelect={jest.fn()}
-        title="Choose"
-        searchFn={async () => []}
-        renderItem={() => <></>}
-        keyExtractor={i => i.id}
-        minQueryLength={props.minQueryLength}
-        currentValue={props.currentValue}
+const mount = async (props: { minQueryLength?: number; isVisible?: boolean; currentValue?: { id: string; name: string } | null }) => {
+  await render(
+    <SearchableBottomSheet<{ id: string }>
+      isVisible={props.isVisible ?? true}
+      onClose={jest.fn()}
+      onSelect={jest.fn()}
+      title="Choose"
+      searchFn={async () => []}
+      renderItem={() => <></>}
+      keyExtractor={i => i.id}
+      minQueryLength={props.minQueryLength}
+      currentValue={props.currentValue}
       />,
-    );
-  });
+  );
 };
 
 beforeEach(() => mockSearchNow.mockClear());
 
-it('searches with nothing typed when it opens with minQueryLength 0', () => {
-  mount({ minQueryLength: 0 });
+it('searches with nothing typed when it opens with minQueryLength 0', async () => {
+  await mount({ minQueryLength: 0 });
   expect(mockSearchNow).toHaveBeenCalledWith('');
 });
 
-it('waits for typing with the default minimum, and while closed', () => {
-  mount({});
-  mount({ minQueryLength: 0, isVisible: false });
+it('waits for typing with the default minimum, and while closed', async () => {
+  await mount({});
+  await mount({ minQueryLength: 0, isVisible: false });
   expect(mockSearchNow).not.toHaveBeenCalled();
 });

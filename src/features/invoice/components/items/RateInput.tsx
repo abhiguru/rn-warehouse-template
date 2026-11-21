@@ -29,7 +29,7 @@ export function RateInput({ value, onChangeText, onFocus, onBlur, ref, ...rest }
     (input: TextInputRef | null) => {
       node.current = input;
       if (typeof ref === 'function') ref(input);
-      else if (ref) (ref as React.MutableRefObject<TextInputRef | null>).current = input;
+      else if (ref) (ref as React.RefObject<TextInputRef | null>).current = input;
     },
     [ref]
   );

@@ -1,6 +1,6 @@
 import React from 'react';
-import { Text, TextInput, View, StyleSheet } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { Text, StyleSheet } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -11,13 +11,21 @@ jest.mock('@/store/hooks', () => ({
 }));
 
 const item = { id: 'fictional-item', name: 'Backend Test Potatoes' };
+type Json = ReturnType<typeof screen.toJSON>;
+type Host = NonNullable<Json> extends infer T ? Exclude<T, unknown[]> : never;
+const hostViews = (node: Json | Json[]): Host[] => {
+  if (!node) return [];
+  if (Array.isArray(node)) return node.flatMap(hostViews);
+  const own: Host[] = node.type === 'View' ? [node] : [];
+  return own.concat((node.children ?? []).flatMap(child => (typeof child === 'string' ? [] : hostViews(child))));
+};
 
 describe('receipt item suggestions in a clipping scroll container', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
   it.each(['inline', 'overlay'] as const)('keeps %s suggestions selectable and preserves the selected identity', async placement => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const selected = jest.fn();
-    let renderer!: ReturnType<typeof create>;
     function Harness() {
       const [value, setValue] = React.useState('');
       return <RemoteAutocompleteInput value={value} suggestionPlacement={placement}
@@ -25,22 +33,19 @@ describe('receipt item suggestions in a clipping scroll container', () => {
         getItemAccessibilityLabel={value => `Select receipt item ${value.name}`}
         renderItem={value => <Text>{value.name}</Text>} keyExtractor={value => value.id} />;
     }
-    await act(async () => { renderer = create(<Harness />); });
-    await act(async () => {
-      renderer.root.findByType(TextInput).props.onChangeText('Potatoes');
-      jest.advanceTimersByTime(500);
-    });
-    const containers = renderer.root.findAllByType(View).filter(node => {
-      const style = StyleSheet.flatten(node.props.style);
+    await render(<Harness />);
+    await user.type(screen.getByPlaceholderText('Type to search...'), 'Potatoes');
+    await act(async () => { jest.advanceTimersByTime(500); });
+    const containers = hostViews(screen.toJSON()).filter(node => {
+      const style = StyleSheet.flatten(node.props.style as never);
       return style?.position === (placement === 'inline' ? 'relative' : 'absolute') && style?.top === (placement === 'inline' ? 0 : '100%');
     });
     expect(containers.length).toBeGreaterThan(0);
-    const row = renderer.root.findAll(node => node.props.accessibilityLabel === 'Select receipt item Backend Test Potatoes' && typeof node.props.onPress === 'function')[0];
-    expect(row).toBeDefined();
-    await act(async () => row.props.onPress());
+    const row = screen.getByRole('button', { name: 'Select receipt item Backend Test Potatoes' });
+    expect(row).toBeOnTheScreen();
+    await user.press(row);
     expect(selected).toHaveBeenCalledTimes(1);
     expect(selected).toHaveBeenCalledWith(item);
-    expect(renderer.root.findByType(TextInput).props.value).toBe(item.name);
-    await act(async () => renderer.unmount());
+    expect(screen.getByPlaceholderText('Type to search...')).toHaveDisplayValue(item.name);
   });
 });

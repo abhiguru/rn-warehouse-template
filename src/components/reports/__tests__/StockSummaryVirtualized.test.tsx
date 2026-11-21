@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
+import { act, render, userEvent, within, type RenderResult } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { getCustomerStockSummary } from '@/services/reporting';
 import listFilterReducer from '@/store/slices/listFilterSlice';
@@ -113,7 +113,6 @@ type Store = ReturnType<typeof makeStore>;
 
 jest.setTimeout(60_000);
 
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -129,38 +128,44 @@ beforeEach(() => {
   customerStock.mockResolvedValue(ANSWER as never);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
 
-const isGrnLabel = (node: ReactTestInstance) => typeof node.props.accessibilityLabel === 'string' && /^GRN A\d{4}/.test(node.props.accessibilityLabel);
+const HIDDEN = { includeHiddenElements: true } as const;
+const GRN_LABEL = /^GRN A\d{4}/;
+const settle = () => act(async () => settleQueries());
+const boldTexts = (texts: ReturnType<ReturnType<typeof within>['queryAllByText']>) =>
+  texts
+    .filter(node => StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
+    .map(node => [node.props.children].flat().join(''));
 
 async function open() {
   mockStore = makeStore();
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<StockSummaryScreen />);
-    await settleQueries();
-  });
-  mounted.push(tree);
-  const run = (callback: () => void) =>
-    act(async () => {
-      callback();
-      await settleQueries();
-    });
-  const list = () => tree.root.findByType('FlashList' as never).props;
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-  const header = () =>
-    tree.root.findAll(
-      node => typeof node.props.onPress === 'function' && typeof node.props.accessibilityState?.expanded === 'boolean' && String(node.props.accessibilityLabel).startsWith('Example Garlic')
-    )[0];
+  const user = userEvent.setup({ delay: 0 });
+  const rendered = await render(<StockSummaryScreen />);
+  const main = within(rendered.container);
+  await settle();
+  const list = () => {
+    let props: Record<string, any> | undefined;
+    const walk = (node: ReturnType<RenderResult['toJSON']> | string | null): void => {
+      if (!node || typeof node === 'string' || props) return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      if ((node.type as string) === 'FlashList') props = node.props;
+      else node.children?.forEach(walk);
+    };
+    walk(rendered.toJSON());
+    return props!;
+  };
+  const header = () => main.getByRole('button', { name: /^Example Garlic/ });
   return {
-    tree,
+    main,
     list,
-    texts,
-    toggle: () => run(() => header().props.onPress()),
-    expanded: () => header().props.accessibilityState.expanded as boolean,
-    labels: () => tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string),
+    header,
+    toggle: async () => {
+      await user.press(header());
+      await settle();
+    },
+    labels: (match: string | RegExp) => main.queryAllByLabelText(match, HIDDEN),
     /** The rows the list is given: [type, key]. */
     rows: () => {
       const props = list();
@@ -170,28 +175,22 @@ async function open() {
      * Each list cell drawn on its own, as FlashList draws (and recycles) it: how
      * many GRN rows each one holds. The old screen has one cell with all 500.
      */
-    grnRowsPerCell: () => {
-      const props = list();
-      return (props.data as unknown[]).map((row, index) => {
-        let cell!: TestRenderer.ReactTestRenderer;
-        act(() => {
-          cell = TestRenderer.create(props.renderItem({ item: row, index }));
-        });
-        const count = new Set(cell.root.findAll(isGrnLabel).map(node => node.props.accessibilityLabel)).size;
-        act(() => cell.unmount());
-        return count;
-      });
+    grnRowsPerCell: async (props: Record<string, any>) => {
+      const counts: number[] = [];
+      for (const [index, row] of (props.data as unknown[]).entries()) {
+        const cell = await render(props.renderItem({ item: row, index }));
+        const inCell = within(cell.container);
+        counts.push(new Set(inCell.queryAllByLabelText(GRN_LABEL, HIDDEN).map(node => node.props.accessibilityLabel)).size);
+        await cell.unmount();
+      }
+      return counts;
     },
     search: async (text: string) => {
-      const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
-      await run(() => field.props.onChangeText(text));
-      await run(() => tree.root.findAll(node => typeof node.props.onSubmitEditing === 'function')[0].props.onSubmitEditing());
+      const field = main.getByPlaceholderText(/^Search items/);
+      await user.type(field, text, { submitEditing: true });
+      await settle();
     },
-    bold: () =>
-      tree.root
-        .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
-        .map(node => [node.props.children].flat().join('')),
-    status: () => texts().find(text => text.includes('Last updated')),
+    bold: () => boldTexts(main.queryAllByText(/./, HIDDEN)),
   };
 }
 
@@ -199,12 +198,13 @@ describe('stock summary: an opened item with 500 GRNs', () => {
   it('is one row closed, and 501 rows open, each GRN in a cell of its own under a key of its item', async () => {
     const screen = await open();
     expect(screen.rows()).toEqual([['item', 'item:i1']]);
-    expect(screen.expanded()).toBe(false);
+    expect(screen.header()).toBeCollapsed();
     const totals = ['Stock: 1,000', 'GRNs with stock: 500'];
-    expect(screen.labels()).toEqual(expect.arrayContaining(totals));
+    const showsTotals = () => totals.forEach(total => expect(screen.labels(total).length).toBeGreaterThan(0));
+    showsTotals();
 
     await screen.toggle();
-    expect(screen.expanded()).toBe(true);
+    expect(screen.header()).toBeExpanded();
     const rows = screen.rows();
     expect(rows).toHaveLength(LOTS + 1);
     // The item keeps its key and its place; its GRNs follow it in the service's order.
@@ -214,23 +214,26 @@ describe('stock summary: an opened item with 500 GRNs', () => {
     // Each GRN row says which item it is under.
     const data = screen.list().data as { parentId?: string }[];
     expect(data.slice(1).every(row => row.parentId === 'i1')).toBe(true);
-    // No cell holds more than one GRN: the list mounts what is on screen, not all 500 at once.
-    const perCell = screen.grnRowsPerCell();
-    expect(Math.max(...perCell)).toBe(1);
-    expect(perCell.reduce((sum, count) => sum + count, 0)).toBe(LOTS);
+    const opened = screen.list();
     // The GRNs are drawn in order, and the figures are the same as with the item closed.
-    const drawn = [...new Set(screen.labels().filter(label => /^GRN A\d{4}/.test(label)).map(label => label.split(',')[0]))];
+    const drawn = [...new Set(screen.labels(GRN_LABEL).map(node => String(node.props.accessibilityLabel).split(',')[0]))];
     expect(drawn).toEqual(Array.from({ length: LOTS }, (_, index) => `GRN ${grnNumber(index)}`));
-    expect(screen.labels()).toEqual(expect.arrayContaining(totals));
-    expect(screen.status()).toBe('Last updated 10:00 am');
+    showsTotals();
+    expect(screen.main.queryAllByText('Last updated 10:00 am', HIDDEN)).toHaveLength(1);
 
     // The keys of the same answer are the same keys: a refresh does not remount the rows.
     expect(screen.rows()).toEqual(rows);
 
     await screen.toggle();
-    expect(screen.expanded()).toBe(false);
+    expect(screen.header()).toBeCollapsed();
     expect(screen.rows()).toEqual([['item', 'item:i1']]);
-    expect(screen.labels()).toEqual(expect.arrayContaining(totals));
+    showsTotals();
+
+    // No cell holds more than one GRN: the list mounts what is on screen, not all 500 at once.
+    // (Last: drawing a cell on its own replaces the screen the helpers act on.)
+    const perCell = await screen.grnRowsPerCell(opened);
+    expect(Math.max(...perCell)).toBe(1);
+    expect(perCell.reduce((sum, count) => sum + count, 0)).toBe(LOTS);
   });
 
   it('shows a searched GRN number in bold in its own row once the item is open', async () => {
@@ -239,7 +242,7 @@ describe('stock summary: an opened item with 500 GRNs', () => {
     // Closed: the card names the match under its facts.
     expect(screen.rows()).toEqual([['item', 'item:i1']]);
     expect(screen.bold()).toEqual(['A0042']);
-    expect(screen.labels()).toContain('Example Garlic · Bag, 1,000 units, 500 GRNs, GRN A0042');
+    expect(screen.labels('Example Garlic · Bag, 1,000 units, 500 GRNs, GRN A0042').length).toBeGreaterThan(0);
 
     await screen.toggle();
     // Open: every GRN is a row, and the searched one shows the words in bold in its own row.
@@ -249,16 +252,10 @@ describe('stock summary: an opened item with 500 GRNs', () => {
     const props = screen.list();
     const row42 = data.findIndex((row, index) => props.keyExtractor(row, index).includes('A0042'));
     expect(row42).toBeGreaterThan(0);
-    let cell!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      cell = TestRenderer.create(props.renderItem({ item: data[row42], index: row42 }));
-    });
-    const bold = cell.root
-      .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
-      .map(node => [node.props.children].flat().join(''));
-    expect(bold).toEqual(['A0042']);
-    act(() => cell.unmount());
+    const cell = await render(props.renderItem({ item: data[row42], index: row42 }));
+    expect(boldTexts(within(cell.container).queryAllByText(/./, HIDDEN))).toEqual(['A0042']);
+    await cell.unmount();
     // The status line counts items (1 of 1), not the 501 rows.
-    expect(screen.status()).toBe('Last updated 10:00 am');
+    expect(screen.main.queryAllByText('Last updated 10:00 am', HIDDEN)).toHaveLength(1);
   });
 });

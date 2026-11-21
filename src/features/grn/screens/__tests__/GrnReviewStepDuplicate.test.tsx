@@ -4,7 +4,7 @@
  * Cancel leaves the form as it was on Review; Save anyway sends the same GRN again with the warning off.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN, getNextGRNNumber } from '@/features/grn/services/grnFormService';
 import { checkSubmission } from '@/utils/lostAnswer';
@@ -60,12 +60,41 @@ jest.mock('@/features/grn/rates/useGrnRates', () => require('@/tests/helpers/grn
 jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: () => null }));
 jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'ready' }) }));
 
-// Children are stand-ins that keep their props, so the test can press their buttons.
+// Photo children are stand-ins that keep their props (the tests do not use them).
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+// Children are stand-ins that draw what the step hands them (an open dialog with its buttons, the success dialog, the
+// bar's Next with its busy state) and call the real props, so the test taps them.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message: string; confirmText?: string; cancelText?: string; onConfirm: () => unknown; onCancel: () => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(
+        View,
+        { accessible: true, accessibilityRole: 'alert' },
+        createElement(Text, null, props.title),
+        createElement(Text, null, props.message),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: props.confirmText, onPress: props.onConfirm }),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: props.cancelText, onPress: props.onCancel })
+      )
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean }) =>
+    props.isVisible ? require('react').createElement(require('react-native').View, { accessible: true, accessibilityLabel: 'Success dialog' }) : null,
+}));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { onNext: () => unknown; isLoading?: boolean }) =>
+    require('react').createElement(require('react-native').Pressable, {
+      accessibilityRole: 'button',
+      accessibilityLabel: 'Next',
+      accessibilityState: { busy: props.isLoading },
+      onPress: props.onNext,
+    }),
+}));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() }, useRouter: () => ({ back: jest.fn() }), useFocusEffect: jest.fn(), useLocalSearchParams: () => ({}) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
@@ -86,7 +115,9 @@ jest.mock('@/utils/localPhotoFiles', () => ({
   releaseLocalPhotos: jest.fn(async () => 0),
 }));
 
-async function render(header: typeof mockHeader = mockHeader) {
+const user = userEvent.setup({ delay: 0 });
+
+async function show(header: typeof mockHeader = mockHeader) {
   mockForm = {
     header,
     items: mockItems,
@@ -96,25 +127,19 @@ async function render(header: typeof mockHeader = mockHeader) {
     isCreateMode: true,
     resetFormState: jest.fn(),
   };
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnReviewStep mode="create" />);
-  });
-  return tree;
+  await render(<GrnReviewStep mode="create" />);
 }
 
-const one = (tree: ReactTestRenderer, type: string) => tree.root.findByType(type as never);
-const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
-const photoDialog = (tree: ReactTestRenderer) => dialogs(tree).find((dialog) => dialog.props.title === 'Photos not uploaded')!;
-const saveDialog = (tree: ReactTestRenderer) => dialogs(tree).find((dialog) => dialog.props.title !== 'Photos not uploaded')!;
+const nextButton = () => screen.getByRole('button', { name: 'Next' });
+const successDialog = () => screen.queryByLabelText('Success dialog');
 
 /**
  * Press Create in the bottom bar, then confirm the "save this GRN?" question. The confirm's handler runs until the person
  * has answered the duplicate warning, so it is not awaited here.
  */
-async function save(tree: ReactTestRenderer) {
-  await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
-  await act(async () => { void saveDialog(tree).props.onConfirm(); });
+async function save() {
+  await user.press(nextButton());
+  await user.press(screen.getByRole('button', { name: 'Create GRN' }));
 }
 
 const duplicate = {
@@ -146,9 +171,9 @@ describe('a GRN that looks like one created a moment ago', () => {
 
   it('asks "Possible duplicate" with the earlier GRN, and does not show the saved dialog', async () => {
     (createGRN as jest.Mock).mockResolvedValue(refusedAsDuplicate);
-    const tree = await render();
+    await show();
 
-    await save(tree);
+    await save();
 
     expect(createGRN).toHaveBeenCalledTimes(1);
     expect(questions()).toHaveLength(1);
@@ -157,24 +182,22 @@ describe('a GRN that looks like one created a moment ago', () => {
       'GRN Z0010 for Fictional Traders was created 3 minutes ago by Ravi Example with the same items (Example Potatoes · Bag). Save this as a new GRN anyway?'
     );
     expect(buttons.map((button) => button.text)).toEqual(['Cancel', 'Save anyway']);
-    expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(false);
-    await act(async () => { tree.unmount(); });
+    expect(successDialog()).not.toBeOnTheScreen();
   });
 
   it('the first save asks for the check (no override)', async () => {
     (createGRN as jest.Mock).mockResolvedValue(refusedAsDuplicate);
-    const tree = await render();
+    await show();
 
-    await save(tree);
+    await save();
 
     expect((createGRN as jest.Mock).mock.calls[0][0].warnDuplicate).toBe(true);
-    await act(async () => { tree.unmount(); });
   });
 
   it('Save anyway sends the same GRN again with the warning off, and its success is shown', async () => {
     (createGRN as jest.Mock).mockResolvedValueOnce(refusedAsDuplicate).mockResolvedValueOnce(created);
-    const tree = await render();
-    await save(tree);
+    await show();
+    await save();
 
     await act(async () => { pressAlertButton(showAlert as never, 'Save anyway'); });
 
@@ -184,8 +207,7 @@ describe('a GRN that looks like one created a moment ago', () => {
     // The same GRN: the same number, lines and the form's id.
     expect(second.header.gr_no).toBe(first.header.gr_no);
     expect(second.items).toEqual(first.items);
-    expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
-    await act(async () => { tree.unmount(); });
+    expect(successDialog()).toBeOnTheScreen();
   });
 
   it('Save anyway repeats the same GRN: the number the first attempt fetched and its form id, not new ones', async () => {
@@ -194,8 +216,8 @@ describe('a GRN that looks like one created a moment ago', () => {
     // another id.
     (getNextGRNNumber as jest.Mock).mockResolvedValueOnce('Z0011').mockResolvedValueOnce('Z0012');
     (createGRN as jest.Mock).mockResolvedValueOnce(refusedAsDuplicate).mockResolvedValueOnce(created);
-    const tree = await render({ ...mockHeader, gr_no: '' });
-    await save(tree);
+    await show({ ...mockHeader, gr_no: '' });
+    await save();
 
     await act(async () => { pressAlertButton(showAlert as never, 'Save anyway'); });
 
@@ -207,7 +229,6 @@ describe('a GRN that looks like one created a moment ago', () => {
     expect(second.nonce).toBe(first.nonce);
     expect(first.warnDuplicate).toBe(true);
     expect(second.warnDuplicate).toBe(false);
-    await act(async () => { tree.unmount(); });
   });
 
   it('Save anyway sends nothing until the question\'s dialog has finished closing (iOS cannot open a Modal over one that is closing)', async () => {
@@ -217,17 +238,16 @@ describe('a GRN that looks like one created a moment ago', () => {
     alertModule.whenAlertsClosed = () => new Promise<void>((resolve) => { closed = resolve; });
     try {
       (createGRN as jest.Mock).mockResolvedValueOnce(refusedAsDuplicate).mockResolvedValueOnce(created);
-      const tree = await render();
-      await save(tree);
+      await show();
+      await save();
 
       await act(async () => { pressAlertButton(showAlert as never, 'Save anyway'); });
       expect(createGRN).toHaveBeenCalledTimes(1);
-      expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(false);
+      expect(successDialog()).not.toBeOnTheScreen();
 
       await act(async () => { closed(); });
       expect(createGRN).toHaveBeenCalledTimes(2);
-      expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
-      await act(async () => { tree.unmount(); });
+      expect(successDialog()).toBeOnTheScreen();
     } finally {
       alertModule.whenAlertsClosed = original;
     }
@@ -235,34 +255,31 @@ describe('a GRN that looks like one created a moment ago', () => {
 
   it('Cancel leaves the form as it was on Review: nothing is sent, and Create can be tried again', async () => {
     (createGRN as jest.Mock).mockResolvedValue(refusedAsDuplicate);
-    const tree = await render();
-    await save(tree);
+    await show();
+    await save();
 
     await act(async () => { pressAlertButton(showAlert as never, 'Cancel'); });
 
     expect(createGRN).toHaveBeenCalledTimes(1);
-    expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(false);
+    expect(successDialog()).not.toBeOnTheScreen();
     // The busy flag is down: Create works, and asks the server again with the warning on.
-    expect(one(tree, 'WizardBottomBar').props.isLoading).toBe(false);
-    await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
-    await act(async () => { void saveDialog(tree).props.onConfirm(); });
+    expect(nextButton().props.accessibilityState).toMatchObject({ busy: false });
+    await save();
     expect(createGRN).toHaveBeenCalledTimes(2);
     expect((createGRN as jest.Mock).mock.calls[1][0].warnDuplicate).toBe(true);
-    await act(async () => { tree.unmount(); });
   });
 
   it('a refusal of the second send is told like any refusal, without a second warning', async () => {
     (createGRN as jest.Mock)
       .mockResolvedValueOnce(refusedAsDuplicate)
       .mockResolvedValueOnce({ success: false, error: 'This business is deactivated. Activate it in Customers to receive new goods.' });
-    const tree = await render();
-    await save(tree);
+    await show();
+    await save();
 
     await act(async () => { pressAlertButton(showAlert as never, 'Save anyway'); });
 
     expect(questions()).toHaveLength(1);
     expect(showAlert).toHaveBeenLastCalledWith(expect.any(String), expect.stringContaining('deactivated'));
-    await act(async () => { tree.unmount(); });
   });
 
   it('the warning also answers a send that was repeated after a lost answer', async () => {
@@ -271,13 +288,12 @@ describe('a GRN that looks like one created a moment ago', () => {
       .mockResolvedValueOnce({ success: false, error: '', lostAnswer: { key, sentAt: Date.now() - 20_000, args: {} } })
       .mockResolvedValueOnce(refusedAsDuplicate);
     (checkSubmission as jest.Mock).mockResolvedValue({ found: false });
-    const tree = await render();
+    await show();
 
-    await save(tree);
+    await save();
 
     expect(createGRN).toHaveBeenCalledTimes(2);
     expect((createGRN as jest.Mock).mock.calls[1][0].resend).toEqual({ key, sentAt: expect.any(Number), args: {} });
     expect(questions()).toHaveLength(1);
-    await act(async () => { tree.unmount(); });
   });
 });

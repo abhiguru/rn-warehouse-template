@@ -5,10 +5,9 @@
  * router as stand-ins.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { NavigationContext } from 'expo-router/react-navigation';
-import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
 import { invalidateReportQueries } from '@/lib/queryClient';
 import { getAllGRNActivity } from '@/services/reporting/grn-activity-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
@@ -93,7 +92,6 @@ type Store = ReturnType<typeof makeStore>;
 
 jest.setTimeout(30_000);
 const START = new Date(2026, 9, 12, 10, 0);
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -111,88 +109,85 @@ beforeEach(() => {
   allActivity.mockReset();
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
 
 async function openOnRoute() {
   mockStore = makeStore();
   const route = makeRoute();
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(
-      <NavigationContext.Provider value={route.navigation as never}>
-        <GRNActivityScreen />
-      </NavigationContext.Provider>
-    );
-    await settleQueries();
-  });
-  mounted.push(tree);
+  await render(
+    <NavigationContext.Provider value={route.navigation as never}>
+      <GRNActivityScreen />
+    </NavigationContext.Provider>
+  );
+  await act(settleQueries);
   const run = (callback: () => void) =>
     act(async () => {
       callback();
       await settleQueries();
     });
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
+  const user = userEvent.setup({ delay: 0 });
+  const NAMES = /^(Sunrise Agro Foods|Green Valley Traders|Riverbank Produce)$/;
   return {
     run,
-    texts,
-    customers: () => tree.root.findAllByType(ReportCustomerCard).map(card => card.props.title as string),
+    customers: () => screen.queryAllByText(NAMES).map(node => [node.props.children].flat().join('')),
     /** Away (a drill-through on top) and back after `seconds`. */
     awayAndBack: async (seconds: number) => {
       await run(() => route.blur());
       jest.setSystemTime(START.getTime() + seconds * 1000);
       await run(() => route.focus());
     },
-    press: (label: string) =>
-      run(() => tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0].props.onPress()),
+    press: async (label: string) => {
+      await user.press(screen.getByRole('button', { name: label }));
+      await act(settleQueries);
+    },
   };
 }
 
 describe('a report underneath another screen', () => {
   it('asks once on the return and shows the changed answer', async () => {
     allActivity.mockResolvedValueOnce(answer(BEFORE) as never);
-    const screen = await openOnRoute();
-    expect(screen.customers()).toEqual(['Green Valley Traders', 'Riverbank Produce']);
+    const report = await openOnRoute();
+    expect(report.customers()).toEqual(['Green Valley Traders', 'Riverbank Produce']);
     expect(allActivity).toHaveBeenCalledTimes(1);
 
     allActivity.mockResolvedValueOnce(answer(AFTER) as never);
-    await screen.awayAndBack(31);
+    await report.awayAndBack(31);
     expect(allActivity).toHaveBeenCalledTimes(2);
-    expect(screen.customers()).toEqual(['Sunrise Agro Foods', 'Green Valley Traders', 'Riverbank Produce']);
-    expect(screen.texts().some(text => text.includes('Last updated 10:00 am'))).toBe(true);
+    expect(report.customers()).toEqual(['Sunrise Agro Foods', 'Green Valley Traders', 'Riverbank Produce']);
+    expect(screen.getByText(/Last updated 10:00 am/)).toBeOnTheScreen();
   });
 
   it('asks nothing for a return within 30 seconds', async () => {
     allActivity.mockResolvedValue(answer(BEFORE) as never);
-    const screen = await openOnRoute();
-    await screen.awayAndBack(20);
+    const report = await openOnRoute();
+    await report.awayAndBack(20);
     expect(allActivity).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the rows when the return\'s request fails, says they are not current and offers Retry', async () => {
     allActivity.mockResolvedValueOnce(answer(BEFORE) as never);
-    const screen = await openOnRoute();
+    const report = await openOnRoute();
     allActivity.mockResolvedValueOnce({ success: false, message: 'Could not reach the facility' } as never);
-    await screen.awayAndBack(31);
+    await report.awayAndBack(31);
     expect(allActivity).toHaveBeenCalledTimes(2);
-    expect(screen.customers()).toEqual(['Green Valley Traders', 'Riverbank Produce']);
-    expect(screen.texts()).toContain("Couldn't update. These figures were loaded earlier.");
+    expect(report.customers()).toEqual(['Green Valley Traders', 'Riverbank Produce']);
+    expect(screen.getByText("Couldn't update. These figures were loaded earlier.")).toBeOnTheScreen();
 
     allActivity.mockResolvedValueOnce(answer(AFTER) as never);
-    await screen.press('Try again');
+    await report.press('Try again');
     expect(allActivity).toHaveBeenCalledTimes(3);
-    expect(screen.customers()).toEqual(['Sunrise Agro Foods', 'Green Valley Traders', 'Riverbank Produce']);
+    expect(report.customers()).toEqual(['Sunrise Agro Foods', 'Green Valley Traders', 'Riverbank Produce']);
   });
 
   it('asks once when a saved document marks the reports out of date', async () => {
     allActivity.mockResolvedValueOnce(answer(BEFORE) as never);
-    const screen = await openOnRoute();
+    const report = await openOnRoute();
     allActivity.mockResolvedValueOnce(answer(AFTER) as never);
-    await screen.run(() => {
+    await report.run(() => {
       void invalidateReportQueries();
     });
     expect(allActivity).toHaveBeenCalledTimes(2);
-    expect(screen.customers()).toEqual(['Sunrise Agro Foods', 'Green Valley Traders', 'Riverbank Produce']);
+    expect(report.customers()).toEqual(['Sunrise Agro Foods', 'Green Valley Traders', 'Riverbank Produce']);
   });
 });

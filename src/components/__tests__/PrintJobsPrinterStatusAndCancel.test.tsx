@@ -4,7 +4,7 @@
  * 409 CANNOT_CANCEL, 409 INVALID_STATUS and 502 CANCEL_FAILED. The real print service runs; only the network is faked.
  */
 import React, { createRef } from 'react';
-import renderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 import PrintJobsBottomSheet, { type PrintJobsBottomSheetRef } from '../PrintJobsBottomSheet';
 
@@ -75,16 +75,20 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+const advance = (ms: number) => act(async () => { await jest.advanceTimersByTimeAsync(ms); });
+
 async function openSheet() {
   const ref = createRef<PrintJobsBottomSheetRef>();
-  let tree!: renderer.ReactTestRenderer;
-  act(() => { tree = renderer.create(<PrintJobsBottomSheet ref={ref} />); });
-  act(() => ref.current!.open());
-  await act(async () => { await jest.advanceTimersByTimeAsync(0); });
-  return tree;
+  await render(<PrintJobsBottomSheet ref={ref} />);
+  await act(async () => { ref.current!.open(); });
+  await advance(0);
 }
-const texts = (tree: renderer.ReactTestRenderer) =>
-  tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join(''));
+const cancelButtons = () => screen.queryAllByRole('button', { name: /^Cancel print job / });
+const cancel = async () => {
+  const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+  await user.press(screen.getByRole('button', { name: 'Cancel print job 201 to 204' }));
+  await advance(0);
+};
 
 describe('printer status', () => {
   it.each([
@@ -94,42 +98,35 @@ describe('printer status', () => {
     ['error', 'The printer reports a problem. Check the printer.'],
   ])('the print server says %s: the sheet says "%s", and the latest job is not asked for', async (status, message) => {
     printerStatus = () => reply(200, { success: true, status, message: 'x', printer_name: 'P', transport: 'cups', timestamp: 't' });
-    const tree = await openSheet();
-    expect(texts(tree)).toContain(message);
+    await openSheet();
+    expect(screen.getByText(message)).toBeOnTheScreen();
     // get-printer-status is asked with no printer name: the server answers for the facility's own printer
     const call = mockFetch.mock.calls.find(c => String(c[0]).endsWith('/get-printer-status'))!;
     expect(JSON.parse(call[1].body)).toEqual({});
     expect(mockFetch.mock.calls.some(c => String(c[0]).endsWith('get_print_jobs') && JSON.parse(c[1].body).p_limit === 1)).toBe(false);
-    act(() => tree.unmount());
   });
 
   it('when the print server cannot answer (printing off, 503) the status is derived from the latest job', async () => {
     printerStatus = () => reply(503, { success: false, code: 'PRINTING_OFF', error: 'Printing is not set up for this facility' });
-    const tree = await openSheet();
+    await openSheet();
     expect(urls().some(u => u.endsWith('/get-printer-status'))).toBe(true);
-    expect(texts(tree)).toContain('Printer ready'); // the latest job completed
-    act(() => tree.unmount());
+    expect(screen.getByText('Printer ready')).toBeOnTheScreen(); // the latest job completed
   });
 });
 
 describe('cancelling a job', () => {
-  const cancel = async (tree: renderer.ReactTestRenderer) => {
-    const button = tree.root.find(n => n.props.accessibilityLabel === 'Cancel print job 201 to 204' && typeof n.props.onPress === 'function');
-    await act(async () => { await button.props.onPress(); });
-  };
   beforeEach(() => {
     printerStatus = () => reply(200, { success: true, status: 'online', message: 'x', printer_name: 'P', transport: 'cups', timestamp: 't' });
   });
 
   it('calls the cancel-print-job function with the job id and says it was cancelled', async () => {
     cancelAnswer = () => reply(200, { success: true, message: 'Print job cancelled', print_job_id: JOB, cups_job_id: 7, timestamp: 't' });
-    const tree = await openSheet();
-    await cancel(tree);
+    await openSheet();
+    await cancel();
     const call = mockFetch.mock.calls.find(c => String(c[0]).endsWith('/functions/v1/cancel-print-job'))!;
     expect(JSON.parse(call[1].body)).toEqual({ print_job_id: JOB });
     expect(urls().some(u => u.includes('rpc/cancel_print_job'))).toBe(false);
-    expect(texts(tree)).toContain('Print job cancelled.');
-    act(() => tree.unmount());
+    expect(screen.getByText('Print job cancelled.')).toBeOnTheScreen();
   });
 
   it.each([
@@ -138,19 +135,17 @@ describe('cancelling a job', () => {
     [502, 'CANCEL_FAILED', 'The print service did not confirm the cancel. The job may still print.', "The cancel wasn't confirmed. The job may still print. Check the printer."],
   ])('%i %s shows its own text', async (status, code, error, text) => {
     cancelAnswer = () => reply(status, { success: false, code, error, print_job_id: JOB, timestamp: 't' });
-    const tree = await openSheet();
-    await cancel(tree);
-    expect(texts(tree)).toContain(text);
-    expect(texts(tree)).not.toContain('Print job cancelled.');
-    act(() => tree.unmount());
+    await openSheet();
+    await cancel();
+    expect(screen.getByText(text)).toBeOnTheScreen();
+    expect(screen.queryByText('Print job cancelled.')).not.toBeOnTheScreen();
   });
 
   it('an answer that is not the function\'s (a gateway page) shows the general failure text', async () => {
     cancelAnswer = () => ({ ok: false, status: 502, headers: { get: () => 'text/html' }, json: async () => { throw new Error('not json'); } });
-    const tree = await openSheet();
-    await cancel(tree);
-    expect(texts(tree)).toContain("Couldn't cancel the print job. Try again.");
-    act(() => tree.unmount());
+    await openSheet();
+    await cancel();
+    expect(screen.getByText("Couldn't cancel the print job. Try again.")).toBeOnTheScreen();
   });
 });
 
@@ -158,35 +153,28 @@ describe('what the sheet shows of a real answer (WH-109 review)', () => {
   beforeEach(() => {
     printerStatus = () => reply(200, { success: true, status: 'online', message: 'x', printer_name: 'P', transport: 'cups', timestamp: 't' });
   });
-  const cancelButtons = (tree: renderer.ReactTestRenderer) =>
-    tree.root.findAll(n => /^Cancel print job /.test(String(n.props.accessibilityLabel)) && typeof n.props.onPress === 'function').map(n => n.props.accessibilityLabel);
 
   it('lists the jobs of the {success, data} answer, with Cancel for a printing job that has a CUPS job id, and not for a queued or an unconfirmed one', async () => {
-    const tree = await openSheet();
-    expect(cancelButtons(tree)).toEqual(['Cancel print job 201 to 204']);
-    expect(cancelButtons(tree)).not.toContain('Cancel print job 101 to 104');
-    expect(cancelButtons(tree)).not.toContain('Cancel print job 301 to 304');
-    act(() => tree.unmount());
+    await openSheet();
+    // exactly one Cancel: the printing job 201 to 204; none for the queued job (101 to 104) or the unconfirmed one (301 to 304)
+    expect(cancelButtons()).toHaveLength(1);
+    expect(cancelButtons()[0]).toHaveAccessibleName('Cancel print job 201 to 204');
   });
 
   it('a printing job that has no CUPS job id (a bridge job) is not offered Cancel', async () => {
     printingCupsId = null;
-    const tree = await openSheet();
-    expect(cancelButtons(tree)).toEqual([]);
-    act(() => tree.unmount());
+    await openSheet();
+    expect(cancelButtons()).toHaveLength(0);
   });
 
   it('RECORD_FAILED (cancelled at the printer, not recorded) says so and reads the list again', async () => {
     cancelAnswer = () => reply(500, { success: false, code: 'RECORD_FAILED', error: 'The job was cancelled, but it could not be recorded.', print_job_id: JOB, timestamp: 't' });
-    const tree = await openSheet();
+    await openSheet();
     const reads = () => mockFetch.mock.calls.filter(c => String(c[0]).endsWith('get_print_jobs')).length;
     const before = reads();
-    const button = tree.root.find(n => n.props.accessibilityLabel === 'Cancel print job 201 to 204' && typeof n.props.onPress === 'function');
-    await act(async () => { await button.props.onPress(); });
-    await act(async () => { await jest.advanceTimersByTimeAsync(0); });
-    expect(texts(tree)).toContain("The job was cancelled at the printer, but the record couldn't be updated. Refresh the list.");
+    await cancel();
+    expect(screen.getByText("The job was cancelled at the printer, but the record couldn't be updated. Refresh the list.")).toBeOnTheScreen();
     expect(reads()).toBeGreaterThan(before);
-    act(() => tree.unmount());
   });
 
   // get-printer-status/index.ts: the bridge cases answer a non-2xx WITH a status
@@ -196,9 +184,8 @@ describe('what the sheet shows of a real answer (WH-109 review)', () => {
     [502, { success: false, status: 'error', transport: 'bridge', error: 'The print bridge refused the token', printer_name: 'P', timestamp: 't' }, 'The printer reports a problem. Check the printer.'],
   ])('a %i answer that carries status %j is shown as it is, not replaced by the latest job', async (httpStatus, body, message) => {
     printerStatus = () => reply(httpStatus, body);
-    const tree = await openSheet();
-    expect(texts(tree)).toContain(message);
-    expect(texts(tree)).not.toContain('Printer ready');
-    act(() => tree.unmount());
+    await openSheet();
+    expect(screen.getByText(message)).toBeOnTheScreen();
+    expect(screen.queryByText('Printer ready')).not.toBeOnTheScreen();
   });
 });

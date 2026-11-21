@@ -5,12 +5,11 @@
  * "Clear all", and takes a quick range on the tap.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, renderHook, screen, userEvent } from '@testing-library/react-native';
 import { getDateDaysAgo } from '@/services/reporting/reportDates';
 import { applyListFilters, clearListFilters } from '@/store/slices/listFilterSlice';
 import { watchPhoneZone } from '@/tests/helpers/phoneZone';
 import { formatDate, formatSpokenDate, toLocalISODate, todayInIST } from '@/utils/formatters';
-import { ApplyFiltersButton } from '../components/ApplyFiltersButton';
 import { FilterBar } from '../components/FilterBar';
 import { SingleFilterSheet, type OpenFilter } from '../components/SingleFilterSheet';
 import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS, INVOICE_FILTERS, countable, type CountableFilterList } from '../configs';
@@ -22,7 +21,7 @@ import { PERIOD_FIELD, PERIOD_KEY } from '../configs/reports/shared';
 import { DATE_PRESETS, REPORT_DATE_PRESETS, presetLabel, presetRange } from '../datePresets';
 import { countActiveFilters, currentSort, describeValue, hasAnyFilter, visibleFields } from '../filterModel';
 import type { DatePresetId, DateRangeField, FilterContext, FilterListConfig, FilterValues, SortState } from '../types';
-import { useFilterResultCount, type FilterResultCount } from '../useFilterResultCount';
+import { useFilterResultCount } from '../useFilterResultCount';
 import { useListFilters } from '../useListFilters';
 
 const mockDispatch = jest.fn();
@@ -151,32 +150,22 @@ describe('a range that always has a value', () => {
     expect(countActiveFilters(config, { period: { preset: 'last120' }, status: 'paid' }, staff)).toBe(1);
   });
 
-  function barLabels(values: FilterValues) {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(<FilterBar config={config} filters={makeFilters(values)} />);
-    });
-    return renderer.root
-      .findAll(
-        node =>
-          typeof node.type !== 'string' &&
-          node.props.accessibilityRole === 'button' &&
-          typeof node.props.accessibilityLabel === 'string' &&
-          node.parent?.props.accessibilityLabel !== node.props.accessibilityLabel
-      )
-      .map(node => node.props.accessibilityLabel as string);
+  // Every button of the bar, in drawing order, by the name a screen reader speaks.
+  async function barLabels(values: FilterValues) {
+    await render(<FilterBar config={config} filters={makeFilters(values)} />);
+    return screen.getAllByRole('button').map(node => node.props.accessibilityLabel as string);
   }
 
-  it('is drawn after the sort with no remove target, and alone offers no Clear all', () => {
-    expect(barLabels({ period: { preset: 'last120' } })).toEqual([
+  it('is drawn after the sort with no remove target, and alone offers no Clear all', async () => {
+    expect(await barLabels({ period: { preset: 'last120' } })).toEqual([
       'Sorted by Date, newest first. Change sort',
       'Period: Last 120 days. Change',
       'Filter by status',
     ]);
   });
 
-  it('stays in place when a filter is on, and only the filter can be removed', () => {
-    expect(barLabels({ period: { preset: 'last120' }, status: 'paid' })).toEqual([
+  it('stays in place when a filter is on, and only the filter can be removed', async () => {
+    expect(await barLabels({ period: { preset: 'last120' }, status: 'paid' })).toEqual([
       'Sorted by Date, newest first. Change sort',
       'Period: Last 120 days. Change',
       'Status: Paid. Change',
@@ -185,80 +174,73 @@ describe('a range that always has a value', () => {
     ]);
   });
 
-  function clearOf(list: FilterListConfig<Request>) {
-    let clear!: () => void;
-    const Probe = () => {
-      clear = useListFilters(list).clear;
-      return null;
-    };
-    act(() => {
-      TestRenderer.create(<Probe />);
-    });
-    return clear;
+  async function clearOf(list: FilterListConfig<Request>) {
+    const { result } = await renderHook(() => useListFilters(list).clear);
+    return result.current;
   }
 
-  it('survives Clear all, which still empties a list that has none', () => {
+  it('survives Clear all, which still empties a list that has none', async () => {
     mockState.listFilters = {
       lists: {
         'test-report': { values: { period: { preset: 'last240' }, status: 'paid' } },
         'test-plain': { values: { status: 'paid' } },
       },
     };
-    clearOf(REPORT)();
+    (await clearOf(REPORT))();
     expect(mockDispatch.mock.calls).toEqual([[applyListFilters({ key: 'test-report', values: { period: { preset: 'last240' } } })]]);
     mockDispatch.mockClear();
-    clearOf(PLAIN)();
+    (await clearOf(PLAIN))();
     expect(mockDispatch.mock.calls).toEqual([[clearListFilters({ key: 'test-plain' })]]);
   });
 });
 
 describe('the period sheet', () => {
-  function setup(values: FilterValues) {
+  async function setup(values: FilterValues) {
     const filters = makeFilters(values);
     const onClose = jest.fn();
-    let renderer!: TestRenderer.ReactTestRenderer;
     const element = (open: OpenFilter) => <SingleFilterSheet config={config} filters={filters} open={open} onClose={onClose} />;
-    act(() => {
-      renderer = TestRenderer.create(element(null));
-    });
-    act(() => renderer.update(element({ type: 'field', key: 'period' })));
-    const pressables = (label: string) =>
-      renderer.root.findAll(node => typeof node.type !== 'string' && node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
+    await render(element(null));
+    await screen.rerender(element({ type: 'field', key: 'period' }));
+    const user = userEvent.setup({ delay: 0 });
     return {
       filters,
       onClose,
-      has: (label: string) => pressables(label).length > 0,
-      press: (label: string) => act(() => pressables(label)[0].props.onPress()),
-      applyButton: () => renderer.root.findByType(ApplyFiltersButton).props as { disabled?: boolean; result: FilterResultCount },
+      pressQuickRange: (name: string) => user.press(screen.getByRole('radio', { name })),
+      applyButton: () => screen.getByRole('button', { name: 'Show results' }),
     };
   }
 
-  it('applies a quick range on the tap and closes', () => {
-    const sheet = setup({ period: { preset: 'last120' } });
-    sheet.press('Last 240 days');
+  it('applies a quick range on the tap and closes', async () => {
+    const sheet = await setup({ period: { preset: 'last120' } });
+    await sheet.pressQuickRange('Last 240 days');
     expect(sheet.filters.setField.mock.calls).toEqual([['period', { preset: 'last240' }]]);
     expect(sheet.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('applies Today with one tap, as it does the longer periods', () => {
-    const sheet = setup({ period: { preset: 'last120' } });
-    sheet.press('Today');
+  it('applies Today with one tap, as it does the longer periods', async () => {
+    const sheet = await setup({ period: { preset: 'last120' } });
+    await sheet.pressQuickRange('Today');
     expect(sheet.filters.setField.mock.calls).toEqual([['period', { preset: 'today' }]]);
     expect(sheet.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the quick range in effect when it is tapped again, and offers no Reset', () => {
-    const sheet = setup({ period: { preset: 'last120' } });
-    expect(sheet.has('Reset')).toBe(false);
-    sheet.press('Last 120 days');
+  it('keeps the quick range in effect when it is tapped again, and offers no Reset', async () => {
+    const sheet = await setup({ period: { preset: 'last120' } });
+    expect(screen.queryByLabelText('Reset')).not.toBeOnTheScreen();
+    await sheet.pressQuickRange('Last 120 days');
     expect(sheet.filters.setField.mock.calls).toEqual([['period', { preset: 'last120' }]]);
   });
 
-  it('needs both days of a typed range, and shows no count where nothing counts', () => {
-    expect(setup({ period: { from: '2026-01-01' } }).applyButton().disabled).toBe(true);
-    const complete = setup({ period: { from: '2026-01-01', to: '2026-01-31' } }).applyButton();
-    expect(complete.disabled).toBe(false);
-    expect(complete.result).toEqual({ count: null, loading: false });
+  it('needs both days of a typed range, and shows no count where nothing counts', async () => {
+    const incomplete = await setup({ period: { from: '2026-01-01' } });
+    expect(incomplete.applyButton().props.accessibilityState).toMatchObject({ disabled: true });
+    expect(incomplete.applyButton()).toBeDisabled();
+    await screen.unmount();
+    const complete = await setup({ period: { from: '2026-01-01', to: '2026-01-31' } });
+    // Not disabled and not loading, with the plain label: no count is asked for or shown.
+    expect(complete.applyButton().props.accessibilityState).toMatchObject({ disabled: false });
+    expect(complete.applyButton()).toBeEnabled();
+    expect(complete.applyButton()).not.toBeBusy();
   });
 });
 
@@ -273,7 +255,7 @@ const YEAR_END = at('2026-03-31T18:29'); // 31 March, 23:59 in India: the last m
 const YEAR_START = at('2026-03-31T18:31'); // 1 April, 00:01 in India
 
 /** The From and To days a sheet shows for a value of one field, as its two buttons say them. */
-function shownDays(list: CountableFilterList, key: string, values: FilterValues) {
+async function shownDays(list: CountableFilterList, key: string, values: FilterValues) {
   const filters = {
     ctx: staff,
     fields: visibleFields(list, staff),
@@ -283,19 +265,11 @@ function shownDays(list: CountableFilterList, key: string, values: FilterValues)
     setSort: jest.fn(),
   } as unknown as Filters;
   const element = (open: OpenFilter) => <SingleFilterSheet config={list} filters={filters} open={open} onClose={jest.fn()} />;
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(element(null));
-  });
-  act(() => renderer.update(element({ type: 'field', key })));
-  const day = (start: string) => {
-    const labels = renderer.root
-      .findAll(node => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith(start))
-      .map(node => node.props.accessibilityLabel as string);
-    return labels[0];
-  };
+  await render(element(null));
+  await screen.rerender(element({ type: 'field', key }));
+  const day = (start: string) => screen.getAllByRole('button', { name: new RegExp(`^${start}`) })[0].props.accessibilityLabel as string;
   const shown = { from: day('From date, '), to: day('To date, ') };
-  act(() => renderer.unmount());
+  await screen.unmount();
   return shown;
 }
 
@@ -313,44 +287,44 @@ describe('the period sheet of a report shows the days its request asks for', () 
     expect(PERIOD_FIELD.today).toBe(todayInIST);
   });
 
-  it('counts the last 120 days from the day it is in India, a minute before midnight there and a minute after', () => {
+  it('counts the last 120 days from the day it is in India, a minute before midnight there and a minute after', async () => {
     jest.useFakeTimers({ now: SUNDAY_NIGHT });
     expect(requested('last120')).toEqual({ from: '2026-06-14', to: '2026-10-11' });
-    expect(shown('last120')).toEqual({ from: 'From date, 14 Jun 2026', to: 'To date, 11 Oct 2026' });
+    expect(await shown('last120')).toEqual({ from: 'From date, 14 Jun 2026', to: 'To date, 11 Oct 2026' });
     jest.setSystemTime(MONDAY_MORNING);
     expect(requested('last120')).toEqual({ from: '2026-06-15', to: '2026-10-12' });
-    expect(shown('last120')).toEqual({ from: 'From date, 15 Jun 2026', to: 'To date, 12 Oct 2026' });
+    expect(await shown('last120')).toEqual({ from: 'From date, 15 Jun 2026', to: 'To date, 12 Oct 2026' });
   });
 
-  it('asks for India\'s today, yesterday and last 7 days half an hour after midnight there, when it is still the day before in UTC', () => {
+  it('asks for India\'s today, yesterday and last 7 days half an hour after midnight there, when it is still the day before in UTC', async () => {
     // 19:00 UTC on 12 October is 00:30 on 13 October in India.
     jest.useFakeTimers({ now: new Date('2026-10-12T19:00:07Z') });
     expect(requested('today')).toEqual({ from: '2026-10-13', to: '2026-10-13' });
     expect(requested('yesterday')).toEqual({ from: '2026-10-12', to: '2026-10-12' });
     expect(requested('last7')).toEqual({ from: '2026-10-07', to: '2026-10-13' });
-    expect(shown('today')).toEqual({ from: 'From date, 13 Oct 2026', to: 'To date, 13 Oct 2026' });
+    expect(await shown('today')).toEqual({ from: 'From date, 13 Oct 2026', to: 'To date, 13 Oct 2026' });
   });
 
-  it('turns the month and the financial year over at midnight in India', () => {
+  it('turns the month and the financial year over at midnight in India', async () => {
     jest.useFakeTimers({ now: MONTH_END });
-    expect(shown('thisMonth')).toEqual({ from: 'From date, 1 Sep 2026', to: 'To date, 30 Sep 2026' });
-    expect(shown('lastMonth')).toEqual({ from: 'From date, 1 Aug 2026', to: 'To date, 31 Aug 2026' });
+    expect(await shown('thisMonth')).toEqual({ from: 'From date, 1 Sep 2026', to: 'To date, 30 Sep 2026' });
+    expect(await shown('lastMonth')).toEqual({ from: 'From date, 1 Aug 2026', to: 'To date, 31 Aug 2026' });
     jest.setSystemTime(MONTH_START);
-    expect(shown('thisMonth')).toEqual({ from: 'From date, 1 Oct 2026', to: 'To date, 31 Oct 2026' });
-    expect(shown('lastMonth')).toEqual({ from: 'From date, 1 Sep 2026', to: 'To date, 30 Sep 2026' });
+    expect(await shown('thisMonth')).toEqual({ from: 'From date, 1 Oct 2026', to: 'To date, 31 Oct 2026' });
+    expect(await shown('lastMonth')).toEqual({ from: 'From date, 1 Sep 2026', to: 'To date, 30 Sep 2026' });
     jest.setSystemTime(YEAR_END);
-    expect(shown('thisFinancialYear')).toEqual({ from: 'From date, 1 Apr 2025', to: 'To date, 31 Mar 2026' });
+    expect(await shown('thisFinancialYear')).toEqual({ from: 'From date, 1 Apr 2025', to: 'To date, 31 Mar 2026' });
     jest.setSystemTime(YEAR_START);
-    expect(shown('thisFinancialYear')).toEqual({ from: 'From date, 1 Apr 2026', to: 'To date, 31 Mar 2027' });
+    expect(await shown('thisFinancialYear')).toEqual({ from: 'From date, 1 Apr 2026', to: 'To date, 31 Mar 2027' });
   });
 
-  it('shows, for every quick range and at each of those moments, the two days the request sends', () => {
+  it('shows, for every quick range and at each of those moments, the two days the request sends', async () => {
     jest.useFakeTimers({ now: SUNDAY_NIGHT });
     for (const now of [SUNDAY_NIGHT, MONDAY_MORNING, MONTH_END, MONTH_START, YEAR_END, YEAR_START]) {
       jest.setSystemTime(now);
       for (const preset of REPORT_DATE_PRESETS) {
         const period = requested(preset.id);
-        expect({ now: now.toISOString(), preset: preset.id, ...shown(preset.id) }).toEqual({
+        expect({ now: now.toISOString(), preset: preset.id, ...(await shown(preset.id)) }).toEqual({
           now: now.toISOString(),
           preset: preset.id,
           from: `From date, ${formatSpokenDate(period.from)}`,
@@ -360,15 +334,15 @@ describe('the period sheet of a report shows the days its request asks for', () 
     }
   });
 
-  it('does not read the clock in the zone of the phone', () => {
+  it('does not read the clock in the zone of the phone', async () => {
     // The suite's zone is India's, so a sheet that counted from the phone's today would show the
     // same days here. It would have to read the clock with the phone's calendar to do so.
     jest.useFakeTimers({ now: SUNDAY_NIGHT });
     const watch = watchPhoneZone([SUNDAY_NIGHT, MONDAY_MORNING]);
     try {
-      expect(shown('last120')).toEqual({ from: 'From date, 14 Jun 2026', to: 'To date, 11 Oct 2026' });
+      expect(await shown('last120')).toEqual({ from: 'From date, 14 Jun 2026', to: 'To date, 11 Oct 2026' });
       jest.setSystemTime(MONDAY_MORNING);
-      expect(shown('thisMonth')).toEqual({ from: 'From date, 1 Oct 2026', to: 'To date, 31 Oct 2026' });
+      expect(await shown('thisMonth')).toEqual({ from: 'From date, 1 Oct 2026', to: 'To date, 31 Oct 2026' });
       expect(watch.reads).toEqual([]);
     } finally {
       watch.restore();
@@ -394,7 +368,7 @@ describe('a list\'s date sheet shows the days its request asks for', () => {
     }],
   ];
 
-  it.each(lists)('the %s list', (_name, list, requested) => {
+  it.each(lists)('the %s list', async (_name, list, requested) => {
     const field = list.fields.find(candidate => candidate.key === 'date') as DateRangeField;
     expect(field.today).toBeUndefined();
     jest.useFakeTimers({ now: SUNDAY_NIGHT });
@@ -404,7 +378,7 @@ describe('a list\'s date sheet shows the days its request asks for', () => {
         const values = { date: { preset: preset.id } };
         const sent = requested(values);
         // The request names each day with India's offset: the day is the text before the time.
-        expect({ now: now.toISOString(), preset: preset.id, ...shownDays(list, 'date', values) }).toEqual({
+        expect({ now: now.toISOString(), preset: preset.id, ...(await shownDays(list, 'date', values)) }).toEqual({
           now: now.toISOString(),
           preset: preset.id,
           from: `From date, ${formatSpokenDate(String(sent.from).slice(0, 10))}`,
@@ -416,20 +390,13 @@ describe('a list\'s date sheet shows the days its request asks for', () => {
 });
 
 describe('a list with nothing to count with', () => {
-  it('never loads a count', () => {
+  it('never loads a count', async () => {
     jest.useFakeTimers();
-    let latest!: FilterResultCount;
-    const Probe = () => {
-      latest = useFilterResultCount(config, {}, undefined, staff);
-      return null;
-    };
-    act(() => {
-      TestRenderer.create(<Probe />);
-    });
-    expect(latest).toEqual({ count: null, loading: false });
-    act(() => {
+    const { result } = await renderHook(() => useFilterResultCount(config, {}, undefined, staff));
+    expect(result.current).toEqual({ count: null, loading: false });
+    await act(() => {
       jest.advanceTimersByTime(2000);
     });
-    expect(latest).toEqual({ count: null, loading: false });
+    expect(result.current).toEqual({ count: null, loading: false });
   });
 });

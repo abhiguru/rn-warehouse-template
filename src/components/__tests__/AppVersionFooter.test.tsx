@@ -5,8 +5,8 @@
  * shared. Identifiers (version, build) keep their 0-9 digits in Gujarati.
  */
 import React from 'react';
-import { Platform, Share, Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { Platform, Share } from 'react-native';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 
 let mockConfig: Record<string, unknown> | null = null;
@@ -75,19 +75,6 @@ afterEach(() => {
   share.mockRestore();
 });
 
-async function render(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(element);
-  });
-  return tree;
-}
-
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
-
-const byTestID = (tree: ReactTestRenderer, id: string) =>
-  tree.root.findAll((node) => node.props.testID === id && typeof node.type !== 'string');
 
 describe('getAppVersionInfo', () => {
   it('reads the Android build from versionCode', () => {
@@ -128,8 +115,8 @@ describe('getAppVersionInfo', () => {
       mockConfig = EMBEDDED;
       mockNative = { version: '0.1.0', build: '42' };
       expect(buildDiagnostics().split('\n')[1]).toBe('Version: 0.1.0 (build 42)');
-      const tree = await render(<AppVersionFooter />);
-      expect(texts(tree)).toContain('Version 0.1.0 (build 42)');
+      await render(<AppVersionFooter />);
+      expect(screen.getByText('Version 0.1.0 (build 42)')).toBeOnTheScreen();
     });
 
     it('on iOS without a native build from expo-application, takes CFBundleVersion from expo-constants', () => {
@@ -163,59 +150,46 @@ describe('getAppVersionInfo', () => {
 
 describe('AppVersionFooter', () => {
   it('shows the installed version and build, never the old literal 1.0', async () => {
-    const tree = await render(<AppVersionFooter />);
-    const shown = texts(tree);
-    expect(shown).toContain('Version 2.3.4 (build 7)');
-    expect(shown.join('\n')).not.toContain('v1.0');
+    await render(<AppVersionFooter />);
+    expect(screen.getByText('Version 2.3.4 (build 7)')).toBeOnTheScreen();
+    expect(screen.queryByText(/v1\.0/)).not.toBeOnTheScreen();
     // Without `diagnostics` there is no support block and no share button.
-    expect(byTestID(tree, 'app-diagnostics')).toHaveLength(0);
-    expect(byTestID(tree, 'app-diagnostics-share')).toHaveLength(0);
+    expect(screen.queryByText('DETAILS FOR SUPPORT')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Share these details' })).not.toBeOnTheScreen();
   });
 
   it('shows the version alone when no build number is known', async () => {
     mockConfig = { version: '0.1.0' };
-    const tree = await render(<AppVersionFooter />);
-    expect(texts(tree)).toContain('Version 0.1.0');
+    await render(<AppVersionFooter />);
+    expect(screen.getByText('Version 0.1.0')).toBeOnTheScreen();
   });
 
   it('keeps 0-9 in the version and build in Gujarati', async () => {
     setLanguage('gu');
-    const tree = await render(<AppVersionFooter />);
-    const line = texts(tree).find((text) => text.includes('2.3.4'));
-    expect(line).toBe('આવૃત્તિ 2.3.4 (બિલ્ડ 7)');
-    expect(line).not.toMatch(/[૦-૯]/);
+    await render(<AppVersionFooter />);
+    // the whole line, so a Gujarati digit anywhere in it would not match
+    expect(screen.getByText('આવૃત્તિ 2.3.4 (બિલ્ડ 7)')).toBeOnTheScreen();
   });
 
   it('shares the support details on a long press of the version', async () => {
-    const tree = await render(<AppVersionFooter />);
-    const footer = byTestID(tree, 'app-version-footer')[0];
-    await act(async () => {
-      footer.props.onLongPress();
-    });
+    const user = userEvent.setup({ delay: 0 });
+    await render(<AppVersionFooter />);
+    // The footer is a pressable with a spoken label but no role of its own.
+    await user.longPress(screen.getByLabelText(/Version 2\.3\.4 \(build 7\)$/));
     expect(share).toHaveBeenCalledTimes(1);
     expect(share.mock.calls[0][0]).toEqual({ message: buildDiagnostics(), title: 'Details for support' });
   });
 
   it('with diagnostics, lists the details and shares them from the button', async () => {
-    const tree = await render(<AppVersionFooter diagnostics />);
-    const block = byTestID(tree, 'app-diagnostics')[0];
-    const lines = block.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
-    expect(lines).toEqual(
-      expect.arrayContaining([
-        'DETAILS FOR SUPPORT',
-        'Version: 2.3.4 (build 7)',
-        'Facility: North Cold Store',
-        'Server: https://north-cold.example.test',
-      ])
-    );
+    const user = userEvent.setup({ delay: 0 });
+    await render(<AppVersionFooter diagnostics />);
+    for (const line of ['DETAILS FOR SUPPORT', 'Version: 2.3.4 (build 7)', 'Facility: North Cold Store', 'Server: https://north-cold.example.test']) {
+      expect(screen.getByText(line)).toBeOnTheScreen();
+    }
     // G-44: Help shows the version once, in the support block, not again as a footer line.
-    expect(byTestID(tree, 'app-version-footer')).toHaveLength(0);
-    expect(texts(tree)).not.toContain('Version 2.3.4 (build 7)');
-    const button = byTestID(tree, 'app-diagnostics-share')[0];
-    expect(button.props.accessibilityRole).toBe('button');
-    await act(async () => {
-      button.props.onPress();
-    });
+    expect(screen.queryByLabelText(/Version 2\.3\.4 \(build 7\)$/)).not.toBeOnTheScreen();
+    expect(screen.queryByText('Version 2.3.4 (build 7)')).not.toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: 'Share these details' }));
     expect(share).toHaveBeenCalledTimes(1);
     expect(share.mock.calls[0][0].message).toBe(buildDiagnostics());
   });

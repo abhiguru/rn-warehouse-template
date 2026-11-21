@@ -4,8 +4,8 @@
  * them, and the customer it hands back.
  */
 import React from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { BRANDS, getTokens, space, type Mode } from '@/theme/tokens';
 import { ReportCustomerPicker } from '../ReportCustomerPicker';
 
@@ -36,38 +36,51 @@ jest.mock('@/config/supabaseConfig', () => ({
 const NAMED = { id: 'p1', role: 'customer', assignedCustomerIds: ['c1', 'c2'], assignedCustomers: [{ id: 'c1', name: 'Green Valley Traders', active: true }, { id: 'c2', name: 'Riverbank Produce', active: true }] };
 const IDS_ONLY = { id: 'p1', role: 'customer', assignedCustomerIds: ['c1', 'c2'] };
 
-let tree: ReactTestRenderer | undefined;
 afterEach(() => {
-  if (tree) act(() => tree!.unmount());
-  tree = undefined;
   mockNameQuery.mockClear();
 });
 
-async function render(profile: unknown, onPick = jest.fn(), brand = 'orange', mode: Mode = 'light') {
+async function renderPicker(profile: unknown, onPick = jest.fn(), brand = 'orange', mode: Mode = 'light') {
   mockState = { theme: { preference: mode, brand }, auth: { userProfile: profile } };
-  await act(async () => {
-    tree = create(<ReportCustomerPicker title="GRN activity" onPick={onPick} />);
-  });
+  await render(<ReportCustomerPicker title="GRN activity" onPick={onPick} />);
   return onPick;
 }
-const rows = () => tree!.root.findAll(node => typeof node.props.testID === 'string' && node.props.testID.startsWith('report-customer-c') && typeof node.props.onPress === 'function');
-const texts = () => tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-const flat = (style: unknown) => (StyleSheet.flatten(typeof style === 'function' ? style({ pressed: false }) : style) ?? {}) as Record<string, unknown>;
+// The customer rows, by their test id (a row's name is its label, so they are also found by role and name).
+const rows = () => screen.queryAllByTestId(/^report-customer-c\d+$/);
+const rowLabels = () => rows().map(row => row.props.accessibilityLabel);
+const flat = (style: unknown) => (StyleSheet.flatten(style as never) ?? {}) as Record<string, unknown>;
+// The style of the nearest element above `node` (or `node` itself) that sets `key`.
+const inheritedStyle = (node: { parent: unknown; props: Record<string, unknown> } | null, key: string): unknown => {
+  for (let current = node; current; current = current.parent as typeof node) {
+    const value = flat(current.props.style)[key] ?? flat(current.props.contentContainerStyle)[key];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+const pressedGesture = { persist: jest.fn(), touchHistory: { touchBank: [] }, nativeEvent: { touches: [] } };
 
 const MODES: Mode[] = ['light', 'dark'];
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('customer picker in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
   it('lists the account\'s customers as rows on theme tokens and hands back the one pressed', async () => {
-    const onPick = await render(NAMED, jest.fn(), brand, mode);
-    expect(texts()).toEqual(expect.arrayContaining(['GRN activity', 'Choose a customer', 'Green Valley Traders', 'Riverbank Produce']));
-    expect(rows().map(row => row.props.accessibilityLabel)).toEqual(['Green Valley Traders', 'Riverbank Produce']);
-    expect(rows().every(row => row.props.accessibilityRole === 'button')).toBe(true);
-    expect(flat(rows()[0].props.style).backgroundColor).toBe(t.surface.card);
-    expect(flat(rows()[0].props.style({ pressed: true })).backgroundColor).toBe(t.surface.cardPressed);
-    expect(flat(tree!.root.findAllByType('View' as never)[0].props.style).backgroundColor).toBe(t.background.base);
+    const onPick = await renderPicker(NAMED, jest.fn(), brand, mode);
+    expect(screen.getByText('GRN activity')).toBeOnTheScreen();
+    expect(screen.getByText('Choose a customer')).toBeOnTheScreen();
+    expect(screen.getByText('Green Valley Traders')).toBeOnTheScreen();
+    expect(screen.getByText('Riverbank Produce')).toBeOnTheScreen();
+    expect(rowLabels()).toEqual(['Green Valley Traders', 'Riverbank Produce']);
+    const first = screen.getByRole('button', { name: 'Green Valley Traders' });
+    const second = screen.getByRole('button', { name: 'Riverbank Produce' });
+    expect(rows()).toEqual([first, second]);
+    expect(first).toHaveStyle({ backgroundColor: t.surface.card });
+    await fireEvent(first, 'responderGrant', pressedGesture);
+    expect(first).toHaveStyle({ backgroundColor: t.surface.cardPressed });
+    await fireEvent(first, 'responderRelease', pressedGesture);
+    expect(screen.root).toHaveStyle({ backgroundColor: t.background.base });
 
-    await act(async () => rows()[1].props.onPress());
+    const user = userEvent.setup();
+    await user.press(second);
     expect(onPick).toHaveBeenCalledWith({ id: 'c2', name: 'Riverbank Produce' });
     expect(mockNameQuery).not.toHaveBeenCalled();
   });
@@ -80,30 +93,33 @@ describe('the system navigation bar', () => {
 
   it('keeps the last customer clear of it', async () => {
     mockBottomInset = 48;
-    await render(NAMED);
-    expect(flat(tree!.root.findByType(ScrollView).props.contentContainerStyle).paddingBottom).toBe(space.xxxl + 48);
+    await renderPicker(NAMED);
+    expect(inheritedStyle(rows()[1] as never, 'paddingBottom')).toBe(space.xxxl + 48);
   });
 });
 
 describe('names the profile does not carry', () => {
   it('reads them, and hands back an empty name for a customer the server gave none', async () => {
     mockRows = [{ id: 'c1', name: 'Green Valley Traders' }, { id: 'c2', name: null }];
-    const onPick = await render(IDS_ONLY);
+    const onPick = await renderPicker(IDS_ONLY);
     expect(mockNameQuery).toHaveBeenCalledWith('customers', 'id, name', 'id', ['c1', 'c2']);
-    expect(rows().map(row => row.props.accessibilityLabel)).toEqual(['Green Valley Traders', 'Customer']);
-    await act(async () => rows()[1].props.onPress());
+    expect(await screen.findByRole('button', { name: 'Green Valley Traders' })).toBeOnTheScreen();
+    expect(rowLabels()).toEqual(['Green Valley Traders', 'Customer']);
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: 'Customer' }));
     expect(onPick).toHaveBeenCalledWith({ id: 'c2', name: '' });
   });
 
   it('offers no rows when they cannot be read, and reads again on Try again', async () => {
     mockRows = new Error('offline');
-    await render(IDS_ONLY);
+    await renderPicker(IDS_ONLY);
+    expect(await screen.findByText('Customer names could not be loaded')).toBeOnTheScreen();
     expect(rows()).toHaveLength(0);
-    expect(texts()).toContain('Customer names could not be loaded');
 
     mockRows = [{ id: 'c1', name: 'Green Valley Traders' }, { id: 'c2', name: 'Riverbank Produce' }];
-    const retry = tree!.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Try again')[0];
-    await act(async () => retry.props.onPress());
-    expect(rows().map(row => row.props.accessibilityLabel)).toEqual(['Green Valley Traders', 'Riverbank Produce']);
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Riverbank Produce' })).toBeOnTheScreen();
+    expect(rowLabels()).toEqual(['Green Valley Traders', 'Riverbank Produce']);
   });
 });

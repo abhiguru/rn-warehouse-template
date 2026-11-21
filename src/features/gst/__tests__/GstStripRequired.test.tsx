@@ -3,7 +3,7 @@
  * The real strip, hook and service run; only the server's reply to get_gst_details is faked. Fictional data only.
  */
 import React from 'react';
-import { act, create, type ReactTestInstance } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { makeInvoiceStore, storeHooks, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { GstStrip } from '../GstStrip';
@@ -26,18 +26,15 @@ jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => ({ 
 
 void storeHooks;
 
-const textsOf = (root: ReactTestInstance) =>
-  root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join(''));
+const REQUIRED = "Add your GST details. Bills can't be made until then.";
 
 async function show(role: string, saved: boolean, extra: Record<string, unknown> = {}) {
   mockStore = makeInvoiceStore({ role });
   mockRpc.mockResolvedValue({ data: { success: true, saved, ...extra }, error: null });
-  let tree!: ReturnType<typeof create>;
-  await act(async () => {
-    tree = create(<GstStrip />);
-  });
-  await act(async () => {});
-  return tree;
+  await render(<GstStrip />);
+  // The strip is drawn once the answer of get_gst_details has been read.
+  await waitFor(() => expect(mockRpc).toHaveBeenCalled());
+  await act(async () => { await Promise.resolve(); });
 }
 
 beforeEach(() => {
@@ -49,30 +46,28 @@ afterEach(() => jest.restoreAllMocks());
 
 describe('the Home strip (WH-205)', () => {
   it('tells an administrator that bills can\'t be made until the GST details are added, with Add', async () => {
-    const tree = await show('admin', false, { bills_allowed: false });
-    const strip = tree.root.findByProps({ testID: 'gst-strip' });
-    expect(textsOf(strip)).toContain("Add your GST details. Bills can't be made until then.");
-    expect(textsOf(strip)).toContain('Add');
-    expect(textsOf(strip)).not.toContain('Add your GST details so bills print correctly.');
-    await act(async () => {
-      tree.root.findByProps({ testID: 'gst-strip-add' }).props.onPress();
-    });
+    await show('admin', false, { bills_allowed: false });
+    expect(screen.getByText(REQUIRED)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Add' })).toBeOnTheScreen();
+    expect(screen.queryByText('Add your GST details so bills print correctly.')).not.toBeOnTheScreen();
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Add' }));
     expect(router.push).toHaveBeenCalledWith('/gst-details');
   });
 
   it('shows nothing once the details are saved', async () => {
-    const tree = await show('admin', true, { registered: true, gstin: '24AAAAA0000A1Z5', bills_allowed: true });
-    expect(tree.root.findAllByProps({ testID: 'gst-strip' })).toHaveLength(0);
+    await show('admin', true, { registered: true, gstin: '24AAAAA0000A1Z5', bills_allowed: true });
+    expect(screen.queryByText(REQUIRED)).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeOnTheScreen();
   });
 
   it('shows for a store saved as not registered: that counts as no GST details (card point 7)', async () => {
-    const tree = await show('admin', true, { registered: false, gstin: '', bills_allowed: false });
-    const strip = tree.root.findByProps({ testID: 'gst-strip' });
-    expect(textsOf(strip)).toContain("Add your GST details. Bills can't be made until then.");
+    await show('admin', true, { registered: false, gstin: '', bills_allowed: false });
+    expect(screen.getByText(REQUIRED)).toBeOnTheScreen();
   });
 
   it('does not show for a store saved as registered with a GSTIN', async () => {
-    const tree = await show('admin', true, { registered: true, gstin: '24AAAAA0000A1Z5', bills_allowed: true });
-    expect(tree.root.findAllByProps({ testID: 'gst-strip' })).toHaveLength(0);
+    await show('admin', true, { registered: true, gstin: '24AAAAA0000A1Z5', bills_allowed: true });
+    expect(screen.queryByText(REQUIRED)).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeOnTheScreen();
   });
 });

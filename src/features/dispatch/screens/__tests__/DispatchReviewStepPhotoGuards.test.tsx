@@ -4,7 +4,7 @@
  * photos' gives the failed photos up so their files on the phone go.
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { uploadDeferredDispatchImages, giveUpDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
 import { showAlert } from '@/utils/alert';
@@ -35,7 +35,33 @@ jest.mock('@/hooks/useDispatchForm', () => ({
     validationErrors: {},
   }),
 }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// A stand-in that draws only what the test uses: while visible, the dialog (named by its title) with its confirm and
+// cancel buttons; nothing while it is closed. Like the real dialog on iOS it says `onDismissed` once it has closed.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: {
+    visible: boolean;
+    title: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+    onDismissed?: () => void;
+  }) => {
+    const React = require('react');
+    const { View, Pressable } = require('react-native');
+    const wasVisible = React.useRef(false);
+    React.useEffect(() => {
+      if (wasVisible.current && !props.visible) props.onDismissed?.();
+      wasVisible.current = props.visible;
+    });
+    return props.visible ? (
+      <View accessible role="alertdialog" accessibilityLabel={props.title}>
+        <Pressable role="button" accessibilityLabel={props.confirmText} onPress={props.onConfirm} />
+        <Pressable role="button" accessibilityLabel={props.cancelText} onPress={props.onCancel} />
+      </View>
+    ) : null;
+  },
+}));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
@@ -63,59 +89,50 @@ jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/localPhotoFiles', () => ({ releaseLocalPhotos: jest.fn(async () => 0), abandonLocalPhotoUpload: jest.fn() }));
 
-let tree: ReactTestRenderer;
 const photo = (id: string, status: string) => ({ id, file_name: `${id}.webp`, image_url: `file:///cache/${id}.webp`, upload_status: status });
-const confirmDialogs = () => tree.root.findAllByType('ConfirmDialog' as never);
-const render = async () => { await act(async () => { tree = create(<DispatchReviewStep mode="create" />); }); };
-const textOf = (node: ReactTestInstance | string): string =>
-  typeof node === 'string' ? node : node.children.map(textOf).join('');
-const pressCreate = async () => {
-  const button = tree.root.findAll(
-    (node) => typeof node.props.onPress === 'function' && textOf(node) === 'Create dispatch'
-  )[0];
-  await act(async () => { button.props.onPress(); });
+const user = () => userEvent.setup({ delay: 0 });
+const confirmDialog = () => screen.getByRole('alertdialog', { name: 'Create dispatch I0042?' });
+const pressCreate = async (u: ReturnType<typeof user>) => {
+  await u.press(screen.getByRole('button', { name: 'Create dispatch' }));
 };
 
 beforeEach(() => { jest.clearAllMocks(); });
-afterEach(async () => { await act(async () => tree.unmount()); });
 
 it('holds Create while a photo is still being prepared, and opens no confirm dialog', async () => {
   mockImages = [photo('temp_a', 'completed'), photo('temp_b', 'uploading')];
-  await render();
-  await pressCreate();
+  await render(<DispatchReviewStep mode="create" />);
+  await pressCreate(user());
   expect(showAlert).toHaveBeenCalledWith('Photos are still being prepared', 'Wait a moment for the photos to finish, then save again.');
-  expect(confirmDialogs()[0].props.visible).toBe(false);
+  expect(screen.queryByRole('alertdialog')).not.toBeOnTheScreen();
 });
 
 it('holds Create for a photo whose preparation failed (an over-size file is not sent)', async () => {
   mockImages = [photo('temp_a', 'completed'), photo('temp_b', 'failed')];
-  await render();
-  await pressCreate();
+  await render(<DispatchReviewStep mode="create" />);
+  await pressCreate(user());
   expect(showAlert).toHaveBeenCalledWith("A photo couldn't be prepared", 'Remove the photo marked as failed, or add it again, then save.');
-  expect(confirmDialogs()[0].props.visible).toBe(false);
+  expect(screen.queryByRole('alertdialog')).not.toBeOnTheScreen();
 });
 
 it('opens the confirm dialog when every photo is prepared', async () => {
   mockImages = [photo('temp_a', 'completed')];
-  await render();
-  await pressCreate();
+  await render(<DispatchReviewStep mode="create" />);
+  await pressCreate(user());
   expect(showAlert).not.toHaveBeenCalled();
-  expect(confirmDialogs()[0].props.visible).toBe(true);
+  expect(confirmDialog()).toBeOnTheScreen();
 });
 
 it('Continue without photos abandons the failed uploads and releases their files', async () => {
   const failed = [photo('temp_a', 'completed'), photo('temp_b', 'completed')];
   mockImages = failed;
   mockSubmitForm.mockResolvedValue({ success: true, dispatchId: 'd1', failedPhotos: failed });
-  await render();
-  await pressCreate();
-  await act(async () => { confirmDialogs()[0].props.onConfirm(); });
-  await act(async () => { await Promise.resolve(); });
-  await act(async () => { confirmDialogs().forEach((candidate) => candidate.props.onDismissed?.()); });
-  const dialog = confirmDialogs()[1];
-  expect(dialog.props.visible).toBe(true);
+  const u = user();
+  await render(<DispatchReviewStep mode="create" />);
+  await pressCreate(u);
+  await u.press(within(confirmDialog()).getByRole('button', { name: 'Create dispatch' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Photos not uploaded' });
   expect(releaseLocalPhotos).not.toHaveBeenCalled();
-  await act(async () => { dialog.props.onCancel(); });
+  await u.press(within(dialog).getByRole('button', { name: 'Continue without them' }));
   expect(abandonLocalPhotoUpload).toHaveBeenCalledWith('file:///cache/temp_a.webp');
   expect(abandonLocalPhotoUpload).toHaveBeenCalledWith('file:///cache/temp_b.webp');
   expect(giveUpDispatchPhotos).toHaveBeenCalledWith('d1', failed);

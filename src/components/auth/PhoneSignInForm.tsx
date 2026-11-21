@@ -10,7 +10,6 @@
 import React, { useRef } from 'react';
 import {
   AccessibilityInfo,
-  findNodeHandle,
   View,
   Text,
   StyleSheet,
@@ -124,8 +123,7 @@ export function PhoneSignInForm({
   const submit = () => {
     if (termsMissing) {
       terms?.onBlocked?.();
-      const node = termsRef.current ? findNodeHandle(termsRef.current) : null;
-      if (node) AccessibilityInfo.setAccessibilityFocus(node);
+      if (termsRef.current) AccessibilityInfo.sendAccessibilityEvent(termsRef.current, 'focus');
       return;
     }
     onSubmit();

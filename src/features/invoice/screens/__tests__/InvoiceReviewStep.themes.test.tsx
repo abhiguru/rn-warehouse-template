@@ -7,8 +7,8 @@ import React from 'react';
 import { registerSampleBrand, SAMPLE_BRAND } from '@/tests/helpers/sampleBrand';
 
 registerSampleBrand(); // Orange plus the fictional sample brand (WH-141)
-import { StyleSheet, Text, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { StyleSheet, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens } from '@/theme/tokens';
 import { fillNewInvoice, groupLines, makeInvoiceStore, openForEdit, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { updateHeader } from '@/store/slices/invoiceFormSlice';
@@ -50,10 +50,7 @@ jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null
 
 type AnyStyle = StyleProp<ViewStyle & TextStyle>;
 const flat = (style: unknown): Record<string, any> => (StyleSheet.flatten(typeof style === 'function' ? (style as (s: { pressed: boolean }) => AnyStyle)({ pressed: false }) : (style as AnyStyle)) ?? {}) as Record<string, any>;
-const MODES = [['create', 'step'], ['edit', 'step']] as const;
 const THEMES = BRANDS.flatMap((brand) => (['light', 'dark'] as const).map((mode) => [brand, mode] as const));
-
-let tree: ReactTestRenderer;
 
 describe.each([['create', InvoiceFormStep3], ['edit', InvoiceEditStep3]] as const)('the %s Review step', (mode, Step) => {
   describe.each(THEMES)('%s %s', (brand, themeMode) => {
@@ -66,19 +63,19 @@ describe.each([['create', InvoiceFormStep3], ['edit', InvoiceEditStep3]] as cons
         fillNewInvoice(mockStore, groupLines(2));
         mockStore.dispatch(updateHeader({ inv_no: 42, inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no_typed: true }));
       }
-      await act(async () => { tree = create(<Step />); });
+      await render(<Step />);
+      // The sections draw their bodies a frame after the first draw: wait for them.
+      await screen.findByText('Estimated total');
 
-      const card = tree.root.find((node) => node.props.testID === 'invoice-review' && typeof node.type === 'string');
-      expect(flat(card.props.style).backgroundColor).toBe(t.surface.card);
-      expect(flat(card.props.style).borderColor).toBe(t.table.outline);
+      // The card is a plain View with no role or text: its test id is the only way to reach it.
+      const card = screen.getByTestId('invoice-review');
+      expect(card).toHaveStyle({ backgroundColor: t.surface.card, borderColor: t.table.outline });
 
-      const filled = tree.root.findAll((node) => typeof node.props.onPress === 'function' && flat(node.props.style).backgroundColor === t.brand.fill);
+      const filled = screen.getAllByRole('button').filter((button) => flat(button.props.style).backgroundColor === t.brand.fill);
       expect(filled).toHaveLength(1);
-      expect(filled[0].props.accessibilityLabel).toBe(mode === 'edit' ? 'Save invoice' : 'Create invoice');
+      expect(filled[0]).toHaveAccessibleName(mode === 'edit' ? 'Save invoice' : 'Create invoice');
 
-      const total = tree.root.findAllByType(Text).find((node) => node.props.children === 'Estimated total');
-      expect(flat(total!.props.style).color).toBe(t.text.primary);
-      await act(async () => { tree.unmount(); });
+      expect(screen.getByText('Estimated total')).toHaveStyle({ color: t.text.primary });
     });
   });
 });

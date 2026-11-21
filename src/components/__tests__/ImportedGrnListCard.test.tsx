@@ -1,6 +1,6 @@
 /** WH-180: the GRN list card of an imported GRN has no Edit action and keeps Print; another GRN keeps both. */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import GRNListFiori from '../GRNListFiori';
 import { getGRNListPage } from '@/services/grn-service';
 
@@ -38,31 +38,32 @@ const row = (id: string, grNo: string, imported?: boolean) => ({
   ...(imported === undefined ? {} : { imported }),
 });
 
-let tree: ReactTestRenderer;
 const open = async (items: unknown[]) => {
   jest.mocked(getGRNListPage).mockResolvedValue({
     success: true,
     data: { items, pagination: { total: items.length, limit: 20, offset: 0, unit: 'receipt', has_more: false } },
   } as never);
-  await act(async () => { tree = create(<GRNListFiori />); });
-  await act(async () => {});
+  await render(<GRNListFiori />);
+  await screen.findByTestId(`grn-card-${(items[0] as { id: string }).id}`);
 };
+// Custom actions have no query or matcher in Testing Library: read them from the card's props.
 const actionsOf = (id: string) => {
-  const card = tree.root.findAll(n => n.props.testID === `grn-card-${id}` && n.props.accessibilityActions !== undefined)[0];
-  return (card.props.accessibilityActions as { name: string }[]).map(a => a.name);
+  const card = screen.getByTestId(`grn-card-${id}`);
+  return ((card.props.accessibilityActions ?? []) as { name: string }[]).map(a => a.name);
 };
-afterEach(() => act(() => tree.unmount()));
 
 it('an imported GRN card has Print and no Edit, and carries the Imported tag', async () => {
   await open([row('g1', 'A0001', true)]);
   expect(actionsOf('g1')).toEqual(['print']);
-  expect(tree.root.findAll(n => n.props.testID === 'grn-card-imported-g1').length).toBeGreaterThan(0);
+  expect(screen.getByTestId('grn-card-imported-g1')).toBeOnTheScreen();
+  expect(screen.getByText('Imported')).toBeOnTheScreen();
 });
 
 it.each([[false], [undefined]])('a GRN that is not imported (flag %s) keeps Print and Edit and has no tag', async flag => {
   await open([row('g2', 'A0002', flag)]);
   expect(actionsOf('g2')).toEqual(['print', 'edit']);
-  expect(tree.root.findAll(n => n.props.testID === 'grn-card-imported-g2')).toHaveLength(0);
+  expect(screen.queryByTestId('grn-card-imported-g2')).not.toBeOnTheScreen();
+  expect(screen.queryByText('Imported')).not.toBeOnTheScreen();
 });
 
 it('in one list, only the imported card loses Edit', async () => {

@@ -4,8 +4,7 @@
  * The form validation is the real one (not mocked).
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN, updateGRN } from '@/features/grn/services/grnFormService';
 import { previewUpdateGrn } from '@/services/orderEffects';
@@ -55,9 +54,24 @@ jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: (
 
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// The dialog draws its title and Confirm button while it is open, and the bar draws its Next button; both call the real props.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; onConfirm: () => unknown }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(View, null,
+        createElement(Text, null, props.title),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Confirm', onPress: props.onConfirm }))
+      : null;
+  },
+}));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Wizard next', onPress: props.onNext }),
+}));
 let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => mockParams, useFocusEffect: jest.fn() }));
 let backOptions: { enabled?: boolean; onBackPress?: () => boolean } = {};
@@ -95,17 +109,16 @@ const APP_HEADER = { ...mockHeader, customer_id: CUST, supervisor_id: '66666666-
 /** An imported GRN as the edit form loads it: no supervisor chosen, no sender, no photos. */
 const IMPORTED_HEADER = { ...APP_HEADER, supervisor_id: undefined, sender_name: '', supervisor_name: '', gr_images: [] };
 
-async function render() {
+async function show() {
   mockForm = { header: mockHeader, items: mockItems, grnId: GRN_ID, tempGrnId: null, isSaving: false, isCreateMode: false, resetFormState: jest.fn() };
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<GrnReviewStep mode="edit" />); });
-  return tree;
+  await render(<GrnReviewStep mode="edit" />);
 }
-const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
-const saveDialog = (tree: ReactTestRenderer) => dialogs(tree).find(d => d.props.title === 'Save changes to GRN A0010?')!;
-const press = async (tree: ReactTestRenderer) => { await act(async () => { await tree.root.findByType('WizardBottomBar' as never).props.onNext(); }); };
-const confirm = async (tree: ReactTestRenderer) => { await act(async () => { await saveDialog(tree).props.onConfirm(); }); };
+const SAVE_TITLE = 'Save changes to GRN A0010?';
+const saveDialog = () => screen.queryByText(SAVE_TITLE);
+const press = () => userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Wizard next' }));
+const confirm = () => userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Confirm' }));
+// A section of the review card has no role or text of its own to ask for, so its test id is the way to it.
+const photosSection = () => screen.queryByTestId('grn-review-section-photos');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -134,18 +147,18 @@ describe('Save on an imported GRN', () => {
   });
 
   it('with no supervisor, a blank sender and no photos, asks to save and reaches the server call', async () => {
-    const tree = await render();
-    await press(tree);
+    await show();
+    await press();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(saveDialog(tree).props.visible).toBe(true);
-    await confirm(tree);
+    expect(saveDialog()).toBeOnTheScreen();
+    await confirm();
     expect(updateGRN).toHaveBeenCalledTimes(1);
   });
 
   it('sends the rates, the details exactly as stored and no photo', async () => {
-    const tree = await render();
-    await press(tree);
-    await confirm(tree);
+    await show();
+    await press();
+    await confirm();
     // An edit uploads its photos inside updateGRN (from header.gr_images) and removes them by the options' removedImages.
     const [id, request, options] = (updateGRN as jest.Mock).mock.calls[0];
     expect(id).toBe(GRN_ID);
@@ -161,50 +174,50 @@ describe('Save on an imported GRN', () => {
   it('the same save of a GRN made in the app does send its photo (so the check above can fail)', async () => {
     mockImported = false;
     mockHeader = { ...APP_HEADER };
-    const tree = await render();
-    await press(tree);
-    await confirm(tree);
+    await show();
+    await press();
+    await confirm();
     const request = (updateGRN as jest.Mock).mock.calls[0][1];
     expect(request.header.gr_images).toHaveLength(1);
     expect(request.header.supervisor_id).toBe(APP_HEADER.supervisor_id);
   });
 
   it('shows no Photos section, while a GRN made in the app shows it', async () => {
-    let tree = await render();
-    expect(tree.root.findAll(n => n.props.testID === 'grn-review-section-photos')).toHaveLength(0);
-    act(() => tree.unmount());
+    await show();
+    expect(photosSection()).toBeNull();
+    await act(async () => { screen.unmount(); });
     mockImported = false;
     mockHeader = { ...APP_HEADER };
-    tree = await render();
-    expect(tree.root.findAll(n => n.props.testID === 'grn-review-section-photos').length).toBeGreaterThan(0);
+    await show();
+    expect(photosSection()).toBeOnTheScreen();
   });
 
   it('does not ask the server which orders the save changes; a GRN made in the app does', async () => {
-    let tree = await render();
-    await press(tree);
+    await show();
+    await press();
     expect(previewUpdateGrn).not.toHaveBeenCalled();
-    act(() => tree.unmount());
+    await act(async () => { screen.unmount(); });
     mockImported = false;
     mockHeader = { ...APP_HEADER };
-    tree = await render();
-    await press(tree);
+    await show();
+    await press();
     expect(previewUpdateGrn).toHaveBeenCalled();
   });
 
   it('is still stopped by a line without a rate', async () => {
     mockRates = [stored(GUR, 0, 50, 3.5, CUST)];
-    const tree = await render();
-    await press(tree);
+    await show();
+    await press();
     expect(showAlert).toHaveBeenCalledWith('Add the missing rates', 'Add the missing rates before saving.');
-    expect(saveDialog(tree).props.visible).toBe(false);
+    expect(saveDialog()).toBeNull();
     expect(updateGRN).not.toHaveBeenCalled();
   });
 
   it('is still stopped while the rates are not loaded', async () => {
     mockStatus = 'error';
-    const tree = await render();
-    await press(tree);
-    expect(saveDialog(tree).props.visible).toBe(false);
+    await show();
+    await press();
+    expect(saveDialog()).toBeNull();
     expect(updateGRN).not.toHaveBeenCalled();
   });
 });
@@ -212,26 +225,26 @@ describe('Save on an imported GRN', () => {
 describe('Save on a GRN made in the app (the old checks stay)', () => {
   it('needs the details: a blank sender stops it with the details alert and sends nothing', async () => {
     mockHeader = { ...APP_HEADER, sender_name: '' };
-    const tree = await render();
-    await press(tree);
+    await show();
+    await press();
     expect(showAlert).toHaveBeenCalledWith('Check the GRN details', expect.stringContaining('Sender name is required'));
-    expect(saveDialog(tree).props.visible).toBe(false);
+    expect(saveDialog()).toBeNull();
     expect(updateGRN).not.toHaveBeenCalled();
   });
 
   it('needs a photo: with valid details and none, it says so and sends nothing', async () => {
     mockHeader = { ...APP_HEADER, gr_images: [] };
-    const tree = await render();
-    await press(tree);
+    await show();
+    await press();
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect((showAlert as jest.Mock).mock.calls[0][0]).toMatch(/photo/i);
     expect(updateGRN).not.toHaveBeenCalled();
   });
 
   it('with details and a photo, asks to save as before', async () => {
-    const tree = await render();
-    await press(tree);
+    await show();
+    await press();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(saveDialog(tree).props.visible).toBe(true);
+    expect(saveDialog()).toBeOnTheScreen();
   });
 });

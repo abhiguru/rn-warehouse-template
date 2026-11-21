@@ -1,8 +1,8 @@
 /** R3a-5: the group total in the heading is never cut: when it would not fit beside the name it goes under it. */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render as renderScreen, screen, within } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, edgeLines, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, textsOf } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
 let mockStore: InvoiceStore;
@@ -18,17 +18,15 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 }));
 
 const GROUP = 'kashmiri:::HIGH-1';
-async function render(lines: InvoiceItemData[], width: number, fontScale: number) {
+async function renderEditor(lines: InvoiceItemData[], width: number, fontScale: number) {
   mockWidth = width;
   mockFontScale = fontScale;
   mockStore = makeInvoiceStore();
   fillNewInvoice(mockStore, lines);
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<ConnectedEditor />); });
-  return tree;
+  await renderScreen(<ConnectedEditor />);
 }
-const where = (tree: ReactTestRenderer, kind: 'under' | 'beside') =>
-  tree.root.findAll((node) => (node.type as unknown) === 'View' && node.props.testID === `items-head-total-${kind}-${GROUP}`);
+const under = () => screen.queryByTestId(`items-head-total-under-${GROUP}`);
+const beside = () => screen.queryByTestId(`items-head-total-beside-${GROUP}`);
 
 describe('the total in the heading of a group', () => {
   it.each([
@@ -36,25 +34,24 @@ describe('the total in the heading of a group', () => {
     [360, 1.5],
     [320, 1.3],
   ])('with ₹96,934.70 at %i dp and font scale %s goes under the name, in full', async (width, scale) => {
-    const tree = await render(edgeLines.nearEdge(), width, scale);
-    expect(where(tree, 'under')).toHaveLength(1);
-    expect(where(tree, 'beside')).toHaveLength(0);
-    const value = where(tree, 'under')[0].findAll((node) => (node.type as unknown) === 'Text' && node.props.children === '₹96,934.70');
-    expect(value).toHaveLength(1);
-    expect(textsOf(tree)).toContain('₹96,934.70');
+    await renderEditor(edgeLines.nearEdge(), width, scale);
+    expect(under()).toBeOnTheScreen();
+    expect(beside()).not.toBeOnTheScreen();
+    expect(within(under()!).getByText('₹96,934.70')).toBeOnTheScreen();
+    expect(screen.getAllByText('₹96,934.70')[0]).toBeOnTheScreen();
   });
 
   it.each([
     [411, 1.0],
     [393, 1.0],
   ])('stays beside the name at %i dp and font scale %s', async (width, scale) => {
-    const tree = await render(edgeLines.nearEdge(), width, scale);
-    expect(where(tree, 'beside')).toHaveLength(1);
-    expect(where(tree, 'under')).toHaveLength(0);
+    await renderEditor(edgeLines.nearEdge(), width, scale);
+    expect(beside()).toBeOnTheScreen();
+    expect(under()).not.toBeOnTheScreen();
   });
 
   it('a small total stays beside the name even at font scale 2.0', async () => {
-    const tree = await render([invoiceLine({ item_id: 'kashmiri', package_mark: 'HIGH-1', qty: 1, charge: 1, labour_rate: 0, tax: 0 })], 411, 2.0);
-    expect(where(tree, 'beside')).toHaveLength(1);
+    await renderEditor([invoiceLine({ item_id: 'kashmiri', package_mark: 'HIGH-1', qty: 1, charge: 1, labour_rate: 0, tax: 0 })], 411, 2.0);
+    expect(beside()).toBeOnTheScreen();
   });
 });

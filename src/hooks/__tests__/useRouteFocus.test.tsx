@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { NavigationContext } from 'expo-router/react-navigation';
 import { useRouteFocus } from '../useRouteFocus';
 import { makeRoute } from '@/tests/helpers/fakeRoute';
@@ -13,7 +13,7 @@ function Probe({ enabled = true }: { enabled?: boolean }) {
 }
 
 /** Records whether isFocused() was called while a component was rendering. */
-function renderInRoute(route: ReturnType<typeof makeRoute>, enabled = true) {
+async function renderInRoute(route: ReturnType<typeof makeRoute>, enabled = true) {
   let rendering = false;
   const calledInRender: boolean[] = [];
   const original = route.navigation.isFocused;
@@ -27,16 +27,13 @@ function renderInRoute(route: ReturnType<typeof makeRoute>, enabled = true) {
     return element;
   }
   const done = () => { rendering = false; };
-  let tree!: ReturnType<typeof create>;
-  act(() => {
-    tree = create(
-      <NavigationContext.Provider value={route.navigation as never}>
-        <Wrapper />
-        <After done={done} />
-      </NavigationContext.Provider>
-    );
-  });
-  return { tree, calledInRender };
+  await render(
+    <NavigationContext.Provider value={route.navigation as never}>
+      <Wrapper />
+      <After done={done} />
+    </NavigationContext.Provider>
+  );
+  return { calledInRender };
 }
 function After({ done }: { done: () => void }) {
   done();
@@ -46,34 +43,34 @@ function After({ done }: { done: () => void }) {
 beforeEach(() => { seen = []; });
 
 describe('useRouteFocus', () => {
-  it('is focused outside a navigator', () => {
-    act(() => { create(<Probe />); });
+  it('is focused outside a navigator', async () => {
+    await render(<Probe />);
     expect(seen[seen.length - 1]).toBe(true);
   });
 
-  it('reads the route focus in an effect, never while rendering', () => {
-    const { calledInRender } = renderInRoute(makeRoute(true));
+  it('reads the route focus in an effect, never while rendering', async () => {
+    const { calledInRender } = await renderInRoute(makeRoute(true));
     expect(calledInRender.length).toBeGreaterThan(0);
     expect(calledInRender.every(inRender => !inRender)).toBe(true);
   });
 
-  it('follows the route through blur and focus', () => {
+  it('follows the route through blur and focus', async () => {
     const route = makeRoute(true);
-    renderInRoute(route);
+    await renderInRoute(route);
     expect(seen[seen.length - 1]).toBe(true);
-    act(() => route.blur());
+    await act(() => route.blur());
     expect(seen[seen.length - 1]).toBe(false);
-    act(() => route.focus());
+    await act(() => route.focus());
     expect(seen[seen.length - 1]).toBe(true);
   });
 
-  it('settles on not focused for a route mounted behind another', () => {
-    renderInRoute(makeRoute(false));
+  it('settles on not focused for a route mounted behind another', async () => {
+    await renderInRoute(makeRoute(false));
     expect(seen[seen.length - 1]).toBe(false);
   });
 
-  it('does not look at the route when disabled', () => {
-    const { calledInRender } = renderInRoute(makeRoute(false), false);
+  it('does not look at the route when disabled', async () => {
+    const { calledInRender } = await renderInRoute(makeRoute(false), false);
     expect(calledInRender).toEqual([]);
     expect(seen[seen.length - 1]).toBe(true);
   });

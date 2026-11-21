@@ -7,13 +7,13 @@
  * - Empty state when no images, with "Add photo" when uploads are allowed
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   Pressable,
   FlatList,
-  Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -35,12 +35,10 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const REMOVE_CIRCLE = 28;
 const GRID_PADDING = space.sm;
 const IMAGE_GAP = space.xs;
-const IMAGE_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
 // Using snake_case to match backend RPC types
 export interface DispatchImageData {
@@ -160,8 +158,6 @@ const makeStyles = (t: ThemeTokens) => ({
     marginBottom: IMAGE_GAP,
   },
   imageWrapper: {
-    width: IMAGE_SIZE,
-    height: IMAGE_SIZE,
     borderRadius: radius.card,
     overflow: 'hidden' as const,
     backgroundColor: t.surface.cardActive,
@@ -241,6 +237,8 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   isDeleting = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
+  const { width } = useWindowDimensions();
+  const imageSize = useMemo(() => (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS, [width]);
   const t = useTokens();
 
   if (images.length === 0) {
@@ -273,7 +271,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   }
 
   const renderImage = ({ item, index }: { item: DispatchImageData; index: number }) => (
-    <View style={styles.imageWrapper}>
+    <View style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}>
       <Pressable
         style={({ pressed }) => [styles.image, pressed && styles.imageWrapperPressed]}
         onPress={() => onImagePress?.(images, index)}

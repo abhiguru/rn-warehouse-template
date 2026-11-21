@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render as rntlRender, screen } from '@testing-library/react-native';
 import { GuardedScreen, useRootRouteGuard } from '../RouteGuard';
 import { resetCentralStateForTests, setCentralState } from '@/config/centralState';
 
@@ -27,7 +27,6 @@ jest.mock('@/hooks/useTheme', () => ({
 jest.mock('@/config/envConfig', () => ({ isCentralLoginConfigured: () => mockCentralOn }));
 
 const USER = { id: 'asha', phoneNumber: '919000000001', name: null, createdAt: '' };
-let renderer: ReactTestRenderer | undefined;
 
 function Root({ routeName }: { routeName: string }) {
   useRootRouteGuard(true);
@@ -39,12 +38,10 @@ function Root({ routeName }: { routeName: string }) {
 }
 async function render(routeName: string, segments: string[]) {
   mockSegments = segments;
-  await act(async () => {
-    renderer = create(<Root routeName={routeName} />);
-  });
+  await rntlRender(<Root routeName={routeName} />);
 }
-const showsContent = () => renderer!.root.findAllByType(Text).length === 1;
-const showsSpinner = () => renderer!.root.findAllByProps({ testID: 'route-guard-pending' }).length > 0;
+const showsContent = () => screen.queryByText('screen content') !== null;
+const showsSpinner = () => screen.queryByLabelText('Loading') !== null;
 
 beforeEach(() => {
   mockReplace.mockReset();
@@ -52,10 +49,6 @@ beforeEach(() => {
   mockCentralOn = true;
   resetCentralStateForTests();
   setCentralState({ status: 'signedOut' });
-});
-afterEach(async () => {
-  if (renderer) await act(async () => renderer!.unmount());
-  renderer = undefined;
 });
 
 it('signed in nowhere: a facility screen is not mounted and the person goes to central sign-in', async () => {
@@ -101,7 +94,7 @@ it("choosing a facility's own SMS sign-in leads from My facilities to its sign-i
   await act(async () => { setCentralState({ facilitySmsOrigin: 'https://north-cold.example.test' }); });
   expect(mockReplace).toHaveBeenLastCalledWith('/login');
 
-  await act(async () => renderer!.unmount());
+  await screen.unmount();
   mockReplace.mockReset();
   await render('login', ['login']);
   expect(showsContent()).toBe(true);
@@ -114,7 +107,7 @@ it('a facility session that arrives while My facilities is shown enters the faci
   setCentralState({ status: 'signedIn', user: USER });
   await render('facilities', ['facilities']);
   mockAuth = { userProfile: { id: 'profile-1', role: 'staff' }, session: null, user: null };
-  await act(async () => { renderer!.update(<Root routeName="facilities" />); });
+  await screen.rerender(<Root routeName="facilities" />);
   expect(mockReplace).toHaveBeenLastCalledWith('/');
 });
 
@@ -123,7 +116,7 @@ it('central login off: the central state is not consulted and a signed-out perso
   setCentralState({ status: 'signedIn', user: USER });
   await render('(tabs)', ['(tabs)']);
   expect(mockReplace).toHaveBeenCalledWith('/login');
-  await act(async () => renderer!.unmount());
+  await screen.unmount();
   mockReplace.mockReset();
   await render('facilities', ['facilities']);
   expect(showsSpinner()).toBe(true);

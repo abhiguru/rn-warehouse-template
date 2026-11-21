@@ -6,7 +6,7 @@
  *   asked to type the number.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN, getNextGRNNumber } from '@/features/grn/services/grnFormService';
 import { checkSubmission } from '@/utils/lostAnswer';
@@ -64,9 +64,25 @@ jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: (
 // Children are stand-ins that keep their props, so the test can press their buttons.
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// The dialog draws its title and its two buttons while it is open, and the bar draws its Next button; both call the real props.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; onConfirm: () => unknown; onCancel: () => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(View, null,
+        createElement(Text, null, props.title),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: `${props.title} confirm`, onPress: props.onConfirm }),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: `${props.title} cancel`, onPress: props.onCancel }))
+      : null;
+  },
+}));
 jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Wizard next', onPress: props.onNext }),
+}));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() }, useRouter: () => ({ back: jest.fn() }), useFocusEffect: jest.fn(), useLocalSearchParams: () => ({}) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
@@ -93,7 +109,7 @@ jest.mock('@/utils/localPhotoFiles', () => ({
   releaseLocalPhotos: jest.fn(async () => 0),
 }));
 
-async function render() {
+async function show() {
   mockForm = {
     header: mockHeader,
     items: mockItems,
@@ -103,25 +119,17 @@ async function render() {
     isCreateMode: true,
     resetFormState: jest.fn(),
   };
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GrnReviewStep mode="create" />);
-  });
-  return tree;
+  await render(<GrnReviewStep mode="create" />);
 }
-
-const one = (tree: ReactTestRenderer, type: string) => tree.root.findByType(type as never);
-const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
-const photoDialog = (tree: ReactTestRenderer) => dialogs(tree).find((dialog) => dialog.props.title === 'Photos not uploaded')!;
-const saveDialog = (tree: ReactTestRenderer) => dialogs(tree).find((dialog) => dialog.props.title !== 'Photos not uploaded')!;
 
 /**
  * Press Create in the bottom bar, then confirm the "save this GRN?" question. The confirm's handler runs until the person
- * has answered the duplicate warning, so it is not awaited here.
+ * has answered the duplicate warning, so the press ends before the save does.
  */
-async function save(tree: ReactTestRenderer) {
-  await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
-  await act(async () => { void saveDialog(tree).props.onConfirm(); });
+async function save() {
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: 'Wizard next' }));
+  await user.press(screen.getByRole('button', { name: /confirm$/ }));
 }
 
 
@@ -142,9 +150,9 @@ describe('a GRN number outside the facility\'s numbering', () => {
 
   it('is refused in words that name the format, and the number is flagged', async () => {
     (createGRN as jest.Mock).mockResolvedValueOnce({ success: false, error: 'x', refusal: formatRefusal });
-    const tree = await render();
+    await show();
 
-    await save(tree);
+    await save();
 
     const message = "This number does not follow this facility's numbering (A####).";
     expect(createGRN).toHaveBeenCalledTimes(1);
@@ -157,11 +165,11 @@ describe('a GRN number outside the facility\'s numbering', () => {
   it('is not sent with no number when the rule offers none; the person is asked to type one', async () => {
     mockNumberTyped = false;
     (getNextGRNNumber as jest.Mock).mockResolvedValueOnce('');
-    const tree = await render();
+    await show();
     mockForm.header = { ...mockHeader, gr_no: '' };
-    await act(async () => { tree.update(<GrnReviewStep mode="create" />); });
+    await screen.rerender(<GrnReviewStep mode="create" />);
 
-    await save(tree);
+    await save();
 
     expect(createGRN).not.toHaveBeenCalled();
     expect(alerts().at(-1)?.[1]).toBe('No GRN number is offered. Type the GRN number.');

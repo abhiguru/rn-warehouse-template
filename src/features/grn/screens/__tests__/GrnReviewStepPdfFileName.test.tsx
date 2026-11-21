@@ -4,7 +4,7 @@
  * and the share call are faked.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
 import { createGRN } from '@/features/grn/services/grnFormService';
 import { unpreparedGRNPhotos } from '@/features/grn/services/imageUploadService';
@@ -56,9 +56,33 @@ jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: (
 // Children are stand-ins that keep their props, so the test can press their buttons.
 jest.mock('@/features/grn/components/ImageUploadButton', () => ({ ImageUploadButton: 'ImageUploadButton' }));
 jest.mock('@/features/grn/components/ImagePreviewGrid', () => ({ ImagePreviewGrid: 'ImagePreviewGrid' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
-jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: 'WizardBottomBar' }));
+// The dialogs draw their title and buttons while they are open, and the bar draws its Next button; each calls the real props.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; onConfirm: () => unknown }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.visible
+      ? createElement(View, null,
+        createElement(Text, null, props.title),
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Confirm', onPress: props.onConfirm }))
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean; onSharePDF: () => unknown }) => {
+    const { Pressable, View } = require('react-native');
+    const { createElement } = require('react');
+    return props.isVisible
+      ? createElement(View, { accessible: true, accessibilityLabel: 'Success dialog' },
+        createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Share PDF', onPress: props.onSharePDF }))
+      : null;
+  },
+}));
+jest.mock('@/components/WizardBottomBar', () => ({
+  __esModule: true,
+  default: (props: { onNext: () => unknown }) =>
+    require('react').createElement(require('react-native').Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Wizard next', onPress: props.onNext }),
+}));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() }, useRouter: () => ({ back: jest.fn() }), useFocusEffect: jest.fn(), useLocalSearchParams: () => ({}) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
@@ -78,8 +102,6 @@ jest.mock('@/utils/localPhotoFiles', () => ({
   releaseLocalPhotos: jest.fn(async () => 0),
 }));
 
-const one = (tree: ReactTestRenderer, type: string) => tree.root.findByType(type as never);
-
 /** Create the GRN for real (Create, confirm the question), the server answers with `grNo`; then press Share PDF. */
 const createAndShare = async (grNo: string) => {
   mockForm = {
@@ -92,15 +114,13 @@ const createAndShare = async (grNo: string) => {
     resetFormState: jest.fn(),
   };
   jest.mocked(createGRN).mockResolvedValue({ success: true, data: { id: GRN_ID, gr_no: grNo, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } } as never);
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<GrnReviewStep mode="create" />); });
-  await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
-  const saveDialog = tree.root.findAllByType('ConfirmDialog' as never).find((dialog) => dialog.props.title !== 'Photos not uploaded')!;
-  await act(async () => { await saveDialog.props.onConfirm(); });
-  const success = one(tree, 'DocumentSuccessDialog');
-  expect(success.props.isVisible).toBe(true);
-  await act(async () => { await success.props.onSharePDF(); });
-  await act(async () => { tree.unmount(); });
+  await render(<GrnReviewStep mode="create" />);
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(screen.getByRole('button', { name: 'Wizard next' }));
+  await user.press(screen.getByRole('button', { name: 'Confirm' }));
+  expect(screen.getByLabelText('Success dialog')).toBeOnTheScreen();
+  await user.press(screen.getByRole('button', { name: 'Share PDF' }));
+  await act(async () => { screen.unmount(); });
 };
 
 beforeEach(() => {

@@ -5,7 +5,7 @@
  * twin of the GRN fix, GrnReviewStepPhotos.test.tsx.)
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
 import { uploadDeferredDispatchImages, giveUpDispatchPhotos } from '@/features/dispatch/services/dispatchImageService';
 import { generateDispatchPDF } from '@/services/pdf-service';
@@ -42,9 +42,53 @@ jest.mock('@/hooks/useDispatchForm', () => ({
   }),
 }));
 
-// Children are stand-ins that keep their props, so the test can press their buttons.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-jest.mock('@/components/DocumentSuccessDialog', () => ({ DocumentSuccessDialog: 'DocumentSuccessDialog' }));
+
+// Children are stand-ins that draw what a person sees (an open dialog's title and message, the success dialog and its
+// buttons) and keep the confirm's props, so the test can answer where the real component answers through a Modal event.
+interface MockDialogProps {
+  visible: boolean;
+  title: string;
+  message?: string;
+  busy?: boolean;
+  dismissible?: boolean;
+  ignoreBack?: boolean;
+  onConfirm: () => unknown;
+  onCancel: () => void;
+  onDismissed?: () => void;
+}
+let mockDialogs: Record<string, MockDialogProps> = {};
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: MockDialogProps) => {
+    const { Text, View } = require('react-native');
+    const { createElement } = require('react');
+    mockDialogs[props.title] = props;
+    return props.visible
+      ? createElement(
+          View,
+          { accessible: true, accessibilityRole: 'alert', accessibilityLabel: props.title, accessibilityState: { busy: props.busy } },
+          createElement(Text, null, props.title),
+          createElement(Text, null, props.message)
+        )
+      : null;
+  },
+}));
+jest.mock('@/components/DocumentSuccessDialog', () => ({
+  DocumentSuccessDialog: (props: { isVisible: boolean; onViewList: () => void; onCreateAnother: () => void; onSharePDF: () => void; shareError?: string | null }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { createElement } = require('react');
+    const button = (name: string, onPress: () => void) => createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: name, onPress }, createElement(Text, null, name));
+    return props.isVisible
+      ? createElement(
+          View,
+          { accessible: false, accessibilityLabel: 'Success dialog' },
+          button('View list', props.onViewList),
+          button('Create another', props.onCreateAnother),
+          button('Share PDF', props.onSharePDF),
+          props.shareError ? createElement(Text, null, props.shareError) : null
+        )
+      : null;
+  },
+}));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
@@ -69,49 +113,50 @@ jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }))
 jest.mock('@/services/pdf-service', () => ({ generateDispatchPDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-async function render() {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<DispatchReviewStep mode="create" />);
-  });
-  return tree;
-}
-const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as never);
-const photoDialog = (tree: ReactTestRenderer) => dialogs(tree).find((dialog) => dialog.props.title === 'Photos not uploaded')!;
-const createDialog = (tree: ReactTestRenderer) => dialogs(tree).find((dialog) => dialog.props.title !== 'Photos not uploaded')!;
-const successShown = (tree: ReactTestRenderer) => tree.root.findByType('DocumentSuccessDialog' as never).props.isVisible;
+
+const PHOTO_TITLE = 'Photos not uploaded';
+const CREATE_TITLE = 'Create dispatch I0042?';
+const photoDialog = () => mockDialogs[PHOTO_TITLE];
+const createDialog = () => mockDialogs[CREATE_TITLE];
+const photoOnScreen = () => screen.queryByRole('alert', { name: PHOTO_TITLE });
+const createOnScreen = () => screen.queryByRole('alert', { name: CREATE_TITLE });
+const successDialog = () => screen.queryByLabelText('Success dialog');
+const press = async (name: string) => { await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name })); };
 /** A dialog has finished closing (iOS `onDismissed`): what waited for it is drawn now. */
-const dismissed = async (tree: ReactTestRenderer) => {
-  await act(async () => { dialogs(tree).forEach((dialog) => dialog.props.onDismissed?.()); });
+const dismissed = async () => {
+  await act(async () => { Object.values(mockDialogs).forEach((dialog) => dialog.onDismissed?.()); });
 };
-const create_ = async (tree: ReactTestRenderer) => {
-  await act(async () => { await createDialog(tree).props.onConfirm(); });
-  await dismissed(tree);
+const create_ = async () => {
+  await act(async () => { await createDialog().onConfirm(); });
+  await dismissed();
 };
+const show = () => render(<DispatchReviewStep mode="create" />);
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
+  mockDialogs = {};
 });
 afterEach(() => jest.restoreAllMocks());
 
 it('shows the success dialog at once when every photo uploaded', async () => {
   mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [] });
-  const tree = await render();
-  await create_(tree);
-  expect(photoDialog(tree).props.visible).toBe(false);
-  expect(successShown(tree)).toBe(true);
+  await show();
+  await create_();
+  expect(photoOnScreen()).not.toBeOnTheScreen();
+  expect(successDialog()).toBeOnTheScreen();
 });
 
 it('names the photos that did not upload and holds the success dialog back', async () => {
   mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [mockImages[1], mockImages[2]] });
-  const tree = await render();
-  await create_(tree);
-  const dialog = photoDialog(tree);
-  expect(dialog.props.visible).toBe(true);
-  expect(dialog.props.message).toBe('Dispatch I0042 is saved, but these photos were not uploaded:\n• Photo 2\n• Photo 3');
-  expect(dialog.props.dismissible).toBe(false);
-  expect(successShown(tree)).toBe(false);
+  await show();
+  await create_();
+  expect(photoOnScreen()).toBeOnTheScreen();
+  // The list is on lines: keep them as they are.
+  expect(screen.getByText('Dispatch I0042 is saved, but these photos were not uploaded:\n• Photo 2\n• Photo 3', { normalizer: (text) => text })).toBeOnTheScreen();
+  // What the dialog is asked to do (a stand-in draws neither): it cannot be dismissed from outside.
+  expect(photoDialog().dismissible).toBe(false);
+  expect(successDialog()).not.toBeOnTheScreen();
 });
 
 it('"Try again" uploads only the failed photos to the created dispatch', async () => {
@@ -119,78 +164,88 @@ it('"Try again" uploads only the failed photos to the created dispatch', async (
   jest.mocked(uploadDeferredDispatchImages)
     .mockResolvedValueOnce({ success: false, uploadedCount: 1, errors: ['seal.webp: Network request failed'], failed: [mockImages[2]] })
     .mockResolvedValueOnce({ success: true, uploadedCount: 1, errors: [], failed: [] });
-  const tree = await render();
-  await create_(tree);
+  await show();
+  await create_();
 
-  await act(async () => { await photoDialog(tree).props.onConfirm(); });
+  await act(async () => { await photoDialog().onConfirm(); });
   expect(uploadDeferredDispatchImages).toHaveBeenLastCalledWith(DISPATCH_ID, [mockImages[1], mockImages[2]]);
   // One still missing: asked again, for that photo only.
-  expect(photoDialog(tree).props.visible).toBe(true);
-  expect(photoDialog(tree).props.message).toContain('• Photo 3');
-  expect(photoDialog(tree).props.message).not.toContain('Photo 2');
-  expect(successShown(tree)).toBe(false);
+  expect(photoOnScreen()).toBeOnTheScreen();
+  expect(photoDialog().message).toContain('• Photo 3');
+  expect(photoDialog().message).not.toContain('Photo 2');
+  expect(screen.getByText(/• Photo 3/)).toBeOnTheScreen();
+  expect(screen.queryByText(/Photo 2/)).not.toBeOnTheScreen();
+  expect(successDialog()).not.toBeOnTheScreen();
 
-  await act(async () => { await photoDialog(tree).props.onConfirm(); });
+  await act(async () => { await photoDialog().onConfirm(); });
   expect(uploadDeferredDispatchImages).toHaveBeenLastCalledWith(DISPATCH_ID, [mockImages[2]]);
-  expect(photoDialog(tree).props.visible).toBe(false);
+  expect(photoOnScreen()).not.toBeOnTheScreen();
   // The photo dialog is closing: the success dialog waits for it (a second Modal would never show on iOS).
   expect(giveUpDispatchPhotos).not.toHaveBeenCalled();
-  expect(successShown(tree)).toBe(false);
-  await dismissed(tree);
-  expect(successShown(tree)).toBe(true);
+  expect(successDialog()).not.toBeOnTheScreen();
+  await dismissed();
+  expect(successDialog()).toBeOnTheScreen();
   expect(mockSubmitForm).toHaveBeenCalledTimes(1);
+});
+
+// A held retry or save that a failing test leaves open would hang Jest.
+let finishRetry: ((outcome: Awaited<ReturnType<typeof uploadDeferredDispatchImages>>) => void) | undefined;
+let finishSave: ((value: unknown) => void) | undefined;
+afterEach(() => {
+  finishRetry?.({ success: true, uploadedCount: 1, errors: [], failed: [] });
+  finishSave?.({ success: false });
+  finishRetry = undefined;
+  finishSave = undefined;
 });
 
 it('the question stays on screen, busy, while the retry runs, and the Back key does nothing on it', async () => {
   mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [mockImages[1]] });
-  let finish!: (outcome: Awaited<ReturnType<typeof uploadDeferredDispatchImages>>) => void;
-  jest.mocked(uploadDeferredDispatchImages).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
-  const tree = await render();
-  await create_(tree);
+  jest.mocked(uploadDeferredDispatchImages).mockReturnValue(new Promise((resolve) => { finishRetry = resolve; }));
+  await show();
+  await create_();
   // Not busy until the person asks, and the Back key never answers the question for them.
-  expect(photoDialog(tree).props.busy).toBe(false);
-  expect(photoDialog(tree).props.ignoreBack).toBe(true);
+  // Exactly `busy: false`, not a missing key.
+  expect(screen.getByRole('alert', { name: PHOTO_TITLE }).props.accessibilityState).toEqual({ busy: false });
+  expect(photoDialog().ignoreBack).toBe(true);
 
-  let retry!: Promise<void>;
-  await act(async () => { retry = photoDialog(tree).props.onConfirm(); });
+  let retry!: Promise<unknown>;
+  await act(async () => { retry = Promise.resolve(photoDialog().onConfirm()); });
 
   // The dialog is still there and busy: nothing to leave the screen by while the photos go.
-  expect(photoDialog(tree).props.visible).toBe(true);
-  expect(photoDialog(tree).props.busy).toBe(true);
-  expect(successShown(tree)).toBe(false);
+  expect(photoOnScreen()).toBeOnTheScreen();
+  expect(photoOnScreen()).toBeBusy();
+  expect(successDialog()).not.toBeOnTheScreen();
 
-  await act(async () => { finish({ success: true, uploadedCount: 1, errors: [], failed: [] }); await retry; });
-  expect(photoDialog(tree).props.busy).toBe(false);
-  expect(photoDialog(tree).props.visible).toBe(false);
-  await dismissed(tree);
-  expect(successShown(tree)).toBe(true);
+  await act(async () => { finishRetry!({ success: true, uploadedCount: 1, errors: [], failed: [] }); await retry; });
+  expect(photoOnScreen()).not.toBeOnTheScreen();
+  expect(photoDialog().busy).toBe(false);
+  await dismissed();
+  expect(successDialog()).toBeOnTheScreen();
 });
 
 it('"Continue without them" goes on to the success dialog without uploading', async () => {
   mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [mockImages[0]] });
-  const tree = await render();
-  await create_(tree);
-  await act(async () => { photoDialog(tree).props.onCancel(); });
+  await show();
+  await create_();
+  await act(async () => { photoDialog().onCancel(); });
   expect(uploadDeferredDispatchImages).not.toHaveBeenCalled();
   expect(giveUpDispatchPhotos).toHaveBeenCalledWith(DISPATCH_ID, [mockImages[0]]);
   // The photo dialog is closing: the success dialog waits for it (a second Modal would never show on iOS).
-  expect(successShown(tree)).toBe(false);
-  await dismissed(tree);
-  expect(successShown(tree)).toBe(true);
+  expect(successDialog()).not.toBeOnTheScreen();
+  await dismissed();
+  expect(successDialog()).toBeOnTheScreen();
 });
-
-const successDialog = (tree: ReactTestRenderer) => tree.root.findByType('DocumentSuccessDialog' as never);
 
 describe('toasts wait for the dialog to go', () => {
   it('"Order fulfilled" is said once the success dialog is left, after the step is left', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: 0 });
-    const tree = await render();
-    await create_(tree);
-    expect(successShown(tree)).toBe(true);
+    await show();
+    await create_();
+    expect(successDialog()).toBeOnTheScreen();
     // The dialog is a modal: a toast now would sit under it.
     expect(showToast).not.toHaveBeenCalled();
 
-    await act(async () => { successDialog(tree).props.onViewList(); });
+    await press('View list');
     expect(router.replace).toHaveBeenCalledWith('/dispatch');
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('Order fulfilled and removed from the queue.');
@@ -199,14 +254,14 @@ describe('toasts wait for the dialog to go', () => {
   it('"Photos uploaded" after a successful retry is said once, with the order, when the dialog is left', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [mockImages[1]], orderLinesLeft: 0 });
     jest.mocked(uploadDeferredDispatchImages).mockResolvedValue({ success: true, uploadedCount: 1, errors: [], failed: [] });
-    const tree = await render();
-    await create_(tree);
-    await act(async () => { await photoDialog(tree).props.onConfirm(); });
-    await dismissed(tree);
-    expect(successShown(tree)).toBe(true);
+    await show();
+    await create_();
+    await act(async () => { await photoDialog().onConfirm(); });
+    await dismissed();
+    expect(successDialog()).toBeOnTheScreen();
     expect(showToast).not.toHaveBeenCalled();
 
-    await act(async () => { successDialog(tree).props.onCreateAnother(); });
+    await press('Create another');
     expect(router.replace).toHaveBeenCalledWith('/dispatch-form/step1');
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('Order fulfilled and removed from the queue. Photos uploaded.');
@@ -214,34 +269,34 @@ describe('toasts wait for the dialog to go', () => {
 
   it('an order with lines left says how many, not that it is fulfilled', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: 2 });
-    const tree = await render();
-    await create_(tree);
-    await act(async () => { successDialog(tree).props.onViewList(); });
+    await show();
+    await create_();
+    await press('View list');
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('2 lines are still open on the order.');
   });
 
   it('one line left is said in the singular', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft: 1 });
-    const tree = await render();
-    await create_(tree);
-    await act(async () => { successDialog(tree).props.onViewList(); });
+    await show();
+    await create_();
+    await press('View list');
     expect(showToast).toHaveBeenCalledWith('1 line is still open on the order.');
   });
 
   it.each([[null], [undefined]])('says nothing about the order when the server does not (%s)', async (orderLinesLeft) => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [], orderLinesLeft });
-    const tree = await render();
-    await create_(tree);
-    await act(async () => { successDialog(tree).props.onViewList(); });
+    await show();
+    await create_();
+    await press('View list');
     expect(showToast).not.toHaveBeenCalled();
   });
 
   it('a save that cleared no order and lost no photo says nothing', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [] });
-    const tree = await render();
-    await create_(tree);
-    await act(async () => { successDialog(tree).props.onViewList(); });
+    await show();
+    await create_();
+    await press('View list');
     expect(showToast).not.toHaveBeenCalled();
   });
 });
@@ -250,42 +305,43 @@ describe('a failed share is said inside the success dialog', () => {
   it('shows the reason as shareError, and clears it when the next try starts', async () => {
     mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [] });
     jest.mocked(generateDispatchPDF).mockResolvedValueOnce({ success: false } as never);
-    const tree = await render();
-    await create_(tree);
-    expect(successDialog(tree).props.shareError).toBeNull();
+    await show();
+    await create_();
+    expect(screen.queryByText(/Couldn't/)).not.toBeOnTheScreen();
 
-    await act(async () => { await successDialog(tree).props.onSharePDF(); });
-    expect(successDialog(tree).props.shareError).toBe("Couldn't create the PDF. Check your connection and try again.");
+    await press('Share PDF');
+    expect(await screen.findByText("Couldn't create the PDF. Check your connection and try again.")).toBeOnTheScreen();
     expect(showToast).not.toHaveBeenCalled();
 
     jest.mocked(generateDispatchPDF).mockResolvedValueOnce({ success: true, pdfUrl: 'https://example.invalid/d.pdf' } as never);
     jest.mocked(downloadAndSharePDF).mockResolvedValueOnce({ success: false } as never);
-    await act(async () => { await successDialog(tree).props.onSharePDF(); });
-    expect(successDialog(tree).props.shareError).toBe("Couldn't share the PDF. Try again.");
+    await press('Share PDF');
+    expect(await screen.findByText("Couldn't share the PDF. Try again.")).toBeOnTheScreen();
+    expect(screen.queryByText(/create the PDF/)).not.toBeOnTheScreen();
 
     jest.mocked(generateDispatchPDF).mockResolvedValueOnce({ success: true, pdfUrl: 'https://example.invalid/d.pdf' } as never);
     jest.mocked(downloadAndSharePDF).mockResolvedValueOnce({ success: true } as never);
-    await act(async () => { await successDialog(tree).props.onSharePDF(); });
-    expect(successDialog(tree).props.shareError).toBeNull();
+    await press('Share PDF');
+    await waitFor(() => expect(downloadAndSharePDF).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/Couldn't/)).not.toBeOnTheScreen();
   });
 });
-
 it('the confirm dialog stays open and busy until the save answers', async () => {
-  let finish!: (value: unknown) => void;
-  mockSubmitForm.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
-  const tree = await render();
-  await act(async () => { tree.root.find((node) => node.props.testID === 'dispatch-review-submit' && typeof node.props.onPress === 'function').props.onPress(); });
-  expect(createDialog(tree).props.visible).toBe(true);
-  expect(createDialog(tree).props.busy).toBe(false);
+  mockSubmitForm.mockReturnValue(new Promise((resolve) => { finishSave = resolve; }));
+  await show();
+  await press('Create dispatch');
+  expect(createOnScreen()).toBeOnTheScreen();
+  // Exactly `busy: false`, not a missing key.
+  expect(screen.getByRole('alert', { name: CREATE_TITLE }).props.accessibilityState).toEqual({ busy: false });
 
-  await act(async () => { createDialog(tree).props.onConfirm(); });
-  expect(createDialog(tree).props.visible).toBe(true);
-  expect(createDialog(tree).props.busy).toBe(true);
+  await act(async () => { createDialog().onConfirm(); });
+  expect(createOnScreen()).toBeOnTheScreen();
+  expect(createOnScreen()).toBeBusy();
   // A second tap while it runs saves nothing twice.
-  await act(async () => { createDialog(tree).props.onConfirm(); });
+  await act(async () => { createDialog().onConfirm(); });
   expect(mockSubmitForm).toHaveBeenCalledTimes(1);
 
-  await act(async () => { finish({ success: false }); });
-  expect(createDialog(tree).props.visible).toBe(false);
-  expect(createDialog(tree).props.busy).toBe(false);
+  await act(async () => { finishSave!({ success: false }); });
+  expect(createOnScreen()).not.toBeOnTheScreen();
+  expect(createDialog().busy).toBe(false);
 });

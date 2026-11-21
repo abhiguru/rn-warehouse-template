@@ -3,7 +3,7 @@
  * asked again (the request layer already waited and asked once more), and the words are the app's, in the app's language.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setLanguage, t } from '@/i18n';
 import { shouldRetryQuery } from '@/lib/queryClient';
@@ -30,12 +30,12 @@ function Probe() {
 }
 async function run(): Promise<void> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: shouldRetryQuery, retryDelay: 0 } } });
-  let tree: ReturnType<typeof create> | undefined;
-  await act(async () => {
-    tree = create(<QueryClientProvider client={client}><Probe /></QueryClientProvider>);
-  });
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
-  await act(async () => { tree!.unmount(); });
+  const { unmount } = await render(<QueryClientProvider client={client}><Probe /></QueryClientProvider>);
+  // Wait until the query and every retry it would make have finished.
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  await waitFor(() => expect(result?.isLoading).toBe(false));
+  // Unmount before clearing: clearing under a mounted hook leaves TanStack's garbage-collection timer running and Jest never exits.
+  await unmount();
   client.clear();
 }
 

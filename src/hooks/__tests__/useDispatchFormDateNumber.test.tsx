@@ -4,7 +4,7 @@
  * nothing changes (WS-8, backend migration 127).
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import dispatchFormReducer, {
   loadDispatchData,
@@ -80,15 +80,9 @@ function makeStore() {
   });
 }
 async function mount(mode: DispatchFormMode, store: ReturnType<typeof makeStore>, dispatchIdParam?: string) {
-  const latest: { current: UseDispatchFormReturn | null } = { current: null };
-  const Harness = () => {
-    latest.current = useDispatchForm({ mode, dispatchIdParam });
-    return null;
-  };
   mockStore = store;
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<Harness />); });
-  return { form: () => latest.current!, unmount: () => act(async () => { tree.unmount(); }) };
+  const { result, unmount } = await renderHook(() => useDispatchForm({ mode, dispatchIdParam }));
+  return { form: () => result.current, unmount };
 }
 const newForm = (typed = false, mode: DispatchFormMode = 'create') => {
   const store = makeStore();

@@ -2,11 +2,8 @@
  * The answer to an earlier search must not replace the answer to the search
  * the field shows now (M3-9).
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { useSearchAutocomplete } from '../useSearchAutocomplete';
-
-type Hook = ReturnType<typeof useSearchAutocomplete<string>>;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -25,32 +22,25 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-function setup(searchFn: (query: string) => Promise<string[]>) {
-  let hook!: Hook;
-  const Harness = () => {
-    hook = useSearchAutocomplete<string>({ searchFn, debounceMs: 300 });
-    return null;
-  };
-  act(() => {
-    create(<Harness />);
-  });
-  const type = (text: string) => {
-    act(() => hook.handleSearchChange(text));
-    act(() => {
+async function setup(searchFn: (query: string) => Promise<string[]>) {
+  const { result } = await renderHook(() => useSearchAutocomplete<string>({ searchFn, debounceMs: 300 }));
+  const type = async (text: string) => {
+    await act(() => result.current.handleSearchChange(text));
+    await act(() => {
       jest.advanceTimersByTime(300);
     });
   };
-  return { get hook() { return hook; }, type };
+  return { get hook() { return result.current; }, type };
 }
 
 it('keeps the results of the latest search when an earlier one answers last', async () => {
   const pa = deferred<string[]>();
   const pat = deferred<string[]>();
   const searchFn = jest.fn((query: string) => (query === 'pa' ? pa.promise : pat.promise));
-  const view = setup(searchFn);
+  const view = await setup(searchFn);
 
-  view.type('pa');
-  view.type('pat');
+  await view.type('pa');
+  await view.type('pat');
   expect(searchFn).toHaveBeenCalledTimes(2);
 
   await act(async () => {
@@ -67,9 +57,9 @@ it('keeps the results of the latest search when an earlier one answers last', as
 
 it('drops an answer that arrives after the search was cleared', async () => {
   const pa = deferred<string[]>();
-  const view = setup(jest.fn(() => pa.promise));
-  view.type('pa');
-  act(() => view.hook.clearSearch());
+  const view = await setup(jest.fn(() => pa.promise));
+  await view.type('pa');
+  await act(() => view.hook.clearSearch());
   await act(async () => {
     pa.resolve(['Parmar Stores']);
   });
@@ -77,8 +67,8 @@ it('drops an answer that arrives after the search was cleared', async () => {
 });
 
 it('still shows the results of a single search', async () => {
-  const view = setup(jest.fn(async () => ['Patel Traders']));
-  view.type('pat');
-  await act(async () => {});
+  const view = await setup(jest.fn(async () => ['Patel Traders']));
+  await view.type('pat');
+  await act(() => Promise.resolve());
   expect(view.hook.results).toEqual(['Patel Traders']);
 });

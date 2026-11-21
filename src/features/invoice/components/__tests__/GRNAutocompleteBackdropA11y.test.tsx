@@ -4,7 +4,7 @@
  * "Close" button. The label key that only the backdrop used is gone from English and Gujarati.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { GRNAutocomplete } from '../GRNAutocomplete';
 import { GRNAutocompleteBottomSheet } from '@/features/dispatch/components/GRNAutocompleteBottomSheet';
 import { invoice as invoiceEn } from '@/i18n/locales/en/invoice';
@@ -43,18 +43,20 @@ const sheets: [string, () => React.ReactElement][] = [
 ];
 
 describe.each(sheets)('%s sheet', (_name, element) => {
-  let tree: ReactTestRenderer;
   beforeEach(async () => {
     jest.useFakeTimers();
     onClose.mockClear();
-    await act(async () => { tree = create(element()); });
+    await render(element());
   });
-  afterEach(async () => {
-    await act(async () => { tree.unmount(); });
+  afterEach(() => {
     jest.useRealTimers();
   });
 
-  const backdrops = () => tree.root.findAll((n) => typeof n.props.onPress === 'function' && n.props.importantForAccessibility === 'no');
+  const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+  // The backdrop is hidden from the screen reader on purpose, so no role, label or text query can reach it: it is found
+  // by the two props that say so, on the host view that answers a press.
+  const backdrops = () =>
+    screen.root!.queryAll((n) => typeof n.type === 'string' && typeof n.props.onClick === 'function' && n.props.importantForAccessibility === 'no');
 
   it('has a backdrop that is no screen-reader stop: no role, no label, not accessible', () => {
     const found = backdrops();
@@ -67,23 +69,23 @@ describe.each(sheets)('%s sheet', (_name, element) => {
   });
 
   it('closes on a tap on the backdrop, as before', async () => {
-    await act(async () => { backdrops()[0].props.onPress(); await jest.advanceTimersByTimeAsync(500); });
+    await user().press(backdrops()[0]);
+    await act(async () => { await jest.advanceTimersByTimeAsync(500); });
     expect(onClose).toHaveBeenCalled();
   });
 
   it('has exactly one "Close" button, the ✕, and it closes the sheet', async () => {
-    const closes = tree.root.findAll((n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Close');
+    const closes = screen.getAllByRole('button', { name: 'Close' });
     expect(closes).toHaveLength(1);
-    expect(closes[0].props.accessibilityRole).toBe('button');
-    expect(closes[0].props.importantForAccessibility).not.toBe('no');
-    await act(async () => { closes[0].props.onPress(); await jest.advanceTimersByTimeAsync(500); });
+    expect(closes[0]).not.toHaveProp('importantForAccessibility', 'no');
+    await user().press(closes[0]);
+    await act(async () => { await jest.advanceTimersByTimeAsync(500); });
     expect(onClose).toHaveBeenCalled();
   });
 
   it('has no element labelled "Close GRN list" (or its Gujarati)', () => {
-    const labels = tree.root.findAll((n) => typeof n.props.accessibilityLabel === 'string').map((n) => n.props.accessibilityLabel as string);
-    expect(labels).not.toContain('Close GRN list');
-    expect(labels).not.toContain('આવક પાવતીની યાદી બંધ કરો');
+    expect(screen.queryByLabelText('Close GRN list', { includeHiddenElements: true })).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('આવક પાવતીની યાદી બંધ કરો', { includeHiddenElements: true })).not.toBeOnTheScreen();
   });
 });
 

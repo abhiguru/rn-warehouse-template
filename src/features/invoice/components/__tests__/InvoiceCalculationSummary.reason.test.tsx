@@ -1,6 +1,5 @@
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { InvoiceCalculationSummary } from '../InvoiceCalculationSummary';
 import type { InvoiceHeaderData } from '@/types/invoice.types';
 
@@ -18,43 +17,33 @@ const header = (discount: number, discount_reason = ''): InvoiceHeaderData => ({
   gr_id: 'g', gr_no: 'FX1', one_time_charge: false, discount, discount_reason, labour: 0, tax_amount: 0, total: 735,
 });
 
-const reasonInput = (tree: ReturnType<typeof create>) =>
-  tree.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === 'Discount reason');
-const labels = (tree: ReturnType<typeof create>) =>
-  tree.root.findAllByType(Text).map(node => [node.props.children].flat().join(''));
-
 it('asks for a discount reason only when there is a discount, and marks it required for staff', async () => {
   const onReason = jest.fn();
-  let tree!: ReturnType<typeof create>;
-  await act(async () => {
-    tree = create(<InvoiceCalculationSummary header={header(0)} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={onReason} />);
-  });
-  expect(reasonInput(tree)).toBeUndefined();
+  const { rerender } = await render(
+    <InvoiceCalculationSummary header={header(0)} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={onReason} />,
+  );
+  expect(screen.queryByLabelText('Discount reason')).not.toBeOnTheScreen();
 
-  await act(async () => {
-    tree.update(<InvoiceCalculationSummary header={header(235)} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={onReason} reasonRequired />);
-  });
-  expect(labels(tree)).toContain('Discount reason (required)');
-  await act(async () => { reasonInput(tree)!.props.onChangeText('Damaged bags'); });
+  await rerender(
+    <InvoiceCalculationSummary header={header(235)} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={onReason} reasonRequired />,
+  );
+  expect(screen.getByText('Discount reason (required)')).toBeOnTheScreen();
+  await userEvent.paste(screen.getByLabelText('Discount reason'), 'Damaged bags');
   expect(onReason).toHaveBeenCalledWith('Damaged bags');
 
-  await act(async () => {
-    tree.update(<InvoiceCalculationSummary header={header(235, 'Damaged bags')} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={onReason} />);
-  });
-  expect(labels(tree)).toContain('Discount reason');
-  expect(reasonInput(tree)!.props.value).toBe('Damaged bags');
-  await act(async () => { tree.unmount(); });
+  await rerender(
+    <InvoiceCalculationSummary header={header(235, 'Damaged bags')} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={onReason} />,
+  );
+  expect(screen.getByText('Discount reason')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Discount reason')).toHaveDisplayValue('Damaged bags');
 });
 
 it('keeps the reason field when the discount of a saved invoice is removed', async () => {
   // Saved with a discount of 100; staff set it to 0, which the server also counts as a change.
   const removed: InvoiceHeaderData = { ...header(0), saved_discount: 100, saved_discount_reason: 'Damaged bags' };
-  let tree!: ReturnType<typeof create>;
-  await act(async () => {
-    tree = create(<InvoiceCalculationSummary header={removed} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={jest.fn()} reasonRequired />);
-  });
+  await render(
+    <InvoiceCalculationSummary header={removed} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={jest.fn()} reasonRequired />,
+  );
 
-  expect(reasonInput(tree)).toBeDefined();
-  expect(reasonInput(tree)!.props.value).toBe('');
-  await act(async () => { tree.unmount(); });
+  expect(screen.getByLabelText('Discount reason')).toHaveDisplayValue('');
 });

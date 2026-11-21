@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer from '@/store/slices/authSlice';
 import themeReducer from '@/store/slices/themeSlice';
@@ -21,31 +21,24 @@ jest.mock('@/store/hooks', () => {
 });
 
 const REASON = "This server's sign-in keys were changed. Please sign in again.";
-let tree: ReactTestRenderer | undefined;
 const makeStore = () => (mockStore = configureStore({ reducer: { auth: authReducer, theme: themeReducer } as never, middleware: gdm => gdm({ serializableCheck: false, immutableCheck: false }) }));
-const strip = (root: ReactTestRenderer) => root.root.findAll(node => node.props.testID === 'sign-out-reason');
-
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
-});
 
 it('shows the stored reason of a forced sign-out once, and Dismiss removes it', async () => {
   const store = makeStore();
   store.dispatch({ type: 'auth/forceLogoutOnInvalidToken/pending', meta: { requestId: 'a' } });
   store.dispatch({ type: 'auth/forceLogoutOnInvalidToken/fulfilled', meta: { requestId: 'a' }, payload: { reason: REASON } });
-  await act(async () => { tree = create(<SignOutReasonStrip />); });
-  expect(strip(tree!).length).toBeGreaterThan(0);
-  expect(JSON.stringify(tree!.toJSON())).toContain('keys were changed');
-  const dismiss = tree!.root.find(node => node.props.testID === 'sign-out-reason-dismiss' && typeof node.props.onPress === 'function');
-  expect(JSON.stringify(tree!.toJSON())).toContain('Dismiss');
-  await act(async () => { dismiss.props.onPress(); });
-  expect(strip(tree!)).toHaveLength(0);
+  await render(<SignOutReasonStrip />);
+  expect(screen.getByTestId('sign-out-reason')).toBeOnTheScreen();
+  expect(screen.getByText(/keys were changed/)).toBeOnTheScreen();
+  const dismiss = screen.getByRole('button', { name: 'Dismiss' });
+  expect(within(dismiss).getByText('Dismiss')).toBeOnTheScreen();
+  await userEvent.press(dismiss);
+  expect(screen.queryByTestId('sign-out-reason')).not.toBeOnTheScreen();
   expect((store.getState() as { auth: { signOutReason: string | null } }).auth.signOutReason).toBeNull();
 });
 
 it('draws nothing when no sign-out reason is stored', async () => {
   makeStore();
-  await act(async () => { tree = create(<SignOutReasonStrip />); });
-  expect(tree!.toJSON()).toBeNull();
+  await render(<SignOutReasonStrip />);
+  expect(screen.toJSON()).toBeNull();
 });

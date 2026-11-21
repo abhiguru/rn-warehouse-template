@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { useOrderLiveUpdates, ORDER_REFRESH_INTERVAL_MS } from '../useOrderLiveUpdates';
 
 let mockProfile: object | null = { id: 'customer' };
@@ -22,11 +22,11 @@ test('orders are re-read every 15 s; background/offline/sign-out stop the timer 
   const originalState = AppState.currentState;
   AppState.currentState = 'active';
   const Harness = () => { useOrderLiveUpdates(refresh); return null; };
-  let tree!: ReturnType<typeof create>;
+  let view!: Awaited<ReturnType<typeof render>>;
   const advance = (ms: number) => act(async () => { await jest.advanceTimersByTimeAsync(ms); });
   try {
     expect(ORDER_REFRESH_INTERVAL_MS).toBe(15_000);
-    await act(async () => { tree = create(React.createElement(Harness)); });
+    view = await render(React.createElement(Harness));
     await advance(14_999);
     expect(refresh).not.toHaveBeenCalled();
     await advance(1);
@@ -41,23 +41,23 @@ test('orders are re-read every 15 s; background/offline/sign-out stop the timer 
     expect(refresh).toHaveBeenCalledTimes(3);
 
     mockConnected = false;
-    await act(async () => { tree.update(React.createElement(Harness)); });
+    await view.rerender(React.createElement(Harness));
     await advance(60_000);
     expect(refresh).toHaveBeenCalledTimes(3);
     mockConnected = true;
-    await act(async () => { tree.update(React.createElement(Harness)); });
+    await view.rerender(React.createElement(Harness));
     expect(refresh).toHaveBeenCalledTimes(4);
 
     mockProfile = null;
-    await act(async () => { tree.update(React.createElement(Harness)); });
+    await view.rerender(React.createElement(Harness));
     await advance(60_000);
     expect(refresh).toHaveBeenCalledTimes(4);
     mockProfile = { id: 'another-customer' };
-    await act(async () => { tree.update(React.createElement(Harness)); });
+    await view.rerender(React.createElement(Harness));
     await advance(15_000);
     expect(refresh).toHaveBeenCalledTimes(5);
   } finally {
-    await act(async () => { tree?.unmount(); });
+    await view?.unmount();
     AppState.currentState = originalState;
     spy.mockRestore();
     jest.useRealTimers();

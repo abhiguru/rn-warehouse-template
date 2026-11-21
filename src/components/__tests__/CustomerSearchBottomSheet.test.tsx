@@ -1,7 +1,6 @@
 /** Review fixes: a late failure cannot overwrite a newer answer, clearing resets the failure, the x stays while searching. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { CustomerSearchBottomSheet, type CustomerSearchBottomSheetRef } from '../CustomerSearchBottomSheet';
 import { searchService } from '@/services/search-service';
 
@@ -16,6 +15,7 @@ jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers
 jest.mock('@/services/recent-customers-service', () => ({
   RecentCustomersService: { getRecentCustomers: jest.fn(() => Promise.resolve([])), addRecentCustomer: jest.fn() },
 }));
+// The sheet as a plain box; its text input is the real one and its list draws every row, so what a person sees can be read.
 jest.mock('@gorhom/bottom-sheet', () => {
   const ReactMock = require('react');
   const sheet = ReactMock.forwardRef((props: object, ref: unknown) => {
@@ -26,32 +26,40 @@ jest.mock('@gorhom/bottom-sheet', () => {
     __esModule: true,
     default: sheet,
     BottomSheetBackdrop: 'BottomSheetBackdrop',
-    BottomSheetTextInput: 'BottomSheetTextInput',
-    BottomSheetFlatList: ({ data, ListEmptyComponent }: { data: unknown[]; ListEmptyComponent?: React.ReactElement }) =>
-      ReactMock.createElement('BottomSheetFlatList', { data }, data && data.length ? null : ListEmptyComponent),
+    BottomSheetTextInput: require('react-native').TextInput,
+    BottomSheetFlatList: ({ data, renderItem, ListEmptyComponent }: { data: unknown[]; renderItem: (p: { item: unknown }) => React.ReactNode; ListEmptyComponent?: React.ReactElement }) =>
+      ReactMock.createElement(
+        'BottomSheetFlatList',
+        null,
+        data && data.length
+          ? data.map((item, index) => ReactMock.createElement(ReactMock.Fragment, { key: index }, renderItem({ item })))
+          : ListEmptyComponent
+      ),
   };
 });
 
 const search = jest.mocked(searchService.searchCustomersOrThrow);
-let tree: ReactTestRenderer;
-const input = () => tree.root.findByType('BottomSheetTextInput' as never);
-const failedShown = () => tree.root.findAllByType(Text).some(n => [n.props.children].flat().join('').includes("Couldn't search customers"));
-const clearButtons = () => tree.root.findAll(n => n.props.accessibilityLabel === 'Clear search' && typeof n.props.onPress === 'function');
-const wait = (ms: number) => act(async () => { await new Promise(r => setTimeout(r, ms)); });
+const FAILED = "Couldn't search customers. Check your connection and try again.";
+let release: (() => void) | undefined;
+const user = userEvent.setup({ delay: 0 });
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  release = undefined;
   const ref = React.createRef<CustomerSearchBottomSheetRef>();
-  await act(async () => { tree = create(<CustomerSearchBottomSheet ref={ref} onSelect={jest.fn()} />); });
+  await render(<CustomerSearchBottomSheet ref={ref} onSelect={jest.fn()} />);
 });
-afterEach(async () => { await act(async () => { tree.unmount(); }); });
+afterEach(() => {
+  // A search held open by a test is settled so Jest can exit.
+  release?.();
+  jest.restoreAllMocks();
+});
 
 it('keeps the x while a search runs', async () => {
-  search.mockReturnValue(new Promise(() => {}) as never);
-  await act(async () => { input().props.onChangeText('ac'); });
-  await wait(400);
-  expect(search).toHaveBeenCalled();
-  expect(clearButtons().length).toBe(1);
+  search.mockReturnValue(new Promise<never>(resolve => { release = () => resolve([] as never); }));
+  await user.paste(screen.getByLabelText('Search customers'), 'ac');
+  await waitFor(() => expect(search).toHaveBeenCalled());
+  expect(screen.getAllByRole('button', { name: 'Clear search' })).toHaveLength(1);
 });
 
 it('a late failure of an older search does not replace a newer answer', async () => {
@@ -60,23 +68,23 @@ it('a late failure of an older search does not replace a newer answer', async ()
     .mockReturnValueOnce(new Promise((_, reject) => { failFirst = reject; }) as never)
     .mockResolvedValueOnce([{ value: 'c1', label: 'Acme Foods', detail: 'Rajkot' }] as never);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  await act(async () => { input().props.onChangeText('ac'); });
-  await wait(400);
-  await act(async () => { input().props.onChangeText('acm'); });
-  await wait(400);
-  const list = () => tree.root.findByType('BottomSheetFlatList' as never).props.data as { value: string }[];
-  expect(list().map(r => r.value)).toEqual(['c1']);
+  const field = screen.getByLabelText('Search customers');
+  await user.paste(field, 'ac');
+  await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+  await user.paste(field, 'acm');
+  expect(await screen.findByRole('button', { name: 'Acme Foods, Rajkot' })).toBeOnTheScreen();
+  expect(screen.getAllByRole('button', { name: /, Rajkot$/ })).toHaveLength(1);
   await act(async () => { failFirst(new Error('late')); await Promise.resolve(); });
-  expect(list().map(r => r.value)).toEqual(['c1']);
-  expect(failedShown()).toBe(false);
+  expect(screen.getByRole('button', { name: 'Acme Foods, Rajkot' })).toBeOnTheScreen();
+  expect(screen.getAllByRole('button', { name: /, Rajkot$/ })).toHaveLength(1);
+  expect(screen.queryByText(FAILED)).not.toBeOnTheScreen();
 });
 
 it('clearing the text after a failure clears the failure', async () => {
   search.mockRejectedValueOnce(new Error('down'));
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  await act(async () => { input().props.onChangeText('ac'); });
-  await wait(400);
-  expect(failedShown()).toBe(true);
-  await act(async () => { input().props.onChangeText(''); });
-  expect(failedShown()).toBe(false);
+  await user.paste(screen.getByLabelText('Search customers'), 'ac');
+  expect(await screen.findByText(FAILED)).toBeOnTheScreen();
+  await user.press(screen.getByRole('button', { name: 'Clear search' }));
+  expect(screen.queryByText(FAILED)).not.toBeOnTheScreen();
 });

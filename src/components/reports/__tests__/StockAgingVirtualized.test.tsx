@@ -11,13 +11,13 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor, within, type RenderResult } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { getCustomerStockAging } from '@/services/reporting/stock-aging-service';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer from '@/store/slices/reportPrefsSlice';
 import { fontWeight } from '@/theme/tokens';
-import { forgetQueries, makeQueryUpdatesImmediate, settleQueries } from '@/tests/helpers/reportQueries';
+import { forgetQueries, makeQueryUpdatesImmediate } from '@/tests/helpers/reportQueries';
 import StockAgingScreen from '../../../../app/reports/stock-aging';
 
 const mockRouterPush = jest.fn();
@@ -118,7 +118,9 @@ type Store = ReturnType<typeof makeStore>;
 
 jest.setTimeout(60_000);
 
-const mounted: TestRenderer.ReactTestRenderer[] = [];
+
+type Tree = RenderResult['container'];
+
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -134,138 +136,128 @@ beforeEach(() => {
   customerAging.mockResolvedValue(ANSWER as never);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
 
-const isLotToggle = (node: ReactTestInstance) =>
-  typeof node.props.onPress === 'function' && typeof node.props.accessibilityLabel === 'string' && /^GRN A\d{4}/.test(node.props.accessibilityLabel);
-const boldIn = (root: ReactTestInstance) =>
-  root
-    .findAll(node => (node.type as unknown) === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold)
-    .map(node => [node.props.children].flat().join(''));
+const isBold = (node: Tree) => node.type === 'Text' && StyleSheet.flatten(node.props.style)?.fontWeight === fontWeight.bold;
+const textOf = (node: Tree) => [node.props.children].flat().join('');
+/** The words in bold in a tree. A style has no query of its own, so this reads the rendered Text nodes. */
+const boldIn = (root: Tree) => root.queryAll(isBold).map(textOf);
+const LOT_NAME = /^GRN A\d{4},/;
 
 async function open() {
   mockStore = makeStore();
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<StockAgingScreen />);
-    await settleQueries();
-  });
-  mounted.push(tree);
-  const run = (callback: () => void) =>
-    act(async () => {
-      callback();
-      await settleQueries();
-    });
-  const list = () => tree.root.findByType('FlashList' as never).props;
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-  const header = () =>
-    tree.root.findAll(
-      node => typeof node.props.onPress === 'function' && typeof node.props.accessibilityState?.expanded === 'boolean' && String(node.props.accessibilityLabel).startsWith('Example Garlic')
-    )[0];
+  const user = userEvent.setup({ delay: 0 });
+  await render(<StockAgingScreen />);
+  // A later `render` (one list cell) replaces `screen`; the screen under test keeps its own queries.
+  const tree = screen.container;
+  const app = within(tree);
+  const header = await app.findByRole('button', { name: /^Example Garlic/ });
+  const list = () => tree.queryAll(node => node.type === 'FlashList')[0].props;
   /** Draws one list cell on its own, as FlashList draws (and recycles) it. */
-  const drawCell = <T,>(index: number, read: (root: ReactTestInstance) => T): T => {
+  const drawCell = async <T,>(index: number, read: (root: Tree) => T): Promise<T> => {
     const props = list();
-    let cell!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      cell = TestRenderer.create(props.renderItem({ item: (props.data as unknown[])[index], index }));
-    });
-    const result = read(cell.root);
-    act(() => cell.unmount());
+    const cell = await render(props.renderItem({ item: (props.data as unknown[])[index], index }));
+    const result = read(cell.container);
+    await cell.unmount();
     return result;
   };
   return {
-    tree,
+    app,
     list,
-    texts,
     drawCell,
-    toggle: () => run(() => header().props.onPress()),
-    headerLabel: () => String(header().props.accessibilityLabel),
-    expanded: () => header().props.accessibilityState.expanded as boolean,
-    pressLot: (number: string) =>
-      run(() => tree.root.findAll(node => isLotToggle(node) && String(node.props.accessibilityLabel).startsWith(`GRN ${number},`))[0].props.onPress()),
-    labels: () => tree.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string),
+    user,
+    header,
+    toggle: () => user.press(header),
+    pressLot: async (number: string) => user.press(app.getByRole('button', { name: new RegExp(`^GRN ${number},`) })),
     /** The rows the list is given: [type, key]. */
     rows: () => {
       const props = list();
       return (props.data as unknown[]).map((row, index) => [props.getItemType?.(row) ?? 'row', props.keyExtractor(row, index)] as const);
     },
     /** How many lot lines each list cell holds. The old screen has one cell with all 500. */
-    linesPerCell: () =>
-      (list().data as unknown[]).map((_, index) => drawCell(index, root => new Set(root.findAll(isLotToggle).map(node => node.props.accessibilityLabel)).size)),
-    search: async (text: string) => {
-      const field = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && typeof node.props.onSubmitEditing === 'function')[0];
-      await run(() => field.props.onChangeText(text));
-      await run(() => tree.root.findAll(node => typeof node.props.onSubmitEditing === 'function')[0].props.onSubmitEditing());
+    linesPerCell: async () => {
+      const counts: number[] = [];
+      for (let index = 0; index < (list().data as unknown[]).length; index += 1) {
+        counts.push(await drawCell(index, root => new Set(within(root).queryAllByRole('button', { name: LOT_NAME }).map(node => node.props.accessibilityLabel)).size));
+      }
+      return counts;
     },
-    bold: () => boldIn(tree.root),
-    status: () => texts().find(text => text.includes('Last updated')),
+    search: async (text: string) => {
+      await user.type(app.getByPlaceholderText(/search/i), text, { submitEditing: true });
+    },
+    bold: () => boldIn(tree),
   };
 }
 
 describe('stock aging: an opened item with 500 lots', () => {
   it('is one row closed, and 501 rows open, each lot in a cell of its own under a key of its item', async () => {
-    const screen = await open();
-    const closed = screen.rows();
+    const view = await open();
+    const { app } = view;
+    const closed = view.rows();
     expect(closed).toHaveLength(1);
     const [itemType, itemKey] = closed[0];
-    expect(screen.expanded()).toBe(false);
+    expect(view.header).not.toBeExpanded();
     const header = 'Example Garlic · Bag, 500 GRNs, 1,000 units, oldest 600 days';
-    expect(screen.headerLabel()).toBe(header);
+    expect(view.header).toHaveAccessibleName(header);
     // The figures count item cards (1), not the server's 500 stock lines.
     const totals = ['Items: 1', 'Items over 364 days: 1'];
-    expect(screen.labels()).toEqual(expect.arrayContaining(totals));
+    totals.forEach(label => expect(app.getByLabelText(label)).toBeOnTheScreen());
 
-    await screen.toggle();
-    expect(screen.expanded()).toBe(true);
-    const rows = screen.rows();
+    await view.toggle();
+    await waitFor(() => expect(view.header).toBeExpanded());
+    const rows = view.rows();
     expect(rows).toHaveLength(LOTS + 1);
     // The item keeps its key and its type; its lots follow it, oldest first.
     expect(rows[0]).toEqual([itemType, itemKey]);
     expect(rows.slice(1).every(([type, key]) => type === 'line' && key.startsWith(`${itemKey}|`))).toBe(true);
     expect(new Set(rows.map(([, key]) => key)).size).toBe(LOTS + 1);
-    const data = screen.list().data as { parentId?: string }[];
+    const data = view.list().data as { parentId?: string }[];
     expect(data.slice(1).every(row => row.parentId === 'Example Garlic')).toBe(true);
-    // No cell holds more than one lot: the list mounts what is on screen, not all 500 at once.
-    const perCell = screen.linesPerCell();
-    expect(Math.max(...perCell)).toBe(1);
-    expect(perCell.reduce((sum, count) => sum + count, 0)).toBe(LOTS);
-    const drawn = [...new Set(screen.labels().filter(label => /^GRN A\d{4},/.test(label)).map(label => label.split(',')[0]))];
+    const drawn = [...new Set(app.getAllByRole('button', { name: LOT_NAME }).map(node => String(node.props.accessibilityLabel).split(',')[0]))];
     expect(drawn).toEqual(Array.from({ length: LOTS }, (_, index) => `GRN ${grnNumber(index)}`));
     // The header, the figures and the status line count items, not rows.
-    expect(screen.headerLabel()).toBe(header);
-    expect(screen.labels()).toEqual(expect.arrayContaining(totals));
-    expect(screen.status()).toBe('Last updated 10:00 am');
+    expect(view.header).toHaveAccessibleName(header);
+    totals.forEach(label => expect(app.getByLabelText(label)).toBeOnTheScreen());
+    expect(app.getByText('Last updated 10:00 am')).toBeOnTheScreen();
 
     // A lot opens in its own row; the list keeps the same rows.
-    await screen.pressLot('A0002');
-    expect(screen.texts().filter(text => text === 'View GRN A0002')).toHaveLength(1);
-    expect(screen.rows()).toEqual(rows);
+    await view.pressLot('A0002');
+    expect(app.getAllByText('View GRN A0002')).toHaveLength(1);
+    expect(view.rows()).toEqual(rows);
 
-    await screen.toggle();
-    expect(screen.expanded()).toBe(false);
-    expect(screen.rows()).toEqual([[itemType, itemKey]]);
-    expect(screen.texts()).not.toContain('View GRN A0002');
-    expect(screen.labels()).toEqual(expect.arrayContaining(totals));
+    await view.toggle();
+    await waitFor(() => expect(view.header).not.toBeExpanded());
+    expect(view.rows()).toEqual([[itemType, itemKey]]);
+    expect(app.queryByText('View GRN A0002')).not.toBeOnTheScreen();
+    totals.forEach(label => expect(app.getByLabelText(label)).toBeOnTheScreen());
+
+    // No cell holds more than one lot: the list mounts what is on screen, not all 500 at once.
+    // Last, because drawing a cell on its own replaces `screen`.
+    await view.toggle();
+    await waitFor(() => expect(view.header).toBeExpanded());
+    const perCell = await view.linesPerCell();
+    expect(Math.max(...perCell)).toBe(1);
+    expect(perCell.reduce((sum, count) => sum + count, 0)).toBe(LOTS);
   });
 
   it('shows a searched GRN number in bold in its own row once the item is open', async () => {
-    const screen = await open();
-    await screen.search('a0042');
+    const view = await open();
+    const { app } = view;
+    await view.search('a0042');
     // Closed: the card names the lot the search found.
-    expect(screen.rows()).toHaveLength(1);
-    expect(screen.headerLabel()).toBe('Example Garlic · Bag, 1 GRN, 2 units, oldest 559 days, GRN A0042');
-    expect(screen.bold()).toEqual(['A0042']);
+    await waitFor(() => expect(view.rows()).toHaveLength(1));
+    expect(app.getByRole('button', { name: /^Example Garlic/ })).toHaveAccessibleName('Example Garlic · Bag, 1 GRN, 2 units, oldest 559 days, GRN A0042');
+    expect(view.bold()).toEqual(['A0042']);
 
-    await screen.toggle();
+    await view.toggle();
     // Open: the one lot left is a row of its own, with the searched words in bold.
-    const rows = screen.rows();
-    expect(rows).toHaveLength(2);
+    await waitFor(() => expect(view.rows()).toHaveLength(2));
+    const rows = view.rows();
     expect(rows[1]).toEqual(['line', `${rows[0][1]}|line:g42|Bag||`]);
-    expect(screen.bold()).toEqual(['A0042']);
-    expect(screen.drawCell(1, boldIn)).toEqual(['A0042']);
+    expect(view.bold()).toEqual(['A0042']);
     // The status line counts items (1 of 1), not the 501 rows.
-    expect(screen.status()).toBe('Last updated 10:00 am');
+    expect(app.getByText('Last updated 10:00 am')).toBeOnTheScreen();
+    expect(await view.drawCell(1, boldIn)).toEqual(['A0042']);
   });
 });
