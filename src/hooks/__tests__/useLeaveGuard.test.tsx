@@ -64,10 +64,12 @@ const openB = async (next: LeaveGuardOptions) => {
   await settle();
   expect(pathname()).toBe('/b');
 };
+/** A new value for every re-draw: the fake clock does not move, and expo-router 58.0.32 skips a setParams with equal params. */
+let redraws = 0;
 const setChanges = async (hasChanges: boolean) => {
   options = { ...options, hasChanges };
   // B draws itself again with the new value, as a form does when it is typed into.
-  await act(async () => { router.setParams({ edit: String(Date.now()) }); });
+  await act(async () => { router.setParams({ edit: String(++redraws) }); });
   await settle();
 };
 
