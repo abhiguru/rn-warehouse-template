@@ -4,14 +4,13 @@
  * reader hears.
  */
 import React, { useState } from 'react';
-import { Dimensions, Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { Input } from '@/components/ui/Input';
+import { Dimensions } from 'react-native';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { BandsTable } from '@/features/item-pricing/components/BandsTable';
 import type { FieldRegistry } from '@/features/item-pricing/components/fieldLink';
 import { initialDraft, validate, type Draft, type EditorContext } from '@/features/item-pricing/editModel';
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
-import { ORCHARD_B, garlicRows, onionRows, rate } from '@/tests/helpers/rateEditorFixtures';
+import { ORCHARD_B, garlicRows, onionRows, rate, textsOf } from '@/tests/helpers/rateEditorFixtures';
 import { getTokens } from '@/theme/tokens';
 
 jest.mock('@/store/hooks', () => ({
@@ -51,114 +50,114 @@ function Harness({ start, ctx, showErrors = false, ...rest }: { start: Draft; ct
 }
 
 const WINDOW = Dimensions.get('window');
-const screen = (width: number, fontScale: number) => Dimensions.set({ window: { width, height: 850, scale: 2.75, fontScale } });
-let tree: ReactTestRenderer | undefined;
+const setWindow = (width: number, fontScale: number) => Dimensions.set({ window: { width, height: 850, scale: 2.75, fontScale } });
 beforeEach(() => {
   onChange = jest.fn();
-  screen(392, 1);
+  setWindow(392, 1);
 });
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   Dimensions.set({ window: WINDOW });
 });
 
 async function mount(rows: ItemStoragePrice[], itemId: string, props: Partial<React.ComponentProps<typeof Harness>> = {}, customer?: { id: string; name: string }) {
   const { draft, context } = open(rows, itemId, customer);
-  await act(async () => { tree = create(<Harness start={draft} ctx={context} {...props} />); });
-  return tree!;
+  await render(<Harness start={draft} ctx={context} {...props} />);
 }
-const cell = (id: string) => tree!.root.findAllByType(TextInput).find(n => n.props.testID === id)!;
-const cells = () => tree!.root.findAllByType(TextInput).map(n => n.props.testID as string);
-const texts = () => tree!.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const type = (id: string, text: string) => act(() => cell(id).props.onChangeText(text));
+const cell = (id: string) => screen.getByTestId(id);
+const cells = () => screen.queryAllByDisplayValue(/^/).map(n => n.props.testID as string);
+/** Replace what a cell holds with `text`, as one paste (one change). */
+const type = async (id: string, text: string) => {
+  await userEvent.paste(cell(id), text);
+};
 const flat = (style: unknown) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+const addBand = () => screen.getByRole('button', { name: 'Add weight band' });
 
 describe('shared labour and tax (the bands do not differ)', () => {
   it('shows a cell for the Up to and the rent of each band, From as text, labour and tax as two rows', async () => {
     await mount(garlicRows(), 'garlic');
     expect(cells()).toEqual(['band-0-upTo', 'band-0-rent', 'band-1-upTo', 'band-1-rent', 'labour', 'tax']);
-    expect([cell('band-0-upTo'), cell('band-0-rent'), cell('band-1-upTo'), cell('band-1-rent'), cell('labour'), cell('tax')].map(n => n.props.value))
-      .toEqual(['40', '6.00', '100', '9.50', '2.50', '5']);
-    const shown = texts();
-    expect(shown).toEqual(expect.arrayContaining(['Up to (kg)', 'Rent (₹)', '0 –', '41 –', 'Labour (₹)', 'Tax (%)', 'Tap a figure to change it.']));
+    const shownValues = ['40', '6.00', '100', '9.50', '2.50', '5'];
+    ['band-0-upTo', 'band-0-rent', 'band-1-upTo', 'band-1-rent', 'labour', 'tax'].forEach((id, i) => expect(cell(id)).toHaveDisplayValue(shownValues[i]));
+    for (const text of ['Up to (kg)', 'Rent (₹)', '0 –', '41 –', 'Labour (₹)', 'Tax (%)', 'Tap a figure to change it.']) {
+      expect(screen.getAllByText(text).length).toBeGreaterThan(0);
+    }
     // The per-band columns are not there.
-    expect(shown.filter(s => s === 'Labour (₹)' || s === 'Tax (%)')).toHaveLength(2);
-    expect(tree!.root.findAll(n => n.props.testID === 'labour-row' && typeof n.type === 'string')).toHaveLength(1);
+    expect(textsOf().filter(s => s === 'Labour (₹)' || s === 'Tax (%)')).toHaveLength(2);
+    expect(screen.getAllByTestId('labour-row')).toHaveLength(1);
   });
 
   it('opens a number pad, selects the text on focus and keeps a touch-sized cell', async () => {
     await mount(garlicRows(), 'garlic');
     const upTo = cell('band-0-upTo');
     const rent = cell('band-0-rent');
-    expect(upTo.props).toMatchObject({ keyboardType: 'number-pad', selectTextOnFocus: true, returnKeyType: 'next' });
-    expect(rent.props).toMatchObject({ keyboardType: 'decimal-pad', selectTextOnFocus: true, returnKeyType: 'next' });
-    expect(cell('tax').props.returnKeyType).toBe('done');
+    expect(upTo).toHaveProp('keyboardType', 'number-pad');
+    expect(upTo).toHaveProp('selectTextOnFocus', true);
+    expect(upTo).toHaveProp('returnKeyType', 'next');
+    expect(rent).toHaveProp('keyboardType', 'decimal-pad');
+    expect(rent).toHaveProp('selectTextOnFocus', true);
+    expect(rent).toHaveProp('returnKeyType', 'next');
+    expect(cell('tax')).toHaveProp('returnKeyType', 'done');
     expect(flat(rent.props.style).minHeight).toBeGreaterThanOrEqual(44);
-    expect(rent.props.maxFontSizeMultiplier).toBe(1.3);
+    expect(rent).toHaveProp('maxFontSizeMultiplier', 1.3);
   });
 
   it('draws the 2 px focus ring only on the focused cell', async () => {
     await mount(garlicRows(), 'garlic');
-    expect(flat(cell('band-0-rent').props.style)).toMatchObject({ borderWidth: 2, borderColor: 'transparent' });
-    act(() => cell('band-0-rent').props.onFocus());
-    expect(flat(cell('band-0-rent').props.style).borderColor).toBe(lightTokens.border.fieldFocus);
-    expect(flat(cell('band-1-rent').props.style).borderColor).toBe('transparent');
-    act(() => cell('band-0-rent').props.onBlur());
-    expect(flat(cell('band-0-rent').props.style).borderColor).toBe('transparent');
+    expect(cell('band-0-rent')).toHaveStyle({ borderWidth: 2, borderColor: 'transparent' });
+    await fireEvent(cell('band-0-rent'), 'focus', {});
+    expect(cell('band-0-rent')).toHaveStyle({ borderColor: lightTokens.border.fieldFocus });
+    expect(cell('band-1-rent')).toHaveStyle({ borderColor: 'transparent' });
+    await fireEvent(cell('band-0-rent'), 'blur', {});
+    expect(cell('band-0-rent')).toHaveStyle({ borderColor: 'transparent' });
   });
 
   it('typing in a cell calls the setters: Up to moves the From of the next band, rent, labour and tax land in the draft', async () => {
     await mount(garlicRows(), 'garlic');
-    type('band-0-upTo', '60');
+    await type('band-0-upTo', '60');
     expect(latest.bands[0].upTo).toBe('60');
-    expect(texts()).toContain('61 –');
-    type('band-1-rent', '10.25');
-    type('labour', '3');
-    type('tax', '12');
+    expect(screen.getByText('61 –')).toBeOnTheScreen();
+    await type('band-1-rent', '10.25');
+    await type('labour', '3');
+    await type('tax', '12');
     expect([latest.bands[1].rent, latest.labour, latest.tax]).toEqual(['10.25', '3', '12']);
     expect(onChange).toHaveBeenCalledTimes(4);
   });
 
   it('adds an empty band and removes one by its button; a single band has no remove control', async () => {
     await mount(garlicRows(), 'garlic');
-    const add = tree!.root.findAll(n => n.props.testID === 'add-band' && typeof n.props.onPress === 'function')[0];
-    await act(async () => { add.props.onPress(); });
+    await userEvent.press(addBand());
     expect(latest.bands.map(b => b.upTo)).toEqual(['40', '100', '']);
     expect(cells()).toContain('band-2-rent');
-    expect(texts()).toContain('101 –');
+    expect(screen.getByText('101 –')).toBeOnTheScreen();
 
-    const remove = () => tree!.root.findAll(n => n.props.testID === 'band-2-remove' && typeof n.props.onPress === 'function')[0];
-    expect(remove().props.accessibilityLabel).toBe('Remove the From 101 kg band');
-    await act(async () => { remove().props.onPress(); });
+    await userEvent.press(screen.getByRole('button', { name: 'Remove the From 101 kg band' }));
     expect(latest.bands.map(b => b.upTo)).toEqual(['40', '100']);
 
     // Down to one band: no remove controls.
-    await act(async () => { tree!.root.findAll(n => n.props.testID === 'band-1-remove' && typeof n.props.onPress === 'function')[0].props.onPress(); });
+    await userEvent.press(screen.getByTestId('band-1-remove'));
     expect(latest.bands).toHaveLength(1);
-    expect(tree!.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.endsWith('-remove'))).toHaveLength(0);
+    expect(screen.queryAllByTestId(/-remove$/)).toHaveLength(0);
   });
 
   it('Add band is off with a reason until the last "Up to" is a whole number', async () => {
     await mount(garlicRows(), 'garlic');
-    const add = () => tree!.root.find(n => n.props.testID === 'add-band' && typeof n.props.onPress === 'function');
-    expect(add().props.disabled).toBe(false);
-    await act(async () => { add().props.onPress(); });
+    expect(addBand()).toBeEnabled();
+    await userEvent.press(addBand());
     // The new band starts at 101 kg and has an empty "Up to"; another one waits for it.
     expect(latest.bands.map(b => b.upTo)).toEqual(['40', '100', '']);
-    expect(add().props.disabled).toBe(true);
-    expect(texts()).toContain('Enter the "Up to" weight of the last band first.');
+    expect(addBand()).toBeDisabled();
+    expect(screen.getByText('Enter the "Up to" weight of the last band first.')).toBeOnTheScreen();
     await type('band-2-upTo', '150');
-    expect(add().props.disabled).toBe(false);
-    expect(texts()).not.toContain('Enter the "Up to" weight of the last band first.');
+    expect(addBand()).toBeEnabled();
+    expect(screen.queryByText('Enter the "Up to" weight of the last band first.')).not.toBeOnTheScreen();
   });
 
   it('a one-time rate has no labour row, only the note, and a tax row', async () => {
     const once = [rate('garlic', null, 0, 100, 9, 0, 5, '2025-01-01', null, 'one_time', 'Review Garlic Desi')];
     const { draft, context } = initialDraft({ mode: 'change', params: { mode: 'change', item_id: 'garlic', price_type: 'one_time' }, rows: once, role: 'admin', today: TODAY });
-    await act(async () => { tree = create(<Harness start={draft} ctx={context} />); });
+    await render(<Harness start={draft} ctx={context} />);
     expect(cells()).toEqual(['band-0-upTo', 'band-0-rent', 'tax']);
-    expect(texts()).toContain('Labour is included in a one-time rate.');
+    expect(screen.getByText('Labour is included in a one-time rate.')).toBeOnTheScreen();
   });
 });
 
@@ -169,21 +168,23 @@ describe('labour and tax that differ per band', () => {
   ];
 
   it('are columns of their own, with a cell in every band and no shared rows', async () => {
-    screen(700, 1);
+    setWindow(700, 1);
     await mount(perBandRows(), 'garlic');
     expect(cells()).toEqual(['band-0-upTo', 'band-0-rent', 'band-0-labour', 'band-0-tax', 'band-1-upTo', 'band-1-rent', 'band-1-labour', 'band-1-tax']);
-    expect(texts()).toEqual(expect.arrayContaining(['Up to (kg)', 'Rent (₹)', 'Labour (₹)', 'Tax (%)']));
-    expect(tree!.root.findAll(n => n.props.testID === 'labour-row' || n.props.testID === 'tax-row')).toHaveLength(0);
-    expect([cell('band-1-labour').props.value, cell('band-1-tax').props.value]).toEqual(['3.00', '12']);
-    type('band-1-labour', '3.5');
-    type('band-0-tax', '18');
+    for (const text of ['Up to (kg)', 'Rent (₹)', 'Labour (₹)', 'Tax (%)']) expect(screen.getAllByText(text).length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('labour-row')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('tax-row')).not.toBeOnTheScreen();
+    expect(cell('band-1-labour')).toHaveDisplayValue('3.00');
+    expect(cell('band-1-tax')).toHaveDisplayValue('12');
+    await type('band-1-labour', '3.5');
+    await type('band-0-tax', '18');
     expect([latest.bands[1].labour, latest.bands[0].tax]).toEqual(['3.5', '18']);
   });
 
   it('too many columns for the width fall back to the cards', async () => {
-    screen(360, 1);
+    setWindow(360, 1);
     await mount(perBandRows(), 'garlic');
-    expect(tree!.root.findAll(n => n.props.testID === 'bands-table-stacked').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('bands-table-stacked').length).toBeGreaterThan(0);
     expect(cells()).toEqual([]);
   });
 });
@@ -197,16 +198,17 @@ describe('a customer rate', () => {
     ];
     await mount(rows, 'onion', {}, { id: ORCHARD_B.id, name: ORCHARD_B.name });
     expect(cells()).toEqual(['first-from', 'band-0-upTo', 'band-0-rent', 'band-1-from', 'band-1-upTo', 'band-1-rent', 'labour', 'tax']);
-    expect([cell('first-from').props.value, cell('band-1-from').props.value]).toEqual(['10', '61']);
-    expect(texts()).toContain('From – Up to (kg)');
+    expect(cell('first-from')).toHaveDisplayValue('10');
+    expect(cell('band-1-from')).toHaveDisplayValue('61');
+    expect(screen.getByText('From – Up to (kg)')).toBeOnTheScreen();
     // The weights between 41 and 60 pay the default rate: said under the band.
-    expect(texts().some(s => s.includes('default rate'))).toBe(true);
-    type('first-from', '5');
+    expect(textsOf().some(s => s.includes('default rate'))).toBe(true);
+    await type('first-from', '5');
     expect(latest.firstFrom).toBe(5);
     expect(latest.firstFromText).toBe('5');
-    type('band-1-from', '50');
+    await type('band-1-from', '50');
     expect(latest.bands[1].fromText).toBe('50');
-    expect(texts()).toContain('Bags outside these weights pay the default rate.');
+    expect(screen.getByText('Bags outside these weights pay the default rate.')).toBeOnTheScreen();
   });
 
   it('a default rate has no From cell: it is text', async () => {
@@ -217,24 +219,26 @@ describe('a customer rate', () => {
 
 describe('large text and the fallback', () => {
   it('at font scale 1.3 draws the card-per-band editor with the shared labour and tax under it', async () => {
-    screen(392, 1.3);
+    setWindow(392, 1.3);
     await mount(garlicRows(), 'garlic');
-    expect(tree!.root.findAll(n => n.props.testID === 'bands-table-stacked').length).toBeGreaterThan(0);
-    expect(tree!.root.findAllByType(TextInput).filter(n => n.props.testID === 'band-0-rent')).toHaveLength(0);
-    const inputs = tree!.root.findAllByType(Input);
-    expect(inputs.map(n => n.props.label)).toEqual([
-      'Up to', 'Rent per bag, per month', 'Up to', 'Rent per bag, per month', 'Labour per bag', 'Tax',
+    expect(screen.getAllByTestId('bands-table-stacked').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('band-0-rent')).not.toBeOnTheScreen();
+    const inputs = screen.getAllByDisplayValue(/^/);
+    expect(inputs.map(n => n.props.accessibilityLabel)).toEqual([
+      'Up to, required', 'Rent per bag, per month, required', 'Up to, required', 'Rent per bag, per month, required', 'Labour per bag, required', 'Tax, required',
     ]);
     // The same draft and setters: typing in a card reaches the draft.
-    act(() => inputs[0].props.onChangeText('50'));
+    await userEvent.clear(inputs[0]);
+    await userEvent.paste(inputs[0], '50');
     expect(latest.bands[0].upTo).toBe('50');
-    act(() => inputs[4].props.onChangeText('4'));
+    await userEvent.clear(inputs[4]);
+    await userEvent.paste(inputs[4], '4');
     expect(latest.labour).toBe('4');
-    expect(tree!.root.findAll(n => n.props.testID === 'add-band').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('add-band').length).toBeGreaterThan(0);
   });
 
   it('at font scale 1.29 still draws the table', async () => {
-    screen(392, 1.29);
+    setWindow(392, 1.29);
     await mount(garlicRows(), 'garlic');
     expect(cells()).toContain('band-0-rent');
   });
@@ -243,29 +247,27 @@ describe('large text and the fallback', () => {
 describe('what a screen reader hears', () => {
   it('labels each cell with the field, the band and the unit', async () => {
     await mount(garlicRows(), 'garlic');
-    expect(cell('band-0-rent').props.accessibilityLabel).toBe('Rent, 0 to 40 kg, rupees per bag, per month');
-    expect(cell('band-1-upTo').props.accessibilityLabel).toBe('Up to, 41 to 100 kg, kilograms');
-    expect(cell('labour').props.accessibilityLabel).toBe('Labour, all weight bands, rupees per bag');
-    expect(cell('tax').props.accessibilityLabel).toBe('Tax, all weight bands, percent');
+    expect(cell('band-0-rent')).toHaveAccessibleName('Rent, 0 to 40 kg, rupees per bag, per month');
+    expect(cell('band-1-upTo')).toHaveAccessibleName('Up to, 41 to 100 kg, kilograms');
+    expect(cell('labour')).toHaveAccessibleName('Labour, all weight bands, rupees per bag');
+    expect(cell('tax')).toHaveAccessibleName('Tax, all weight bands, percent');
   });
 
   it('puts the error of a row in the cell hint and in a line under the row', async () => {
     await mount(garlicRows(), 'garlic', { showErrors: true });
-    type('band-1-rent', '');
+    await type('band-1-rent', '');
     const message = 'Enter a rent from 0 to 9999.99, up to 2 decimals, for example 12.50.';
-    expect(cell('band-1-rent').props.accessibilityHint).toBe(message);
+    expect(cell('band-1-rent')).toHaveProp('accessibilityHint', message);
     expect(cell('band-0-rent').props.accessibilityHint).toBeUndefined();
-    const line = tree!.root.findAll(n => n.props.testID === 'band-1-error')[0];
-    expect(line.props.accessibilityRole).toBe('alert');
-    expect(line.props.children).toBe(message);
+    expect(screen.getByRole('alert', { name: message })).toHaveProp('testID', 'band-1-error');
     // The ring of a wrong cell is the error ring.
-    expect(flat(cell('band-1-rent').props.style).borderColor).toBe(lightTokens.status.negative.border);
+    expect(cell('band-1-rent')).toHaveStyle({ borderColor: lightTokens.status.negative.border });
   });
 
   it('shows the error of the bands as a whole under the table', async () => {
     const { draft, context } = open(garlicRows(), 'garlic');
-    await act(async () => { tree = create(<BandsTable draft={draft} ctx={context} errors={{ bands: 'The bands overlap.' }} onChange={jest.fn()} />); });
-    expect(texts()).toContain('The bands overlap.');
+    await render(<BandsTable draft={draft} ctx={context} errors={{ bands: 'The bands overlap.' }} onChange={jest.fn()} />);
+    expect(screen.getByText('The bands overlap.')).toBeOnTheScreen();
   });
 });
 
@@ -275,22 +277,23 @@ describe('the Next key and reading', () => {
     const registry: FieldRegistry = { register: jest.fn((key: string, node: unknown) => { if (node) registered.push(key); }), onFocus: jest.fn(), next: jest.fn() };
     await mount(garlicRows(), 'garlic', { fields: registry });
     expect(registered).toEqual(['band.0.upTo', 'band.0.rent', 'band.1.upTo', 'band.1.rent', 'labour', 'tax']);
-    act(() => cell('band-1-upTo').props.onFocus());
+    await fireEvent(cell('band-1-upTo'), 'focus', {});
     expect(registry.onFocus).toHaveBeenCalledWith('band.1.upTo');
-    act(() => cell('band-1-upTo').props.onSubmitEditing());
+    await fireEvent(cell('band-1-upTo'), 'submitEditing', {});
     expect(registry.next).toHaveBeenCalledWith('band.1.upTo');
   });
 
   it('a read-only table cannot be typed in, has no remove control, no Add band and no hint', async () => {
     await mount(garlicRows(), 'garlic', { readOnly: true });
-    expect(cell('band-0-rent').props.editable).toBe(false);
-    expect(tree!.root.findAll(n => typeof n.props.testID === 'string' && (n.props.testID.endsWith('-remove') || n.props.testID === 'add-band'))).toHaveLength(0);
-    expect(texts()).not.toContain('Tap a figure to change it.');
+    expect(cell('band-0-rent')).toHaveProp('editable', false);
+    expect(screen.queryAllByTestId(/-remove$/)).toHaveLength(0);
+    expect(screen.queryByTestId('add-band')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Tap a figure to change it.')).not.toBeOnTheScreen();
   });
 
   it('shows a tag under the band it belongs to', async () => {
     await mount(garlicRows(), 'garlic', { tags: ['standard', 'item'] });
-    const tags = tree!.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('band-tag-') && n.props.label);
-    expect(tags.map(n => `${n.props.testID}:${n.props.label}`)).toEqual(['band-tag-0:Standard', 'band-tag-1:This item']);
+    const tags = screen.queryAllByTestId(/^band-tag-/);
+    expect(tags.map(n => `${n.props.testID}:${within(n).queryAllByText(/[\s\S]*/).map(x => [x.props.children].flat(Infinity).join('')).join('')}`)).toEqual(['band-tag-0:Standard', 'band-tag-1:This item']);
   });
 });

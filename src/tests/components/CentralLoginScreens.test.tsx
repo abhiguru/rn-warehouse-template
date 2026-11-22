@@ -5,13 +5,11 @@
  * what each screen does.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render as rntlRender, screen, userEvent, within } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
-import { Button } from '@/components/ui/Button';
-import { StatusTag } from '@/components/ui/StatusTag';
 import CentralLoginScreen from '../../../app/central-login';
 import CentralOtpScreen from '../../../app/central-otp';
 import FacilitiesScreen from '../../../app/facilities';
@@ -93,6 +91,12 @@ jest.mock('@/store/centralSignOut', () => ({
   signOutAllDevices: jest.fn(async () => ({ ok: true })),
   deleteAccountEverywhere: jest.fn(async () => ({ ok: true })),
 }));
+// An icon draws as a View carrying its name (in the test id) and colour, so a test can ask which icon a row has.
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
+  const R = require('react');
+  const { View } = require('react-native');
+  return { __esModule: true, default: ({ name, color }: { name: string; color?: string }) => R.createElement(View, { testID: `icon-${name}`, color }) };
+});
 // The language switch has its own controls and store access; it is not under test here.
 jest.mock('@/components/LanguageSwitch', () => ({ LanguageSwitch: () => null }));
 
@@ -100,27 +104,34 @@ const THEMES = BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode =>
 const USER = { id: 'asha', phoneNumber: '919000000001', name: 'Asha Fictional', createdAt: '2026-10-12T06:00:12.000Z' };
 const NORTH = 'https://north-cold.example.test';
 
-let tree: ReactTestRenderer | undefined;
 async function render(element: React.ReactElement, brand: Brand = 'orange', mode: Mode = 'light') {
   mockState = { theme: { preference: mode, brand }, auth: {} };
-  await act(async () => { tree = create(element); });
-  return tree!;
+  await rntlRender(element);
 }
-const texts = () =>
-  tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
-const hasBackground = (colour: string) =>
-  tree!.root.findAll(node => {
-    const style = [].concat(node.props.style ?? []).flat(3).filter(Boolean) as Array<{ backgroundColor?: string }>;
-    return style.some(s => s.backgroundColor === colour);
-  }).length > 0;
-const button = (label: string) => {
-  const found = tree!.root.findAllByType(Button).find(node => node.props.children === label || node.props.accessibilityLabel === label);
-  if (!found) throw new Error(`no button "${label}"; buttons: ${tree!.root.findAllByType(Button).map(node => node.props.children).join(' | ')}`);
+/** The text of every Text on the screen, in order. */
+const texts = () => screen.queryAllByText(/[\s\S]*/).map(node => [].concat(node.props.children).join(''));
+const flatStyle = (style: unknown) => ([] as unknown[]).concat(style ?? []).flat(3).filter(Boolean) as Array<{ backgroundColor?: string }>;
+type JsonNode = { props?: { style?: unknown }; children?: unknown };
+const collect = (node: unknown, found: JsonNode[] = []): JsonNode[] => {
+  if (Array.isArray(node)) node.forEach(child => collect(child, found));
+  else if (node && typeof node === 'object') {
+    found.push(node as JsonNode);
+    collect((node as JsonNode).children, found);
+  }
   return found;
 };
-const byTestID = (testID: string) => tree!.root.find(node => node.props.testID === testID && typeof node.props.onPress === 'function');
-const press = async (node: { props: { onPress?: () => unknown } }) => {
-  await act(async () => { await node.props.onPress?.(); });
+/** Whether anything drawn has this background (the rendered tree has no query for a colour). */
+const hasBackground = (colour: string) => collect(screen.toJSON()).some(node => flatStyle(node.props?.style).some(s => s.backgroundColor === colour));
+const button = (label: string) => screen.getByRole('button', { name: label });
+const byTestID = (testID: string) => screen.getByTestId(testID);
+const press = (element: ReturnType<typeof screen.getByTestId>) => userEvent.press(element);
+/** The host scroll view around an element (Testing Library has no query for it). */
+/** A pull to refresh: the list's own refresh control is the only thing that holds the handler, and fireEvent does not reach it. */
+const pullToRefresh = (scroll: ReturnType<typeof screen.getByTestId>) => act(async () => { await scroll.props.refreshControl.props.onRefresh(); });
+const scrollAround = (element: ReturnType<typeof screen.getByTestId>) => {
+  let up = element.parent;
+  while (up && up.type !== 'RCTScrollView') up = up.parent;
+  return up!;
 };
 const alerts = () => jest.mocked(showAlert).mock.calls;
 const lastAlertButton = (text: string) => {
@@ -163,9 +174,7 @@ beforeEach(async () => {
   jest.mocked(loadMyFacilities).mockResolvedValue([]);
   jest.mocked(openFacility).mockResolvedValue({ kind: 'login' });
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
+afterEach(() => {
   setLanguage('en');
 });
 
@@ -185,20 +194,21 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
       'I agree to the Terms of Service and the Privacy Policy',
       'Send code',
     ]) {
-      expect(texts()).toContain(words);
+      expect(screen.getByText(words)).toBeOnTheScreen();
     }
     // No facility line: this sign-in is not for one facility.
-    expect(texts()).not.toContain('Change');
+    expect(screen.queryByText('Change')).not.toBeOnTheScreen();
     expect(hasBackground(t.background.base)).toBe(true);
   });
 
   it('central code step uses one-time-code autofill for the number the code went to', async () => {
     setCentralState({ status: 'signedOut', user: null, signInPhone: '+919000000001' });
     await render(<CentralOtpScreen />, brand, mode);
-    const input = tree!.root.find(node => node.props.textContentType === 'oneTimeCode' && typeof node.props.onChangeText === 'function');
-    expect(input.props.autoComplete).toBe('sms-otp');
-    expect(texts()).toContain('+91 90000 00001');
-    expect(texts()).toContain('Verify your phone');
+    const input = screen.getByLabelText('Verification code');
+    expect(input).toHaveProp('textContentType', 'oneTimeCode');
+    expect(input).toHaveProp('autoComplete', 'sms-otp');
+    expect(screen.getByText('+91 90000 00001')).toBeOnTheScreen();
+    expect(screen.getByText('Verify your phone')).toBeOnTheScreen();
     expect(hasBackground(t.background.base)).toBe(true);
   });
 
@@ -212,11 +222,11 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
     ]);
     await render(<FacilitiesScreen />, brand, mode);
     for (const words of ['My facilities', 'North Cold Store', 'Rajkot', 'Approved', 'Requested', 'Revoked', 'Code needed', 'Unavailable', 'Add facility', 'Sign out', 'Asha Fictional', '+91 90000 00001']) {
-      expect(texts()).toContain(words);
+      expect(screen.getByText(words)).toBeOnTheScreen();
     }
     const tagBackground = (origin: string) =>
       ([] as Array<{ backgroundColor?: string }>)
-        .concat(tree!.root.find(node => node.props.testID === `facility-status-${origin}` && (node.type as unknown) === 'View').props.style)
+        .concat(screen.getByTestId(`facility-status-${origin}`).props.style)
         .flat(3)
         .find(style => style?.backgroundColor)?.backgroundColor;
     expect(tagBackground('https://north-cold-store.example.test')).toBe(t.status.positive.background);
@@ -238,13 +248,13 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
       ],
     });
     await render(<FacilityCatalogueScreen />, brand, mode);
-    expect(texts()).toEqual(
-      expect.arrayContaining(['Add facility', 'North Cold Store', 'Rajkot', 'Himmatnagar, Sabarkantha', 'Online', 'Offline', 'No app server yet', 'Enter address'])
-    );
-    expect(tree!.root.findAll(node => node.props.placeholder === 'Search by name, town or district').length).toBeGreaterThan(0);
+    for (const words of ['Add facility', 'North Cold Store', 'Rajkot', 'Himmatnagar, Sabarkantha', 'Online', 'Offline', 'No app server yet', 'Enter address']) {
+      expect(screen.getAllByText(words).length).toBeGreaterThan(0);
+    }
+    expect(screen.getByPlaceholderText('Search by name, town or district')).toBeOnTheScreen();
     const tagBackground = (id: string) =>
       ([] as Array<{ backgroundColor?: string }>)
-        .concat(tree!.root.find(node => node.props.testID === `catalogue-status-${id}` && (node.type as unknown) === 'View').props.style)
+        .concat(screen.getByTestId(`catalogue-status-${id}`).props.style)
         .flat(3)
         .find(style => style?.backgroundColor)?.backgroundColor;
     expect(tagBackground('north-cold')).toBe(t.status.positive.background);
@@ -252,30 +262,30 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
     expect(tagBackground('sample-024')).toBe(t.status.neutral.background);
     // Greyed with the secondary tokens, never with opacity.
     const styleOf = (text: string) =>
-      Object.assign({}, ...[].concat(tree!.root.find(node => (node.type as unknown) === 'Text' && node.props.children === text).props.style).flat(3).filter(Boolean)) as {
+      Object.assign({}, ...[].concat(screen.getByText(text).props.style).flat(3).filter(Boolean)) as {
         color?: string;
         opacity?: number;
       };
     expect(styleOf('Fictional Sabar Cold').color).toBe(t.text.secondary);
     expect(styleOf('North Cold Store').color).toBe(t.text.primary);
     expect(styleOf('Fictional Sabar Cold').opacity).toBeUndefined();
-    expect(byTestID('catalogue-sample-024').findAll(node => node.props.name === 'office-building-outline')[0].props.color).toBe(t.icon.secondary);
+    expect(within(byTestID('catalogue-sample-024')).getByTestId('icon-office-building-outline')).toHaveProp('color', t.icon.secondary);
     expect(hasBackground(t.background.base)).toBe(true);
   });
 
   it('the linking step says why a code is asked for', async () => {
     setCentralState({ pendingLink: { origin: NORTH, name: 'North Cold Store', phoneNumber: '919000000001' } });
     await render(<FacilityLinkScreen />, brand, mode);
-    expect(texts()).toContain('Enter the code from North Cold Store');
-    expect(texts()).toContain('North Cold Store asks for its own code each time you sign in. Enter the 6-digit code it sent to');
-    expect(texts()).toContain('+91 90000 00001');
+    expect(screen.getByText('Enter the code from North Cold Store')).toBeOnTheScreen();
+    expect(screen.getByText('North Cold Store asks for its own code each time you sign in. Enter the 6-digit code it sent to')).toBeOnTheScreen();
+    expect(screen.getByText('+91 90000 00001')).toBeOnTheScreen();
     expect(hasBackground(t.background.base)).toBe(true);
   });
 
   it('the account: the number signed in with, the name and "Delete my account"', async () => {
     await render(<CentralAccountScreen />, brand, mode);
-    expect(texts()).toEqual(expect.arrayContaining(['Account', 'Signed in with +91 90000 00001', 'Save name', 'Sign out on all phones', 'Delete my account']));
-    expect(tree!.root.find(node => node.props.testID === 'central-name' && typeof node.props.onChangeText === 'function').props.value).toBe('Asha Fictional');
+    for (const words of ['Account', 'Signed in with +91 90000 00001', 'Save name', 'Sign out on all phones', 'Delete my account']) expect(screen.getAllByText(words).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('central-name')).toHaveDisplayValue('Asha Fictional');
     expect(hasBackground(t.background.base)).toBe(true);
   });
 });
@@ -284,32 +294,32 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
 describe('central sign-in', () => {
   beforeEach(() => setCentralState({ status: 'signedOut', user: null }));
   const type = async (digits: string) => {
-    const field = tree!.root.find(node => node.props.accessibilityLabel === 'Mobile number' && typeof node.props.onChangeText === 'function');
-    await act(async () => { field.props.onChangeText(digits); });
+    const field = screen.getByLabelText('Mobile number');
+    await userEvent.paste(field, digits);
   };
-  const tick = () => press(tree!.root.find(node => node.props.testID === 'accept-terms' && typeof node.props.onPress === 'function'));
-  const checked = () => tree!.root.find(node => node.props.testID === 'accept-terms' && typeof node.props.onPress === 'function').props.accessibilityState.checked;
+  const tick = () => press(screen.getByTestId('accept-terms'));
+  const checked = () => screen.getByTestId('accept-terms').props.accessibilityState.checked;
 
-  const termsError = () => tree!.root.findAll(node => node.props.testID === 'accept-terms-error');
+  const termsError = () => screen.queryAllByTestId('accept-terms-error');
 
   it('on a first sign-in "Send code" stays pressable; unticked, a tap sends nothing and says to tick the box', async () => {
     jest.mocked(requestCentralCode).mockResolvedValue({ ok: true, resendAfterSeconds: 60, expiresAt: null });
     await render(<CentralLoginScreen />);
     await type('9000000001');
     expect(checked()).toBe(false);
-    expect(button('Send code').props.disabled).toBe(false);
+    expect(button('Send code')).toBeEnabled();
     expect(termsError()).toHaveLength(0);
     const setFocus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => undefined);
     await press(button('Send code'));
     expect(requestCentralCode).not.toHaveBeenCalled();
-    expect(JSON.stringify(termsError()[0].props.children)).toContain('Tick the box above to continue');
+    expect(termsError()[0]).toHaveTextContent(/Tick the box above to continue/);
     // The focus goes to the box.
     expect(setFocus).toHaveBeenCalledWith(expect.anything(), 'focus');
 
     await tick();
     expect(checked()).toBe(true);
     expect(termsError()).toHaveLength(0);
-    expect(button('Send code').props.disabled).toBe(false);
+    expect(button('Send code')).toBeEnabled();
     await press(button('Send code'));
     expect(requestCentralCode).toHaveBeenCalledTimes(1);
     expect(requestCentralCode).toHaveBeenCalledWith('+919000000001');
@@ -324,7 +334,7 @@ describe('central sign-in', () => {
     expect(termsError().length).toBeGreaterThan(0);
   });
 
-  const tickShown = () => tree!.root.findAll(node => node.props.testID === 'accept-terms').length > 0;
+  const tickShown = () => screen.queryAllByTestId('accept-terms').length > 0;
 
   it('asks the tick of every NUMBER once: a second person on the same phone sees it, the first does not', async () => {
     // Asha has signed in on this phone before.
@@ -333,7 +343,7 @@ describe('central sign-in', () => {
     expect(tickShown()).toBe(true);
     await type('9000000001');
     expect(tickShown()).toBe(false);
-    expect(button('Send code').props.disabled).toBe(false);
+    expect(button('Send code')).toBeEnabled();
     // Bhavin types his number on the same phone: the terms are asked of him.
     await type('9000000002');
     expect(tickShown()).toBe(true);
@@ -353,7 +363,7 @@ describe('central sign-in', () => {
     await render(<CentralLoginScreen />);
     await type('9000000001');
     expect(tickShown()).toBe(false);
-    expect(button('Send code').props.disabled).toBe(false);
+    expect(button('Send code')).toBeEnabled();
     // The read for the new number never answers in this test (one call; the module
     // mock's own implementation stays in place for every later read).
     jest.mocked(AsyncStorage.getItem).mockImplementationOnce(() => new Promise(() => undefined));
@@ -389,7 +399,7 @@ describe('central sign-in', () => {
     await type('9000000001');
     await press(button('Send code'));
     expect(alerts()).toHaveLength(0);
-    expect(texts()).toContain('Please wait 42 seconds before requesting another code.');
+    expect(screen.getByText('Please wait 42 seconds before requesting another code.')).toBeOnTheScreen();
     expect(router.push).not.toHaveBeenCalled();
   });
 
@@ -402,7 +412,7 @@ describe('central sign-in', () => {
     await type('9000000001');
     await press(button('Send code'));
     expect(alerts()[0]).toEqual(["Couldn't send the code", 'That number is not valid.']);
-    expect(texts()).not.toContain("The association's sign-in can't send a code right now.");
+    expect(screen.queryByText("The association's sign-in can't send a code right now.")).not.toBeOnTheScreen();
   });
 
   // WH-148: when the association cannot send a code (an outage, no answer, no SMS), the screen says so on a strip with the
@@ -416,7 +426,7 @@ describe('central sign-in', () => {
       await type('9000000001');
       await press(button('Send code'));
       expect(alerts()).toHaveLength(0);
-      expect(texts()).toContain("The association's sign-in can't send a code right now.");
+      expect(screen.getByText("The association's sign-in can't send a code right now.")).toBeOnTheScreen();
       await press(byTestID('sign-in-with-facility-sms'));
       expect(router.push).toHaveBeenCalledWith({ pathname: '/facility-code', params: { mode: 'sms' } });
     }
@@ -433,8 +443,8 @@ describe('central sign-in', () => {
 describe('central code step', () => {
   beforeEach(() => setCentralState({ status: 'signedOut', user: null, signInPhone: '+919000000001', autoOpenSpent: true }));
   const enter = async (code: string) => {
-    const input = tree!.root.find(node => node.props.textContentType === 'oneTimeCode' && typeof node.props.onChangeText === 'function');
-    await act(async () => { input.props.onChangeText(code); });
+    const input = screen.getByLabelText('Verification code');
+    await userEvent.paste(input, code);
     await press(button('Verify code'));
   };
 
@@ -472,8 +482,8 @@ describe('central code step', () => {
 describe('My facilities', () => {
   it('says what to do when the list is empty', async () => {
     await render(<FacilitiesScreen />);
-    expect(texts()).toContain('No facilities yet');
-    expect(texts()).toContain('Add the cold storage you work with. Each one decides what you can see.');
+    expect(screen.getByText('No facilities yet')).toBeOnTheScreen();
+    expect(screen.getByText('Add the cold storage you work with. Each one decides what you can see.')).toBeOnTheScreen();
     expect(openFacility).not.toHaveBeenCalled();
   });
 
@@ -523,7 +533,7 @@ describe('My facilities', () => {
       jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved')]);
       await render(<FacilitiesScreen />);
       expect(openFacility).not.toHaveBeenCalled();
-      expect(texts()).toContain('North Cold Store');
+      expect(screen.getByText('North Cold Store')).toBeOnTheScreen();
     });
   });
 
@@ -580,7 +590,7 @@ describe('My facilities', () => {
     jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'approved')]);
     await render(<FacilitiesScreen />);
     await act(async () => { setCentralState({ opening: 'https://north-cold-store.example.test' }); });
-    expect(texts()).toContain('Opening North Cold Store…');
+    expect(screen.getByText('Opening North Cold Store…')).toBeOnTheScreen();
     expect(alerts()).toHaveLength(0);
     await press(button('Add facility'));
     expect(router.push).not.toHaveBeenCalled();
@@ -590,8 +600,8 @@ describe('My facilities', () => {
   it('while one facility opens, the other rows are busy too; an opening facility outside the list gives the general busy text', async () => {
     jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'approved')]);
     await render(<FacilitiesScreen />);
-    const rows = () => tree!.root.findAll(node => typeof node.props.testID === 'string' && /^facility-https/.test(node.props.testID) && typeof node.props.onPress === 'function');
-    const busyOf = (id: string) => rows().find(node => node.props.testID === id)?.props.accessibilityState?.busy;
+    const rows = () => screen.queryAllByTestId(/^facility-https/);
+    const busyOf = (id: string) => screen.getByTestId(id).props.accessibilityState?.busy;
     const north = rows()[0].props.testID as string;
     const south = rows()[1].props.testID as string;
     expect([busyOf(north), busyOf(south)]).toEqual([false, false]);
@@ -606,12 +616,11 @@ describe('My facilities', () => {
     jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'requested')]);
     await render(<FacilitiesScreen />);
     jest.mocked(loadMyFacilities).mockClear();
-    const refreshControl = tree!.root.find(node => typeof node.props.onRefresh === 'function' && node.props.refreshing !== undefined);
-    await act(async () => { await refreshControl.props.onRefresh(); });
+    await pullToRefresh(scrollAround(screen.getByText('North Cold Store')));
     expect(loadMyFacilities).toHaveBeenCalledWith('asha');
     expect(fetchCentralProfile).toHaveBeenCalledTimes(1);
     expect(openFacility).not.toHaveBeenCalled();
-    expect(texts()).toContain('A status is checked again when you open the facility.');
+    expect(screen.getByText('A status is checked again when you open the facility.')).toBeOnTheScreen();
   });
 
   it('"Sign out" asks first and then signs out of the association and the current facility', async () => {
@@ -659,15 +668,15 @@ describe('Add facility', () => {
   const NAMES = [...CATALOGUE.map(item => item.name), 'Fictional Sabar Cold', 'Review North Cold Storage', 'Review South Cold Storage', 'Riverbank Cold'];
   const names = () => texts().filter(text => NAMES.includes(text));
   const search = async (value: string) => {
-    const field = tree!.root.find(node => node.props.testID === 'catalogue-search' && typeof node.props.onChangeText === 'function');
-    await act(async () => { field.props.onChangeText(value); });
+    const field = screen.getByTestId('catalogue-search');
+    await userEvent.paste(field, value);
   };
   const tagOf = (id: string) => {
-    const found = tree!.root.findAllByType(StatusTag).filter(node => node.props.testID === `catalogue-status-${id}`);
-    return found.length ? found[0].props.label : null;
+    const found = screen.queryAllByTestId(`catalogue-status-${id}`);
+    return found.length ? within(found[0]).queryAllByText(/[\s\S]*/).map(n => [n.props.children].flat(Infinity).join('')).join('') : null;
   };
-  const list = () => tree!.root.findAll(node => typeof node.props.refreshControl?.props?.onRefresh === 'function')[0];
-  const pull = () => list().props.refreshControl.props.onRefresh() as void;
+  const list = () => scrollAround(screen.getByText('Review South Cold Storage'));
+  const pull = () => pullToRefresh(list());
   const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
   /**
    * As central 0.8.0 publishes it: two online, two offline (one never reached), one member with
@@ -684,7 +693,7 @@ describe('Add facility', () => {
   it('shows a spinner while the list loads', async () => {
     jest.mocked(fetchFacilityCatalogue).mockReturnValue(new Promise(() => undefined));
     await render(<FacilityCatalogueScreen />);
-    expect(tree!.root.findAll(node => node.props.accessibilityLabel === 'Loading facilities').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Loading facilities')).toBeOnTheScreen();
     expect(names()).toEqual([]);
   });
 
@@ -712,15 +721,15 @@ describe('Add facility', () => {
     await render(<FacilityCatalogueScreen />);
     await search('Surat');
     expect(names()).toEqual([]);
-    expect(texts()).toContain('No facility matches "Surat"');
-    expect(texts()).toContain('Check the spelling, or search by town or district.');
+    expect(screen.getByText('No facility matches "Surat"')).toBeOnTheScreen();
+    expect(screen.getByText('Check the spelling, or search by town or district.')).toBeOnTheScreen();
   });
 
   it('says when the association has listed nothing, and still offers the address entry', async () => {
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: [] });
     await render(<FacilityCatalogueScreen />);
-    expect(texts()).toContain('No facilities listed yet');
-    expect(tree!.root.findAll(node => node.props.testID === 'catalogue-search')).toHaveLength(0);
+    expect(screen.getByText('No facilities listed yet')).toBeOnTheScreen();
+    expect(screen.queryByTestId('catalogue-search')).not.toBeOnTheScreen();
     await press(button('Enter address'));
     expect(router.push).toHaveBeenCalledWith('/facility-address');
   });
@@ -730,8 +739,8 @@ describe('Add facility', () => {
       ok: false, code: 'network', message: "Couldn't reach the association's sign-in service. Check your connection and try again.",
     });
     await render(<FacilityCatalogueScreen />);
-    expect(texts()).toContain("Couldn't load the facilities");
-    expect(texts()).toContain("Couldn't reach the association's sign-in service. Check your connection and try again.");
+    expect(screen.getByText("Couldn't load the facilities")).toBeOnTheScreen();
+    expect(screen.getByText("Couldn't reach the association's sign-in service. Check your connection and try again.")).toBeOnTheScreen();
     expect(names()).toEqual([]);
     expect(fetchFacilityCatalogue).toHaveBeenCalledTimes(1);
 
@@ -741,7 +750,7 @@ describe('Add facility', () => {
     // The retry does not reuse a cached copy.
     expect(fetchFacilityCatalogue).toHaveBeenLastCalledWith({ force: true });
     expect(names()).toHaveLength(3);
-    expect(texts()).not.toContain("Couldn't load the facilities");
+    expect(screen.queryByText("Couldn't load the facilities")).not.toBeOnTheScreen();
   });
 
   it('picking a facility adds it to the list with its town, returns to My facilities and opens it', async () => {
@@ -776,34 +785,34 @@ describe('Add facility', () => {
     expect(tagOf('sample-024')).toBe('No app server yet');
     expect(tagOf('gondal-agro')).toBeNull();
     // One StatusTag per row that reports something, and no other tag.
-    expect(tree!.root.findAllByType(StatusTag)).toHaveLength(5);
+    expect(screen.queryAllByTestId(/^catalogue-status-/)).toHaveLength(5);
   });
 
   it('adds "Town, District" under the name, and when an offline facility was last reached', async () => {
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
     await render(<FacilityCatalogueScreen />);
-    expect(texts()).toEqual(expect.arrayContaining(['Dehgam, Gandhinagar', 'Deesa, Banaskantha', 'Himmatnagar, Sabarkantha', 'Rajkot']));
+    for (const words of ['Dehgam, Gandhinagar', 'Deesa, Banaskantha', 'Himmatnagar, Sabarkantha', 'Rajkot']) expect(screen.getAllByText(words).length).toBeGreaterThan(0);
     // The district is not repeated when it is the town.
-    expect(texts()).toContain('Jamnagar');
-    expect(texts()).not.toContain('Jamnagar, Jamnagar');
-    expect(tree!.root.find(node => node.props.testID === 'catalogue-last-seen-review-north').props.children).toBe('Last seen 5 min ago');
-    expect(tree!.root.find(node => node.props.testID === 'catalogue-last-seen-riverbank').props.children).toBe('Not reached yet');
+    expect(screen.getByText('Jamnagar')).toBeOnTheScreen();
+    expect(screen.queryByText('Jamnagar, Jamnagar')).not.toBeOnTheScreen();
+    expect(screen.getByTestId('catalogue-last-seen-review-north')).toHaveTextContent('Last seen 5 min ago');
+    expect(screen.getByTestId('catalogue-last-seen-riverbank')).toHaveTextContent('Not reached yet');
     // Online rows and a member with no app server have no such line.
-    const lastSeenLines = tree!.root.findAll(node => typeof node.props.testID === 'string' && node.props.testID.startsWith('catalogue-last-seen-'), { deep: false });
+    const lastSeenLines = screen.queryAllByTestId(/^catalogue-last-seen-/);
     expect(lastSeenLines.map(node => node.props.testID).sort()).toEqual(['catalogue-last-seen-review-north', 'catalogue-last-seen-riverbank']);
-    expect(byTestID('catalogue-review-north').props.accessibilityLabel).toBe('Review North Cold Storage, Deesa, Banaskantha, Offline, Last seen 5 min ago');
+    expect(byTestID('catalogue-review-north')).toHaveAccessibleName('Review North Cold Storage, Deesa, Banaskantha, Offline, Last seen 5 min ago');
   });
 
   it('a member with no app server yet only explains why it cannot be added', async () => {
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
     await render(<FacilityCatalogueScreen />);
     const row = byTestID('catalogue-sample-024');
-    expect(row.props.accessibilityLabel).toBe('Fictional Sabar Cold, Himmatnagar, Sabarkantha, No app server yet');
-    expect(row.props.accessibilityHint).toBe("Explains why this cold storage can't be added yet");
+    expect(row).toHaveAccessibleName('Fictional Sabar Cold, Himmatnagar, Sabarkantha, No app server yet');
+    expect(row).toHaveProp('accessibilityHint', "Explains why this cold storage can't be added yet");
     // An information icon in place of the chevron.
-    expect(row.findAll(node => node.props.name === 'information-outline')).toHaveLength(1);
-    expect(row.findAll(node => node.props.name === 'chevron-right')).toHaveLength(0);
-    expect(byTestID('catalogue-north-cold').findAll(node => node.props.name === 'chevron-right')).toHaveLength(1);
+    expect(within(row).queryAllByTestId('icon-information-outline')).toHaveLength(1);
+    expect(within(row).queryAllByTestId('icon-chevron-right')).toHaveLength(0);
+    expect(within(byTestID('catalogue-north-cold')).queryAllByTestId('icon-chevron-right')).toHaveLength(1);
 
     await press(row);
     expect(alerts()).toEqual([
@@ -831,17 +840,17 @@ describe('Add facility', () => {
 
     let answer: (value: Awaited<ReturnType<typeof fetchFacilityCatalogue>>) => void = () => undefined;
     jest.mocked(fetchFacilityCatalogue).mockReturnValue(new Promise(resolve => { answer = resolve; }));
-    await act(async () => { pull(); });
+    await pull();
     expect(fetchFacilityCatalogue).toHaveBeenLastCalledWith({ force: true });
     expect(list().props.refreshControl.props.refreshing).toBe(true);
     // Not blanked: the rows stay while the answer is awaited.
     expect(names()).toHaveLength(5);
-    expect(tree!.root.findAll(node => node.props.accessibilityLabel === 'Loading facilities')).toHaveLength(0);
+    expect(screen.queryByLabelText('Loading facilities')).not.toBeOnTheScreen();
 
     const southOffline = live().map(item => (item.id === 'review-south' ? { ...item, online: false, lastSeenAt: minutesAgo(2) } : item));
     await act(async () => { answer({ ok: true, facilities: southOffline }); });
     expect(tagOf('review-south')).toBe('Offline');
-    expect(tree!.root.find(node => node.props.testID === 'catalogue-last-seen-review-south').props.children).toBe('Last seen 2 min ago');
+    expect(screen.getByTestId('catalogue-last-seen-review-south')).toHaveTextContent('Last seen 2 min ago');
     expect(list().props.refreshControl.props.refreshing).toBe(false);
   });
 
@@ -851,18 +860,18 @@ describe('Add facility', () => {
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({
       ok: false, code: 'network', message: "Couldn't reach the association's sign-in service. Check your connection and try again.",
     });
-    await act(async () => { pull(); });
+    await pull();
     expect(names()).toHaveLength(5);
     expect(tagOf('review-south')).toBe('Online');
-    const errorLine = () => tree!.root.findAll(node => node.props.testID === 'catalogue-refresh-error' && (node.type as unknown) === 'Text');
+    const errorLine = () => screen.queryAllByTestId('catalogue-refresh-error');
     expect(errorLine()).toHaveLength(1);
-    expect([].concat(errorLine()[0].props.children).join('')).toBe(
+    expect(errorLine()[0]).toHaveTextContent(
       "Couldn't refresh the list. Couldn't reach the association's sign-in service. Check your connection and try again."
     );
-    expect(texts()).not.toContain("Couldn't load the facilities");
+    expect(screen.queryByText("Couldn't load the facilities")).not.toBeOnTheScreen();
 
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
-    await act(async () => { pull(); });
+    await pull();
     expect(errorLine()).toHaveLength(0);
   });
 
@@ -872,9 +881,9 @@ describe('Add facility', () => {
     await render(<FacilityCatalogueScreen />);
     expect(texts().filter(text => text === 'On your list')).toHaveLength(1);
     const row = byTestID('catalogue-north-cold');
-    expect(row.findAll(node => node.props.name === 'check')).toHaveLength(1);
-    expect(row.findAllByType(StatusTag).map(node => node.props.label)).toEqual(['Online']);
-    expect(row.props.accessibilityLabel).toBe('North Cold Store, Rajkot, Online, On your list');
+    expect(within(row).queryAllByTestId('icon-check')).toHaveLength(1);
+    expect(within(row).queryAllByTestId(/^catalogue-status-/).map(node => within(node).queryAllByText(/[\s\S]*/).map(n => [n.props.children].flat(Infinity).join('')).join(''))).toEqual(['Online']);
+    expect(row).toHaveAccessibleName('North Cold Store, Rajkot, Online, On your list');
   });
 
   it('matches Gujarati names and digits typed in either script', () => {
@@ -888,8 +897,8 @@ describe('Add facility', () => {
 describe('the linking step', () => {
   beforeEach(() => setCentralState({ pendingLink: { origin: NORTH, name: 'North Cold Store', phoneNumber: '919000000001' } }));
   const enter = async (code: string) => {
-    const input = tree!.root.find(node => node.props.textContentType === 'oneTimeCode' && typeof node.props.onChangeText === 'function');
-    await act(async () => { input.props.onChangeText(code); });
+    const input = screen.getByLabelText('Verification code');
+    await userEvent.paste(input, code);
     await press(button('Verify code'));
   };
 
@@ -910,7 +919,7 @@ describe('the linking step', () => {
     await enter('000000');
     expect(alerts()[0]).toEqual(["Couldn't verify the code", 'That code is wrong or has expired. Check it, or ask for a new code.']);
     expect(router.replace).not.toHaveBeenCalled();
-    expect(texts()).toContain('Enter the code from North Cold Store');
+    expect(screen.getByText('Enter the code from North Cold Store')).toBeOnTheScreen();
   });
 
   it('a request that still waits goes to the waiting screen', async () => {
@@ -929,7 +938,7 @@ describe('the linking step', () => {
 
   it('offers "My facilities" as the way out in place of "Wrong number?"', async () => {
     await render(<FacilityLinkScreen />);
-    expect(texts()).not.toContain('Wrong number?');
+    expect(screen.queryByText('Wrong number?')).not.toBeOnTheScreen();
     await press(button('Back to My facilities'));
     // Back to the My facilities under this step, not a second one in its place.
     expect(router.dismissTo).toHaveBeenCalledWith('/facilities');
@@ -947,8 +956,8 @@ describe('the linking step', () => {
 
 describe('the account', () => {
   const typeName = async (value: string) => {
-    const field = tree!.root.find(node => node.props.testID === 'central-name' && typeof node.props.onChangeText === 'function');
-    await act(async () => { field.props.onChangeText(value); });
+    const field = screen.getByTestId('central-name');
+    await userEvent.paste(field, value);
   };
 
   it('saves the name at the association', async () => {
@@ -967,7 +976,7 @@ describe('the account', () => {
     await typeName('   ');
     await press(button('Save name'));
     expect(updateCentralName).not.toHaveBeenCalled();
-    expect(texts()).toContain('Enter a name of up to 80 characters.');
+    expect(screen.getByText('Enter a name of up to 80 characters.')).toBeOnTheScreen();
     expect(isValidCentralName('a'.repeat(81))).toBe(false);
     expect(isValidCentralName('Asha\nFictional')).toBe(false);
     expect(isValidCentralName('આશા')).toBe(true);
@@ -999,9 +1008,9 @@ describe('the account', () => {
   describe('"Sign out on all phones"', () => {
     it('is a button above the delete area, and nothing happens until it is confirmed', async () => {
       await render(<CentralAccountScreen />);
-      const labels = tree!.root.findAllByType(Button).map(node => node.props.children);
+      const labels = screen.getAllByRole('button').map(node => node.props.accessibilityLabel).filter(label => label !== 'Back');
       expect(labels).toEqual(['Save name', 'Sign out on all phones', 'Delete my account']);
-      expect(texts()).toContain('Ends your association sign-in on every phone, this one included');
+      expect(screen.getByText('Ends your association sign-in on every phone, this one included')).toBeOnTheScreen();
       await press(button('Sign out on all phones'));
       expect(alerts()).toHaveLength(1);
       expect(alerts()[0][0]).toBe('Sign out on all phones?');
@@ -1033,26 +1042,26 @@ describe('the account', () => {
       let finish!: (value: { ok: true }) => void;
       jest.mocked(signOutAllDevices).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
       await render(<CentralAccountScreen />);
-      expect(button('Sign out on all phones').props.disabled).toBe(false);
+      expect(button('Sign out on all phones')).toBeEnabled();
       await press(button('Sign out on all phones'));
       await act(async () => { lastAlertButton('Sign out on all phones').onPress?.(); });
-      expect(button('Sign out on all phones').props.disabled).toBe(true);
-      expect(button('Sign out on all phones').props.loading).toBe(true);
-      expect(button('Save name').props.disabled).toBe(true);
-      expect(button('Delete my account').props.disabled).toBe(true);
+      expect(button('Sign out on all phones')).toBeDisabled();
+      expect(button('Sign out on all phones')).toBeBusy();
+      expect(button('Save name')).toBeDisabled();
+      expect(button('Delete my account')).toBeDisabled();
       await act(async () => { finish({ ok: true }); });
-      expect(button('Sign out on all phones').props.disabled).toBe(false);
-      expect(button('Delete my account').props.disabled).toBe(false);
+      expect(button('Sign out on all phones')).toBeEnabled();
+      expect(button('Delete my account')).toBeEnabled();
     });
 
     it('is disabled while the name is being saved', async () => {
       let finish!: (value: unknown) => void;
       jest.mocked(updateCentralName).mockImplementationOnce(() => new Promise(resolve => { finish = resolve as (value: unknown) => void; }));
       await render(<CentralAccountScreen />);
-      await act(async () => { void button('Save name').props.onPress?.(); });
-      expect(button('Sign out on all phones').props.disabled).toBe(true);
+      await userEvent.press(button('Save name'));
+      expect(button('Sign out on all phones')).toBeDisabled();
       await act(async () => { finish({ ok: true, user: USER }); });
-      expect(button('Sign out on all phones').props.disabled).toBe(false);
+      expect(button('Sign out on all phones')).toBeEnabled();
     });
 
     it.each([
@@ -1086,7 +1095,7 @@ describe('the account', () => {
       await act(async () => { lastAlertButton('Sign out on all phones').onPress?.(); });
       expect(alerts()[1]).toEqual(expected);
       // The screen is usable again.
-      expect(button('Sign out on all phones').props.disabled).toBe(false);
+      expect(button('Sign out on all phones')).toBeEnabled();
     });
 
     it('says when the facility\'s own cleanup did not finish, although the association sign-in ended', async () => {
@@ -1100,7 +1109,7 @@ describe('the account', () => {
     it('is shown in Gujarati, with the dialog saying every phone and that an open facility stays open', async () => {
       setLanguage('gu');
       await render(<CentralAccountScreen />);
-      expect(texts()).toEqual(expect.arrayContaining(['બધા ફોનમાંથી લૉગઆઉટ કરો']));
+      for (const words of ['બધા ફોનમાંથી લૉગઆઉટ કરો']) expect(screen.getAllByText(words).length).toBeGreaterThan(0);
       await press(button('બધા ફોનમાંથી લૉગઆઉટ કરો'));
       expect(alerts()[0][0]).toBe('બધા ફોનમાંથી લૉગઆઉટ કરવું છે?');
       expect(alerts()[0][1]).toContain('આ ફોન સહિત બધા ફોનમાં');
@@ -1114,9 +1123,9 @@ describe('in Gujarati', () => {
     setLanguage('gu');
     jest.mocked(loadMyFacilities).mockResolvedValue([facility('North Cold Store', 'approved'), facility('South Cold Store', 'link_needed')]);
     await render(<FacilitiesScreen />);
-    expect(texts()).toEqual(expect.arrayContaining(['મારાં કોલ્ડ સ્ટોરેજ', 'મંજૂર', 'OTP જોઈએ', 'કોલ્ડ સ્ટોરેજ ઉમેરો', 'લૉગઆઉટ કરો']));
+    for (const words of ['મારાં કોલ્ડ સ્ટોરેજ', 'મંજૂર', 'OTP જોઈએ', 'કોલ્ડ સ્ટોરેજ ઉમેરો', 'લૉગઆઉટ કરો']) expect(screen.getAllByText(words).length).toBeGreaterThan(0);
     // A typed name is never translated, and a phone number keeps 0-9.
-    expect(texts()).toContain('North Cold Store');
-    expect(texts()).toContain('+91 90000 00001');
+    expect(screen.getByText('North Cold Store')).toBeOnTheScreen();
+    expect(screen.getByText('+91 90000 00001')).toBeOnTheScreen();
   });
 });

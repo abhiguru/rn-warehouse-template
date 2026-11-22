@@ -9,8 +9,7 @@
  * - Another dispatch form (an edit, or a new dispatch) that is open turns the visit away and is not touched.
  */
 import React from 'react';
-import { ActivityIndicator } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import dispatchFormReducer, { loadDispatchData as loadIntoForm, updateHeader } from '@/store/slices/dispatchFormSlice';
@@ -47,7 +46,8 @@ jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canUpdate:
 jest.mock('expo-router', () => {
   const React = require('react');
   const Stack = Object.assign(
-    (props: { screenOptions?: unknown }) => React.createElement('Stack', { screenOptions: props.screenOptions }),
+    // Stands in for the step stack: a plain view the test can find, carrying the screenOptions the layout passes.
+    (props: { screenOptions?: unknown }) => React.createElement(require('react-native').View, { testID: 'dispatch-steps', screenOptions: props.screenOptions }),
     { Screen: () => null }
   );
   return {
@@ -79,17 +79,15 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-let tree: ReactTestRenderer;
-const render = async () => {
-  await act(async () => { tree = create(<DispatchEditLayout />); });
-};
-const text = () => JSON.stringify(tree.toJSON());
-const hasSteps = () => tree.root.findAllByType('Stack' as unknown as React.ElementType).length > 0;
-const press = async (label: string) => {
-  const control = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-  await act(async () => { control.props.onPress(); });
-};
 const form = () => mockStore.getState().dispatchForm;
+const mount = async () => {
+  await render(<DispatchEditLayout />);
+};
+const hasSteps = () => screen.queryByTestId('dispatch-steps') !== null;
+const spinner = () => screen.queryByLabelText('Loading dispatch…');
+const press = async (label: string) => {
+  await userEvent.press(screen.getByRole('button', { name: label }));
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -98,8 +96,7 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => {});
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
@@ -108,22 +105,22 @@ describe('while the dispatch loads', () => {
     const answer = deferred<unknown>();
     load.mockReturnValue(answer.promise as never);
 
-    await render();
+    await mount();
 
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
-    expect(text()).toContain('Loading dispatch');
+    expect(spinner()).toBeOnTheScreen();
+    expect(screen.getByText('Loading dispatch…')).toBeOnTheScreen();
     expect(hasSteps()).toBe(false);
     expect(form().dispatch_id).toBeNull();
     await act(async () => { answer.resolve(loaded()); });
   });
 
-  it('is on the spinner already in the first render, not after the first effect', () => {
+  it('is on the spinner already in the first render, not after the first effect', async () => {
     load.mockReturnValue(new Promise(() => {}) as never);
 
-    act(() => { tree = create(<DispatchEditLayout />); });
+    await mount();
 
     expect(hasSteps()).toBe(false);
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+    expect(spinner()).toBeOnTheScreen();
   });
 });
 
@@ -131,12 +128,12 @@ describe('when the dispatch is loaded', () => {
   it('draws the steps, with the swipe back off, and the form holds the dispatch', async () => {
     load.mockResolvedValue(loaded());
 
-    await render();
+    await mount();
 
     expect(load).toHaveBeenCalledWith(DISPATCH_ID);
     expect(hasSteps()).toBe(true);
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
-    const stack = tree.root.findByType('Stack' as unknown as React.ElementType);
+    expect(spinner()).not.toBeOnTheScreen();
+    const stack = screen.getByTestId('dispatch-steps');
     expect(stack.props.screenOptions).toMatchObject({ headerShown: false, gestureEnabled: false });
     expect(form().dispatch_id).toBe(DISPATCH_ID);
     expect(form().header.disp_no).toBe('DD0042');
@@ -149,7 +146,7 @@ describe('when the dispatch is loaded', () => {
     mockStore.dispatch(updateHeader({ note: 'Unsaved change, typed later' }));
     load.mockResolvedValue(loaded('Fresh from the server'));
 
-    await render();
+    await mount();
 
     expect(load).toHaveBeenCalledTimes(1);
     expect(hasSteps()).toBe(true);
@@ -161,7 +158,7 @@ describe('when the dispatch is loaded', () => {
     const answer = deferred<unknown>();
     load.mockReturnValue(answer.promise as never);
 
-    await render();
+    await mount();
 
     expect(hasSteps()).toBe(false);
     expect(form().header.note).toBe('');
@@ -174,12 +171,12 @@ describe('when the dispatch cannot be loaded', () => {
   it('shows a full screen error with Try again and Close, leaves the form empty and does not leave by itself', async () => {
     load.mockResolvedValue({ success: false, error: 'Server said no' } as never);
 
-    await render();
+    await mount();
 
     expect(hasSteps()).toBe(false);
-    expect(text()).toContain("Couldn't open the dispatch");
-    expect(text()).toContain('Try again');
-    expect(text()).toContain('Close');
+    expect(screen.getByText("Couldn't open the dispatch")).toBeOnTheScreen();
+    expect(screen.getByText('Try again')).toBeOnTheScreen();
+    expect(screen.getByText('Close')).toBeOnTheScreen();
     expect(form().dispatch_id).toBeNull();
     expect(form().items).toEqual([]);
     expect(router.back).not.toHaveBeenCalled();
@@ -189,29 +186,29 @@ describe('when the dispatch cannot be loaded', () => {
   it('a read that throws is the same', async () => {
     load.mockRejectedValue(new Error('Network request failed'));
 
-    await render();
+    await mount();
 
     expect(hasSteps()).toBe(false);
-    expect(text()).toContain("Couldn't open the dispatch");
+    expect(screen.getByText("Couldn't open the dispatch")).toBeOnTheScreen();
     expect(form().dispatch_id).toBeNull();
   });
 
   it('Try again reads once more, and the steps come when it works', async () => {
     load.mockResolvedValueOnce({ success: false, error: 'Server said no' } as never);
     load.mockResolvedValueOnce(loaded());
-    await render();
+    await mount();
 
     await press('Try again');
 
     expect(load).toHaveBeenCalledTimes(2);
     expect(hasSteps()).toBe(true);
-    expect(text()).not.toContain("Couldn't open the dispatch");
+    expect(screen.queryByText("Couldn't open the dispatch")).not.toBeOnTheScreen();
     expect(form().dispatch_id).toBe(DISPATCH_ID);
   });
 
   it("Close goes back to the dispatch's page, one step", async () => {
     load.mockResolvedValue({ success: false, error: 'Server said no' } as never);
-    await render();
+    await mount();
 
     await press('Close');
 
@@ -224,40 +221,37 @@ describe('someone who may not edit', () => {
     mockCanUpdate = false;
     load.mockResolvedValue(loaded());
 
-    await render();
+    await mount();
 
     expect(router.replace).toHaveBeenCalledWith('/(tabs)/dispatch');
     expect(load).not.toHaveBeenCalled();
     expect(hasSteps()).toBe(false);
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
+    expect(spinner()).not.toBeOnTheScreen();
   });
 });
 
 describe('when the layout goes', () => {
   it('resets the form', async () => {
     load.mockResolvedValue(loaded());
-    await render();
+    await mount();
     expect(form().dispatch_id).toBe(DISPATCH_ID);
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
 
     expect(form().dispatch_id).toBeNull();
     expect(form().items).toEqual([]);
     expect(form().header.disp_no).toBe('');
-    // The unmount in afterEach finds nothing to do.
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 
   it('drops a read that was still on its way', async () => {
     const answer = deferred<unknown>();
     load.mockReturnValue(answer.promise as never);
-    await render();
+    await mount();
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     await act(async () => { answer.resolve(loaded()); });
 
     expect(form().dispatch_id).toBeNull();
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 });
 
@@ -265,28 +259,26 @@ describe('while the layout is open', () => {
   it('is an open dispatch form, named by its own number once it is loaded, and is not one after it goes', async () => {
     load.mockResolvedValue(loaded());
 
-    await render();
+    await mount();
 
     expect(openDispatchFormBlocking()).toMatchObject({ kind: 'edit', id: DISPATCH_ID, number: 'DD0042' });
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
 
     expect(openDispatchFormBlocking()).toBeNull();
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 
   it('does not empty the form when it goes while another form is still open', async () => {
     load.mockResolvedValue(loaded());
-    await render();
+    await mount();
     const release = registerDispatchForm({ kind: 'create' });
     try {
-      await act(async () => { tree.unmount(); });
+      await screen.unmount();
 
       expect(form().dispatch_id).toBe(DISPATCH_ID);
     } finally {
       release();
     }
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 });
 
@@ -295,11 +287,11 @@ describe("another dispatch's form is open (finding 3)", () => {
     mockStore.dispatch(loadIntoForm({ dispatchId: 'other-dispatch', header: { ...createEmptyDispatchHeader(), disp_no: 'DD0007' }, items: [line] }));
     const release = registerDispatchForm({ kind: 'edit', id: 'other-dispatch' });
     try {
-      await render();
+      await mount();
 
       expect(load).not.toHaveBeenCalled();
       expect(hasSteps()).toBe(false);
-      expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
+      expect(spinner()).not.toBeOnTheScreen();
       expect(form().dispatch_id).toBe('other-dispatch');
       expect(form().items).toHaveLength(1);
       expect(router.back).toHaveBeenCalledTimes(1);
@@ -313,7 +305,7 @@ describe("another dispatch's form is open (finding 3)", () => {
   it('"Open it" takes the person to the form that is open', async () => {
     const release = registerDispatchForm({ kind: 'edit', id: 'other-dispatch' });
     try {
-      await render();
+      await mount();
 
       const buttons = jest.mocked(showAlert).mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
       expect(buttons.map((button) => button.text)).toEqual(['Close', 'Open it']);
@@ -328,7 +320,7 @@ describe("another dispatch's form is open (finding 3)", () => {
   it('says so for a new dispatch that is open', async () => {
     const release = registerDispatchForm({ kind: 'create' });
     try {
-      await render();
+      await mount();
 
       expect(showAlert).toHaveBeenCalledWith('Another dispatch is open', 'Finish or cancel the new dispatch first.', expect.any(Array));
       expect(load).not.toHaveBeenCalled();
@@ -341,15 +333,14 @@ describe("another dispatch's form is open (finding 3)", () => {
     mockStore.dispatch(loadIntoForm({ dispatchId: 'other-dispatch', header: { ...createEmptyDispatchHeader(), disp_no: 'DD0007' }, items: [line] }));
     const release = registerDispatchForm({ kind: 'edit', id: 'other-dispatch' });
     try {
-      await render();
+      await mount();
 
-      await act(async () => { tree.unmount(); });
+      await screen.unmount();
 
       expect(form().dispatch_id).toBe('other-dispatch');
       expect(form().header.disp_no).toBe('DD0007');
     } finally {
       release();
     }
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 });

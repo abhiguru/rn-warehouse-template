@@ -9,7 +9,7 @@
  *    the return does not read it a second time.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { grnListElement } from '../helpers/grnListElement';
 import { getAllGRNItems } from '@/services/grn-service';
 
@@ -106,7 +106,6 @@ const answer = (count: number) =>
     data: { items: receipts(count), pagination: { total_count: count, limit: 20, offset: 0, has_more: false, unit: 'receipt' } },
   }) as never;
 
-let tree: ReactTestRenderer;
 let cleanup: (() => void) | void;
 const focus = () => act(async () => { cleanup = mockFocusEffect!(); });
 const blur = () => act(() => { cleanup?.(); cleanup = undefined; });
@@ -114,7 +113,7 @@ const reads = () => jest.mocked(getAllGRNItems).mock.calls.map(([params]) => par
 
 async function mount(loaded: number) {
   jest.mocked(getAllGRNItems).mockResolvedValue(answer(loaded));
-  await act(async () => { tree = create(grnListElement()); });
+  await render(grnListElement());
   await focus();
 }
 
@@ -125,8 +124,7 @@ beforeEach(() => {
   mockFilters = { ...mockFilters, request: { p_sort_by: 'gr_no', p_sort_order: 'desc' }, sort: { field: 'gr_no', order: 'desc' } };
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
@@ -159,7 +157,7 @@ describe('the GRN list on return', () => {
     await mount(45);
     await blur();
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'in_stock' } } };
-    await act(async () => { tree.update(grnListElement()); });
+    await screen.rerender(grnListElement());
     // The change itself read the first page of the new filter.
     expect(getAllGRNItems).toHaveBeenCalledTimes(2);
     expect(reads()[1]).toMatchObject({ p_limit: 20, p_offset: 0, p_filters: expect.objectContaining({ stock_status: 'in_stock' }) });
@@ -183,12 +181,12 @@ describe('screen-reader Refresh (WH-220)', () => {
   it.each([['date', 'receipt_date'], ['number', 'gr_no']])('the title offers a Refresh action that reads from the first row again, sorted by %s', async (_name, field) => {
     mockFilters = { ...mockFilters, sort: { field, order: 'desc' } };
     await mount(3);
-    const title = tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
-      && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    const title = screen.getAllByRole('header').filter(node => Array.isArray(node.props.accessibilityActions)
+      && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
     expect(title).toHaveLength(1);
-    expect(title[0].props.children).toBe('GRNs');
+    expect(title[0]).toHaveTextContent('GRNs');
     expect(title[0].props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
-    await act(async () => { title[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    await fireEvent(title[0], 'accessibilityAction', { nativeEvent: { actionName: 'refresh' } });
     expect(getAllGRNItems).toHaveBeenCalledTimes(2);
     expect(reads()[1]).toMatchObject({ p_offset: 0 });
   });

@@ -6,7 +6,7 @@
  * Fictional data only.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, userEvent, within, type RenderResult } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import GRNDetailScreen from '../../../app/grn-details/[id]';
 import InvoicesTab from '../../../app/(tabs)/invoices';
@@ -21,8 +21,6 @@ import { makeFlowServer, type FlowServer } from '@/tests/helpers/invoiceFlowServ
 import { resetScreenFocus, setScreenFocused } from './focusHarness';
 
 const mockGetGRNDetails = jest.fn();
-let mockTabProps: any;
-let mockInvoicesProps: any;
 
 jest.mock('@/store/hooks', () => require('@/tests/helpers/invoiceFlowStore').flowStoreHooks());
 jest.mock('expo-router', () => ({
@@ -73,11 +71,27 @@ jest.mock('@/services/grn-detail-service', () => ({
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNImage: jest.fn(), deleteGRNImage: jest.fn() }));
 jest.mock('@/components/grn-details', () => ({
   GRNHeroHeader: () => null,
-  GRNTabNavigator: (props: unknown) => { mockTabProps = props; return null; },
+  // Draws the tab buttons the page's tab bar draws, and calls the page's own onTabChange.
+  GRNTabNavigator: (props: { onTabChange: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return ['overview', 'invoices', 'images'].map((tab) => (
+      <Pressable key={tab} accessibilityRole="button" accessibilityLabel={`${tab} tab`} onPress={() => props.onTabChange(tab)}>
+        <Text>{tab}</Text>
+      </Pressable>
+    ));
+  },
   GRNOverviewTab: () => null,
   GRNItemsTab: () => null,
   GRNDispatchesTab: () => null,
-  GRNInvoicesTab: (props: unknown) => { mockInvoicesProps = props; return null; },
+  // Draws the Create invoice button of the Invoices tab; it is busy while the page's creatingInvoice is true.
+  GRNInvoicesTab: (props: { onCreateInvoice: () => void; creatingInvoice: boolean }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable testID="grn-create-invoice" accessibilityRole="button" accessibilityLabel="Create invoice" accessibilityState={{ busy: props.creatingInvoice }} onPress={() => props.onCreateInvoice()}>
+        <Text>Create invoice</Text>
+      </Pressable>
+    );
+  },
   GRNImagesTab: () => null,
 }));
 
@@ -102,19 +116,22 @@ const rpc = (name: string, args?: any) => {
   });
 };
 
-let grnTree: ReturnType<typeof create> | undefined;
-let invoicesTree: ReturnType<typeof create> | undefined;
+let grnView: RenderResult;
+let invoicesView: RenderResult;
 let unregister: (() => void) | undefined;
 const resets = () => jest.mocked(flowStore().dispatch).mock.calls.filter(([action]) => (action as { type: string }).type === 'invoiceForm/resetForm').length;
-const tapGrn = () => act(async () => { void mockInvoicesProps.onCreateInvoice(); });
+const user = userEvent.setup({ delay: 0 });
+const grnCreate = () => within(grnView.container).getByTestId('grn-create-invoice');
+// The tap is not awaited past the press: the page's handler waits for the held answer.
+const tapGrn = () => user.press(grnCreate());
 const release = (index: number, allowed = true) => act(async () => { held[index](allowed); });
 const settle = () => act(async () => { await new Promise((resolve) => setImmediate(resolve)); });
 
 /** Another form is opened from the Invoices tab and typed into (its layout registers it while it is open). */
 const openOtherFormAndType = async () => {
-  await act(async () => { invoicesTree = create(<InvoicesTab />); });
-  const fab = invoicesTree!.root.find((n) => n.props.accessibilityLabel === 'Create invoice' && typeof n.props.onPress === 'function');
-  await act(async () => { fab.props.onPress(); });
+  invoicesView = await render(<InvoicesTab />);
+  const fab = within(invoicesView.container).getByRole('button', { name: 'Create invoice' });
+  await user.press(fab);
   expect(held).toHaveLength(2);
   await release(1);
   expect(router.push).toHaveBeenCalledWith('/invoice-form/step1');
@@ -138,7 +155,6 @@ beforeEach(async () => {
   resetScreenFocus();
   setLanguage('en');
   held = [];
-  mockInvoicesProps = undefined;
   const store = newFlowStore('admin');
   jest.spyOn(store, 'dispatch');
   server = makeFlowServer();
@@ -147,16 +163,13 @@ beforeEach(async () => {
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never);
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
-  await act(async () => { grnTree = create(<GRNDetailScreen />); });
-  await act(async () => { mockTabProps.onTabChange('invoices'); });
-  expect(typeof mockInvoicesProps.onCreateInvoice).toBe('function');
+  grnView = await render(<GRNDetailScreen />);
+  await user.press(await within(grnView.container).findByRole('button', { name: 'invoices tab' }));
+  expect(grnCreate()).toBeOnTheScreen();
 });
-afterEach(async () => {
+afterEach(() => {
   unregister?.();
   unregister = undefined;
-  await act(async () => { grnTree?.unmount(); invoicesTree?.unmount(); });
-  grnTree = undefined;
-  invoicesTree = undefined;
   jest.restoreAllMocks();
 });
 
@@ -164,7 +177,7 @@ describe('GRN details, Create invoice, answered "allowed" after the person went 
   it('keeps the input of another form opened meanwhile: no reset, no navigation, no alert, the button is free', async () => {
     await tapGrn();
     expect(held).toHaveLength(1);
-    expect(mockInvoicesProps.creatingInvoice).toBe(true);
+    expect(grnCreate().props.accessibilityState).toEqual({ busy: true });
 
     await openOtherFormAndType();
     const resetsBefore = resets();
@@ -175,7 +188,7 @@ describe('GRN details, Create invoice, answered "allowed" after the person went 
     typedInputKept();
     expect(router.push).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(mockInvoicesProps.creatingInvoice).toBe(false);
+    expect(grnCreate().props.accessibilityState).toEqual({ busy: false });
     expect(server.callsOf('generate_invoice_data_for_grn_with_pricing')).toHaveLength(0);
   });
 
@@ -191,7 +204,7 @@ describe('GRN details, Create invoice, answered "allowed" after the person went 
     typedInputKept();
     expect(router.push).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(mockInvoicesProps.creatingInvoice).toBe(false);
+    expect(grnCreate().props.accessibilityState).toEqual({ busy: false });
   });
 
   it('does nothing when the page lost focus: no reset, no navigation, no alert, the button is free', async () => {
@@ -204,7 +217,7 @@ describe('GRN details, Create invoice, answered "allowed" after the person went 
     expect(resets()).toBe(resetsBefore);
     expect(router.push).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(mockInvoicesProps.creatingInvoice).toBe(false);
+    expect(grnCreate().props.accessibilityState).toEqual({ busy: false });
     expect(server.callsOf('generate_invoice_data_for_grn_with_pricing')).toHaveLength(0);
   });
 
@@ -220,7 +233,7 @@ describe('GRN details, Create invoice, answered "allowed" after the person went 
     typedInputKept();
     expect(router.push).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(mockInvoicesProps.creatingInvoice).toBe(false);
+    expect(grnCreate().props.accessibilityState).toEqual({ busy: false });
   });
 
   it('still opens the form when nothing changed (control)', async () => {

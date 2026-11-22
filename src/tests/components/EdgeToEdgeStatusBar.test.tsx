@@ -1,6 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
-import type { ReactTestRenderer } from 'react-test-renderer';
+import { render, type RenderResult } from '@testing-library/react-native';
 import { Platform, StatusBar } from 'react-native';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 
@@ -24,43 +23,22 @@ type EdgeToEdgeStatusBarProps = React.ComponentProps<
   typeof EdgeToEdgeStatusBar
 >;
 
-const mountedRenderers: ReactTestRenderer[] = [];
-
 const getBarStyleCalls = (): Array<
   Parameters<typeof StatusBar.setBarStyle>
 > => jest.mocked(StatusBar.setBarStyle).mock.calls;
 
-const mountStatusBar = async (
-  props: EdgeToEdgeStatusBarProps
-): Promise<ReactTestRenderer> => {
-  let renderer!: ReactTestRenderer;
-
-  await act(async () => {
-    renderer = create(<EdgeToEdgeStatusBar {...props} />);
-  });
-  mountedRenderers.push(renderer);
-
-  return renderer;
-};
+const mountStatusBar = (props: EdgeToEdgeStatusBarProps): Promise<RenderResult> =>
+  render(<EdgeToEdgeStatusBar {...props} />);
 
 const updateStatusBar = async (
-  renderer: ReactTestRenderer,
+  renderer: RenderResult,
   props: EdgeToEdgeStatusBarProps
 ): Promise<void> => {
-  await act(async () => {
-    renderer.update(<EdgeToEdgeStatusBar {...props} />);
-  });
+  await renderer.rerender(<EdgeToEdgeStatusBar {...props} />);
 };
 
-const unmountStatusBar = async (
-  renderer: ReactTestRenderer
-): Promise<void> => {
-  const rendererIndex = mountedRenderers.indexOf(renderer);
-  if (rendererIndex !== -1) mountedRenderers.splice(rendererIndex, 1);
-
-  await act(async () => {
-    renderer.unmount();
-  });
+const unmountStatusBar = async (renderer: RenderResult): Promise<void> => {
+  await renderer.unmount();
 };
 
 describe('EdgeToEdgeStatusBar', () => {
@@ -69,12 +47,7 @@ describe('EdgeToEdgeStatusBar', () => {
     jest.mocked(StatusBar.setBarStyle).mockClear();
   });
 
-  afterEach(async () => {
-    await act(async () => {
-      while (mountedRenderers.length > 0) {
-        mountedRenderers.pop()?.unmount();
-      }
-    });
+  afterEach(() => {
     jest.mocked(StatusBar.setBarStyle).mockClear();
   });
 

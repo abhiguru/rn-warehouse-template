@@ -4,8 +4,7 @@
  * for each; a customer account keeps the list of its assigned customers.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 
 let mockState: Record<string, unknown> = {};
@@ -61,7 +60,6 @@ const profile = (role: string, assigned: ReturnType<typeof customers>) => ({
   },
 });
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   jest.clearAllMocks();
   setLanguage('en');
@@ -70,39 +68,31 @@ beforeEach(() => {
     auth: { userProfile: { id: 'profile-1', name: 'Asha Example', role: 'staff' } },
   };
 });
-afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
-});
 
 async function openDetails(role: string, count: number) {
   jest.mocked(UserService.getUserById).mockResolvedValue(profile(role, customers(count)));
-  await act(async () => {
-    tree = create(<OwnProfileEditScreen />);
-  });
-  const toggle = tree!.root.findAll(node => node.props.testID === 'self-edit-account-details' && typeof node.props.onPress === 'function')[0];
-  await act(async () => {
-    toggle.props.onPress();
-  });
-  return tree!.root.findAllByType(Text).map(node => [node.props.children].flat(Infinity).join(''));
+  const user = userEvent.setup({ delay: 0 });
+  await render(<OwnProfileEditScreen />);
+  await user.press(await screen.findByRole('button', { name: 'Account details' }));
 }
+const rows = () => screen.queryAllByText(/^Fictional Traders/);
 
 it('staff with 24 active customers: one count, no row for each, no Active tags', async () => {
-  const shown = await openDetails('staff', 24);
-  expect(shown).toContain('24 customers');
-  expect(shown.filter(text => text.startsWith('Fictional Traders'))).toHaveLength(0);
+  await openDetails('staff', 24);
+  expect(screen.getByText('24 customers')).toBeOnTheScreen();
+  expect(rows()).toHaveLength(0);
   // Only the Status row says Active; there is no Active tag per customer.
-  expect(shown.filter(text => text === 'Active')).toHaveLength(1);
-  expect(shown).toContain('Your role lets you see every active customer of this facility.');
+  expect(screen.getAllByText('Active')).toHaveLength(1);
+  expect(screen.getByText('Your role lets you see every active customer of this facility.')).toBeOnTheScreen();
 });
 
 it('one customer reads "1 customer"', async () => {
-  const shown = await openDetails('admin', 1);
-  expect(shown).toContain('1 customer');
+  await openDetails('admin', 1);
+  expect(screen.getByText('1 customer')).toBeOnTheScreen();
 });
 
 it('a customer account with 2 assignments keeps its 2 rows', async () => {
-  const shown = await openDetails('customer', 2);
-  expect(shown.filter(text => text.startsWith('Fictional Traders'))).toHaveLength(2);
-  expect(shown).not.toContain('2 customers');
+  await openDetails('customer', 2);
+  expect(rows()).toHaveLength(2);
+  expect(screen.queryByText('2 customers')).not.toBeOnTheScreen();
 });

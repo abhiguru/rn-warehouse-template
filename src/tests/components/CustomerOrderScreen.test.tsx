@@ -6,7 +6,7 @@
  * meanwhile, which unmounted the order editor and the Add items picker inside it.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import CustomerOrderScreen from '../../../app/orders/[customerId]';
 import { router } from 'expo-router';
 
@@ -23,6 +23,10 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('@/components/ui/HeaderBackButton', () => ({ HeaderBackButton: () => null }));
+jest.mock('@/components/skeletons/DetailSkeleton', () => ({
+  DetailSkeleton: ({ tabCount, cardCount }: { tabCount?: number; cardCount?: number }) =>
+    require('react').createElement(require('react-native').Text, null, `Loading, ${tabCount} tab, ${cardCount} cards`),
+}));
 jest.mock('@/components/ChangeLogBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/services/change-log-service', () => ({ ChangeLogService: { getCustomerChangeLog: jest.fn() } }));
 
@@ -38,7 +42,7 @@ jest.mock('@/components/OrderManagement', () => {
         mockEditor.mounts += 1;
         return () => { mockEditor.unmounts += 1; };
       }, []);
-      return ReactActual.createElement('OrderEditor');
+      return ReactActual.createElement(require('react-native').Text, null, 'Order editor');
     },
   };
 });
@@ -65,11 +69,11 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 
-let renderer: ReactTestRenderer | undefined;
-// WH-216: the loading state is the detail skeleton (tabCount 1, cardCount 3), not a spinner.
-const spinners = () => renderer!.root.findAll(node => node.props.cardCount === 3 && node.props.tabCount === 1).length;
-const editors = () => renderer!.root.findAllByType('OrderEditor' as never).length;
-const screenText = () => JSON.stringify(renderer!.toJSON());
+// WH-216: the loading state is the detail skeleton (tabCount 1, cardCount 3), not a spinner. The stand-in draws the two
+// counts it was asked for, so a skeleton of another shape would not be counted.
+const spinners = () => screen.queryAllByText('Loading, 1 tab, 3 cards').length;
+const editors = () => screen.queryAllByText('Order editor').length;
+const plus = () => screen.getByRole('button', { name: 'Add items to order' });
 
 beforeEach(() => {
   mockState = signedInState();
@@ -81,27 +85,23 @@ beforeEach(() => {
   jest.mocked(router.replace).mockClear();
   jest.mocked(router.back).mockClear();
 });
-afterEach(async () => {
-  await act(async () => { renderer?.unmount(); });
-  renderer = undefined;
-});
 
 it('shows the spinner only until the first name arrives', async () => {
   let arrive!: (answer: { data: { name: string }; error: null }) => void;
   mockNameRead.mockReturnValueOnce(new Promise(resolve => { arrive = resolve; }));
-  await act(async () => { renderer = create(<CustomerOrderScreen />); });
+  await render(<CustomerOrderScreen />);
   expect(spinners()).toBe(1);
   expect(editors()).toBe(0);
 
   await act(async () => { arrive({ data: { name: 'Fictional Farms' }, error: null }); });
   expect(spinners()).toBe(0);
   expect(editors()).toBe(1);
-  expect(screenText()).toContain('Order for Fictional Farms');
+  expect(screen.getByText(/Order for Fictional Farms/)).toBeOnTheScreen();
   expect(mockEditor.props?.customerId).toBe('customer-fictional-1');
 });
 
 it('keeps the editor mounted, reads no name and shows no spinner when the auth objects are new but the person is the same', async () => {
-  await act(async () => { renderer = create(<CustomerOrderScreen />); });
+  await render(<CustomerOrderScreen />);
   expect(mockNameRead).toHaveBeenCalledTimes(1);
   expect(mockEditor.mounts).toBe(1);
 
@@ -110,14 +110,14 @@ it('keeps the editor mounted, reads no name and shows no spinner when the auth o
 
   // A profile read again: a new but equal profile object.
   mockState = { ...mockState, auth: { ...mockState.auth, userProfile: { ...mockState.auth.userProfile } } };
-  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  await screen.rerender(<CustomerOrderScreen />);
   expect(mockNameRead).toHaveBeenCalledTimes(1);
   expect(spinners()).toBe(0);
   expect(editors()).toBe(1);
 
   // A renewed token: new user and session objects.
   mockState = { ...mockState, auth: { ...mockState.auth, user: { id: 'user-fictional' }, session: { access_token: 'fictional-token-2' } } };
-  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  await screen.rerender(<CustomerOrderScreen />);
   expect(mockNameRead).toHaveBeenCalledTimes(1);
   expect(spinners()).toBe(0);
   expect(editors()).toBe(1);
@@ -129,148 +129,142 @@ it('keeps the editor mounted, reads no name and shows no spinner when the auth o
 });
 
 it('keeps the picker\'s open flag across those renders', async () => {
-  await act(async () => { renderer = create(<CustomerOrderScreen />); });
-  await act(async () => {
-    renderer!.root.findAll(candidate =>
-      candidate.props.accessibilityLabel === 'Add items to order' && typeof candidate.props.onPress === 'function')[0].props.onPress();
-  });
+  await render(<CustomerOrderScreen />);
+  await userEvent.setup({ delay: 0 }).press(plus());
   expect(mockEditor.props?.itemCatalogOpen).toBe(true);
   mockState = { ...mockState, auth: { ...mockState.auth, userProfile: { ...mockState.auth.userProfile } } };
-  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  await screen.rerender(<CustomerOrderScreen />);
   expect(mockEditor.props?.itemCatalogOpen).toBe(true);
   expect(mockEditor.mounts).toBe(1);
 });
 
 it('still leaves for sign-in when the person is signed out', async () => {
-  await act(async () => { renderer = create(<CustomerOrderScreen />); });
+  await render(<CustomerOrderScreen />);
   expect(router.replace).not.toHaveBeenCalled();
   mockState = { ...mockState, auth: { userProfile: null, user: null, session: null } };
-  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  await screen.rerender(<CustomerOrderScreen />);
   expect(router.replace).toHaveBeenCalledWith('/login');
   expect(editors()).toBe(0);
-  expect(renderer!.toJSON()).toBeNull();
+  expect(screen.toJSON()).toBeNull();
 });
 
 it('counts a session without a profile yet as signed in, as before', async () => {
   mockState = { ...mockState, auth: { ...mockState.auth, userProfile: null } };
-  await act(async () => { renderer = create(<CustomerOrderScreen />); });
+  await render(<CustomerOrderScreen />);
   expect(router.replace).not.toHaveBeenCalled();
   expect(editors()).toBe(1);
 });
 
 it('shows the spinner at once for another business, closes the picker and drops the old name', async () => {
-  await act(async () => { renderer = create(<CustomerOrderScreen />); });
-  await act(async () => {
-    renderer!.root.findAll(candidate =>
-      candidate.props.accessibilityLabel === 'Add items to order' && typeof candidate.props.onPress === 'function')[0].props.onPress();
-  });
+  await render(<CustomerOrderScreen />);
+  await userEvent.setup({ delay: 0 }).press(plus());
   expect(mockEditor.props?.itemCatalogOpen).toBe(true);
 
   let arrive!: (answer: { data: { name: string }; error: null }) => void;
   mockNameRead.mockReturnValue(new Promise(resolve => { arrive = resolve; }));
   mockParams.customerId = 'customer-fictional-2';
-  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  await screen.rerender(<CustomerOrderScreen />);
   expect(spinners()).toBe(1);
   expect(editors()).toBe(0);
-  expect(screenText()).not.toContain('Fictional Farms');
+  expect(screen.queryByText(/Fictional Farms/)).not.toBeOnTheScreen();
 
   // When the name arrives, the editor is for the new business and its picker is closed.
   await act(async () => { arrive({ data: { name: 'Second Traders' }, error: null }); });
   expect(spinners()).toBe(0);
   expect(mockEditor.props?.customerId).toBe('customer-fictional-2');
   expect(mockEditor.props?.itemCatalogOpen).toBe(false);
-  expect(screenText()).toContain('Second Traders');
+  expect(screen.getByText(/Second Traders/)).toBeOnTheScreen();
 });
 
 describe('a business that is deactivated or deleted', () => {
-  const plus = () => renderer!.root.findAll(node => node.props.accessibilityLabel === 'Add items to order' && typeof node.props.onPress === 'function')[0];
 
   it('leaves the header Add items button on for an active business', async () => {
     mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: true, deleted_at: null }, error: null });
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
-    expect(plus().props.disabled).toBeFalsy();
+    await render(<CustomerOrderScreen />);
+    expect(plus()).toBeEnabled();
     expect(mockEditor.props?.businessDeactivated).toBe(false);
   });
 
   it('keeps the header Add items button on for a deactivated business and tells the editor to show the tag', async () => {
     mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: false, deleted_at: null }, error: null });
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
-    expect(plus().props.disabled).toBeFalsy();
+    await render(<CustomerOrderScreen />);
+    expect(plus()).toBeEnabled();
     expect(mockEditor.props?.businessDeactivated).toBe(true);
   });
 
   it('keeps the header Add items button on and the banner flag set when the record says deleted and inactive: only the server refusal turns it off', async () => {
     mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: false, deleted_at: '2026-10-01T00:00:00Z' }, error: null });
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
-    expect(plus().props.disabled).toBeFalsy();
+    await render(<CustomerOrderScreen />);
+    expect(plus()).toBeEnabled();
     expect(mockEditor.props?.businessDeactivated).toBe(true);
   });
 
   it('turns it off when the facility refuses the order, and tells the editor who is looking', async () => {
     mockState = { ...mockState, auth: { ...mockState.auth, userProfile: { id: 'profile-fictional', role: 'staff' } } };
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
-    expect(plus().props.disabled).toBeFalsy();
+    await render(<CustomerOrderScreen />);
+    expect(plus()).toBeEnabled();
     expect(mockEditor.props?.staffView).toBe(true);
     await act(async () => { mockEditor.props?.onBusinessDeleted?.(); });
-    expect(plus().props.disabled).toBe(true);
+    expect(plus()).toBeDisabled();
   });
 
   it('keeps telling the editor the business is deactivated after the server refuses it (older facility)', async () => {
     mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: false, deleted_at: null }, error: null });
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await render(<CustomerOrderScreen />);
     await act(async () => { mockEditor.props?.onBusinessDeleted?.(); });
     expect(mockEditor.props?.businessDeactivated).toBe(true);
-    expect(plus().props.disabled).toBe(true);
+    expect(plus()).toBeDisabled();
   });
 
   it('tells the editor the record could not be read, so a staff refusal gets the plain sentence', async () => {
     mockNameRead.mockResolvedValue({ data: null, error: { message: 'offline' } });
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await render(<CustomerOrderScreen />);
     expect(mockEditor.props?.businessRecordUnread).toBe(true);
     expect(mockEditor.props?.businessDeactivated).toBe(false);
   });
 
   it('clears the earlier refusal when a fresh record read for that business succeeds', async () => {
     mockNameRead.mockResolvedValue({ data: { name: 'Fictional Farms', active: true, deleted_at: null }, error: null });
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await render(<CustomerOrderScreen />);
     await act(async () => { mockEditor.props?.onBusinessDeleted?.(); });
-    expect(plus().props.disabled).toBe(true);
+    expect(plus()).toBeDisabled();
     // Another business and back: the record is read again and decides.
     mockParams.customerId = 'customer-fictional-2';
-    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+    await screen.rerender(<CustomerOrderScreen />);
     mockParams.customerId = 'customer-fictional-1';
-    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
-    expect(plus().props.disabled).toBeFalsy();
+    await screen.rerender(<CustomerOrderScreen />);
+    expect(plus()).toBeEnabled();
   });
 
   it('clears the earlier refusal on a fresh read of that business even when the read fails', async () => {
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await render(<CustomerOrderScreen />);
     await act(async () => { mockEditor.props?.onBusinessDeleted?.(); });
-    expect(plus().props.disabled).toBe(true);
+    expect(plus()).toBeDisabled();
     mockNameRead.mockResolvedValue({ data: null, error: { message: 'offline' } });
     mockParams.customerId = 'customer-fictional-2';
-    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+    await screen.rerender(<CustomerOrderScreen />);
     mockParams.customerId = 'customer-fictional-1';
-    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
-    expect(plus().props.disabled).toBeFalsy();
+    await screen.rerender(<CustomerOrderScreen />);
+    expect(plus()).toBeEnabled();
   });
 
   it('is a customer view for a customer login', async () => {
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await render(<CustomerOrderScreen />);
     expect(mockEditor.props?.staffView).toBe(false);
   });
 });
 
 it('shows the order number under "Order for …" once the editor has read the order, and drops it for another business', async () => {
-  await act(async () => { renderer = create(<CustomerOrderScreen />); });
-  const numbers = () => renderer!.root.findAll(node => node.props.testID === 'order-screen-number');
+  await render(<CustomerOrderScreen />);
+  // The number sits in the header next to the title and has no role of its own; its testID is the way to it.
+  const numbers = () => screen.queryAllByTestId('order-screen-number');
   expect(numbers()).toHaveLength(0);
 
   await act(async () => { mockEditor.props!.onOrderNumber!('ORD-0042'); });
-  expect(JSON.stringify(numbers()[0].props.children)).toContain('ORD-0042');
-  expect(JSON.stringify(numbers()[0].props.children)).toContain('Order');
+  expect(numbers()[0]).toHaveTextContent(/ORD-0042/);
+  expect(numbers()[0]).toHaveTextContent(/Order/);
 
   mockParams.customerId = 'customer-fictional-2';
-  await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+  await screen.rerender(<CustomerOrderScreen />);
   expect(numbers()).toHaveLength(0);
 });

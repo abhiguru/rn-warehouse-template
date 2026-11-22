@@ -1,7 +1,6 @@
 /** Code-review fixes CR-08, 21, 22, 23, 24 for the customer form. */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { customerService } from '@/services/customer-service';
 import { showAlert } from '@/utils/alert';
@@ -39,29 +38,24 @@ jest.mock('@/services/customer-service', () => ({
 import CustomerFormRoute from '../../../app/customer-form';
 import CustomerEditRoute from '../../../app/customer-edit/[id]';
 
-const input = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === label) as ReturnType<ReactTestRenderer['root']['findAllByType']>[number];
-const button = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label)[0];
-const type = async (tree: ReactTestRenderer, label: string, text: string) => {
-  await act(async () => { input(tree, label).props.onChangeText(text); });
+const user = userEvent.setup({ delay: 0 });
+const input = (label: string) => screen.getByLabelText(label);
+const type = async (label: string, text: string) => {
+  await user.clear(input(label));
+  if (text) await user.paste(input(label), text);
 };
-const shownText = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
-let tree: ReactTestRenderer | undefined;
+/** Presses a button and lets the checks and the save that follow finish. */
+const press = async (label: string) => {
+  await user.press(screen.getByRole('button', { name: label }));
+  await act(async () => { for (let i = 0; i < 20; i += 1) await Promise.resolve(); });
+};
 const mountEdit = async () => {
   jest.mocked(useLocalSearchParams).mockImplementation(() => ({ id: 'c1' }) as never);
-  await act(async () => { tree = create(<CustomerEditRoute />); });
-  return tree as ReactTestRenderer;
+  await render(<CustomerEditRoute />);
 };
 const mountAdd = async () => {
-  await act(async () => { tree = create(<CustomerFormRoute />); });
-  return tree as ReactTestRenderer;
+  await render(<CustomerFormRoute />);
 };
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 
 
 type Button = { text?: string; onPress?: () => void };
@@ -72,9 +66,9 @@ beforeEach(() => {
   jest.mocked(customerService.createCustomer).mockResolvedValue({ success: true, message: '', data: { id: 'new-id' } } as never);
   jest.mocked(customerService.searchCustomers).mockResolvedValue([]);
 });
-const fill = async (screen: ReactTestRenderer, name: string) => {
-  await type(screen, 'Customer name, required', name);
-  await type(screen, 'Mobile number after plus 91, required', '9000000099');
+const fill = async (name: string) => {
+  await type('Customer name, required', name);
+  await type('Mobile number after plus 91, required', '9000000099');
 };
 
 it('CR-08: clearing the email in Edit sends an empty email, not undefined', async () => {
@@ -83,9 +77,9 @@ it('CR-08: clearing the email in Edit sends an empty email, not undefined', asyn
     data: { id: 'c1', name: 'Acme Foods', mobile: '9999900308', email: 'old@example.com', city: 'Rajkot', active: true, created_at: 'x' },
   } as never);
   jest.mocked(customerService.updateCustomer).mockResolvedValue({ success: true, message: '' } as never);
-  const screen = await mountEdit();
-  await type(screen, 'Email, optional', '');
-  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  await mountEdit();
+  await type('Email, optional', '');
+  await press('Save customer');
   const sent = jest.mocked(customerService.updateCustomer).mock.calls[0][0];
   expect(sent.p_email).toBe('');
   // Edit sends only what was changed: the city, mobile and GST were not touched.
@@ -96,23 +90,22 @@ it('CR-08: clearing the email in Edit sends an empty email, not undefined', asyn
 });
 
 it('CR-08: Add still leaves an empty optional field out', async () => {
-  const screen = await mountAdd();
-  await fill(screen, 'Zeta Traders');
-  await act(async () => { await button(screen, 'Add customer').props.onPress(); });
+  await mountAdd();
+  await fill('Zeta Traders');
+  await press('Add customer');
   expect(jest.mocked(customerService.createCustomer).mock.calls[0][0].p_email).toBeUndefined();
 });
 
 it('CR-21: a second tap while the first save is still searching does nothing', async () => {
   let release: (v: never[]) => void = () => {};
   jest.mocked(customerService.searchCustomers).mockReturnValue(new Promise(resolve => { release = resolve as never; }));
-  const screen = await mountAdd();
-  await fill(screen, 'Zeta Traders');
-  let first: Promise<void> | undefined;
-  await act(async () => {
-    first = button(screen, 'Add customer').props.onPress();
-    await button(screen, 'Add customer').props.onPress();
-  });
-  await act(async () => { release([]); await first; });
+  await mountAdd();
+  await fill('Zeta Traders');
+  // Two taps reach the button before React has drawn anything between them: userEvent and fireEvent each wait for a draw
+  // between presses, so the host's click is called twice inside one act.
+  const click = screen.getByRole('button', { name: 'Add customer' }).props.onClick as (event: unknown) => void;
+  await act(async () => { click({}); click({}); });
+  await act(async () => { release([]); for (let i = 0; i < 20; i += 1) await Promise.resolve(); });
   // One save searches twice (name, mobile); a second tap would make it four.
   expect(customerService.searchCustomers).toHaveBeenCalledTimes(2);
   expect(customerService.createCustomer).toHaveBeenCalledTimes(1);
@@ -120,9 +113,9 @@ it('CR-21: a second tap while the first save is still searching does nothing', a
 
 it('CR-22: an exact name match offers Cancel and Open customer only', async () => {
   jest.mocked(customerService.searchCustomers).mockResolvedValue([{ id: 'c8', name: 'Acme Foods', mobile: '9999900308', active: true }] as never);
-  const screen = await mountAdd();
-  await fill(screen, 'Acme Foods');
-  await act(async () => { await button(screen, 'Add customer').props.onPress(); });
+  await mountAdd();
+  await fill('Acme Foods');
+  await press('Add customer');
   expect(lastButtons().map(b => b.text)).toEqual(['Cancel', 'Open customer']);
   expect(jest.mocked(showAlert).mock.calls[0][1]).toContain('name must be different');
 });
@@ -131,31 +124,31 @@ it('CR-22: DUPLICATE_NAME from the server is shown under the name field in the a
   jest.mocked(customerService.createCustomer).mockResolvedValue({
     success: false, message: 'A customer with this name already exists', error: 'DUPLICATE_NAME', code: 'DUPLICATE_NAME',
   } as never);
-  const screen = await mountAdd();
-  await fill(screen, 'Zeta Traders');
-  await act(async () => { await button(screen, 'Add customer').props.onPress(); });
+  await mountAdd();
+  await fill('Zeta Traders');
+  await press('Add customer');
   expect(showAlert).not.toHaveBeenCalled();
-  expect(shownText(screen)).toContain('A customer with this name already exists. Use a different name.');
+  expect(screen.getByText('A customer with this name already exists. Use a different name.')).toBeOnTheScreen();
 });
 
 it('CR-23: the length limits are the column sizes (name 80, city 25, address 300)', async () => {
-  const screen = await mountAdd();
-  expect(input(screen, 'Customer name, required').props.maxLength).toBe(80);
-  expect(input(screen, 'City').props.maxLength).toBe(25);
-  expect(input(screen, 'Full address').props.maxLength).toBe(300);
+  await mountAdd();
+  expect(input('Customer name, required')).toHaveProp('maxLength', 80);
+  expect(input('City')).toHaveProp('maxLength', 25);
+  expect(input('Full address')).toHaveProp('maxLength', 300);
 });
 
 it('CR-24: the duplicate search also looks for the mobile number and merges the answers', async () => {
   jest.mocked(customerService.searchCustomers).mockImplementation(async (query: string) =>
     query === '919000000099' ? ([{ id: 'c9', name: 'Patel Traders', mobile: '919000000099', active: true }] as never) : []
   );
-  const screen = await mountAdd();
-  await fill(screen, 'R. Patel & Sons');
-  await act(async () => { await button(screen, 'Add customer').props.onPress(); });
+  await mountAdd();
+  await fill('R. Patel & Sons');
+  await press('Add customer');
   expect(customerService.searchCustomers).toHaveBeenCalledWith('R. Patel & Sons', 5, { includeInactive: true });
   expect(customerService.searchCustomers).toHaveBeenCalledWith('919000000099', 5, { includeInactive: true });
   // The active customer with this number is named under the mobile field; no dialog.
   expect(showAlert).not.toHaveBeenCalled();
-  expect(shownText(screen)).toContain('Patel Traders already uses this mobile number. Use a different number.');
+  expect(screen.getByText('Patel Traders already uses this mobile number. Use a different number.')).toBeOnTheScreen();
   expect(customerService.createCustomer).not.toHaveBeenCalled();
 });

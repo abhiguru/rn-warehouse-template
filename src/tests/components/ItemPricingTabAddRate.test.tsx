@@ -5,8 +5,7 @@
  * reaches 9999 kg or there are 10 bands.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { ItemPricingTab } from '@/features/item-pricing/components/ItemPricingTab';
 import { useItemRatesFor } from '@/features/item-pricing/useItemRates';
@@ -28,17 +27,15 @@ jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: (
 jest.mock('@/features/item-pricing/useRateActions', () => ({ useRateActions: () => ({ busy: false, dialog: null }) }));
 jest.mock('@/services/item-pricing-service', () => ({ replaceItemRates: jest.fn(), listItemRates: jest.fn() }));
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   jest.clearAllMocks();
   mockRole = 'admin';
   mockOffline = false;
 });
-afterEach(() => { act(() => tree?.unmount()); tree = undefined; });
+
 
 const base = { refreshing: false, refreshError: false, lastUpdated: 1, refresh: jest.fn().mockResolvedValue(undefined) };
-const texts = () => tree!.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const button = (id: string) => tree!.root.findAll(n => n.props.testID === id && typeof n.props.onPress === 'function')[0];
+const button = (id: string) => screen.getByTestId(id);
 
 async function show(rows: ReturnType<typeof rate>[], active = true) {
   jest.mocked(useItemRatesFor).mockReturnValue({
@@ -48,7 +45,7 @@ async function show(rows: ReturnType<typeof rate>[], active = true) {
     status: 'ready',
     notFound: false,
   });
-  await act(async () => { tree = create(<ItemPricingTab itemId="ambali" itemName="Review Ambali" active={active} />); });
+  await render(<ItemPricingTab itemId="ambali" itemName="Review Ambali" active={active} />);
 }
 
 /** A rate in force: one band from 0 up to `last`. */
@@ -57,18 +54,19 @@ const inForce = (last = 30) => [rate('ambali', null, 0, last, 11, 2, 5, '2020-01
 describe('a rate in force', () => {
   it('shows "Add rate" and "Change rate", each with its word (criterion 1)', async () => {
     await show(inForce());
-    expect(button('period-add')).toBeDefined();
-    expect(button('period-change-rate')).toBeDefined();
-    expect(texts()).toEqual(expect.arrayContaining(['Add rate', 'Change rate']));
+    expect(button('period-add')).toBeOnTheScreen();
+    expect(button('period-change-rate')).toBeOnTheScreen();
+    expect(within(button('period-add')).getByText('Add rate')).toBeOnTheScreen();
+    expect(within(button('period-change-rate')).getByText('Change rate')).toBeOnTheScreen();
     // The words are spoken for each tab, and the two differ.
     expect(button('period-add').props.accessibilityLabel).not.toBe(button('period-change-rate').props.accessibilityLabel);
   });
 
   it('"Add rate" opens the next band and "Change rate" the copy form', async () => {
     await show(inForce());
-    await act(async () => { button('period-add').props.onPress(); });
+    await userEvent.press(button('period-add'));
     expect(jest.mocked(router.push).mock.calls[0][0]).toMatchObject({ params: { itemId: 'ambali', mode: 'addBand', price_type: 'monthly' } });
-    await act(async () => { button('period-change-rate').props.onPress(); });
+    await userEvent.press(button('period-change-rate'));
     expect(jest.mocked(router.push).mock.calls[1][0]).toMatchObject({ params: { itemId: 'ambali', mode: 'change', price_type: 'monthly' } });
   });
 });
@@ -76,10 +74,10 @@ describe('a rate in force', () => {
 describe('no rate in force', () => {
   it('shows only "Add rate", which opens the form for a new rate as today (criterion 1)', async () => {
     await show([rate('ambali', null, 0, 30, 11, 2, 5, '2019-01-01', '2020-12-31')]);
-    expect(button('period-add')).toBeDefined();
-    expect(button('period-change-rate')).toBeUndefined();
-    expect(texts()).not.toContain('Change rate');
-    await act(async () => { button('period-add').props.onPress(); });
+    expect(button('period-add')).toBeOnTheScreen();
+    expect(screen.queryByTestId('period-change-rate')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Change rate')).not.toBeOnTheScreen();
+    await userEvent.press(button('period-add'));
     expect(jest.mocked(router.push).mock.calls[0][0]).toMatchObject({ params: { mode: 'add' } });
   });
 });
@@ -87,26 +85,27 @@ describe('no rate in force', () => {
 describe('no next band (criterion 8)', () => {
   it('a last band up to 9999 disables "Add rate" with its line; "Change rate" still opens', async () => {
     await show([rate('ambali', null, 0, 9999, 11, 2, 5, '2020-01-01', null)]);
-    expect(button('period-add').props.disabled).toBe(true);
-    expect(texts()).toContain('This rate already covers weights up to 9999 kg.');
-    expect(button('period-change-rate').props.disabled).toBeFalsy();
-    await act(async () => { button('period-change-rate').props.onPress(); });
+    expect(button('period-add')).toBeDisabled();
+    expect(screen.getByText('This rate already covers weights up to 9999 kg.')).toBeOnTheScreen();
+    expect(button('period-change-rate')).toBeEnabled();
+    await userEvent.press(button('period-change-rate'));
     expect(jest.mocked(router.push)).toHaveBeenCalledTimes(1);
   });
 
   it('ten bands disable "Add rate" with the most-bands line; "Change rate" still opens', async () => {
     const ten = Array.from({ length: 10 }, (_, i) => rate('ambali', null, i * 10 + (i === 0 ? 0 : 1), (i + 1) * 10, 11, 2, 5, '2020-01-01', null));
     await show(ten);
-    expect(button('period-add').props.disabled).toBe(true);
-    expect(texts()).toContain('You have the most weight bands allowed (10).');
-    expect(button('period-change-rate').props.disabled).toBeFalsy();
+    expect(button('period-add')).toBeDisabled();
+    expect(screen.getByText('You have the most weight bands allowed (10).')).toBeOnTheScreen();
+    expect(button('period-change-rate')).toBeEnabled();
   });
 
   it('nine bands, or a last band below 9999, leave "Add rate" on, with no line', async () => {
     const nine = Array.from({ length: 9 }, (_, i) => rate('ambali', null, i * 10 + (i === 0 ? 0 : 1), (i + 1) * 10, 11, 2, 5, '2020-01-01', null));
     await show(nine);
-    expect(button('period-add').props.disabled).toBeFalsy();
-    expect(texts().some(text => text.startsWith('This rate already covers') || text.startsWith('You have the most'))).toBe(false);
+    expect(button('period-add')).toBeEnabled();
+    expect(screen.queryByText(/^This rate already covers/)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/^You have the most/)).not.toBeOnTheScreen();
   });
 });
 
@@ -114,20 +113,20 @@ describe('who sees them', () => {
   it('staff see neither action', async () => {
     mockRole = 'staff';
     await show(inForce());
-    expect(button('period-add')).toBeUndefined();
-    expect(button('period-change-rate')).toBeUndefined();
+    expect(screen.queryByTestId('period-add')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('period-change-rate')).not.toBeOnTheScreen();
   });
 
   it('offline both are off, as "Add rate" is today', async () => {
     mockOffline = true;
     await show(inForce());
-    expect(button('period-add').props.disabled).toBe(true);
-    expect(button('period-change-rate').props.disabled).toBe(true);
+    expect(button('period-add')).toBeDisabled();
+    expect(button('period-change-rate')).toBeDisabled();
   });
 
   it('a deactivated item shows neither', async () => {
     await show(inForce(), false);
-    expect(button('period-add')).toBeUndefined();
-    expect(button('period-change-rate')).toBeUndefined();
+    expect(screen.queryByTestId('period-add')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('period-change-rate')).not.toBeOnTheScreen();
   });
 });

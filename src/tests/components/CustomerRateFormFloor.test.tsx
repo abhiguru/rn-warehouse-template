@@ -7,14 +7,13 @@
  */
 import React from 'react';
 import { Platform } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { Button } from '@/components/ui/Button';
 import { CustomerRateForm } from '@/features/item-pricing/components/CustomerRateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
 import { replaceItemRates } from '@/services/item-pricing-service';
 import { clearRateStartFloor, rememberRateStartFloor } from '@/services/rateStartFloor';
-import { chip, inputsWithLabel, onionRows, textsOf } from '@/tests/helpers/rateEditorFixtures';
+import { chip, inputsWithLabel, onionRows } from '@/tests/helpers/rateEditorFixtures';
 
 jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
@@ -34,7 +33,6 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn(), askAlert: jest.fn() })
 jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, default: 'DateTimePicker', DateTimePickerAndroid: { open: jest.fn() } }));
 
 const ORCHARD_A = { id: 'cust-a', name: 'Review Orchard A' };
-let tree: ReactTestRenderer | undefined;
 const originalOS = Platform.OS;
 const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -52,15 +50,14 @@ const ratesFor = (rows = DEFAULT_ONLY): UseItemRatesForResult => ({
 
 async function open() {
   jest.mocked(useItemRatesFor).mockReturnValue(ratesFor());
-  await act(async () => { tree = create(<CustomerRateForm itemId="onion" customerId={ORCHARD_A.id} customerName={ORCHARD_A.name} customerDeactivated={false} />); });
-  return tree!;
+  await render(<CustomerRateForm itemId="onion" customerId={ORCHARD_A.id} customerName={ORCHARD_A.name} customerDeactivated={false} />);
 }
-const save = (t: ReactTestRenderer) => t.root.findAllByType(Button).find(b => b.props.testID === 'add-rate-save')!;
-const type = async (t: ReactTestRenderer, label: string, text: string, index = 0) => {
-  await act(async () => { inputsWithLabel(t, label)[index].props.onChangeText(text); });
+const save = () => screen.getByTestId('add-rate-save');
+const type = async (label: string, text: string, index = 0) => {
+  await userEvent.paste(inputsWithLabel(label)[index], text);
 };
 /** Change the copy of the default rate, so that Save is on (it stays off until something differs). */
-const changeRent = (t: ReactTestRenderer) => type(t, 'Rent ₹/month', '3.9');
+const changeRent = () => type('Rent ₹/month', '3.9');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -72,70 +69,68 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   Platform.OS = originalOS;
   jest.useRealTimers();
 });
 
-const openCalendar = async (t: ReactTestRenderer) => {
-  await act(async () => { chip(t, 'Other date').props.onPress(); });
+const openCalendar = async () => {
+  await userEvent.press(chip('Other date'));
   const calls = jest.mocked(DateTimePickerAndroid.open).mock.calls;
   return calls[calls.length - 1][0];
 };
 /** Choose Other date and pick a day in the Android calendar, bypassing the calendar's own limits. */
-const pickDay = async (t: ReactTestRenderer, year: number, month: number, d: number) => {
-  const opts = await openCalendar(t);
+const pickDay = async (year: number, month: number, d: number) => {
+  const opts = await openCalendar();
   await act(async () => { opts.onChange!({ type: 'set' } as never, new Date(year, month - 1, d)); });
 };
 
 it('the calendar starts on the day of the oldest GRN', async () => {
   rememberRateStartFloor('2022-01-01');
-  const t = await open();
-  expect(day((await openCalendar(t)).minimumDate as Date)).toBe('2022-01-01');
+  await open();
+  expect(day((await openCalendar()).minimumDate as Date)).toBe('2022-01-01');
 });
 
 it('without a floor from the server the calendar keeps three years back (older server)', async () => {
-  const t = await open();
-  expect(day((await openCalendar(t)).minimumDate as Date)).toBe('2023-10-15');
+  await open();
+  expect(day((await openCalendar()).minimumDate as Date)).toBe('2023-10-15');
 });
 
 it('a day before the oldest GRN is refused at the field, naming the date, and nothing is sent', async () => {
   rememberRateStartFloor('2022-01-01');
-  const t = await open();
-  await changeRent(t);
-  await pickDay(t, 2021, 12, 31);
-  expect(save(t).props.disabled).toBe(false);
-  await act(async () => { save(t).props.onPress(); });
+  await open();
+  await changeRent();
+  await pickDay(2021, 12, 31);
+  expect(save()).toBeEnabled();
+  await userEvent.press(save());
   expect(replaceItemRates).not.toHaveBeenCalled();
-  expect(textsOf(t)).toContain('Choose a start date on or after 01/01/22.');
+  expect(screen.getByText('Choose a start date on or after 01/01/22.')).toBeOnTheScreen();
 });
 
 it('the oldest GRN day itself is accepted', async () => {
   rememberRateStartFloor('2022-01-01');
-  const t = await open();
-  await changeRent(t);
-  await pickDay(t, 2022, 1, 1);
+  await open();
+  await changeRent();
+  await pickDay(2022, 1, 1);
   jest.mocked(replaceItemRates).mockResolvedValue({ success: true });
-  await act(async () => { save(t).props.onPress(); });
+  await userEvent.press(save());
   expect(replaceItemRates).toHaveBeenCalledTimes(1);
   expect(replaceItemRates).toHaveBeenCalledWith(expect.objectContaining({ starts_on: '2022-01-01' }), expect.anything());
-  expect(textsOf(t)).not.toContain('Choose a start date on or after 01/01/22.');
+  expect(screen.queryByText('Choose a start date on or after 01/01/22.')).not.toBeOnTheScreen();
 });
 
 it("the server's INVALID_DATE shows the same text at the field and moves the floor", async () => {
-  const t = await open();
-  await changeRent(t);
-  await pickDay(t, 2026, 11, 1);
+  await open();
+  await changeRent();
+  await pickDay(2026, 11, 1);
   jest.mocked(replaceItemRates).mockResolvedValue({
     success: false,
     errorCode: 'INVALID_DATE',
     earliest: '2026-11-02',
     message: 'Choose a start date on or after 02/11/26.',
   });
-  await act(async () => { save(t).props.onPress(); });
-  expect(textsOf(t)).toContain('Choose a start date on or after 02/11/26.');
+  await userEvent.press(save());
+  expect(screen.getByText('Choose a start date on or after 02/11/26.')).toBeOnTheScreen();
   // The typed rent is still there, and the calendar now starts on the day the server named.
-  expect(inputsWithLabel(t, 'Rent ₹/month')[0].props.value).toBe('3.9');
-  expect(day((await openCalendar(t)).minimumDate as Date)).toBe('2026-11-02');
+  expect(inputsWithLabel('Rent ₹/month')[0]).toHaveDisplayValue('3.9');
+  expect(day((await openCalendar()).minimumDate as Date)).toBe('2026-11-02');
 });

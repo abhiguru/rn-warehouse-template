@@ -5,7 +5,7 @@
  * asks once: the header's question is the only one. The header is the real one.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { toLocalISODate } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
@@ -70,8 +70,11 @@ jest.mock('@/components/GhostTextInput', () => ({ GhostTextInput: require('react
 jest.mock('@/services/vehicle-suggestion-service', () => ({ getTopVehicleSuggestion: jest.fn() }));
 jest.mock('@/components/SwipeableFormStep', () => ({ __esModule: true, default: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@/components/WizardBottomBar', () => ({ __esModule: true, default: () => null }));
-// A stand-in that keeps its props, so a dialog of the step's own would be seen.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// A stand-in that draws its title as an alert while it is visible, so a dialog of the step's own would be seen.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: ({ visible, title }: { visible: boolean; title: string }) =>
+    visible ? require('react').createElement(require('react-native').Text, { accessibilityRole: 'alert' }, title) : null,
+}));
 
 let back: ReturnType<typeof installHardwareBack>;
 beforeEach(() => {
@@ -88,19 +91,16 @@ beforeEach(() => {
 });
 afterEach(() => back.restore());
 
-async function render(element: React.ReactElement = <DispatchFormStep1 />) {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  return tree;
+async function show(element: React.ReactElement = <DispatchFormStep1 />) {
+  await render(element);
 }
 const pressBack = async () => {
   let taken = false;
   await act(async () => { taken = back.press(); });
   return taken;
 };
-const pressX = async (tree: ReactTestRenderer, label = 'Close new dispatch') => {
-  const close = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-  await act(async () => { close.props.onPress(); });
+const pressX = async (label = 'Close new dispatch') => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: label }));
 };
 /** The last question shown, with its buttons made comparable. */
 const question = () => {
@@ -112,8 +112,7 @@ const answer = async (text: string) => {
   await act(async () => { button.onPress?.(); });
 };
 /** A dialog of the step's own on top of the header's question: the second question that used to follow. */
-const ownDialogs = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
+const ownDialogs = () => screen.queryAllByRole('alert');
 
 const DISCARD_QUESTION = {
   title: 'Discard this dispatch?',
@@ -134,51 +133,48 @@ const ENTERED: [string, () => void][] = [
 
 describe('Back on step 1 of a new dispatch', () => {
   it('leaves for the dispatch list at once while nothing was entered', async () => {
-    const tree = await render();
+    await show();
 
     expect(await pressBack()).toBe(true);
 
     expect(showAlert).not.toHaveBeenCalled();
-    expect(ownDialogs(tree)).toHaveLength(0);
+    expect(ownDialogs()).toHaveLength(0);
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/(tabs)/dispatch');
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it.each(ENTERED)('asks "Discard this dispatch?" once and stays when the form has %s', async (_what, enter) => {
     enter();
-    const tree = await render();
+    await show();
 
     expect(await pressBack()).toBe(true);
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question()).toEqual(DISCARD_QUESTION);
-    expect(ownDialogs(tree)).toHaveLength(0);
+    expect(ownDialogs()).toHaveLength(0);
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('"Discard" empties the form and goes to the dispatch list, with no second question', async () => {
     mockForm.header.registration = 'GJ01XX0000';
-    const tree = await render();
+    await show();
     await pressBack();
 
     await answer('Discard dispatch');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(ownDialogs(tree)).toHaveLength(0);
+    expect(ownDialogs()).toHaveLength(0);
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/dispatch');
-    await act(async () => { tree.unmount(); });
   });
 
   it('"Keep editing" stays on the form with everything in it', async () => {
     mockForm.header.customer_id = 'c1';
-    const tree = await render();
+    await show();
     await pressBack();
 
     await answer('Keep editing');
@@ -189,62 +185,57 @@ describe('Back on step 1 of a new dispatch', () => {
     // Back asks again the next time.
     await pressBack();
     expect(showAlert).toHaveBeenCalledTimes(2);
-    await act(async () => { tree.unmount(); });
   });
 });
 
 describe('The X on step 1 of a new dispatch', () => {
   it.each(ENTERED)('asks once, exactly what Back asks, when the form has %s', async (_what, enter) => {
     enter();
-    const tree = await render();
+    await show();
 
-    await pressX(tree);
+    await pressX();
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question()).toEqual(DISCARD_QUESTION);
-    expect(ownDialogs(tree)).toHaveLength(0);
+    expect(ownDialogs()).toHaveLength(0);
     await pressBack();
     expect(showAlert).toHaveBeenCalledTimes(2);
     expect(question()).toEqual(DISCARD_QUESTION);
-    await act(async () => { tree.unmount(); });
   });
 
   it('closes at once, asking nothing, while nothing was entered (WH-217)', async () => {
-    const tree = await render();
+    await show();
 
-    await pressX(tree);
+    await pressX();
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/dispatch');
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 
   it('"Discard" is the end of it: the form is emptied and the list is shown, no second question', async () => {
     mockForm.header.customer_id = 'c1';
-    const tree = await render();
-    await pressX(tree);
+    await show();
+    await pressX();
 
     await answer('Discard dispatch');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(ownDialogs(tree)).toHaveLength(0);
+    expect(ownDialogs()).toHaveLength(0);
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/dispatch');
-    await act(async () => { tree.unmount(); });
   });
 });
 
 describe('Back on step 1 of a new dispatch while a picker is open', () => {
-  const open = async (tree: ReactTestRenderer, label: string) => {
-    const field = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-    await act(async () => { field.props.onPress(); });
+  const open = async (label: string) => {
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: label }));
   };
   /** The screen draws itself again, as it does when a field loses focus or a suggestion arrives. */
-  const drawAgain = async (tree: ReactTestRenderer) => {
-    await act(async () => { tree.update(<DispatchFormStep1 />); });
+  const drawAgain = async () => {
+    await screen.rerender(<DispatchFormStep1 />);
   };
   const PICKERS: [string, string][] = [
     ['supervisor', 'Supervisor, Fictional Supervisor'],
@@ -253,15 +244,15 @@ describe('Back on step 1 of a new dispatch while a picker is open', () => {
 
   it.each(PICKERS)('the open %s picker takes Back: it closes, and the form asks nothing', async (name, label) => {
     mockForm.header.note = 'Call before loading';
-    const tree = await render();
-    await open(tree, label);
-    await drawAgain(tree);
+    await show();
+    await open(label);
+    await drawAgain();
 
     expect(await pressBack()).toBe(true);
 
     expect(sheetBackPresses).toEqual([name]);
     expect(showAlert).not.toHaveBeenCalled();
-    expect(ownDialogs(tree)).toHaveLength(0);
+    expect(ownDialogs()).toHaveLength(0);
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
 
@@ -269,30 +260,28 @@ describe('Back on step 1 of a new dispatch while a picker is open', () => {
     expect(await pressBack()).toBe(true);
     expect(sheetBackPresses).toEqual([name]);
     expect(showAlert).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 
   it.each(PICKERS)('the open %s picker takes Back in an empty form too: the form is not left', async (name, label) => {
-    const tree = await render();
-    await open(tree, label);
-    await drawAgain(tree);
+    await show();
+    await open(label);
+    await drawAgain();
 
     expect(await pressBack()).toBe(true);
 
     expect(sheetBackPresses).toEqual([name]);
     expect(router.replace).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('keeps one listener of its own however often the screen draws itself', async () => {
-    const tree = await render();
+    await show();
     expect(back.count()).toBe(1);
 
-    await drawAgain(tree);
-    await drawAgain(tree);
+    await drawAgain();
+    await drawAgain();
 
     expect(back.count()).toBe(1);
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     expect(back.count()).toBe(0);
   });
 });
@@ -304,7 +293,7 @@ describe('Step 1 of a dispatch that is being edited', () => {
   });
   // WH-264: an edited dispatch asks (X and Back alike) only when something was changed since it opened.
   it('with nothing changed, Back is left to the system, which leaves at once with no question', async () => {
-    const tree = await render(<DispatchEditStep1 />);
+    await show(<DispatchEditStep1 />);
 
     expect(await pressBack()).toBe(false);
 
@@ -312,23 +301,21 @@ describe('Step 1 of a dispatch that is being edited', () => {
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('with nothing changed, the X closes with no question', async () => {
-    const tree = await render(<DispatchEditStep1 />);
+    await show(<DispatchEditStep1 />);
 
-    await pressX(tree, 'Close dispatch edit');
+    await pressX('Close dispatch edit');
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.back).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 
   it('after a change, Back asks the same question as the X and leaves nothing yet', async () => {
     mockForm.isChanged = true;
-    const tree = await render(<DispatchEditStep1 />);
+    await show(<DispatchEditStep1 />);
 
     expect(await pressBack()).toBe(true);
 
@@ -336,15 +323,14 @@ describe('Step 1 of a dispatch that is being edited', () => {
     expect(question()).toMatchObject({ title: 'Discard changes to this dispatch?' });
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
 
   it('the X asks once, about the changes, and "Discard changes" goes back', async () => {
     mockForm.isChanged = true;
-    const tree = await render(<DispatchEditStep1 />);
+    await show(<DispatchEditStep1 />);
 
-    await pressX(tree, 'Close dispatch edit');
+    await pressX('Close dispatch edit');
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question()).toMatchObject({
@@ -353,9 +339,8 @@ describe('Step 1 of a dispatch that is being edited', () => {
     });
     await answer('Discard changes');
     expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(ownDialogs(tree)).toHaveLength(0);
+    expect(ownDialogs()).toHaveLength(0);
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.back).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 });

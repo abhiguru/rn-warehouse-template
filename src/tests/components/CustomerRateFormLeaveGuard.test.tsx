@@ -5,7 +5,7 @@
  * here the form's use of it.) A change includes choosing another start day, though no field was typed.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { CustomerRateForm } from '@/features/item-pricing/components/CustomerRateForm';
 import { replaceItemRates } from '@/services/item-pricing-service';
 import { RateForm } from '@/features/item-pricing/components/RateForm';
@@ -37,7 +37,6 @@ jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, d
 
 const ORCHARD_A = { id: 'cust-a', name: 'Review Orchard A' };
 
-let tree: ReactTestRenderer | undefined;
 const DEFAULT_ONLY = onionRows().filter(r => !r.customer_id);
 
 const ratesFor = (rows = DEFAULT_ONLY): UseItemRatesForResult => ({
@@ -51,11 +50,10 @@ const ratesFor = (rows = DEFAULT_ONLY): UseItemRatesForResult => ({
 });
 async function openCustomer(rows = DEFAULT_ONLY) {
   jest.mocked(useItemRatesFor).mockReturnValue(ratesFor(rows));
-  await act(async () => { tree = create(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={false} />); });
-  return tree!;
+  await render(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={false} />);
 }
-const type = async (t: ReactTestRenderer, label: string, text: string) => {
-  await act(async () => { inputsWithLabel(t, label)[0].props.onChangeText(text); });
+const type = async (label: string, text: string) => {
+  await userEvent.paste(inputsWithLabel(label)[0], text);
 };
 
 beforeEach(() => {
@@ -67,8 +65,6 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   jest.useRealTimers();
 });
 
@@ -80,39 +76,38 @@ describe('Add customer rate (Orchard A has none)', () => {
   });
 
   it('asks once the rent was typed (3.25 in place of 3.50), and no longer when it is typed back', async () => {
-    const t = await openCustomer();
-    await type(t, 'Rent ₹/month', '3.25');
+    await openCustomer();
+    await type('Rent ₹/month', '3.25');
     expect(mockGuard.hasChanges).toBe(true);
-    await type(t, 'Rent ₹/month', '3.50');
+    await type('Rent ₹/month', '3.50');
     expect(mockGuard.hasChanges).toBe(false);
   });
 
   it('asks after a weight band was added', async () => {
-    const t = await openCustomer();
-    await act(async () => { t.root.find(n => n.props.testID === 'add-band' && typeof n.props.onPress === 'function').props.onPress(); });
+    await openCustomer();
+    await userEvent.press(screen.getByTestId('add-band'));
     expect(mockGuard.hasChanges).toBe(true);
   });
 
   it('asks after another start day was chosen, though no field was typed', async () => {
-    const t = await openCustomer();
+    await openCustomer();
     expect(mockGuard.hasChanges).toBe(false);
-    await act(async () => { chip(t, '01/11/26').props.onPress(); });
+    await userEvent.press(chip('01/11/26'));
     expect(mockGuard.hasChanges).toBe(true);
-    await act(async () => { chip(t, 'Today').props.onPress(); });
+    await userEvent.press(chip('Today'));
     expect(mockGuard.hasChanges).toBe(false);
   });
 });
 
 describe('while the save runs and when the customer cannot be checked', () => {
   it('holds the ways out (blocked) from the tap on Save until the server answers', async () => {
-    const t = await openCustomer();
+    await openCustomer();
     expect(mockGuard.blocked).toBe(false);
-    await type(t, 'Rent ₹/month', '3.25');
-    await act(async () => { chip(t, 'Today').props.onPress(); });
+    await type('Rent ₹/month', '3.25');
+    await userEvent.press(chip('Today'));
     let answer!: (v: unknown) => void;
     jest.mocked(replaceItemRates).mockReturnValue(new Promise(res => { answer = res; }) as never);
-    const save = t.root.findAll(n => n.props.testID === 'add-rate-save' && typeof n.props.onPress === 'function')[0];
-    await act(async () => { save.props.onPress(); });
+    await userEvent.press(screen.getByTestId('add-rate-save'));
     expect(mockGuard.blocked).toBe(true);
     await act(async () => { answer({ success: false, errorCode: 'X', message: 'No.' }); });
     expect(mockGuard.blocked).toBe(false);
@@ -121,36 +116,32 @@ describe('while the save runs and when the customer cannot be checked', () => {
   it('a customer that could not be checked shows the strip with Try again, and Try again calls the retry', async () => {
     jest.mocked(useItemRatesFor).mockReturnValue(ratesFor());
     const retry = jest.fn();
-    await act(async () => {
-      tree = create(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={null} customerCheckFailed onRetryCustomerCheck={retry} />);
-    });
-    const text = JSON.stringify(tree!.toJSON());
-    expect(text).toContain("Couldn't check this customer. Try again.");
-    await act(async () => { tree!.root.find(n => n.props.testID === 'add-rate-customer-check-retry' && typeof n.props.onPress === 'function').props.onPress(); });
+    await render(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={null} customerCheckFailed onRetryCustomerCheck={retry} />);
+    expect(screen.getByText("Couldn't check this customer. Try again.")).toBeOnTheScreen();
+    await userEvent.press(screen.getByTestId('add-rate-customer-check-retry'));
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it('shows no such strip when the state is simply not read yet', async () => {
     jest.mocked(useItemRatesFor).mockReturnValue(ratesFor());
-    await act(async () => { tree = create(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={null} />); });
-    expect(JSON.stringify(tree!.toJSON())).not.toContain("Couldn't check this customer");
+    await render(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={null} />);
+    expect(screen.queryByText(/Couldn't check this customer/)).not.toBeOnTheScreen();
   });
 });
 
 describe("the item's default rate (RateForm, correct)", () => {
   async function openCorrect() {
     jest.mocked(useItemRatesFor).mockReturnValue(ratesFor([rate('onion', null, 0, 100, 3.5, 1.5, 5, '2025-01-01', null, 'monthly', 'Review Onion Red')] as never));
-    await act(async () => { tree = create(<RateForm itemId="onion" mode="correct" priceType="monthly" />); });
-    return tree!;
+    await render(<RateForm itemId="onion" mode="correct" priceType="monthly" />);
   }
 
   it('asks nothing when nothing was typed, and asks "Discard this rate?" once the rent is changed', async () => {
-    const t = await openCorrect();
+    await openCorrect();
     expect(mockGuard.hasChanges).toBe(false);
     expect(mockGuard.title).toBe('Discard this rate?');
-    await type(t, 'Rent ₹/month', '3.75');
+    await type('Rent ₹/month', '3.75');
     expect(mockGuard.hasChanges).toBe(true);
-    await type(t, 'Rent ₹/month', '3.50');
+    await type('Rent ₹/month', '3.50');
     expect(mockGuard.hasChanges).toBe(false);
   });
 });

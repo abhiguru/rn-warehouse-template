@@ -4,8 +4,8 @@
  * address, the State picker, the keyboard Next flow, validation and saving through the shared bar.
  */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { TextInput } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { customerService } from '@/services/customer-service';
 import { showAlert } from '@/utils/alert';
@@ -46,69 +46,81 @@ jest.mock('@/config/backendFeatures', () => ({
 }));
 import CustomerFormRoute from '../../../app/customer-form';
 
-let tree: ReactTestRenderer | undefined;
+const user = userEvent.setup({ delay: 0 });
+// The field labels and the +91 prefixes are drawn inside elements the screen reader skips (the field itself carries the spoken label).
+const everything = { includeHiddenElements: true } as const;
 const mount = async () => {
-  await act(async () => { tree = create(<CustomerFormRoute />); });
-  return tree as ReactTestRenderer;
+  await render(<CustomerFormRoute />);
 };
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(customerService.searchCustomers).mockResolvedValue([]);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 
-const inputs = (screen: ReactTestRenderer) => screen.root.findAllByType(TextInput);
-const input = (screen: ReactTestRenderer, label: string) =>
-  inputs(screen).find(node => node.props.accessibilityLabel === label) as ReturnType<ReactTestRenderer['root']['findAllByType']>[number];
-const shown = (screen: ReactTestRenderer) => screen.root.findAllByType(Text).map(n => [n.props.children].flat(3).join(''));
-const type = async (screen: ReactTestRenderer, label: string, text: string) => {
-  await act(async () => { input(screen, label).props.onChangeText(text); });
+type Node = NonNullable<typeof screen.root>;
+// Every typed field in the order drawn: a field without a label would not be reached by a label query, so the tree is walked.
+const inputs = (): Node[] => {
+  const found: Node[] = [];
+  const walk = (node: Node) => {
+    if ((node.type as unknown) === 'TextInput') found.push(node);
+    for (const child of node.children) if (typeof child !== 'string') walk(child as Node);
+  };
+  walk(screen.root as Node);
+  return found;
 };
-const saveButton = (screen: ReactTestRenderer) =>
-  screen.root.find(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === 'Add customer');
+const input = (label: string) => screen.getByLabelText(label);
+/** Every text on the screen, in the order drawn. */
+const shown = () => screen.getAllByText(/.+/, everything).map(node => [node.props.children].flat(3).join(''));
+/** Where the first text that starts with the label comes among all the texts. */
+const positionOf = (label: string) => shown().findIndex(text => text.startsWith(label));
+const type = async (label: string, text: string) => {
+  await user.clear(input(label));
+  await user.paste(input(label), text);
+};
+const press = async (label: string) => {
+  await user.press(screen.getByRole('button', { name: label }));
+  await act(async () => { for (let i = 0; i < 20; i += 1) await Promise.resolve(); });
+};
 
 describe('Customer form on the shared parts (WH-227)', () => {
   it('keeps the field order from name to the contact email, with the State picker between City and Pincode', async () => {
-    const screen = await mount();
-    const order = shown(screen);
-    const at = (label: string) => order.findIndex(text => text.startsWith(label));
-    const labels = ['Customer name', 'Mobile number', 'Email', 'Full address', 'City', 'State', 'Pincode', 'GST', 'PAN', 'Contact'];
-    const positions = labels.map(at);
+    await mount();
+    // The labels of the two required fields hold a nested " *" text and are not texts of their own, so the first
+    // three typed fields stand for them: name, then mobile, then email.
+    const labels = ['Email', 'Full address', 'City', 'State', 'Pincode', 'GST', 'PAN', 'Contact'];
+    const positions = labels.map(positionOf);
     positions.forEach(p => expect(p).toBeGreaterThanOrEqual(0));
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
-    // Name and mobile are the first two typed fields.
-    expect(inputs(screen)[0].props.accessibilityLabel).toBe('Customer name, required');
-    expect(inputs(screen)[1].props.accessibilityLabel).toBe('Mobile number after plus 91, required');
+    expect(inputs()[0]).toHaveProp('accessibilityLabel', 'Customer name, required');
+    expect(inputs()[1]).toHaveProp('accessibilityLabel', 'Mobile number after plus 91, required');
+    expect(inputs()[2]).toHaveProp('accessibilityLabel', 'Email, optional');
   });
 
   it('stops typing at the column sizes (hard limit) and draws +91 on both mobile fields, not in the value', async () => {
-    const screen = await mount();
-    expect(input(screen, 'Customer name, required').props.maxLength).toBe(80);
-    expect(input(screen, 'City').props.maxLength).toBe(25);
-    expect(input(screen, 'Full address').props.maxLength).toBe(300);
-    expect(shown(screen).filter(text => text === '+91').length).toBe(2);
-    await type(screen, 'Mobile number after plus 91, required', '9000000099');
-    expect(input(screen, 'Mobile number after plus 91, required').props.value).toBe('90000 00099');
+    await mount();
+    expect(input('Customer name, required')).toHaveProp('maxLength', 80);
+    expect(input('City')).toHaveProp('maxLength', 25);
+    expect(input('Full address')).toHaveProp('maxLength', 300);
+    expect(screen.getAllByText('+91', everything)).toHaveLength(2);
+    await type('Mobile number after plus 91, required', '9000000099');
+    expect(input('Mobile number after plus 91, required')).toHaveDisplayValue('90000 00099');
   });
 
   it('lays the address out as a multiline field and no other field', async () => {
-    const screen = await mount();
-    expect(input(screen, 'Full address').props.multiline).toBe(true);
-    const others = inputs(screen).filter(node => node.props.accessibilityLabel !== 'Full address');
+    await mount();
+    expect(input('Full address')).toHaveProp('multiline', true);
+    const others = inputs().filter(node => node.props.accessibilityLabel !== 'Full address');
     others.forEach(node => expect(node.props.multiline).toBeFalsy());
   });
 
   it('moves with the keyboard Next key from name to mobile, and ends the last field with Done', async () => {
-    const screen = await mount();
-    const typed = inputs(screen);
-    expect(typed[0].props.returnKeyType).toBe('next');
-    expect(typed[1].props.returnKeyType).toBe('next');
-    expect(typed[typed.length - 1].props.returnKeyType).toBe('done');
+    await mount();
+    const typed = inputs();
+    expect(typed[0]).toHaveProp('returnKeyType', 'next');
+    expect(typed[1]).toHaveProp('returnKeyType', 'next');
+    expect(typed[typed.length - 1]).toHaveProp('returnKeyType', 'done');
     // Every field except the multiline address and the last one offers Next.
-    typed.slice(0, -1).filter(node => !node.props.multiline).forEach(node => expect(node.props.returnKeyType).toBe('next'));
+    typed.slice(0, -1).filter(node => !node.props.multiline).forEach(node => expect(node).toHaveProp('returnKeyType', 'next'));
   });
 
   it('Next on a field focuses the following field (name to mobile to email)', async () => {
@@ -117,9 +129,9 @@ describe('Customer form on the shared parts (WH-227)', () => {
       focused.push(String(this.props.accessibilityLabel));
     });
     try {
-      const screen = await mount();
-      await act(async () => { input(screen, 'Customer name, required').props.onSubmitEditing(); });
-      await act(async () => { input(screen, 'Mobile number after plus 91, required').props.onSubmitEditing(); });
+      await mount();
+      await user.type(input('Customer name, required'), '', { submitEditing: true });
+      await user.type(input('Mobile number after plus 91, required'), '', { submitEditing: true });
     } finally {
       spy.mockRestore();
     }
@@ -127,22 +139,20 @@ describe('Customer form on the shared parts (WH-227)', () => {
   });
 
   it('asks for the name and the mobile number through the shared fields and does not save', async () => {
-    const screen = await mount();
-    await act(async () => { await saveButton(screen).props.onPress(); });
-    const text = shown(screen);
-    expect(text).toContain('Enter the customer name.');
-    expect(text).toContain('Enter a mobile number.');
+    await mount();
+    await press('Add customer');
+    expect(screen.getByText('Enter the customer name.')).toBeOnTheScreen();
+    expect(screen.getByText('Enter a mobile number.')).toBeOnTheScreen();
     expect(customerService.createCustomer).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
   });
 
   it('saves through the shared Save bar', async () => {
     jest.mocked(customerService.createCustomer).mockResolvedValue({ success: true, message: '', data: { id: 'new-id' } } as never);
-    const screen = await mount();
-    await type(screen, 'Customer name, required', 'Test Doc');
-    await type(screen, 'Mobile number after plus 91, required', '9000000099');
-    const bar = screen.root.find(node => node.props.testID === 'customer-save-bar' && (node.type as unknown) !== 'View' && typeof node.props.onPress === 'function');
-    await act(async () => { await bar.props.onPress(); });
+    await mount();
+    await type('Customer name, required', 'Test Doc');
+    await type('Mobile number after plus 91, required', '9000000099');
+    await press('Add customer');
     expect(customerService.createCustomer).toHaveBeenCalledWith(expect.objectContaining({ p_name: 'Test Doc', p_mobile: '919000000099' }));
     expect(router.replace).toHaveBeenCalledWith({ pathname: '/customer/[id]', params: { id: 'new-id' } });
   });
@@ -153,21 +163,20 @@ describe('State field (WH-151 picker, shared Input on an older server)', () => {
 
   it('a server with the picker shows the State picker between City and Pincode and no typed State box', async () => {
     mockStatePicker = true;
-    const screen = await mount();
-    expect(screen.root.findAll(node => node.props.testID === 'customer-state-picker').length).toBeGreaterThan(0);
-    const labels = inputs(screen).map(node => node.props.accessibilityLabel ?? node.props.placeholder);
+    await mount();
+    expect(screen.queryAllByTestId('customer-state-picker').length).toBeGreaterThan(0);
+    const labels = inputs().map(node => node.props.accessibilityLabel ?? node.props.placeholder);
     expect(labels.some(label => /^State/.test(String(label)))).toBe(false);
-    const order = shown(screen);
-    const state = order.findIndex(text => text.startsWith('State'));
-    expect(state).toBeGreaterThan(order.findIndex(text => text.startsWith('City')));
-    expect(state).toBeLessThan(order.findIndex(text => text.startsWith('Pincode')));
+    const state = positionOf('State');
+    expect(state).toBeGreaterThan(positionOf('City'));
+    expect(state).toBeLessThan(positionOf('Pincode'));
   });
 
   it('an older server shows State as a shared typed field with its 50-character hard limit', async () => {
     mockStatePicker = false;
-    const screen = await mount();
-    expect(screen.root.findAll(node => node.props.testID === 'customer-state-picker').length).toBe(0);
-    const state = inputs(screen).find(node => node.props.maxLength === 50 && node.props.textContentType === 'addressState');
+    await mount();
+    expect(screen.queryAllByTestId('customer-state-picker')).toHaveLength(0);
+    const state = inputs().find(node => node.props.maxLength === 50 && node.props.textContentType === 'addressState');
     expect(state).toBeDefined();
   });
 });

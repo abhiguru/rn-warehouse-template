@@ -7,8 +7,8 @@
  * unsaved-changes guard are the real ones.
  */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Text } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
@@ -62,7 +62,6 @@ const loaded = {
   },
 };
 
-let tree: ReactTestRenderer;
 let backKey: ReturnType<typeof installHardwareBack>;
 const settle = async () => {
   await act(async () => {
@@ -70,17 +69,21 @@ const settle = async () => {
   });
 };
 const pathname = () => routerStore.getRouteInfo().pathname;
-const texts = () => tree.root.findAllByType(Text).map(node => [node.props.children].flat(Infinity).join(''));
-const nameInput = () => tree.root.findAllByType(TextInput)[0];
-const saveButton = () => tree.root.findAll(node => node.props.testID === 'self-edit-save' && typeof node.props.onPress === 'function')[0];
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+const nameInput = () => screen.getByLabelText('Name, required');
+const saveButton = () => screen.getByRole('button', { name: 'Save name' });
 const typeName = async (name: string) => {
-  await act(async () => {
-    nameInput().props.onChangeText(name);
-  });
+  const u = user();
+  await u.clear(nameInput());
+  await u.type(nameInput(), name);
 };
-const press = async (node: { props: { onPress?: () => void } }) => {
+const pressSave = async () => {
+  await user().press(saveButton());
+  await settle();
+};
+const pressDiscard = async (onPress: (() => void) | undefined) => {
   await act(async () => {
-    node.props.onPress?.();
+    onPress?.();
   });
   await settle();
 };
@@ -108,15 +111,10 @@ beforeEach(async () => {
     index: () => <Text>Profile</Text>,
     edit: () => <OwnProfileEditScreen />,
   });
-  await act(async () => {
-    tree = create(<ExpoRoot context={context} location="/" />);
-  });
+  await render(<ExpoRoot context={context} location="/" />);
   await settle();
 });
-afterEach(async () => {
-  await act(async () => {
-    tree.unmount();
-  });
+afterEach(() => {
   backKey.restore();
   jest.useRealTimers();
 });
@@ -125,25 +123,25 @@ describe('the header and the loading state', () => {
   it('shows Back and the centred title while the profile is still loading', async () => {
     getUserById.mockReturnValue(new Promise(() => undefined));
     await openScreen();
-    expect(texts()).toContain('Change name');
-    expect(texts()).toContain('Back');
+    expect(screen.getByText('Change name')).toBeOnTheScreen();
+    expect(screen.getByText('Back')).toBeOnTheScreen();
     // The old header controls are gone.
-    expect(texts()).not.toContain('Cancel');
-    expect(texts()).not.toContain('Save');
+    expect(screen.queryByText('Cancel')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Save')).not.toBeOnTheScreen();
   });
 
   it('has the Save button under the form and nothing at the top right', async () => {
     await openScreen();
-    expect(texts()).not.toContain('Cancel');
-    expect(saveButton()).toBeDefined();
-    expect(saveButton().props.children).toBe('Save name');
+    expect(screen.queryByText('Cancel')).not.toBeOnTheScreen();
+    expect(saveButton()).toBeOnTheScreen();
+    expect(saveButton()).toHaveAccessibleName('Save name');
   });
 });
 
 describe('saving', () => {
   it('with no change: leaves with no server call, no toast and no alert', async () => {
     await openScreen();
-    await press(saveButton());
+    await pressSave();
     expect(updateUser).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
@@ -153,7 +151,7 @@ describe('saving', () => {
   it('with a new name: saves it, shows the toast, goes back without a question', async () => {
     await openScreen();
     await typeName('Dev Administrator X');
-    await press(saveButton());
+    await pressSave();
     expect(updateUser).toHaveBeenCalledTimes(1);
     expect(updateUser.mock.calls[0][1].name).toBe('Dev Administrator X');
     expect(showToast).toHaveBeenCalledWith('Name saved.');
@@ -164,7 +162,7 @@ describe('saving', () => {
   it('CR-48: saves the trimmed name, not the text with its trailing space', async () => {
     await openScreen();
     await typeName('Dev Administrator X ');
-    await press(saveButton());
+    await pressSave();
     expect(updateUser.mock.calls[0][1].name).toBe('Dev Administrator X');
     expect(mockDispatch).toHaveBeenCalledWith({ type: 'set', profile: expect.objectContaining({ name: 'Dev Administrator X' }) });
   });
@@ -173,7 +171,7 @@ describe('saving', () => {
     updateUser.mockResolvedValue({ success: false, message: 'nope' });
     await openScreen();
     await typeName('Dev Administrator X');
-    await press(saveButton());
+    await pressSave();
     expect(showToast).not.toHaveBeenCalled();
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(pathname()).toBe('/edit');
@@ -192,7 +190,7 @@ describe('leaving with a typed name', () => {
     expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Discard changes?');
     expect(pathname()).toBe('/edit');
     const buttons = jest.mocked(showAlert).mock.calls[0][2] as { text: string; onPress?: () => void }[];
-    await press({ props: { onPress: buttons.find(button => button.text === 'Discard')!.onPress } });
+    await pressDiscard(buttons.find(button => button.text === 'Discard')!.onPress);
     expect(pathname()).toBe('/');
   });
 

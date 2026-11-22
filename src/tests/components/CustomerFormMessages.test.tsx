@@ -1,7 +1,6 @@
 /** G-17: a saved customer is a toast, a failure is a plain dialog; no 'Success' or 'Error'. */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { customerService } from '@/services/customer-service';
 import { showAlert } from '@/utils/alert';
@@ -41,27 +40,24 @@ import CustomerFormRoute from '../../../app/customer-form';
 
 const c1 = { id: 'c1', name: '24 Seven Foods', mobile: '9999900302', city: 'Rajkot', active: true, created_at: '2026-01-01' };
 
-const input = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === label) as ReturnType<ReactTestRenderer['root']['findAllByType']>[number];
-const button = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label)[0];
-const type = async (tree: ReactTestRenderer, label: string, text: string) => {
-  await act(async () => { input(tree, label).props.onChangeText(text); });
+const user = userEvent.setup({ delay: 0 });
+const input = (label: string) => screen.getByLabelText(label);
+const type = async (label: string, text: string) => {
+  await user.clear(input(label));
+  await user.paste(input(label), text);
 };
-let tree: ReactTestRenderer | undefined;
+/** Presses a button and lets the save that follows finish. */
+const press = async (label: string) => {
+  await user.press(screen.getByRole('button', { name: label }));
+  await act(async () => { for (let i = 0; i < 20; i += 1) await Promise.resolve(); });
+};
 const mountEdit = async () => {
   jest.mocked(useLocalSearchParams).mockImplementation(() => ({ id: 'c1' }) as never);
-  await act(async () => { tree = create(<CustomerEditRoute />); });
-  return tree as ReactTestRenderer;
+  await render(<CustomerEditRoute />);
 };
 const mountAdd = async () => {
-  await act(async () => { tree = create(<CustomerFormRoute />); });
-  return tree as ReactTestRenderer;
+  await render(<CustomerFormRoute />);
 };
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -71,18 +67,18 @@ beforeEach(() => {
 
 it('shows the saved name as a toast, with no dialog, after Edit', async () => {
   jest.mocked(customerService.updateCustomer).mockResolvedValue({ success: true, message: 'Customer updated successfully' } as never);
-  const screen = await mountEdit();
-  await type(screen, 'City', 'Rajkot X');
-  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  await mountEdit();
+  await type('City', 'Rajkot X');
+  await press('Save customer');
   expect(showToast).toHaveBeenCalledWith('24 Seven Foods saved.');
   expect(showAlert).not.toHaveBeenCalled();
 });
 
 it('says the customer could not be saved, with the connection hint, when the server is out of reach', async () => {
   jest.mocked(customerService.updateCustomer).mockResolvedValue({ success: false, message: 'network request failed' } as never);
-  const screen = await mountEdit();
-  await type(screen, 'City', 'Rajkot X');
-  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  await mountEdit();
+  await type('City', 'Rajkot X');
+  await press('Save customer');
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(jest.mocked(showAlert).mock.calls[0][0]).toBe("Couldn't save the customer");
   expect(showToast).not.toHaveBeenCalled();
@@ -91,22 +87,22 @@ it('says the customer could not be saved, with the connection hint, when the ser
 
 it('a saved customer whose save got no usable answer keeps what was typed and says so; the form is not read again', async () => {
   jest.mocked(customerService.updateCustomer).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' } as never);
-  const screen = await mountEdit();
-  await type(screen, 'City', 'Rajkot X');
-  await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+  await mountEdit();
+  await type('City', 'Rajkot X');
+  await press('Save customer');
 
   expect(jest.mocked(showAlert).mock.calls[0][1]).toBe("We couldn't confirm the save. Your changes are still here: check them and tap Save again.");
-  expect(input(screen, 'City').props.value).toBe('Rajkot X');
+  expect(input('City')).toHaveDisplayValue('Rajkot X');
   expect(customerService.getCustomerById).toHaveBeenCalledTimes(1);
   expect(router.back).not.toHaveBeenCalled();
 });
 
 it('shows "<name> added." after Add', async () => {
   jest.mocked(customerService.createCustomer).mockResolvedValue({ success: true, message: '', data: { id: 'new-id' } } as never);
-  const screen = await mountAdd();
-  await type(screen, 'Customer name, required', 'Test Doc');
-  await type(screen, 'Mobile number after plus 91, required', '9000000099');
-  await act(async () => { await button(screen, 'Add customer').props.onPress(); });
+  await mountAdd();
+  await type('Customer name, required', 'Test Doc');
+  await type('Mobile number after plus 91, required', '9000000099');
+  await press('Add customer');
   expect(showToast).toHaveBeenCalledWith('Test Doc added.');
   expect(showAlert).not.toHaveBeenCalled();
 });

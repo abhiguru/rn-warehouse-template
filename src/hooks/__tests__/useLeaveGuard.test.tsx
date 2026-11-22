@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
@@ -38,7 +38,6 @@ function ScreenB() {
   return <Text>Screen B</Text>;
 }
 
-let tree: ReactTestRenderer;
 let backKey: ReturnType<typeof installHardwareBack>;
 
 const settle = async () => {
@@ -84,14 +83,11 @@ beforeEach(async () => {
     index: ScreenA,
     b: ScreenB,
   });
-  await act(async () => {
-    tree = create(<ExpoRoot context={context} location="/" />);
-  });
+  await render(<ExpoRoot context={context} location="/" />);
   await settle();
 });
 
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   backKey.restore();
   jest.useRealTimers();
 });

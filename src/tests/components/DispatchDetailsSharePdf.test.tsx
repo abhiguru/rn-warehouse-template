@@ -3,15 +3,13 @@
  * the long-name refusal shows its own title and message, any other failure keeps the old alert.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import DispatchDetailScreen from '../../../app/dispatch-details/[id]';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
 const mockFetch = jest.fn();
 const mockGetDispatchDetails = jest.fn();
 const mockShowAlert = jest.fn();
-let mockTabProps: any;
-let mockOverviewProps: any;
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'dispatch-1' }),
@@ -47,13 +45,23 @@ jest.mock('@/services/dispatch-detail-service', () => ({ getDispatchDetails: (..
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({ uploadDispatchImage: jest.fn(), deleteDispatchImage: jest.fn() }));
 jest.mock('@/components/dispatch-details', () => ({
   DispatchHeroHeader: () => null,
-  DispatchTabNavigator: (props: unknown) => {
-    mockTabProps = props;
-    return null;
+  // Draws the tab buttons the page's tab bar draws, and calls the page's own onTabChange.
+  DispatchTabNavigator: (props: { onTabChange: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return ['overview', 'images'].map((tab) => (
+      <Pressable key={tab} accessibilityRole="button" accessibilityLabel={`${tab} tab`} onPress={() => props.onTabChange(tab)}>
+        <Text>{tab}</Text>
+      </Pressable>
+    ));
   },
-  DispatchOverviewTab: (props: unknown) => {
-    mockOverviewProps = props;
-    return null;
+  // Draws a Share PDF button that calls the page's own onSharePDF.
+  DispatchOverviewTab: (props: { onSharePDF: () => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="Share PDF" onPress={() => props.onSharePDF()}>
+        <Text>Share PDF</Text>
+      </Pressable>
+    );
   },
   DispatchItemsTab: () => null,
   DispatchGRNsTab: () => null,
@@ -66,22 +74,21 @@ jest.mock('@/components/dispatch-details', () => ({
 
 const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => 'application/json' }, json: async () => body });
 
-let tree: ReturnType<typeof create>;
+const user = userEvent.setup({ delay: 0 });
 beforeEach(async () => {
   jest.clearAllMocks();
   mockFetch.mockReset();
   mockGetDispatchDetails.mockResolvedValue({ success: true, data: { dispatch: { id: 'dispatch-1', disp_no: 'D1', items: [], processed_images: [] } } });
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
-  await act(async () => { tree = create(<DispatchDetailScreen />); });
-  await act(async () => { mockTabProps.onTabChange('overview'); });
+  await render(<DispatchDetailScreen />);
+  await user.press(screen.getByRole('button', { name: 'overview tab' }));
 });
-afterEach(async () => {
+afterEach(() => {
   jest.restoreAllMocks();
-  await act(async () => { tree.unmount(); });
 });
 
-const share = () => act(async () => { await mockOverviewProps.onSharePDF(); });
+const share = () => user.press(screen.getByRole('button', { name: 'Share PDF' }));
 
 describe('Share PDF on the dispatch page', () => {
   it.each([

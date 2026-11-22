@@ -3,15 +3,13 @@
  * (a 4 second toast was gone before anyone read it while offline).
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import DispatchDetailScreen from '../../../app/dispatch-details/[id]';
 import { setLanguage } from '@/i18n';
 
 const mockGetDispatchDetails = jest.fn();
 const mockUploadDispatchImage = jest.fn();
 const mockShowAlert = jest.fn();
-let mockImagesProps: any;
-let mockTabProps: any;
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'dispatch-1' }),
@@ -51,46 +49,50 @@ jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
 }));
 jest.mock('@/components/dispatch-details', () => ({
   DispatchHeroHeader: () => null,
-  DispatchTabNavigator: (props: unknown) => {
-    mockTabProps = props;
-    return null;
+  // Draws the tab buttons the page's tab bar draws, and calls the page's own onTabChange.
+  DispatchTabNavigator: (props: { onTabChange: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return ['overview', 'images'].map((tab) => (
+      <Pressable key={tab} accessibilityRole="button" accessibilityLabel={`${tab} tab`} onPress={() => props.onTabChange(tab)}>
+        <Text>{tab}</Text>
+      </Pressable>
+    ));
   },
   DispatchOverviewTab: () => null,
   DispatchItemsTab: () => null,
   DispatchGRNsTab: () => null,
-  DispatchInvoicesTab: () => null,
-  DispatchImagesTab: (props: unknown) => {
-    mockImagesProps = props;
-    return null;
+  // Draws an Add photo button that calls the page's own onUpload.
+  DispatchImagesTab: (props: { onUpload: () => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="Add photo" onPress={() => props.onUpload()}>
+        <Text>Add photo</Text>
+      </Pressable>
+    );
   },
+  DispatchInvoicesTab: () => null,
   mapDispatchItems: jest.fn(() => []),
   itemTotals: jest.fn(() => ({ totalQty: 0, totalItems: 0 })),
   buildInvoiceTable: jest.fn(() => []),
 }));
 
-let tree: ReturnType<typeof create> | undefined;
 beforeEach(async () => {
   jest.clearAllMocks();
   setLanguage('en');
-  mockImagesProps = undefined;
   mockGetDispatchDetails.mockResolvedValue({ success: true, data: { dispatch: { id: 'dispatch-1', disp_no: 'D1', items: [], processed_images: [] } } });
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
-});
 
+const user = userEvent.setup({ delay: 0 });
 const mountOnImages = async () => {
-  await act(async () => { tree = create(<DispatchDetailScreen />); });
-  await act(async () => { mockTabProps.onTabChange('images'); });
+  await render(<DispatchDetailScreen />);
+  await user.press(screen.getByRole('button', { name: 'images tab' }));
 };
 
 it('says it in the app\'s words when the photo could not be sent for want of a connection', async () => {
   mockUploadDispatchImage.mockResolvedValue({ success: false, error: 'Network request failed' });
   await mountOnImages();
-  expect(mockImagesProps).toBeDefined();
-  await act(async () => { await mockImagesProps.onUpload(); });
-  expect(mockShowAlert).toHaveBeenCalledTimes(1);
+  await user.press(screen.getByRole('button', { name: 'Add photo' }));
+  await waitFor(() => expect(mockShowAlert).toHaveBeenCalledTimes(1));
   const [title, message] = mockShowAlert.mock.calls[0];
   expect(title).toBe("Couldn't upload the photo");
   expect(message).not.toMatch(/Network request failed|fetch failed/i);

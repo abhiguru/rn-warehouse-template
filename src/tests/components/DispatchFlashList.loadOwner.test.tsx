@@ -5,7 +5,7 @@
  * server again (fresh=true).
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import DispatchFlashList from '@/components/lists/DispatchFlashList';
 import { getAssignedCustomerDispatchList, getDispatchListWithItems } from '@/services/dispatch-service';
 import { resetScreenFocus, setScreenFocused } from './focusHarness';
@@ -14,15 +14,19 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
   useFocusEffect: require('./focusHarness').useFocusEffect,
 }));
-jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
+// Stand-ins that draw a view the test can find; pulling the list calls the refresh handler the screen gives it.
+jest.mock('@shopify/flash-list', () => ({
+  FlashList: (props: { refreshControl?: { props: { onRefresh: () => void } } }) =>
+    require('react').createElement(require('react-native').View, { testID: 'dispatch-list', onRefresh: props.refreshControl?.props.onRefresh }),
+}));
 jest.mock('react-native-paper', () => ({ ActivityIndicator: 'ActivityIndicator' }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
-jest.mock('@/components/skeletons', () => ({ ListSkeleton: 'ListSkeleton' }));
+jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => require('react').createElement(require('react-native').View, { testID: 'list-skeleton' }) }));
 jest.mock('@/components/list-items', () => ({ MemoizedDispatchItem: () => null }));
-jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: 'ListEmptyState' }));
+jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: () => require('react').createElement(require('react-native').View, { testID: 'list-empty' }) }));
 jest.mock('@/components/ErrorBoundary', () => ({ ErrorStateView: () => null }));
 jest.mock('@/features/filters/configs', () => ({ DISPATCH_FILTERS: { listKey: 'dispatch-list' } }));
 jest.mock('@/features/filters/filterModel', () => ({ readSearch: () => ({ text: '' }) }));
@@ -80,22 +84,21 @@ describe.each([
   beforeEach(() => { mockAccess.canManageOrders = warehouse; });
 
   it('loads once per mount, search, filter and sort change, and once fresh on a real return', async () => {
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => { renderer = create(<DispatchFlashList />); });
+    await render(<DispatchFlashList />);
     expect(calls()).toEqual([{ search: undefined, sort: 'disp_date', ...fresh(false) }]);
 
     mockFilters.request = { ...mockFilters.request, p_search: 'onion' };
-    await act(async () => { renderer.update(<DispatchFlashList />); });
+    await screen.rerender(<DispatchFlashList />);
     expect(calls()).toHaveLength(2);
     expect(calls()[1]).toEqual({ search: 'onion', sort: 'disp_date', ...fresh(false) });
 
     mockFilters.request = { ...mockFilters.request, p_financial_year: 2026 };
-    await act(async () => { renderer.update(<DispatchFlashList />); });
+    await screen.rerender(<DispatchFlashList />);
     expect(calls()).toHaveLength(3);
     expect(calls()[2]).toEqual({ search: 'onion', sort: 'disp_date', ...fresh(false) });
 
     mockFilters.request = { ...mockFilters.request, p_sort_field: 'disp_no' };
-    await act(async () => { renderer.update(<DispatchFlashList />); });
+    await screen.rerender(<DispatchFlashList />);
     expect(calls()).toHaveLength(4);
     expect(calls()[3]).toEqual({ search: 'onion', sort: 'disp_no', ...fresh(false) });
 
@@ -106,20 +109,16 @@ describe.each([
     expect(calls()[4]).toEqual({ search: 'onion', sort: 'disp_no', ...fresh(true) });
 
     // Pull to refresh still reads the server.
-    await act(async () => {
-      renderer.root.findByType('FlashList' as unknown as React.ElementType).props.refreshControl.props.onRefresh();
-    });
+    await fireEvent(screen.getByTestId('dispatch-list'), 'refresh');
     expect(calls()).toHaveLength(6);
     expect(calls()[5]).toEqual({ search: 'onion', sort: 'disp_no', ...fresh(true) });
-    await act(async () => { renderer.unmount(); });
   });
 
   it('loads a change made while hidden once on the return from the kept history, and a plain revisit fresh', async () => {
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => { renderer = create(<DispatchFlashList />); });
+    await render(<DispatchFlashList />);
     await act(async () => { setScreenFocused(false); });
     mockFilters.request = { ...mockFilters.request, p_search: 'garlic' };
-    await act(async () => { renderer.update(<DispatchFlashList />); });
+    await screen.rerender(<DispatchFlashList />);
     expect(calls()).toHaveLength(1);
     await act(async () => { setScreenFocused(true); });
     expect(calls()).toEqual([
@@ -132,7 +131,6 @@ describe.each([
     await act(async () => { setScreenFocused(true); });
     expect(calls()).toHaveLength(3);
     expect(calls()[2]).toEqual({ search: 'garlic', sort: 'disp_date', ...fresh(true) });
-    await act(async () => { renderer.unmount(); });
   });
 });
 
@@ -140,18 +138,16 @@ it('shows the skeleton, not the empty state, while a new search with no rows on 
   mockAccess.canManageOrders = false;
   const empty = { success: true, message: '', data: { dispatches: [], pagination: { has_more: false } } };
   jest.mocked(getAssignedCustomerDispatchList).mockResolvedValue(empty as never);
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<DispatchFlashList />); });
-  const count = (name: string) => renderer.root.findAllByType(name as unknown as React.ElementType).length;
-  expect(count('ListEmptyState')).toBe(1);
+  await render(<DispatchFlashList />);
+  const shown = (id: string) => screen.queryAllByTestId(id).length;
+  expect(shown('list-empty')).toBe(1);
 
   let finish!: (value: never) => void;
   jest.mocked(getAssignedCustomerDispatchList).mockImplementationOnce(() => new Promise(resolve => { finish = resolve as (value: never) => void; }));
   mockFilters.request = { ...mockFilters.request, p_search: 'onion' };
-  await act(async () => { renderer.update(<DispatchFlashList />); });
-  expect(count('ListSkeleton')).toBe(1);
-  expect(count('ListEmptyState')).toBe(0);
+  await screen.rerender(<DispatchFlashList />);
+  expect(shown('list-skeleton')).toBe(1);
+  expect(shown('list-empty')).toBe(0);
   await act(async () => { finish(empty as never); });
-  expect(count('ListEmptyState')).toBe(1);
-  await act(async () => { renderer.unmount(); });
+  expect(shown('list-empty')).toBe(1);
 });

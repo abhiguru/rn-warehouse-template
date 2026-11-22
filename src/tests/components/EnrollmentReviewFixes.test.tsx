@@ -1,7 +1,6 @@
 /** Code-review fixes CR-25, CR-57, CR-58 for the access requests screen. */
 import React from 'react';
-import { ScrollView, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import { AppError } from '@/utils/appError';
 import EnrollmentReviewScreen from '../../../app/enrollment-review';
 import { hasEnrollmentCustomers, listPendingEnrollments, reviewEnrollment } from '@/services/enrollmentReviewService';
@@ -34,27 +33,24 @@ jest.mock('@/components/common/SearchableBottomSheet', () => ({
 }));
 
 const person = { id: 'p1', name: 'Test Farmer', display_name: null, mobile: '9000000011', created_at: '2026-10-14' };
-const thirty = Array.from({ length: 30 }, (_, i) => ({ id: 'c' + i, name: 'Customer ' + i }));
 
-let tree: ReactTestRenderer | undefined;
+const user = userEvent.setup({ delay: 0 });
 const mount = async () => {
-  await act(async () => { tree = create(<EnrollmentReviewScreen />); });
-  return tree as ReactTestRenderer;
+  await render(<EnrollmentReviewScreen />);
 };
-const shownText = (screen: ReactTestRenderer) =>
-  screen.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
-const byLabel = (screen: ReactTestRenderer, label: string) =>
-  screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label)[0];
-const choosePerson = async (screen: ReactTestRenderer) => {
+const shown = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const notShown = (text: string) => expect(screen.queryByText(text)).not.toBeOnTheScreen();
+const choosePerson = async () => {
   // The row's label is "Name, mobile, Asked on <date>".
-  const row = screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Test Farmer, +91 90000 00011'))[0];
-  await act(async () => { row.props.onPress(); });
+  await user.press(await screen.findByLabelText(/^Test Farmer, \+91 90000 00011/));
 };
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
   const [title, message, buttons] = calls[calls.length - 1];
   return { title, message, buttons: (buttons ?? []) as { text: string; onPress?: () => void }[] };
 };
+const buttonInBar = (label: string) => within(screen.getByTestId('decision-bar')).getByRole('button', { name: label });
+const radio = (label: string) => screen.getByRole('radio', { name: label });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -64,51 +60,40 @@ beforeEach(() => {
   jest.mocked(hasEnrollmentCustomers).mockResolvedValue(true);
   jest.mocked(reviewEnrollment).mockResolvedValue(undefined);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-const buttonInBar = (screen: ReactTestRenderer, label: string) =>
-  screen.root.findByProps({ testID: 'decision-bar' }).findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === label))[0];
-const personRow = (screen: ReactTestRenderer) =>
-  screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Test Farmer, +91 90000 00011'))[0];
-const radio = (screen: ReactTestRenderer, label: string) =>
-  screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === label)[0];
-
 
 describe('CR-25: a decision that was saved is never reported as not saved', () => {
   it('a failed reload after approving shows the load error, no Couldn\'t save alert, and drops the person', async () => {
-    const screen = await mount();
-    await choosePerson(screen);
-    await act(async () => { radio(screen, 'Staff').props.onPress(); });
-    await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
+    await mount();
+    await choosePerson();
+    await user.press(radio('Staff'));
+    await user.press(buttonInBar('Approve as staff'));
     jest.mocked(listPendingEnrollments).mockRejectedValue(new Error('Unexpected list answer'));
     await act(async () => { lastAlert().buttons[1].onPress?.(); });
     expect(reviewEnrollment).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledTimes(1); // only the confirmation question
-    expect(shownText(screen)).toContain("Couldn't load access requests.");
-    expect(personRow(screen)).toBeUndefined();
+    expect(await screen.findByText(/^Couldn't load access requests\./)).toBeOnTheScreen();
+    expect(screen.queryByLabelText(/^Test Farmer, \+91 90000 00011/)).not.toBeOnTheScreen();
   });
 
   it('a reload that times out after approving says Check your connection (a read), no Couldn\'t save alert', async () => {
-    const screen = await mount();
-    await choosePerson(screen);
-    await act(async () => { radio(screen, 'Staff').props.onPress(); });
-    await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
+    await mount();
+    await choosePerson();
+    await user.press(radio('Staff'));
+    await user.press(buttonInBar('Approve as staff'));
     jest.mocked(listPendingEnrollments).mockRejectedValue(new Error('Request timed out'));
     await act(async () => { lastAlert().buttons[1].onPress?.(); });
     expect(showAlert).toHaveBeenCalledTimes(1);
-    expect(shownText(screen)).toContain('Check your connection and try again.');
-    expect(shownText(screen)).not.toContain("Couldn't load access requests.");
-    expect(personRow(screen)).toBeUndefined();
+    expect(await screen.findByText('Check your connection and try again.')).toBeOnTheScreen();
+    expect(screen.queryByText(/Couldn't load access requests\./)).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText(/^Test Farmer, \+91 90000 00011/)).not.toBeOnTheScreen();
   });
 
   it('a refusal by the server shows its reason instead of Check your connection', async () => {
     jest.mocked(reviewEnrollment).mockRejectedValue(new AppError('REFUSED', 'This person is already approved.'));
-    const screen = await mount();
-    await choosePerson(screen);
-    await act(async () => { radio(screen, 'Staff').props.onPress(); });
-    await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
+    await mount();
+    await choosePerson();
+    await user.press(radio('Staff'));
+    await user.press(buttonInBar('Approve as staff'));
     await act(async () => { lastAlert().buttons[1].onPress?.(); });
     expect(lastAlert().title).toBe("Couldn't save the decision");
     expect(lastAlert().message).toBe('This person is already approved.');
@@ -116,20 +101,20 @@ describe('CR-25: a decision that was saved is never reported as not saved', () =
 
   it('a connection lost after the request went out says the decision may have been saved', async () => {
     jest.mocked(reviewEnrollment).mockRejectedValue(new Error('Network request failed'));
-    const screen = await mount();
-    await choosePerson(screen);
-    await act(async () => { radio(screen, 'Staff').props.onPress(); });
-    await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
+    await mount();
+    await choosePerson();
+    await user.press(radio('Staff'));
+    await user.press(buttonInBar('Approve as staff'));
     await act(async () => { lastAlert().buttons[1].onPress?.(); });
     expect(lastAlert().message).toBe('No answer from the server. It may have been saved. Go back to the list and check before trying again.');
   });
 
   it('a request that was never sent (no session that could be renewed) still says Check your connection', async () => {
     jest.mocked(reviewEnrollment).mockRejectedValue(new AppError('NETWORK', 'Network request failed: session refresh unavailable'));
-    const screen = await mount();
-    await choosePerson(screen);
-    await act(async () => { radio(screen, 'Staff').props.onPress(); });
-    await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
+    await mount();
+    await choosePerson();
+    await user.press(radio('Staff'));
+    await user.press(buttonInBar('Approve as staff'));
     await act(async () => { lastAlert().buttons[1].onPress?.(); });
     expect(lastAlert().message).toBe('Check your connection and try again.');
   });
@@ -137,29 +122,29 @@ describe('CR-25: a decision that was saved is never reported as not saved', () =
 
 describe('CR-57: Refresh keeps the selected person and the role', () => {
   it('keeps Staff selected when the person is still pending after a refresh', async () => {
-    const screen = await mount();
-    await choosePerson(screen);
-    await act(async () => { radio(screen, 'Staff').props.onPress(); });
-    await act(async () => { screen.root.findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === 'Refresh list'))[0].props.onPress(); });
-    expect(radio(screen, 'Staff').props.accessibilityState).toEqual(expect.objectContaining({ checked: true }));
+    await mount();
+    await choosePerson();
+    await user.press(radio('Staff'));
+    await user.press(screen.getByRole('button', { name: 'Refresh list' }));
+    expect(radio('Staff')).toBeChecked();
   });
 
   it('clears the selection when the person is no longer pending', async () => {
-    const screen = await mount();
-    await choosePerson(screen);
+    await mount();
+    await choosePerson();
     jest.mocked(listPendingEnrollments).mockResolvedValue([]);
-    await act(async () => { screen.root.findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === 'Refresh list'))[0].props.onPress(); });
-    expect(screen.root.findAll(node => node.props.accessibilityRole === 'radio')).toHaveLength(0);
+    await user.press(screen.getByRole('button', { name: 'Refresh list' }));
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
   });
 });
 
 describe('CR-58: wording', () => {
   it('the subtitle does not promise customers and a supervisor gets their own message', async () => {
-    const screen = await mount();
-    expect(shownText(screen)).toContain('Choose how each person can use this facility, then approve.');
-    await choosePerson(screen);
-    await act(async () => { radio(screen, 'Supervisor').props.onPress(); });
-    await act(async () => { buttonInBar(screen, 'Approve as supervisor').props.onPress(); });
+    await mount();
+    shown('Choose how each person can use this facility, then approve.');
+    await choosePerson();
+    await user.press(radio('Supervisor'));
+    await user.press(buttonInBar('Approve as supervisor'));
     expect(lastAlert().message).toContain('manage users who are not administrators');
   });
 });

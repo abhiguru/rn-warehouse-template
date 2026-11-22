@@ -1,7 +1,7 @@
 /** G-23, G-24, G-53: Access requests. */
 import React from 'react';
-import { ScrollView, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+
+import { act, render, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { router, Stack } from 'expo-router';
 import EnrollmentReviewScreen from '../../../app/enrollment-review';
 import { hasEnrollmentCustomers, listPendingEnrollments, reviewEnrollment } from '@/services/enrollmentReviewService';
@@ -27,29 +27,38 @@ jest.mock('@/services/enrollmentReviewService', () => ({
   reviewEnrollment: jest.fn(),
 }));
 jest.mock('@/services/customer-service', () => ({ customerService: { searchCustomers: jest.fn() } }));
-// The sheet itself is the app's own; here it only has to open, search and report the pick.
+// The sheet itself is the app's own; here it only has to open, search and report the pick: it draws a search field,
+// calls the screen's own search with what is typed, and draws the rows the screen's own renderItem gives.
 jest.mock('@/components/common/SearchableBottomSheet', () => ({
-  SearchableBottomSheet: (props: { isVisible: boolean; searchFn: (q: string) => Promise<unknown[]>; onSelect: (item: unknown) => void; renderItem: (item: unknown, onSelect: (item: unknown) => void) => React.ReactNode; placeholder?: string }) =>
-    props.isVisible ? require('react').createElement('SheetOpen', { searchFn: props.searchFn, onSelect: props.onSelect, renderItem: props.renderItem, placeholder: props.placeholder }) : null,
+  SearchableBottomSheet: (props: { isVisible: boolean; searchFn: (q: string) => Promise<unknown[]>; onSelect: (item: unknown) => void; renderItem: (item: unknown, onSelect: (item: unknown) => void) => React.ReactNode; placeholder?: string }) => {
+    const React = require('react');
+    const { TextInput, View } = require('react-native');
+    const [rows, setRows] = React.useState([] as { id: string }[]);
+    if (!props.isVisible) return null;
+    return (
+      <View>
+        <TextInput accessibilityLabel={props.placeholder} placeholder={props.placeholder} onChangeText={(q: string) => { void props.searchFn(q).then((found) => setRows(found as { id: string }[])); }} />
+        {rows.map((row: { id: string }) => <React.Fragment key={row.id}>{props.renderItem(row, props.onSelect)}</React.Fragment>)}
+      </View>
+    );
+  },
 }));
 
 const person = { id: 'p1', name: 'Test Farmer', display_name: null, mobile: '9000000011', created_at: '2026-10-14' };
 const thirty = Array.from({ length: 30 }, (_, i) => ({ id: 'c' + i, name: 'Customer ' + i }));
 
-let tree: ReactTestRenderer | undefined;
+const user = userEvent.setup({ delay: 0 });
 const mount = async () => {
-  await act(async () => { tree = create(<EnrollmentReviewScreen />); });
-  return tree as ReactTestRenderer;
+  await render(<EnrollmentReviewScreen />);
 };
-const shownText = (screen: ReactTestRenderer) =>
-  screen.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
-const byLabel = (screen: ReactTestRenderer, label: string) =>
-  screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label)[0];
-const choosePerson = async (screen: ReactTestRenderer) => {
+const shown = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const notShown = (text: string) => expect(screen.queryByText(text)).not.toBeOnTheScreen();
+const choosePerson = async () => {
   // The row's label is "Name, mobile, Asked on <date>".
-  const row = screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Test Farmer, +91 90000 00011'))[0];
-  await act(async () => { row.props.onPress(); });
+  await user.press(await screen.findByLabelText(/^Test Farmer, \+91 90000 00011/));
 };
+const addCustomer = () => user.press(screen.getByRole('button', { name: 'Add customer' }));
+const approveButton = () => within(screen.getByTestId('decision-bar')).getByRole('button', { name: 'Approve as customer' });
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
   const [title, message, buttons] = calls[calls.length - 1];
@@ -64,79 +73,79 @@ beforeEach(() => {
   jest.mocked(hasEnrollmentCustomers).mockResolvedValue(true);
   jest.mocked(reviewEnrollment).mockResolvedValue(undefined);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 
 describe('G-23: customers are chosen with a search, not ticked in a list', () => {
   it('draws no checkboxes for 30 customers and keeps Approve and Reject outside the scrolling list', async () => {
-    const screen = await mount();
-    await choosePerson(screen);
-    expect(screen.root.findAll(node => node.props.accessibilityRole === 'checkbox')).toHaveLength(0);
-    expect(shownText(screen)).toContain('CUSTOMERS THIS PERSON CAN SEE');
-    const bar = screen.root.findByProps({ testID: 'decision-bar' });
-    expect(bar.findAllByType(Text).map(node => node.props.children)).toEqual(expect.arrayContaining(['Approve as customer', 'Reject request']));
-    const scroll = screen.root.findByType(ScrollView);
-    expect(scroll.findAllByType(Text).map(node => node.props.children)).not.toContain('Approve as customer');
+    await mount();
+    await choosePerson();
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    shown('CUSTOMERS THIS PERSON CAN SEE');
+    const bar = within(screen.getByTestId('decision-bar'));
+    expect(bar.getByText('Approve as customer')).toBeOnTheScreen();
+    expect(bar.getByText('Reject request')).toBeOnTheScreen();
+    // The scroll view has no name or role: it is the one host of that type.
+    const scroll = screen.root!.queryAll(node => (node.type as unknown) === 'RCTScrollView');
+    expect(scroll).toHaveLength(1);
+    expect(within(scroll[0]).queryByText('Approve as customer')).not.toBeOnTheScreen();
   });
 
   it('picks a customer from the search sheet into a removable chip, and approves with that customer', async () => {
     jest.mocked(customerService.searchCustomers).mockResolvedValue([{ id: 'c8', name: 'Acme Foods', mobile: '9999900308', active: true }] as never);
-    const screen = await mount();
-    await choosePerson(screen);
-    const add = screen.root.findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === 'Add customer'))[0];
-    await act(async () => { add.props.onPress(); });
+    await mount();
+    await choosePerson();
+    await addCustomer();
 
-    const sheet = screen.root.findByType('SheetOpen' as never);
-    expect(sheet.props.placeholder).toBe('Search customers');
-    const hits = await sheet.props.searchFn('acme');
+    const search = screen.getByPlaceholderText('Search customers');
+    // A single letter is too short to search: nothing is asked and nothing is listed.
+    await user.type(search, 'a');
+    expect(screen.queryByText('Acme Foods')).not.toBeOnTheScreen();
+    await user.clear(search);
+    await user.type(search, 'acme');
     expect(customerService.searchCustomers).toHaveBeenCalledWith('acme', 20);
-    expect(hits).toEqual([expect.objectContaining({ id: 'c8', name: 'Acme Foods' })]);
-    expect(await sheet.props.searchFn('a')).toEqual([]);
-    await act(async () => { sheet.props.onSelect(hits[0]); });
+    await user.press(await screen.findByText('Acme Foods'));
 
-    expect(byLabel(screen, 'Remove Acme Foods')).toBeDefined();
-    expect(screen.root.findAllByType('SheetOpen' as never)).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Remove Acme Foods' })).toBeOnTheScreen();
+    expect(screen.queryByPlaceholderText('Search customers')).not.toBeOnTheScreen();
 
     // The same customer picked again is ignored.
-    await act(async () => { add.props.onPress(); });
-    await act(async () => { screen.root.findByType('SheetOpen' as never).props.onSelect(hits[0]); });
-    expect(screen.root.findAll(node => node.props.accessibilityLabel === 'Remove Acme Foods' && typeof node.props.onPress === 'function')).toHaveLength(1);
+    await addCustomer();
+    await user.type(screen.getByPlaceholderText('Search customers'), 'acme');
+    // The chip and the search row both read Acme Foods; the row is the last.
+    await waitFor(() => expect(screen.getAllByText('Acme Foods')).toHaveLength(2));
+    await user.press(screen.getAllByText('Acme Foods')[1]);
+    expect(screen.getAllByRole('button', { name: 'Remove Acme Foods' })).toHaveLength(1);
 
-    const approve = screen.root.findByProps({ testID: 'decision-bar' }).findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === 'Approve as customer'))[0];
-    await act(async () => { approve.props.onPress(); });
+    await user.press(approveButton());
     expect(lastAlert().title).toBe('Approve Test Farmer?');
     await act(async () => { lastAlert().buttons[1].onPress?.(); });
     expect(reviewEnrollment).toHaveBeenCalledWith('p1', 'approved', ['c8'], 'customer');
   });
 
   it('removes a chip when it is pressed', async () => {
-    const screen = await mount();
-    await choosePerson(screen);
-    const add = screen.root.findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === 'Add customer'))[0];
-    await act(async () => { add.props.onPress(); });
-    await act(async () => { screen.root.findByType('SheetOpen' as never).props.onSelect({ id: 'c8', name: 'Acme Foods' }); });
-    await act(async () => { byLabel(screen, 'Remove Acme Foods').props.onPress(); });
-    expect(screen.root.findAll(node => node.props.accessibilityLabel === 'Remove Acme Foods')).toHaveLength(0);
+    jest.mocked(customerService.searchCustomers).mockResolvedValue([{ id: 'c8', name: 'Acme Foods', mobile: '9999900308', active: true }] as never);
+    await mount();
+    await choosePerson();
+    await addCustomer();
+    await user.type(screen.getByPlaceholderText('Search customers'), 'acme');
+    await user.press(await screen.findByText('Acme Foods'));
+    await user.press(screen.getByRole('button', { name: 'Remove Acme Foods' }));
+    expect(screen.queryByLabelText('Remove Acme Foods')).not.toBeOnTheScreen();
   });
 
   it('asks to choose a customer when none is chosen', async () => {
-    const screen = await mount();
-    await choosePerson(screen);
-    const approve = screen.root.findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === 'Approve as customer'))[0];
-    await act(async () => { approve.props.onPress(); });
+    await mount();
+    await choosePerson();
+    await user.press(approveButton());
     expect(lastAlert().title).toBe('Choose a customer');
     expect(reviewEnrollment).not.toHaveBeenCalled();
   });
 
   it('with no customers yet says so and offers Add customer, which opens the customer form', async () => {
     jest.mocked(hasEnrollmentCustomers).mockResolvedValue(false);
-    const screen = await mount();
-    await choosePerson(screen);
-    expect(shownText(screen)).toContain('No customers yet. Add the customer first, then approve.');
-    const add = screen.root.findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === 'Add customer'))[0];
-    await act(async () => { add.props.onPress(); });
+    await mount();
+    await choosePerson();
+    shown('No customers yet. Add the customer first, then approve.');
+    await addCustomer();
     expect(router.push).toHaveBeenCalledWith('/customer-form');
   });
 });
@@ -144,14 +153,13 @@ describe('G-23: customers are chosen with a search, not ticked in a list', () =>
 describe('G-24: one name for the job', () => {
   it('has no "Pending enrollments" heading and explains an empty list in plain words', async () => {
     jest.mocked(listPendingEnrollments).mockResolvedValue([]);
-    const screen = await mount();
-    const text = shownText(screen);
-    expect(text).toContain('People who ask to use this facility appear here.');
-    expect(text).toContain('No access requests');
-    expect(text).toContain('Choose how each person can use this facility, then approve.');
-    expect(text).not.toContain('Pending enrollments');
-    expect(text).not.toContain('verified phone');
-    expect(text).not.toContain('Approve with assignment');
+    await mount();
+    shown('People who ask to use this facility appear here.');
+    shown('No access requests');
+    shown('Choose how each person can use this facility, then approve.');
+    expect(screen.queryByText(/Pending enrollments/)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/verified phone/)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Approve with assignment/)).not.toBeOnTheScreen();
   });
 
   it('titles the screen Access requests', async () => {
@@ -166,10 +174,8 @@ describe('G-53: the back control', () => {
     await mount();
     const { options } = jest.mocked(Stack.Screen).mock.calls[0][0] as { options: { headerTitleAlign: string; headerLeft: () => React.ReactElement } };
     expect(options.headerTitleAlign).toBe('center');
-    let header!: ReactTestRenderer;
-    await act(async () => { header = create(<>{options.headerLeft()}</>); });
-    const texts = header.root.findAllByType(Text).map(node => node.props.children);
-    expect(texts).toContain('Back');
-    await act(async () => { header.unmount(); });
+    await screen.unmount();
+    await render(<>{options.headerLeft()}</>);
+    expect(screen.getByText('Back')).toBeOnTheScreen();
   });
 });

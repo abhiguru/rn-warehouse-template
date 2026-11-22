@@ -1,8 +1,8 @@
 /** G-20: search, count line, "no match" and a refresh that fails while rows are shown. */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
 
@@ -33,172 +33,186 @@ const rows = [
   { id: 'c5', name: 'Green Valley Traders', mobile: '9999900312', city: 'Anand', active: true },
 ];
 
-let tree: ReactTestRenderer | undefined;
+type Node = NonNullable<typeof screen.root>;
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 const mount = async () => {
-  await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
-  return tree as ReactTestRenderer;
+  await render(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>);
 };
-const text = (screen: ReactTestRenderer) =>
-  screen.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
-/** The names of the customer rows on the screen, in order. */
-const rowNames = (screen: ReactTestRenderer) =>
-  screen.root
-    .findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'button' && typeof node.props.accessibilityHint === 'string')
-    .map(node => String(node.props.accessibilityLabel).split(',')[0]);
-const search = async (screen: ReactTestRenderer, query: string) => {
-  const field = screen.root.findAllByType(TextInput).find(node => node.props.placeholder === 'Search customers');
-  if (!field) throw new Error('no search field');
-  await act(async () => { field.props.onChangeText(query); });
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** The texts on the screen that hold this wording (case as written). */
+const has = (text: string) => screen.queryAllByText(new RegExp(escape(text)));
+const expectHas = (text: string) => expect(has(text).length).toBeGreaterThan(0);
+const expectNotHas = (text: string) => expect(has(text)).toHaveLength(0);
+/** Every host element of the tree, in the order drawn (for what has no role or text of its own). */
+const hosts = (): Node[] => {
+  const found: Node[] = [];
+  const walk = (node: Node) => {
+    if (typeof node.type === 'string') found.push(node);
+    for (const child of node.children) if (typeof child !== 'string') walk(child as Node);
+  };
+  walk(screen.root as Node);
+  return found;
+};
+/** The names of the customer rows on the screen, in order (every row says how it opens). */
+const rowNames = () => screen.queryAllByHintText('Opens the customer.').map(node => String(node.props.accessibilityLabel).split(',')[0]);
+const search = async (query: string) => {
+  await user().paste(screen.getByPlaceholderText('Search customers'), query);
   await act(async () => { jest.advanceTimersByTime(400); });
 };
-const railLabels = (screen: ReactTestRenderer) =>
-  screen.root.findAll(node => typeof node.type === 'string' && String(node.props.accessibilityLabel ?? '').startsWith('Jump to')).map(node => node.props.accessibilityLabel);
+/** The button that shows this text (the search field has a Clear search button of its own, with no text). */
+const buttonShowing = (text: string) => {
+  const found = screen.getAllByRole('button').find(button => within(button).queryByText(text) !== null);
+  if (!found) throw new Error(`no button shows "${text}"`);
+  return found;
+};
+const railLabels =() => screen.queryAllByLabelText(/^Jump to/).map(node => node.props.accessibilityLabel);
 
 beforeEach(() => {
   jest.useFakeTimers();
   jest.mocked(customerService.getCustomerList).mockReset();
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: rows, pagination: { total_count: 5 } } as never);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.useRealTimers();
 });
 
 it('shows a search field and the count under the header, with the A–Z rail', async () => {
-  const screen = await mount();
-  expect(screen.root.findAllByType(TextInput).some(node => node.props.placeholder === 'Search customers')).toBe(true);
-  expect(text(screen)).toContain('5 customers');
-  expect(railLabels(screen).length).toBeGreaterThan(20);
+  await mount();
+  expect(screen.getByPlaceholderText('Search customers')).toBeOnTheScreen();
+  expectHas('5 customers');
+  expect(railLabels().length).toBeGreaterThan(20);
 });
 
 it('lists every customer in rail order: letters first, names starting with a digit last', async () => {
-  const screen = await mount();
-  expect(rowNames(screen)).toEqual(['Acme Foods', 'ACME FOODS', 'Élan Exports', 'Green Valley Traders', '24 Seven Foods']);
+  await mount();
+  expect(rowNames()).toEqual(['Acme Foods', 'ACME FOODS', 'Élan Exports', 'Green Valley Traders', '24 Seven Foods']);
 });
 
 it('finds customers by a word of the name, in any case, and counts them; the rail goes away', async () => {
-  const screen = await mount();
-  await search(screen, 'acme');
-  expect(rowNames(screen)).toEqual(['Acme Foods', 'ACME FOODS']);
-  expect(text(screen)).toContain('2 customers');
-  expect(railLabels(screen)).toEqual([]);
+  await mount();
+  await search('acme');
+  expect(rowNames()).toEqual(['Acme Foods', 'ACME FOODS']);
+  expectHas('2 customers');
+  expect(railLabels()).toEqual([]);
 });
 
 it('needs every word: a name word and a part of the mobile number', async () => {
-  const screen = await mount();
-  await search(screen, 'acme 00307');
-  expect(rowNames(screen)).toEqual(['ACME FOODS']);
-  expect(text(screen)).toContain('1 customer');
+  await mount();
+  await search('acme 00307');
+  expect(rowNames()).toEqual(['ACME FOODS']);
+  expectHas('1 customer');
 });
 
 it('finds by city', async () => {
-  const screen = await mount();
-  await search(screen, 'anand');
-  expect(rowNames(screen)).toEqual(['Green Valley Traders']);
+  await mount();
+  await search('anand');
+  expect(rowNames()).toEqual(['Green Valley Traders']);
 });
 
 it('says nothing matches, offers Clear search, and brings everything and the rail back', async () => {
-  const screen = await mount();
-  await search(screen, 'acmezzz');
-  expect(text(screen)).toContain('No customers match "acmezzz"');
-  expect(text(screen)).toContain('Try fewer letters or another spelling.');
-  expect(rowNames(screen)).toEqual([]);
-  const clear = screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.findAllByType(Text).some(t => t.props.children === 'Clear search'))[0];
-  await act(async () => { clear.props.onPress(); });
-  expect(rowNames(screen)).toHaveLength(5);
-  expect(railLabels(screen).length).toBeGreaterThan(20);
+  await mount();
+  await search('acmezzz');
+  expectHas('No customers match "acmezzz"');
+  expectHas('Try fewer letters or another spelling.');
+  expect(rowNames()).toEqual([]);
+  await user().press(buttonShowing('Clear search'));
+  expect(rowNames()).toHaveLength(5);
+  expect(railLabels().length).toBeGreaterThan(20);
 });
 
 it('keeps the rows and says they are old when a refresh fails after a first success', async () => {
-  const screen = await mount();
-  expect(text(screen)).not.toContain("Couldn't refresh customers");
+  await mount();
+  expectNotHas("Couldn't refresh customers");
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: false, message: 'offline', data: [] } as never);
-  const list = screen.root.findAll(node => typeof node.props.onRefresh === 'function' || typeof node.props.refreshControl?.props?.onRefresh === 'function')[0];
+  // The pull to refresh is a gesture of the list: the list's own handler is what it calls.
+  const list = hosts().find(node => typeof node.props.onRefresh === 'function' || typeof node.props.refreshControl?.props?.onRefresh === 'function')!;
   await act(async () => { (list.props.onRefresh ?? list.props.refreshControl.props.onRefresh)(); });
-  expect(text(screen)).toContain("Couldn't refresh customers.");
-  expect(text(screen)).toContain('Showing the customers loaded at');
-  expect(rowNames(screen)).toHaveLength(5);
-  expect(text(screen)).not.toContain("Couldn't load customers");
+  expectHas("Couldn't refresh customers.");
+  expectHas('Showing the customers loaded at');
+  expect(rowNames()).toHaveLength(5);
+  expectNotHas("Couldn't load customers");
 
   // Try again recovers and the strip goes.
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: rows, pagination: { total_count: 5 } } as never);
-  const retry = screen.root.findAll(node => node.props.accessibilityRole === 'button' && node.findAllByType(Text).some(t => t.props.children === 'Try again'))[0];
-  await act(async () => { retry.props.onPress(); });
-  expect(text(screen)).not.toContain("Couldn't refresh customers");
+  await user().press(buttonShowing('Try again'));
+  expectNotHas("Couldn't refresh customers");
 });
 
 it('keeps today\'s error state when the first load fails and there are no rows', async () => {
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: false, message: 'offline', data: [] } as never);
-  const screen = await mount();
-  expect(text(screen)).toContain("Couldn't load customers");
-  expect(text(screen)).not.toContain("Couldn't refresh customers");
+  await mount();
+  expectHas("Couldn't load customers");
+  expectNotHas("Couldn't refresh customers");
 });
 
 it('shows "5 customers · 1 deactivated" from the head counts, and the Deactivated chip lists only the deactivated rows', async () => {
   const withInactive = rows.map(row => (row.id === 'c3' ? { ...row, active: false } : row));
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: withInactive, pagination: { total_count: 5 } } as never);
   jest.mocked(customerService.getCustomerCounts).mockResolvedValueOnce({ active: 4, inactive: 1 });
-  const screen = await mount();
-  expect(text(screen)).toContain('5 customers · 1 deactivated');
-  expect(rowNames(screen)).toHaveLength(5);
+  await mount();
+  expectHas('5 customers · 1 deactivated');
+  expect(rowNames()).toHaveLength(5);
 
-  const chip = screen.root.findAll(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Deactivated' && typeof node.props.onPress === 'function')[0];
-  await act(async () => { chip.props.onPress(); });
-  expect(rowNames(screen)).toEqual(['ACME FOODS']);
+  await user().press(screen.getByRole('radio', { name: 'Deactivated' }));
+  expect(rowNames()).toEqual(['ACME FOODS']);
   // With the filter on, the count line is the rows shown.
-  expect(text(screen)).toContain('1 customer');
-  expect(text(screen)).not.toContain('deactivated');
+  expectHas('1 customer');
+  expectNotHas('deactivated');
 });
 
 it('lets the empty list content grow instead of collapsing, so the no-match state is visible (WH-215)', async () => {
-  const screen = await mount();
-  await search(screen, 'acmezzz');
-  const { StyleSheet } = jest.requireActual('react-native');
-  const holder = screen.root.findAll(node => node.props.contentContainerStyle !== undefined)[0];
+  await mount();
+  await search('acmezzz');
+  const holder = hosts().find(node => node.props.contentContainerStyle !== undefined)!;
   const style = StyleSheet.flatten(holder.props.contentContainerStyle);
   expect(style.flexGrow).toBe(1);
   expect(style.flex).toBeUndefined();
 });
 
+/** The elements that offer the screen-reader Refresh action. */
+const refreshTargets = () => hosts().filter(node => Array.isArray(node.props.accessibilityActions)
+  && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+const useRefreshAction = async (target: Node) => {
+  await fireEvent(target, 'accessibilityAction', { nativeEvent: { actionName: 'refresh' } });
+};
+
 it('offers the screen-reader Refresh action on the search field, and it reads the list again (WH-220)', async () => {
-  const screen = await mount();
-  const target = screen.root.find(node => typeof node.type === 'string'
-    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+  await mount();
+  const [target] = refreshTargets();
   // The action sits on the search field, an element a screen reader focuses in every state.
   expect(target.type).toBe('TextInput');
-  expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
+  expect(target).toHaveProp('accessibilityActions', expect.arrayContaining([{ name: 'refresh', label: 'Refresh' }]));
   const before = jest.mocked(customerService.getCustomerList).mock.calls.length;
-  await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  await useRefreshAction(target);
   expect(jest.mocked(customerService.getCustomerList).mock.calls.length).toBe(before + 1);
 });
 
 describe('the screen-reader Refresh stays reachable when the list has nothing to count (WH-220)', () => {
-  const refreshTargets = (screen: ReactTestRenderer) => screen.root.findAll(node => typeof node.type === 'string'
-    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
-  const expectRefreshWorks = async (screen: ReactTestRenderer) => {
-    const targets = refreshTargets(screen);
+  const expectRefreshWorks = async () => {
+    const targets = refreshTargets();
     expect(targets).toHaveLength(1);
     expect(targets[0].type).toBe('TextInput');
     const before = jest.mocked(customerService.getCustomerList).mock.calls.length;
-    await act(async () => { targets[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    await useRefreshAction(targets[0]);
     expect(jest.mocked(customerService.getCustomerList).mock.calls.length).toBe(before + 1);
   };
 
   it('with no customers at all', async () => {
     jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: [], pagination: { total_count: 0 } } as never);
-    await expectRefreshWorks(await mount());
+    await mount();
+    await expectRefreshWorks();
   });
 
   it('during the first load', async () => {
     jest.mocked(customerService.getCustomerList).mockReturnValue(new Promise(() => undefined) as never);
-    await expectRefreshWorks(await mount());
+    await mount();
+    await expectRefreshWorks();
   });
 
   it('on a search with no match', async () => {
-    const screen = await mount();
-    await search(screen, 'acmezzz');
-    expect(text(screen)).toContain('No customers match "acmezzz"');
-    await expectRefreshWorks(screen);
+    await mount();
+    await search('acmezzz');
+    expectHas('No customers match "acmezzz"');
+    await expectRefreshWorks();
   });
 });

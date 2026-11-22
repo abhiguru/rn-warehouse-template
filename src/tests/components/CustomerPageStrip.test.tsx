@@ -1,7 +1,6 @@
 /** WH-209: one Deactivated strip under the page header on every tab, and the titled load-error state. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { customerService } from '@/services/customer-service';
 import { setLanguage, t } from '@/i18n';
@@ -40,13 +39,11 @@ const rates = (): UseItemRatesResult => ({
   items: ITEMS, rates: F1, status: 'ready', refreshing: false, lastUpdated: Date.now(), refreshError: false, error: null,
   refresh: jest.fn().mockResolvedValue(undefined), refreshIfStale: jest.fn().mockResolvedValue(undefined), itemRates: jest.fn(),
 });
-const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const host = (tree: ReactTestRenderer, id: string) => tree.root.findAll(n => n.props.testID === id && typeof n.type === 'string');
-const tab = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityRole === 'tab' && String(n.props.accessibilityLabel ?? '').startsWith(label))[0];
-
-let tree: ReactTestRenderer;
-const mount = async () => { await act(async () => { tree = create(<CustomerPage />); }); };
+/** Every text on the screen, in the order drawn. */
+const texts = () => screen.queryAllByText(/.+/).map(n => [n.props.children].flat(Infinity).join(''));
+// The strip and the tab bodies are told apart by their testID: they have no role or text of their own.
+const host = (id: string) => screen.queryAllByTestId(id);
+const mount = async () => { await render(<CustomerPage />); };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -54,26 +51,26 @@ beforeEach(() => {
   jest.mocked(useItemRates).mockReturnValue(rates());
   jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: true, message: '', data: { ...c1, active: false } } as never);
 });
-afterEach(() => { act(() => tree.unmount()); setLanguage('en'); });
+afterEach(() => { setLanguage('en'); });
 
 describe('a deactivated customer', () => {
   it('shows the strip once, under the header, on the Overview tab and on the Pricing tab, and not inside either tab', async () => {
     await mount();
-    expect(host(tree, 'customer-deactivated')).toHaveLength(1);
-    expect(texts(tree).filter(s => s === STRIP)).toHaveLength(1);
-    expect(host(tree, 'customer-pricing-deactivated')).toHaveLength(0);
-    await act(async () => { tab(tree, 'Pricing').props.onPress(); });
-    expect(host(tree, 'customer-pricing-tab').length).toBeGreaterThan(0);
-    expect(host(tree, 'customer-deactivated')).toHaveLength(1);
-    expect(texts(tree).filter(s => s === STRIP)).toHaveLength(1);
-    expect(host(tree, 'customer-pricing-deactivated')).toHaveLength(0);
+    expect(host('customer-deactivated')).toHaveLength(1);
+    expect(texts().filter(s => s === STRIP)).toHaveLength(1);
+    expect(host('customer-pricing-deactivated')).toHaveLength(0);
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('tab', { name: /^Pricing/ }));
+    expect(host('customer-pricing-tab').length).toBeGreaterThan(0);
+    expect(host('customer-deactivated')).toHaveLength(1);
+    expect(texts().filter(s => s === STRIP)).toHaveLength(1);
+    expect(host('customer-pricing-deactivated')).toHaveLength(0);
   });
 
   it('shows no strip for an active customer', async () => {
     jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: true, message: '', data: c1 } as never);
     await mount();
-    expect(host(tree, 'customer-deactivated')).toHaveLength(0);
-    expect(texts(tree)).not.toContain(STRIP);
+    expect(host('customer-deactivated')).toHaveLength(0);
+    expect(texts()).not.toContain(STRIP);
   });
 });
 
@@ -81,7 +78,7 @@ describe('a customer that cannot be opened', () => {
   it('shows a title with the check-connection text under it, not the old one-sentence text', async () => {
     jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: false, message: '' } as never);
     await mount();
-    const all = texts(tree);
+    const all = texts();
     const title = all.indexOf("Couldn't open this customer");
     expect(title).toBeGreaterThanOrEqual(0);
     expect(all[title + 1]).toBe('Check your connection and try again.');

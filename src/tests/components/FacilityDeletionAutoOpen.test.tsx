@@ -11,7 +11,7 @@
  * store, then finishes.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FacilitiesScreen from '../../../app/facilities';
 import { deleteFacilityAccount } from '@/store/centralSignOut';
@@ -54,7 +54,6 @@ jest.mock('@/store/slices/authSlice', () => ({
 
 const facility = { origin: 'https://north-cold.example.test', instanceId: 'instance-north', displayName: 'North', companyName: 'North Cold Store' };
 const USER = { id: 'asha', phoneNumber: '919000000001', name: 'Asha Fictional', createdAt: '' };
-let tree: ReactTestRenderer | undefined;
 /** The list loads through the store's serialised queue and AsyncStorage: a few turns. */
 const flush = async () => {
   for (let i = 0; i < 6; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
@@ -69,10 +68,6 @@ beforeEach(async () => {
   await updateMyFacility('asha', facility.origin, { status: 'approved', opened: true });
   // A cold start that skipped the list straight into this facility: the skip is unspent.
   setCentralState({ status: 'signedIn', user: USER, autoOpenSpent: false });
-});
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
 });
 
 it('My facilities, shown while the deletion is still running, opens nothing', async () => {
@@ -91,13 +86,12 @@ it('My facilities, shown while the deletion is still running, opens nothing', as
 
   const deletion = deleteFacilityAccount(dispatch);
   await emptied;
-  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await render(<FacilitiesScreen />);
   await flush();
   // The list on screen still names the facility, already marked as not to be opened, and nothing was opened.
-  const texts = tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
-  expect(texts).toContain('North Cold Store');
-  expect(texts).toContain('Unavailable');
-  expect(texts).not.toContain('Approved');
+  expect(screen.getByText('North Cold Store')).toBeOnTheScreen();
+  expect(screen.getByText('Unavailable')).toBeOnTheScreen();
+  expect(screen.queryByText('Approved')).not.toBeOnTheScreen();
   expect(openFacility).not.toHaveBeenCalled();
   expect(getCentralState().autoOpenSpent).toBe(true);
 
@@ -109,7 +103,7 @@ it('My facilities, shown while the deletion is still running, opens nothing', as
 });
 
 it('for comparison: the same screen with the skip unspent would open the facility', async () => {
-  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await render(<FacilitiesScreen />);
   await flush();
   expect(openFacility).toHaveBeenCalledWith(facility.origin, 'North Cold Store');
 });

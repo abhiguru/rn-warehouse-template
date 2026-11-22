@@ -3,7 +3,7 @@
  * is not opened by itself at start, and a tap offers "Remove from my list".
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FacilitiesScreen from '../../../app/facilities';
 import { addMyFacility, loadMyFacilities, updateMyFacility } from '@/config/centralFacilities';
@@ -35,7 +35,6 @@ jest.mock('@/config/openFacility', () => ({
 const DEV = { origin: 'https://dev-cold.example.test', name: 'Dev Cold Storage' };
 const TEMP = { origin: 'https://temp-cold.example.test', name: 'Temp Cold Storage' };
 const USER = { id: 'asha', phoneNumber: '919000000001', name: 'Asha Fictional', createdAt: '' };
-let tree: ReactTestRenderer | undefined;
 const flush = async () => {
   for (let i = 0; i < 8; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 };
@@ -51,40 +50,34 @@ beforeEach(async () => {
   await updateMyFacility('asha', DEV.origin, { status: 'approved', opened: true });
   setCentralState({ status: 'signedIn', user: USER, autoOpenSpent: false });
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
-});
 
 it('tags a facility that is no longer listed Unavailable and does not open it by itself', async () => {
   catalogueOf(TEMP.origin);
-  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await render(<FacilitiesScreen />);
   await flush();
   expect(openFacility).not.toHaveBeenCalled();
-  const tag = tree!.root.find(node => node.props.testID === `facility-status-${DEV.origin}`);
-  expect(tag.props.label).toBe('Unavailable');
+  expect(screen.getByTestId(`facility-status-${DEV.origin}`)).toHaveTextContent('Unavailable');
 });
 
 it('still opens the sole approved facility by itself when it is listed', async () => {
   catalogueOf(DEV.origin);
-  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await render(<FacilitiesScreen />);
   await flush();
   expect(openFacility).toHaveBeenCalledWith(DEV.origin, DEV.name);
 });
 
 it('keeps the stored state when the catalogue cannot be read', async () => {
   jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: false, code: 'unavailable', message: 'x' } as never);
-  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await render(<FacilitiesScreen />);
   await flush();
   expect(openFacility).toHaveBeenCalledWith(DEV.origin, DEV.name);
 });
 
 it('a tap on it explains and offers Remove from my list, which removes it', async () => {
   catalogueOf(TEMP.origin);
-  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await render(<FacilitiesScreen />);
   await flush();
-  const row = tree!.root.find(node => node.props.testID === `facility-${DEV.origin}` && typeof node.props.onPress === 'function');
-  await act(async () => { row.props.onPress(); });
+  await userEvent.press(screen.getByTestId(`facility-${DEV.origin}`));
   expect(openFacility).not.toHaveBeenCalled();
   const [, message, buttons] = jest.mocked(showAlert).mock.calls[0];
   expect(message).toBe('Dev Cold Storage is no longer listed by the association.');
@@ -97,20 +90,20 @@ it('a tap on it explains and offers Remove from my list, which removes it', asyn
 it('shows the stored sign-out reason at the top of the list', async () => {
   mockAuth = { signOutReason: "This server's sign-in keys were changed. Please sign in again." };
   catalogueOf(DEV.origin);
-  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await render(<FacilitiesScreen />);
   await flush();
-  expect(tree!.root.findAll(node => node.props.testID === 'sign-out-reason').length).toBeGreaterThan(0);
+  expect(screen.getByTestId('sign-out-reason')).toBeOnTheScreen();
 });
 
 it('offers the screen-reader Refresh action on the account row, and it reads the catalogue again (WH-220)', async () => {
   catalogueOf(DEV.origin);
-  await act(async () => { tree = create(<FacilitiesScreen />); });
+  await render(<FacilitiesScreen />);
   await flush();
-  const target = tree!.root.find(node => node.props.testID === 'central-account-row' && Array.isArray(node.props.accessibilityActions));
+  const target = screen.getByTestId('central-account-row');
   expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
-  expect(target.props.accessibilityRole).toBe('button');
+  expect(target).toHaveProp('accessibilityRole', 'button');
   const before = jest.mocked(fetchFacilityCatalogue).mock.calls.length;
-  await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+  await fireEvent(target, 'accessibilityAction', { nativeEvent: { actionName: 'refresh' } });
   await flush();
   expect(jest.mocked(fetchFacilityCatalogue).mock.calls.length).toBeGreaterThan(before);
 });

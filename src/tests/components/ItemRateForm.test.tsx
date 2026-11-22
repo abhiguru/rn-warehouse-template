@@ -6,10 +6,8 @@
  * not tested here (WH-63 is being reworked). The item has one band, 0 to 30 kg.
  */
 import React from 'react';
-import { ScrollView, Text, TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { ScrollView, TextInput } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { CustomerRateForm } from '@/features/item-pricing/components/CustomerRateForm';
 import { RateForm } from '@/features/item-pricing/components/RateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
@@ -35,7 +33,7 @@ jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, d
 
 const ROWS = [rate('onion', null, 0, 30, 3.5, 1.5, 5, '2025-01-01', null, 'monthly', 'Review Onion Red')];
 const replace = jest.mocked(replaceItemRates);
-let tree: ReactTestRenderer | undefined;
+
 
 const ratesFor = (): UseItemRatesForResult => ({
   itemRates: { item: { id: 'onion', name: 'Review Onion Red', packaging: 'Bag' } as never, rows: ROWS },
@@ -48,117 +46,105 @@ const ratesFor = (): UseItemRatesForResult => ({
 });
 async function openItem(mode: 'add' | 'correct' = 'add') {
   jest.mocked(useItemRatesFor).mockReturnValue(ratesFor());
-  await act(async () => {
-    tree = create(<RateForm itemId="onion" mode={mode} priceType="monthly" startsOn={mode === 'correct' ? '2025-01-01' : undefined} />);
-  });
-  return tree!;
+  await render(<RateForm itemId="onion" mode={mode} priceType="monthly" startsOn={mode === 'correct' ? '2025-01-01' : undefined} />);
 }
 async function openCustomer() {
   jest.mocked(useItemRatesFor).mockReturnValue(ratesFor());
-  await act(async () => {
-    tree = create(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={false} />);
-  });
-  return tree!;
+  await render(<CustomerRateForm itemId="onion" customerId="cust-a" customerName="Review Orchard A" customerDeactivated={false} />);
 }
-const type = async (t: ReactTestRenderer, label: string, text: string, index = 0) => {
-  await act(async () => { inputsWithLabel(t, label)[index].props.onChangeText(text); });
+const type = async (label: string, text: string, index = 0) => {
+  await userEvent.paste(inputsWithLabel(label)[index], text);
 };
-const press = async (t: ReactTestRenderer, id: string) => {
-  await act(async () => { t.root.find(n => n.props.testID === id && typeof n.props.onPress === 'function').props.onPress(); });
+const press = async (id: string) => {
+  await userEvent.press(screen.getByTestId(id));
 };
-const save = (t: ReactTestRenderer) => t.root.findAllByType(Button).find(b => b.props.testID === 'add-rate-save')!;
-const pressSave = async (t: ReactTestRenderer) => { await act(async () => { save(t).props.onPress(); }); };
+const save = () => screen.getByTestId('add-rate-save');
+const pressSave = () => userEvent.press(save());
 /** The words of the text with this testID. */
-const textOf = (t: ReactTestRenderer, id: string) =>
-  t.root.findAllByType(Text).filter(n => n.props.testID === id).map(n => [n.props.children].flat(Infinity).join(''));
-/** Give every field its own focus (the jest TextInput shares methods on a prototype). */
-const nativeFields = (t: ReactTestRenderer) => {
-  const out: Record<string, jest.Mock> = {};
-  for (const node of t.root.findAllByType(TextInput)) {
-    const instance = node.instance as { focus: jest.Mock; measureInWindow: jest.Mock };
-    instance.focus = jest.fn();
-    instance.measureInWindow = jest.fn();
-    out[String(node.props.testID)] = instance.focus;
-  }
-  return out;
-};
-const scrollSpy = (t: ReactTestRenderer) => {
-  const instance = t.root.findByType(ScrollView).instance as { scrollTo: jest.Mock };
-  instance.scrollTo = jest.fn();
-  return instance.scrollTo;
-};
-const bandTitles = (t: ReactTestRenderer) => textsOf(t).filter(s => s.startsWith('Band '));
+const textOf = (id: string) =>
+  screen.queryAllByTestId(id).map(n => [n.props.children].flat(Infinity).join(''));
+/** Every text field on the screen. */
+const fields = () => screen.queryAllByDisplayValue(/^/);
+/**
+ * The jest TextInput and ScrollView keep focus and scrollTo on a shared prototype and the app calls them on the component
+ * instance, which Testing Library does not return: they are spied on the prototype, and a focus knows its field by testID.
+ */
+let focused: string[] = [];
+const bandTitles = () => textsOf().filter(s => s.startsWith('Band '));
 
 beforeEach(() => {
   jest.clearAllMocks();
+  focused = [];
+  jest.spyOn(TextInput.prototype as unknown as { focus: () => void }, 'focus').mockImplementation(function (this: { props: { testID?: string } }) {
+    focused.push(String(this.props.testID));
+  });
+  jest.spyOn(ScrollView.prototype as unknown as { scrollTo: () => void }, 'scrollTo').mockImplementation(() => undefined);
   jest.useFakeTimers({
     now: new Date('2026-10-14T10:00:00+05:30'),
     doNotFake: ['nextTick', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'hrtime'],
   });
 });
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
+  jest.restoreAllMocks();
   jest.useRealTimers();
 });
 
 describe('criterion 1: From is shown, not typed', () => {
   it.each(['add', 'correct'] as const)('mode %s: Band 1 shows "From 0 kg" as text and has no From box', async mode => {
-    const t = await openItem(mode);
-    expect(textOf(t, 'add-rate-band-0-from')).toEqual(['From 0 kg']);
-    expect(t.root.findAll(n => n.props.testID === 'add-rate-firstFrom')).toHaveLength(0);
-    expect(t.root.findAllByType(Input).filter(n => String(n.props.label).startsWith('From'))).toHaveLength(0);
-    expect(t.root.findAllByType(Input).some(n => String(n.props.testID).includes('from'))).toBe(false);
+    await openItem(mode);
+    expect(textOf('add-rate-band-0-from')).toEqual(['From 0 kg']);
+    expect(screen.queryByTestId('add-rate-firstFrom')).not.toBeOnTheScreen();
+    expect(fields().filter(n => String(n.props.accessibilityLabel).startsWith('From'))).toHaveLength(0);
+    expect(fields().some(n => String(n.props.testID).includes('from'))).toBe(false);
     // Up to stays a box.
-    expect(inputsWithLabel(t, 'Up to (kg)')).toHaveLength(1);
+    expect(inputsWithLabel('Up to (kg)')).toHaveLength(1);
   });
 });
 
 describe('criterion 3: Add weight band opens a quiet Band 2 from 31 kg', () => {
   it('shows From 31 kg as text, no messages, and no From box', async () => {
-    const t = await openItem();
-    await press(t, 'add-band');
-    expect(textOf(t, 'add-rate-band-1-from')).toEqual(['From 31 kg']);
-    expect(t.root.findAllByType(Input).filter(n => String(n.props.label).startsWith('From'))).toHaveLength(0);
-    for (const input of t.root.findAllByType(Input)) expect(input.props.error).toBeFalsy();
-    expect(t.root.findAll(n => n.props.testID === 'add-rate-error')).toHaveLength(0);
-    expect(inputsWithLabel(t, 'Up to (kg)')[0].props.testID).toBe('add-rate-band.1.upTo');
+    await openItem();
+    await press('add-band');
+    expect(textOf('add-rate-band-1-from')).toEqual(['From 31 kg']);
+    expect(fields().filter(n => String(n.props.accessibilityLabel).startsWith('From'))).toHaveLength(0);
+    for (const input of fields()) expect(input.props.accessibilityHint).toBeUndefined();
+    expect(screen.queryByTestId('add-rate-error')).not.toBeOnTheScreen();
+    expect(inputsWithLabel('Up to (kg)')[0]).toHaveProp('testID', 'add-rate-band.1.upTo');
   });
 
   it('the title never shows a range ending below its start while Up to is typed', async () => {
-    const t = await openItem();
-    await press(t, 'add-band');
-    expect(bandTitles(t)).toContain('Band 2 · weights not set');
+    await openItem();
+    await press('add-band');
+    expect(bandTitles()).toContain('Band 2 · weights not set');
     for (const typed of ['5', '3', '30', '0', '']) {
-      await type(t, 'Up to (kg)', typed);
-      expect(bandTitles(t).filter(s => s.startsWith('Band 2'))).toEqual(['Band 2 · weights not set']);
+      await type('Up to (kg)', typed);
+      expect(bandTitles().filter(s => s.startsWith('Band 2'))).toEqual(['Band 2 · weights not set']);
     }
-    await type(t, 'Up to (kg)', '50');
-    expect(bandTitles(t).find(s => s.startsWith('Band 2'))).toMatch(/31.{1,3}50/);
+    await type('Up to (kg)', '50');
+    expect(bandTitles().find(s => s.startsWith('Band 2'))).toMatch(/31.{1,3}50/);
   });
 });
 
 describe('criterion 5: a save with Band 2 Up to empty', () => {
   it('shows the message, focuses the field and sends nothing', async () => {
-    const t = await openItem();
-    await press(t, 'add-band');
-    const focus = nativeFields(t);
-    await pressSave(t);
+    await openItem();
+    await press('add-band');
+    await pressSave();
     expect(replace).not.toHaveBeenCalled();
-    const upTo = inputsWithLabel(t, 'Up to (kg)')[0];
-    expect(upTo.props.testID).toBe('add-rate-band.1.upTo');
-    expect(upTo.props.error).toBeTruthy();
-    expect(focus['add-rate-band.1.upTo']).toHaveBeenCalledTimes(1);
+    const upTo = inputsWithLabel('Up to (kg)')[0];
+    expect(upTo).toHaveProp('testID', 'add-rate-band.1.upTo');
+    expect(upTo.props.accessibilityHint).toBeTruthy();
+    expect(focused.filter(id => id === 'add-rate-band.1.upTo')).toHaveLength(1);
   });
 
   it('opens the band holding the empty Up to when another band is open, then focuses it', async () => {
-    const t = await openItem();
-    await press(t, 'add-band');
-    await press(t, 'add-rate-band-0-toggle');
-    await pressSave(t);
+    await openItem();
+    await press('add-band');
+    await press('add-rate-band-0-toggle');
+    await pressSave();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
-    expect(inputsWithLabel(t, 'Up to (kg)')[0].props.testID).toBe('add-rate-band.1.upTo');
-    expect(inputsWithLabel(t, 'Up to (kg)')[0].props.error).toBeTruthy();
+    expect(inputsWithLabel('Up to (kg)')[0]).toHaveProp('testID', 'add-rate-band.1.upTo');
+    expect(inputsWithLabel('Up to (kg)')[0].props.accessibilityHint).toBeTruthy();
     expect(replace).not.toHaveBeenCalled();
   });
 });
@@ -168,44 +154,42 @@ describe('criterion 6: a band-wide refusal shows once, at the top, and scrolls t
     ['BANDS_GAP', 'Weight bands must follow on from 0 kg with no gap.'],
     ['BANDS_OVERLAP', 'Weight bands overlap. Check the Up to weights.'],
   ] as const)('%s', async (errorCode, message) => {
-    const t = await openItem();
-    await press(t, 'add-band');
-    await type(t, 'Up to (kg)', '50');
-    await type(t, 'Rent ₹/month', '4');
-    const scrollTo = scrollSpy(t);
+    await openItem();
+    await press('add-band');
+    await type('Up to (kg)', '50');
+    await type('Rent ₹/month', '4');
+    (ScrollView.prototype.scrollTo as unknown as jest.Mock).mockClear();
     replace.mockResolvedValueOnce({ success: false, errorCode, message });
-    await pressSave(t);
+    await pressSave();
     expect(replace).toHaveBeenCalledTimes(1);
-    const strips = t.root.findAll(n => n.props.testID === 'add-rate-error' && n.props.message);
-    expect(strips).toHaveLength(1);
-    expect(strips[0].props.message).toBe(message);
-    // Once on the screen: the strip draws it, the bands footer does not draw it a second time.
-    expect(textsOf(t).filter(s => s === message)).toHaveLength(1);
-    expect(t.root.findAll(n => n.props.accessibilityRole === 'alert' && [n.props.children].flat(Infinity).join('') === message)).toHaveLength(0);
-    expect(scrollTo).toHaveBeenCalledWith({ y: 0, animated: true });
+    // The strip at the top is the only alert saying it; the bands footer does not draw it a second time.
+    expect(screen.getAllByRole('alert', { name: message })).toHaveLength(1);
+    expect(screen.getByRole('alert', { name: message })).toHaveProp('testID', 'add-rate-error');
+    expect(textsOf().filter(s => s === message)).toHaveLength(1);
+    expect(ScrollView.prototype.scrollTo).toHaveBeenCalledWith({ y: 0, animated: true });
   });
 });
 
 describe('criterion 7: a customer rate keeps its From boxes, a first band above 0 and gaps', () => {
   it('shows a From box on each band', async () => {
-    const t = await openCustomer();
-    expect(inputsWithLabel(t, 'From (kg)')).toHaveLength(1);
-    expect(inputsWithLabel(t, 'From (kg)')[0].props.testID).toBe('add-rate-firstFrom');
-    expect(t.root.findAll(n => n.props.testID === 'add-rate-band-0-from')).toHaveLength(0);
+    await openCustomer();
+    expect(inputsWithLabel('From (kg)')).toHaveLength(1);
+    expect(inputsWithLabel('From (kg)')[0]).toHaveProp('testID', 'add-rate-firstFrom');
+    expect(screen.queryByTestId('add-rate-band-0-from')).not.toBeOnTheScreen();
   });
 
   it('saves a first band that starts above 0, and a gap between bands', async () => {
-    const t = await openCustomer();
+    await openCustomer();
     replace.mockResolvedValue({ success: true });
-    await type(t, 'From (kg)', '5');
-    expect(inputsWithLabel(t, 'From (kg)')[0].props.value).toBe('5');
-    await type(t, 'Up to (kg)', '30');
-    await press(t, 'add-band');
-    await type(t, 'From (kg)', '40');
-    expect(inputsWithLabel(t, 'From (kg)')[0].props.value).toBe('40');
-    await type(t, 'Up to (kg)', '80');
-    await type(t, 'Rent ₹/month', '4');
-    await pressSave(t);
+    await type('From (kg)', '5');
+    expect(inputsWithLabel('From (kg)')[0]).toHaveDisplayValue('5');
+    await type('Up to (kg)', '30');
+    await press('add-band');
+    await type('From (kg)', '40');
+    expect(inputsWithLabel('From (kg)')[0]).toHaveDisplayValue('40');
+    await type('Up to (kg)', '80');
+    await type('Rent ₹/month', '4');
+    await pressSave();
     expect(replace).toHaveBeenCalledTimes(1);
     const bands = (replace.mock.calls[0][0] as { bands: { weight_min: number; weight_max: number }[] }).bands;
     expect(bands.map(b => [b.weight_min, b.weight_max])).toEqual([[5, 30], [40, 80]]);
