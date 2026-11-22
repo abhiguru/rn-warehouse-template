@@ -196,7 +196,7 @@ const ImageTile: React.FC<{
   t: ThemeTokens;
 }> = ({ item, onPress, onDelete, styles, t }) => {
   const { width } = useWindowDimensions();
-  const imageSize = useMemo(() => (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS, [width]);
+  const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   // The load failed with a connection: the file is gone. With none the tile shows only the broken icon.
