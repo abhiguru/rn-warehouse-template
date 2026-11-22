@@ -10,6 +10,7 @@
  */
 import React from 'react';
 import { Pressable, Text } from 'react-native';
+import { expect } from '@jest/globals';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';

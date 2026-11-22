@@ -6,6 +6,7 @@
 import React from 'react';
 import { TextInput } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { expect } from '@jest/globals';
 import { fireEvent, screen } from '@testing-library/react-native';
 import { findFiber } from '@/tests/helpers/fiberTree';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
