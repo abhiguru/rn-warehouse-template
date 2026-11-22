@@ -13,7 +13,7 @@ test('the calendar patch covers the three reviewed files in each of the three bu
   }
   for (const spec of specs) {
     assert.equal(spec.package, 'react-native-paper-dates');
-    assert.equal(spec.version, '0.24.1');
+    assert.equal(spec.version, '0.24.2');
   }
 });
 
