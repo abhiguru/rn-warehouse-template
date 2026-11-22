@@ -6,7 +6,7 @@
  * thumbnail when the grid is editable. Tap a thumbnail to view it full screen.
  */
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { View, Text, Pressable, FlatList, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
@@ -16,6 +16,7 @@ import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatNumber } from '@/utils/formatters';
+import { uiLogger } from '@/utils/logger';
 import { t as tr } from '@/i18n';
 
 const LOG_PREFIX = '[GRNImagesTab]';
@@ -196,7 +197,7 @@ const ImageTile: React.FC<{
   t: ThemeTokens;
 }> = ({ item, onPress, onDelete, styles, t }) => {
   const { width } = useWindowDimensions();
-  const imageSize = useMemo(() => (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS, [width]);
+  const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   // The load failed with a connection: the file is gone. With none the tile shows only the broken icon.
@@ -204,7 +205,9 @@ const ImageTile: React.FC<{
   const network = useNetworkStatus();
   const online = network.isConnected && network.isInternetReachable !== false;
   const onlineRef = useRef(online);
-  onlineRef.current = online;
+  useEffect(() => {
+    onlineRef.current = online;
+  }, [online]);
   const label = imageLabel(item);
   const imageUri = useViaCurrentPath(item.image_url);
 
@@ -234,13 +237,13 @@ const ImageTile: React.FC<{
               }}
               onLoad={() => {
                 setIsLoading(false);
-                if (__DEV__) console.log(`${LOG_PREFIX} Image loaded:`, item.id);
+                if (__DEV__) uiLogger.info(`${LOG_PREFIX} Image loaded:`, item.id);
               }}
               onError={(error) => {
                 setIsLoading(false);
                 setHasError(true);
                 setFileGone(onlineRef.current);
-                console.error(`${LOG_PREFIX} Image failed to load:`, {
+                uiLogger.error(`${LOG_PREFIX} Image failed to load:`, {
                   id: item.id,
                   url: item.image_url?.substring(0, 100),
                   error,

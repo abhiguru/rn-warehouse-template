@@ -6,7 +6,7 @@ import { backportSource } from './patch-security-backports.mjs';
 
 // The calendar pop-up of react-native-paper-dates draws its own dates with Intl, so
 // it would show "Oct 9" and "10/09/2026" while the rest of the app writes 09/10/26
-// (style guide 12.3). paper-dates-patch.json holds the reviewed edits of 0.24.1: the
+// (style guide 12.3). paper-dates-patch.json holds the reviewed edits of 0.24.2 (its nine patched files are byte-identical to 0.24.1): the
 // three source files Metro reads for iOS and Android (the package's "react-native"
 // field) and the compiled copies of the same three files that web (lib/module) and
 // Jest or Node (lib/commonjs) read. Each file is pinned by the SHA-256 of the original

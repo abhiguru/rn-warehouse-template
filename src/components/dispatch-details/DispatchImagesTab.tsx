@@ -7,7 +7,7 @@
  * - Empty state when no images, with "Add photo" when uploads are allowed
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -68,7 +68,9 @@ const DispatchPhoto: React.FC<{ url: string; style: React.ComponentProps<typeof 
   const network = useNetworkStatus();
   const online = network.isConnected && network.isInternetReachable !== false;
   const onlineRef = useRef(online);
-  onlineRef.current = online;
+  useEffect(() => {
+    onlineRef.current = online;
+  }, [online]);
   const missing = failure === 'missing';
   return (
     <>
@@ -238,7 +240,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
-  const imageSize = useMemo(() => (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS, [width]);
+  const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const t = useTokens();
 
   if (images.length === 0) {
