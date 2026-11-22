@@ -84,7 +84,7 @@
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
     "react-native-gesture-handler": "~3.3.0",
-    "react-native-gifted-charts": "^1.4.70",
+    "react-native-gifted-charts": "^1.4.83",
     "react-native-image-viewing": "^0.2.2",
     "react-native-keyboard-aware-scroll-view": "^0.9.5",
     "react-native-paper": "^5.15.4",
