@@ -136,7 +136,7 @@ describe('who sees Print', () => {
   it.each(['admin', 'supervisor', 'staff'])('%s sees Print', async (role) => {
     mockRole = role;
     await open();
-    expect(printButtons().length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('button', { name: /^print/i }).length).toBeGreaterThan(0);
   });
   it('a customer does not', async () => {
     mockRole = 'customer';

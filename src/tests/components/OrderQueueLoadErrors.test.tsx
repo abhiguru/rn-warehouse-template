@@ -4,7 +4,7 @@
  * last row; offline, the top of the list says when the queue was loaded (§14.9).
  */
 import React from 'react';
-import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import SupervisorOrderQueueList from '@/components/lists/SupervisorOrderQueueList';
 import { OrderService } from '@/services/order-service';
 import type { Order, OrderServiceResponse } from '@/types/order.types';
@@ -15,11 +15,11 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useFocusEffect: j
 // A list stub that draws its header the way FlashList does, so a header remount shows.
 jest.mock('@shopify/flash-list', () => {
   const ReactActual = jest.requireActual('react');
-  // The stand-in draws the header and the footer, and keeps the list's props on a host element.
+  // The stand-in draws the header and the footer (each in its own view, so a check can say which part a line is in), and keeps the list's props on a host element.
   const draw = (Part?: React.ComponentType | React.ReactElement) =>
     !Part ? null : ReactActual.isValidElement(Part) ? Part : ReactActual.createElement(Part);
   function FlashList(props: Record<string, any>) {
-    return ReactActual.createElement('FlashList', props, draw(props.ListHeaderComponent), draw(props.ListFooterComponent));
+    return ReactActual.createElement('FlashList', props, ReactActual.createElement('View', { testID: 'list-header' }, draw(props.ListHeaderComponent)), ReactActual.createElement('View', { testID: 'list-footer' }, draw(props.ListFooterComponent)));
   }
   return { FlashList };
 });
@@ -112,6 +112,7 @@ it('says a failed next page in the last row with Try again, and appends the page
   getOrdersList.mockResolvedValueOnce(answer(page(0, 20), true));
   await render(<SupervisorOrderQueueList />);
   expect(screen.queryByTestId('queue-load-more-error-retry', hidden)).not.toBeOnTheScreen();
+  expect(screen.queryAllByText('Loading more orders…', hidden)).toHaveLength(0); // the old check was no footer at all
 
   getOrdersList.mockResolvedValueOnce(failure);
   await fireEvent(list(), 'endReached');
@@ -123,6 +124,7 @@ it('says a failed next page in the last row with Try again, and appends the page
   await user.press(retry);
   expect(list().props.data).toHaveLength(22);
   expect(screen.queryByTestId('queue-load-more-error-retry', hidden)).not.toBeOnTheScreen();
+  expect(screen.queryAllByText('Loading more orders…', hidden)).toHaveLength(0); // the old check was no footer at all
   expect(screen.queryByText("Couldn't load more orders.", hidden)).not.toBeOnTheScreen();
 });
 
@@ -133,7 +135,7 @@ it('says when the queue was loaded at the top of the list only while offline', a
 
   mockOffline = true;
   await screen.rerender(<SupervisorOrderQueueList />);
-  expect(screen.getByText(new RegExp(`^Last updated ${TIME.source}$`))).toBeOnTheScreen();
+  expect(within(screen.getByTestId('list-header')).getByText(new RegExp(`^Last updated ${TIME.source}$`))).toBeOnTheScreen();
 });
 
 it('keeps the recently dispatched section mounted when the offline line comes and goes', async () => {
@@ -159,7 +161,7 @@ it('offline, the line at the top shows the date as well as the time when the que
     jest.setSystemTime(real);
     mockOffline = true;
     await screen.rerender(<SupervisorOrderQueueList />);
-    expect(screen.getByText('Last updated 09/10/26, 4:05 pm')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('list-header')).getByText('Last updated 09/10/26, 4:05 pm')).toBeOnTheScreen();
   } finally {
     jest.useRealTimers();
   }

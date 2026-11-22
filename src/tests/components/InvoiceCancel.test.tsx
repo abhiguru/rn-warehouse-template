@@ -196,7 +196,7 @@ describe('a cancelled invoice', () => {
     const printButtons = (hidden = false) => byLabel(/^print/i, hidden);
     jest.mocked(getInvoiceDetails).mockResolvedValue(detail({}));
     await open();
-    expect(printButtons().length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('button', { name: /^print/i }).length).toBeGreaterThan(0);
     await screen.unmount();
     jest.mocked(getInvoiceDetails).mockResolvedValue(detail(cancelled));
     await open();

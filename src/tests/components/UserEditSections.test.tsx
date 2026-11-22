@@ -3,6 +3,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import UserEditScreen from '../../../app/user-edit/[id]';
 import { adminUserService } from '@/services/admin-user-service';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
 jest.mock('@/store/hooks', () => ({
@@ -31,11 +32,19 @@ jest.mock('@/services/item-service', () => ({
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
+// The real SectionHeader, with its calls recorded: a title drawn with a local copy of its style is not one of them.
+jest.mock('@/components/ui/SectionHeader', () => {
+  const actual = jest.requireActual('@/components/ui/SectionHeader');
+  const recorded = jest.fn(actual.SectionHeader);
+  return { ...actual, SectionHeader: recorded, default: recorded };
+});
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
 // A check that something is NOT drawn must also see a node that is mounted but hidden.
 const everything = { includeHiddenElements: true } as const;
-const sectionTitles = () =>
+// The titles the shared SectionHeader was asked to draw that are still on the screen (a re-render repeats them, and a section that went away leaves its call).
+const sectionTitles = () => [...new Set(jest.mocked(SectionHeader).mock.calls.map(([props]) => props.title))].filter(title => headerLabels().includes(title));
+const headerLabels = () =>
   screen.queryAllByRole('header', everything).map(node => node.props.accessibilityLabel as string | undefined).filter((label): label is string => label !== undefined);
 
 jest.mock('@/services/admin-user-service', () => ({
@@ -65,6 +74,7 @@ const loadUser = async (details: Record<string, unknown> = STAFF) => {
   await render(<UserEditScreen />);
 };
 beforeEach(() => {
+  jest.mocked(SectionHeader).mockClear();
   jest.clearAllMocks();
   mockPicker = undefined;
   mockSearch = undefined;
@@ -97,6 +107,7 @@ describe('Edit user for a connection', () => {
     await loadUser({ ...STAFF, id: 'u9', name: 'FAS sync', role: 'admin', mobile: '0000000000', is_service_account: true, assigned_customers: [] });
     expect(screen.getAllByText(/Managed by the FAS sync setup\./)[0]).toBeOnTheScreen();
     expect(sectionTitles()).toHaveLength(0);
+    expect(headerLabels()).toHaveLength(0);
     expect(screen.queryAllByLabelText('Account active', everything)).toHaveLength(0);
     expect(screen.queryAllByText(/Customer assignments/, everything)).toHaveLength(0);
   });

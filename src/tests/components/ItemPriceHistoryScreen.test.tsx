@@ -465,7 +465,7 @@ describe('price history states', () => {
     expect(cardIds()).toEqual(['14', '13']);
     // A failed refresh is a strip above the entries that stay, not a dialog.
     expect(showAlert).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert', { name: /Couldn't refresh\. These are the changes loaded earlier\. Try again in a moment\./ })).toBeOnTheScreen();
+    expect(screen.getByRole('alert', { name: "Error: Couldn't refresh. These are the changes loaded earlier. Try again in a moment." })).toBeOnTheScreen();
   });
 
   // Finding 2: 50 or more changes written between two pages make the next page all repeats.

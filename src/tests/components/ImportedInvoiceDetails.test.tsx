@@ -99,6 +99,6 @@ it('an imported invoice shows the mark and offers no Edit, Cancel invoice or Del
 it.each([[false], [undefined]])('an invoice that is not imported (flag %s) keeps Edit and Cancel invoice', async flag => {
   await open(flag === undefined ? {} : { imported: flag });
   expect(screen.getByText('Not imported')).toBeOnTheScreen();
-  expect((await screen.findAllByLabelText('Edit')).length).toBeGreaterThan(0);
-  expect(screen.getAllByLabelText('Cancel invoice')).toHaveLength(1);
+  expect((await screen.findAllByRole('button', { name: 'Edit' })).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('button', { name: 'Cancel invoice' })).toHaveLength(1);
 });

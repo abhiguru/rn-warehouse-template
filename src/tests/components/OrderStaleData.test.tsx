@@ -5,7 +5,7 @@
  * says when the orders were loaded (§14.9).
  */
 import React from 'react';
-import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import { OrderService } from '@/services/order-service';
 import type { Order, OrderServiceResponse } from '@/types/order.types';
@@ -68,6 +68,12 @@ const refreshTarget = () => {
   expect(title[0].props.children).toBe('Orders');
   return title[0];
 };
+type Host = ReturnType<typeof list>;
+/** The parts the list host draws in order: its header part, then each row (a heading is its section header, and under it the Last updated line). */
+const listParts = () => list().children.filter(child => typeof child !== 'string') as Host[];
+const firstHeadingIndex = () => listParts().findIndex(part => within(part).queryAllByRole('header').some(node => !node.props.accessibilityActions));
+const firstHeading = () => listParts()[firstHeadingIndex()];
+const underFirstHeading = () => listParts()[firstHeadingIndex() + 1];
 const refresh = () => fireEvent(refreshTarget(), 'accessibilityAction', { nativeEvent: { actionName: 'refresh' } });
 
 beforeEach(() => {
@@ -109,6 +115,7 @@ it('says a failed next page in the last row with Try again, and appends the page
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(0, 20), metadata: { has_more: true } });
   await render(<OrderFlashList />);
   expect(screen.queryByTestId('orders-load-more-error-retry', hidden)).not.toBeOnTheScreen();
+  expect(screen.queryAllByText('Loading more orders…', hidden)).toHaveLength(0); // the old check was no footer at all
 
   getOrdersList.mockResolvedValueOnce({ success: false, message: 'Warehouse connection unavailable' });
   await fireEvent(list(), 'endReached');
@@ -122,6 +129,7 @@ it('says a failed next page in the last row with Try again, and appends the page
   expect(getOrdersList.mock.calls[2][0]).toEqual(expect.objectContaining({ offset: 20 }));
   expect(rows()).toHaveLength(23);
   expect(screen.queryByTestId('orders-load-more-error-retry', hidden)).not.toBeOnTheScreen();
+  expect(screen.queryAllByText('Loading more orders…', hidden)).toHaveLength(0); // the old check was no footer at all
   expect(screen.queryByText("Couldn't load more orders.", hidden)).not.toBeOnTheScreen();
 });
 
@@ -132,14 +140,14 @@ it('says when the orders were loaded under the first heading only while offline'
 
   mockOffline = true;
   await screen.rerender(<OrderFlashList />);
-  expect(screen.getByText(new RegExp(`^Last updated ${TIME.source}$`))).toBeOnTheScreen();
+  expect(underFirstHeading()).toHaveTextContent(new RegExp(`^Last updated ${TIME.source}$`));
 });
 
 it('counts "20+" in the first heading while more pages remain, and the plain count once all are loaded', async () => {
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(0, 20), metadata: { has_more: true } });
   await render(<OrderFlashList />);
-  expect(screen.getByText('20+')).toBeOnTheScreen();
-  expect(screen.getByLabelText(/, more than 20 orders$/)).toBeOnTheScreen();
+  expect(within(firstHeading()).getByText('20+')).toBeOnTheScreen();
+  expect(within(firstHeading()).getByLabelText(/, more than 20 orders$/)).toBeOnTheScreen();
 
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(20, 3), metadata: { has_more: false } });
   await fireEvent(list(), 'endReached');
@@ -157,7 +165,7 @@ it('offline, the line under the first heading shows the date as well as the time
     jest.setSystemTime(real);
     mockOffline = true;
     await screen.rerender(<OrderFlashList />);
-    expect(screen.getByText('Last updated 09/10/26, 4:05 pm')).toBeOnTheScreen();
+    expect(underFirstHeading()).toHaveTextContent('Last updated 09/10/26, 4:05 pm');
   } finally {
     jest.useRealTimers();
   }

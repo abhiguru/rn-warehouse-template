@@ -65,7 +65,9 @@ describe('PreferenceSheet with a long list (the states)', () => {
   it('puts every choice inside the ScrollView with the -scroll testID and makes the sheet tall', async () => {
     await render(<PreferenceSheet visible title="State" options={states} selected="" onSelect={jest.fn()} onClose={jest.fn()} testID="s" />);
     const scroll = screen.getByTestId('s-scroll');
-    expect(flat(scroll.props.style)).toMatchObject({ flex: 1 });
+    expect(scroll.type).toBe('RCTScrollView');
+    expect(everyHost().filter(n => (n.type as unknown) === 'RCTScrollView')).toHaveLength(1);
+    expect(flat(scroll.props.style)).toEqual({ flex: 1 });
     expect(sheetStyle().height).toBe('88%');
     const inScroll = within(scroll).getAllByRole('radio');
     expect(inScroll).toHaveLength(states.length);

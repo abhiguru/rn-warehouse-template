@@ -289,11 +289,15 @@ describe('the Save bar', () => {
     await act(async () => { lastBar()!.startsOn.onChange('today', TODAY); });
     const bar = lastBar()!;
     // The bar is drawn on its own: the screen now points at it.
-    await render(<ScopeSaveBar bar={bar} />);
+    const onSave = jest.fn();
+    await render(<ScopeSaveBar bar={{ ...bar, save: { ...bar.save, onPress: onSave } }} />);
     textHere('What changes');
     textHere('Save new rate');
     textHere('Discard');
     here('save-bar-save');
+    // It is a button that does something: a press reaches the bar's own save.
+    await user.press(screen.getAllByTestId('save-bar-save')[0]);
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 });
 

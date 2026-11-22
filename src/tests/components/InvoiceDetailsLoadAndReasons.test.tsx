@@ -205,7 +205,7 @@ describe('WH-216: in Gujarati, and Edit in the stack header', () => {
   it('has Edit in the header for a role that may update, and none for a role that may not', async () => {
     jest.mocked(getInvoiceDetails).mockResolvedValue(loaded);
     await open();
-    expect(editButtons().length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('button', { name: 'Edit' }).length).toBeGreaterThan(0);
     await screen.unmount();
     mockCanUpdate = false;
     await open();

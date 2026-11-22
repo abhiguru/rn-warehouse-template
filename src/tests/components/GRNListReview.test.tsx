@@ -133,7 +133,13 @@ const absent = (testID: string) => expect(screen.queryByTestId(testID, anywhere)
 const host = (testID: string) => screen.getByTestId(testID);
 const card = (n: number) => screen.queryByTestId(`grn-card-g${n}`);
 const toggle = (n: number) => screen.queryByTestId(`grn-card-toggle-g${n}`);
-const isOpen = (n: number) => Boolean(toggle(n)?.props.accessibilityState?.expanded);
+// Open means expanded on the screen. A toggle that is expanded but hidden is neither: it fails here, as the old walk (which saw hidden nodes) would have.
+const isOpen = (n: number) => {
+  const open = Boolean(toggle(n)?.props.accessibilityState?.expanded);
+  const mounted = Boolean(screen.queryByTestId(`grn-card-toggle-g${n}`, anywhere)?.props.accessibilityState?.expanded);
+  if (open !== mounted) throw new Error(`toggle ${n} is expanded but hidden`);
+  return open;
+};
 const user = () => userEvent.setup({ delay: 0 });
 const press = (node: Host | null) => user().press(node as Host);
 /** Every host element below one, in order (the stand-in hosts "FlashList" and "FilteredListHeader" have no role, label or text). */
@@ -160,6 +166,17 @@ const swipeableOf = (n: number) => {
   return fiber;
 };
 
+/** How many Swipeables are drawn in all (the old test required exactly one per card): every one that has a drawn element below it, read from the fiber (it is no host view). */
+const swipeableCount = () => {
+  const found = new Set<unknown>();
+  for (const node of allHosts()) {
+    for (let fiber = node.unstable_fiber; fiber; fiber = fiber.return) {
+      if (fiber.type === Swipeable && !found.has(fiber.alternate)) found.add(fiber);
+    }
+  }
+  return found.size;
+};
+
 describe('actions by role', () => {
   it('a customer account gets a plain card: no swipe, no actions, no "Edit" anywhere', async () => {
     mockPermissions = { canCreate: false, canUpdate: false, role: 'customer' };
@@ -168,6 +185,7 @@ describe('actions by role', () => {
     await renderList();
 
     expect(swipeableOf(1)).toBeNull();
+    expect(swipeableCount()).toBe(0);
     expect(card(1)?.props.accessibilityActions).toBeUndefined();
     expect(card(1)).toHaveProp('accessibilityHint', 'Opens the GRN.');
     expect(allTexts()).not.toContain('Edit');
@@ -178,6 +196,7 @@ describe('actions by role', () => {
     await renderList();
 
     expect(swipeableOf(1)).not.toBeNull();
+    expect(swipeableCount()).toBe(1);
     expect(card(1)?.props.accessibilityActions).toEqual([
       { name: 'print', label: 'Print' },
       { name: 'edit', label: 'Edit' },
@@ -419,6 +438,7 @@ describe('swipe state belongs to the GRN (R1-06)', () => {
 
     // Fiber read: the key of the Swipeable above each card (it is no host view, so no query reaches it).
     expect([swipeableOf(1)?.key, swipeableOf(2)?.key]).toEqual(['g1', 'g2']);
+    expect(swipeableCount()).toBe(2);
   });
 });
 

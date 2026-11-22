@@ -159,11 +159,11 @@ const settle = async () => {
   await act(async () => { await jest.runAllTimersAsync(); });
 };
 
-const everything = { includeHiddenElements: true } as const;
 /** The control with this testID or label on the screen that is in front (the last one drawn). */
 const control = (testID: string) => {
   // The tap that lands late reaches the control of a screen that is already behind another one (hidden, still mounted).
-  const found = [...screen.queryAllByTestId(testID, everything), ...screen.queryAllByLabelText(testID, everything)];
+  // One walk in tree order for "testID or label", so the last match is the front screen's control (hidden ones included).
+  const found = screen.root!.queryAll((node) => node.props.testID === testID || node.props.accessibilityLabel === testID, { includeSelf: true });
   if (found.length === 0) throw new Error(`No control ${testID}`);
   return found[found.length - 1];
 };

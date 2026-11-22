@@ -10,6 +10,7 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { render as rtlRender, screen, userEvent } from '@testing-library/react-native';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { router } from 'expo-router';
 import SettingsScreen from '../../../app/settings';
 import themeReducer from '@/store/slices/themeSlice';
@@ -47,6 +48,12 @@ jest.mock('@/hooks/useCapability', () => ({
   useFacilityCapabilities: () => ({ printing: false, sensors: true, realtime: true, customerDocuments: false }),
 }));
 jest.mock('@/store/operatorSwitch', () => ({ leaveFacility: jest.fn() }));
+// The real SectionHeader, with its calls recorded: a title drawn with a local copy of its style is not one of them.
+jest.mock('@/components/ui/SectionHeader', () => {
+  const actual = jest.requireActual('@/components/ui/SectionHeader');
+  const recorded = jest.fn(actual.SectionHeader);
+  return { ...actual, SectionHeader: recorded, default: recorded };
+});
 jest.mock('@/store/centralSignOut', () => ({ deleteFacilityAccount: jest.fn(), signOutEverywhere: jest.fn(), whileLeaving: (work: () => Promise<unknown>) => work() }));
 jest.mock('@/store/slices/authSlice', () => ({
   logout: jest.fn(() => ({ type: 'test/logout' })),
@@ -81,6 +88,7 @@ const signedInAs = (role: string) => {
 };
 
 beforeEach(() => {
+  jest.mocked(SectionHeader).mockClear();
   jest.clearAllMocks();
   user = userEvent.setup({ delay: 0 });
   signedInAs('admin');
@@ -108,7 +116,7 @@ describe('Delete account', () => {
 describe('Settings order', () => {
   it('is profile card, Warehouse tools, Preferences, Account, Help and about', async () => {
     await render();
-    const sections = screen.queryAllByTestId(/^settings-section-/, everything).map(node => node.props.testID);
+    const sections = screen.queryAllByTestId(/^settings-section-/).map(node => node.props.testID);
     expect([...new Set(sections)].filter(id => id !== 'settings-section-development')).toEqual([
       'settings-section-tools',
       'settings-section-preferences',
@@ -116,7 +124,9 @@ describe('Settings order', () => {
       'settings-section-help',
     ]);
     // The section titles are shared SectionHeaders (G-43); they print in capitals. Each is a header named by its title.
+    const drawn = [...new Set(jest.mocked(SectionHeader).mock.calls.map(([props]) => props.title))];
     const headers = screen.queryAllByRole('header', everything).map(node => node.props.accessibilityLabel as string | undefined);
+    expect(drawn).toEqual(expect.arrayContaining(['Warehouse tools', 'Preferences', 'Account', 'Help and about']));
     expect(headers).toEqual(expect.arrayContaining(['Warehouse tools', 'Preferences', 'Account', 'Help and about']));
     expect(headers).not.toContain('App features');
     expect(headers).not.toContain('About');
@@ -137,9 +147,11 @@ describe('Settings order', () => {
   ])('keeps the tool rows of the role (%s: %d)', async (role, count) => {
     signedInAs(role);
     await render();
-    const shown = new Set(screen.queryAllByTestId(/^settings-feature-/, everything).map(node => node.props.testID));
+    const shown = new Set(screen.queryAllByTestId(/^settings-feature-/).map(node => node.props.testID));
     expect(shown.size).toBe(count);
-    expect(byTestId('settings-section-tools').length > 0).toBe(count > 0);
+    // The tools section is on the screen when the role has rows, and not mounted at all when it has none.
+    if (count > 0) expect(screen.queryAllByTestId('settings-section-tools').length).toBeGreaterThan(0);
+    else expect(byTestId('settings-section-tools')).toHaveLength(0);
   });
 
   it.each(['staff', 'supervisor', 'admin'])('has no Item pricing row for %s (the screen was removed from Settings)', async (role) => {

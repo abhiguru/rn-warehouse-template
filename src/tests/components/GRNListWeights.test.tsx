@@ -120,7 +120,7 @@ const textOf = (node: Host) =>
 // Every Text under a scope, in document order (the empty pattern matches any text).
 const textNodes = (scope?: Host, hidden = false) => (scope ? within(scope) : screen).queryAllByText(/^/, { includeHiddenElements: hidden });
 const texts = () => textNodes().map(textOf);
-// A negative check or an exact list of what names kilograms must also see an element that is mounted but hidden.
+// A negative check, a count or an exact list of what names kilograms or what a figure does must also see an element that is mounted but hidden.
 const allTexts = () => textNodes(undefined, true).map(textOf);
 const host = (testID: string) => screen.getByTestId(testID, { includeHiddenElements: true });
 /** Opens the card's table with its own button. */
@@ -133,9 +133,9 @@ const attributeStack = () => textNodes(host(`grn-card-stock-${GRN}`)).map(textOf
 const lineHosts = () => within(host(`grn-lines-${GRN}`)).queryAllByTestId(/^grn-line-/, { includeHiddenElements: true });
 /** The table's heading and its rows, cell by cell, with what each row says aloud. */
 const table = () => {
-  const gridTexts = textNodes(host(`grn-lines-${GRN}`)).map(textOf);
+  const gridTexts = textNodes(host(`grn-lines-${GRN}`), true).map(textOf);
   const lines = lineHosts();
-  const rows = lines.map((line) => textNodes(line).map(textOf));
+  const rows = lines.map((line) => textNodes(line, true).map(textOf));
   // The heading comes first in the grid, the rows after it.
   const rowTextCount = rows.reduce((sum, cells) => sum + cells.length, 0);
   return {
@@ -234,7 +234,7 @@ describe('GRN list table at large text', () => {
     await expand();
 
     const grid = host(`grn-lines-${GRN}`);
-    const figures = textNodes(grid).filter((node) => textOf(node) === '9,999');
+    const figures = textNodes(grid, true).filter((node) => textOf(node) === '9,999');
     expect(figures).toHaveLength(1);
     expect(figures[0].props.numberOfLines).toBe(1);
     // The status is a word under the item, never a figure cut with "…".
@@ -316,7 +316,7 @@ describe('GRN card figures, marks and stock text (phone run GL, 2026-10-18)', ()
     await renderList([withMark(), row('line-2', 'Potato', 9999, 50, 9999)]);
     await expand();
     const grid = host(`grn-lines-${GRN}`);
-    const figures = textNodes(grid).filter((node) => ['21', '1', '9,999', '50'].includes(textOf(node)));
+    const figures = textNodes(grid, true).filter((node) => ['21', '1', '9,999', '50'].includes(textOf(node)));
     expect(figures.length).toBeGreaterThanOrEqual(6);
     for (const figure of figures) {
       expect(figure.props.numberOfLines).toBe(1);
@@ -330,7 +330,7 @@ describe('GRN card figures, marks and stock text (phone run GL, 2026-10-18)', ()
     await renderList([row('line-1', 'Potato', 9999999, 50, 9999999)]);
     await expand();
     const grid = host(`grn-lines-${GRN}`);
-    const figures = textNodes(grid).filter((node) => textOf(node).startsWith('99,99,999'));
+    const figures = textNodes(grid, true).filter((node) => textOf(node).startsWith('99,99,999'));
     // The bags under the item ("99,99,999 bags") and the stock ("99,99,999").
     expect(figures.map(textOf)).toEqual([nb('99,99,999 bags'), '99,99,999']);
     for (const figure of figures) {
@@ -344,7 +344,7 @@ describe('GRN card figures, marks and stock text (phone run GL, 2026-10-18)', ()
     await renderList([withMark()]);
     await expand();
     const grid = host(`grn-lines-${GRN}`);
-    const mark = textNodes(grid).filter((node) => textOf(node) === nb(MARK));
+    const mark = textNodes(grid, true).filter((node) => textOf(node) === nb(MARK));
     expect(mark).toHaveLength(1);
     expect(mark[0].props.numberOfLines).toBe(1);
     expect(mark[0].props.ellipsizeMode).toBe('tail');

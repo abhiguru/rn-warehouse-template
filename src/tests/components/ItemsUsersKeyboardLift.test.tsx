@@ -62,7 +62,8 @@ async function checkLift(testID: string) {
   // The jest View keeps measureInWindow on a shared prototype and there are no native views: it is given a place
   // (the spy is undone by restoreAllMocks).
   jest.spyOn(View.prototype as unknown as { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void }, 'measureInWindow')
-    .mockImplementation(cb => cb(0, 100, 1080, 1300)); // un-lifted bottom at 1400
+    // Only the container answers (as the old test stubbed only that instance): a hook measuring another View gets nothing.
+    .mockImplementation(function (this: { props?: { testID?: string } }, cb) { if (this.props?.testID === testID) cb(0, 100, 1080, 1300); }); // un-lifted bottom at 1400
   expect(margin(testID)).toBe(0);
   await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 1000, height: 800 } }); });
   expect(margin(testID)).toBe(400);

@@ -79,7 +79,8 @@ it('shows the facility, who to ask, the roles, the changes and the support detai
   expect(allTexts.join('\n')).not.toContain('9000000002');
   expect(screen.getByTestId('app-diagnostics')).toBeOnTheScreen();
   // Only the own role is marked.
-  const marked = screen.queryAllByLabelText(/^/, { includeHiddenElements: true }).filter((node) => node.props.accessibilityState?.selected === true);
+  // Every host element, labelled or not, hidden or not.
+  const marked = screen.root!.queryAll((node) => node.props.accessibilityState?.selected === true, { includeSelf: true });
   expect(marked.map((node) => node.props.accessibilityLabel)).toEqual([
     'Staff, Orders, GRNs, dispatches and invoices for every customer. Cannot manage customers, items, prices or users.',
   ]);
